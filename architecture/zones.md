@@ -18,7 +18,9 @@ flowchart LR
     adapter_ios_ui[":adapter:ios:ui"]
   end
   subgraph domain
+    domain_application[":domain:application"]
     domain_compose[":domain:compose"]
+    domain_data[":domain:data"]
     domain_domain[":domain:domain"]
     domain_entrypoints[":domain:entrypoints"]
     domain_feature[":domain:feature"]
@@ -62,6 +64,7 @@ flowchart LR
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
   adapter_generic_mock --> domain_compose
+  adapter_generic_mock --> domain_data
   adapter_generic_mock --> domain_domain
   adapter_generic_mock --> domain_feature
   adapter_generic_mock --> domain_inbound
@@ -86,6 +89,7 @@ flowchart LR
   adapter_ios_app_only --> test_contracts
   adapter_ios_ext_safe --> adapter_generic_app
   adapter_ios_ext_safe --> domain_compose
+  adapter_ios_ext_safe --> domain_data
   adapter_ios_ext_safe --> domain_domain
   adapter_ios_ext_safe --> domain_feature
   adapter_ios_ext_safe --> domain_inbound
@@ -104,6 +108,10 @@ flowchart LR
   adapter_ios_ui --> ui_components
   adapter_ios_ui --> ui_screens
   adapter_ios_ui --> ui_state
+  domain_application --> domain_data
+  domain_application --> domain_domain
+  domain_compose --> domain_application
+  domain_compose --> domain_data
   domain_compose --> domain_domain
   domain_compose --> domain_entrypoints
   domain_compose --> domain_feature
@@ -113,6 +121,12 @@ flowchart LR
   domain_compose --> domain_scheduling
   domain_compose --> domain_services
   domain_compose --> ui_state
+  domain_data --> domain_domain
+  domain_data --> domain_inbound
+  domain_data --> domain_ports
+  domain_data --> domain_wire
+  domain_entrypoints --> domain_application
+  domain_entrypoints --> domain_data
   domain_entrypoints --> domain_domain
   domain_entrypoints --> domain_feature
   domain_entrypoints --> domain_inbound
@@ -120,6 +134,7 @@ flowchart LR
   domain_entrypoints --> domain_ports
   domain_entrypoints --> domain_scheduling
   domain_entrypoints --> domain_services
+  domain_feature --> domain_data
   domain_feature --> domain_domain
   domain_feature --> domain_model
   domain_feature --> domain_scheduling
@@ -143,6 +158,7 @@ flowchart LR
   domain_presentation --> ui_state
   domain_scheduling --> domain_inbound
   domain_scheduling --> domain_ports
+  domain_services --> domain_data
   domain_services --> domain_domain
   domain_services --> domain_inbound
   domain_services --> domain_model

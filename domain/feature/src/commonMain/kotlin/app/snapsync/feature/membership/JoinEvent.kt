@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
@@ -14,7 +15,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import co.touchlab.kermit.Logger
 
 /**
@@ -56,7 +57,7 @@ fun JoinOutcome.toCommit(): JoinCommit = when (this) {
  */
 class JoinEvent(
     private val configSource: ConfigService,
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
     private val details: EventDirectory,
     private val enroller: DeviceEnroller,
     /** An encrypted event's key: checked against the event before a join, and kept once it succeeds. */
@@ -120,7 +121,7 @@ class JoinEvent(
         // Every entry path funnels here, the headless one included, so the key is checked here too — never only on
         // the screen: a member must not join an encrypted event it could not read, nor upload plaintext into it.
         if (!keys.opens(choice.linkKey, choice.eventKeyId)) return JoinOutcome.WrongLink
-        when (enroller.enroll(eventId, identity.deviceId())) {
+        when (enroller.enroll(eventId, identity.requireDeviceId())) {
             JoinResult.JOINED -> Unit
             JoinResult.EVENT_CLOSED -> return JoinOutcome.EventClosed
             JoinResult.UNVERIFIED -> return JoinOutcome.Unverified

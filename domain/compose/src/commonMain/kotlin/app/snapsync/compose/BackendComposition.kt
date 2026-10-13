@@ -1,27 +1,37 @@
 package app.snapsync.compose
 
+import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.trust.AttestationIssuer
+import app.snapsync.data.trust.AttestationStatus
+import app.snapsync.data.trust.AttestingCredential
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.ports.Clock
 import app.snapsync.ports.Crypto
-import app.snapsync.services.backend.BackendExchange
-import app.snapsync.services.backend.BackendGateway
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.upload.Resuming
 import app.snapsync.services.upload.UploadStandings
 
 /**
- * The app's attestation service: proves with the platform's integrity service and
- * reaches the backend's open `/attest/…` routes through [exchange], which reports a refused build to the version gate.
+ * The app's credential: it proves with the platform's integrity service and reaches the backend's open `/attest/…`
+ * issuers through [exchange], which reports a refused build to the version gate; its verdicts publish into [status].
+ * Only the app process attests.
  *
  * A top-level factory rather than an `AppCore` body because `AppCore` is measured (see [shareSetLoadFor]).
  */
-internal fun attestationFor(services: AppServices, clock: Clock, exchange: BackendExchange): DeviceAttestation =
-    DeviceAttestation(
-        integrity = services.ports.integrity,
-        exchange = exchange,
-        store = services.attestStore,
+@OptIn(AppProcessOnly::class)
+internal fun attestingCredentialFor(
+    services: AppServices,
+    clock: Clock,
+    exchange: BackendExchange,
+    status: AttestationStatus,
+): AttestingCredential =
+    AttestingCredential(
+        store = services.credentials,
+        issuer = AttestationIssuer(services.ports.integrity, exchange),
         identity = services.deviceIdentity,
         clock = clock,
+        status = status,
     )
 
 /**
@@ -30,7 +40,7 @@ internal fun attestationFor(services: AppServices, clock: Clock, exchange: Backe
  */
 internal fun backendServicesFor(
     services: AppServices,
-    attestation: DeviceAttestation,
+    attestation: AttestingCredential,
     exchange: BackendExchange,
 ): BackendServices =
     BackendServices(

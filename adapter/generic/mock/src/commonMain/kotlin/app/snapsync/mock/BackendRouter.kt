@@ -1,13 +1,13 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.ResourceRole

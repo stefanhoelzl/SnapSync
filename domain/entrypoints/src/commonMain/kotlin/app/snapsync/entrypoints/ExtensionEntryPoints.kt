@@ -1,5 +1,6 @@
 package app.snapsync.entrypoints
 
+import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.answer
 import app.snapsync.inbound.Log
@@ -10,7 +11,6 @@ import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.steps
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.ledger.LedgerService
-import app.snapsync.services.trust.CachedAttestStore
 import app.snapsync.services.upload.requeueWhilePending
 import co.touchlab.kermit.Logger
 
@@ -26,7 +26,7 @@ import co.touchlab.kermit.Logger
  */
 class OnProcess(
     runtime: Runtime,
-    private val credential: CachedAttestStore,
+    private val credential: CachedCredentialStore,
     private val config: ConfigService,
     private val cycle: Lazy<UploadCycle>,
     private val ledger: LedgerService,

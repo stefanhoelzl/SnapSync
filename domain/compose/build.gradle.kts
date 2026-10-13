@@ -21,6 +21,9 @@ kotlin {
             implementation(project(":domain:domain"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
+            // MIGRATING: the layers phase 4 moves the work into — composed here like everything else.
+            implementation(project(":domain:data"))
+            implementation(project(":domain:application"))
             implementation(project(":domain:feature"))
             // How work enters and runs: the runtime, the entry points this composition builds and hands to the ports.
             implementation(project(":domain:inbound"))

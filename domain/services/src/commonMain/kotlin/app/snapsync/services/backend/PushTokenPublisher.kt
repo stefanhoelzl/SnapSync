@@ -1,8 +1,10 @@
 package app.snapsync.services.backend
 
+import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.wire.api.PutDeviceReply
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.DeviceConfig
@@ -31,13 +33,14 @@ fun interface PushTokenPublisher {
  */
 class BackendPushTokenPublisher(
     private val gateway: BackendGateway,
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
 ) : PushTokenPublisher {
 
     override suspend fun publish(token: PushEndpoint): Result<Unit> {
-        val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
+        val id = runCatchingCancellable { identity.requireDeviceId() }.getOrElse { return Result.failure(it) }
         val config = DeviceConfig(PushRegistration(kind = token.kind, token = token.token, env = token.env))
-        return when (val reply = gateway.send(Routes.PutDevice.request(id.value, config))) {
+        // Never token-less: a fresh install's push token can arrive before it attested, and the PUT would only be refused.
+        return when (val reply = gateway.sendObtainingFirst(Routes.PutDevice.request(id.value, config))) {
             PutDeviceReply.Recorded -> Result.success(Unit)
             else -> Result.failure(IllegalStateException("config PUT $id: $reply"))
         }

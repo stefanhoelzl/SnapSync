@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.SentPush
@@ -20,7 +21,6 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadTarget
-import app.snapsync.services.secure.SecureSlots
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.GetEventReply
@@ -261,7 +261,7 @@ class MockStateTest {
         const val OTHER = "00000000-0000-4000-9000-00000000000e"
 
         /** One of the app's own Keychain slots — a restore puts an item back only at a slot the app addresses. */
-        val SLOT = SecureSlots.ATTEST_TOKEN
+        val SLOT = TrustSlots.ATTEST_TOKEN
     }
 
     private val CONDITIONS = DeviceConditionsMock.TYPICAL.copy(

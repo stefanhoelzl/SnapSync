@@ -23,6 +23,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
@@ -30,7 +31,6 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
-import app.snapsync.model.VersionRefusal
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.presentation.url
 import app.snapsync.testids.testEventId
@@ -145,7 +145,7 @@ class HostStatusActionsTest {
         @Suppress("UNUSED_PARAMETER") diagnostics: Boolean = false,
         details: suspend (String) -> JoinLoad = { OTHER_EVENT },
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
-        deviceRefusal: app.snapsync.model.DeviceRefusal? = null,
+        deviceRefusal: app.snapsync.domain.trust.DeviceRefusal? = null,
     ) = ContainerRig(config, permission, refusal, details, network, deviceRefusal)
 
     private val ready: (UiState) -> Boolean =
@@ -476,7 +476,9 @@ class HostStatusActionsTest {
 
     @Test
     fun `a refused phone is told why with Create still offered - and Report this opens the sheet already written`() =
-        rigTest(rig(diagnostics = true, deviceRefusal = app.snapsync.model.DeviceRefusal.DEVICE_UNVERIFIABLE)) { rig ->
+        rigTest(
+            rig(diagnostics = true, deviceRefusal = app.snapsync.domain.trust.DeviceRefusal.DEVICE_UNVERIFIABLE),
+        ) { rig ->
             awaitState(rig) { (it.layer as? Layer.CreateEvent)?.error == ScreenMessage.DEVICE_UNVERIFIABLE }
             val told = "${str(Res.string.message_device_unverifiable)} ${str(Res.string.message_report_this)}"
             onNodeWithText(told).assertExists()
@@ -499,7 +501,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a refusal that only a store install can fix offers no report`() =
-        rigTest(rig(deviceRefusal = app.snapsync.model.DeviceRefusal.APP_NOT_GENUINE)) { rig ->
+        rigTest(rig(deviceRefusal = app.snapsync.domain.trust.DeviceRefusal.APP_NOT_GENUINE)) { rig ->
             awaitState(rig) { (it.layer as? Layer.CreateEvent)?.error == ScreenMessage.APP_NOT_GENUINE }
             onNodeWithText(str(Res.string.message_app_not_genuine)).assertExists()
             onNodeWithText(str(Res.string.message_report_this), substring = true).assertDoesNotExist()

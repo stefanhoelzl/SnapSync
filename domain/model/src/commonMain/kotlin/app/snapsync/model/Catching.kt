@@ -58,10 +58,3 @@ inline fun Logger.bestEffort(name: String, block: () -> Unit): Boolean =
 suspend fun Logger.contained(failure: String, block: suspend () -> Unit) {
     runCatchingCancellable { block() }.onFailure { w(it) { failure } }
 }
-
-/**
- * [block]'s answer, or `null` when it failed — the failure logged at `Warn` as [failure], cancellation rethrown (law
- * "Absence is never silent": a collapse to `null` is always logged). Not `inline`, for [contained]'s reason.
- */
-suspend fun <T> Logger.orNullLogged(failure: String, block: suspend () -> T): T? =
-    runCatchingCancellable { block() }.onFailure { w(it) { failure } }.getOrNull()

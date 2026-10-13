@@ -1,11 +1,15 @@
 package app.snapsync.keychain
 
+import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.trust.TrustSlots
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.model.SecureStoreUnavailable
+import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.secure.readExisting
-import app.snapsync.services.secure.resolveOrMint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -96,23 +100,29 @@ class IosSecureStoreTest {
     }
 
     /** The never-mint invariant, end to end, through the real adapter. */
+    @OptIn(AppProcessOnly::class)
     @Test
     fun `resolving against an inaccessible keychain mints nothing and writes nothing`() {
         var generated = false
 
-        val failure = assertFailsWith<SecureStoreUnavailable> {
-            resolveOrMint(store, slot) {
+        val read = MintingDeviceIdentity(
+            store,
+            PlatformDeviceId {
                 generated = true
                 "a-brand-new-identity"
-            }
-        }
+            },
+        ).id()
 
+        val failure = assertIs<DeviceIdRead.Unavailable>(read)
         assertTrue(
             !generated,
             "minting here is what orphans a device's byte partition and ledger, and re-uploads its library",
         )
         assertTrue(failure.detail.isNotBlank())
-        assertIs<SecureStoreRead.Unavailable>(store.read(slot), "the failed resolve must leave nothing behind")
+        assertIs<SecureStoreRead.Unavailable>(
+            store.read(TrustSlots.DEVICE_ID),
+            "the failed resolve leaves nothing behind",
+        )
     }
 
     /** `readExisting` (the attestation path) must draw the same line: unreadable is not absent. */

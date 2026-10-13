@@ -35,9 +35,9 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.NetworkAccess

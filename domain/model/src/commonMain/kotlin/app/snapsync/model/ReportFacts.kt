@@ -5,13 +5,6 @@ package app.snapsync.model
  * deciding anything.
  */
 
-/** The device id as a report writes it: the id, or why there is none. Never a mint — see `PersistedDeviceIdentity.current`. */
-fun DeviceIdResult.asFact(): Fact<String> = when (this) {
-    is DeviceIdResult.Id -> Fact.Known(value.value)
-    is DeviceIdResult.Unavailable -> Fact.Failed("the secure store could not be read: $detail")
-    DeviceIdResult.AbsentNotMintable -> Fact.Failed("no device id stored yet")
-}
-
 /**
  * How many photos a partial grant's selection holds — **photos**, not resources: the snapshot lists each photo's
  * resources, and a Live Photo has several. Only a partial grant has a selection; under any other the fact is

@@ -91,6 +91,8 @@ kotlin {
             // The storage services' SQLite behaviour on this target, measured over the real `IosDatabases`
             // (`docs/architecture.md`): a `:domain:*` build file names no module, so those tests live here.
             implementation(project(":domain:services"))
+            // The device identity's never-mint invariant, end to end through the real adapters.
+            implementation(project(":domain:data"))
         }
     }
 }

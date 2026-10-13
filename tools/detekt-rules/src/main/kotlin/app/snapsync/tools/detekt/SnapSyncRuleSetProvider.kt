@@ -15,6 +15,7 @@ class SnapSyncRuleSetProvider : RuleSetProvider {
                 HardCodedUiText(config),
                 HardCodedSystemText(config),
                 EntryPointShape(config),
+                DataShape(config),
                 OneCallPerStep(config),
                 CoroutinesInScheduling(config),
                 NoFunctionTypes(config),

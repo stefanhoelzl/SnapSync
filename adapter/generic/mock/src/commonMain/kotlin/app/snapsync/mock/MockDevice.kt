@@ -1,11 +1,11 @@
 package app.snapsync.mock
 
+import app.snapsync.data.trust.TrustSlots
 import app.snapsync.model.FileArea
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferNetwork
-import app.snapsync.services.secure.SecureSlots
 import kotlin.time.Instant
 
 /**
@@ -43,7 +43,7 @@ open class MockDevice(
     val disk = FileSystemMock()
     val databases = DatabasesMock(directory = databaseDirectory)
     val preferences = PreferencesMock()
-    val keychain = SecureStoreMock(mapOf(SecureSlots.DEVICE_ID to ownDeviceId))
+    val keychain = SecureStoreMock(mapOf(TrustSlots.DEVICE_ID to ownDeviceId))
     val enclave = DeviceIntegrityMock()
     val crashReporter = CrashReporterMock()
     val processInfo = ProcessInfoMock()

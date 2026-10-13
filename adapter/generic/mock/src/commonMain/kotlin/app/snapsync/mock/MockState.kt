@@ -2,7 +2,9 @@
 
 package app.snapsync.mock
 
+import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.UnionFetch
 import app.snapsync.model.Availability
@@ -10,7 +12,6 @@ import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.FileArea
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
@@ -34,7 +35,6 @@ import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
-import app.snapsync.services.secure.SecureSlots
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -245,9 +245,9 @@ private class KeychainDto(val slots: List<SlotDto>) {
 
     companion object {
         private val KNOWN_SLOTS = listOf(
-            SecureSlots.DEVICE_ID,
-            SecureSlots.ATTEST_TOKEN,
-            SecureSlots.ATTEST_KEY_ID,
+            TrustSlots.DEVICE_ID,
+            TrustSlots.ATTEST_TOKEN,
+            TrustSlots.ATTEST_KEY_ID,
         )
 
         fun of(items: Map<SecureSlot, SecureStoreRead.Found>) = KeychainDto(

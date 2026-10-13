@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.inbound.Completion
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmLanes
@@ -22,7 +23,6 @@ import app.snapsync.mock.id
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource

@@ -1,5 +1,6 @@
 package app.snapsync.services.crypto
 
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
@@ -9,7 +10,7 @@ import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.encodeEventKey
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.services.config.ConfigService
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 
 /**
  * **How one upload is sealed** (the encrypted file format, `docs/architecture.md`): not at all for a plain event; for an
@@ -23,7 +24,7 @@ class UploadSealing(
     private val keys: EventKeys,
     private val cipher: FileCipher,
     private val config: ConfigService,
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
 ) {
 
     /** How [resource] goes up in the joined event. */
@@ -38,7 +39,7 @@ class UploadSealing(
         if (cipher.keyIdOf(key).toHex() != keyId) return UploadSeal.Withheld("the kept key is not the event's")
         val ad = EncryptedFileFormat.associatedData(
             joined.eventId.value,
-            identity.deviceId().value,
+            identity.requireDeviceId().value,
             assetIdFromUploadKey(resource.filename).value,
             roleFromUploadKey(resource.filename).wire,
         )

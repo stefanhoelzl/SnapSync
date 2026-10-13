@@ -1,10 +1,10 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
+import app.snapsync.feature.diagnostics.asFact
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.Fact
-import app.snapsync.model.asFact
 import app.snapsync.model.inMegabytes
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.BuildInfo
@@ -46,7 +46,7 @@ internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnos
             "app_admission" to appUploadAdmission().name,
         )
     },
-    refusalFacts = { attestation.refusalFacts() },
+    refusalFacts = { attestationStatus.refusalFacts() },
 )
 
 /**

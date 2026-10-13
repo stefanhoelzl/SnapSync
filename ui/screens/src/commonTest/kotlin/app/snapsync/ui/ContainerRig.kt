@@ -22,10 +22,11 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
@@ -43,7 +44,6 @@ import app.snapsync.model.SyncStatus
 import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
-import app.snapsync.model.VersionRefusal
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
 import app.snapsync.presentation.StatusContainerHost

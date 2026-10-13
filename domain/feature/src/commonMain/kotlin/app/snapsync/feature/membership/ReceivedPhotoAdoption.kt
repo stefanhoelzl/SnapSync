@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.AdoptedAsset
@@ -14,7 +15,7 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.MarkedPhotoLookup
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -60,7 +61,7 @@ class ReceivedPhotoAdoption(
     /** The adoption's write, answering the refs it recorded (`DownloadController.settleAdopted`). */
     private val record: suspend (adopted: Collection<AdoptedAsset>, eventId: EventId) -> Set<AssetRef>,
     /** The device identity; own refs are never foreign and never adopted. */
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
     private val log: Logger = Logger.withTag("ReceivedPhotoAdoption"),
 ) {
     // Serializes every pass, and remembers the membership whose library has been read once in this process.
@@ -153,7 +154,7 @@ class ReceivedPhotoAdoption(
             log.w { "union unavailable — nothing recognised; sharing and receiving wait for the next pass" }
             return false
         }
-        val me = identity.deviceId()
+        val me = identity.requireDeviceId()
         val foreign = assets.filter { it.deviceId != me }.associateBy { AssetRef(it.deviceId, it.assetId) }
         val settled = store.settledAmong(foreign.keys)
         val open = foreign.filterKeys { it !in settled }

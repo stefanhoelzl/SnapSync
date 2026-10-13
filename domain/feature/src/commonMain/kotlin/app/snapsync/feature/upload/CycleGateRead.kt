@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.ConfigRead
@@ -15,7 +16,7 @@ import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
 
 /**
@@ -32,7 +33,7 @@ class CycleGateRead(
     private val records: SharedDatabase,
     private val ledger: LedgerService,
     private val config: ConfigService,
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
     private val suppression: SuppressionSource,
     /** Whether the joined membership's received photos have been recognised — read after the suppression store is ready. */
     private val recognition: RecognitionSource,
@@ -78,7 +79,7 @@ class CycleGateRead(
         // Both are "proceed with no identity", and proceeding is exactly what must not
         // happen: an invented id partitions this device's bytes away from its own manifest. Anything else still
         // propagates — a genuine fault must not be silently downgraded to a skipped cycle.
-        val identityFailure = runCatchingCancellable { identity.deviceId() }
+        val identityFailure = runCatchingCancellable { identity.requireDeviceId() }
             .onFailure { if (it !is SecureStoreUnavailable && it !is DeviceIdentityAbsent) throw it }
             .exceptionOrNull()
         val payload = (read as? ConfigRead.Joined)?.config

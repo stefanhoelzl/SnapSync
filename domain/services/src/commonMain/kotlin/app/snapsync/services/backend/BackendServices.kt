@@ -1,6 +1,7 @@
 package app.snapsync.services.backend
 
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.identity.DeviceIdentity
 
 /**
  * Every need-shaped backend service, over ONE [BackendGateway] — so a composition cannot give two of them different
@@ -11,7 +12,7 @@ import app.snapsync.services.identity.PersistedDeviceIdentity
  */
 class BackendServices(
     val gateway: BackendGateway,
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
     /** The device's zone, read at a create (the app's clock); the extension never creates, so it passes none. */
     private val zone: () -> String?,
 ) {

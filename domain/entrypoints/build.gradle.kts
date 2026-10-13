@@ -21,6 +21,10 @@ kotlin {
             // phase 4 moves them underneath, and each edge goes when nothing here needs it any more.
             implementation(project(":domain:feature"))
             implementation(project(":domain:services"))
+            // MIGRATING: the use cases its steps call, and the credential store the extension re-reads at every
+            // invocation (until 4.11 composes the extension's own entry).
+            implementation(project(":domain:application"))
+            implementation(project(":domain:data"))
             implementation(libs.kermit)
         }
     }

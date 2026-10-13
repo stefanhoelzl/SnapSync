@@ -1,7 +1,6 @@
 package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.testids.testDeviceId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -16,19 +15,6 @@ class ReportFactsTest {
             metadata = emptyMap(),
             data = null,
         )
-
-    @Test
-    fun `a resolved id is known and every reason there is none is failed`() {
-        assertEquals(
-            Fact.Known(testDeviceId("ID-1").value),
-            DeviceIdResult.Id(testDeviceId("ID-1"), DeviceIdResult.Via.READ).asFact(),
-        )
-        assertEquals(
-            Fact.Failed("the secure store could not be read: locked"),
-            DeviceIdResult.Unavailable("locked").asFact(),
-        )
-        assertEquals(Fact.Failed("no device id stored yet"), DeviceIdResult.AbsentNotMintable.asFact())
-    }
 
     @Test
     fun `a partial grant counts photos and not their resources`() {

@@ -37,6 +37,15 @@ class OptInPinsTest {
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt" to mapOf(
             "CompositionOnly" to Pin(1, "the extension's composition: its one entry port, registered"),
         ),
+        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppServices.kt" to mapOf(
+            "AppProcessOnly" to Pin(1, "the app's device identity, the one that may mint"),
+        ),
+        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/BackendComposition.kt" to mapOf(
+            "AppProcessOnly" to Pin(1, "the app's credential, the one that attests"),
+        ),
+        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
+            "EntryPointCall" to Pin(1, "the wake's prelude calls its use case"),
+        ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppUploader.kt" to mapOf(
             "AppProcessOnly" to Pin(1, "the app's uploader binds the memoised discovery; the extension walks afresh"),
         ),

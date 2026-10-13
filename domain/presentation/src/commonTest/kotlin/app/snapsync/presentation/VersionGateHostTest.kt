@@ -4,6 +4,7 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
@@ -11,7 +12,6 @@ import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.TimestampText
-import app.snapsync.model.VersionRefusal
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.StoreName

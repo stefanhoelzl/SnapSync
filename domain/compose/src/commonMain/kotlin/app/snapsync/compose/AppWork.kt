@@ -36,7 +36,7 @@ internal class AppWork(private val core: AppCore) {
     internal val importReceived: ImportReceived by lazy { ImportReceived(core.downloadController, foregroundCounts) }
     internal val topUp: TopUp by lazy { TopUp(ownUploads, foregroundCounts) }
     private val uploadOwn: UploadOwn by lazy { UploadOwn(ownUploads, foregroundCounts) }
-    internal val prelude: Prelude by lazy { Prelude(core.services.config, core.attestation) }
+    internal val prelude: Prelude by lazy { Prelude(core.services.config, core.refreshAttestation) }
 
     /** The heartbeat the wake's re-arm keeps pending, and a disarm cancels. */
     private val heartbeat: Heartbeat by lazy {

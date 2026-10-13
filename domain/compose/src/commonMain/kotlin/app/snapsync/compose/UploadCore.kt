@@ -1,5 +1,8 @@
 package app.snapsync.compose
 
+import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.album.AlbumCoordinator
@@ -13,7 +16,6 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryReader
-import app.snapsync.services.backend.BackendExchange
 import app.snapsync.services.backend.BackendUploadRequests
 import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.services.config.ConfigService
@@ -25,7 +27,7 @@ import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.gallery.galleryAccess
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.settings.MobileDataSetting
@@ -71,11 +73,11 @@ internal class UploadServices(
     /** The device's mobile-data choice, read as each upload job is created. */
     val mobileData: MobileDataSetting,
     /**
-     * The device identity. Its resolve MUST throw [SecureStoreUnavailable] while protected data is
-     * unavailable (never mint, never return a placeholder); the implementation caches its first success,
-     * so this is one Keychain read per process in practice.
+     * The device identity: the app's mints, the extension's only reads. Unreadable while protected data is
+     * unavailable — never a placeholder; it keeps its first success, so this is one Keychain read per process in
+     * practice.
      */
-    val deviceIdentity: PersistedDeviceIdentity,
+    val deviceIdentity: DeviceIdentity,
     /**
      * The build-time upload host — a constant of the running build, so a plain value (law "Ports are the I/O
      * boundary named for the need": a build constant is passed as a value, not a thunk). Blank when the build
@@ -131,14 +133,11 @@ internal class UploadServices(
     val albumExclusions: suspend (CaptureCutoff) -> Set<AssetId>,
     /** Event-album placement. */
     val albumCoordinator: AlbumCoordinator,
-    /** The attestation bearer token, read per request. Required: `{ null }` must be stated, not inherited. */
-    val token: suspend () -> String?,
     /**
-     * The attestation bearer token read from its store of record, bypassing any in-process copy — what a retry's
-     * request carries, since a retry picks up a refreshed token. Required, like
-     * [token]: `{ null }` must be stated.
+     * The process's copy of the attestation token every upload request carries — read per request, and from the store
+     * of record for a retry's, which picks up a token the other process renewed.
      */
-    val freshToken: suspend () -> String?,
+    val credentials: CachedCredentialStore,
     /**
      * The process's backend exchange: where a byte upload goes and the version it declares — the same every
      * backend request carries, read off the process's own bundle.
@@ -186,7 +185,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         DeviceManifestProducer(
             store = ports.manifestStore,
             publisher = ports.manifestPublisher,
-            deviceId = ports.deviceIdentity.deviceId(),
+            deviceId = ports.deviceIdentity.requireDeviceId(),
         )
     }
     return UploadCycle(
@@ -199,9 +198,8 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
                 BackendUploadRequests(
                     ports.exchange,
                     config.eventId,
-                    ports.deviceIdentity.deviceId(),
-                    ports.token,
-                    ports.freshToken,
+                    ports.deviceIdentity.requireDeviceId(),
+                    ports.credentials,
                 ),
                 ledger,
             )

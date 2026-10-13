@@ -334,6 +334,25 @@ below it. Older builds decode `Event.capacity` as a required field; that release
   `capacity` from the test fixtures that stamp it (`api/test/support/harness.ts` `EVENT`, and every
   `INSERT INTO events` naming it). Regenerate `schema.sql`. Update `docs/architecture.md`'s events table.
 
+## As the core's concepts move into its layers (phase 4)
+
+**Unlock condition:** the concept that owns each caller has moved into the layers (`docs/patterns.md`). No release,
+version or op gates these — each phase deletes its own uses, and the last one deletes the shim.
+
+### The old zones' throwing device-id read (app)
+- **What:** `DeviceIdentity.requireDeviceId()` (`domain/services/…/services/identity/RequireDeviceId.kt`): the device
+  id as the old zones read it before trust moved into its layers (4.1) — thrown as `SecureStoreUnavailable` or
+  `DeviceIdentityAbsent` out of the step that asked. Its callers: membership's `JoinEvent`, `ShareSetLoad` and
+  `ReceivedPhotoAdoption` (4.2, 4.5); upload's `StoredUploadSettle`, `CycleGateRead`, `UploadStandings`,
+  `UploadSealing` and the cycle's assembly in `compose/UploadCore.kt` (4.4); downloads' `myDeviceId` in
+  `compose/SnapSyncApp.kt` (4.5); push's `PushRegistration` and `BackendPushTokenPublisher` (4.8);
+  `BackendLeaveNotifier` and `BackendReceivedReporter` in `services/backend/Membership.kt` (4.2).
+- **Why:** converting every caller to the sealed `DeviceIdRead` in 4.1 would have rewritten the error handling of four
+  concepts 4.1 does not own, each to be rewritten again as a use case in its own phase.
+- **Remove:** each phase moves its callers onto `DeviceIdentity.id()`'s sealed read — a use case answering its
+  outcome — and deletes their `requireDeviceId` calls. The phase that removes the last one deletes the file, this
+  entry, and `DeviceIdentityAbsent` from `model/SecureStoreFailures.kt` (its only thrower).
+
 ## One-off ops
 
 ### Bytes still in the old storage layout (api)

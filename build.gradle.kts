@@ -102,7 +102,9 @@ coverage {
     integrationGoal(instructions = 95, branches = 85)
     ":domain:model" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        integration(instructions = 72, branches = 40)
+        // 72 → 71 in phase 4.1 (trust): the trust vocabulary the suite covered left for ports and data, so what stays
+        // is the same code measured without it — no test was lost.
+        integration(instructions = 71, branches = 40)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -133,9 +135,23 @@ coverage {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
         integration(instructions = 90, branches = 72)
     }
+    // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
+    // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.
+    ":domain:data" {
+        unit(alsoCoveredBy = listOf(":test:data"))
+        // The protocol's every reply and every store failure are the data suites'; the suite reaches the paths a
+        // member's day takes.
+        integration(instructions = 76, branches = 49)
+    }
+    ":domain:application" {
+        unit(alsoCoveredBy = listOf(":test:data"))
+        integration()
+    }
     ":domain:domain" {
         unit()
-        integration(instructions = 83, branches = 64)
+        // Branches 64 → 62 in phase 4.1 (trust): the trust verdicts arrived, and their rare answers — a stale
+        // challenge, each refusal reason — are their unit suites', not the integration surface's.
+        integration(instructions = 83, branches = 62)
     }
     // Integration-skipped until phase 3g: what the polling tests reach of these two moves with the machine's timing.
     // Their SingleFlight yield/withdraw and expiry paths run only when a process dies in the few dispatches between a

@@ -1,13 +1,14 @@
 package app.snapsync.services.upload
 
+import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.Resource
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.roleFromUploadKey
-import app.snapsync.services.backend.BackendGateway
-import app.snapsync.services.identity.PersistedDeviceIdentity
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.api.Unreachable
 import app.snapsync.wire.api.UploadStateReply
@@ -26,7 +27,7 @@ class UploadStandings(
     private val gateway: BackendGateway,
     /** The event this device is joined to, or `null` when it is not. */
     private val joinedEvent: () -> EventId?,
-    private val identity: PersistedDeviceIdentity,
+    private val identity: DeviceIdentity,
     private val log: Logger = Logger.withTag("UploadStandings"),
 ) : Standings {
 
@@ -34,7 +35,7 @@ class UploadStandings(
     override suspend fun of(resource: Resource, sha256: String): ResumePoint {
         val eventId = joinedEvent() ?: return ResumePoint.From(0)
         val deviceId = try {
-            identity.deviceId()
+            identity.requireDeviceId()
         } catch (e: SecureStoreUnavailable) {
             log.i { "${resource.filename}: no device id to ask with (${e.message}) — deferred" }
             return ResumePoint.Deferred

@@ -32,9 +32,6 @@ internal class AppUploader(private val core: AppCore) {
      */
     private val grant: GalleryReader get() = core.ports.gallery
 
-    /** The attestation bearer every request carries, read per request from the core's attestation service. */
-    private val token: suspend () -> String? = { core.attestation.token() }
-
     /**
      * The cycle — assembled by the SHARED composition `uploadCore` (`docs/architecture.md`, "One shared composition"):
      * the entry-gate translation, the device-manifest producer (on this tier the APP is its sole writer, and without
@@ -78,10 +75,8 @@ internal class AppUploader(private val core: AppCore) {
                 // status total gets, so the two consumers of the policy cannot diverge.
                 albumExclusions = core::albumExclusionsWhenReadable,
                 albumCoordinator = core.albumCoordinator,
-                token = token,
-                // The app's transports offer no retry — a failed transfer is recorded FAILED and the next top-up
-                // creates it afresh — so no request is ever minted for one here: a retry's credential is the same read.
-                freshToken = token,
+                // The token the app's credential keeps, the same copy every request it authenticates reads.
+                credentials = app.credentials,
                 log = log,
             ),
         )

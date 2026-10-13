@@ -6,7 +6,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -39,15 +38,6 @@ class ContainedStepTest {
             captured.logger().contained("never logged") { throw CancellationException("gave up") }
         }
         assertEquals(emptyList(), captured.lines)
-    }
-
-    @Test
-    fun `orNullLogged answers the value or null with the failure logged`() = runTest {
-        val captured = CapturingLogWriter()
-        val log = captured.logger()
-        assertEquals("token", log.orNullLogged("unreadable") { "token" })
-        assertNull(log.orNullLogged<String>("unreadable") { error("locked") })
-        assertEquals(listOf(Severity.Warn to "unreadable"), captured.lines)
     }
 
     @Test

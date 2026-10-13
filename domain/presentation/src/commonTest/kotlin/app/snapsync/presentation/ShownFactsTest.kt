@@ -1,6 +1,6 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.DeviceRefusal
+import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.LINK_ORIGIN
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ui.state.AppLink

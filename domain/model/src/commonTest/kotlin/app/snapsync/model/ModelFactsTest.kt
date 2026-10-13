@@ -17,14 +17,6 @@ import kotlin.test.assertTrue
 class ModelFactsTest {
 
     @Test
-    fun `a refusal is read by its wire name and an absent or unknown one is an unverifiable phone`() {
-        assertEquals(DeviceRefusal.DEVICE_MODIFIED, DeviceRefusal.fromWire("device-modified"))
-        assertEquals(DeviceRefusal.APP_NOT_GENUINE, DeviceRefusal.fromWire(" app-not-genuine "))
-        assertEquals(DeviceRefusal.DEVICE_UNVERIFIABLE, DeviceRefusal.fromWire("rooted"))
-        assertEquals(DeviceRefusal.DEVICE_UNVERIFIABLE, DeviceRefusal.fromWire(null))
-    }
-
-    @Test
     fun `an ended event waits for its active members that have not settled never fewer than none`() {
         assertEquals(2, MemberCounts(active = 3, settled = 1).waitingFor)
         assertEquals(0, MemberCounts(active = 1, settled = 2).waitingFor)

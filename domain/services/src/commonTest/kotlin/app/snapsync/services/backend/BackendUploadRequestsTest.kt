@@ -1,10 +1,17 @@
 package app.snapsync.services.backend
 
+import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.backend.BackendTarget
+import app.snapsync.data.backend.VersionIgnored
+import app.snapsync.data.trust.CachedCredentialStore
+import app.snapsync.data.trust.SecureCredentialStore
+import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.Resource
 import app.snapsync.ports.HttpResult
+import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Limits
@@ -27,18 +34,27 @@ class BackendUploadRequestsTest {
         data = null,
     )
 
+    /** The token as the other process — or a fresh read — finds it in the shared store. */
+    private val record = SecureCredentialStore(MapSecureStore())
+
+    /** This process's copy, which every request reads. */
+    private val credentials = CachedCredentialStore(record)
+
     private fun provider(
         host: String = "https://edge.example",
-        token: suspend () -> String? = { "tok-1" },
-        freshToken: suspend () -> String? = token,
+        token: String? = "tok-1",
         appVersion: String = "0.4",
-    ) = BackendUploadRequests(
-        BackendExchange({ HttpResult.Unreachable("never sent") }, { host }, { appVersion }, versionGate = null),
-        testEventId(eventId),
-        testDeviceId(deviceId),
-        token,
-        freshToken,
-    )
+    ): BackendUploadRequests {
+        token?.let { record.setToken(TokenText.parse(it)) }
+        return BackendUploadRequests(
+            BackendExchange({ HttpResult.Unreachable("never sent") }, Target(host, appVersion), VersionIgnored),
+            testEventId(eventId),
+            testDeviceId(deviceId),
+            credentials,
+        )
+    }
+
+    private class Target(override val base: String, override val declaredVersion: String) : BackendTarget
 
     @Test
     fun names_identity_in_the_path_and_the_capture_name_in_the_query() = runTest {
@@ -181,13 +197,12 @@ class BackendUploadRequestsTest {
         // This is what heals an expired token with no special-casing anywhere: the engine re-mints the
         // request from this provider on every retry. A provider that captured the token at construction
         // would keep re-sending the dead one forever.
-        var current: String? = "stale"
-        val p = provider("https://edge.example", { current }, { current }, "0.4")
+        val p = provider(token = "stale")
 
         val before = p.provide(resource("x.jpg"))
         assertEquals("Bearer stale", before.headers["Authorization"])
 
-        current = "fresh" // the app renewed in the background
+        credentials.setToken(TokenText.parse("fresh")) // the app renewed in the background
 
         val after = p.provide(resource("x.jpg"))
         assertEquals("Bearer fresh", after.headers["Authorization"])
@@ -199,17 +214,21 @@ class BackendUploadRequestsTest {
         // The token source may serve an in-memory copy between re-reads (capability `privacy-security`), so a
         // copy can predate the other process's renewal. A retry is when that matters — the failure may have been
         // that stale token's 401 — so it mints from the uncached read, and the destination stays identical.
-        val copy: String? = "stale-copy"
-        var ofRecord: String? = "renewed-by-the-other-process"
-        val p = provider(token = { copy }, freshToken = { ofRecord })
-
+        val p = provider(token = "stale-copy")
         val first = p.provide(resource("x.jpg"))
+        record.setToken(TokenText.parse("renewed-by-the-other-process"))
+
+        assertEquals(
+            "Bearer stale-copy",
+            p.provide(resource("x.jpg")).headers["Authorization"],
+            "the copy, between re-reads",
+        )
         val retried = p.provideForRetry(resource("x.jpg"))
 
         assertEquals("Bearer stale-copy", first.headers["Authorization"])
         assertEquals("Bearer renewed-by-the-other-process", retried.headers["Authorization"])
         assertEquals(first.url, retried.url)
-        ofRecord = null
+        record.clearTokenIf(TokenText.parse("renewed-by-the-other-process"))
         assertEquals(null, p.provideForRetry(resource("x.jpg")).headers["Authorization"])
     }
 
@@ -218,7 +237,7 @@ class BackendUploadRequestsTest {
         // Deliberately not a failure. A request with no token 401s, and a 401 is retryable; refusing to
         // BUILD one would strand the resource instead. This is the normal state of a device that has not
         // attested yet — and of the extension on a device whose token expired, since it cannot renew.
-        val req = provider(token = { null }).provide(resource("x.jpg", contentType = "image/heic"))
+        val req = provider(token = null).provide(resource("x.jpg", contentType = "image/heic"))
         assertEquals(
             mapOf("Content-Type" to "image/heic", Limits.VERSION_HEADER to "0.4"),
             req.headers,

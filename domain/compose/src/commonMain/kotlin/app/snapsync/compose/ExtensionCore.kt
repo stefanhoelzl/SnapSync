@@ -1,13 +1,20 @@
 package app.snapsync.compose
 
+import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.BuildTarget
+import app.snapsync.data.backend.VersionIgnored
+import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.identity.StoredDeviceIdentity
+import app.snapsync.data.trust.CachedCredentialStore
+import app.snapsync.data.trust.DropOnlyCredential
+import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.entrypoints.OnProcess
 import app.snapsync.entrypoints.OnTerminate
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.DeviceIdentityRole
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.orNullLogged
 import app.snapsync.ports.Databases
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
@@ -20,8 +27,6 @@ import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 import app.snapsync.scheduling.Runtime
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.backend.BackendExchange
-import app.snapsync.services.backend.BackendGateway
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
@@ -32,13 +37,9 @@ import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.gallery.denylistedAlbumMembers
 import app.snapsync.services.gallery.galleryAccess
-import app.snapsync.services.identity.AttestState
-import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.settings.MobileDataSetting
-import app.snapsync.services.trust.CachedAttestStore
-import app.snapsync.services.trust.ExtensionCredential
 import app.snapsync.services.upload.Uploader
 import kotlinx.coroutines.CoroutineDispatcher
 
@@ -117,10 +118,11 @@ fun snapSyncExtension(
     val runtime = Runtime(parent = null, lane, backgroundTime = null, ports.process.threadLabel, answerOn = answerOn)
     val process = snapSyncProcess(ports.process, runtime)
     // The device token, read from the shared protected store the app writes. Held in
-    // memory between re-reads ([CachedAttestStore]): every request reads it, and a store read each time was measurable.
+    // memory between re-reads ([CachedCredentialStore]): every request reads it, and a store read each time was
+    // measurable.
     // Re-read at every invocation — the app renews into the shared item, which this copy cannot see — so the copy's
     // staleness is bounded to one invocation.
-    val attestStore = CachedAttestStore(AttestState(ports.secureStore))
+    val attestStore = CachedCredentialStore(SecureCredentialStore(ports.secureStore))
     val services = extensionServices(process, ports, attestStore)
     val cycle = lazy { uploadCycle(process, services) }
     ports.host.inbound(
@@ -136,19 +138,15 @@ fun snapSyncExtension(
 private fun extensionServices(
     process: ProcessServices,
     ports: ExtensionPorts,
-    attestStore: CachedAttestStore,
+    attestStore: CachedCredentialStore,
 ): UploadServices {
     val log = process.logger("UploadExtension")
-    val identity = PersistedDeviceIdentity(DeviceIdentityRole.READ_ONLY, ports.secureStore, ports.platformDeviceId)
-    // Non-throwing: the store is unreadable before the first unlock since boot, and this runs on a background wake. A
-    // null token is a `401`, which is retryable; the collapse is logged, never silent (law "Absence is never silent").
-    val token: suspend () -> String? = {
-        log.orNullLogged("attest token unreadable — proceeding unauthenticated (expect 401)") { attestStore.token() }
-    }
+    // Read only: the extension never mints an identity.
+    val identity = StoredDeviceIdentity(ports.secureStore)
     val albums = GalleryAlbums(ports.gallery)
     val build = ports.process.build
     // No version gate: the extension has no screen to show a refusal on.
-    val exchange = BackendExchange(ports.http, build, versionGate = null)
+    val exchange = BackendExchange(ports.http, BuildTarget(build), VersionIgnored)
     // The extension never copies the records' legacy homes: it pauses until the app has (see `CycleGateRead`).
     val records = SharedDatabase(ports.databases, legacy = null)
     val config = ConfigService(records, process.clock)
@@ -188,12 +186,8 @@ private fun extensionServices(
         },
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(albums, AlbumMapService(records)),
-        token = token,
         // A retry re-reads the shared item: the app may have renewed the token this copy still holds.
-        freshToken = {
-            attestStore.reread()
-            token()
-        },
+        credentials = attestStore,
         exchange = exchange,
         // Read only: the extension derives each file's key from the kept one and never writes the slot.
         eventKeys = EventKeys(process.crypto, ports.secureStore),
@@ -203,7 +197,7 @@ private fun extensionServices(
 
 /**
  * The upload extension's backend services: the same need-shaped services the app
- * composes, over a gateway whose credential only DROPS a rejected token ([ExtensionCredential]) — the extension
+ * composes, over a gateway whose credential only DROPS a rejected token ([DropOnlyCredential]) — the extension
  * cannot attest, so it never retries a rejected request — over an [exchange] with no version gate, because the
  * extension has no screen to show a refusal on.
  *
@@ -211,12 +205,12 @@ private fun extensionServices(
  */
 internal fun extensionBackend(
     exchange: BackendExchange,
-    attestStore: CachedAttestStore,
-    identity: PersistedDeviceIdentity,
+    attestStore: CachedCredentialStore,
+    identity: DeviceIdentity,
 ): BackendServices =
     // The extension never creates an event, so it has no zone to send.
     BackendServices(
-        BackendGateway(exchange, ExtensionCredential(attestStore)),
+        BackendGateway(exchange, DropOnlyCredential(attestStore)),
         identity,
         zone = { null },
     )
