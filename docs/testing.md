@@ -700,9 +700,12 @@ and nothing else — and the upload extension beside it exactly as `UploadExtens
 `JvmMocks.adapters(build, attests, http, logSinks)` its launch's adapters (`build` is a `BuildInfoMock`, its declared version a cell the caller holds, which every request declares); a
 caller may put the real `api/` behind the `HttpTransport` port instead (`KtorHttpTransport` over CIO). **`relaunch()` is process
 death**: the running app's collectors and launches end, and a new app is composed over a fresh set of port faces over the
-same durable state. It is wiring only — no lever, no test DSL — and gated as a shell.
+same durable state — only once the old app's work has ended, so nothing the dead launch still writes lands after the new
+one is up. It is wiring only — no lever, no test DSL — and gated as a shell.
 
 Its stated deviation from the phone:
+- process death is a cancellation, not a kill: a cancelled run still runs its `ensure` steps (a wake's re-arm among them)
+  before `relaunch()` returns, where a killed process runs nothing more. A test's baseline read after a relaunch sees them.
 - both processes live in one JVM: the app and the extension each set their own process up over their own process ports
   (the extension's files reach only the shared area, its crash channel is one nobody observes), and a process that
   supplies no log sinks leaves Kermit's JVM-global writer list alone — the rig's JVM host hands the app's process its

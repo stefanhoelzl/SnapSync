@@ -18,6 +18,7 @@ import app.snapsync.presentation.CutoffFormatter
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 
 /**
  * **The JVM root** (`docs/testing.md`, "The JVM root"): the app composed on the JVM exactly as `SnapSyncRoot` composes
@@ -60,9 +61,13 @@ class JvmApp<D>(
      */
     val composed: ComposedApp get() = launch.composed
 
-    /** Process death and a cold launch: a new app over a fresh set of adapters over the same [durable]. */
-    fun relaunch() {
-        appJob.cancel()
+    /**
+     * Process death and a cold launch: a new app over a fresh set of adapters over the same [durable]. Answers once the
+     * dead launch has ended — a cancelled run still runs its `ensure` steps, and a re-arm the dead launch writes into
+     * [durable] after the new one is up would read as the new launch's.
+     */
+    suspend fun relaunch() {
+        appJob.cancelAndJoin()
         appJob = Job(scope.coroutineContext[Job])
         appScope = CoroutineScope(scope.coroutineContext + appJob)
         ports = adapters(durable)
