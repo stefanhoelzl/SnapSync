@@ -1,11 +1,17 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.testShared
 import app.snapsync.mock.fixedClock
-import app.snapsync.model.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventCompletionState
@@ -13,19 +19,17 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLookup
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadedManifest
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
 import app.snapsync.model.encodeToJson
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.leave.PendingLeaves
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.wake.EventCheck
 import app.snapsync.services.wake.EventChecks
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
@@ -44,15 +48,15 @@ import kotlin.time.Instant
 class EventCompletionTest {
 
     private val asset = AssetId("A_L0_1")
-    private val ends = eventEnd("2026-07-13T12:00:00Z")
+    private val ends = EventEnd(TimestampText.parse("2026-07-13T12:00:00Z"))
     private val joined = EventConfig(
-        eventId = "E",
+        eventId = testEventId("E"),
         name = "Party",
-        minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
-        startsAt = eventStart("2026-07-06T12:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
+        startsAt = EventStart(TimestampText.parse("2026-07-06T12:00:00Z")),
         endsAt = ends,
-        maxPhotoDate = captureCeiling("2026-07-13T12:00:00Z"),
-        deletesAt = deletesAt("2026-08-05T12:00:00Z"),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T12:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2026-08-05T12:00:00Z")),
     )
 
     private fun details(completed: Boolean = false) = EventLookup.Found(
@@ -64,10 +68,10 @@ class EventCompletionTest {
     )
 
     private fun manifest(final: Boolean) = UploadedManifest(
-        "E",
+        testEventId("E"),
         1,
         DeviceManifest(
-            deviceId = "D",
+            deviceId = testDeviceId("D"),
             assets = listOf(
                 DeviceManifestAsset(
                     asset,
@@ -101,9 +105,9 @@ class EventCompletionTest {
         var finalPublishes = 0
         var publishFails = false
         var reportAccepted = true
-        val reports = mutableListOf<Pair<String, Long>>()
+        val reports = mutableListOf<Pair<EventId, Long>>()
         var transfersStopped = 0
-        val leavesSent = mutableListOf<String>()
+        val leavesSent = mutableListOf<EventId>()
         val pendingLeaves = PendingLeaves(leaves, { id, _ ->
             leavesSent += id
             Result.success(Unit)
@@ -113,7 +117,7 @@ class EventCompletionTest {
 
         fun completion(
             log: Logger = Logger.withTag("EventCompletion"),
-            receivedPosition: suspend (String) -> Long? = {
+            receivedPosition: suspend (EventId) -> Long? = {
                 duringReceivedCheck()
                 position
             },
@@ -144,11 +148,11 @@ class EventCompletionTest {
     fun `before the range has ended nothing is fetched or reported and outstanding leaves are still delivered`() =
         runTest {
             val w = World(now = "2026-07-12T00:00:00Z")
-            w.pendingLeaves.record("OLD")
+            w.pendingLeaves.record(testEventId("OLD"))
             assertEquals(CompletionOutcome.NOT_ENDED, w.completion().finish())
             assertEquals(0, w.fetches)
             assertEquals(emptyList(), w.reports)
-            assertEquals(listOf("OLD"), w.leavesSent)
+            assertEquals(listOf(testEventId("OLD")), w.leavesSent)
         }
 
     @Test
@@ -163,7 +167,7 @@ class EventCompletionTest {
         runTest {
             // Capability `event-lifetime`: a member is done at the end of their OWN range. Receiving still waits for
             // the event's end, so nothing is read or reported before it.
-            val early = joined.copy(maxPhotoDate = captureCeiling("2026-07-10T20:00:00Z"))
+            val early = joined.copy(maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-10T20:00:00Z")))
             val w = World(now = "2026-07-11T00:00:00Z", initial = early, recorded = manifest(final = false))
             assertEquals(CompletionOutcome.NOT_ENDED, w.completion().finish())
             assertEquals(1, w.finalPublishes, "settled at the member's own end")
@@ -174,19 +178,19 @@ class EventCompletionTest {
     @Test
     fun `a range that ends after the event is not settled at the event's end — but still reports what it received`() =
         runTest {
-            val late = joined.copy(maxPhotoDate = captureCeiling("2026-07-15T12:00:00Z"))
+            val late = joined.copy(maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-15T12:00:00Z")))
             val w = World(now = "2026-07-14T00:00:00Z", initial = late, recorded = manifest(final = false))
             assertEquals(CompletionOutcome.REPORTED, w.completion().finish())
             assertEquals(0, w.finalPublishes, "not before the member's own end")
-            assertEquals(listOf("E" to 4L), w.reports)
+            assertEquals(listOf(testEventId("E") to 4L), w.reports)
         }
 
     @Test
     fun `a device holding everything reports its position and stays in the event`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z")
         assertEquals(CompletionOutcome.REPORTED, w.completion().finish())
-        assertEquals(listOf("E" to 4L), w.reports)
-        assertEquals("E", w.config.config.value?.eventId, "the app never leaves an event on its own")
+        assertEquals(listOf(testEventId("E") to 4L), w.reports)
+        assertEquals(testEventId("E"), w.config.config.value?.eventId, "the app never leaves an event on its own")
     }
 
     @Test
@@ -197,7 +201,7 @@ class EventCompletionTest {
         assertEquals(CompletionOutcome.WAITING, completion.finish())
         w.position = 9
         assertEquals(CompletionOutcome.REPORTED, completion.finish())
-        assertEquals(listOf("E" to 4L, "E" to 9L), w.reports)
+        assertEquals(listOf(testEventId("E") to 4L, testEventId("E") to 9L), w.reports)
     }
 
     @Test
@@ -207,7 +211,7 @@ class EventCompletionTest {
         assertEquals(CompletionOutcome.WAITING, completion.finish())
         w.reportAccepted = true
         assertEquals(CompletionOutcome.REPORTED, completion.finish())
-        assertEquals(listOf("E" to 4L, "E" to 4L), w.reports)
+        assertEquals(listOf(testEventId("E") to 4L, testEventId("E") to 4L), w.reports)
     }
 
     @Test
@@ -215,13 +219,13 @@ class EventCompletionTest {
         val w = World(now = "2026-07-14T00:00:00Z").apply { position = null }
         assertEquals(CompletionOutcome.WAITING, w.completion().finish())
         assertEquals(emptyList(), w.reports)
-        assertEquals("E", w.config.config.value?.eventId)
+        assertEquals(testEventId("E"), w.config.config.value?.eventId)
     }
 
     @Test
     fun `a join landing while the union is read is reported for nobody`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z")
-        val next = joined.copy(eventId = "F", name = "Next")
+        val next = joined.copy(eventId = testEventId("F"), name = "Next")
         w.duringReceivedCheck = { w.config.save(next) }
         assertEquals(CompletionOutcome.WAITING, w.completion().finish())
         assertEquals(emptyList(), w.reports)
@@ -289,7 +293,7 @@ class EventCompletionTest {
     @Test
     fun `a record of another event’s manifest is no settled share here`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z").apply {
-            manifestRecord.saveLastUploaded(manifest(final = true).copy(eventId = "OTHER"))
+            manifestRecord.saveLastUploaded(manifest(final = true).copy(eventId = testEventId("OTHER")))
         }
         w.completion().finish()
         assertEquals(1, w.finalPublishes, "a share not settled for this event is settled once more")
@@ -298,7 +302,7 @@ class EventCompletionTest {
     @Test
     fun `an unreadable manifest record settles the share once more`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z").apply {
-            manifestRecord.saveLastUploaded(UploadedManifest("E", 1, "not json"))
+            manifestRecord.saveLastUploaded(UploadedManifest(testEventId("E"), 1, "not json"))
         }
         w.completion().finish()
         assertEquals(1, w.finalPublishes)
@@ -312,7 +316,7 @@ class EventCompletionTest {
             w.completion(receivedPosition = { error("the union read failed") }).finish(),
         )
         assertEquals(emptyList(), w.reports)
-        assertEquals("E", w.config.config.value?.eventId)
+        assertEquals(testEventId("E"), w.config.config.value?.eventId)
     }
 
     // ---- the bounded read of the event's state (decision record `changes/timely-background-receiving`, D5) ----------
@@ -353,7 +357,7 @@ class EventCompletionTest {
         val w = World(now = "2026-07-14T00:00:00Z", recorded = null)
         w.completion().finish()
         assertEquals(1, w.finalPublishes)
-        assertEquals("E", w.config.config.value?.eventId)
+        assertEquals(testEventId("E"), w.config.config.value?.eventId)
     }
 
     @Test
@@ -389,16 +393,16 @@ class EventCompletionTest {
     @Test
     fun `a wake that checks photos runs the check for the joined event and then the step`() = runTest {
         val w = World(now = "2026-07-12T00:00:00Z")
-        val checked = mutableListOf<String>()
+        val checked = mutableListOf<EventId>()
         val outcome = w.completion().endOfWake(checksPhotos = true, bounded = false) { checked += it }
-        assertEquals(listOf("E"), checked)
+        assertEquals(listOf(testEventId("E")), checked)
         assertEquals(CompletionOutcome.NOT_ENDED, outcome)
     }
 
     @Test
     fun `a wake that does not check photos runs no check`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z")
-        val checked = mutableListOf<String>()
+        val checked = mutableListOf<EventId>()
         val outcome = w.completion().endOfWake(checksPhotos = false, bounded = false) { checked += it }
         assertEquals(emptyList(), checked)
         assertEquals(CompletionOutcome.REPORTED, outcome)
@@ -407,7 +411,7 @@ class EventCompletionTest {
     @Test
     fun `an unjoined wake runs no photo check`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z", initial = null)
-        val checked = mutableListOf<String>()
+        val checked = mutableListOf<EventId>()
         val outcome = w.completion().endOfWake(checksPhotos = true, bounded = false) { checked += it }
         assertEquals(emptyList(), checked)
         assertEquals(CompletionOutcome.NOT_JOINED, outcome)
@@ -416,7 +420,7 @@ class EventCompletionTest {
     @Test
     fun `a deleted event runs no photo check`() = runTest {
         val w = World(now = "2026-07-14T00:00:00Z", initial = joined.copy(deleted = true))
-        val checked = mutableListOf<String>()
+        val checked = mutableListOf<EventId>()
         w.completion().endOfWake(checksPhotos = true, bounded = false) { checked += it }
         assertEquals(emptyList(), checked)
     }

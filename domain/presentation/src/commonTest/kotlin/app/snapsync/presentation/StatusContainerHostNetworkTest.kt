@@ -2,6 +2,11 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
@@ -9,18 +14,14 @@ import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.EventStart
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
+import app.snapsync.model.TimestampText
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -270,7 +271,7 @@ class StatusContainerHostNetworkTest {
         var loads = 0
         val host = host(network, config = null, load = { if (loads++ == 0) JoinLoad.Failed else FOUND })
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
             runCurrent()
             val offline = assertIs<Layer.JoiningEvent>(host.screen.value.layer)
             assertEquals(JoinPhase.LoadFailed, offline.phase)
@@ -294,7 +295,7 @@ class StatusContainerHostNetworkTest {
             JoinLoad.Failed
         })
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
             runCurrent()
             assertEquals(JoinPhase.LoadFailed, assertIs<Layer.JoiningEvent>(host.screen.value.layer).phase)
             network.access.value = NetworkAccess.Online(restricted = false) // no return: nothing was missing
@@ -308,7 +309,7 @@ class StatusContainerHostNetworkTest {
         val network = FakeNetwork()
         val host = host(network, config = null, load = { FOUND })
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
             runCurrent()
             network.access.value = NetworkAccess.Blocked
             runCurrent()
@@ -322,27 +323,27 @@ class StatusContainerHostNetworkTest {
         const val EVENT = "11111111-1111-4111-8111-111111111111"
         val NOW: Instant = Instant.parse("2026-07-09T12:00:00Z")
         val STARTED = EventConfig(
-            EVENT,
+            testEventId(EVENT),
             "Party",
-            captureCutoff("2026-07-06T00:00:00Z"),
-            maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         val NOT_STARTED = EventConfig(
-            EVENT,
+            testEventId(EVENT),
             "Party",
-            captureCutoff("2026-07-10T00:00:00Z"),
-            startsAt = EventStart(captureCutoff("2026-07-10T00:00:00Z").at),
-            maxPhotoDate = captureCeiling("2026-07-13T00:00:00Z"),
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            CaptureCutoff(TimestampText.parse("2026-07-10T00:00:00Z")),
+            startsAt = EventStart(CaptureCutoff(TimestampText.parse("2026-07-10T00:00:00Z")).at),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
         val FOUND = JoinLoad.Found(
             "Party",
-            eventStart("2026-07-06T00:00:00Z"),
-            eventEnd("2026-07-13T00:00:00Z"),
-            deletesAt("2026-08-05T00:00:00Z"),
+            EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
+            EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
+            DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
         )
     }
 }

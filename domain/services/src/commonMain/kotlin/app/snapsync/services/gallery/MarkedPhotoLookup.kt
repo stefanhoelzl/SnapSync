@@ -1,7 +1,7 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureDate
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
@@ -44,7 +44,7 @@ class MarkedPhotoLookup(
      * Every marked photo in `[from, until]` outside [known], by the token its name carries, or `null` when the library
      * cannot be read.
      */
-    suspend fun markedIn(from: CaptureDate, until: CaptureDate, known: Set<AssetId>): Map<String, AssetId>? {
+    suspend fun markedIn(from: Timestamp, until: Timestamp, known: Set<AssetId>): Map<String, AssetId>? {
         val window = receivedWindow(from, until)
         return when (val scope = selectionScope()) {
             is SelectionScope.Scoped -> fromSnapshot(scope.resources, window, known)

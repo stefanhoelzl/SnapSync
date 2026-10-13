@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.confirmedGone
@@ -41,7 +42,7 @@ class MembershipRefresh(
      * Keep the joined membership [eventId] current: fetch its details from [directory], then [refresh] — nothing while
      * not joined.
      */
-    suspend fun refreshJoined(eventId: String?, directory: EventDirectory) {
+    suspend fun refreshJoined(eventId: EventId?, directory: EventDirectory) {
         eventId?.let { refresh(it, directory.fetch(it).toJoinLoad()) }
     }
 
@@ -71,7 +72,7 @@ class MembershipRefresh(
      * heuristic. A `NotFound` whose deadline has not passed is deliberately INCONCLUSIVE: the backend is
      * disbelieved, not obeyed.
      */
-    suspend fun refresh(eventId: String, fetched: JoinLoad): RefreshOutcome {
+    suspend fun refresh(eventId: EventId, fetched: JoinLoad): RefreshOutcome {
         val current = configSource.config.value ?: return RefreshOutcome.INCONCLUSIVE
         // A result that arrives after a switch or a leave describes someone else's membership.
         if (current.eventId != eventId) return RefreshOutcome.INCONCLUSIVE

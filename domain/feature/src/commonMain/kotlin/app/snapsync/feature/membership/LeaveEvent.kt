@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
@@ -60,7 +61,7 @@ import kotlinx.coroutines.launch
 class LeaveEvent(
     private val config: ConfigService,
     private val stopUploads: suspend () -> Unit,
-    private val notifyLeave: suspend (eventId: String, received: Boolean) -> Unit,
+    private val notifyLeave: suspend (eventId: EventId, received: Boolean) -> Unit,
     /**
      * Whether this device holds every photo of the others in the membership [EventConfig] describes — the sibling
      * download controller's answer (feature-blindness), asked with the snapshot because the config is gone by then.
@@ -103,7 +104,7 @@ class LeaveEvent(
      * The backend leave of a switch's previous membership [eventId] — still the saved one when it runs — saying whether
      * it had everything, as every leave does: only after its range has ended, and a doubt is a no.
      */
-    suspend fun notifySwitchLeave(eventId: String) {
+    suspend fun notifySwitchLeave(eventId: EventId) {
         val previous = config.config.value?.takeIf { it.eventId == eventId }
         val received = previous != null && config.hasEnded(previous) &&
             runCatchingCancellable { everythingReceived(previous) }.getOrDefault(false)

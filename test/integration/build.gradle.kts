@@ -40,6 +40,7 @@ dependencies {
     testImplementation(project(":test:control"))
     // Named explicitly, not received through the client: the core's zones export nothing transitively.
     testImplementation(project(":domain:model"))
+    testImplementation(project(":domain:domain"))
     testImplementation(project(":ui:state"))
     testImplementation(project(":domain:presentation"))
     testImplementation(project(":domain:feature"))
@@ -63,6 +64,7 @@ val journeys: SourceSet = sourceSets.create("journeys")
 dependencies {
     "journeysImplementation"(project(":test:control"))
     "journeysImplementation"(project(":domain:model"))
+    "journeysImplementation"(project(":domain:domain"))
     // The version header's one name, generated from `api/openapi.yaml`.
     "journeysImplementation"(project(":domain:wire"))
     "journeysImplementation"(project(":ui:state"))

@@ -1,5 +1,12 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.download.readmodel.DownloadProgress
@@ -7,17 +14,12 @@ import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.BuildLabel
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.EventStart
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.JoinChoice
@@ -31,11 +33,10 @@ import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.grantsPhotoAccess
@@ -237,7 +238,7 @@ class StatusContainerHost(
      * case (the floor guarantees it), so a briefly-late transition costs the label and nothing else.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val nowTick: Flow<CaptureDate> =
+    private val nowTick: Flow<Timestamp> =
         config
             .map { it?.let { c -> c.startsAt to c.endsAt } }
             .distinctUntilChanged()
@@ -409,7 +410,7 @@ class StatusContainerHost(
      * not syncing, a create that cannot succeed, a join that cannot commit. Its layer joins the refusal with this
      * build's store link, a constant, which is why it is assembled here rather than ranked inside [reduceFrom].
      */
-    private fun render(membership: Membership, interaction: Interaction, local: Local, now: CaptureDate): ScreenModel {
+    private fun render(membership: Membership, interaction: Interaction, local: Local, now: Timestamp): ScreenModel {
         val refused = interaction.versionRefusal
         val reduced = if (refused != null) {
             Reduced(Layer.UpdateRequired(minimumVersion = refused.minimumVersion, store = store?.let { it.kind.shown }))
@@ -466,7 +467,7 @@ class StatusContainerHost(
      * local→UTC conversion, and `:ui:screens` stays free of any clock or timezone knowledge. [openUntil] is the day
      * guests may join until, for an event created after its end (the back-dated sheet's choice); `null` otherwise.
      */
-    fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: EventEnd? = null) =
+    fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: OpenUntil? = null) =
         guardedIntent(Guarded.Create) {
             commands.create(
                 name,
@@ -756,8 +757,10 @@ class StatusContainerHost(
      * read-model. Unlike [onReconfigure], this writes the SHARED event, but it crosses the same one door.
      */
     fun onRenameEvent(eventId: String, name: String) = guardedIntent(Guarded.Rename) {
-        local.update { it.copy(renameOwner = eventId) }
-        commands.rename(eventId, name)
+        // The screen hands back the id it was shown; one that names no event renames nothing.
+        val event = EventId.parse(eventId) ?: return@guardedIntent
+        local.update { it.copy(renameOwner = event) }
+        commands.rename(event, name)
     }
 
     /** Clear the [renameStatus] latch once the screen has consumed a terminal value. */
@@ -1001,8 +1004,8 @@ class StatusContainerHost(
                     result.payload.autoJoin && inviteLinkHints == InviteLinkHints.Honoured ->
                         autoConfirm(
                             eventId,
-                            result.payload.minPhotoDate?.let(::captureCutoff),
-                            result.payload.maxPhotoDate?.let(::captureCeiling),
+                            result.payload.minPhotoDate?.let { CaptureCutoff(TimestampText.parse(it)) },
+                            result.payload.maxPhotoDate?.let { CaptureCeiling(TimestampText.parse(it)) },
                             result.payload.direction?.let(Direction::fromWire),
                             result.payload.saveToAlbum,
                             result.payload.key,
@@ -1040,12 +1043,12 @@ class StatusContainerHost(
      * arrived" are different answers with different causes (law "Absence is never silent"). A device log
      * that could not tell them apart is what made `SNAPSYNC-25` take a day to characterise.
      */
-    private fun ignoreRepeat(eventId: String, because: String) {
+    private fun ignoreRepeat(eventId: EventId, because: String) {
         log("join gate: ignoring a repeated delivery of $eventId — $because")
     }
 
     /** The joined event's reopened invite, offered to give its lost key back — kept only if it is the event's own. */
-    private suspend fun restoreKey(eventId: String, linkKey: String) {
+    private suspend fun restoreKey(eventId: EventId, linkKey: String) {
         val kept = commands.restoreEventKey(linkKey)
         log(
             "join gate: the reopened invite of $eventId ${if (kept) "gave its lost key back" else "did not open it — nothing changed"}",
@@ -1137,12 +1140,12 @@ class StatusContainerHost(
      * capture-date cutoff, and confirms like any joiner. The `POST /events` already minted the event, so
      * the gate holds a real `eventId` and performs a real details load; provision happens on confirm.
      */
-    fun onEventCreated(eventId: String, linkKey: String? = null) = intent { startPending(eventId, linkKey) }
+    fun onEventCreated(eventId: EventId, linkKey: String? = null) = intent { startPending(eventId, linkKey) }
 
     // The gate's async work runs INLINE within the orbit intent (not on a side scope) so each pending
     // transition reduces through the container's own pipeline deterministically. A modal join is fine
     // to serialize; a real fetch suspends here, yielding a Loading frame before the result.
-    private suspend fun startPending(eventId: String, linkKey: String?, leavesQuietly: Boolean = false) {
+    private suspend fun startPending(eventId: EventId, linkKey: String?, leavesQuietly: Boolean = false) {
         // A fresh surface starts from the defaults — all on, the full event window. Seeding HERE rather
         // than in the reduction is what keeps the member's edits from being overwritten by every
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
@@ -1168,7 +1171,7 @@ class StatusContainerHost(
      * cutoff, so a details read that cannot supply one lands on a retryable failure, never on an empty cutoff row
      * and an enabled confirm, which would join at whole-library scope and upload the whole camera roll.
      */
-    private suspend fun loadInto(eventId: String, linkKey: String?) {
+    private suspend fun loadInto(eventId: EventId, linkKey: String?) {
         val load = try {
             queries.loadJoinDetails(eventId, linkKey)
         } catch (cancelled: CancellationException) {
@@ -1304,7 +1307,7 @@ class StatusContainerHost(
      * or commit failure aborts and logs rather than parking on a retryable state.
      */
     private suspend fun autoConfirm(
-        eventId: String,
+        eventId: EventId,
         explicitCutoff: CaptureCutoff?,
         explicitUntil: CaptureCeiling?,
         explicitDirection: Direction?,
@@ -1402,7 +1405,7 @@ private fun unjoinedLayer(
         val phase = pending.phase
         val range = (phase as? JoinProgress.Detailed)?.let { display.resolve(form, it.event.startsAt, it.event.endsAt) }
         val layer = Layer.JoiningEvent(
-            eventId = pending.eventId,
+            eventId = pending.eventId.value,
             stage = when (val shown = phase.shows) {
                 is JoinPhase.Detailed -> JoinStage.Loaded(shown, form.view(checkNotNull(range), choices.picking))
                 is JoinPhase.Eventless -> JoinStage.Unloaded(shown)
@@ -1456,7 +1459,7 @@ private fun reduceFrom(
     membership: Membership,
     interaction: Interaction,
     local: Local,
-    nowCutoff: CaptureDate,
+    nowCutoff: Timestamp,
     display: Display,
 ): Reduced {
     val (config, permission, snapshot, download, attested, access) = membership
@@ -1485,7 +1488,7 @@ private fun reduceFrom(
     }
     val health = joinedHealth(membership, config, network, nowCutoff, local.keyLost)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
-    val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase.shows) }
+    val pendingSwitch = pending?.let { PendingSwitch(it.eventId.value, it.phase.shows) }
     // Where the event is in its life, for the dates line. Informational only —
     // the health above is unchanged by it, and sync continues after the end in the backend grace window.
     val timing = eventTiming(config.startsAt, config.endsAt, nowCutoff)
@@ -1511,7 +1514,7 @@ private fun joinedHealth(
     membership: Membership,
     config: EventConfig,
     network: NetworkNotice?,
-    nowCutoff: CaptureDate,
+    nowCutoff: Timestamp,
     keyLost: Boolean,
 ): SyncHealth {
     val (_, permission, snapshot, download, attested, access) = membership
@@ -1819,9 +1822,12 @@ private enum class Guarded { Create, Rename, SwitchLeave }
  * event it was opened for, and read back only while that event is the joined one. A change of membership therefore
  * closes it by construction — no exit path (leave, switch, self-leave, config clear) has to remember to (B7).
  */
-internal data class Owned<T>(val eventId: String?, val value: T) {
+internal data class Owned<T>(val eventId: EventId?, val value: T) {
     /** [value] while [eventId] is the [joined] event — or names none (a latch set from outside, e.g. forged). */
-    fun forMembership(joined: String?, otherwise: T): T = if (eventId == null || eventId == joined) value else otherwise
+    fun forMembership(joined: EventId?, otherwise: T): T = when (eventId) {
+        null, joined -> value
+        else -> otherwise
+    }
 }
 
 /**
@@ -1909,7 +1915,7 @@ private data class Local(
     /** The settings the last change applied — what the next change builds on (see `settingsInEffect`). */
     val lastApplied: Owned<SettingChange?> = Owned(null, null),
     /** The event the last rename was fired for: a rename result for an event no longer joined reads as Idle. */
-    val renameOwner: String? = null,
+    val renameOwner: EventId? = null,
     /** The joined event's invite key, when it is encrypted — copied from [EventKeyView.inviteKey], shown nowhere. */
     val inviteKey: String? = null,
     /** Whether this device lost the joined event's key — copied from [EventKeyView.presence]. */

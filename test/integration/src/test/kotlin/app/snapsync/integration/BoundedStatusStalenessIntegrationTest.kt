@@ -44,7 +44,7 @@ class BoundedStatusStalenessIntegrationTest {
         // Discovery lands AFTER that read — the order `Foreground` actually produces, since the status refresh
         // does not wait for the reconcile's union fetch. A fellow member's photo appears, and a reconcile plans
         // its download.
-        foreignDevice("DEV-F", "FA")
+        foreignDevice(DEV_F, "FA")
         reconcile()
 
         // From here NOTHING reads the status: no refresh, no trigger. The poll is the only thing running,
@@ -59,7 +59,7 @@ class BoundedStatusStalenessIntegrationTest {
     @Test
     fun an_import_that_lands_mid_foreground_reaches_the_screen_within_the_bound() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FA")
+        foreignDevice(DEV_F, "FA")
 
         // A read while the burst is outstanding: the download arm holds the screen at "Syncing". The foreground
         // entry reads the status, plans the download, and starts the poll.

@@ -1,17 +1,20 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
-import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.StoredResource
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
+import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
@@ -33,8 +36,8 @@ class StoredUploadSettleTest {
 
     private class FakeFiles(private val result: Result<List<StoredResource>>) : DeviceFilesSource {
         var calls = 0
-        var lastEventId: String? = null
-        override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> {
+        var lastEventId: EventId? = null
+        override suspend fun list(eventId: EventId, deviceId: DeviceId): Result<List<StoredResource>> {
             calls++
             lastEventId = eventId
             return result
@@ -45,7 +48,10 @@ class StoredUploadSettleTest {
         FakeFiles(Result.success(keys.map { StoredResource(it, AssetId(it.substringBefore('-'))) }))
 
     private suspend fun ledgerHolding(vararg rows: Pair<String, LedgerState>) = TestLedger().service.apply {
-        resetTo(LEDGER_EVENT, rows.map { (key, state) -> LedgerEntry(key, AssetId(key.substringBefore('-')), state) })
+        resetTo(
+            testEventId(LEDGER_EVENT),
+            rows.map { (key, state) -> LedgerEntry(key, AssetId(key.substringBefore('-')), state) },
+        )
     }
 
     @Test
@@ -53,7 +59,7 @@ class StoredUploadSettleTest {
         // The measured downgrade: the bytes landed, and the withheld extension was never presented the job.
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
 
-        StoredUploadSettle(listing("A-primary.heic"), ledger, identity).settle(eventId)
+        StoredUploadSettle(listing("A-primary.heic"), ledger, identity).settle(testEventId(eventId))
 
         assertEquals(LedgerState.COMPLETED, ledger.get("A-primary.heic")?.state)
     }
@@ -62,7 +68,7 @@ class StoredUploadSettleTest {
     fun `an in-flight row without stored bytes is left in flight`() = runTest {
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
 
-        StoredUploadSettle(listing("B-primary.heic"), ledger, identity).settle(eventId)
+        StoredUploadSettle(listing("B-primary.heic"), ledger, identity).settle(testEventId(eventId))
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state, "nothing is done without its bytes")
     }
@@ -72,7 +78,7 @@ class StoredUploadSettleTest {
         // A listed DISCOVERED row has no job in flight to settle; it is the cycle's, and the guard leaves it.
         val ledger = ledgerHolding("D-primary.heic" to LedgerState.DISCOVERED)
 
-        StoredUploadSettle(listing("D-primary.heic"), ledger, identity).settle(eventId)
+        StoredUploadSettle(listing("D-primary.heic"), ledger, identity).settle(testEventId(eventId))
 
         assertEquals(LedgerState.DISCOVERED, ledger.get("D-primary.heic")?.state)
         assertNull(ledger.get("X-primary.heic"), "a listed key with no row is never created")
@@ -83,9 +89,9 @@ class StoredUploadSettleTest {
         val files = listing("A-primary.heic")
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
 
-        StoredUploadSettle(files, ledger, identity).settleJoined(eventId)
+        StoredUploadSettle(files, ledger, identity).settleJoined(testEventId(eventId))
 
-        assertEquals(eventId, files.lastEventId)
+        assertEquals(testEventId(eventId), files.lastEventId)
         assertEquals(LedgerState.COMPLETED, ledger.get("A-primary.heic")?.state)
     }
 
@@ -105,7 +111,7 @@ class StoredUploadSettleTest {
         val files = listing("A-primary.heic")
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.COMPLETED)
 
-        StoredUploadSettle(files, ledger, identity).settle(eventId)
+        StoredUploadSettle(files, ledger, identity).settle(testEventId(eventId))
 
         assertEquals(0, files.calls)
     }
@@ -121,7 +127,7 @@ class StoredUploadSettleTest {
             identity,
             recorder.logger("StoredUploadSettleTest"),
         )
-            .settle(eventId)
+            .settle(testEventId(eventId))
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -133,7 +139,12 @@ class StoredUploadSettleTest {
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
         val files = FakeFiles(Result.failure(DeviceListingShapeException("shape")))
 
-        StoredUploadSettle(files, ledger, identity, recorder.logger("StoredUploadSettleTest")).settle(eventId)
+        StoredUploadSettle(
+            files,
+            ledger,
+            identity,
+            recorder.logger("StoredUploadSettleTest"),
+        ).settle(testEventId(eventId))
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
         assertEquals(listOf(Severity.Error), recorder.severities)
@@ -145,12 +156,17 @@ class StoredUploadSettleTest {
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
         val hanging = object : DeviceFilesSource {
             override suspend fun list(
-                eventId: String,
-                deviceId: String,
+                eventId: EventId,
+                deviceId: DeviceId,
             ): Result<List<StoredResource>> = awaitCancellation()
         }
 
-        StoredUploadSettle(hanging, ledger, identity, recorder.logger("StoredUploadSettleTest")).settle(eventId)
+        StoredUploadSettle(
+            hanging,
+            ledger,
+            identity,
+            recorder.logger("StoredUploadSettleTest"),
+        ).settle(testEventId(eventId))
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -164,7 +180,7 @@ class StoredUploadSettleTest {
             listing("A-primary.heic"),
             ledger,
             unreadableIdentity(), // keychain locked
-        ).settle(eventId)
+        ).settle(testEventId(eventId))
 
         assertEquals(LedgerState.REQUESTED, ledger.get("A-primary.heic")?.state)
     }
@@ -173,7 +189,7 @@ class StoredUploadSettleTest {
     fun `a late acknowledgement after the settle is a no-op`() = runTest {
         val ledger = ledgerHolding("A-primary.heic" to LedgerState.REQUESTED)
 
-        StoredUploadSettle(listing("A-primary.heic"), ledger, identity).settle(eventId)
+        StoredUploadSettle(listing("A-primary.heic"), ledger, identity).settle(testEventId(eventId))
 
         assertFalse(ledger.markTerminal("A-primary.heic", TerminalOutcome.COMPLETED), "the guard applies to nothing")
         assertFalse(ledger.markTerminal("A-primary.heic", TerminalOutcome.FAILED), "nor does a late failure undo it")

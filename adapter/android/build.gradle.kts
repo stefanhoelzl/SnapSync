@@ -20,6 +20,7 @@ kotlin {
     sourceSets {
         androidMain.dependencies {
             api(project(":domain:model"))
+            api(project(":domain:domain"))
             // The Motion Photo codec: an iPhone Live Photo is saved here as one.
             implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))

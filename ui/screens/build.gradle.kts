@@ -52,6 +52,7 @@ kotlin {
             implementation(project(":domain:presentation"))
             implementation(project(":domain:feature"))
             implementation(project(":domain:model"))
+            implementation(project(":domain:domain"))
             implementation(libs.orbit.core)
         }
         jvmTest.dependencies {

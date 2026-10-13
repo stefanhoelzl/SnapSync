@@ -37,7 +37,7 @@ class BackendPushTokenPublisher(
     override suspend fun publish(token: PushEndpoint): Result<Unit> {
         val id = runCatchingCancellable { identity.deviceId() }.getOrElse { return Result.failure(it) }
         val config = DeviceConfig(PushRegistration(kind = token.kind, token = token.token, env = token.env))
-        return when (val reply = gateway.send(Routes.PutDevice.request(id, config))) {
+        return when (val reply = gateway.send(Routes.PutDevice.request(id.value, config))) {
             PutDeviceReply.Recorded -> Result.success(Unit)
             else -> Result.failure(IllegalStateException("config PUT $id: $reply"))
         }

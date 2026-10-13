@@ -1,5 +1,6 @@
 package app.snapsync.services.manifest
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
@@ -43,7 +44,7 @@ class DeviceManifestService(
      * (change `count-declared-photos`). `0` when the record is another event's or there is none: nothing of this
      * device's is in that event's declared total. `null` when it cannot be read or decoded.
      */
-    fun publishedCount(eventId: String): Int? {
+    fun publishedCount(eventId: EventId): Int? {
         val record = runCatchingCancellable {
             db.use { it.uploadedManifestQueries.selectUploaded(::UploadedManifest).executeAsOneOrNull() }
         }.getOrElse { return null.also { _ -> log.w(it) { "the manifest record is unreadable — no own count" } } }

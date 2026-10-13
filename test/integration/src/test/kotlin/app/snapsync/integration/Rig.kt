@@ -3,7 +3,7 @@ package app.snapsync.integration
 import app.snapsync.control.Reply
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigState
@@ -153,3 +153,12 @@ fun primaryJob(assetId: String): String = "$assetId/primary"
 
 /** The photo an OS upload job ([primaryJob]) sends. */
 fun assetIdOfJob(job: String): AssetId = AssetId(job.substringBefore('/'))
+
+/**
+ * The fellow member's device most tests play — `foreignDevice(DEV_F, …)`. A device id, as the backend issues every one:
+ * the app reads no other, so neither does a fixture.
+ */
+const val DEV_F = "def0f000-0000-4000-8000-00000000000f"
+
+/** The guest the marketing scenes and the full-stack tests play. */
+const val GUEST_DEVICE = "9e570000-0000-4000-8000-0000000000a1"

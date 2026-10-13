@@ -1,5 +1,11 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -12,19 +18,19 @@ import kotlin.test.assertIs
  */
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
-private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+private val FIXTURE_CEILING = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z"))
 
 class ConfigFileTest {
 
     private val config = EventConfig(
-        eventId = "e1",
+        eventId = testEventId("e1"),
         name = "Party",
-        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"), maxPhotoDate = FIXTURE_CEILING,
-        startsAt = eventStart("2026-06-30T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")), maxPhotoDate = FIXTURE_CEILING,
+        startsAt = EventStart(TimestampText.parse("2026-06-30T00:00:00Z")),
         direction = Direction.UploadOnly,
         saveToAlbum = true,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     @Test
@@ -40,12 +46,12 @@ class ConfigFileTest {
         // DEFAULTABLE fields sit at their defaults must still decode to the same values via the payload's
         // own defaults. (`name` is not among them — it carries no default — so it is always encoded.)
         val minimal = EventConfig(
-            eventId = "e2",
+            eventId = testEventId("e2"),
             name = "Anna's Birthday",
-            minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),
             maxPhotoDate = FIXTURE_CEILING,
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
 
         assertEquals(ConfigFileDecode.Valid(minimal), decodeConfigFile(encodeConfigFile(minimal)))
@@ -79,7 +85,7 @@ class ConfigFileTest {
         // library). The port mapping treats Unusable as UNREADABLE — this adapter's own atomic
         // writes should make the state unreachable, so it is unexplained and must defer, never
         // drive a leave. (The Keychain legacy-item None rule deliberately does not transfer.)
-        val decoded = decodeConfigFile("""{"v":1,"payload":{"eventId":"e1","name":"Party"}}""")
+        val decoded = decodeConfigFile("""{"v":1,"payload":{"eventId":"${testEventId("e1").value}","name":"Party"}}""")
 
         assertEquals(ConfigFileDecode.Unusable, decoded)
     }
@@ -92,7 +98,7 @@ class ConfigFileTest {
     @Test
     fun `unknown keys are ignored on envelope and payload — additive change needs no version bump`() {
         val decoded = decodeConfigFile(
-            """{"v":1,"extra":"ignored","payload":{"eventId":"e1","name":"Anna's Birthday",""" +
+            """{"v":1,"extra":"ignored","payload":{"eventId":"${testEventId("e1").value}","name":"Anna's Birthday",""" +
                 """"minPhotoDate":"2026-07-01T00:00:00Z","maxPhotoDate":"2099-01-01T00:00:00Z",""" +
                 """"endsAt":"2099-12-31T00:00:00Z","deletesAt":"2099-12-31T00:00:00Z","novel":"ignored"}}""",
         )
@@ -100,12 +106,12 @@ class ConfigFileTest {
         assertEquals(
             ConfigFileDecode.Valid(
                 EventConfig(
-                    eventId = "e1",
+                    eventId = testEventId("e1"),
                     name = "Anna's Birthday",
-                    minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+                    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),
                     maxPhotoDate = FIXTURE_CEILING,
-                    endsAt = eventEnd("2099-12-31T00:00:00Z"),
-                    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+                    endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
                 ),
             ),
             decoded,

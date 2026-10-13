@@ -1,14 +1,15 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AssetFacts
-import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.captureCutoff
+import app.snapsync.model.TimestampText
 import app.snapsync.model.selectionRulesFor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -31,7 +32,7 @@ class PermissionAwareCandidateSourceTest {
     private suspend fun policy(): SelectionPolicy = SelectionPolicy(
         selectionRulesFor(
             includesUpload = true,
-            cutoff = captureCutoff("2026-01-01T00:00:00Z"),
+            cutoff = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
             ceiling = null,
             suppressedAssetIds = { emptySet() },
             albumExcludedAssetIds = { emptySet() },
@@ -46,7 +47,8 @@ class PermissionAwareCandidateSourceTest {
             return CandidateRead.Readable(
                 ids.map { id ->
                     object : Candidate {
-                        override val facts = AssetFacts(AssetId(id), CaptureDate.parse("2026-06-01T00:00:00Z"))
+                        override val facts =
+                            AssetFacts(AssetId(id), CaptureDate.Dated(TimestampText.parse("2026-06-01T00:00:00Z")))
                         override suspend fun resources(): List<Resource> = emptyList()
                     }
                 },

@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.EventId
+
 /**
  * The provision-time transition **rule**: what provisioning
  * [next][switchDecision] means for the membership this device already holds.
@@ -24,15 +26,15 @@ sealed interface SwitchDecision {
      * set; [previousEventId] is the membership to leave first, or `null` when there is none.
      */
     sealed interface Enter : SwitchDecision {
-        val previousEventId: String?
+        val previousEventId: EventId?
     }
 
     /** A different event is being provisioned: leave [previousEventId] first, then load the new share set. */
-    data class LeavePrevious(override val previousEventId: String) : Enter
+    data class LeavePrevious(override val previousEventId: EventId) : Enter
 
     /** No membership yet: nothing to leave; load the new share set. */
     data object Join : Enter {
-        override val previousEventId: String? = null
+        override val previousEventId: EventId? = null
     }
 
     /** A re-provision of the joined event: nothing to leave and nothing to load. */
@@ -40,7 +42,7 @@ sealed interface SwitchDecision {
 }
 
 /** Decide what provisioning [next] means while [current] is joined (`null` when unjoined). */
-fun switchDecision(current: String?, next: String): SwitchDecision = when (current) {
+fun switchDecision(current: EventId?, next: EventId): SwitchDecision = when (current) {
     null -> SwitchDecision.Join
     next -> SwitchDecision.Stay
     else -> SwitchDecision.LeavePrevious(current)

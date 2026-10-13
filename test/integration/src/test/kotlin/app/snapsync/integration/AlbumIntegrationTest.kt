@@ -61,7 +61,7 @@ class AlbumIntegrationTest {
         awaitAlbum() // a download imports into the album only once it exists
         addPhoto("A")
         cycle()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         downloadAll()
 
         assertEquals(
@@ -84,7 +84,7 @@ class AlbumIntegrationTest {
         androidLibrary()
         createAndJoin("saveToAlbum" to "false")
         addPhoto("A")
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         downloadAll()
         assertTrue(albums().isEmpty(), "no album while it is off: the photo is in the camera folder")
 
@@ -100,13 +100,13 @@ class AlbumIntegrationTest {
         androidLibrary()
         createAndJoin("saveToAlbum" to "true", name = "Party")
         awaitAlbum()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         downloadAll()
         val first = albums().single()
         assertEquals(listOf(RECEIVED), first.assets)
 
         device("album/delete", "album" to first.id) // the gallery app deletes the folder, and its photo with it
-        foreignDevice("DEV-F", "FR")
+        foreignDevice(DEV_F, "FR")
         downloadAll()
         assertEquals(listOf(first.id), albums().map { it.id }, "no album was brought back")
         assertTrue(albums().single().assets.isEmpty(), "the later photo arrived in the camera folder")
@@ -118,7 +118,7 @@ class AlbumIntegrationTest {
 
         eventually<List<String>?>(read = {
             albums().firstOrNull { it.id != first.id }?.assets
-        }) { it == listOf("imported-DEV-F-FR") }
+        }) { it == listOf("imported-$DEV_F-FR") }
     }
 
     @Test
@@ -158,7 +158,7 @@ class AlbumIntegrationTest {
         // A join's gather: a photo received in this event, whose import is permanent across a leave.
         user("reconfigure", "saveToAlbum" to "false")
         awaitState { it.joined?.membership?.savesToAlbum == false }
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         downloadAll()
         leave()
         device("album/hold-adds")
@@ -180,7 +180,7 @@ class AlbumIntegrationTest {
     }
 
     private companion object {
-        /** The id the photo library gives the photo DEV-F shared as FQ. */
-        const val RECEIVED = "imported-DEV-F-FQ"
+        /** The id the photo library gives the photo [DEV_F] shared as FQ. */
+        const val RECEIVED = "imported-$DEV_F-FQ"
     }
 }

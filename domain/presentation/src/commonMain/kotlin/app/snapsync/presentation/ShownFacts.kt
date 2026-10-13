@@ -1,12 +1,11 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.CaptureDate
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.LINK_ORIGIN
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.iso
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.NetworkNotice
@@ -16,7 +15,6 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Instant
 
 // The domain's facts in the words the screen states them: each a pure mapping from a
 // domain value into the screen's vocabulary, so the screen never sees the domain.
@@ -57,11 +55,10 @@ internal fun timeLeftOf(span: Duration): TimeLeft = when {
  * begun AT its start) and so is the end: an event is [EventTiming.Ended] only once `now` is past [endsAt],
  * the same comparison the ended marker always made.
  */
-fun eventTiming(startsAt: EventStart, endsAt: EventEnd, now: CaptureDate): EventTiming {
-    val at = Instant.parse(now.iso)
+fun eventTiming(startsAt: EventStart, endsAt: EventEnd, now: Timestamp): EventTiming {
     return when {
-        startsAt.at > now -> EventTiming.Upcoming(timeLeftOf(Instant.parse(startsAt.at.iso) - at))
+        startsAt.at > now -> EventTiming.Upcoming(timeLeftOf(startsAt.at - now))
         endsAt.at < now -> EventTiming.Ended
-        else -> EventTiming.Running(timeLeftOf(Instant.parse(endsAt.at.iso) - at))
+        else -> EventTiming.Running(timeLeftOf(endsAt.at - now))
     }
 }

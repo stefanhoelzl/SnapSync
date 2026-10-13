@@ -1,10 +1,11 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.captureCutoff
+import app.snapsync.model.TimestampText
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
@@ -19,8 +20,10 @@ private suspend fun admitting(cutoff: String): SelectionPolicy =
     SelectionPolicy(
         selectionRulesFor(
             includesUpload = true,
-            cutoff = captureCutoff(
-                cutoff,
+            cutoff = CaptureCutoff(
+                TimestampText.parse(
+                    cutoff,
+                ),
             ),
             ceiling = null,
             suppressedAssetIds = {

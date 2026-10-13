@@ -1,8 +1,9 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.galleryAccess
-import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerState
@@ -11,16 +12,17 @@ import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
 import app.snapsync.model.candidatesFromResources
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.upload.BackgroundTransfer
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -90,15 +92,20 @@ class UploadCycleTailUnitsTest {
             val admitting = policy ?: SelectionPolicy(
                 selectionRulesFor(
                     includesUpload = true,
-                    cutoff = captureCutoff("2026-01-01T00:00:00Z"),
+                    cutoff = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
                     ceiling = null,
                     suppressedAssetIds = { emptySet() },
                     albumExcludedAssetIds = { emptySet() },
                 ),
             )
             val run = CycleGate.Run(
-                UploadConfig(host = "https://edge.example", eventId = "E"),
-                JoinedMembership(eventId = "E", policy = { admitting }, saveToAlbum = false, manifestVersion = 1),
+                UploadConfig(host = "https://edge.example", eventId = testEventId("E")),
+                JoinedMembership(
+                    eventId = testEventId("E"),
+                    policy = { admitting },
+                    saveToAlbum = false,
+                    manifestVersion = 1,
+                ),
             )
             return UploadCycle(
                 readGate = { gate ?: run },
@@ -218,7 +225,7 @@ class UploadCycleTailUnitsTest {
         for ((gate, expected) in listOf(
             CycleGate.NotJoined to CycleResult.SKIPPED,
             CycleGate.Skip("unreadable") to CycleResult.COMPLETED,
-            CycleGate.Withheld(UploadConfig(host = "https://edge.example", eventId = "E")) to CycleResult.SKIPPED,
+            CycleGate.Withheld(UploadConfig(host = "https://edge.example", eventId = testEventId("E"))) to CycleResult.SKIPPED,
         )) {
             val f = Fixture(listOf(resource("a")))
             val cycle = f.cycle(gate)

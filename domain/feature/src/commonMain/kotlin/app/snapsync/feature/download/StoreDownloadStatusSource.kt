@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.download.readmodel.DownloadStatusSource
 import app.snapsync.model.DownloadCounts
@@ -26,7 +27,7 @@ class StoreDownloadStatusSource(
     // The current membership's event, or `null` with none. The store keeps every past event's imported rows
     // (they are the suppression handles), so the counts must be scoped to the event on screen: unscoped,
     // "received" was every foreign photo the device ever imported.
-    private val currentEvent: () -> String?,
+    private val currentEvent: () -> EventId?,
     /**
      * Whether the membership receives — the download arm's own three-valued answer. Only `true` counts the others'
      * declared photos: a member who does not receive is never shown an arrow for photos it will not fetch.
@@ -71,7 +72,7 @@ class StoreDownloadStatusSource(
      * Clamped at 0: a publish crossing the read can make the subtraction briefly short, and the next read corrects it.
      * Unknown — no declared total, no own count, or not receiving — is 0, which reads exactly as before this count.
      */
-    private fun awaited(eventId: String, counts: DownloadCounts): Int {
+    private fun awaited(eventId: EventId, counts: DownloadCounts): Int {
         if (receives() != true) return 0
         val declared = counts.declared ?: return 0
         val own = manifest.publishedCount(eventId) ?: return 0

@@ -1,7 +1,8 @@
 package app.snapsync.feature.album
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.AssetId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.album.AlbumMapService
@@ -64,7 +65,7 @@ class AlbumCoordinator(
      * [AlbumKind.COLLECTION] it changes nothing.
      */
     suspend fun ensureAlbum(
-        eventId: String,
+        eventId: EventId,
         name: String,
         saveToAlbum: Boolean,
         hasUsableAccess: Boolean = true,
@@ -104,7 +105,7 @@ class AlbumCoordinator(
      * Under [AlbumKind.FOLDER] a filled album the member emptied answers `null` too: the photo then lands in the
      * camera folder instead of bringing the folder back.
      */
-    suspend fun albumIdFor(eventId: String, saveToAlbum: Boolean): String? {
+    suspend fun albumIdFor(eventId: EventId, saveToAlbum: Boolean): String? {
         if (!saveToAlbum) return null
         val stored = store.get(eventId) ?: return null
         if (kind == AlbumKind.COLLECTION || !store.filled(eventId) || manager.exists(stored)) return stored
@@ -117,7 +118,7 @@ class AlbumCoordinator(
      * emptying it later reads as a deletion. A no-op under [AlbumKind.COLLECTION], or when [album] is no longer the
      * event's (a recreation raced the import).
      */
-    fun onImportedInto(eventId: String, album: String) {
+    fun onImportedInto(eventId: EventId, album: String) {
         if (kind == AlbumKind.FOLDER && store.get(eventId) == album) store.markFilled(eventId)
     }
 
@@ -138,7 +139,7 @@ class AlbumCoordinator(
      * created it), the add is **skipped** (never created here) — the app's [ensureAlbum] on the permission grant
      * guarantees the album exists before sync in practice. A failure to add is logged, never thrown.
      */
-    suspend fun place(eventId: String, assetIds: List<AssetId>) {
+    suspend fun place(eventId: EventId, assetIds: List<AssetId>) {
         if (assetIds.isEmpty()) return
         if (kind == AlbumKind.FOLDER) return // the member's own photos stay where their camera saved them
         file(eventId, assetIds)
@@ -149,13 +150,13 @@ class AlbumCoordinator(
      * half. Under [AlbumKind.FOLDER] this MOVES them out of the camera folder and marks the album filled once a move
      * landed; under [AlbumKind.COLLECTION] it is [place].
      */
-    suspend fun placeReceived(eventId: String, assetIds: List<AssetId>) {
+    suspend fun placeReceived(eventId: EventId, assetIds: List<AssetId>) {
         if (assetIds.isEmpty()) return
         if (file(eventId, assetIds) && kind == AlbumKind.FOLDER) store.markFilled(eventId)
     }
 
     /** Whether the add reached the library; a skipped or failed one is logged, never thrown. */
-    private suspend fun file(eventId: String, assetIds: List<AssetId>): Boolean {
+    private suspend fun file(eventId: EventId, assetIds: List<AssetId>): Boolean {
         val albumId = store.get(eventId)
         if (albumId == null) {
             log.i { "place: no album yet for event=$eventId — skipping ${assetIds.size} asset(s)" }

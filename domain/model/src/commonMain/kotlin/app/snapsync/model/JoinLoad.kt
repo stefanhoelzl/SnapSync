@@ -1,5 +1,10 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+
 /**
  * The outcome of fetching an event's details for the join gate — the gate-facing mirror of the
  * `EventDirectory` port's `EventLookup` (adapted by `feature/membership`'s `toJoinLoad`). Seated in
@@ -35,7 +40,7 @@ sealed interface JoinLoad {
         /** An ENCRYPTED event's key id; `null` for a plain event (the encrypted file format, `docs/architecture.md`). */
         val keyId: String? = null,
         /** Until when the event stays open; `null` when not served or unreadable. */
-        val openUntil: EventEnd? = null,
+        val openUntil: OpenUntil? = null,
     ) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad

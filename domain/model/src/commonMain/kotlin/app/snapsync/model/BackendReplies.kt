@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
 import kotlinx.serialization.Serializable
 
 /**
@@ -27,7 +29,7 @@ class UnionResource(
 
 /** One **complete** asset in the event-wide union, tagged with its owning device and capture date. */
 class UnionAsset(
-    val deviceId: String,
+    val deviceId: DeviceId,
     val assetId: AssetId,
     val creationDate: String,
     val resources: List<UnionResource>,

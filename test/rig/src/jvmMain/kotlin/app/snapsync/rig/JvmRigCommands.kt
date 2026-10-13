@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventLinkPayload
@@ -63,8 +64,9 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
     // member who was sent the invite; a phone has no such read, its key leaves only inside the invite it shares.
     "invite" to RigCommand { params, _ ->
         val event = params["event"] ?: return@RigCommand CommandResult.badRequest("event is required")
+        val id = EventId.parse(event) ?: return@RigCommand CommandResult.badRequest("event is not an event id")
         val key = rig.mocks.eventKeys.keyOf(event)?.let(::encodeEventKey)
-        CommandResult.ok("""{"invite":"${encodeEventUrl(EventLinkPayload(event, key = key))}"}""")
+        CommandResult.ok("""{"invite":"${encodeEventUrl(EventLinkPayload(id, key = key))}"}""")
     },
     // The joined event's key gone from the Keychain while the membership stays — what a restore onto a new phone or a
     // reset of the phone's own key protection leaves.
@@ -99,7 +101,7 @@ internal fun joinedEventId(rig: JvmRig): String? {
         ?: (
             ConfigService(SharedDatabase(rig.mocks.databases.port(), legacy = null), rig.mocks.clock.port()).read()
                 as? ConfigRead.Joined
-            )?.config?.eventId
+            )?.config?.eventId?.value
 }
 
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */

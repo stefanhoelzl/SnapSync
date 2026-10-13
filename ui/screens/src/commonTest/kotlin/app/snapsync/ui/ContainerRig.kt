@@ -16,16 +16,18 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.JoinChoice
@@ -38,6 +40,7 @@ import app.snapsync.model.ReportOutcome
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.SyncStatus
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.VersionRefusal
@@ -125,8 +128,8 @@ internal class ContainerRig(
                 this@ContainerRig.config.value = null
             }
 
-            override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?) {
-                record("create:$name${openUntil?.let { ":open-until:${it.at.iso}" }.orEmpty()}")
+            override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) {
+                record("create:$name${openUntil?.let { ":open-until:${TimestampText.format(it.at)}" }.orEmpty()}")
                 createdCell.update { it + Triple(name, startsAt, endsAt) }
             }
 
@@ -146,7 +149,7 @@ internal class ContainerRig(
             override fun choosePhotos() = record("choosePhotos")
 
             override suspend fun reconfigure(
-                eventId: String,
+                eventId: EventId,
                 direction: Direction,
                 minPhotoDate: CaptureCutoff,
                 maxPhotoDate: CaptureCeiling,
@@ -156,7 +159,7 @@ internal class ContainerRig(
                 return ReconfigureOutcome.Saved
             }
 
-            override fun rename(eventId: String, name: String) = record("rename:$eventId:$name")
+            override fun rename(eventId: EventId, name: String) = record("rename:$eventId:$name")
 
             override suspend fun resetRename() = record("resetRename")
 
@@ -177,7 +180,7 @@ internal class ContainerRig(
             }
         },
         queries = object : UserQueries {
-            override suspend fun loadJoinDetails(eventId: String, linkKey: String?) = details(eventId)
+            override suspend fun loadJoinDetails(eventId: EventId, linkKey: String?) = details(eventId.value)
 
             override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
 

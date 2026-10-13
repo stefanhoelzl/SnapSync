@@ -1,10 +1,11 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
 import app.snapsync.model.EventLookup
 import app.snapsync.model.JoinLoad
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -28,17 +29,17 @@ class JoinDetailsTest {
     fun `Found carries the name and all three dates through unchanged`() {
         val details = EventLookup.Found(
             name = "Anna's Birthday",
-            startsAt = eventStart("2026-07-14T18:00:00Z"),
-            endsAt = eventEnd("2026-07-21T18:00:00Z"),
-            deletesAt = deletesAt("2026-08-13T18:00:00Z"),
+            startsAt = EventStart(TimestampText.parse("2026-07-14T18:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2026-07-21T18:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2026-08-13T18:00:00Z")),
         )
 
         assertEquals(
             JoinLoad.Found(
                 "Anna's Birthday",
-                eventStart("2026-07-14T18:00:00Z"),
-                eventEnd("2026-07-21T18:00:00Z"),
-                deletesAt("2026-08-13T18:00:00Z"),
+                EventStart(TimestampText.parse("2026-07-14T18:00:00Z")),
+                EventEnd(TimestampText.parse("2026-07-21T18:00:00Z")),
+                DeletesAt(TimestampText.parse("2026-08-13T18:00:00Z")),
             ),
             details.toJoinLoad(),
         )

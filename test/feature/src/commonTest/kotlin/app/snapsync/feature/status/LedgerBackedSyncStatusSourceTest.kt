@@ -2,8 +2,8 @@
 
 package app.snapsync.feature.status
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.feature.support.galleryAccess
-import app.snapsync.model.AssetId
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.ports.LibraryGrant

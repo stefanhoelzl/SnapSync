@@ -1,7 +1,8 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.AssetFacts
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.ImportResult
 import app.snapsync.model.LibraryResource
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
@@ -14,6 +15,7 @@ import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.TimestampText
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
@@ -25,7 +27,7 @@ import app.snapsync.ports.ResourceKind
 fun GalleryAsset.facts(): AssetFacts =
     AssetFacts(
         assetId = id.assetId(),
-        creationDate = created?.let(CaptureDate::of),
+        captureDate = created?.let { CaptureDate.Dated(Timestamp.of(it)) } ?: CaptureDate.Undated,
         isScreenshot = isScreenshot,
         isScreenRecording = isScreenRecording,
         isVideo = isVideo,
@@ -46,7 +48,7 @@ fun resourcesFrom(assets: List<GalleryAssetResources>): List<Resource> = assets.
             assetId = facts.assetId,
             contentType = resource.contentType,
             metadata = mapOf(
-                RESOURCE_META_CREATION_DATE to facts.creationDate?.iso.orEmpty(),
+                RESOURCE_META_CREATION_DATE to TimestampText.captureText(facts.captureDate),
                 RESOURCE_META_ORIGINAL_FILENAME to resource.originalFilename,
                 RESOURCE_META_MIME to resource.contentType,
                 RESOURCE_META_IS_SCREENSHOT to facts.isScreenshot.toString(),

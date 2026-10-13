@@ -39,6 +39,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":domain:model"))
+            api(project(":domain:domain"))
             api(project(":domain:ports"))
             // The inbound kinds the event ports deliver through, and the completion handles.
             api(project(":domain:inbound"))

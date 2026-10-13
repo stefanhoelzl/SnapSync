@@ -1,5 +1,10 @@
 package app.snapsync.feature.download
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.InMemoryAssetPresence
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.SharedStore
@@ -9,12 +14,9 @@ import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.EventConfig
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportOutcome
@@ -25,6 +27,8 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.staging.StagingService
 import app.snapsync.services.wake.EventChecks
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -34,17 +38,17 @@ import kotlin.test.assertTrue
 class DownloadPushReceiverTest {
 
     private val myDevice = "DEVICE-ME"
-    private val eventA = "7a3f9c21-0000-4000-8000-00000000000a"
-    private val eventB = "7a3f9c21-0000-4000-8000-00000000000b"
+    private val eventA = testEventId("7a3f9c21-0000-4000-8000-00000000000a")
+    private val eventB = testEventId("7a3f9c21-0000-4000-8000-00000000000b")
 
     /**
      * Records the event ids reconcile asked the union for — the observable proof reconcile ran — and from where; it
      * answers an empty union at [position].
      */
     private class RecordingUnion(private val position: Long = 0) : EventUnionSource {
-        val requested = mutableListOf<String>()
+        val requested = mutableListOf<EventId>()
         val from = mutableListOf<Long?>()
-        override suspend fun union(eventId: String, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
+        override suspend fun union(eventId: EventId, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
             requested += eventId
             from += cursor
             return Result.success(UnionPage(emptyList(), position))
@@ -64,7 +68,7 @@ class DownloadPushReceiverTest {
             eventAlbum = { null },
             onImportedIntoAlbum = {},
             stagedBytes = staging,
-            myDeviceId = myDevice,
+            myDeviceId = testDeviceId(myDevice),
             // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
             // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no
             // longer defaults: a permissive default is what let "no membership" mean "download freely".
@@ -80,7 +84,7 @@ class DownloadPushReceiverTest {
     @Test
     fun push_for_the_active_event_reconciles_that_event() = runTest {
         val union = RecordingUnion()
-        receiver(union, active = eventA).onSilentPush(eventA)
+        receiver(union, active = eventA.value).onSilentPush(eventA)
         // The suspend returned only after reconcile's union read completed (the await contract).
         assertEquals(listOf(eventA), union.requested)
     }
@@ -88,7 +92,7 @@ class DownloadPushReceiverTest {
     @Test
     fun push_for_a_non_active_event_is_a_noop() = runTest {
         val union = RecordingUnion()
-        receiver(union, active = eventA).onSilentPush(eventB) // e.g. a locally-left event still pushing
+        receiver(union, active = eventA.value).onSilentPush(eventB) // e.g. a locally-left event still pushing
         assertTrue(union.requested.isEmpty(), "a push for a non-active event must not reconcile")
     }
 
@@ -110,22 +114,25 @@ class DownloadPushReceiverTest {
     fun a_push_announcing_a_position_already_read_reads_nothing() = runTest {
         // Decision record `changes/incremental-union`, D6: a burst of pushes after one read costs no more reads.
         val union = RecordingUnion(position = 9)
-        val receiver = receiver(union, active = eventA)
-        receiver.onSilentPush(eventA, announced = 5) // no position stored yet: reads the whole union, stores 9
-        receiver.onSilentPush(eventA, announced = 9)
-        receiver.onSilentPush(eventA, announced = 7)
+        val receiver = receiver(union, active = eventA.value)
+        receiver.onSilentPush(
+            testEventId(eventA.value),
+            announced = 5,
+        ) // no position stored yet: reads the whole union, stores 9
+        receiver.onSilentPush(testEventId(eventA.value), announced = 9)
+        receiver.onSilentPush(testEventId(eventA.value), announced = 7)
         assertEquals(listOf(eventA), union.requested, "only the first push read")
-        receiver.onSilentPush(eventA, announced = 10)
+        receiver.onSilentPush(testEventId(eventA.value), announced = 10)
         assertEquals(listOf<Long?>(null, 9), union.from, "a later announcement reads from the stored position")
     }
 
     @Test
     fun a_push_is_read_from_its_payload_and_one_naming_no_event_receives_nothing() = runTest {
         val union = RecordingUnion()
-        val receiver = receiver(union, active = eventA)
+        val receiver = receiver(union, active = eventA.value)
         receiver.onSilentPush(mapOf<Any?, Any?>("aps" to mapOf("content-available" to 1)))
         assertTrue(union.requested.isEmpty(), "a payload with no event id runs nothing")
-        receiver.onSilentPush(mapOf<Any?, Any?>("eventId" to eventA))
+        receiver.onSilentPush(mapOf<Any?, Any?>("eventId" to eventA.value))
         assertEquals(listOf(eventA), union.requested)
     }
 
@@ -135,7 +142,7 @@ class DownloadPushReceiverTest {
         val controller = controller(union)
         controller.reconcileJoined(null, app.snapsync.model.UnionTrigger.FOREGROUND)
         assertTrue(union.requested.isEmpty())
-        controller.reconcileJoined(eventA, app.snapsync.model.UnionTrigger.FOREGROUND)
+        controller.reconcileJoined(testEventId(eventA.value), app.snapsync.model.UnionTrigger.FOREGROUND)
         assertEquals(listOf(eventA), union.requested)
     }
 
@@ -151,12 +158,12 @@ class DownloadPushReceiverTest {
 private fun membership(eventId: String?): ConfigService = configService(
     eventId?.let {
         EventConfig(
-            it,
+            testEventId(it),
             "E",
-            captureCutoff("2026-01-01T00:00:00Z"),
-            maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
-            endsAt = eventEnd("2099-12-31T00:00:00Z"),
-            deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+            CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
     },
 )

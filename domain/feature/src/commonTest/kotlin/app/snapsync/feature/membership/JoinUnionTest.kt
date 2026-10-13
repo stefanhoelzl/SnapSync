@@ -1,6 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.model.UnionPage
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
@@ -19,52 +20,52 @@ class JoinUnionTest {
 
     @Test
     fun `an offer made during the provision is taken once`() = runTest {
-        union.during("E") {
-            union.offer("E", page)
-            assertSame(page, union.take("E"))
-            assertNull(union.take("E"), "a take answers the union once")
+        union.during(testEventId("E")) {
+            union.offer(testEventId("E"), page)
+            assertSame(page, union.take(testEventId("E")))
+            assertNull(union.take(testEventId("E")), "a take answers the union once")
         }
     }
 
     @Test
     fun `an offer outside a provision is dropped`() = runTest {
-        union.offer("E", page)
-        union.during("E") { assertNull(union.take("E")) }
-        assertNull(union.take("E"), "and nothing is held after it")
+        union.offer(testEventId("E"), page)
+        union.during(testEventId("E")) { assertNull(union.take(testEventId("E"))) }
+        assertNull(union.take(testEventId("E")), "and nothing is held after it")
     }
 
     @Test
     fun `an offer for another event is dropped`() = runTest {
-        union.during("E") {
-            union.offer("OTHER", page)
-            assertNull(union.take("E"))
+        union.during(testEventId("E")) {
+            union.offer(testEventId("OTHER"), page)
+            assertNull(union.take(testEventId("E")))
         }
     }
 
     @Test
     fun `a take for another event answers nothing and leaves the held union`() = runTest {
-        union.during("E") {
-            union.offer("E", page)
-            assertNull(union.take("OTHER"))
-            assertSame(page, union.take("E"))
+        union.during(testEventId("E")) {
+            union.offer(testEventId("E"), page)
+            assertNull(union.take(testEventId("OTHER")))
+            assertSame(page, union.take(testEventId("E")))
         }
     }
 
     @Test
     fun `a provision that throws still lets go of the union`() = runTest {
         assertFailsWith<IllegalStateException> {
-            union.during("E") {
-                union.offer("E", page)
+            union.during(testEventId("E")) {
+                union.offer(testEventId("E"), page)
                 error("the provision failed")
             }
         }
-        assertNull(union.take("E"))
-        union.offer("E", page)
-        assertNull(union.take("E"), "an offer after it is dropped too")
+        assertNull(union.take(testEventId("E")))
+        union.offer(testEventId("E"), page)
+        assertNull(union.take(testEventId("E")), "an offer after it is dropped too")
     }
 
     @Test
     fun `the provision's answer is during's`() = runTest {
-        assertSame(page, union.during("E") { page })
+        assertSame(page, union.during(testEventId("E")) { page })
     }
 }

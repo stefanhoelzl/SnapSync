@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.JoinResult
 import app.snapsync.services.backend.EventJoin
 
@@ -9,7 +11,7 @@ import app.snapsync.services.backend.EventJoin
  * notify the device immediately, before any photo upload. Returns `true` on a confirmed write.
  */
 interface DeviceEnroller {
-    suspend fun enroll(eventId: String, deviceId: String): JoinResult
+    suspend fun enroll(eventId: EventId, deviceId: DeviceId): JoinResult
 }
 
 /**
@@ -32,6 +34,6 @@ class ManifestDeviceEnroller(
     private val join: EventJoin,
 ) : DeviceEnroller {
 
-    override suspend fun enroll(eventId: String, deviceId: String): JoinResult =
+    override suspend fun enroll(eventId: EventId, deviceId: DeviceId): JoinResult =
         join.join(eventId, deviceId)
 }

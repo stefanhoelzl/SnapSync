@@ -1,5 +1,6 @@
 package app.snapsync.services.upload
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.Resource
 import app.snapsync.model.SecureStoreUnavailable
@@ -24,7 +25,7 @@ import co.touchlab.kermit.Logger
 class UploadStandings(
     private val gateway: BackendGateway,
     /** The event this device is joined to, or `null` when it is not. */
-    private val joinedEvent: () -> String?,
+    private val joinedEvent: () -> EventId?,
     private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("UploadStandings"),
 ) : Standings {
@@ -41,8 +42,8 @@ class UploadStandings(
             return ResumePoint.From(0)
         }
         val request = Routes.UploadState.request(
-            eventId,
-            deviceId,
+            eventId.value,
+            deviceId.value,
             assetIdFromUploadKey(resource.filename).value,
             roleFromUploadKey(resource.filename).wire,
             xSnapsyncSha256 = sha256,

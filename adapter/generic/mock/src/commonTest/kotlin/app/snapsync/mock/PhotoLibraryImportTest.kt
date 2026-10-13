@@ -3,8 +3,8 @@
 package app.snapsync.mock
 
 import app.snapsync.contracts.inboundOf
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
@@ -13,6 +13,7 @@ import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.ResourceKind
 import app.snapsync.services.gallery.correlation
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertNotEquals
@@ -32,7 +33,7 @@ import kotlin.time.Instant
  */
 class PhotoLibraryImportTest {
 
-    private val ref = AssetRef("DEV-F", AssetId("FQ"))
+    private val ref = AssetRef(testDeviceId("DEV-F"), AssetId("FQ"))
 
     private fun file() = ImportFile("/stage/fq", "image/heic", ResourceKind.PHOTO, "IMG.HEIC")
 

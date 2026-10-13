@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,7 +23,7 @@ import kotlin.test.assertTrue
  */
 class EventPhotoSetReadableTest {
 
-    private val cutoff = captureCutoff("2026-06-01T00:00:00Z")
+    private val cutoff = CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z"))
     private val inWindow = "2026-06-15T12:00:00Z"
 
     private suspend fun policy(): SelectionPolicy = SelectionPolicy(
@@ -35,7 +37,7 @@ class EventPhotoSetReadableTest {
     )
 
     private fun camera(assetId: String, creationDate: String = inWindow) = candidatesFromFacts(
-        listOf(AssetFacts(assetId = AssetId(assetId), creationDate = CaptureDate.parseOrNull(creationDate))),
+        listOf(AssetFacts(assetId = AssetId(assetId), captureDate = TimestampText.captureDate(creationDate))),
     )
 
     @Test

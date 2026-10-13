@@ -1,12 +1,14 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.EventId
+
 /** The outcome of a `POST /events` create call — a closed set the use-case maps to [CreationStatus]. */
 sealed interface CreateOutcome {
     /**
      * `201` — the server minted the event; [eventId] is the canonical UUID to provision and [name]
      * is the stored event name (carried straight into `EventConfig`, so create needs no metadata fetch).
      */
-    data class Created(val eventId: String, val name: String? = null) : CreateOutcome
+    data class Created(val eventId: EventId, val name: String? = null) : CreateOutcome
 
     /** `400` — the server rejected the name. */
     data object InvalidName : CreateOutcome

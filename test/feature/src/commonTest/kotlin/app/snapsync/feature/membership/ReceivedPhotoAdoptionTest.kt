@@ -1,26 +1,26 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.SelectionScope
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
-import app.snapsync.model.deletesAt
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.LibraryGrant
@@ -29,6 +29,8 @@ import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.MarkedPhotoLookup
 import app.snapsync.services.gallery.resourcesFrom
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -47,16 +49,16 @@ class ReceivedPhotoAdoptionTest {
     private val other = "22222222-2222-4222-8222-222222222222"
     private val date = "2026-06-05T12:00:00Z"
     private val cfg = EventConfig(
-        eventId = "EVENT-1",
+        eventId = testEventId("EVENT-1"),
         name = "Trip",
-        minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-06-01T00:00:00Z")),
-        startsAt = EventStart(CaptureDate.parse("2026-06-01T00:00:00Z")),
-        endsAt = EventEnd(CaptureDate.parse("2026-06-10T00:00:00Z")),
-        maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-06-10T00:00:00Z")),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z")),
+        startsAt = EventStart(TimestampText.parse("2026-06-01T00:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2026-06-10T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-06-10T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
-    private fun ref(asset: String, device: String = other) = AssetRef(device, AssetId(asset))
+    private fun ref(asset: String, device: String = other) = AssetRef(testDeviceId(device), AssetId(asset))
 
     private fun unionOf(vararg refs: AssetRef, taken: String = date) = refs.map {
         UnionAsset(
@@ -131,7 +133,7 @@ class ReceivedPhotoAdoptionTest {
             "only the photo still in the library",
         )
         assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds(), "and it is never shared back")
-        assertEquals(1, world.store.counts("EVENT-1").imported, "it counts as received for this event")
+        assertEquals(1, world.store.counts(testEventId("EVENT-1")).imported, "it counts as received for this event")
     }
 
     @Test
@@ -156,7 +158,7 @@ class ReceivedPhotoAdoptionTest {
             unionOf(ref("A"), taken = "2026-05-25T12:00:00Z") + unionOf(ref("B"), taken = "2026-06-12T09:00:00Z") +
                 unionOf(ref("C"), taken = "not a date"),
         )
-        assertEquals(CaptureDate.parse("2026-05-25T12:00:00Z") to CaptureDate.parse("2026-06-12T09:00:00Z"), window)
+        assertEquals(TimestampText.parse("2026-05-25T12:00:00Z") to TimestampText.parse("2026-06-12T09:00:00Z"), window)
         assertEquals(
             cfg.startsAt.at to cfg.endsAt.at,
             receivedSearchWindow(cfg, unionOf(ref("A"))),
@@ -168,12 +170,19 @@ class ReceivedPhotoAdoptionTest {
     fun a_join_forgets_which_photos_an_earlier_event_received_and_keeps_their_records() = runTest {
         val world = World(Result.success(emptyList()), emptyList())
         val earlier = ref("EARLIER")
-        world.store.planAll(listOf(PlannedAsset(earlier, date, emptyList())), "EVENT-0", members = listOf(earlier))
+        world.store.planAll(
+            listOf(PlannedAsset(earlier, date, emptyList())),
+            testEventId("EVENT-0"),
+            members = listOf(earlier),
+        )
         world.store.markImported(earlier, AssetId("L-EARLIER"))
 
         world.adoption(me).adopt(cfg)
 
-        assertTrue(world.store.importedLocalIdsOf("EVENT-0").isEmpty(), "the earlier event's refs are purged")
+        assertTrue(
+            world.store.importedLocalIdsOf(testEventId("EVENT-0")).isEmpty(),
+            "the earlier event's refs are purged",
+        )
         assertTrue(world.store.isSettled(earlier), "the photo is still never received twice")
         assertEquals(setOf(AssetId("L-EARLIER")), world.store.suppressedLocalIds(), "and never shared back")
     }
@@ -182,12 +191,16 @@ class ReceivedPhotoAdoptionTest {
     fun the_grant_pass_purges_nothing() = runTest {
         val world = World(Result.success(emptyList()), emptyList())
         val earlier = ref("EARLIER")
-        world.store.planAll(listOf(PlannedAsset(earlier, date, emptyList())), "EVENT-0", members = listOf(earlier))
+        world.store.planAll(
+            listOf(PlannedAsset(earlier, date, emptyList())),
+            testEventId("EVENT-0"),
+            members = listOf(earlier),
+        )
         world.store.markImported(earlier, AssetId("L-EARLIER"))
 
         world.adoption(me).ensureAdopted(cfg)
 
-        assertEquals(setOf(AssetId("L-EARLIER")), world.store.importedLocalIdsOf("EVENT-0"))
+        assertEquals(setOf(AssetId("L-EARLIER")), world.store.importedLocalIdsOf(testEventId("EVENT-0")))
     }
 
     @Test

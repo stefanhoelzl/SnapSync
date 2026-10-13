@@ -100,7 +100,7 @@ class MobileDataIntegrationTest {
         createAndJoin("direction" to "download")
         mobileData(false)
         network("restricted")
-        foreignDevice("DEV-F", "FA")
+        foreignDevice(DEV_F, "FA")
         reconcile()
         eventually(read = { state().download.inFlight }) { inFlight: Int -> inFlight == 1 }
 

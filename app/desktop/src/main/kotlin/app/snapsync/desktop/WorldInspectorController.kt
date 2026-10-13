@@ -4,6 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.inbound.Completion
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
@@ -13,9 +16,7 @@ import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.id
-import app.snapsync.model.AssetId
 import app.snapsync.model.CandidateRead
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.DeviceRefusal
@@ -402,7 +403,7 @@ class WorldInspectorController(
         backend.seedMember(
             eventId,
             DeviceManifest(
-                deviceId,
+                requireNotNull(DeviceId.parse(deviceId)) { "not a device id: '$deviceId'" },
                 listOf(
                     DeviceManifestAsset(
                         asset,
@@ -442,7 +443,7 @@ class WorldInspectorController(
         val policy = joined?.let { config ->
             selectionPolicyFor(
                 config = config,
-                now = CaptureDate.of(mocks.clock.port().now()),
+                now = Timestamp.of(mocks.clock.port().now()),
                 suppressedAssetIds = { emptySet() },
                 albumExcludedAssetIds = { GalleryAlbums(reads).assetIdsInAlbums(SELECTION_CALIBRATION, it) },
             )
@@ -478,7 +479,7 @@ class WorldInspectorController(
             )
         }
         return InspectorSnapshot(
-            joinedEventId = joined?.eventId,
+            joinedEventId = joined?.eventId?.value,
             galleryRows = galleryRows,
             backend = backend,
             jobs = jobs,

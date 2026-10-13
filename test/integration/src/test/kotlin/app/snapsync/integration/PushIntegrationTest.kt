@@ -27,7 +27,7 @@ class PushIntegrationTest {
         os("app", "onPushToken", "DEADBEEF")
         eventually(read = { registrations() }) { it == 1 }
 
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
 
         val pushes = pushesSent()
         assertTrue(pushes.isNotEmpty(), "the completed foreign photo woke the registered member")
@@ -38,7 +38,7 @@ class PushIntegrationTest {
     @Test
     fun a_device_without_a_token_is_never_pushed() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         assertEquals(emptyList(), pushesSent())
     }
 

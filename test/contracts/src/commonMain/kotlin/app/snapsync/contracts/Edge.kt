@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.HttpRequest
 import app.snapsync.model.HttpResult
 import app.snapsync.model.ResourceRole

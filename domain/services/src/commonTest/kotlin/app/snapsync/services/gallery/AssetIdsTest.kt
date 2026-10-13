@@ -1,6 +1,6 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.ports.PlatformAssetId
 import kotlin.test.Test
 import kotlin.test.assertEquals

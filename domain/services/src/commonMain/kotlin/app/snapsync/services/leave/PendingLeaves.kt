@@ -1,5 +1,6 @@
 package app.snapsync.services.leave
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.LeaveNotifier
 import app.snapsync.services.databases.SharedDatabase
@@ -31,7 +32,7 @@ class PendingLeaves(
      * Record [eventId] as left and not yet confirmed, with whether this device [received] every photo of the others —
      * replacing what an earlier record of it said. Call BEFORE the request, so a kill between the two loses nothing.
      */
-    suspend fun record(eventId: String, received: Boolean = false) {
+    suspend fun record(eventId: EventId, received: Boolean = false) {
         runCatchingCancellable { db.use { it.pendingLeaveQueries.recordPendingLeave(eventId, received) } }
             .onFailure { log.w(it) { "the leave of $eventId was not recorded — sent this once, not retried" } }
     }
@@ -41,7 +42,7 @@ class PendingLeaves(
      * outstanding leave is sent. One the backend does not confirm stays recorded, and the next wake sends it again — a
      * finished event is deleted once everyone has LEFT, so a lost leave is no longer harmless.
      */
-    suspend fun leave(eventId: String, received: Boolean) {
+    suspend fun leave(eventId: EventId, received: Boolean) {
         record(eventId, received)
         val outstanding = deliver(stored().orEmpty() + (eventId to received))
         if (outstanding > 0) log.i { "leave of $eventId not confirmed yet — $outstanding retried on the next wake" }
@@ -54,12 +55,12 @@ class PendingLeaves(
     suspend fun deliverAll(): Int = deliver(stored().orEmpty())
 
     /** The recorded leaves, for a test or the diagnostic dump. */
-    suspend fun outstanding(): Set<String> = stored().orEmpty().keys
+    suspend fun outstanding(): Set<EventId> = stored().orEmpty().keys
 
     /** Whether the recorded leave of [eventId] says it received everything; `null` when none is recorded. */
-    suspend fun received(eventId: String): Boolean? = stored().orEmpty()[eventId]
+    suspend fun received(eventId: EventId): Boolean? = stored().orEmpty()[eventId]
 
-    private suspend fun deliver(outstanding: Map<String, Boolean>): Int {
+    private suspend fun deliver(outstanding: Map<EventId, Boolean>): Int {
         if (outstanding.isEmpty()) return 0
         val delivered = outstanding.filter { (eventId, received) ->
             runCatchingCancellable { notifier.notifyLeaving(eventId, received).getOrThrow() }
@@ -82,7 +83,7 @@ class PendingLeaves(
     }
 
     /** The recorded leaves, or `null` when they cannot be read now. */
-    private fun stored(): Map<String, Boolean>? = runCatchingCancellable {
+    private fun stored(): Map<EventId, Boolean>? = runCatchingCancellable {
         db.use { it.pendingLeaveQueries.selectPendingLeaves().executeAsList().associate { row -> row.eventId to row.received } }
     }.getOrElse { null.also { _ -> log.w(it) { "the pending leaves are unreadable — left as they are" } } }
 }

@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.feature.membership.MembershipEntry
 import app.snapsync.feature.membership.ReceivedPhotoAdoption
 import app.snapsync.feature.membership.ShareSetLoad
@@ -75,11 +76,12 @@ internal suspend fun AppCore.importsReady(): Boolean =
  * best-effort leave, awaited here as it always was on this path. A top-level factory because `AppCore` is measured
  * (see [shareSetLoadFor]).
  */
-internal fun AppCore.membershipEntry(notifyLeave: suspend (eventId: String) -> Unit): MembershipEntry = MembershipEntry(
-    stopUploads = { uploadTransitions.onLeave() },
-    notifyLeave = notifyLeave,
-    loadShareSet = { eventId -> shareSetLoad.load(eventId) },
-    adoptReceived = { cfg -> receivedPhotoAdoption.adopt(cfg) },
-    saveConfig = saveConfig,
-    startUploads = { uploadTransitions.onJoin() },
-)
+internal fun AppCore.membershipEntry(notifyLeave: suspend (eventId: EventId) -> Unit): MembershipEntry =
+    MembershipEntry(
+        stopUploads = { uploadTransitions.onLeave() },
+        notifyLeave = notifyLeave,
+        loadShareSet = { eventId -> shareSetLoad.load(eventId) },
+        adoptReceived = { cfg -> receivedPhotoAdoption.adopt(cfg) },
+        saveConfig = saveConfig,
+        startUploads = { uploadTransitions.onJoin() },
+    )

@@ -1,7 +1,26 @@
+@file:UseSerializers(
+    CaptureCutoffAsString::class,
+    CaptureCeilingAsString::class,
+    EventStartAsString::class,
+    EventEndAsString::class,
+    OpenUntilAsString::class,
+    DeletesAtAsString::class,
+    EventIdAsString::class,
+)
+
 package app.snapsync.model
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.UseSerializers
 
 /**
  * The **event-link wire payload** carried by the invite QR: just the **event id**. Possession of
@@ -32,7 +51,7 @@ import kotlinx.serialization.Transient
  */
 @Serializable
 class EventLinkPayload(
-    val eventId: String,
+    val eventId: EventId,
     val autoJoin: Boolean = false,
     val minPhotoDate: String? = null,
     val maxPhotoDate: String? = null,
@@ -47,25 +66,25 @@ class EventLinkPayload(
 )
 
 /** Whether the event's range has ended at [now]: strictly after its end. */
-fun EventConfig.hasEnded(now: CaptureDate): Boolean = now > endsAt.at
+fun EventConfig.hasEnded(now: Timestamp): Boolean = now > endsAt.at
 
 /**
  * Whether this membership's OWN capture range has ended at [now] — strictly after its [EventConfig.maxPhotoDate] —
  * which is when its share may be settled. For most members it is the event's end; earlier for a range that ends before
  * it, later for one that ends after it.
  */
-fun EventConfig.shareHasEnded(now: CaptureDate): Boolean = now > maxPhotoDate.at
+fun EventConfig.shareHasEnded(now: Timestamp): Boolean = now > maxPhotoDate.at
 
 /**
  * The capture floor this membership shares from at [now] — nothing is shared before the event starts: its own
  * [EventConfig.minPhotoDate] once the event has started, and never earlier than the event's start before then.
  *
- * A member's range MAY start before the event (`shareRangeFault`), so the old theorem — a floor at or after a future
+ * A member's range MAY start before the event (`CaptureRange`), so the old theorem — a floor at or after a future
  * start admits no photo, since no photo is taken in the future — no longer holds on its own. Raising the floor to the
  * start while the start lies ahead restores it exactly; from the start on, the photos taken before it come into scope
  * on the next ordinary occasion, with no wake-up of their own.
  */
-fun EventConfig.sharingFloor(now: CaptureDate): CaptureCutoff =
+fun EventConfig.sharingFloor(now: Timestamp): CaptureCutoff =
     if (now < startsAt.at) CaptureCutoff(maxOf(minPhotoDate.at, startsAt.at)) else minPhotoDate
 
 /**
@@ -98,7 +117,7 @@ fun EventConfig.sharingFloor(now: CaptureDate): CaptureCutoff =
  *
  * [startsAt] is the **event's** start date — set once by the host at creation, immutable, and the same canonical `…Z`
  * shape as [minPhotoDate]. It is the **default** for this membership's cutoff, which the member MAY move before it
- * (`shareRangeFault`, applied in `JoinEvent` and `ReconfigureEvent`). It is what holds "nothing is shared before the
+ * (`CaptureRange`, applied in `JoinEvent` and `ReconfigureEvent`). It is what holds "nothing is shared before the
  * event starts" ([sharingFloor]) and what the not-started status line compares against (`startsAt > now`).
  *
  * Unlike [minPhotoDate], [startsAt] **defaults** — to [minPhotoDate] — so a config persisted before this
@@ -119,7 +138,7 @@ fun EventConfig.sharingFloor(now: CaptureDate): CaptureCutoff =
  * [endsAt] is the **event's** end date — the host's declared, immutable event window ceiling, same canonical `…Z` shape
  * as [startsAt]. It is the default upper bound a joiner sees and what the "Event ended" status line compares against
  * (`now > endsAt`). [maxPhotoDate] is this membership's chosen capture-date **upper** bound, which MAY lie after
- * [endsAt]: the share-range rule (`shareRangeFault`) bounds the range by its length and its overlap with the event.
+ * [endsAt]: the share-range rule (`CaptureRange`) bounds the range by its length and its overlap with the event.
  *
  * [maxPhotoDate] is **required and non-null, with no default** — like [minPhotoDate], and this **reverses**
  * the allowance it shipped with. A membership persisted before the ceiling existed used to decode with a
@@ -161,7 +180,7 @@ fun EventConfig.sharingFloor(now: CaptureDate): CaptureCutoff =
  */
 @Serializable
 data class EventConfig(
-    val eventId: String,
+    val eventId: EventId,
     val name: String,
     val minPhotoDate: CaptureCutoff,
     val startsAt: EventStart = EventStart(minPhotoDate.at),
@@ -186,7 +205,7 @@ data class EventConfig(
      * — as last served. `null` until the details first carry it; a membership then reads
      * as open until [endsAt].
      */
-    val openUntil: EventEnd? = null,
+    val openUntil: OpenUntil? = null,
     /**
      * Whether the server confirmed the event's photos are deleted. The membership stays —
      * the app never leaves on its own — and is shown as over; nothing is uploaded or downloaded for it any more.

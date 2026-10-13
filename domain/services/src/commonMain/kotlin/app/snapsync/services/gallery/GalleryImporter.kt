@@ -1,13 +1,14 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
+import app.snapsync.model.TimestampText
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportFile
@@ -54,7 +55,7 @@ class GalleryImporter(private val gallery: GalleryImport, private val staging: S
             GalleryImportRequest(
                 correlation = request.ref.correlation(),
                 files = files,
-                created = CaptureDate.parseOrNull(request.creationDate)?.at,
+                created = TimestampText.parseOrNull(request.creationDate)?.at,
                 album = request.album?.let(::PlatformAlbumId),
             ),
         ).importResult()
@@ -80,4 +81,7 @@ fun AssetRef.correlation(): String = "$sourceDeviceId/${sourceAssetId.value}"
 
 /** The ref an import's [correlation] names: [correlation] read backwards. */
 fun assetRefOf(correlation: String): AssetRef =
-    AssetRef(correlation.substringBeforeLast('/'), AssetId(correlation.substringAfterLast('/')))
+    AssetRef(
+        requireNotNull(DeviceId.parse(correlation.substringBeforeLast('/'))) { "not a correlation: '$correlation'" },
+        AssetId(correlation.substringAfterLast('/')),
+    )

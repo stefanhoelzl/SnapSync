@@ -1,5 +1,8 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
@@ -36,9 +39,6 @@ import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.DeviceRefusal
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator

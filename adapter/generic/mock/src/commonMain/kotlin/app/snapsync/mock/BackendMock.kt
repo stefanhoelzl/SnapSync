@@ -1,6 +1,7 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -10,7 +11,6 @@ import app.snapsync.model.MemberCounts
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
-import app.snapsync.model.isCanonicalAssetId
 import app.snapsync.model.withFinal
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
@@ -144,7 +144,7 @@ class BackendOperator internal constructor(private val state: BackendState) {
     fun unionOf(eventId: String): List<UnionAsset>? = state.locked {
         state.union(
             eventId,
-        )?.map { (deviceId, asset) -> UnionAsset(deviceId, asset.assetId, asset.creationDate, emptyList()) }
+        )?.map { (deviceId, asset) -> UnionAsset(deviceIdOf(deviceId), asset.assetId, asset.creationDate, emptyList()) }
     }
 
     /** Whether the backend holds [eventId]. */
@@ -158,7 +158,9 @@ class BackendOperator internal constructor(private val state: BackendState) {
      * as a joined device's membership declares no asset — or null when it holds no membership.
      */
     fun manifestOf(eventId: String, deviceId: String): DeviceManifest? =
-        state.locked { state.memberships[eventId to deviceId]?.let { it.manifest ?: DeviceManifest(deviceId, emptyList()) } }
+        state.locked {
+            state.memberships[eventId to deviceId]?.let { it.manifest ?: DeviceManifest(deviceIdOf(deviceId), emptyList()) }
+        }
 
     /** How many publishes the backend applied for this membership. */
     fun publishesOf(eventId: String, deviceId: String): Int = state.locked { state.publishes[eventId to deviceId] ?: 0 }
@@ -292,8 +294,8 @@ class BackendOperator internal constructor(private val state: BackendState) {
     /** Another member joining [eventId] and publishing [manifest] there — the routes' rules, without the requests. */
     fun seedMember(eventId: String, manifest: DeviceManifest) {
         state.locked {
-            state.join(eventId, manifest.deviceId)
-            state.publish(eventId, manifest.deviceId, manifest)
+            state.join(eventId, manifest.deviceId.value)
+            state.publish(eventId, manifest.deviceId.value, manifest)
         }
     }
 
@@ -625,7 +627,7 @@ internal class BackendState(
         val filename = route.substringAfter('?', "").split('&')
             .firstOrNull { it.startsWith("filename=") }?.removePrefix("filename=")?.let(::percentDecoded)
         val role = segments.getOrNull(2)?.let { wire -> ResourceRole.entries.firstOrNull { it.wire == wire } }
-        if (segments.size != 3 || role == null || !isCanonicalAssetId(segments[1]) || filename.isNullOrEmpty()) return BAD_REQUEST
+        if (segments.size != 3 || role == null || !AssetId.isCanonical(segments[1]) || filename.isNullOrEmpty()) return BAD_REQUEST
         if (offline) return BAD_GATEWAY
         val deviceId = segments[0]
         val eventId = when (named) {
@@ -757,3 +759,6 @@ internal fun BackendState.closedForOldBuilds(eventId: String): Boolean {
     if (event.openUntil >= now() || memberships.keys.none { it.first == eventId }) return false
     return present(eventId).all { (key, m) -> sharedAll(eventId, key.second, m) }
 }
+
+/** A device id the backend holds, as the app reads it — every one is a canonical UUID, as the routes accept no other. */
+internal fun deviceIdOf(text: String): DeviceId = requireNotNull(DeviceId.parse(text)) { "not a device id: '$text'" }

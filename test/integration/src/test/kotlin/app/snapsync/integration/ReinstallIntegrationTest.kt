@@ -301,7 +301,7 @@ class ReinstallIntegrationTest {
             .map { it.assetId }
 
     private companion object {
-        const val OTHER = "DEV-F"
+        const val OTHER = DEV_F
         val ADOPTION = Regex("""adopted \d+ received photo|recognised: nothing open""")
         val UNRECOGNISED = Regex("""union unavailable — nothing recognised""")
         const val HEARTBEAT = "app.snapsync.upload.heartbeat"

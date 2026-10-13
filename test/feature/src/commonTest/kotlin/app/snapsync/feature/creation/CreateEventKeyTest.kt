@@ -8,6 +8,7 @@ import app.snapsync.model.CreateOutcome
 import app.snapsync.services.backend.EventCreation
 import app.snapsync.services.crypto.EventKeyMinting
 import app.snapsync.services.crypto.EventKeys
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -42,7 +43,7 @@ class CreateEventKeyTest {
                     openUntil: String?,
                 ): CreateOutcome {
                     sentKeyId = keyId
-                    return CreateOutcome.Created(eventId)
+                    return CreateOutcome.Created(testEventId(eventId))
                 }
             },
             status = status,

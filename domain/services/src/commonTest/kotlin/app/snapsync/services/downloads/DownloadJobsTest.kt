@@ -1,7 +1,7 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
@@ -18,6 +18,7 @@ import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -141,7 +142,7 @@ class DownloadJobsTest {
 
     private fun pending(assetId: String, key: String, url: String = "https://cdn.example/$assetId/$key") =
         PendingDownload(
-            ref = AssetRef("DEVICE-A", AssetId(assetId)),
+            ref = AssetRef(testDeviceId("DEVICE-A"), AssetId(assetId)),
             resource = PlannedResource(key, url, "primary", "image/heic", "IMG.HEIC"),
             eventId = EVENT,
         )
@@ -454,7 +455,7 @@ class DownloadJobsTest {
 
     @Test
     fun description_round_trips_the_asset_ref_and_resource_key() {
-        val ref = AssetRef("DEVICE-A", AssetId("ASSET-1"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("ASSET-1"))
         val tag = decodeTag(encodeTag(ref, "a-primary.heic", EVENT))
 
         assertNotNull(tag)
@@ -466,19 +467,20 @@ class DownloadJobsTest {
     /** The OS holds a transfer's tag across an update: one started before tags named their event still decodes. */
     @Test
     fun a_three_field_description_from_an_earlier_build_decodes_with_no_event() {
-        val tag = decodeTag("DEVICE-A\nASSET-1\na-primary.heic")
+        val tag = decodeTag("$DEVICE_A\nASSET-1\na-primary.heic")
 
         assertNotNull(tag)
         assertEquals("", tag.eventId)
-        assertEquals("root/DEVICE-A/a-primary.heic", stagingPath("root", tag.eventId, tag.ref, tag.resourceKey))
+        assertEquals("root/$DEVICE_A/a-primary.heic", stagingPath("root", tag.eventId, tag.ref, tag.resourceKey))
     }
 
     @Test
     fun a_malformed_description_decodes_to_null_and_stages_nothing() = runTest {
         assertNull(decodeTag("only-one-field"))
         assertNull(decodeTag("two\nfields"))
-        assertNull(decodeTag("DEVICE-A\nASSET-1\na-primary.heic\nEVENT\nfifth"), "more fields than any build wrote")
-        assertNull(decodeTag("DEVICE-A\nnot/an/asset\na-primary.heic\nEVENT"), "not an asset id")
+        assertNull(decodeTag("$DEVICE_A\nASSET-1\na-primary.heic\nEVENT\nfifth"), "more fields than any build wrote")
+        assertNull(decodeTag("$DEVICE_A\nnot/an/asset\na-primary.heic\nEVENT"), "not an asset id")
+        assertNull(decodeTag("DEVICE-A\nASSET-1\na-primary.heic\nEVENT"), "not a device id")
 
         val h = Harness(this)
         h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
@@ -506,9 +508,9 @@ class DownloadJobsTest {
         assertEquals(
             listOf(
                 Triple(
-                    AssetRef("DEVICE-A", AssetId("A")),
+                    AssetRef(testDeviceId("DEVICE-A"), AssetId("A")),
                     "a-primary.heic",
-                    "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic",
+                    "$DOWNLOAD_STAGING_DIR/$EVENT/$DEVICE_A/a-primary.heic",
                 ),
             ),
             h.staged,
@@ -534,8 +536,8 @@ class DownloadJobsTest {
         }
 
         // Two transfers land, then the relaunch's entry point waits for what they staged.
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("B")), "b-primary.heic", EVENT))
+        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), AssetId("A")), "a-primary.heic", EVENT))
+        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), AssetId("B")), "b-primary.heic", EVENT))
         launch {
             h.jobs.awaitOutstandingStagings()
             released = true
@@ -556,15 +558,15 @@ class DownloadJobsTest {
         // Relaunched by the OS: nothing was enqueued in THIS process.
 
         // The OS hands us a transfer the previous process started.
-        h.transport.finish(encodeTag(AssetRef("DEVICE-A", AssetId("A")), "a-primary.heic", EVENT))
+        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), AssetId("A")), "a-primary.heic", EVENT))
         advanceUntilIdle()
 
         assertEquals(
             listOf(
                 Triple(
-                    AssetRef("DEVICE-A", AssetId("A")),
+                    AssetRef(testDeviceId("DEVICE-A"), AssetId("A")),
                     "a-primary.heic",
-                    "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic",
+                    "$DOWNLOAD_STAGING_DIR/$EVENT/$DEVICE_A/a-primary.heic",
                 ),
             ),
             h.staged,
@@ -573,9 +575,9 @@ class DownloadJobsTest {
     }
 
     @Test
-    fun staging_path_sanitizes_slashes_in_the_device_id_and_key() {
-        val path = stagingPath("root", "E/1", AssetRef("DEV/ICE", AssetId("A")), "a/b.heic")
-        assertEquals("root/E_1/DEV_ICE/a_b.heic", path)
+    fun staging_path_sanitizes_slashes_in_the_event_and_key() {
+        val path = stagingPath("root", "E/1", AssetRef(testDeviceId("DEVICE-A"), AssetId("A")), "a/b.heic")
+        assertEquals("root/E_1/$DEVICE_A/a_b.heic", path)
     }
 
     // ---- URL guard ---------------------------------------------------------------------------------
@@ -674,7 +676,7 @@ class DownloadJobsTest {
         h.transport.finish(description)
         runCurrent()
         assertEquals(
-            "$DOWNLOAD_STAGING_DIR/$EVENT/DEVICE-A/a-primary.heic",
+            "$DOWNLOAD_STAGING_DIR/$EVENT/$DEVICE_A/a-primary.heic",
             h.staged.single().third,
             "no platform path reaches the store",
         )
@@ -694,3 +696,6 @@ class DownloadJobsTest {
 
 /** The event every planned download in this file belongs to. */
 private const val EVENT = "E-1"
+
+/** The fixture device every transfer here is from, as the id its tag and staging path carry. */
+private val DEVICE_A = testDeviceId("DEVICE-A").value

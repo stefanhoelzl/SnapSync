@@ -1,5 +1,7 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.domain.event.EventId
+
 /**
  * The download store's recognition read (`changes/archive/2026-10-11-close-share-back-gaps`): whether a
  * membership's received photos have been recognised. Until they have, nothing of the membership may be shared — a
@@ -8,5 +10,5 @@ package app.snapsync.services.downloads
  * not read.
  */
 interface RecognitionSource {
-    suspend fun isRecognised(eventId: String): Boolean
+    suspend fun isRecognised(eventId: EventId): Boolean
 }

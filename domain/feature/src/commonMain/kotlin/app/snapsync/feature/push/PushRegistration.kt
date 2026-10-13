@@ -1,5 +1,6 @@
 package app.snapsync.feature.push
 
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.model.PushEndpoint
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.backend.PushTokenPublisher
@@ -119,5 +120,5 @@ class PushRegistration(
  * leads, so an install whose push service changed never reads as registered; a record written before the kind was
  * part of the key (three lines) matches nothing and publishes once — an idempotent `PUT`.
  */
-internal fun registrationKey(token: PushEndpoint, deviceId: String): String =
+internal fun registrationKey(token: PushEndpoint, deviceId: DeviceId): String =
     listOf(token.kind, token.env, deviceId, token.token).joinToString("\n")

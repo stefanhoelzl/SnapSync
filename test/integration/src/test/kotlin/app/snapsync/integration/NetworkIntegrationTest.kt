@@ -79,7 +79,7 @@ class NetworkIntegrationTest {
         awaitHealth(NOTICE) { it is SyncHealth.NoNetwork }
 
         // A fellow member shares while this device is offline; nothing here opens the app again.
-        foreignDevice("DEV-F", "FA")
+        foreignDevice(DEV_F, "FA")
         network("online")
 
         // The download is planned by the work the network's return runs — the screen shows it arriving.

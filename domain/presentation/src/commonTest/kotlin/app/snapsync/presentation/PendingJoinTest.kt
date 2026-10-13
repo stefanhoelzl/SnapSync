@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -12,18 +13,23 @@ class PendingJoinTest {
 
     @Test
     fun `a pending join's written form says a key is present without carrying it`() {
-        val pending = PendingJoin("event-1", JoinProgress.Loading, linkKey = "the-secret-key", eventKeyId = "k1")
+        val pending = PendingJoin(
+            testEventId("event-1"),
+            JoinProgress.Loading,
+            linkKey = "the-secret-key",
+            eventKeyId = "k1",
+        )
         val written = pending.toString()
 
         assertFalse("the-secret-key" in written, "the key leaked into $written")
-        assertEquals("PendingJoin(eventId=event-1, phase=Loading, linkKey=present)", written)
+        assertEquals("PendingJoin(eventId=${testEventId("event-1")}, phase=Loading, linkKey=present)", written)
     }
 
     @Test
     fun `a pending join with no key says so`() {
         assertEquals(
-            "PendingJoin(eventId=event-1, phase=Loading, linkKey=null)",
-            PendingJoin("event-1", JoinProgress.Loading).toString(),
+            "PendingJoin(eventId=${testEventId("event-1")}, phase=Loading, linkKey=null)",
+            PendingJoin(testEventId("event-1"), JoinProgress.Loading).toString(),
         )
     }
 }

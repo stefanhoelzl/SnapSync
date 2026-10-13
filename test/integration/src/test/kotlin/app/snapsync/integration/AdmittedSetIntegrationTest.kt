@@ -1,7 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SyncHealth

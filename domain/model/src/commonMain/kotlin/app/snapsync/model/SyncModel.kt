@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+
 /**
  * The unit the sync domain transports (spec: background-upload). Constructed by the platform, never by
  * the engine — the sync domain knows only resources; assets live in a later layer above it.

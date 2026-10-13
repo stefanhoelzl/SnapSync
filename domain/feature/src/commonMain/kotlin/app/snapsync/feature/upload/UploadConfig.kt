@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
 import app.snapsync.model.SelectionPolicy
@@ -11,7 +12,7 @@ import app.snapsync.model.grantsPhotoAccess
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
 class UploadConfig(
     val host: String,
-    val eventId: String,
+    val eventId: EventId,
 )
 
 /**
@@ -21,8 +22,8 @@ class UploadConfig(
  * or a missing/blank host (a build misconfiguration). Pure and platform-free, so the
  * assemble-or-skip decision is unit-tested off-device while the iOS root stays trivial glue.
  */
-fun buildUploadConfig(eventId: String?, host: String?): UploadConfig? {
-    if (eventId.isNullOrEmpty() || host.isNullOrEmpty()) return null
+fun buildUploadConfig(eventId: EventId?, host: String?): UploadConfig? {
+    if (eventId == null || host.isNullOrEmpty()) return null
     return UploadConfig(host = host, eventId = eventId)
 }
 
@@ -42,7 +43,7 @@ fun buildUploadConfig(eventId: String?, host: String?): UploadConfig? {
  * this and the decision stays testable off every device.
  */
 class JoinedMembership(
-    val eventId: String,
+    val eventId: EventId,
     /**
      * The membership's selection policy, as a **supplier** rather than a built value.
      *

@@ -1,6 +1,7 @@
 package app.snapsync.journeys
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EncryptedFileFormat
@@ -72,7 +73,7 @@ class Member(private val http: HttpClient, backend: String) {
             DeviceManifestAsset(assetId, creationDate, parts.map { it.resource(assetId) })
         }
         // The backend refuses a manifest without a version; 0 is always admitted (equal is, and a join clears it).
-        val manifest = DeviceManifest(deviceId, assets, version = 0)
+        val manifest = DeviceManifest(requireNotNull(DeviceId.parse(deviceId)), assets, version = 0)
         checked(
             "publish manifest",
             http.put("$backend/events/$eventId/devices/$deviceId/manifest") {

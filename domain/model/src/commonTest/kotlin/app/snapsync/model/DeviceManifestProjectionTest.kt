@@ -1,5 +1,8 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,7 +27,7 @@ class DeviceManifestProjectionTest {
     private suspend fun admittingAll() = SelectionPolicy(
         selectionRulesFor(
             includesUpload = true,
-            cutoff = captureCutoff("2026-01-01T00:00:00Z"),
+            cutoff = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
             ceiling = null,
             suppressedAssetIds = { emptySet() },
             albumExcludedAssetIds = { emptySet() },
@@ -35,8 +38,8 @@ class DeviceManifestProjectionTest {
     fun `assets are listed by id and their resources by key whatever order the rows come in`() = runTest {
         val rows = listOf(row("B", "B-primary.jpg"), row("C", "C-primary.jpg"), row("A", "A-primary.jpg"))
 
-        val shuffled = projectDeviceManifest("D", rows, admittingAll())
-        val sorted = projectDeviceManifest("D", rows.sortedBy { it.key }, admittingAll())
+        val shuffled = projectDeviceManifest(testDeviceId("D"), rows, admittingAll())
+        val sorted = projectDeviceManifest(testDeviceId("D"), rows.sortedBy { it.key }, admittingAll())
 
         assertEquals(listOf("A", "B", "C"), shuffled.assets.map { it.assetId.value })
         assertEquals(sorted.encodeToJson(), shuffled.encodeToJson())

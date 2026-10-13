@@ -1,11 +1,13 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
@@ -56,14 +58,14 @@ class ReceivedPhotoAdoption(
     private val store: DownloadService,
     private val library: MarkedPhotoLookup,
     /** The adoption's write, answering the refs it recorded (`DownloadController.settleAdopted`). */
-    private val record: suspend (adopted: Collection<AdoptedAsset>, eventId: String) -> Set<AssetRef>,
+    private val record: suspend (adopted: Collection<AdoptedAsset>, eventId: EventId) -> Set<AssetRef>,
     /** The device identity; own refs are never foreign and never adopted. */
     private val identity: PersistedDeviceIdentity,
     private val log: Logger = Logger.withTag("ReceivedPhotoAdoption"),
 ) {
     // Serializes every pass, and remembers the membership whose library has been read once in this process.
     private val gate = Mutex()
-    private var settledFor: String? = null
+    private var settledFor: EventId? = null
 
     /**
      * A join's pass: always runs, whatever an earlier membership of this process settled. It first forgets which
@@ -191,8 +193,8 @@ class ReceivedPhotoAdoption(
  * a photo whose date drifted (Android fills it from the file's EXIF) is kept. A date the union carries that does not
  * parse widens nothing.
  */
-fun receivedSearchWindow(cfg: EventConfig, open: Collection<UnionAsset>): Pair<CaptureDate, CaptureDate> {
-    val dates = open.mapNotNull { CaptureDate.parseOrNull(it.creationDate) }
+fun receivedSearchWindow(cfg: EventConfig, open: Collection<UnionAsset>): Pair<Timestamp, Timestamp> {
+    val dates = open.mapNotNull { TimestampText.parseOrNull(it.creationDate) }
     val from = (dates + cfg.startsAt.at).min()
     val until = (dates + cfg.endsAt.at).max()
     return from to until

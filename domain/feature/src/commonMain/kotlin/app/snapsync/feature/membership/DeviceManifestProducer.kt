@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.UploadedManifest
@@ -46,7 +48,7 @@ import kotlinx.coroutines.withContext
 class DeviceManifestProducer(
     private val store: DeviceManifestService,
     private val publisher: ManifestPublisher,
-    private val deviceId: String,
+    private val deviceId: DeviceId,
 ) {
     /**
      * Project and PUT; answers whether the published projection **changed**. [rows] are the ledger's
@@ -64,7 +66,7 @@ class DeviceManifestProducer(
      * result of the operation and is what a test asserts on — not because a caller branches on it.
      */
     suspend fun produce(
-        eventId: String,
+        eventId: EventId,
         policy: SelectionPolicy,
         rows: List<LedgerEntry>,
         manifestVersion: Long,

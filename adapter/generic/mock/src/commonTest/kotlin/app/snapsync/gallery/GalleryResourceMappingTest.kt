@@ -1,9 +1,10 @@
 package app.snapsync.gallery
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.mock.InMemoryResource
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AssetId
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.EventPhotoSet
@@ -16,8 +17,8 @@ import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.TimestampText
 import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.PlatformAssetId
@@ -41,7 +42,7 @@ private fun librarySource(assets: List<GalleryAssetResources>): CandidateSource 
 private suspend fun admitting(cutoff: String) = SelectionPolicy(
     selectionRulesFor(
         includesUpload = true,
-        cutoff = captureCutoff(cutoff),
+        cutoff = CaptureCutoff(TimestampText.parse(cutoff)),
         ceiling = null,
         suppressedAssetIds = { emptySet() },
         albumExcludedAssetIds = { emptySet() },

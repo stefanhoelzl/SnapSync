@@ -65,6 +65,7 @@ kotlin {
         }
         commonMain.dependencies {
             api(project(":domain:model"))
+            api(project(":domain:domain"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
             api(project(":domain:feature"))

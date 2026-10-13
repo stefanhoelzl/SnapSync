@@ -1,5 +1,10 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+
 /**
  * The outcome of fetching an event's details — the app's ONE `GET /events/:id` client, serving both the join gate and
  * the best-effort name refresh (which reads [Found.name] and treats every other outcome as "no name this time"). The
@@ -40,7 +45,7 @@ sealed interface EventLookup {
         /** An ENCRYPTED event's key id; `null` for a plain event (the encrypted file format, `docs/architecture.md`). */
         val keyId: String? = null,
         /** Until when the event stays open; `null` when not served or unreadable. */
-        val openUntil: EventEnd? = null,
+        val openUntil: OpenUntil? = null,
     ) : EventLookup
     data object NotFound : EventLookup
     data object Failed : EventLookup

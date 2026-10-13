@@ -23,6 +23,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:model"))
+            implementation(project(":domain:domain"))
             // The shared capabilities features stand on: the storage, gallery, transfer and backend services.
             implementation(project(":domain:services"))
             // How work runs: an import outlives the drain that started it, and a wake's re-arm reads how its passes

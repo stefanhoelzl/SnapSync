@@ -2,6 +2,7 @@
 
 package app.snapsync.model
 
+import app.snapsync.domain.event.EventId
 import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -42,10 +43,6 @@ private const val PREFIX = "$LINK_ORIGIN/join#"
 
 /** The path form's prefix: `<origin>/join/<eventId>`, an optional `#<hints>` after it. */
 private const val PATH_PREFIX = "$LINK_ORIGIN/join/"
-
-/** Canonical UUID (`8-4-4-4-12` hex, case-insensitive). The edge endpoint validates `eventId` likewise. */
-private val UUID_REGEX =
-    Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 /** Strict by default: unknown or missing keys are a parse failure, never a silent partial. */
 private val json = Json {
@@ -119,12 +116,10 @@ private fun decodeFragmentForm(fragment: String): ConfigDecodeResult {
     val payload = try {
         json.decodeFromString(EventLinkPayload.serializer(), jsonBytes.decodeToString())
     } catch (_: IllegalArgumentException) {
-        // `SerializationException` is an `IllegalArgumentException`: every way the payload fails to decode lands here.
+        // `SerializationException` is an `IllegalArgumentException`: every way the payload fails to decode lands here —
+        // an event id that is not one ([EventId.parse]) among them.
         return fail("payload is not valid config JSON")
     }
-
-    if (payload.eventId.isEmpty()) return fail("config has an empty eventId")
-    if (!UUID_REGEX.matches(payload.eventId)) return fail("eventId is not a canonical UUID")
 
     val dir = payload.direction
     if (dir != null && Direction.fromWire(dir) == null) return fail("unknown direction: $dir")
@@ -172,9 +167,7 @@ private fun fail(reason: String) = ConfigDecodeResult.Failure(reason)
 private fun decodePathForm(rest: String): ConfigDecodeResult {
     val hash = rest.indexOf('#')
     val path = if (hash < 0) rest else rest.substring(0, hash)
-    val eventId = path.removeSuffix("/")
-    if (eventId.isEmpty()) return fail("config has an empty eventId")
-    if (!UUID_REGEX.matches(eventId)) return fail("eventId is not a canonical UUID")
+    val eventId = EventId.parse(path.removeSuffix("/")) ?: return fail("eventId is not a canonical UUID")
     val hints = if (hash < 0 || hash == rest.length - 1) {
         emptyMap()
     } else {

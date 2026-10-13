@@ -22,6 +22,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:model"))
+            implementation(project(":domain:domain"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
             implementation(project(":domain:feature"))

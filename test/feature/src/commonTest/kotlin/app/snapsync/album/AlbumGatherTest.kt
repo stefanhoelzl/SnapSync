@@ -2,6 +2,11 @@
 
 package app.snapsync.album
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.support.LEDGER_EVENT
@@ -10,19 +15,14 @@ import app.snapsync.feature.support.galleryAccess
 import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
+import app.snapsync.model.TimestampText
 import app.snapsync.model.WriteOutcome
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
@@ -37,6 +37,8 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
@@ -89,13 +91,13 @@ class AlbumGatherTest {
         saveToAlbum: Boolean = true,
         from: String = "2026-09-01T00:00:00Z",
     ) = EventConfig(
-        eventId = eventId,
+        eventId = testEventId(eventId),
         name = "Trip",
-        minPhotoDate = captureCutoff(from),
-        maxPhotoDate = captureCeiling("2026-09-30T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse(from)),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-09-30T00:00:00Z")),
         saveToAlbum = saveToAlbum,
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
     private class Rig(
@@ -106,17 +108,17 @@ class AlbumGatherTest {
     ) {
         val config: ConfigService = configService(cfg)
         private val databases = inMemoryDatabases()
-        val ledger = LedgerService(testShared(databases)) { LEDGER_EVENT }
+        val ledger = LedgerService(testShared(databases)) { testEventId(LEDGER_EVENT) }
         val downloads = DownloadService(databases)
         val grant = MutableStateFlow(if (granted) LibraryGrant.GRANTED else LibraryGrant.DENIED)
-        val albums = AlbumMapService(testShared()).apply { put("E2", "ALBUM-2") }
+        val albums = AlbumMapService(testShared()).apply { put(testEventId("E2"), "ALBUM-2") }
         val gather = AlbumGather(
             configSource = config,
             ledger = ledger,
             policyFor = { c ->
                 selectionPolicyFor(
                     c,
-                    now = CaptureDate.parse("2026-10-01T00:00:00Z"),
+                    now = TimestampText.parse("2026-10-01T00:00:00Z"),
                     suppressedAssetIds = { emptySet() },
                     albumExcludedAssetIds = { emptySet() },
                 )
@@ -136,11 +138,11 @@ class AlbumGatherTest {
 
         /** A received photo, imported; [eventId] is the event whose reconcile tagged it, `null` for none. */
         suspend fun imported(device: String, assetId: String, localId: String, eventId: String? = "E2") {
-            val ref = AssetRef(device, AssetId(assetId))
+            val ref = AssetRef(testDeviceId(device), AssetId(assetId))
             val resources = listOf(PlannedResource("$assetId.heic", "u", "primary", "image/heic", "a.heic"))
             downloads.planAll(
                 listOf(PlannedAsset(ref, "2026-09-10T00:00:00Z", resources)),
-                eventId,
+                eventId?.let(::testEventId),
                 members = listOf(ref),
             )
             downloads.markImported(ref, AssetId(localId))
@@ -159,7 +161,7 @@ class AlbumGatherTest {
     fun `a photo carried over from an earlier event is gathered when this window admits it`() = runTest {
         val r = rig()
         r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z", eventId = "E1")
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertEquals(
             setOf(AssetId("OWN_1_L0_001")),
             r.manager.added,
@@ -172,7 +174,7 @@ class AlbumGatherTest {
         val r = rig(cfg = config(from = "2026-09-15T00:00:00Z"))
         r.own("EARLY", "2026-09-10T00:00:00Z")
         r.own("LATE", "2026-09-20T00:00:00Z")
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertEquals(setOf(AssetId("LATE")), r.manager.added)
     }
 
@@ -182,7 +184,7 @@ class AlbumGatherTest {
         r.own("GONE", "2026-09-10T00:00:00Z")
         // A photo that left the library loses its row to the walk's deletion (capability `photo-sharing`).
         r.ledger.deleteKeys(listOf("GONE.HEIC"))
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertTrue(r.manager.added.isEmpty())
     }
 
@@ -191,7 +193,7 @@ class AlbumGatherTest {
         val r = rig()
         r.imported("PEER", "IN_UNION", "LOCAL-IN")
         r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER", eventId = "E1")
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertEquals(setOf(AssetId("LOCAL-IN")), r.manager.added)
     }
 
@@ -205,8 +207,8 @@ class AlbumGatherTest {
         r.imported("PEER", "IN_UNION", "LOCAL-IN")
         r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER", eventId = "E1")
 
-        r.gather.gather("E2")
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
+        r.gather.gather(testEventId("E2"))
 
         assertEquals(setOf(AssetId("LOCAL-IN")), r.manager.added, "a second gather files nothing new")
     }
@@ -216,7 +218,7 @@ class AlbumGatherTest {
         val r = rig()
         r.own("OWN", "2026-09-10T00:00:00Z")
         r.imported("PEER", "UNTAGGED", "LOCAL-UNTAGGED", eventId = null)
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertEquals(setOf(AssetId("OWN")), r.manager.added)
     }
 
@@ -224,7 +226,7 @@ class AlbumGatherTest {
     fun `a gather adds in batches no larger than the size and a failing batch does not stop the rest`() = runTest {
         val r = rig(failingCall = 1)
         listOf("A", "B", "C", "D", "E").forEach { r.own(it, "2026-09-10T00:00:00Z") }
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertEquals(3, r.manager.calls.size)
         assertTrue(r.manager.calls.all { it.size <= 2 })
         assertEquals(setOf(AssetId("A"), AssetId("B"), AssetId("C"), AssetId("D"), AssetId("E")), r.manager.added)
@@ -234,7 +236,7 @@ class AlbumGatherTest {
     fun `an opted-out membership gathers nothing`() = runTest {
         val r = rig(cfg = config(saveToAlbum = false))
         r.own("OWN", "2026-09-10T00:00:00Z")
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertTrue(r.manager.calls.isEmpty())
     }
 
@@ -242,7 +244,7 @@ class AlbumGatherTest {
     fun `a gather for an event no longer joined gathers nothing`() = runTest {
         val r = rig(cfg = config(eventId = "E3"))
         r.own("OWN", "2026-09-10T00:00:00Z")
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertTrue(r.manager.calls.isEmpty())
     }
 
@@ -250,7 +252,7 @@ class AlbumGatherTest {
     fun `a gather after the membership ended gathers nothing`() = runTest {
         val r = rig(cfg = null)
         r.own("OWN", "2026-09-10T00:00:00Z")
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertTrue(r.manager.calls.isEmpty())
     }
 
@@ -258,7 +260,7 @@ class AlbumGatherTest {
     fun `a gather without usable photo access gathers nothing`() = runTest {
         val r = rig(granted = false)
         r.own("OWN", "2026-09-10T00:00:00Z")
-        r.gather.gather("E2")
+        r.gather.gather(testEventId("E2"))
         assertTrue(r.manager.calls.isEmpty())
     }
 
@@ -267,9 +269,9 @@ class AlbumGatherTest {
         val r = rig()
         r.own("OWN", "2026-09-10T00:00:00Z")
         val gate = CompletableDeferred<Unit>().also { r.manager.gate = it }
-        val first = async { r.gather.gather("E2") }
+        val first = async { r.gather.gather(testEventId("E2")) }
         yield()
-        val second = async { r.gather.gather("E2") }
+        val second = async { r.gather.gather(testEventId("E2")) }
         yield()
         // Opt out while the first gather holds the lock: the queued one must see it.
         r.config.save(config(saveToAlbum = false))
@@ -330,7 +332,7 @@ class AlbumGatherTest {
         r.gather.onAccessChanged(usable = true)
         advanceUntilIdle()
         assertEquals(listOf("Trip"), r.manager.created, "the album-less membership's album is created once")
-        assertEquals("CREATED-Trip", r.albums.get("E3"))
+        assertEquals("CREATED-Trip", r.albums.get(testEventId("E3")))
         assertEquals(setOf(AssetId("OWN")), r.manager.added, "access became usable, so a gather ran into it")
     }
 
@@ -340,7 +342,7 @@ class AlbumGatherTest {
         r.gather.onAccessChanged(usable = false)
         advanceUntilIdle()
         assertTrue(r.manager.created.isEmpty())
-        assertEquals(null, r.albums.get("E3"))
+        assertEquals(null, r.albums.get(testEventId("E3")))
     }
 
     @Test

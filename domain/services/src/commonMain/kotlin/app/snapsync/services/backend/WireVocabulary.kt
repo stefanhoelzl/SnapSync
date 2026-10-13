@@ -25,7 +25,7 @@ internal fun Role.inApp(): ResourceRole = when (this) {
  */
 internal fun DeviceManifest.onWire(): Manifest? = version?.let { stamped ->
     Manifest(
-        deviceId = deviceId,
+        deviceId = deviceId.value,
         assets = assets.map { asset ->
             ManifestAsset(
                 assetId = asset.assetId.value,

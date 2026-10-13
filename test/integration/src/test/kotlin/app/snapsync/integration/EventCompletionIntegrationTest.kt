@@ -43,7 +43,7 @@ class EventCompletionIntegrationTest {
         device("clock/advance", "to" to DURING)
         createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         // Another member who has not settled its share (a manifest without the flag).
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         downloadAll()
         device("clock/advance", "to" to AFTER_THE_END)
 
@@ -57,7 +57,7 @@ class EventCompletionIntegrationTest {
     fun a_completed_event_is_kept_as_deleted_from_a_background_wake() = rigTest {
         device("clock/advance", "to" to DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         device("clock/advance", "to" to AFTER_THE_END)
         // The clock ran out while this member was away: the sweep completed the event.
         device("backend/complete", "event" to event)

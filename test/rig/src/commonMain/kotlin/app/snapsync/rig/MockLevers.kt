@@ -1,13 +1,14 @@
 package app.snapsync.rig
 
 import app.snapsync.contracts.PhotoLibrary
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.mock.BackendCall
 import app.snapsync.mock.DeviceConditionsText
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.DeviceManifest
@@ -126,7 +127,7 @@ private fun MockWorld.backendReads(op: (suspend MockWorld.(Map<String, String>) 
                             union.forEach { a ->
                                 add(
                                     buildJsonObject {
-                                        put("device", a.deviceId)
+                                        put("device", a.deviceId.value)
                                         put("asset", a.assetId.value)
                                         putJsonArray("roles") { a.resources.forEach { add(JsonPrimitive(it.role)) } }
                                     },
@@ -668,7 +669,7 @@ private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
             val ref = assetRefOf(parked)
             CommandResult.ok(
                 buildJsonObject {
-                    put("device", ref.sourceDeviceId)
+                    put("device", ref.sourceDeviceId.value)
                     put("asset", ref.sourceAssetId.value)
                 }.toString(),
             )
@@ -803,7 +804,8 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
     "staging/seed-legacy-backlog" to needs(
         Need.Mocked(MockedSystem.DATABASES), Need.Mocked(MockedSystem.FILES),
         command = RigCommand { params, _ ->
-            val who = params["device"] ?: "DEV-LEGACY"
+            val who = DeviceId.parse(params["device"] ?: LEGACY_DEVICE)
+                ?: return@RigCommand CommandResult.badRequest("device is not a device id")
             val asset = params["asset"] ?: "LEGACY"
             val paths = seedLegacyStagedBacklog(AssetRef(who, AssetId(asset)))
             CommandResult.ok(
@@ -965,7 +967,8 @@ private suspend fun MockWorld.addForeignDevice(
             }
         }
     }
-    reach.publish(eventId, DeviceManifest(deviceId = who, assets = assets, final = final))
+    val device = requireNotNull(DeviceId.parse(who)) { "not a device id: '$who'" }
+    reach.publish(eventId, DeviceManifest(deviceId = device, assets = assets, final = final))
     return eventId
 }
 
@@ -1056,3 +1059,6 @@ private val NETWORK_ACCESSES: Map<String, NetworkAccess> = mapOf(
     "offline" to NetworkAccess.Offline,
     "blocked" to NetworkAccess.Blocked,
 )
+
+/** The device a legacy staged backlog is seeded for when the caller names none — a device id like every other. */
+private const val LEGACY_DEVICE = "1e6ac700-0000-4000-8000-000000000001"

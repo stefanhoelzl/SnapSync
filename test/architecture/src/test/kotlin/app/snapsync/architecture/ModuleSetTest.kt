@@ -134,8 +134,12 @@ class ModuleSetTest {
         // each zone declares only the edge its law permits (so `ports` cannot reach `feature`), and that
         // it declares it with `implementation()` — an `api()` edge would republish the zone to every
         // downstream consumer, dissolving the boundary the split exists to create.
+        // MIGRATING (`docs/architecture.md`, "The core and its zones"): the old zones depend on the domain layer while
+        // their types move into it — never the reverse — and phase 5 deletes them with their edges.
         val permitted = mapOf(
-            "model" to emptySet<String>(),
+            // The domain layer: values and pure policy, depending on nothing.
+            "domain" to emptySet<String>(),
+            "model" to setOf(":domain:domain"),
             // The backend API's HTTP shapes, generated from `api/openapi.yaml`: they reference nothing.
             "wire" to emptySet<String>(),
             // The inbound kinds an event port delivers through, the trigger and the structured log: nothing below them.
@@ -145,29 +149,31 @@ class ModuleSetTest {
             // The runtime runs on the process's background time and labels its threads: two ports, nothing above.
             "scheduling" to setOf(":domain:inbound", ":domain:ports"),
             // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
-            "services" to setOf(":domain:model", ":domain:ports", ":domain:inbound", ":domain:wire"),
+            "services" to setOf(":domain:model", ":domain:domain", ":domain:ports", ":domain:inbound", ":domain:wire"),
             // Features see services, never ports: with no `ports` edge a port type does not resolve in the zone. The
             // runtime for the work that outlives its caller (`outliving`) and a sequence's pass.
-            "feature" to setOf(":domain:model", ":domain:services", ":domain:scheduling"),
+            "feature" to setOf(":domain:model", ":domain:domain", ":domain:services", ":domain:scheduling"),
             // The entry points order the work of each trigger. MIGRATING: their steps still call the features and
             // services directly, until phase 4 moves the work under sequences.
             "entrypoints" to setOf(
-                ":domain:inbound", ":domain:scheduling", ":domain:model", ":domain:ports", ":domain:feature",
-                ":domain:services",
+                ":domain:inbound", ":domain:scheduling", ":domain:model", ":domain:domain", ":domain:ports",
+                ":domain:feature", ":domain:services",
             ),
             // `:ui:state` because the app's `Ui` port is bound to the screen's vocabulary in `AppPorts`.
             "compose" to setOf(
-                ":domain:model", ":domain:ports", ":domain:services", ":domain:feature", ":domain:inbound",
+                ":domain:model", ":domain:domain", ":domain:ports", ":domain:services", ":domain:feature",
+                ":domain:inbound",
                 ":domain:scheduling", ":domain:entrypoints", ":ui:state",
             ),
             // The UI-state reduction: of the zones, only the vocabulary and the features (and of the features,
             // only their `readmodel` packages — a line inside one module, held by `ReadModelImportsTest`), and the
             // screen's vocabulary it reduces into. `:ui:state` references nothing project-internal, so the edge
             // hands the core no platform.
-            "presentation" to setOf(":domain:model", ":domain:feature", ":ui:state"),
+            "presentation" to setOf(":domain:model", ":domain:domain", ":domain:feature", ":ui:state"),
             // The shared host composition: the one zone that sees both the composition zone and presentation.
             "host" to setOf(
-                ":domain:model", ":domain:ports", ":domain:feature", ":domain:compose", ":domain:presentation",
+                ":domain:model", ":domain:domain", ":domain:ports", ":domain:feature", ":domain:compose",
+                ":domain:presentation",
                 ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":ui:state",
             ),
         )
@@ -198,7 +204,7 @@ class ModuleSetTest {
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
             // The core's zones and the host (`docs/architecture.md`, "Zones inside the core").
-            ":domain:model", ":domain:wire", ":domain:ports", ":domain:services", ":domain:feature",
+            ":domain:model", ":domain:domain", ":domain:wire", ":domain:ports", ":domain:services", ":domain:feature",
             ":domain:presentation", ":domain:compose", ":domain:host",
             // The layers the core's work runs on (`docs/patterns.md`): the deliveries, the runtime, the entry points.
             ":domain:inbound", ":domain:scheduling", ":domain:entrypoints",

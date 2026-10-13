@@ -57,7 +57,7 @@ class AndroidPushTest {
             PushHandlers(
                 onToken = inboundOf { tokens += it },
                 onTokenFailure = inboundOf { failures += it },
-                onMessage = backgroundOf { message, completion -> messages += pushEventId(message.payload) to completion },
+                onMessage = backgroundOf { message, completion -> messages += pushEventId(message.payload)?.value to completion },
             ),
         )
     }
@@ -139,7 +139,7 @@ class AndroidPushTest {
     @Test
     fun `a data message hands its eventId over and returns once the core releases it`() {
         adapter()
-        val message = RemoteMessage.Builder("sender@fcm.googleapis.com").addData("eventId", "E1").build()
+        val message = RemoteMessage.Builder("sender@fcm.googleapis.com").addData("eventId", EVENT).build()
         val released = Thread {
             while (messages.isEmpty()) Thread.sleep(POLL_MILLIS)
             messages.single().second.complete()
@@ -147,7 +147,7 @@ class AndroidPushTest {
         val started = TimeSource.Monotonic.markNow()
         SnapSyncMessagingService().onMessageReceived(message)
         released.join()
-        assertEquals("E1", messages.single().first, "the payload is handed over whole; model's codec reads the event")
+        assertEquals(EVENT, messages.single().first, "the payload is handed over whole; model's codec reads the event")
         assertTrue(
             started.elapsedNow().inWholeMilliseconds < AndroidPushNotifications.MESSAGE_BUDGET_MILLIS,
             "released, not timed out",
@@ -174,3 +174,6 @@ class AndroidPushTest {
         const val FCM_BUDGET_MILLIS = 10_000L
     }
 }
+
+/** The event a push names: a canonical UUID, as the backend issues every event id. */
+private const val EVENT = "7a3f9c21-0000-4000-8000-0000000000e1"

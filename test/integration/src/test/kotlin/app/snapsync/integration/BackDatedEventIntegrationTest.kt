@@ -111,8 +111,8 @@ class BackDatedEventIntegrationTest {
         deviceJson("backend/event", "event" to event).getValue("closedAt").jsonPrimitive.contentOrNull
 
     private companion object {
-        const val GUEST = "DEV-GUEST"
-        const val OLD_BUILD = "DEV-OLD"
+        const val GUEST = "9e570000-0000-4000-8000-000000000001"
+        const val OLD_BUILD = "01db0000-0000-4000-8000-000000000001"
 
         // A weekend in May — over by the time every test's clock starts on 1 June.
         const val WEEKEND_START = "2026-05-08T18:00:00"

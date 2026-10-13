@@ -1,5 +1,11 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
+
 /**
  * The **selection policy**: what a membership contributes, as ONE value with ONE `admits` decision.
  *
@@ -185,7 +191,7 @@ suspend fun selectionRulesFor(
  */
 suspend fun selectionRulesFor(
     config: EventConfig,
-    now: CaptureDate,
+    now: Timestamp,
     suppressedAssetIds: suspend () -> Set<AssetId>,
     albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ): List<SelectionRule> = selectionRulesFor(
@@ -207,7 +213,7 @@ suspend fun selectionRulesFor(
  */
 suspend fun selectionPolicyFor(
     config: EventConfig,
-    now: CaptureDate,
+    now: Timestamp,
     suppressedAssetIds: suspend () -> Set<AssetId>,
     albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<AssetId>,
 ): SelectionPolicy =
@@ -238,7 +244,7 @@ fun noContribution(): SelectionPolicy = SelectionPolicy(listOf(SelectionRule.Den
  * origin exclusion — a received photo is recognised by the SnapSync mark in its name, not by what it is. Never a
  * contribution policy: nothing it admits is shared.
  */
-fun receivedWindow(from: CaptureDate, until: CaptureDate): SelectionPolicy = SelectionPolicy(
+fun receivedWindow(from: Timestamp, until: Timestamp): SelectionPolicy = SelectionPolicy(
     listOf(
         SelectionRule.CaptureAfter(CaptureCutoff(from)),
         SelectionRule.CaptureBefore(CaptureCeiling(until)),
@@ -287,14 +293,14 @@ sealed interface SelectionRule {
     }
 
     /**
-     * The capture-date **lower** bound: at or after [cutoff]. An asset with no `creationDate` is excluded — the one
+     * The capture-date **lower** bound: at or after [cutoff]. An [CaptureDate.Undated] asset is excluded — the one
      * place a missing fact excludes rather than admits, because an undated asset cannot be shown to be in the event
      * window.
      */
     data class CaptureAfter(val cutoff: CaptureCutoff) : SelectionRule {
-        override fun admits(facts: AssetFacts): Boolean {
-            val creationDate = facts.creationDate ?: return false
-            return creationDate >= cutoff.at
+        override fun admits(facts: AssetFacts): Boolean = when (val date = facts.captureDate) {
+            CaptureDate.Undated -> false
+            is CaptureDate.Dated -> date.at >= cutoff.at
         }
         override val deniesEverything: Boolean get() = false
     }
@@ -305,9 +311,9 @@ sealed interface SelectionRule {
      * is excluded, as by [CaptureAfter].
      */
     data class CaptureBefore(val ceiling: CaptureCeiling) : SelectionRule {
-        override fun admits(facts: AssetFacts): Boolean {
-            val creationDate = facts.creationDate ?: return false
-            return creationDate <= ceiling.at
+        override fun admits(facts: AssetFacts): Boolean = when (val date = facts.captureDate) {
+            CaptureDate.Undated -> false
+            is CaptureDate.Dated -> date.at <= ceiling.at
         }
         override val deniesEverything: Boolean get() = false
     }

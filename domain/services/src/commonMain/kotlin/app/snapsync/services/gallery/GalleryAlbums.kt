@@ -1,8 +1,8 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AlbumKind
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionCalibration
 import app.snapsync.model.WriteOutcome
 import app.snapsync.ports.GalleryRead

@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.pushEventId
 import app.snapsync.services.config.ConfigService
@@ -33,7 +34,7 @@ class PushTailGuard(
     fun joinsTail(payload: Map<Any?, *>): Boolean = pushEventId(payload)?.let { joinsTail(it) } == true
 
     /** `true` when the push for [eventId] names this device's active event, so its wake joins the tail. */
-    fun joinsTail(eventId: String): Boolean {
+    fun joinsTail(eventId: EventId): Boolean {
         val active = when (val membership = configSource.membership) {
             is MembershipRead.Member -> membership.config.eventId
             MembershipRead.NotMember -> null

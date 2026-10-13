@@ -1,5 +1,9 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -51,7 +55,7 @@ class SelectionPolicyTest {
         val policy = SelectionPolicy(
             selectionRulesFor(
                 includesUpload = true,
-                cutoff = captureCutoff("2000-01-01T00:00:00Z"),
+                cutoff = CaptureCutoff(TimestampText.parse("2000-01-01T00:00:00Z")),
                 ceiling = null,
                 suppressedAssetIds = { emptySet() },
                 albumExcludedAssetIds = { emptySet() },
@@ -66,7 +70,7 @@ class SelectionPolicyTest {
 
     @Test
     fun `two policies over the same rules are one value so a walk filtered by one is reused under the other`() {
-        val floor = SelectionRule.CaptureAfter(captureCutoff("2026-07-01T00:00:00Z"))
+        val floor = SelectionRule.CaptureAfter(CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")))
         val policy = { SelectionPolicy(listOf(floor, SelectionRule.ExcludeScreenshots)) }
 
         assertEquals(policy(), policy())
@@ -77,8 +81,8 @@ class SelectionPolicyTest {
 
     @Test
     fun `the named-bounds door derives the same rules as the membership's`() = runTest {
-        val cutoff = captureCutoff("2026-06-01T00:00:00Z")
-        val ceiling = captureCeiling("2026-06-30T00:00:00Z")
+        val cutoff = CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z"))
+        val ceiling = CaptureCeiling(TimestampText.parse("2026-06-30T00:00:00Z"))
         val named = selectionPolicyFor(
             includesUpload = true,
             cutoff = cutoff,
@@ -225,10 +229,14 @@ class SelectionPolicyTest {
 
     @Test
     fun `an undated asset is in no capture range and a resource with no stored date is undated`() {
-        val undated = AssetFacts(AssetId("U"), creationDate = null)
-        assertFalse(SelectionRule.CaptureAfter(captureCutoff("2026-01-01T00:00:00Z")).admits(undated))
-        assertFalse(SelectionRule.CaptureBefore(captureCeiling("2026-12-31T00:00:00Z")).admits(undated))
+        val undated = AssetFacts(AssetId("U"), captureDate = CaptureDate.Undated)
+        assertFalse(
+            SelectionRule.CaptureAfter(CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z"))).admits(undated),
+        )
+        assertFalse(
+            SelectionRule.CaptureBefore(CaptureCeiling(TimestampText.parse("2026-12-31T00:00:00Z"))).admits(undated),
+        )
         val resource = Resource("U-primary.jpg", AssetId("U"), "image/jpeg", emptyMap(), null)
-        assertEquals(null, factsFromResources(listOf(resource)).single().creationDate)
+        assertEquals(CaptureDate.Undated, factsFromResources(listOf(resource)).single().captureDate)
     }
 }

@@ -1,6 +1,6 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.SuppressionReadiness
 
 /**

@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.MembershipRead
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.pushEventId
@@ -40,7 +41,7 @@ class DownloadPushReceiver(
         onSilentPush(eventId, pushSeq(payload))
     }
 
-    suspend fun onSilentPush(eventId: String, announced: Long? = null) {
+    suspend fun onSilentPush(eventId: EventId, announced: Long? = null) {
         val active = when (val membership = configSource.membership) {
             is MembershipRead.Member -> membership.config.eventId
             MembershipRead.NotMember -> null

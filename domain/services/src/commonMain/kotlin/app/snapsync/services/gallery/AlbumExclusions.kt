@@ -1,7 +1,7 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCutoff
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.runCatchingCancellable

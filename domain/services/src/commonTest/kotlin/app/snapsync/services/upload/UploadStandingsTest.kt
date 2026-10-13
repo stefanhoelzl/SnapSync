@@ -12,6 +12,8 @@ import app.snapsync.services.backend.text
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.PersistedDeviceIdentity
 import app.snapsync.services.identity.identityOf
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +30,9 @@ class UploadStandingsTest {
     private fun standings(
         joined: String? = "E",
         identity: PersistedDeviceIdentity = identityOf("D"),
-    ) = UploadStandings(BackendGateway(exchangeOver(transport), ScriptedCredential("T")), { joined }, identity)
+    ) = UploadStandings(BackendGateway(exchangeOver(transport), ScriptedCredential("T")), {
+        joined?.let(::testEventId)
+    }, identity)
 
     private suspend fun answered(reply: HttpResult): ResumePoint {
         transport.answer = { reply }
@@ -40,7 +44,10 @@ class UploadStandingsTest {
         answered(ok(204))
         val asked = transport.requests.single()
         assertEquals("GET", asked.method)
-        assertEquals("/events/E/files/devices/D/A/primary/upload", asked.url.substringAfter("/api/v2"))
+        assertEquals(
+            "/events/${testEventId("E")}/files/devices/${testDeviceId("D")}/A/primary/upload",
+            asked.url.substringAfter("/api/v2"),
+        )
         assertEquals(sha, asked.headers["x-snapsync-sha256"])
     }
 

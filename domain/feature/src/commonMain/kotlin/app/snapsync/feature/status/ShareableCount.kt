@@ -1,8 +1,8 @@
 package app.snapsync.feature.status
 
-import app.snapsync.model.AssetId
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionPolicyFor

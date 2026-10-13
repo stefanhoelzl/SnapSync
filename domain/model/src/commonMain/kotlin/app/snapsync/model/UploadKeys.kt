@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 

@@ -23,6 +23,7 @@ import app.snapsync.services.trust.AttestStore
 import app.snapsync.services.trust.DeviceAttestation
 import app.snapsync.services.trust.tokenExpirySeconds
 import app.snapsync.services.version.AppVersionGate
+import app.snapsync.testids.testDeviceId
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -908,9 +909,13 @@ class DeviceAttestationTest {
     }
 }
 
-/** The app's device identity resolving to [id]: minted as the platform's id over an empty secure store. */
+/** The app's device identity resolving to the fixture device [id] stands for: minted over an empty secure store. */
 private fun identityOf(id: String) =
-    PersistedDeviceIdentity(DeviceIdentityRole.MINTING, inMemorySecureStore(), PlatformDeviceId { id })
+    PersistedDeviceIdentity(
+        DeviceIdentityRole.MINTING,
+        inMemorySecureStore(),
+        PlatformDeviceId { testDeviceId(id).value },
+    )
 
 /** A device identity behind a locked secure store. */
 private fun unreadableIdentity() =

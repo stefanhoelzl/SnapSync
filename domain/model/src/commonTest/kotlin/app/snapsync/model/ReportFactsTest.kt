@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.testids.testDeviceId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -17,7 +19,10 @@ class ReportFactsTest {
 
     @Test
     fun `a resolved id is known and every reason there is none is failed`() {
-        assertEquals(Fact.Known("ID-1"), DeviceIdResult.Id("ID-1", DeviceIdResult.Via.READ).asFact())
+        assertEquals(
+            Fact.Known(testDeviceId("ID-1").value),
+            DeviceIdResult.Id(testDeviceId("ID-1"), DeviceIdResult.Via.READ).asFact(),
+        )
         assertEquals(
             Fact.Failed("the secure store could not be read: locked"),
             DeviceIdResult.Unavailable("locked").asFact(),

@@ -45,7 +45,7 @@ class EntryIntegrationTest {
     @Test
     fun foreground_builds_the_screen_reconciles_then_runs_the_tail_and_re_arms() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         device("relaunch", "scene" to "false")
         val before = osRecord()
         assertFalse(before.screenShown, "precondition: a background launch builds no screen")
@@ -81,7 +81,7 @@ class EntryIntegrationTest {
     @Test
     fun background_arms_nothing_and_builds_no_screen() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         device("relaunch", "scene" to "false")
         val armed = osRecord().heartbeatsScheduled
 
@@ -135,7 +135,7 @@ class EntryIntegrationTest {
     @Verifies(spec = "app-experience", requirement = "Background wakes do their work without showing anything")
     fun a_silent_push_releases_after_its_own_work_then_runs_the_tail_and_builds_no_screen() = rigTest {
         val event = createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         device("relaunch", "scene" to "false")
 
         val atRelease = osAtRelease(os("app", "onSilentPush", event))
@@ -153,7 +153,7 @@ class EntryIntegrationTest {
         // A cold background launch first, so the join's own reconcile — still running in the process it ends — cannot
         // start the foreign photo's transfer; the push below is the only thing the new process is asked to do.
         device("relaunch", "scene" to "false")
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         val armed = osRecord().heartbeatsScheduled
 
         val atRelease = osAtRelease(os("app", "onSilentPush", OTHER_EVENT))
@@ -169,7 +169,7 @@ class EntryIntegrationTest {
         // A cold background launch first, so the join's own reconcile — still running in the process it ends — cannot
         // start the foreign photo's transfer; the push below is the only thing the new process is asked to do.
         device("relaunch", "scene" to "false")
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
 
         val atRelease = osAtRelease(os("app", "onSilentPush"))
 
@@ -180,7 +180,7 @@ class EntryIntegrationTest {
     @Test
     fun the_operating_systems_expiry_ends_every_hold_at_once_without_awaiting_the_work_in_flight() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         reconcile()
         awaitDownloadQueued()
         device("import/suspend-next")

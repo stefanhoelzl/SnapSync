@@ -1,21 +1,23 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.feature.support.ConfigWrites
 import app.snapsync.mock.fixedClock
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
 import app.snapsync.model.EventLookup
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
 import app.snapsync.services.backend.EventDirectory
 import app.snapsync.services.config.ConfigService
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -31,20 +33,20 @@ private class Membership(private val initial: EventConfig?) {
     private val writes = ConfigWrites()
     private var built: ConfigService? = null
 
-    fun service(now: CaptureDate): ConfigService =
-        built ?: writes.service(initial, fixedClock(Instant.parse(now.iso))).also { built = it }
+    fun service(now: Timestamp): ConfigService =
+        built ?: writes.service(initial, fixedClock(Instant.parse(TimestampText.format(now)))).also { built = it }
 
     val saved: EventConfig? get() = writes.saved
     val config: StateFlow<EventConfig?> get() = checkNotNull(built) { "no refresh ran" }.config
 }
 
-private val STARTS = eventStart("2026-07-06T14:32:11Z")
-private val CUTOFF = captureCutoff("2026-07-06T14:32:11Z")
-private val ENDS = eventEnd("2026-07-13T14:32:11Z")
-private val CEILING = captureCeiling("2026-07-13T14:32:11Z")
-private val DELETES = deletesAt("2026-08-05T14:32:11Z") // the event's retention deadline
-private val BEFORE_DEADLINE = CaptureDate.parse("2026-07-20T00:00:00Z")
-private val AFTER_DEADLINE = CaptureDate.parse("2026-08-06T00:00:00Z")
+private val STARTS = EventStart(TimestampText.parse("2026-07-06T14:32:11Z"))
+private val CUTOFF = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z"))
+private val ENDS = EventEnd(TimestampText.parse("2026-07-13T14:32:11Z"))
+private val CEILING = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z"))
+private val DELETES = DeletesAt(TimestampText.parse("2026-08-05T14:32:11Z")) // the event's retention deadline
+private val BEFORE_DEADLINE = TimestampText.parse("2026-07-20T00:00:00Z")
+private val AFTER_DEADLINE = TimestampText.parse("2026-08-06T00:00:00Z")
 
 class MembershipRefreshTest {
 
@@ -53,7 +55,7 @@ class MembershipRefreshTest {
     // The name is a STALE one, never empty: a membership always carries a name (capability `join-event`),
     // so convergence is what this fixture exercises.
     private val joined = EventConfig(
-        eventId = "E",
+        eventId = testEventId("E"),
         name = "Anna's Bithday",
         minPhotoDate = CUTOFF,
         startsAt = STARTS,
@@ -69,13 +71,13 @@ class MembershipRefreshTest {
     private var stopped = 0
 
     /** The rule under test, with "now" pinned. Defaults BEFORE the deadline (the disbelieving side). */
-    private fun refresh(config: Membership, now: CaptureDate = BEFORE_DEADLINE) =
+    private fun refresh(config: Membership, now: Timestamp = BEFORE_DEADLINE) =
         MembershipRefresh(configSource = config.service(now), stopTransfers = { stopped++ })
 
     @Test
     fun `stores a changed name as the whole config with the cutoff preserved`() = runTest {
         val config = Membership(joined)
-        refresh(config).refresh("E", found("Anna's Birthday"))
+        refresh(config).refresh(testEventId("E"), found("Anna's Birthday"))
         // The WHOLE config is saved with only `name` replaced — the cutoff (and every other
         // membership field) rides along untouched (capability `photo-sharing`).
         assertEquals(joined.copy(name = "Anna's Birthday"), config.saved)
@@ -92,14 +94,14 @@ class MembershipRefreshTest {
         val rule = refresh(config)
         rule.refreshJoined(null, directory)
         assertEquals(0, fetches, "not joined: nothing to ask")
-        rule.refreshJoined("E", directory)
+        rule.refreshJoined(testEventId("E"), directory)
         assertEquals(joined.copy(name = "Anna's Birthday"), config.saved)
     }
 
     @Test
     fun `an unchanged name saves nothing`() = runTest {
         val config = Membership(joined.copy(name = "Anna's Birthday"))
-        refresh(config).refresh("E", found("Anna's Birthday"))
+        refresh(config).refresh(testEventId("E"), found("Anna's Birthday"))
         assertNull(config.saved)
     }
 
@@ -107,14 +109,14 @@ class MembershipRefreshTest {
     fun `a fetch resolving for a different event saves nothing`() = runTest {
         // A stale fetch landing after a switch must not resurrect the departed membership's name.
         val config = Membership(joined)
-        refresh(config).refresh("OTHER", found("Someone Else's Party"))
+        refresh(config).refresh(testEventId("OTHER"), found("Someone Else's Party"))
         assertNull(config.saved)
     }
 
     @Test
     fun `no membership saves nothing`() = runTest {
         val config = Membership(null)
-        refresh(config).refresh("E", found("Anna's Birthday"))
+        refresh(config).refresh(testEventId("E"), found("Anna's Birthday"))
         assertNull(config.saved)
     }
 
@@ -123,7 +125,7 @@ class MembershipRefreshTest {
         // "Could not tell" — offline, transport, non-404 status, unparseable body — all arrive as Failed
         // and must change nothing at all.
         val config = Membership(joined)
-        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(config).refresh("E", JoinLoad.Failed))
+        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(config).refresh(testEventId("E"), JoinLoad.Failed))
         assertNull(config.saved)
     }
 
@@ -131,7 +133,7 @@ class MembershipRefreshTest {
     fun `a wrong-link answer is inconclusive and stores nothing`() = runTest {
         // A refresh reads without a link, so a key verdict says nothing about whether the event is still there.
         val config = Membership(joined)
-        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(config).refresh("E", JoinLoad.WrongLink))
+        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(config).refresh(testEventId("E"), JoinLoad.WrongLink))
         assertNull(config.saved)
         assertEquals(joined, config.config.value)
     }
@@ -147,7 +149,7 @@ class MembershipRefreshTest {
         val config = Membership(joined)
         assertEquals(
             RefreshOutcome.ABSENT,
-            refresh(config, now = AFTER_DEADLINE).refresh("E", JoinLoad.NotFound),
+            refresh(config, now = AFTER_DEADLINE).refresh(testEventId("E"), JoinLoad.NotFound),
         )
         assertEquals(joined.copy(deleted = true), config.config.value, "the app never leaves an event on its own")
         assertEquals(1, stopped, "every transfer for the event stops")
@@ -160,7 +162,7 @@ class MembershipRefreshTest {
         val config = Membership(joined)
         assertEquals(
             RefreshOutcome.INCONCLUSIVE,
-            refresh(config, now = BEFORE_DEADLINE).refresh("E", JoinLoad.NotFound),
+            refresh(config, now = BEFORE_DEADLINE).refresh(testEventId("E"), JoinLoad.NotFound),
         )
         assertEquals(joined, config.config.value) // membership completely intact
         assertEquals(0, stopped)
@@ -172,7 +174,7 @@ class MembershipRefreshTest {
         val config = Membership(joined)
         assertEquals(
             RefreshOutcome.INCONCLUSIVE,
-            refresh(config, now = AFTER_DEADLINE).refresh("E", JoinLoad.Failed),
+            refresh(config, now = AFTER_DEADLINE).refresh(testEventId("E"), JoinLoad.Failed),
         )
     }
 
@@ -183,7 +185,7 @@ class MembershipRefreshTest {
         val config = Membership(joined)
         assertEquals(
             RefreshOutcome.INCONCLUSIVE,
-            refresh(config, now = AFTER_DEADLINE).refresh("OTHER", JoinLoad.NotFound),
+            refresh(config, now = AFTER_DEADLINE).refresh(testEventId("OTHER"), JoinLoad.NotFound),
         )
     }
 
@@ -192,7 +194,7 @@ class MembershipRefreshTest {
         val config = Membership(null)
         assertEquals(
             RefreshOutcome.INCONCLUSIVE,
-            refresh(config, now = AFTER_DEADLINE).refresh("E", JoinLoad.NotFound),
+            refresh(config, now = AFTER_DEADLINE).refresh(testEventId("E"), JoinLoad.NotFound),
         )
     }
 
@@ -202,7 +204,7 @@ class MembershipRefreshTest {
     fun `a COMPLETED event is marked deleted before its deadline and kept`() = runTest {
         val config = Membership(joined)
         val completed = JoinLoad.Found(joined.name, STARTS, ENDS, DELETES, EventCompletionState(completed = true))
-        assertEquals(RefreshOutcome.COMPLETED, refresh(config).refresh("E", completed))
+        assertEquals(RefreshOutcome.COMPLETED, refresh(config).refresh(testEventId("E"), completed))
         assertEquals(joined.copy(deleted = true), config.config.value)
         assertEquals(1, stopped)
     }
@@ -211,7 +213,7 @@ class MembershipRefreshTest {
     fun `a deletion already marked is marked once`() = runTest {
         val config = Membership(joined.copy(deleted = true))
         val completed = JoinLoad.Found(joined.name, STARTS, ENDS, DELETES, EventCompletionState(completed = true))
-        assertEquals(RefreshOutcome.COMPLETED, refresh(config).refresh("E", completed))
+        assertEquals(RefreshOutcome.COMPLETED, refresh(config).refresh(testEventId("E"), completed))
         assertNull(config.saved)
         assertEquals(0, stopped)
     }
@@ -225,22 +227,30 @@ class MembershipRefreshTest {
             ENDS,
             DELETES,
             EventCompletionState(completed = false, members = MemberCounts(active = 4, settled = 2, waiting = 1)),
-            openUntil = eventEnd("2026-07-20T00:00:00Z"),
+            openUntil = OpenUntil(TimestampText.parse("2026-07-20T00:00:00Z")),
         )
-        assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh("E", served))
+        assertEquals(RefreshOutcome.REFRESHED, refresh(config).refresh(testEventId("E"), served))
         assertEquals(
-            joined.copy(members = MemberCounts(4, 2, 1), openUntil = eventEnd("2026-07-20T00:00:00Z")),
+            joined.copy(
+                members = MemberCounts(4, 2, 1),
+                openUntil = OpenUntil(TimestampText.parse("2026-07-20T00:00:00Z")),
+            ),
             config.saved,
         )
     }
 
     @Test
     fun `an answer without an open-until date keeps the one known`() = runTest {
-        val known = joined.copy(openUntil = eventEnd("2026-07-20T00:00:00Z"))
+        val known = joined.copy(openUntil = OpenUntil(TimestampText.parse("2026-07-20T00:00:00Z")))
         val config = Membership(known)
-        refresh(config).refresh("E", found(joined.name))
+        refresh(config).refresh(testEventId("E"), found(joined.name))
         assertNull(config.saved)
-        refresh(config).refresh("E", found(joined.name).copy(openUntil = eventEnd("2026-07-20T00:00:00Z")))
+        refresh(
+            config,
+        ).refresh(
+            testEventId("E"),
+            found(joined.name).copy(openUntil = OpenUntil(TimestampText.parse("2026-07-20T00:00:00Z"))),
+        )
         assertNull(config.saved, "an unchanged one saves nothing either")
     }
 
@@ -249,7 +259,7 @@ class MembershipRefreshTest {
         val counted = joined.copy(members = MemberCounts(3, 1))
         val config = Membership(counted)
         refresh(config).refresh(
-            "E",
+            testEventId("E"),
             JoinLoad.Found(counted.name, STARTS, ENDS, DELETES, EventCompletionState(false, MemberCounts(3, 1))),
         )
         assertNull(config.saved)

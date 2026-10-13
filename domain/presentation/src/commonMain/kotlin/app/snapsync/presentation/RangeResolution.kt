@@ -1,8 +1,8 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.ui.state.RangeChoice
@@ -20,7 +20,7 @@ internal fun RangeForm.resolve(
     windowEnd: LocalDateTime,
     nowLocal: LocalDateTime,
     nowAvailable: Boolean,
-    toCutoff: (LocalDateTime) -> CaptureDate,
+    toCutoff: (LocalDateTime) -> Timestamp,
     shareCount: ShareCount = ShareCount.Counting,
 ): ResolvedRange {
     val until = resolveUntil(preset, customUntil, windowStart, windowEnd)
@@ -91,7 +91,7 @@ internal fun directionOf(shareOn: Boolean, receiveOn: Boolean): Direction = when
  * Compared as instants. An absent start means the window is not known yet, which is not the same as "now qualifies"; an absent end
  * means no upper bound, which is.
  */
-internal fun nowWithinWindow(now: CaptureDate, startsAt: CaptureDate?, endsAt: CaptureDate?): Boolean =
+internal fun nowWithinWindow(now: Timestamp, startsAt: Timestamp?, endsAt: Timestamp?): Boolean =
     startsAt != null && now >= startsAt && (endsAt == null || now <= endsAt)
 
 /**
@@ -102,7 +102,7 @@ internal fun nowWithinWindow(now: CaptureDate, startsAt: CaptureDate?, endsAt: C
  * "From now" pick is unrecoverable, and is just a custom start once "now" has moved on
  * (decision record `simplify-join-screen`, D1).
  */
-internal fun reconfigureForm(membership: EventConfig, toLocal: (CaptureDate) -> LocalDateTime): RangeForm {
+internal fun reconfigureForm(membership: EventConfig, toLocal: (Timestamp) -> LocalDateTime): RangeForm {
     val fromAtFloor = membership.minPhotoDate.at == membership.startsAt.at
     val untilAtCeiling = membership.maxPhotoDate.at == membership.endsAt.at
     val whole = fromAtFloor && untilAtCeiling

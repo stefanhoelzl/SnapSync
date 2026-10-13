@@ -1,5 +1,6 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -51,10 +52,10 @@ enum class WalkMemoUse {
  * what a fresh walk over the same unchanged library, under the same policy and grant, returns.
  *
  * In memory only: nothing persists it, and a new process walks afresh. **The upload extension never holds one**
- * (its 32 MB limit, and nothing held across `process()` calls); it is composed in
- * the app process's discovery binding only, by `appUploadDiscovery`.
+ * (its 32 MB limit, and nothing held across `process()` calls): the constructor is [AppProcessOnly], and the app
+ * process's discovery binding, `appUploadDiscovery`, is where it is built.
  */
-class WalkMemo(
+class WalkMemo @AppProcessOnly constructor(
     private val walk: UploadDiscovery,
     private val changeToken: LibraryChangeTokenRead,
     private val grant: GalleryReader,

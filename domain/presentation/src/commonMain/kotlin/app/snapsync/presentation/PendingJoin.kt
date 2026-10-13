@@ -1,8 +1,10 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.DeletesAt
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.ScreenMessage
 
@@ -17,7 +19,7 @@ import app.snapsync.ui.state.ScreenMessage
  * [JoinProgress].
  */
 data class PendingJoin(
-    val eventId: String,
+    val eventId: EventId,
     val phase: JoinProgress,
     /** The key the invite link carried, `null` when it carried none — committed with the join, shown nowhere. */
     val linkKey: String? = null,
@@ -94,5 +96,5 @@ data class EventDetails(
     /** How many members the event had when its details were read — the join screen shows it; `null` if not served. */
     val members: Int? = null,
     /** The day guests may join until, as served; the commit persists it so the joined screen shows it at once. */
-    val openUntil: EventEnd? = null,
+    val openUntil: OpenUntil? = null,
 )

@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.model.RenameOutcome
@@ -51,7 +52,7 @@ class RenameEvent(
     // Suspending, and holding no scope: the composition launches this (law "Dispatcher lanes are
     // fixed by the composition"), so the tap's `Logger.invocation` spans the real rename rather than
     // the hand-off. Still fire-and-forget to the screen — the launch is the caller's, not this class's.
-    suspend fun rename(eventId: String, name: String) {
+    suspend fun rename(eventId: EventId, name: String) {
         // One rename at a time, checked before the first suspension — as `CreateEvent` does, for the same reason.
         if (status.value == RenameStatus.InFlight) {
             log.i { "rename ignored: one is already in flight" }
@@ -91,7 +92,7 @@ class RenameEvent(
      * a departed one. An unchanged name saves nothing — the backend may echo exactly what we already hold
      * (a rename to the value the trim produces), and a needless write would wake every config observer.
      */
-    private suspend fun persist(eventId: String, name: String) {
+    private suspend fun persist(eventId: EventId, name: String) {
         val current = configSource.config.value
         if (current == null) {
             log.i { "rename landed with no configured event — nothing to persist" }

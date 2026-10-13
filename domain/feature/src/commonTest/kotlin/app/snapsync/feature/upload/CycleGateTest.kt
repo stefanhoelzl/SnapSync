@@ -1,15 +1,17 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.SuppressionReadiness
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UploaderPin
-import app.snapsync.model.captureCutoff
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.selectionScope
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,7 +32,7 @@ class CycleGateTest {
 
     private val host = "https://edge.example"
     private val eventId = "event-1"
-    private val cutoff = captureCutoff("2026-07-01T00:00:00Z")
+    private val cutoff = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z"))
 
     // The membership carries a SUPPLIER, not a built policy: the one derivation reads two ports and this
     // gate's translation must stay port-pure (capability `background-upload`). These fixtures never invoke
@@ -61,7 +63,12 @@ class CycleGateTest {
         eventId: String = this.eventId,
         policy: suspend () -> SelectionPolicy = admitting,
         saveToAlbum: Boolean = false,
-    ) = JoinedMembership(eventId = eventId, policy = policy, saveToAlbum = saveToAlbum, manifestVersion = 0L)
+    ) = JoinedMembership(
+        eventId = testEventId(eventId),
+        policy = policy,
+        saveToAlbum = saveToAlbum,
+        manifestVersion = 0L,
+    )
 
     // THE regression. A locked device cannot read the Keychain; that must not clear the join marker.
     @Test
@@ -143,7 +150,7 @@ class CycleGateTest {
         )
 
         assertIs<CycleGate.Run>(gate)
-        assertEquals(eventId, gate.config.eventId)
+        assertEquals(testEventId(eventId), gate.config.eventId)
         assertEquals(host, gate.config.host)
         // The cycle's selection inputs arrive WITH the decision — there is no second read, and nothing
         // downstream has to invent a cutoff for a membership that may not exist.
@@ -177,14 +184,6 @@ class CycleGateTest {
         assertEquals(CycleGate.NotJoined, gate(configReadable = true, membership = joined(), host = ""))
     }
 
-    @Test
-    fun `an empty event id is NotJoined`() {
-        assertEquals(
-            CycleGate.NotJoined,
-            gate(configReadable = true, membership = joined(eventId = ""), host = host),
-        )
-    }
-
     // ---- admission (capability `background-upload`, "The upload cycle owns its entry decision") ----------
 
     @Test
@@ -192,7 +191,7 @@ class CycleGateTest {
         val gate = gate(configReadable = true, membership = joined(), host = host, admission = UploadAdmission.Withheld)
 
         assertIs<CycleGate.Withheld>(gate)
-        assertEquals(eventId, gate.config.eventId)
+        assertEquals(testEventId(eventId), gate.config.eventId)
         assertEquals(host, gate.config.host)
     }
 
@@ -272,7 +271,10 @@ class CycleGateTest {
 
     // ---- the suppression step: after admission, before anything is touched ------------------------------------
 
-    private val run = CycleGate.Run(UploadConfig(host, eventId), JoinedMembership(eventId, admitting, false, 0L))
+    private val run = CycleGate.Run(
+        UploadConfig(host, testEventId(eventId)),
+        JoinedMembership(testEventId(eventId), admitting, false, 0L),
+    )
 
     @Test
     fun `a ready suppression read runs the cycle`() {

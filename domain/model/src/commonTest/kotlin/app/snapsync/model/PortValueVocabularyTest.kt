@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertSame
 
@@ -14,7 +15,7 @@ class PortValueVocabularyTest {
     fun `a create outcome is one of five distinct answers the created one compared by its event`() {
         assertEveryCaseDistinct(
             listOf(
-                CreateOutcome.Created("event", "Picnic"),
+                CreateOutcome.Created(testEventId("event"), "Picnic"),
                 CreateOutcome.InvalidName,
                 CreateOutcome.InvalidWindow,
                 CreateOutcome.Unverified,
@@ -29,7 +30,10 @@ class PortValueVocabularyTest {
                 CreateOutcome.Transient -> "Transient"
             }
         }
-        assertValueEquality({ CreateOutcome.Created("event", "Picnic") }, CreateOutcome.Created("event"))
+        assertValueEquality(
+            { CreateOutcome.Created(testEventId("event"), "Picnic") },
+            CreateOutcome.Created(testEventId("event")),
+        )
     }
 
     @Test

@@ -25,6 +25,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:model"))
+            implementation(project(":domain:domain"))
             implementation(project(":domain:ports"))
             // How work enters: the structured log's lines, which the process's writers render onto its sinks.
             implementation(project(":domain:inbound"))

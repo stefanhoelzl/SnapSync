@@ -1,8 +1,8 @@
 package app.snapsync.services.downloads
 
 import app.snapsync.contracts.at
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.SuppressionReadiness
@@ -10,6 +10,8 @@ import app.snapsync.ports.DbOpen
 import app.snapsync.services.databases.DatabaseUnavailable
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.downloads.db.DownloadDatabase
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,7 +27,7 @@ import kotlin.test.assertTrue
  */
 class SuppressionOverDownloadStoreTest {
 
-    private val ref = AssetRef(sourceDeviceId = "device-b", sourceAssetId = AssetId("asset-9"))
+    private val ref = AssetRef(sourceDeviceId = testDeviceId("device-b"), sourceAssetId = AssetId("asset-9"))
     private val resource =
         PlannedResource("photo-9.heic", "https://example.invalid/9", "photo", "image/heic", "photo-9.heic")
 
@@ -47,13 +49,13 @@ class SuppressionOverDownloadStoreTest {
     fun `the extension sees the recognition the app recorded - and none without a store`() = runTest {
         val databases = inMemoryDatabases()
         val extension = SuppressionService(databases)
-        assertFalse(extension.isRecognised("E1"), "no store: the app recognised nothing on this device")
+        assertFalse(extension.isRecognised(testEventId("E1")), "no store: the app recognised nothing on this device")
 
         val app = DownloadService(databases)
-        app.recognition.mark("E1")
+        app.recognition.mark(testEventId("E1"))
 
-        assertTrue(extension.isRecognised("E1"))
-        assertFalse(extension.isRecognised("E2"))
+        assertTrue(extension.isRecognised(testEventId("E1")))
+        assertFalse(extension.isRecognised(testEventId("E2")))
     }
 
     @Test
@@ -81,11 +83,11 @@ class SuppressionOverDownloadStoreTest {
         val (old, _) = databaseAt(DOWNLOADS_DB_NAME, DownloadDatabase.Schema.at(6))
         assertFailsWith<DatabaseUnavailable>(
             "an older schema is no answer",
-        ) { SuppressionService(old).isRecognised("E1") }
+        ) { SuppressionService(old).isRecognised(testEventId("E1")) }
 
         val locked = inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("locked")))
         assertFailsWith<DatabaseUnavailable>("nor is a store that will not open") {
-            SuppressionService(locked).isRecognised("E1")
+            SuppressionService(locked).isRecognised(testEventId("E1"))
         }
     }
 }

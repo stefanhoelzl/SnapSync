@@ -1,5 +1,8 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.CaptureDate
+
 /**
  * One asset as **neutral facts** — the only thing the selection policy decides on.
  *
@@ -32,8 +35,8 @@ class AssetFacts(
      * both rules admit everything on device) no longer compiles.
      */
     val assetId: AssetId,
-    /** When it was captured, or `null` when the platform holds no capture date — which no event window holds. */
-    val creationDate: CaptureDate?,
+    /** When it was captured — or [CaptureDate.Undated] when the platform holds no capture date, which no range holds. */
+    val captureDate: CaptureDate,
     val isScreenshot: Boolean = false,
     val isScreenRecording: Boolean = false,
     val isVideo: Boolean = false,
@@ -72,7 +75,7 @@ fun factsFromResources(resources: List<Resource>): List<AssetFacts> =
         val meta = group.first().metadata
         AssetFacts(
             assetId = assetId,
-            creationDate = CaptureDate.parseOrNull(meta[RESOURCE_META_CREATION_DATE].orEmpty()),
+            captureDate = TimestampText.captureDate(meta[RESOURCE_META_CREATION_DATE].orEmpty()),
             isScreenshot = meta[RESOURCE_META_IS_SCREENSHOT]?.toBooleanStrictOrNull() == true,
             isScreenRecording = meta[RESOURCE_META_IS_SCREEN_RECORDING]?.toBooleanStrictOrNull() == true,
             isVideo = meta[RESOURCE_META_IS_VIDEO]?.toBooleanStrictOrNull() == true,

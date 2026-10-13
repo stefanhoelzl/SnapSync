@@ -1,20 +1,21 @@
 package app.snapsync.services.config
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigRead
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.MembershipRead
-import app.snapsync.model.deletesAt
+import app.snapsync.model.TimestampText
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.databases.sharedOver
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,7 +70,7 @@ class ConfigServiceTest {
     @Test
     fun `every field of a membership survives the row`() = runTest {
         val full = SEED.copy(
-            startsAt = EventStart(CaptureDate.parse("2026-06-11T00:00:00Z")),
+            startsAt = EventStart(TimestampText.parse("2026-06-11T00:00:00Z")),
             direction = Direction.UploadOnly,
             saveToAlbum = true,
             closed = true,
@@ -190,7 +191,7 @@ class ConfigServiceTest {
         service().save(SEED) // another process joins
         assertEquals(SEED, app.joinedOrRead(), "the row's, before this process re-read it")
 
-        val held = SEED.copy(eventId = "E-held")
+        val held = SEED.copy(eventId = testEventId("E-held"))
         app.save(held)
         databases.operator.lock()
         assertEquals(held, app.joinedOrRead(), "the held one, without asking the database")
@@ -201,15 +202,21 @@ class ConfigServiceTest {
     @Test
     fun `a membership is past its deletion only once its own deadline has passed`() {
         val service = service()
-        assertTrue(service.isPastDeletion(deletesAt("2026-06-01T00:00:00Z")), "the deadline is behind the clock")
-        assertFalse(service.isPastDeletion(deletesAt("2026-07-01T00:00:00Z")), "the deadline is ahead of the clock")
+        assertTrue(
+            service.isPastDeletion(DeletesAt(TimestampText.parse("2026-06-01T00:00:00Z"))),
+            "the deadline is behind the clock",
+        )
+        assertFalse(
+            service.isPastDeletion(DeletesAt(TimestampText.parse("2026-07-01T00:00:00Z"))),
+            "the deadline is ahead of the clock",
+        )
     }
 
     @Test
     fun `an event has ended only once its end is behind the clock`() {
         val service = service()
-        assertTrue(service.hasEnded(SEED.copy(endsAt = EventEnd(CaptureDate.parse("2026-06-01T00:00:00Z")))))
-        assertFalse(service.hasEnded(SEED.copy(endsAt = EventEnd(CaptureDate.parse("2026-07-01T00:00:00Z")))))
+        assertTrue(service.hasEnded(SEED.copy(endsAt = EventEnd(TimestampText.parse("2026-06-01T00:00:00Z")))))
+        assertFalse(service.hasEnded(SEED.copy(endsAt = EventEnd(TimestampText.parse("2026-07-01T00:00:00Z")))))
     }
 
     // ---- the reads the composition takes ---------------------------------------------------------------------
@@ -237,7 +244,7 @@ class ConfigServiceTest {
     @Test
     fun `a fresh read says whether the membership's own range has ended`() {
         // Capability `event-lifetime`: a share is settled at the member's own end, not the event's.
-        val june1 = CaptureDate.parse("2026-06-01T00:00:00Z")
+        val june1 = TimestampText.parse("2026-06-01T00:00:00Z")
         assertFalse(joined(SEED).freshReadShareHasEnded())
         assertTrue(joined(SEED.copy(maxPhotoDate = CaptureCeiling(june1))).freshReadShareHasEnded(), "ended early")
         assertFalse(
@@ -248,7 +255,7 @@ class ConfigServiceTest {
 
     @Test
     fun `an unreadable config has not ended`() {
-        stored(SEED.copy(maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-06-01T00:00:00Z"))))
+        stored(SEED.copy(maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-06-01T00:00:00Z"))))
         databases.operator.lock()
         assertFalse(service().freshReadShareHasEnded())
     }
@@ -258,12 +265,12 @@ class ConfigServiceTest {
 private val NOW: Instant = Instant.parse("2026-06-15T12:00:00Z")
 
 private fun config(eventId: String) = EventConfig(
-    eventId = eventId,
+    eventId = testEventId(eventId),
     name = "Event $eventId",
-    minPhotoDate = CaptureCutoff(CaptureDate.parse("2026-06-10T00:00:00Z")),
-    maxPhotoDate = CaptureCeiling(CaptureDate.parse("2026-06-20T00:00:00Z")),
-    endsAt = EventEnd(CaptureDate.parse("2026-06-20T00:00:00Z")),
-    deletesAt = deletesAt("2026-07-20T00:00:00Z"),
+    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-06-10T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-06-20T00:00:00Z")),
+    endsAt = EventEnd(TimestampText.parse("2026-06-20T00:00:00Z")),
+    deletesAt = DeletesAt(TimestampText.parse("2026-07-20T00:00:00Z")),
 )
 
 private val SEED = config("seeded")

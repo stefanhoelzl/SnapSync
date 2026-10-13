@@ -27,7 +27,7 @@ class DownloadLeaveIntegrationTest {
     )
     fun a_rejected_transfer_imports_nothing_and_stays_pending_for_the_next_reconcile() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         val before = libraryTotal()
         reconcile()
 
@@ -49,7 +49,7 @@ class DownloadLeaveIntegrationTest {
     fun an_imported_photo_outlives_a_leave_and_a_rejoin_never_sends_it_back() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         downloadAll()
         val imported = libraryTotal()
 
@@ -76,7 +76,7 @@ class DownloadLeaveIntegrationTest {
         val event = createAndJoin()
         addPhoto("A")
         uploadAll()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
 
         leave()
 

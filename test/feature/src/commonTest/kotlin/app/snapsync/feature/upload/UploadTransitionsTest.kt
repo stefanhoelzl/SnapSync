@@ -1,20 +1,22 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
+import app.snapsync.model.TimestampText
 import app.snapsync.model.UploaderPin
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.upload.ExtensionRegistration
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -311,12 +313,12 @@ class UploadTransitionsTest {
  */
 private fun membership(joined: Boolean, unreadable: Boolean): ConfigService = configService(
     initial = EventConfig(
+        testEventId("E"),
         "E",
-        "E",
-        captureCutoff("2026-01-01T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
-        endsAt = eventEnd("2099-12-31T00:00:00Z"),
-        deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+        CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
         .takeIf { joined },
     store = SharedStore().apply { if (unreadable) membershipUnreadable() },

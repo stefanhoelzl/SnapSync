@@ -1,5 +1,10 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,12 +33,12 @@ class ModelFactsTest {
     @Test
     fun `a membership is encrypted by its key`() {
         val membership = EventConfig(
-            eventId = "e",
+            eventId = testEventId("e"),
             name = "Picnic",
-            minPhotoDate = captureCutoff("2026-07-06T00:00:00Z"),
-            endsAt = eventEnd("2026-07-07T00:00:00Z"),
-            maxPhotoDate = captureCeiling("2026-07-07T00:00:00Z"),
-            deletesAt = deletesAt("2026-08-05T00:00:00Z"),
+            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
+            endsAt = EventEnd(TimestampText.parse("2026-07-07T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-07T00:00:00Z")),
+            deletesAt = DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
         )
 
         assertFalse(membership.encrypted)

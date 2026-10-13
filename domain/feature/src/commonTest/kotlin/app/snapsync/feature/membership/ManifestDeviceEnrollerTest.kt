@@ -1,7 +1,11 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.JoinResult
 import app.snapsync.services.backend.EventJoin
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,8 +23,8 @@ import kotlin.test.assertEquals
 class ManifestDeviceEnrollerTest {
 
     private class CapturingJoin(private val result: JoinResult = JoinResult.JOINED) : EventJoin {
-        val calls = mutableListOf<Pair<String, String>>()
-        override suspend fun join(eventId: String, deviceId: String): JoinResult {
+        val calls = mutableListOf<Pair<EventId, DeviceId>>()
+        override suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult {
             calls += eventId to deviceId
             return result
         }
@@ -30,9 +34,9 @@ class ManifestDeviceEnrollerTest {
     fun enrolling_issues_one_join_for_the_event_and_device() = runTest {
         val join = CapturingJoin()
 
-        assertEquals(JoinResult.JOINED, ManifestDeviceEnroller(join).enroll("E", "dev"))
+        assertEquals(JoinResult.JOINED, ManifestDeviceEnroller(join).enroll(testEventId("E"), testDeviceId("dev")))
 
-        assertEquals(listOf("E" to "dev"), join.calls)
+        assertEquals(listOf(testEventId("E") to testDeviceId("dev")), join.calls)
     }
 
     @Test
@@ -41,7 +45,9 @@ class ManifestDeviceEnrollerTest {
         // the user can act on, and a transport failure is not (capability `join-event`).
         assertEquals(
             JoinResult.EVENT_CLOSED,
-            ManifestDeviceEnroller(CapturingJoin(JoinResult.EVENT_CLOSED)).enroll("E", "dev"),
+            ManifestDeviceEnroller(
+                CapturingJoin(JoinResult.EVENT_CLOSED),
+            ).enroll(testEventId("E"), testDeviceId("dev")),
         )
     }
 
@@ -49,7 +55,9 @@ class ManifestDeviceEnrollerTest {
     fun an_absent_event_does_not_enrol() = runTest {
         assertEquals(
             JoinResult.EVENT_NOT_FOUND,
-            ManifestDeviceEnroller(CapturingJoin(JoinResult.EVENT_NOT_FOUND)).enroll("E", "dev"),
+            ManifestDeviceEnroller(
+                CapturingJoin(JoinResult.EVENT_NOT_FOUND),
+            ).enroll(testEventId("E"), testDeviceId("dev")),
         )
     }
 
@@ -58,7 +66,7 @@ class ManifestDeviceEnrollerTest {
         // No config is saved and no producer enabled on a failed join — there is no half-joined state.
         assertEquals(
             JoinResult.FAILED,
-            ManifestDeviceEnroller(CapturingJoin(JoinResult.FAILED)).enroll("E", "dev"),
+            ManifestDeviceEnroller(CapturingJoin(JoinResult.FAILED)).enroll(testEventId("E"), testDeviceId("dev")),
         )
     }
 }

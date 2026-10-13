@@ -1,5 +1,8 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,8 +41,10 @@ class NarrowingRetractionTest {
         SelectionPolicy(
             selectionRulesFor(
                 includesUpload = true,
-                cutoff = captureCutoff(
-                    floor,
+                cutoff = CaptureCutoff(
+                    TimestampText.parse(
+                        floor,
+                    ),
                 ),
                 ceiling = null,
                 suppressedAssetIds = {
@@ -53,10 +58,10 @@ class NarrowingRetractionTest {
     fun `raising the cutoff past a shared photo stops listing it`() = runTest {
         val uploaded = completedRow("A", capturedAt = "2026-06-01T10:00:00Z")
 
-        val before = projectDeviceManifest("D", listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
+        val before = projectDeviceManifest(testDeviceId("D"), listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
         assertEquals(listOf(AssetId("A")), before.assets.map { it.assetId }, "shared under the original floor")
 
-        val after = projectDeviceManifest("D", listOf(uploaded), policyWithFloor("2026-07-01T00:00:00Z"))
+        val after = projectDeviceManifest(testDeviceId("D"), listOf(uploaded), policyWithFloor("2026-07-01T00:00:00Z"))
 
         assertTrue(
             after.assets.isEmpty(),
@@ -69,12 +74,12 @@ class NarrowingRetractionTest {
         val uploaded = completedRow("A", capturedAt = "2026-06-01T10:00:00Z")
 
         val after = projectDeviceManifest(
-            "D",
+            testDeviceId("D"),
             listOf(uploaded),
             SelectionPolicy(
                 selectionRulesFor(
                     includesUpload = false,
-                    cutoff = captureCutoff("2026-01-01T00:00:00Z"),
+                    cutoff = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
                     ceiling = null,
                     suppressedAssetIds = { emptySet() },
                     albumExcludedAssetIds = { emptySet() },
@@ -90,10 +95,12 @@ class NarrowingRetractionTest {
         // The half the ledger change buys: the row was never pruned, so this costs no upload.
         val uploaded = completedRow("A", capturedAt = "2026-06-01T10:00:00Z")
 
-        val narrowed = projectDeviceManifest("D", listOf(uploaded), policyWithFloor("2026-07-01T00:00:00Z"))
+        val narrowed =
+            projectDeviceManifest(testDeviceId("D"), listOf(uploaded), policyWithFloor("2026-07-01T00:00:00Z"))
         assertTrue(narrowed.assets.isEmpty())
 
-        val widened = projectDeviceManifest("D", listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
+        val widened =
+            projectDeviceManifest(testDeviceId("D"), listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
 
         assertEquals(
             listOf(AssetId("A")),

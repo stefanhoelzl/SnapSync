@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+
 /**
  * The **admitted set** of a membership, as a thing consumers *receive* rather than a policy they apply.
  *

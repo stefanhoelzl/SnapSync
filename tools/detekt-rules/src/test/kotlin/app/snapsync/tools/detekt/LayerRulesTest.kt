@@ -70,4 +70,48 @@ class LayerRulesTest {
         )
         assertEquals(5, findings.size, findings.map { it.message }.toString())
     }
+
+    @Test
+    fun `the domain holds values and verdicts - each impurity is a finding`() {
+        val findings = DomainPurity().lint(
+            """
+            fun topLevel() = Unit
+            var counter = 0
+            val String.shout: String get() = uppercase()
+            class Holder(var changing: Int, val rule: (Int) -> Boolean) {
+                val cache = mutableListOf<Int>()
+                val names: MutableList<String> = ArrayList()
+                val bytes = ByteArray(4)
+                suspend fun waits() = Unit
+                fun takes(block: (Int) -> Unit) = block(1)
+                val later: suspend () -> Unit get() = {}
+                fun reads() = Clock.System.now()
+                fun rolls() = Random.nextInt()
+                fun says() = println("x")
+            }
+            """.trimIndent(),
+        )
+        assertEquals(14, findings.size, findings.map { it.message }.toString())
+    }
+
+    @Test
+    fun `a pure value passes - a local var, a lazy memo and a list built and returned`() {
+        val findings = DomainPurity().lint(
+            """
+            class Range private constructor(val from: Int, val until: Int) {
+                val span by lazy { until - from }
+                fun steps(): List<Int> {
+                    var at = from
+                    return buildList { while (at < until) add(at++) }
+                }
+                companion object {
+                    private val CANONICAL = Regex("[0-9]+")
+                    fun of(from: Int, until: Int): Range? = if (from <= until) Range(from, until) else null
+                    fun isCanonical(text: String): Boolean = CANONICAL.matches(text)
+                }
+            }
+            """.trimIndent(),
+        )
+        assertEquals(0, findings.size, findings.map { it.message }.toString())
+    }
 }

@@ -1,7 +1,7 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryFiles
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
@@ -15,9 +15,11 @@ import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.services.staging.StagingService
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -28,7 +30,7 @@ import kotlin.time.Instant
  */
 class GalleryImporterTest {
 
-    private val ref = AssetRef("DEVICE-A", AssetId("ASSET_1"))
+    private val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("ASSET_1"))
 
     /** A library that records the one request it is given and answers [answer]. */
     private class Recording(private val answer: ImportOutcome) : GalleryImport {
@@ -109,5 +111,12 @@ class GalleryImporterTest {
             "nothing could ever import it: it settles",
         )
         assertTrue(library.requests.isEmpty())
+    }
+
+    @Test
+    fun `a correlation reads back as its ref and one naming no device is refused`() {
+        val ref = AssetRef(testDeviceId("DEV-A"), AssetId("A"))
+        assertEquals(ref, assetRefOf(ref.correlation()))
+        assertFailsWith<IllegalArgumentException> { assetRefOf("DEV-A/A") }
     }
 }

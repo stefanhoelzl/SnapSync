@@ -1,5 +1,6 @@
 package app.snapsync.services.backend
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.RenameOutcome
 import app.snapsync.wire.api.ChangeEventReply
@@ -38,7 +39,7 @@ interface EventCreation {
  * its echo is authoritative.
  */
 fun interface EventRename {
-    suspend fun rename(eventId: String, name: String): RenameOutcome
+    suspend fun rename(eventId: EventId, name: String): RenameOutcome
 }
 
 /**
@@ -78,7 +79,10 @@ class BackendEventCreation(
             ),
         )
         return when (val reply = gateway.send(request, obtainFirst = true)) {
-            is CreateEventReply.Created -> CreateOutcome.Created(eventId = reply.event.eventId, name = reply.event.name)
+            // An id that is no event id is a malformed reply, answered as any other the backend could not have meant.
+            is CreateEventReply.Created -> EventId.parse(reply.event.eventId)
+                ?.let { CreateOutcome.Created(eventId = it, name = reply.event.name) }
+                ?: CreateOutcome.Transient
             CreateEventReply.InvalidWindow -> CreateOutcome.InvalidWindow
             CreateEventReply.InvalidName, is Invalid -> CreateOutcome.InvalidName
             Unauthorized -> CreateOutcome.Unverified
@@ -100,8 +104,8 @@ class BackendEventCreation(
  */
 class BackendEventRename(private val gateway: BackendGateway) : EventRename {
 
-    override suspend fun rename(eventId: String, name: String): RenameOutcome =
-        when (val reply = gateway.send(Routes.ChangeEvent.request(eventId, EventChange(name = name)))) {
+    override suspend fun rename(eventId: EventId, name: String): RenameOutcome =
+        when (val reply = gateway.send(Routes.ChangeEvent.request(eventId.value, EventChange(name = name)))) {
             is ChangeEventReply.Changed -> RenameOutcome.Renamed(reply.event.name)
             is Invalid -> RenameOutcome.InvalidName
             else -> RenameOutcome.Transient

@@ -1,10 +1,12 @@
 package app.snapsync.services.backend
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.HttpResult
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.Resource
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Limits
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -32,8 +34,8 @@ class BackendUploadRequestsTest {
         appVersion: String = "0.4",
     ) = BackendUploadRequests(
         BackendExchange({ HttpResult.Unreachable("never sent") }, { host }, { appVersion }, versionGate = null),
-        eventId,
-        deviceId,
+        testEventId(eventId),
+        testDeviceId(deviceId),
         token,
         freshToken,
     )

@@ -1,13 +1,13 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.EventWindow
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.AlbumKind
 import app.snapsync.model.BuildLabel
-import app.snapsync.model.CaptureDate
 import app.snapsync.model.DeviceRefusal
-import app.snapsync.model.EVENT_WINDOW_MAX_SECONDS
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.StoreKind
@@ -35,7 +35,6 @@ import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The status container's state: what the screen shows ([ui], display values only) and the
@@ -71,7 +70,7 @@ internal class Display(
 ) {
     /** The joined membership as the joined screen states it. */
     fun event(config: EventConfig): JoinedEvent = JoinedEvent(
-        eventId = config.eventId,
+        eventId = config.eventId.value,
         name = config.name,
         startsAt = dates.toLocal(config.startsAt),
         endsAt = dates.toLocal(config.endsAt),
@@ -89,7 +88,7 @@ internal class Display(
      * Until when guests can still join [config]'s event, for an event created after its end (its open-until date lies
      * past its end) while that date is still ahead of [now] and the event's photos are not deleted; `null` otherwise.
      */
-    fun joinableUntil(config: EventConfig, now: CaptureDate): LocalDateTime? = config.openUntil
+    fun joinableUntil(config: EventConfig, now: Timestamp): LocalDateTime? = config.openUntil
         ?.takeIf { !config.deleted && it.at > config.endsAt.at && it.at > now }
         ?.let(dates::toLocal)
 
@@ -120,7 +119,7 @@ internal class Display(
                 else -> CreateStep.Complete(dates.coarseDuration(draft.range.from, until))
             },
             canCreate = creatableEnd(draft) != null,
-            maxDays = EVENT_WINDOW_MAX_SECONDS.seconds.inWholeDays.toInt(),
+            maxDays = EventWindow.MAX.inWholeDays.toInt(),
             keepOpen = if (draft.askingHowLong) keepOpen() else null,
         )
     }

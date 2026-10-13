@@ -13,6 +13,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.RefusalFacts
 import app.snapsync.model.ReportContext
+import app.snapsync.model.TimestampText
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.device.DeviceConditionsReadings
@@ -147,11 +148,11 @@ class CollectDiagnosticDump(
             put("photo_permission", permission.name)
             put("joined", (config != null).toString())
             if (config != null) {
-                put("event_id", config.eventId)
+                put("event_id", config.eventId.value)
                 put("event_name", config.name)
                 put("direction", config.direction.name)
-                put("shares_from", config.minPhotoDate.at.iso)
-                put("shares_until", config.maxPhotoDate.at.iso)
+                put("shares_from", TimestampText.format(config.minPhotoDate.at))
+                put("shares_until", TimestampText.format(config.maxPhotoDate.at))
                 put("save_to_album", config.saveToAlbum.toString())
             }
         }

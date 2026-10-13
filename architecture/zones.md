@@ -19,6 +19,7 @@ flowchart LR
   end
   subgraph domain
     domain_compose[":domain:compose"]
+    domain_domain[":domain:domain"]
     domain_entrypoints[":domain:entrypoints"]
     domain_feature[":domain:feature"]
     domain_host[":domain:host"]
@@ -41,6 +42,7 @@ flowchart LR
   end
   adapter_android --> adapter_generic_app
   adapter_android --> adapter_generic_motionphoto
+  adapter_android --> domain_domain
   adapter_android --> domain_feature
   adapter_android --> domain_inbound
   adapter_android --> domain_model
@@ -51,6 +53,7 @@ flowchart LR
   adapter_android --> ui_components
   adapter_android --> ui_screens
   adapter_android --> ui_state
+  adapter_generic_app --> domain_domain
   adapter_generic_app --> domain_inbound
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
@@ -58,6 +61,7 @@ flowchart LR
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
   adapter_generic_mock --> domain_compose
+  adapter_generic_mock --> domain_domain
   adapter_generic_mock --> domain_feature
   adapter_generic_mock --> domain_inbound
   adapter_generic_mock --> domain_model
@@ -80,6 +84,7 @@ flowchart LR
   adapter_ios_app_only --> test_contracts
   adapter_ios_ext_safe --> adapter_generic_app
   adapter_ios_ext_safe --> domain_compose
+  adapter_ios_ext_safe --> domain_domain
   adapter_ios_ext_safe --> domain_feature
   adapter_ios_ext_safe --> domain_inbound
   adapter_ios_ext_safe --> domain_model
@@ -97,6 +102,7 @@ flowchart LR
   adapter_ios_ui --> ui_components
   adapter_ios_ui --> ui_screens
   adapter_ios_ui --> ui_state
+  domain_compose --> domain_domain
   domain_compose --> domain_entrypoints
   domain_compose --> domain_feature
   domain_compose --> domain_inbound
@@ -105,16 +111,19 @@ flowchart LR
   domain_compose --> domain_scheduling
   domain_compose --> domain_services
   domain_compose --> ui_state
+  domain_entrypoints --> domain_domain
   domain_entrypoints --> domain_feature
   domain_entrypoints --> domain_inbound
   domain_entrypoints --> domain_model
   domain_entrypoints --> domain_ports
   domain_entrypoints --> domain_scheduling
   domain_entrypoints --> domain_services
+  domain_feature --> domain_domain
   domain_feature --> domain_model
   domain_feature --> domain_scheduling
   domain_feature --> domain_services
   domain_host --> domain_compose
+  domain_host --> domain_domain
   domain_host --> domain_entrypoints
   domain_host --> domain_feature
   domain_host --> domain_inbound
@@ -123,13 +132,16 @@ flowchart LR
   domain_host --> domain_presentation
   domain_host --> domain_scheduling
   domain_host --> ui_state
+  domain_model --> domain_domain
   domain_ports --> domain_inbound
   domain_ports --> domain_model
+  domain_presentation --> domain_domain
   domain_presentation --> domain_feature
   domain_presentation --> domain_model
   domain_presentation --> ui_state
   domain_scheduling --> domain_inbound
   domain_scheduling --> domain_ports
+  domain_services --> domain_domain
   domain_services --> domain_inbound
   domain_services --> domain_model
   domain_services --> domain_ports
@@ -137,6 +149,7 @@ flowchart LR
   ui_components --> adapter_generic_app
   ui_components --> ui_state
   ui_screens --> adapter_generic_app
+  ui_screens --> domain_domain
   ui_screens --> domain_feature
   ui_screens --> domain_model
   ui_screens --> domain_presentation

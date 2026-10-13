@@ -1,5 +1,8 @@
+@file:OptIn(AppProcessOnly::class)
+
 package app.snapsync.compose
 
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.WriteOutcome

@@ -1,11 +1,14 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.CaptureCeiling
-import app.snapsync.model.CaptureCutoff
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReconfigureOutcome
-import app.snapsync.model.shareRangeFault
+import app.snapsync.model.TimestampText
 import app.snapsync.services.config.ConfigService
 import co.touchlab.kermit.Logger
 
@@ -21,7 +24,7 @@ import co.touchlab.kermit.Logger
  * device identity are all preserved. `direction` is a device-local gate, so a reconfigure reaches nothing
  * on the backend.
  *
- * The chosen range obeys the same share-range rule as at join ([shareRangeFault]): at most an event's length and
+ * The chosen range obeys the same share-range rule as at join (`CaptureRange`): at most an event's length and
  * overlapping the event, and it MAY reach outside the event's own range. A range that breaks it is refused as
  * [ReconfigureOutcome.Refused] and changes nothing — it is never clamped.
  *
@@ -55,7 +58,7 @@ class ReconfigureEvent(
     private val armUpload: suspend () -> Unit,
     private val ensureAlbum: suspend (EventConfig) -> Unit,
     private val gatherAlbum: suspend (EventConfig) -> Unit,
-    private val startDownloads: suspend (eventId: String) -> Unit,
+    private val startDownloads: suspend (eventId: EventId) -> Unit,
     private val cancelDownloads: suspend () -> Unit,
     /**
      * Advance the ledger's manifest version once the reconfigure save lands. This save is the one writer of
@@ -73,7 +76,7 @@ class ReconfigureEvent(
      * different membership.
      */
     suspend fun reconfigure(
-        eventId: String,
+        eventId: EventId,
         direction: Direction,
         chosenCutoff: CaptureCutoff,
         chosenUpper: CaptureCeiling,
@@ -81,17 +84,19 @@ class ReconfigureEvent(
     ): ReconfigureOutcome {
         val current = configSource.config.value
         if (current == null || current.eventId != eventId) return ReconfigureOutcome.NotCurrent
-        shareRangeFault(chosenCutoff, chosenUpper, current.startsAt, current.endsAt)?.let { fault ->
+        val range = CaptureRange.of(chosenCutoff, chosenUpper, current.startsAt, current.endsAt)
+        if (range !is CaptureRangeVerdict.Ok) {
             steps.log.e {
-                "reconfigure: refused — the range $chosenCutoff..$chosenUpper breaks the share-range rule ($fault) " +
-                    "for the event ${current.startsAt}..${current.endsAt}"
+                val chosen = "${TimestampText.format(chosenCutoff.at)}..${TimestampText.format(chosenUpper.at)}"
+                val event = "${TimestampText.format(current.startsAt.at)}..${TimestampText.format(current.endsAt.at)}"
+                "reconfigure: refused — the range $chosen breaks the share-range rule ($range) for the event $event"
             }
             return ReconfigureOutcome.Refused
         }
         val newCfg = current.copy(
             direction = direction,
-            minPhotoDate = chosenCutoff,
-            maxPhotoDate = chosenUpper,
+            minPhotoDate = range.range.from,
+            maxPhotoDate = range.range.until,
             saveToAlbum = saveToAlbum,
         )
         // Persist the WHOLE config with only the participation fields changed (one-writer, in place) —

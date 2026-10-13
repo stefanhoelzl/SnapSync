@@ -1,8 +1,8 @@
 package app.snapsync.services.upload
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AesKey
-import app.snapsync.model.AssetId
 import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileLocation

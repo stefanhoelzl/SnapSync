@@ -11,6 +11,7 @@ import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
+import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -24,7 +25,7 @@ import kotlin.test.assertTrue
  * reachable before the listing is public; the seam leaves only that library's own behaviour untested.
  */
 class AndroidInstallReferrerTest {
-    private val invite = encodeEventUrl(EventLinkPayload(eventId = "11111111-1111-4111-8111-111111111111"))
+    private val invite = encodeEventUrl(EventLinkPayload(eventId = testEventId("11111111-1111-4111-8111-111111111111")))
     private val delivered = mutableListOf<LinkDelivery>()
     private val links = AndroidLinks(
         Logger.withTag("test"),

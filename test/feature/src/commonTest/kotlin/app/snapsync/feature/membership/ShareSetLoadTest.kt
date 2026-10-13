@@ -1,11 +1,13 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.StoredResource
@@ -13,6 +15,8 @@ import app.snapsync.ports.DbOpen
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
 import app.snapsync.services.ledger.LEDGER_DB_NAME
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
@@ -32,9 +36,9 @@ class ShareSetLoadTest {
     private val earlierEvent = "7a3f9c21-0000-4000-8000-000000000000"
 
     private class FakeFiles(var result: Result<List<StoredResource>>) : DeviceFilesSource {
-        var lastDeviceId: String? = null
-        var lastEventId: String? = null
-        override suspend fun list(eventId: String, deviceId: String): Result<List<StoredResource>> {
+        var lastDeviceId: DeviceId? = null
+        var lastEventId: EventId? = null
+        override suspend fun list(eventId: EventId, deviceId: DeviceId): Result<List<StoredResource>> {
             lastEventId = eventId
             lastDeviceId = deviceId
             return result
@@ -48,7 +52,7 @@ class ShareSetLoadTest {
      */
     private suspend fun leftovers() = TestLedger(joined = eventId).apply {
         service.resetTo(
-            earlierEvent,
+            testEventId(earlierEvent),
             listOf(
                 LedgerEntry("R-primary.heic", AssetId("R"), LedgerState.REQUESTED),
                 LedgerEntry("D-primary.heic", AssetId("D"), LedgerState.DISCOVERED),
@@ -67,10 +71,10 @@ class ShareSetLoadTest {
         )
         val ledger = leftovers()
 
-        ShareSetLoad(files, ledger.service, testIdentity(deviceId)).load(eventId)
+        ShareSetLoad(files, ledger.service, testIdentity(deviceId)).load(testEventId(eventId))
 
         // Listed for this device IN THE JOINED EVENT: another event's bytes are not this one's.
-        assertEquals(eventId to deviceId, files.lastEventId to files.lastDeviceId)
+        assertEquals(testEventId(eventId) to testDeviceId(deviceId), files.lastEventId to files.lastDeviceId)
         assertEquals(setOf("A-primary.heic", "A-live.mov"), ledger.rows().keys)
         assertTrue(ledger.rows().values.all { it.state == LedgerState.COMPLETED })
         assertEquals(setOf(eventId), ledger.eventsHeld(), "the earlier event's rows are purged")
@@ -81,7 +85,7 @@ class ShareSetLoadTest {
         val files = FakeFiles(Result.success(listOf(StoredResource("K-primary.heic", AssetId("reported")))))
         val ledger = TestLedger(joined = eventId).service
 
-        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(eventId)
+        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(testEventId(eventId))
 
         assertEquals(AssetId("reported"), ledger.get("K-primary.heic")?.assetId)
     }
@@ -92,7 +96,7 @@ class ShareSetLoadTest {
         val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")))))
         val ledger = TestLedger(joined = eventId).service
 
-        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(eventId)
+        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(testEventId(eventId))
 
         assertEquals("", ledger.get("A-primary.heic")?.creationDate)
     }
@@ -100,7 +104,11 @@ class ShareSetLoadTest {
     @Test
     fun `an empty listing leaves the joined event empty`() = runTest {
         val ledger = leftovers()
-        ShareSetLoad(FakeFiles(Result.success(emptyList())), ledger.service, testIdentity(deviceId)).load(eventId)
+        ShareSetLoad(
+            FakeFiles(Result.success(emptyList())),
+            ledger.service,
+            testIdentity(deviceId),
+        ).load(testEventId(eventId))
         assertTrue(ledger.service.manifestRows().isEmpty())
         assertTrue(ledger.eventsHeld().isEmpty())
     }
@@ -115,7 +123,7 @@ class ShareSetLoadTest {
             ledger.service,
             testIdentity(deviceId),
             recorder.logger("ShareSetLoadTest"),
-        ).load(eventId)
+        ).load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -127,7 +135,12 @@ class ShareSetLoadTest {
         val ledger = leftovers()
         val files = FakeFiles(Result.failure(DeviceListingShapeException("v1 shape")))
 
-        ShareSetLoad(files, ledger.service, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)
+        ShareSetLoad(
+            files,
+            ledger.service,
+            testIdentity(deviceId),
+            recorder.logger("ShareSetLoadTest"),
+        ).load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
         assertEquals(listOf(Severity.Error), recorder.severities)
@@ -139,12 +152,17 @@ class ShareSetLoadTest {
         val ledger = leftovers()
         val hanging = object : DeviceFilesSource {
             override suspend fun list(
-                eventId: String,
-                deviceId: String,
+                eventId: EventId,
+                deviceId: DeviceId,
             ): Result<List<StoredResource>> = awaitCancellation()
         }
 
-        ShareSetLoad(hanging, ledger.service, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)
+        ShareSetLoad(
+            hanging,
+            ledger.service,
+            testIdentity(deviceId),
+            recorder.logger("ShareSetLoadTest"),
+        ).load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -153,7 +171,11 @@ class ShareSetLoadTest {
     @Test
     fun `a device-id read that throws is a failed fetch not a failed join`() = runTest {
         val ledger = leftovers()
-        ShareSetLoad(FakeFiles(Result.success(emptyList())), ledger.service, unreadableIdentity()).load(eventId)
+        ShareSetLoad(
+            FakeFiles(Result.success(emptyList())),
+            ledger.service,
+            unreadableIdentity(),
+        ).load(testEventId(eventId))
         assertKeptOnlyTheJoinedEvent(ledger)
     }
 
@@ -163,7 +185,12 @@ class ShareSetLoadTest {
         val ledger = TestLedger(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked"))), joined = eventId)
         val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")))))
 
-        ShareSetLoad(files, ledger.service, testIdentity(deviceId), recorder.logger("ShareSetLoadTest")).load(eventId)
+        ShareSetLoad(
+            files,
+            ledger.service,
+            testIdentity(deviceId),
+            recorder.logger("ShareSetLoadTest"),
+        ).load(testEventId(eventId))
 
         assertEquals(listOf(Severity.Error), recorder.severities, "the load returns, having said why it seeded nothing")
         assertTrue(ledger.eventsHeld().isEmpty())

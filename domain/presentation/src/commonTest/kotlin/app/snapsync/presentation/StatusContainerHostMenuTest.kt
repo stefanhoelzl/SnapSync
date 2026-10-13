@@ -1,5 +1,10 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.BuildLabel
@@ -8,11 +13,8 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
-import app.snapsync.model.eventStart
+import app.snapsync.model.TimestampText
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.JoinedSurface
@@ -41,13 +43,13 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private val MEMBERSHIP = EventConfig(
-    eventId = "11111111-1111-4111-8111-111111111111",
+    eventId = testEventId("11111111-1111-4111-8111-111111111111"),
     name = "Anna's Birthday",
-    minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
-    startsAt = eventStart("2026-07-06T14:32:11Z"),
-    endsAt = eventEnd("2026-07-13T14:32:11Z"),
-    maxPhotoDate = captureCeiling("2026-07-13T14:32:11Z"),
-    deletesAt = deletesAt("2099-12-31T00:00:00Z"),
+    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
+    startsAt = EventStart(TimestampText.parse("2026-07-06T14:32:11Z")),
+    endsAt = EventEnd(TimestampText.parse("2026-07-13T14:32:11Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z")),
+    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
 private class MenuTestSync : SyncStatusSource {

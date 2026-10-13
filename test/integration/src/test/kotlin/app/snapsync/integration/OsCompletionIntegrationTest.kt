@@ -26,7 +26,7 @@ class OsCompletionIntegrationTest {
     /** A joined device holding a received photo whose import failed once: its bytes wait in the staging directory. */
     private suspend fun Rig.stagedBacklog(): String {
         val event = createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         reconcile()
         awaitDownloadQueued()
         device("import/fail-next")
@@ -160,7 +160,7 @@ class OsCompletionIntegrationTest {
     @Test
     fun a_drain_report_releases_after_the_stagings_it_announced_are_recorded() = rigTest {
         createAndJoin()
-        foreignDevice("DEV-F", "FQ")
+        foreignDevice(DEV_F, "FQ")
         reconcile() // the transfer is in flight in the operating system's session
         device("relaunch", "scene" to "false")
         // A recorded staging requests its own tail at once, and that import would take the bytes out of staging before

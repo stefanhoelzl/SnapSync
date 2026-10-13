@@ -1,5 +1,8 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,8 +26,8 @@ import kotlin.test.assertEquals
  */
 class FactsOnlyAdmissionTest {
 
-    private val cutoff = captureCutoff("2026-06-01T00:00:00Z")
-    private val ceiling = captureCeiling("2026-06-30T00:00:00Z")
+    private val cutoff = CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z"))
+    private val ceiling = CaptureCeiling(TimestampText.parse("2026-06-30T00:00:00Z"))
     private val inWindow = "2026-06-15T12:00:00Z"
 
     /** The membership's policyOf(). A `suspend fun` rather than a `val`: the one derivation reads two ports. */
@@ -70,7 +73,7 @@ class FactsOnlyAdmissionTest {
         height: Long = 3024,
     ) = AssetFacts(
         assetId = AssetId(assetId),
-        creationDate = CaptureDate.parseOrNull(creationDate),
+        captureDate = TimestampText.captureDate(creationDate),
         isScreenshot = isScreenshot,
         pixelArea = width * height,
     )

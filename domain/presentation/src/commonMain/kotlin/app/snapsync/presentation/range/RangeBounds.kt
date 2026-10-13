@@ -61,7 +61,7 @@ internal class RangeBounds private constructor(
          * The range a member shares around an event's own `[start, end]`: at most [longest]
          * long and overlapping the event — so it starts no earlier than the event's start reaches back ([earliestFrom])
          * and no later than its end, and ends no earlier than its start. Its end time is always set, and the event's
-         * own days are marked. The same rule the join and the reconfigure refuse a range by (`shareRangeFault`), so the
+         * own days are marked. The same rule the join and the reconfigure refuse a range by (`CaptureRange`), so the
          * calendar never offers one they would refuse.
          */
         fun aroundEvent(

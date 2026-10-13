@@ -1,5 +1,12 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+
 /**
  * What a join commit did.
  *
@@ -101,7 +108,7 @@ enum class JoinCommit {
 interface UserCommands {
     suspend fun leave()
 
-    fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: EventEnd?)
+    fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?)
 
     suspend fun commitJoin(choice: JoinChoice): JoinCommit
 
@@ -116,14 +123,14 @@ interface UserCommands {
     fun choosePhotos()
 
     suspend fun reconfigure(
-        eventId: String,
+        eventId: EventId,
         direction: Direction,
         minPhotoDate: CaptureCutoff,
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
     ): ReconfigureOutcome
 
-    fun rename(eventId: String, name: String)
+    fun rename(eventId: EventId, name: String)
 
     /**
      * Suspending, unlike the other latch-driven commands: the screen fires this **after** consuming a

@@ -1,6 +1,6 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AssetId
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -633,7 +633,7 @@ internal fun ResourceRole.onWire(): Role = Role.fromValue(wire) ?: error("no des
 /** A published manifest, as the backend keeps it — under the device the path names. */
 private fun Manifest.inApp(deviceId: String): DeviceManifest? = runCatchingCancellable {
     DeviceManifest(
-        deviceId = deviceId,
+        deviceId = deviceIdOf(deviceId),
         assets = assets.map { asset ->
             DeviceManifestAsset(
                 AssetId(asset.assetId),

@@ -18,6 +18,7 @@ class SnapSyncRuleSetProvider : RuleSetProvider {
                 OneCallPerStep(config),
                 CoroutinesInScheduling(config),
                 NoFunctionTypes(config),
+                DomainPurity(config),
             ),
         )
 }

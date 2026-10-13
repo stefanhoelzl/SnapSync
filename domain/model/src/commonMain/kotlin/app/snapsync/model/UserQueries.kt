@@ -1,5 +1,9 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+
 /**
  * The **user-query bundle** (`docs/architecture.md`, "Queries cross a lane-gated door"): every read the
  * status container invokes as a function rather than observes as a state flow.
@@ -22,7 +26,7 @@ package app.snapsync.model
  *   holds everything it receives. One read of the event; any doubt answers `false`.
  */
 interface UserQueries {
-    suspend fun loadJoinDetails(eventId: String, linkKey: String?): JoinLoad
+    suspend fun loadJoinDetails(eventId: EventId, linkKey: String?): JoinLoad
 
     suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int?
 

@@ -1,5 +1,8 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
+
 /**
  * Lifecycle of a foreign asset in the download store. Two states are terminal — [IMPORTED] and
  * [UNIMPORTABLE] — and "terminal" is what every non-terminal predicate in this store means.
@@ -49,7 +52,7 @@ data class DownloadCounts(
 )
 
 /** The source identity of a foreign asset: its owning device and that device's assetId. */
-data class AssetRef(val sourceDeviceId: String, val sourceAssetId: AssetId)
+data class AssetRef(val sourceDeviceId: DeviceId, val sourceAssetId: AssetId)
 
 /** A resource to download for an asset, as taken from the union listing. */
 data class PlannedResource(

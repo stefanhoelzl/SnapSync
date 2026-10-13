@@ -2,19 +2,20 @@
 
 package app.snapsync.feature.album
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.inboundOf
 import app.snapsync.feature.support.testShared
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.model.AlbumId
-import app.snapsync.model.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
-import app.snapsync.model.captureCeiling
-import app.snapsync.model.captureCutoff
-import app.snapsync.model.deletesAt
-import app.snapsync.model.eventEnd
+import app.snapsync.model.TimestampText
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImportRequest
@@ -28,6 +29,8 @@ import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId
 import app.snapsync.services.gallery.correlation
+import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,16 +50,16 @@ import kotlin.time.Instant
  */
 class FolderAlbumCoordinatorTest {
 
-    private val event = "e1"
+    private val event = testEventId("e1")
 
     /** The joined membership of [event], saving to its album. */
     private val joined = EventConfig(
-        eventId = event,
+        eventId = testEventId(event.value),
         name = "Party",
-        minPhotoDate = captureCutoff("2026-09-01T00:00:00Z"),
-        endsAt = eventEnd("2026-09-30T00:00:00Z"),
-        maxPhotoDate = captureCeiling("2026-09-30T00:00:00Z"),
-        deletesAt = deletesAt("2026-10-30T00:00:00Z"),
+        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-09-01T00:00:00Z")),
+        endsAt = EventEnd(TimestampText.parse("2026-09-30T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-09-30T00:00:00Z")),
+        deletesAt = DeletesAt(TimestampText.parse("2026-10-30T00:00:00Z")),
         saveToAlbum = true,
     )
     private val library = PhotoLibraryMock().apply { operator.albumKind = LibraryAlbumKind.FOLDER }
@@ -71,7 +74,7 @@ class FolderAlbumCoordinatorTest {
         val file = ImportFile("staged:/$name", "image/jpeg", ResourceKind.PHOTO, "$name.JPG")
         val result = gallery.import(
             GalleryImportRequest(
-                AssetRef("other", AssetId(name)).correlation(),
+                AssetRef(testDeviceId("other"), AssetId(name)).correlation(),
                 listOf(file),
                 Instant.parse("2026-09-30T10:00:00Z"),
                 album?.let(::PlatformAlbumId),
@@ -83,7 +86,7 @@ class FolderAlbumCoordinatorTest {
     }
 
     private suspend fun ensure(optIn: Boolean = true) = coordinator.ensureAlbum(
-        event,
+        testEventId(event.value),
         "Party",
         saveToAlbum = true,
         optIn = optIn,
@@ -92,7 +95,11 @@ class FolderAlbumCoordinatorTest {
     @Test
     fun `a fresh album is used although an empty folder does not resolve`() = runTest {
         val album = assertNotNull(ensure())
-        assertEquals(album, coordinator.albumIdFor(event, saveToAlbum = true), "the first received photo goes into it")
+        assertEquals(
+            album,
+            coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true),
+            "the first received photo goes into it",
+        )
         assertEquals(album, ensure(optIn = false), "a launch's replay reuses it rather than making a second")
         assertEquals(1, library.operator.created.size)
     }
@@ -100,36 +107,39 @@ class FolderAlbumCoordinatorTest {
     @Test
     fun `a received photo lands in the album and the album is then filled`() = runTest {
         val album = assertNotNull(ensure())
-        val id = receive("R1", coordinator.albumIdFor(event, saveToAlbum = true))
+        val id = receive("R1", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
         assertEquals(album, library.operator.folderOf(id))
-        assertTrue(store.filled(event))
+        assertTrue(store.filled(testEventId(event.value)))
     }
 
     @Test
     fun `an album the member deleted sends later photos to the camera folder until they opt in again`() = runTest {
         val album = assertNotNull(ensure())
-        receive("R1", coordinator.albumIdFor(event, saveToAlbum = true))
+        receive("R1", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
         library.operator.delete(album)
 
-        assertNull(coordinator.albumIdFor(event, saveToAlbum = true), "no folder is brought back by an import")
-        val later = receive("R2", coordinator.albumIdFor(event, saveToAlbum = true))
+        assertNull(
+            coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true),
+            "no folder is brought back by an import",
+        )
+        val later = receive("R2", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
         assertNull(library.operator.folderOf(later), "the photo arrives in the camera folder")
         assertNull(ensure(optIn = false), "a launch's replay recreates nothing")
         assertEquals(1, library.operator.created.size)
 
         val recreated = assertNotNull(ensure(optIn = true), "an opt-in recreates it")
         assertNotEquals(album, recreated)
-        assertEquals(recreated, coordinator.albumIdFor(event, saveToAlbum = true))
+        assertEquals(recreated, coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
     }
 
     @Test
     fun `an album the member renamed counts as deleted`() = runTest {
         val album = assertNotNull(ensure())
-        receive("R1", coordinator.albumIdFor(event, saveToAlbum = true))
+        receive("R1", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
         library.operator.rename(album, "Party 2026")
 
         assertNull(
-            coordinator.albumIdFor(event, saveToAlbum = true),
+            coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true),
             "the renamed folder is not followed, nor recreated",
         )
     }
@@ -147,21 +157,21 @@ class FolderAlbumCoordinatorTest {
         )
         val received = receive("R1", album = null)
 
-        coordinator.place(event, listOf(own.assetId()))
-        coordinator.placeReceived(event, listOf(received.assetId()))
+        coordinator.place(testEventId(event.value), listOf(own.assetId()))
+        coordinator.placeReceived(testEventId(event.value), listOf(received.assetId()))
 
         assertNull(library.operator.folderOf(own), "the member's own photo stays in the camera folder")
         assertEquals(album, library.operator.folderOf(received), "the received photo moved into the album")
-        assertTrue(store.filled(event), "a move that landed fills the album")
+        assertTrue(store.filled(testEventId(event.value)), "a move that landed fills the album")
     }
 
     @Test
     fun `a filled album that still holds its photos keeps receiving them`() = runTest {
         val album = assertNotNull(ensure())
-        receive("R1", coordinator.albumIdFor(event, saveToAlbum = true))
-        assertTrue(store.filled(event))
+        receive("R1", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
+        assertTrue(store.filled(testEventId(event.value)))
 
-        assertEquals(album, coordinator.albumIdFor(event, saveToAlbum = true))
+        assertEquals(album, coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
     }
 
     @Test
@@ -169,25 +179,25 @@ class FolderAlbumCoordinatorTest {
         // A recreation raced the import: the photo landed in the old album, which is not the one to watch.
         assertNotNull(ensure())
         coordinator.onImportedInto(event, "an-older-album")
-        assertFalse(store.filled(event))
+        assertFalse(store.filled(testEventId(event.value)))
     }
 
     @Test
     fun `filing nothing or filing with no album yet fills nothing`() = runTest {
-        coordinator.placeReceived(event, listOf(receive("R1", album = null).assetId()))
-        assertFalse(store.filled(event), "no album was ever created")
+        coordinator.placeReceived(testEventId(event.value), listOf(receive("R1", album = null).assetId()))
+        assertFalse(store.filled(testEventId(event.value)), "no album was ever created")
 
         assertNotNull(ensure())
-        coordinator.placeReceived(event, emptyList())
-        assertFalse(store.filled(event), "an empty batch moves nothing")
+        coordinator.placeReceived(testEventId(event.value), emptyList())
+        assertFalse(store.filled(testEventId(event.value)), "an empty batch moves nothing")
     }
 
     @Test
     fun `an import settled for the joined membership fills its album and none fills while unjoined`() = runTest {
         val album = assertNotNull(ensure())
         coordinator.onImportedInto(null, album)
-        assertFalse(store.filled(event), "no membership, nothing filled")
+        assertFalse(store.filled(testEventId(event.value)), "no membership, nothing filled")
         coordinator.onImportedInto(joined, album)
-        assertTrue(store.filled(event))
+        assertTrue(store.filled(testEventId(event.value)))
     }
 }

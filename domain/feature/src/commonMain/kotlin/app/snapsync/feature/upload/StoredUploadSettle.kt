@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
@@ -49,12 +50,12 @@ class StoredUploadSettle(
     private val log: Logger = Logger.withTag("StoredUploadSettle"),
 ) {
     /** [settle] against the joined event [eventId] — nothing while not joined, when nothing is in flight to settle. */
-    suspend fun settleJoined(eventId: String?) {
+    suspend fun settleJoined(eventId: EventId?) {
         eventId?.let { settle(it) }
     }
 
     /** Settle against what the backend stores for this device in [eventId], the joined event. */
-    suspend fun settle(eventId: String) {
+    suspend fun settle(eventId: EventId) {
         try {
             val pending = ledger.pendingResources().mapTo(mutableSetOf()) { it.key }
             if (pending.isEmpty()) return // nothing in flight could be settled: no request

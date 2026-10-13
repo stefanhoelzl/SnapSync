@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.feature.support.testShared
-import app.snapsync.model.AssetId
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
@@ -11,6 +11,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,7 +24,7 @@ import kotlin.test.assertTrue
  */
 class LedgerWriterTest {
 
-    private val ledger = LedgerService(testShared()) { "E" }
+    private val ledger = LedgerService(testShared()) { testEventId("E") }
     private val writer = LedgerWriter(ledger)
 
     @Test

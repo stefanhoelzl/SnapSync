@@ -1,8 +1,8 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.CaptureDate
-import app.snapsync.model.EventEnd
-import app.snapsync.model.EventStart
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.model.TimestampText
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.TimeLeft
 import kotlin.test.Test
@@ -18,10 +18,10 @@ import kotlin.time.Duration.Companion.seconds
  */
 class EventTimingTest {
 
-    private val start = EventStart(CaptureDate.parse("2026-07-12T14:00:00Z"))
-    private val end = EventEnd(CaptureDate.parse("2026-07-14T22:00:00Z"))
+    private val start = EventStart(TimestampText.parse("2026-07-12T14:00:00Z"))
+    private val end = EventEnd(TimestampText.parse("2026-07-14T22:00:00Z"))
 
-    private fun at(iso: String) = eventTiming(start, end, CaptureDate.parse(iso))
+    private fun at(iso: String) = eventTiming(start, end, TimestampText.parse(iso))
 
     @Test
     fun `a span is floored to its largest whole unit`() {
