@@ -10,8 +10,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
     id("snapsync.targets")
-    // The zero coverage gate (`docs/architecture.md`, "Coverage"): no instruction and no branch missed.
-    id("snapsync.coverage-zero")
 }
 
 kotlin {

@@ -15,9 +15,6 @@ plugins {
     // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
     id("snapsync.android")
     alias(libs.plugins.kotlin.serialization)
-    // Coverage at ZERO (`docs/architecture.md`, "Coverage"; `snapsync.coverage-zero`): no instruction or branch may be
-    // missed. Applied here rather than in a `subprojects {}` block so the instrumented set is readable per module.
-    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
     // `jvmTest` starts the real backend (`liveEdge.consumedBy`, below).

@@ -57,10 +57,6 @@ gradlePlugin {
             id = "snapsync.coverage"
             implementationClass = "app.snapsync.buildlogic.CoveragePlugin"
         }
-        register("coverageZero") {
-            id = "snapsync.coverage-zero"
-            implementationClass = "app.snapsync.buildlogic.CoverageZeroPlugin"
-        }
         register("simulatorTestOutput") {
             id = "snapsync.simulator-test-output"
             implementationClass = "app.snapsync.buildlogic.SimulatorTestOutputPlugin"

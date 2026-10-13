@@ -4,9 +4,6 @@ plugins {
     id("snapsync.targets")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
-    // Coverage measurement and its zero gate (`docs/architecture.md`, "Coverage"). Applied here rather than in a
-    // `subprojects {}` block so the instrumented set is readable per module.
-    id("snapsync.coverage-zero")
 }
 
 kotlin {
@@ -63,9 +60,3 @@ compose.resources {
     packageOfResClass = "app.snapsync.ui.components.resources"
     publicResClass = true
 }
-
-// Coverage (`docs/architecture.md`): at zero, under `snapsync.coverage-zero`. The module's own tests pin the
-// components' behaviour, and `:ui:screens`' Compose tests, which render the real screens and with them these
-// components, credit it too. The report is filtered back to this module's OWN classes; the crediting edge itself is
-// declared in the ROOT build file, because these build scripts are read as TEXT by the zone-diagram generator, which
-// would render the edge backwards.

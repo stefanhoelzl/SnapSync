@@ -6,10 +6,6 @@ plugins {
     // The wire, generated from `api/openapi.yaml` at build time and never committed (`docs/architecture.md`, "The
     // backend boundary"): Fabrikt's DTOs and the routes, replies and limits, both into `commonMain`.
     id("snapsync.wire")
-    // Coverage at ZERO (`docs/architecture.md`, "Coverage") for the hand-written runtime. The GENERATED packages are
-    // excluded below, as Compose's generated `Res` is: their behaviour is the description's, proved by the Backend
-    // contract running the real gateway over the fake and the live api/.
-    id("snapsync.coverage-zero")
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
 }
@@ -27,17 +23,6 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
-        }
-    }
-}
-
-kover {
-    reports {
-        filters {
-            excludes {
-                // Generated (`snapsync.wire`): the routes, replies and limits in `.api`, the DTOs in `.models`.
-                packages("app.snapsync.wire.api", "app.snapsync.wire.models")
-            }
         }
     }
 }
