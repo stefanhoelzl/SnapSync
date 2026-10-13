@@ -27,12 +27,6 @@ interface BackendLevers {
     /** Only the event's union answers `502`: what a rejoin meets when the event cannot be read; the join goes through. */
     suspend fun failUnion(on: Boolean)
 
-    /**
-     * Whether a request carrying no `Authorization` header is served, as the local dev server's fallback bearer serves
-     * it (`api/src/dev/serve.ts`) — on by default, which the rig and the seeding stand on. Off, it is `401`, as deployed.
-     */
-    suspend fun fallbackBearer(on: Boolean)
-
     /** The minimum app version every route demands; omitted, the gate is off. */
     suspend fun minAppVersion(minimum: String? = null)
 
@@ -190,7 +184,6 @@ data class BackendSwitches(
     val offline: Boolean,
     val failListing: Boolean,
     val failUnion: Boolean,
-    val fallbackBearer: Boolean,
     /** The minimum app version every route demands, or `null` while the gate is off. */
     val minAppVersion: String?,
     /** Why the backend refuses this phone, or `null` while it does not. */

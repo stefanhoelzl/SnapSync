@@ -307,11 +307,11 @@ They land dated ~now, so they are in scope for an event started earlier in the s
 
 ## The backend
 
-App Attest does not exist here, so there is no attestation token and the deployed backend refuses every
-join — `api/src/dev` is the only thing that fills an absent one. It fills the absent ENROLMENT too: a
-`devices` row is created only by a real attestation, and the push-registration write requires one, so
-without the rig a simulator could never register for push (and would never recover, because its refresh
-returns early rather than attesting).
+App Attest does not exist here, so the RIG build attests with a software Android key instead
+(`SoftwareKeyIntegrity`, swapped in on the simulator only — `test/rig/src/iosSimulatorArm64Main/…/Attestable.kt`),
+which the local backend's `androidAttestationTrust: any` accepts and every deployed backend refuses. So a simulator
+app talks only to `api/src/dev` (`deno task dev:local`), where it attests, enrols and holds a real token like any
+caller: the local backend refuses a request without one exactly as deployed.
 
 **Run it ON THE RUNNER.** The repo is already rsync'd there, and deno installs in seconds:
 

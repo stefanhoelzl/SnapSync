@@ -116,10 +116,11 @@ reconcile, not a re-upload of the library.
 
 ## Two rig behaviours worth knowing before you debug them
 
-- **curl needs no `authorization` header.** The gate stays fully on and a request carrying a *bad*
-  token still `401`s; the rig only fills in a token when one is **absent** (the same trick
-  `test/app.test.ts` uses). `/attest/*` is untouched, so a device's real attestation runs for real
-  against the rig.
+- **A gated request needs a real token, as deployed** — the rig fills in none. Every caller attests:
+  a phone for real, and a simulator, an emulator, a JVM test host or a hand-driven client with a
+  software Android key, which the local deployment's `androidAttestationTrust: any` accepts
+  (`SoftwareKeyAttestation` and `DeviceTokens` in `:test:contracts` mint one for any device id).
+  `/attest/*` is open, so a device's real attestation runs for real against the rig.
 - **`dev:local` mints download URLs as `https://127.0.0.1:8080/…`** because the production presigned
   URL shape is fixed. Swap the scheme to follow one by hand: `… | sed 's|^https://|http://|'`.
 - **No APNs**, so an iPhone's wake is skipped — faithful to the route's best-effort contract; it

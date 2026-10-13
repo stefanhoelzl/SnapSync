@@ -10,7 +10,9 @@ import app.snapsync.contracts.ClientIdentity
 import app.snapsync.contracts.EdgeSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.SERVED_APP_VERSION
 import app.snapsync.contracts.Seeded
+import app.snapsync.contracts.attest.SoftwareKeyAttestation
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.http.KtorHttpTransport
@@ -34,8 +36,9 @@ import kotlin.uuid.Uuid
  * is lost by it: the gateway and the generated wire are `commonMain` code, identical on every target. What differs on
  * a device is the Ktor ENGINE, which the `HttpTransport` contract holds on each platform.
  *
- * Every state is reachable here: the dev edge enrols the device a token-less call names (`api/src/dev/fallback.ts`),
- * because on a host without App Attest nothing else ever could, and it verifies every token it is shown.
+ * Every state is reachable here: the local deployment's `any` trust accepts a software Android key chain, so every
+ * device the setup names attests as a phone does (`SoftwareKeyAttestation`), and the edge verifies every token it is
+ * shown.
  */
 @OptIn(ExperimentalUuidApi::class)
 class LiveEdgeContractsTest {
@@ -56,6 +59,7 @@ class LiveEdgeContractsTest {
             BackendState.DEVICE_UPLOAD_BROKE_OFF,
             BackendState.VERSION_REFUSED,
             BackendState.FOREIGN_TOKEN,
+            BackendState.NO_TOKEN,
             BackendState.ENDED_MEMBER,
             BackendState.ENDED_BESIDE_A_SETTLED_MEMBER,
             BackendState.NO_BACKEND,
@@ -124,7 +128,8 @@ class LiveEdgeContractsTest {
             }
             val client = HttpClient(CIO)
             val base = "http://127.0.0.1:${server.address.port}"
-            val port = BackendClient(KtorHttpTransport(client).recorded(log), base, ClientIdentity.SERVED, log)
+            val identity = ClientIdentity(SERVED_APP_VERSION, token = null)
+            val port = BackendClient(KtorHttpTransport(client).recorded(log), base, identity, log)
             val seeded = Seeded(eventId = Uuid.random().toString(), deviceId = Uuid.random().toString())
             return Entered.Ready(EdgeSubject(port, seeded)) {
                 client.close()

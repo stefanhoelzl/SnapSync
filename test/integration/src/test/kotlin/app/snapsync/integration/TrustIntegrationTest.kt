@@ -41,6 +41,30 @@ class TrustIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "privacy-security",
+        requirement = "A verification problem never loses a photo",
+        scenario = "The proof expires while the phone sits unused",
+    )
+    fun a_photo_whose_upload_met_an_expired_proof_is_shared_once_the_app_is_verified_again() = rigTest {
+        extensionUploadsOnly()
+        createAndJoin()
+        addPhoto("P1")
+        // The system takes the photo's upload in hand with the proof the app holds…
+        cycle()
+        // …and performs it only after the member has left the app unopened for longer than the proof lasts (30 days).
+        device("clock/advance", "to" to "2026-07-15T12:00:00Z")
+        completeJobs()
+        // Refused for its expired proof: the job is still held, never dropped (a landed one is acknowledged and gone).
+        cycle()
+        assertTrue(primaryJob("P1") in jobs().live, "the refused upload is kept, not dropped: ${jobs()}")
+
+        // The member opens the app: it is verified again, and the photo it kept is shared.
+        foreground()
+        eventually(read = { uploadedObjects() }) { held: Set<String> -> primaryKey("P1") in held }
+    }
+
+    @Test
+    @Verifies(
         spec = "app-update-required",
         requirement = "Nothing is shared or received while the app is outdated",
         scenario = "Photos wait for the update",

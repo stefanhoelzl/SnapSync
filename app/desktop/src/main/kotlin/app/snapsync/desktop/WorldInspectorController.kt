@@ -358,9 +358,9 @@ class WorldInspectorController(
         return JvmApp(scope, lanes, mocks) { device ->
             device.adapters(
                 build,
-                attests = true,
                 http = device.backend.port(),
                 logSinks = emptyList(),
+                integrity = device.enclave.port(),
             )
         }
     }

@@ -87,15 +87,23 @@ kotlin {
             // The recording proxies (`proxy/`) implement every port, so they name the types its signatures carry.
             implementation(libs.kermit)
             implementation(libs.kotlinx.datetime)
+            // The software attestation key every test host attests with (`SoftwareKeyAttestation`): ECDSA P-256 and
+            // SHA-256, through each platform's provider below.
+            api(libs.cryptography.core)
         }
         // kotlin-test's @Test on JVM comes from a framework artifact the Kotlin plugin attaches to TEST
         // compilations only; the bindings' JVM test tasks run JUnit 4.
         jvmMain.dependencies {
             implementation(kotlin("test-junit"))
+            implementation(libs.cryptography.provider.jdk)
         }
         // The same framework artifact for the Android rig build, which links this module's main code.
         androidMain.dependencies {
             implementation(kotlin("test-junit"))
+            implementation(libs.cryptography.provider.jdk)
+        }
+        iosMain.dependencies {
+            implementation(libs.cryptography.provider.cryptokit)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

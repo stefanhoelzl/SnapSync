@@ -677,7 +677,7 @@ throws `LeverRefused`; an omitted `event` is the joined one, an omitted `device`
 `null` (a `Boolean` is never implied: pass `on = true`, or `--on` from `rig`).
 
 - `backend` (`BackendLevers`) — the backend mock's operator; refused over the real `api/` ("unavailable on this
-  backend"): levers `offline(on)`, `failListing(on)`, `failUnion(on)`, `fallbackBearer(on)`, `minAppVersion(minimum?)`
+  backend"): levers `offline(on)`, `failListing(on)`, `failUnion(on)`, `minAppVersion(minimum?)`
   (none: the gate is off), `nextEventId(id)` (the next create mints this id, once), `hold(call)` / `release(call)`
   (`BackendCall.EVENT|CREATE|JOIN|LEAVE`: the call waits unanswered until released — the only way to catch a screen
   the app shows while it waits), `fail(operation, fault, times?)` (the next `times` — once by default — requests to that

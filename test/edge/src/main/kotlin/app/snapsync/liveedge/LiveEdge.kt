@@ -5,6 +5,8 @@ import app.snapsync.contracts.EdgeSetup
 import app.snapsync.contracts.EdgeSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Seeded
+import app.snapsync.contracts.attest.DeviceTokens
+import app.snapsync.contracts.attest.SoftwareKeyAttestation
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.ports.HttpTransport
 import io.ktor.client.HttpClient
@@ -50,7 +52,10 @@ object LiveEdge {
     val base: String by lazy { start() + "/api/v2" }
 
     /** The backend's public surface for [EdgeSetup], over a client of its own: setup is not under contract. */
-    fun setup(): Pair<EdgeSetup, HttpClient> = HttpClient(CIO).let { EdgeSetup(KtorHttpTransport(it), base) to it }
+    fun setup(): Pair<EdgeSetup, HttpClient> = HttpClient(CIO).let { http ->
+        val transport = KtorHttpTransport(http)
+        EdgeSetup(transport, base, DeviceTokens(transport, base, ::SoftwareKeyAttestation)) to http
+    }
 
     /**
      * Enters one clause's state on the live edge through [seed], then builds the client under contract over a

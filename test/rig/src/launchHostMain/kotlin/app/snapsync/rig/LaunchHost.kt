@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.compose.AppDevicePorts
+import app.snapsync.contracts.attest.InMemoryKeyAttestation
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterParse
@@ -58,6 +59,11 @@ internal fun launchWorld(
         transport = device.backend.port(device.declaredVersion),
         network = device.backend.byteRoute,
         declared = device.declaredVersion,
+        attester = { InMemoryKeyAttestation() },
+        ownToken = { id ->
+            val own = (ports.secureStore.value.read(SecureSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value
+            heldToken(ports.secureStore.value, id.takeIf { it == own })
+        },
     ).takeIf { MockedSystem.BACKEND in mocked },
     reachRefusal = realBackend,
     operatorRefusal = { realBackend },

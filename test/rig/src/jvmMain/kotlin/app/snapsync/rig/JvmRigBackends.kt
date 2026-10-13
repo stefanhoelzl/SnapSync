@@ -1,11 +1,16 @@
 package app.snapsync.rig
 
+import app.snapsync.contracts.Attester
+import app.snapsync.contracts.attest.InMemoryKeyAttestation
+import app.snapsync.contracts.attest.SoftwareKeyAttestation
+import app.snapsync.contracts.attest.SoftwareKeyIntegrity
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.liveedge.LiveEdge
 import app.snapsync.mock.BackendOperator
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.HttpTransport
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
@@ -27,8 +32,14 @@ internal sealed interface RigBackend {
     /** The device-facing base, carrying exactly one version prefix, as a real build's baked base does. */
     val base: String
 
-    /** Whether the app attests against this backend: the mock mints for the in-memory integrity; `api/` verifies Apple's. */
-    val attests: Boolean
+    /**
+     * The device-integrity service the app proves with against this backend: the in-memory one the mock verifies, or a
+     * software key the local `api/`'s `any` trust accepts.
+     */
+    fun integrity(mocks: JvmMocks): DeviceIntegrity
+
+    /** The keys a played member attests with against this backend, as [integrity]'s proofs are made. */
+    fun attester(): Attester
 
     /** The network an OS upload crosses to this backend, or `null` for the mocks' own byte route. */
     val network: UploadNetwork?
@@ -65,7 +76,8 @@ internal sealed interface RigBackend {
     data object MockBackend : RigBackend {
         override val name = "mock"
         override val base = "https://in-memory.backend/api/v2"
-        override val attests = true
+        override fun integrity(mocks: JvmMocks): DeviceIntegrity = mocks.enclave.port()
+        override fun attester(): Attester = InMemoryKeyAttestation()
         override val network: UploadNetwork? = null
         override val answersOnTheLoop = true
         override fun port(mocks: JvmMocks): HttpTransport = mocks.backend.port()
@@ -73,9 +85,8 @@ internal sealed interface RigBackend {
     }
 
     /**
-     * The real `api/`, as a local loopback process (`:test:edge`'s [LiveEdge]). The app's requests carry no token: the
-     * dev server's fallback bearer serves an unauthenticated request as the simulator is served. The app does not attest
-     * here — the real edge verifies a genuine App Attest attestation, which nothing off a device produces.
+     * The real `api/`, as a local loopback process (`:test:edge`'s [LiveEdge]). The app attests as an emulator does, with
+     * a software key the local deployment's `any` trust accepts — App Attest needs a device.
      */
     data object DenoBackend : RigBackend {
         /** One engine per JVM, under a fresh client per use: the backend process is the JVM's, not a host's. */
@@ -83,7 +94,8 @@ internal sealed interface RigBackend {
 
         override val name = "deno"
         override val base: String get() = LiveEdge.base
-        override val attests = false
+        override fun integrity(mocks: JvmMocks): DeviceIntegrity = SoftwareKeyIntegrity()
+        override fun attester(): Attester = SoftwareKeyAttestation()
         override val answersOnTheLoop = false
         override val network: UploadNetwork = httpNetwork { HttpClient(engine) }
         override fun port(mocks: JvmMocks): HttpTransport = KtorHttpTransport(HttpClient(engine))

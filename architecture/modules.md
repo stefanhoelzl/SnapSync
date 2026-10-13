@@ -257,11 +257,14 @@ flowchart LR
   test_feature --> domain_scheduling
   test_feature --> domain_services
   test_harness_driver --> app_desktop
+  test_integration --> adapter_generic_app
   test_integration --> domain_domain
   test_integration --> domain_feature
   test_integration --> domain_model
+  test_integration --> domain_ports
   test_integration --> domain_presentation
   test_integration --> domain_wire
+  test_integration --> test_contracts
   test_integration --> test_control
   test_integration --> ui_state
   test_launch_adapters --> adapter_generic_mock

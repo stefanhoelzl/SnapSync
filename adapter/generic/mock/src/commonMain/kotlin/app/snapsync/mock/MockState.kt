@@ -495,8 +495,6 @@ private class BackendLeversDto(
     val refuseAttestation: DeviceRefusal? = null,
     val refuseAttestationDetail: String? = null,
     val minAppVersion: String?,
-    /** Absent in a state saved before the lever existed: the fallback bearer served then. */
-    val fallbackBearer: Boolean = true,
 ) {
     fun into(state: BackendState) {
         state.offline = offline
@@ -506,7 +504,6 @@ private class BackendLeversDto(
         state.refuseAttestation = refuseAttestation
         state.refuseAttestationDetail = refuseAttestationDetail
         state.minAppVersion = minAppVersion
-        state.fallbackBearer = fallbackBearer
     }
 }
 
@@ -645,7 +642,6 @@ private class BackendDto(
                 refuseAttestation = state.refuseAttestation,
                 refuseAttestationDetail = state.refuseAttestationDetail,
                 minAppVersion = state.minAppVersion,
-                fallbackBearer = state.fallbackBearer,
             ),
         )
     }

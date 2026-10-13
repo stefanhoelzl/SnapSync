@@ -45,7 +45,6 @@ sentry-cocoa = "8.58.2"
 tink = "1.23.0"
 # Test-only, never shipped: builds the software Android key-attestation chain the Backend contract mints with against
 # the local rig's `any` trust (`BackendAttestClauses`), as an emulator's KeyMint would present one.
-bouncycastle = "1.81"
 # AES-GCM on iOS, where CommonCrypto has no public GCM: cryptography-kotlin's CryptoKit provider bridges Apple's
 # CryptoKit (Swift-only) into Kotlin/Native. `:adapter:ios:ext-safe`'s IosCrypto is its one caller.
 cryptography-kotlin = "0.6.0"
@@ -148,8 +147,8 @@ androidx-sqlite-framework = { module = "androidx.sqlite:sqlite-framework", versi
 android-gradle = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptography-kotlin" }
 cryptography-provider-cryptokit = { module = "dev.whyoleg.cryptography:cryptography-provider-cryptokit", version.ref = "cryptography-kotlin" }
+cryptography-provider-jdk = { module = "dev.whyoleg.cryptography:cryptography-provider-jdk", version.ref = "cryptography-kotlin" }
 tink = { module = "com.google.crypto.tink:tink", version.ref = "tink" }
-bouncycastle-pkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 sentry-kmp = { module = "io.sentry:sentry-kotlin-multiplatform", version.ref = "sentry-kmp" }
 
 [plugins]

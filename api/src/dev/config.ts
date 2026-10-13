@@ -44,15 +44,6 @@ const DEV_ZONE = "dev-zone";
 const DEV_HOST = "storage.invalid";
 
 /**
- * The device id the rig's fallback bearer token is minted for.
- *
- * It does not gate anything: `verifyToken` proves a token is ours and unexpired and deliberately does
- * NOT bind it to the route's device id ("ownership stays capability-based on the unguessable UUID"), so
- * one token authorizes a `curl` against any device's partition. It only has to be a valid UUID.
- */
-export const DEV_TOKEN_DEVICE_ID = "00000000-0000-4000-8000-000000000000";
-
-/**
  * Build the rig's `Config`. `publicHost` is the host (no scheme, no trailing slash) the rig is reachable
  * on — `127.0.0.1:8080` for `dev:local`, the quick-tunnel hostname for `dev:tunnel` — and `s3Scheme` is
  * that origin's scheme.

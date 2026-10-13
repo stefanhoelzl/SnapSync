@@ -1,7 +1,10 @@
 package app.snapsync.journeys
 
-import app.snapsync.domain.device.DeviceId
+import app.snapsync.contracts.attest.DeviceTokens
+import app.snapsync.contracts.attest.SoftwareKeyAttestation
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.http.KtorHttpTransport
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EncryptedFileFormat
@@ -39,13 +42,13 @@ import javax.crypto.spec.SecretKeySpec
  * ends in a real PhotoKit import. The payloads are built from `model/`'s wire
  * types, so a change to the wire breaks this compile rather than drifting from what the app sends.
  *
- * It sends no `authorization` header: the dev backend's fallback bearer supplies the credential and the enrolment a
- * header-less caller lacks (`api/src/dev/serve.ts`, "FALLBACK BEARER"), exactly as it does for the simulator app,
- * which cannot attest.
+ * It attests as a device does — a challenge, a software Android key's chain over it, the backend's mint — which the
+ * local backend's `any` trust accepts, and carries its token on every request it makes for itself.
  */
 class Member(private val http: HttpClient, backend: String) {
     private val backend = backend.trimEnd('/')
     val deviceId: String = UUID.randomUUID().toString()
+    private val tokens = DeviceTokens(KtorHttpTransport(http), this.backend, ::SoftwareKeyAttestation, { SERVED_VERSION })
 
     /** The joined event's key, as its invite carried it — `null` for a plain event. */
     private var eventKey: ByteArray? = null
@@ -53,7 +56,8 @@ class Member(private val http: HttpClient, backend: String) {
     /** Joins [eventId], keeping [linkKey] — the key its invite carries — to seal every upload with, as a device does. */
     suspend fun join(eventId: String, linkKey: String?) {
         eventKey = linkKey?.let { checkNotNull(decodeEventKey(it)) { "the invite's key is not a key" } }
-        checked("join $deviceId", http.put("$backend/events/$eventId/devices/$deviceId") { served() })
+        val token = token()
+        checked("join $deviceId", http.put("$backend/events/$eventId/devices/$deviceId") { served(token) })
     }
 
     /** Uploads [count] real photos captured at [creationDate] and publishes them; answers their asset ids. */
@@ -74,10 +78,11 @@ class Member(private val http: HttpClient, backend: String) {
         }
         // The backend refuses a manifest without a version; 0 is always admitted (equal is, and a join clears it).
         val manifest = DeviceManifest(requireNotNull(DeviceId.parse(deviceId)), assets, version = 0)
+        val token = token()
         checked(
             "publish manifest",
             http.put("$backend/events/$eventId/devices/$deviceId/manifest") {
-                served()
+                served(token)
                 contentType(ContentType.Application.Json)
                 setBody(manifest.encodeToJson())
             },
@@ -92,12 +97,13 @@ class Member(private val http: HttpClient, backend: String) {
     }
 
     private suspend fun upload(eventId: String, assetId: AssetId, part: Part) {
+        val token = token()
         checked(
             "upload $assetId ${part.role.wire}",
             http.put(
                 "$backend/events/$eventId/files/devices/$deviceId/$assetId/${part.role.wire}?filename=${part.filename}",
             ) {
-                served()
+                served(token)
                 contentType(ContentType.parse(part.contentType))
                 setBody(eventKey?.let { sealed(it, eventId, assetId, part) } ?: part.bytes)
             },
@@ -137,7 +143,14 @@ class Member(private val http: HttpClient, backend: String) {
         return file
     }
 
-    private fun HttpRequestBuilder.served() = header(Limits.VERSION_HEADER, SERVED_VERSION)
+    /** This member's token, minted once. */
+    private suspend fun token(): String = tokens.tokenFor(deviceId)
+
+    /** The version every request declares, and this member's [token]. */
+    private fun HttpRequestBuilder.served(token: String) {
+        header(Limits.VERSION_HEADER, SERVED_VERSION)
+        header("Authorization", "Bearer $token")
+    }
 
     private suspend fun checked(step: String, response: HttpResponse): HttpResponse {
         check(response.status.isSuccess()) {

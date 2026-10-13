@@ -168,8 +168,10 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.attestClauses(
     ) { s ->
         val challenge = s.challenge()
         val assertion = b64("assertion:$KEY_ID:$challenge".encodeToByteArray())
+        // A device that never attested: not the seeded one, which holds a token.
+        val unattested = s.setup.freshId()
         assertAnswer<RenewTokenReply.NotAttested>(
-            s.port.send(Routes.RenewToken.request(RenewRequest(s.seeded.deviceId, assertion, challenge))),
+            s.port.send(Routes.RenewToken.request(RenewRequest(unattested, assertion, challenge))),
             "renewal needs an enrolment",
         )
     }

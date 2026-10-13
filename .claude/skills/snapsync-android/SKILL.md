@@ -70,8 +70,8 @@ $A -s $S reverse tcp:8080 tcp:8080     # the device's 127.0.0.1:8080 is now the 
 Plain HTTP to `127.0.0.1` is allowed only in the rig build (`test/rig/src/android-hook/res/xml/rig_network_security.xml`,
 merged under the property). The emulator's KeyMint attests in SOFTWARE under a per-AVD test root, which only the local
 rig's `androidAttestationTrust: any` accepts. The A40 attests in its own hardware — `any` accepts that too; what the
-api logs for it is not yet measured. The rig's fallback bearer fills a token for a request that carries none,
-so a working request proves nothing about attestation — the api's `attest:` log line does.
+api logs for it is not yet measured. The local backend serves no request without a token, so a working join
+means the phone attested — the api's `attest:` log line says how.
 
 ```bash
 curl -sS -X POST localhost:$H/device/adapters/current      # what this launch runs, and what may be real
