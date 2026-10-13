@@ -170,7 +170,11 @@ internal class UiProxy(private val inner: Ui<UiState, UiIntent>, log: CallLog) :
     override fun inbound(handlers: UiHandlers<UiState, UiIntent>) = r.returns(
         "inbound",
         inner.inbound(
-            UiHandlers(InboundProxy(handlers.onIntent, r, "onIntent", plain = "UiIntent"), InboundProxy(handlers.onLive, r, "onLive")),
+            UiHandlers(
+                // The intent is the composition's vocabulary, carried through whole: one cell, named by its type.
+                InboundProxy(handlers.onIntent, r, "onIntent", plain = "UiIntent"),
+                InboundProxy(handlers.onLive, r, "onLive"),
+            ),
         ),
     )
 }
