@@ -491,11 +491,13 @@ min against ~10).
 | `journeys (android)` | ubuntu (KVM) | Builds the rig **release** APK (R8 and resource shrinking as the store build runs them, signed with the debug key; `local` deployment) and the journeys, stops the daemons, boots one emulator and runs `scripts/android-journeys`: a local `api/` reversed into the emulator, the app granted the photo library before its first launch, an adapter choice real for every system Android has an adapter for (only the crash reporter and the iOS-only upload-job queue and extension registration mocked), the `GET /device` vocabulary check, then the same journeys on a bare JVM. |
 | `ci` | ubuntu | The aggregate above. |
 
-**The Kotlin/Native cache is one family per job**: `-device-` (`ios-build`: restored inside
-`.github/actions/ios-archive`, saved by the job after its simulator tests, so it holds both), `-sim-journeys-`
-(`journeys (ios)`), through `.github/actions/konan-restore` and `konan-save`. Each job restores its own family first, so a job whose compile set changes never leaves another partly
-cold; the primary key carries the run id so it never hits and every save writes fresh; only `main` saves, and each
-save deletes its own family's superseded entries (the repo's 10 GB budget is full).
+**The Kotlin/Native cache is one family**, `-device-`: `ios-build` restores it inside `.github/actions/ios-archive`
+and saves it after its simulator tests, so it holds the device and the simulator library caches both, and `journeys
+(ios)` and `screenshots.yml` restore it read only (a second family was a ~0.9 GB copy of nearly the same caches), through
+`.github/actions/konan-restore` and `konan-save`. The primary key carries the run id so it never hits and every save
+writes fresh; only `main` saves, and each save deletes the family's superseded entries (the repo's 10 GB budget is
+full). The Gradle caches are shared the same way: `android-build` and `journeys (android)` read `build`'s, `journeys
+(ios)` reads `ios-build`'s (`GRADLE_BUILD_ACTION_CACHE_KEY_JOB`), and only the build jobs write.
 
 **Archive verification** (delivering runs): read the bundle id, `uploadBase`, APNs environment,
 crash-reporting environment and DSN back out of **both** the app and the nested `.appex`, and compare

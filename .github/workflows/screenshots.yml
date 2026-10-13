@@ -76,7 +76,7 @@ jobs:
       - name: Restore Kotlin/Native (~/.konan)
         uses: ./.github/actions/konan-restore
         with:
-          family: sim-journeys
+          family: device
 
       # Render the deployment BEFORE xcodebuild reads it. `Config.xcconfig` hard-`#include`s the
       # GENERATED, gitignored `Deployment.xcconfig` (`docs/deployment.md`), so a build without this step fails
