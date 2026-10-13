@@ -20,6 +20,8 @@ import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import platform.AVFoundation.AVAssetReader
 import platform.AVFoundation.AVAssetReaderStatusCompleted
@@ -313,24 +315,35 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         )
         if (!adaptor.appendTimedMetadataGroup(keyFrame)) return false
         marker.markAsFinished()
-        for ((out, input) in passes) {
-            while (true) {
-                if (!input.readyForMoreMediaData) {
-                    usleep(WAIT_MICROS)
-                    continue
-                }
-                val sample = out.copyNextSampleBuffer() ?: break
-                val appended = input.appendSampleBuffer(sample)
-                CFRelease(sample)
-                if (!appended) return false
-            }
-            input.markAsFinished()
+        // The tracks are fed TOGETHER, a sample to whichever input is ready. The writer interleaves its inputs, so an
+        // input far enough ahead of the others reads not-ready until they catch up: feeding the video to its end before
+        // the audio's first sample waited for audio that never came, and a received motion photo with sound never
+        // imported (SE2, 2026-10-13: three attempts, none returned, each leaving a thread spinning).
+        var open = passes
+        while (open.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
+            val pumped = open.map { (out, input) -> pump(out, input) }
+            if (Pump.FAILED in pumped) return false
+            open = open.filterIndexed { i, _ -> pumped[i] != Pump.DONE }
+            if (Pump.MOVED !in pumped) usleep(WAIT_MICROS)
         }
         objcCallback(
             log,
             "finishWriting",
         ) { done -> writer.finishWritingWithCompletionHandler { objcBoundary(done) { } } }
         return reader.status == AVAssetReaderStatusCompleted && writer.status == AVAssetWriterStatusCompleted
+    }
+
+    /** What one turn of a track's pass did: waited on a busy input, moved a sample, reached the end, or was refused. */
+    private enum class Pump { WAITING, MOVED, DONE, FAILED }
+
+    /** Move one sample from [out] into [input] if the input takes one now; the end of [out] finishes [input]. */
+    private fun pump(out: AVAssetReaderTrackOutput, input: AVAssetWriterInput): Pump {
+        if (!input.readyForMoreMediaData) return Pump.WAITING
+        val sample = out.copyNextSampleBuffer() ?: return Pump.DONE.also { input.markAsFinished() }
+        val appended = input.appendSampleBuffer(sample)
+        CFRelease(sample)
+        return if (appended) Pump.MOVED else Pump.FAILED
     }
 
     /** The writer input for the timed `still-image-time` marker Photos reads a Live Photo's key frame from. */
