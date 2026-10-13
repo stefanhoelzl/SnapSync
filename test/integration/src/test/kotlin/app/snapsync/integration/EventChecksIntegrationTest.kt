@@ -49,6 +49,9 @@ class EventChecksIntegrationTest {
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         // A second member that never settles keeps the event open, so this one stays joined to be woken.
         foreignDevice(DEV_F, "FQ")
+        // The join's own wake runs on after the join answers, and asks the event whenever it ends — it is not bounded:
+        // awaited before the end passes, or a late one reads the event's state between the two heartbeats.
+        awaitOs { it.backgroundTimeHolds.isEmpty() }
         device("clock/advance", "to" to AFTER_THE_END)
         heartbeat()
         val first = eventReads(event)
