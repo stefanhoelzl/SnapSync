@@ -88,10 +88,14 @@ edge :adapter:ios:ext-safe :domain:model
 edge :adapter:ios:ext-safe :domain:ports
 edge :adapter:ios:ext-safe :domain:services
 edge :adapter:ios:ext-safe :test:contracts
+edge :adapter:ios:ui :adapter:ios:app-only
 edge :adapter:ios:ui :adapter:ios:ext-safe
+edge :adapter:ios:ui :domain:feature
 edge :adapter:ios:ui :domain:inbound
 edge :adapter:ios:ui :domain:model
 edge :adapter:ios:ui :domain:ports
+edge :adapter:ios:ui :domain:presentation
+edge :adapter:ios:ui :test:contracts
 edge :adapter:ios:ui :ui:components
 edge :adapter:ios:ui :ui:screens
 edge :adapter:ios:ui :ui:state

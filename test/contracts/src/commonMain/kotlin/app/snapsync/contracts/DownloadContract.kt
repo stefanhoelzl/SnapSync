@@ -421,7 +421,7 @@ object DownloadContract : Contract<DownloadState, DownloadUnderTest>("Download")
             val id = "A_MALFORMED_URL_IS_NOT_STARTED"
             val owner = ClauseDownloadHandlers(subject.readTemp)
             val download = subject.open()
-            download.listen(owner.handlers)
+            download.inbound(owner.handlers)
             assertEquals(
                 StartResult.NotStarted,
                 // An unbalanced bracket opens an IPv6 host that never closes: no parser makes a request of it.

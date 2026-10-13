@@ -78,7 +78,8 @@ internal object NeverAnswersCheck {
                     own.filter { f -> f.facts.calls.any { isHandlerRead(it, claim.handler) } },
                     claim.answer.fqn,
                 )
-                Walk(base, callers).find { facts, fn -> answerSign(base, facts, fn, claim.answer) }
+                // The handler's own delivery is the core's: what it does with the argument is not what the adapter hands it.
+                Walk(base, callers, stop = ::isDelivery).find { facts, fn -> answerSign(base, facts, fn, claim.answer) }
             }
         }
     }
@@ -221,6 +222,15 @@ internal object NeverAnswersCheck {
 
     private const val SUSPEND_TAIL = "Lkotlin/coroutines/Continuation;)Ljava/lang/Object;"
 
+    /** A call that delivers to a handler: one of the inbound delivery types' members, which the core implements. */
+    private fun isDelivery(c: CallRef): Boolean {
+        val ir = c.key?.substringBefore('|')?.let { IrReader.fqnOfSignature(it) }
+        return ir in DELIVERIES || "${c.owner}.${c.name}" in DELIVERIES
+    }
+
+    private val DELIVERIES = listOf("Inbound.deliver", "Background.handle", "Granted.handle", "Answered.answer")
+        .mapTo(mutableSetOf()) { "app.snapsync.inbound.$it" }
+
     private fun isHandlerRead(c: CallRef, claim: Claim.Handler): Boolean {
         val cap = claim.field.replaceFirstChar { it.uppercase() }
         val ir = c.key?.substringBefore('|')?.let { IrReader.fqnOfSignature(it) }
@@ -260,7 +270,13 @@ internal object NeverAnswersCheck {
      * The walk: [roots] — whose parameters come from outside — and every function our code may run from them. [find]
      * answers the first sign its check names, with the call trail that reached it.
      */
-    private class Walk(val base: CodeBase, val roots: List<CodeFun>, val initializersOf: CodeClass? = null) {
+    private class Walk(
+        val base: CodeBase,
+        val roots: List<CodeFun>,
+        val initializersOf: CodeClass? = null,
+        /** Calls the walk does not enter: their targets run, but nothing they do is the walked code's answer. */
+        val stop: (CallRef) -> Boolean = { false },
+    ) {
         private val seen = mutableSetOf<String>()
         private val todo = ArrayDeque<Pair<Facts, Step>>()
 
@@ -277,7 +293,7 @@ internal object NeverAnswersCheck {
 
         /** Queues what [facts] may run: the calls' targets, what it hands on, its local classes, the fields it reads. */
         private fun follow(facts: Facts, step: Step) {
-            facts.calls.forEach { c -> base.targets(c).forEach { visit(it, open = false, step) } }
+            facts.calls.filterNot(stop).forEach { c -> base.targets(c).forEach { visit(it, open = false, step) } }
             facts.handsOn.forEach { k -> base.funs[k]?.let { visit(it, open = true, step) } }
             facts.builds.mapNotNull { base.classes[it] }.filter { it.local }.forEach { c ->
                 c.funs.forEach {

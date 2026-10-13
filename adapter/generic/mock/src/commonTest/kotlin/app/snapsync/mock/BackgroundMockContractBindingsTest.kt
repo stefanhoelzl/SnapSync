@@ -17,10 +17,11 @@ import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.Running
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
-import app.snapsync.ports.ExpiringCompletion
 import app.snapsync.ports.ExtensionRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,23 +42,6 @@ import kotlin.time.Duration
  * its.
  */
 class BackgroundMockContractBindingsTest {
-
-    /** A running wake as the operating system holds it: released once, and expired when [expire] is played. */
-    private class PlayedWake : ExpiringCompletion {
-        private val actions = AtomicReference<List<() -> Unit>>(emptyList())
-        private val expired = AtomicReference(false)
-
-        override fun complete() = Unit
-
-        override fun onExpired(action: () -> Unit) {
-            if (expired.load()) action() else actions.update { it + action }
-        }
-
-        fun expire() {
-            expired.store(true)
-            actions.exchange(emptyList()).forEach { it() }
-        }
-    }
 
     private val wake = object : Binding<WakeState, ScheduledWakes> {
         override val host = currentHost
@@ -84,25 +68,22 @@ class BackgroundMockContractBindingsTest {
             val delivering = state == WakeState.DELIVERING || state == WakeState.DELIVERING_LIBRARY_CHANGES
             if (!delivering) return Entered.Ready(ScheduledWakes(port) { pending() })
             // The operating system: a wake due now is delivered once it is asked for; a library wake when the library changes.
-            val running = AtomicReference<List<PlayedWake>>(emptyList())
+            // What each delivered wake started, as the operating system holds it: what its expiry expires.
+            val running = AtomicReference<List<Running>>(emptyList())
             val system = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             system.launch {
                 mock.pending.collect { queue ->
                     queue.filter { (_, trigger) -> trigger is WakeTrigger.After && trigger.earliest == Duration.ZERO }
                         .forEach { (id, _) ->
-                            PlayedWake().also { w -> running.update { it + w } }.let {
-                                mock.operator.fire(
-                                    id,
-                                    it,
-                                )
-                            }
+                            val run = mock.operator.fire(id, Completion.None)
+                            running.update { it + run }
                         }
                 }
             }
             val os = WakeOs(
                 changeLibrary = {
                     mock.pending.first { WakeId.LibraryChanged in it }
-                    mock.operator.fire(WakeId.LibraryChanged, PlayedWake())
+                    mock.operator.fire(WakeId.LibraryChanged, Completion.None)
                 },
                 endRunningWake = { running.load().forEach { it.expire() } },
             )

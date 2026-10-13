@@ -184,15 +184,14 @@ fun metricPayloadOf(fields: Map<String, String>): ProcessMetricPayload = Process
 )
 
 /**
- * A process's per-thread log label, as one slot: the label the core's runtime puts on the thread it runs a task on,
- * read back by the log writers. One slot rather than one per thread — common code has no thread-local, and a test
- * over a single-threaded scheduler has one thread. Not a binding of the `ThreadLabel` contract, which only a
- * platform's slot keeps (`JvmThreadLabel`, `IosThreadLabel`, `AndroidThreadLabel`).
+ * A process's per-thread log label: the label the core's runtime puts on the thread it runs a task on, read back by the
+ * log writers — per thread, as every platform's slot is, so it keeps the `ThreadLabel` contract they keep.
  */
 class ThreadLabelMock : ThreadLabel {
-    @Volatile private var label: String? = null
+    // Per thread, as every platform's slot is: a label one thread sets, another never reads.
+    private val slot = threadSlot()
 
-    override fun swap(label: String?): String? = this.label.also { this.label = label }
+    override fun swap(label: String?): String? = slot.get().also { slot.set(label) }
 
-    override fun current(): String? = label
+    override fun current(): String? = slot.get()
 }

@@ -140,7 +140,7 @@ class PushServiceMock {
         override fun register() {
             registrations++
             refusal?.let { why ->
-                handlers.orNull("a registration", BeforeListen.Dropped)?.onTokenFailure(PlatformError(why))
+                handlers.orNull("a registration", BeforeListen.Dropped)?.onTokenFailure?.deliver(PlatformError(why))
                 return
             }
             val token = issued ?: return

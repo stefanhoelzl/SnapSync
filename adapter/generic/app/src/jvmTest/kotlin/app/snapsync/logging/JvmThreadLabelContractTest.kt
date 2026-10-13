@@ -18,6 +18,7 @@ class JvmThreadLabelContractTest {
     private val binding = object : Binding<ThreadLabelState, ThreadLabel> {
         override val host = Host.JVM
         override val kind = BindingKind.Live
+        override val adapter = JvmThreadLabel::class
         override val reaches = setOf(ThreadLabelState.EMPTY)
         override fun create(state: ThreadLabelState, clauseId: String, log: CallLog): Entered<ThreadLabel> =
             Entered.Ready(JvmThreadLabel().recorded(log))

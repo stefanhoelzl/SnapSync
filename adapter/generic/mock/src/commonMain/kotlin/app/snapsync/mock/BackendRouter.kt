@@ -169,9 +169,10 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         // A service that refuses this device's attestation holds none for it: the device is sent to attest afresh.
         if (state.refuseAttestation != null) return text(UNAUTHORIZED, "not attested")
         val key = state.attestedKeys[req.deviceId] ?: return text(UNAUTHORIZED, "not attested")
-        val asserted = runCatchingCancellable { Base64.decode(req.assertion) }.getOrNull()
-            ?.contentEquals("assertion:$key:${req.challenge}".encodeToByteArray()) == true
-        if (!asserted) return text(UNAUTHORIZED, "assertion rejected")
+        // Compared encoded, so a malformed assertion is simply not this one: nothing to decode, nothing to catch.
+        if (req.assertion != Base64.encode("assertion:$key:${req.challenge}".encodeToByteArray())) {
+            return text(UNAUTHORIZED, "assertion rejected")
+        }
         return json(CREATED, Token.serializer(), Token(state.mint(req.deviceId, req.challenge)))
     }
 

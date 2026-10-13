@@ -27,9 +27,9 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.Completion
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ProcessingAnswer
-import app.snapsync.ports.Completion
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
@@ -168,12 +168,18 @@ class EntryMockContractBindingsTest {
         override fun create(state: UiStateForContract, clauseId: String, log: CallLog): Entered<UiUnderTest> {
             val mock = ScreenMock()
             val ui = mock.port().recorded(log)
+            val creating = UiState(Layer.CreatingEvent)
             return Entered.Ready(
-                UiUnderTest(ui, react = {}) {
-                    ui.show(UiState(Layer.CreatingEvent))
-                    mock.operator.live()
-                    EVERY_INTENT.forEach { mock.operator.tap(it) }
-                },
+                UiUnderTest(
+                    ui,
+                    react = {},
+                    tour = {
+                        ui.show(creating)
+                        mock.operator.live()
+                        EVERY_INTENT.forEach { mock.operator.tap(it) }
+                    },
+                    shown = { creating },
+                ),
             )
         }
     }

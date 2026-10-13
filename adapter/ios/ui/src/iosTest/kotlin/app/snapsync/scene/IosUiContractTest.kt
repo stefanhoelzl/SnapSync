@@ -53,7 +53,10 @@ class IosUiContractTest : StatusScreenTour() {
         override fun create(state: UiStateForContract, clauseId: String, log: CallLog): Entered<UiUnderTest> {
             val recorded = ui.recorded(log)
             port = recorded
-            return Entered.Ready(UiUnderTest(ui = recorded, react = ::react, tour = ::runTour), dispose = ::retire)
+            return Entered.Ready(
+                UiUnderTest(ui = recorded, react = ::react, tour = ::runTour, shown = ::shownNow),
+                dispose = ::retire,
+            )
         }
     }
 

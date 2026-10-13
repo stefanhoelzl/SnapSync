@@ -1,3 +1,5 @@
+@file:OptIn(CompositionOnly::class)
+
 package app.snapsync.contract
 
 import app.snapsync.contracts.Binding
@@ -8,6 +10,7 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.PushState
 import app.snapsync.contracts.PushUnderTest
 import app.snapsync.contracts.proxy.recorded
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushNotifications
 import app.snapsync.push.IosPushNotifications
@@ -39,7 +42,7 @@ class SimAppPushBinding(private val push: AppPush) : Binding<PushState, PushUnde
     override fun create(state: PushState, clauseId: String, log: CallLog): Entered<PushUnderTest> {
         if (state !in reaches) return Entered.Unreachable("the simulator app is signed with no push entitlement")
         return Entered.Ready(PushUnderTest(push.adapter.recorded(log))) {
-            if (push.composed() === push.adapter) push.adapter.listen(push.appHandlers())
+            if (push.composed() === push.adapter) push.adapter.inbound(push.appHandlers())
         }
     }
 }

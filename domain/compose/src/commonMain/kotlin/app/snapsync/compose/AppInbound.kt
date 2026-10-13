@@ -68,16 +68,21 @@ fun AppCore.inbound(host: HostAssembly) {
             OnBackground(runtime, foreground, network.watches, footprints),
         ),
     )
-    ports.pushNotifications.inbound(
-        PushHandlers(
-            OnPushToken(runtime, services.pushTokens),
-            OnPushTokenFailure(runtime),
-            OnSilentPush(runtime, work.prelude, downloadPushReceiver, pushTailGuard, work.wakeWork),
-        ),
-    )
+    ports.pushNotifications.inbound(pushHandlers())
     ports.devControls.inbound(DevHandlers(OnDevReset(runtime, resetDeviceState)))
     ports.links.inbound(LinkHandlers(OnLink(runtime, linkOpening, openedLinks)))
 }
+
+/**
+ * The app's push entry points — what [inbound] hands the push port, and what a contract run on the app's own push
+ * adapter hands back when its clause is done.
+ */
+@CompositionOnly
+fun AppCore.pushHandlers(): PushHandlers = PushHandlers(
+    OnPushToken(runtime, services.pushTokens),
+    OnPushTokenFailure(runtime),
+    OnSilentPush(runtime, work.prelude, downloadPushReceiver, pushTailGuard, work.wakeWork),
+)
 
 /**
  * The network's return, while the app is in front: followed from the status host's assembly on — a person can see what
