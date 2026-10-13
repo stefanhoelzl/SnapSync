@@ -108,17 +108,12 @@ internal object PortGrid {
                     // A shaping callback the platform's SDK calls (`CrashReporter.listen`'s): a handler all the same.
                     callbackCells(name, "$name.handlers.${f.name}", f.name, f.returnType, handles)
                 } else {
-                    val binding = bindingOf(port, bundleType)
-                    // A delivery typed by a generic port's type parameter (`Ui`'s intent) carries the composition's
-                    // vocabulary through whole: ONE variant, named by the type it is bound to (see [callbackCells]).
-                    val declared = f.returnType.arguments.first().type!!
                     argumentCells(
                         name,
                         "$name.handlers.${f.name}",
                         f.name,
-                        deliveryArgs(f.returnType, binding),
+                        deliveryArgs(f.returnType, bindingOf(port, bundleType)),
                         handles,
-                        whole = setOfNotNull(declared.takeIf { it.classifier in binding }?.boundBy(binding)),
                     )
                 }
             }
@@ -148,12 +143,7 @@ internal object PortGrid {
         return returns + callbacks
     }
 
-    /**
-     * One cell per crossing of the variants of every argument the adapter passes a callback of [type]. An argument
-     * typed by a generic port's type parameter (`Ui`'s intent) is ONE variant, named by the type it is bound to: it is
-     * the composition's vocabulary, which the adapter carries through as it is and never chooses among — which value
-     * crosses is the screen's tap table's, click-tested beside it, not an answer of the adapter's.
-     */
+    /** One cell per crossing of the variants of every argument the adapter passes a callback of [type]. */
     private fun callbackCells(
         port: String,
         prefix: String,
@@ -166,22 +156,20 @@ internal object PortGrid {
         return argumentCells(port, prefix, member, args, handles)
     }
 
-    /** One cell per crossing of the variants of [args], what the adapter passes; an arg in [whole] is one variant. */
+    /** One cell per crossing of the variants of [args], what the adapter passes. */
     private fun argumentCells(
         port: String,
         prefix: String,
         member: String,
         args: List<KType>,
         handles: MutableSet<KClass<*>>,
-        whole: Set<KType> = emptySet(),
     ): List<Cell> {
         args.forEach {
             noteHandle(it, handles)
             noteInboundHandle(it, handles)
         }
         val crossed = args.fold(listOf(emptyList<String>())) { acc, arg ->
-            val plain = (arg.classifier as? KClass<*>)?.simpleName ?: arg.toString()
-            val vs = if (arg in whole) listOf(plain) else variants(arg, plain = plain)
+            val vs = variants(arg, plain = (arg.classifier as? KClass<*>)?.simpleName ?: arg.toString())
             acc.flatMap { done -> vs.map { done + it } }
         }
         return crossed.map { Cell(port, "$prefix(${it.joinToString(", ")})", member.substringAfterLast('.'), it) }
