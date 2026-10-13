@@ -25,7 +25,9 @@ import org.gradle.api.tasks.TaskAction
  *  - `unit(…)` applies Kover and the ZERO gate ([CoverageZeroTask], on `check`), filters the module's report to its
  *    OWN classes, and merges in the coverage of the modules that also cover it. Without the filter, a module covered by
  *    another would measure that module's classes too;
- *  - a `skipped(…, packages)` leaves those packages out of the report.
+ *  - `integration(…)` is judged by `:test:integration`'s `integrationCoverage` ([IntegrationCoverageTask]): what the
+ *    suite ALONE covers of the module, against its target or the block's `integrationGoal`;
+ *  - a `skipped(…, packages)` leaves those packages out of the measurements it stands in.
  *
  * And it holds the block complete ([CoverageEntriesTask], on `check`): every module with a JVM target outside
  * `:test:*` and `:tools:*` has an entry, so no module is measured — or left out — by nobody's decision.
@@ -39,9 +41,13 @@ class CoveragePlugin : Plugin<Project> {
             val exists = { path: String -> root.findProject(path)?.buildFile?.exists() == true }
             val problems = coverage.entries.flatMap { it.problems(exists) } +
                 coverage.entries.groupBy { it.path }.filterValues { it.size > 1 }.keys.map { "$it has more than one entry" }
-            if (problems.isNotEmpty()) {
-                throw GradleException("The root build file's `coverage { }` is malformed:\n" + problems.joinToString("\n") { "  $it" })
+            val goal = coverage.goal
+            val unset = listOf("the block sets no integrationGoal(…)").takeIf { goal == null }.orEmpty()
+            if (problems.isNotEmpty() || goal == null) {
+                val lines = (problems + unset).joinToString("\n") { "  $it" }
+                throw GradleException("The root build file's `coverage { }` is malformed:\n$lines")
             }
+            registerIntegrationCoverage(root, coverage.entries, goal)
             coverage.entries.forEach { entry ->
                 val unit = entry.unit?.takeIf { entry.wholeSkip == null && it.wholeSkip == null } ?: return@forEach
                 zeroGate(root.project(entry.path), entry.skippedPackages + unit.skippedPackages)

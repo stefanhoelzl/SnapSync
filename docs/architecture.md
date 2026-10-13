@@ -439,7 +439,8 @@ Both are **ratchets carried by a written contract, not proofs**. A number may mo
 mechanical stops a change from moving it the other way, and a diff shows it if one does. An exact-match
 ("fail when you improve") check was rejected for both, because it teaches people to route around the
 gate.
-The coverage floors' end state is not a ratchet: a module at zero is held there by a gate with no number to move.
+Coverage's unit measurement is not a ratchet: a module at zero is held there by a gate with no number to move. Its
+integration measurement's exceptions are one.
 
 ### Complexity ceilings (fall only)
 
@@ -488,22 +489,51 @@ Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
 - Xcode treats warnings as errors in both iOS targets (`Config.xcconfig`), enforced where Xcode builds:
   CI's `ios-build`.
 
-### Coverage (toward zero missed)
+### Coverage
 
-The target is **zero**: every JVM-measurable module that holds decisions or wiring misses no instruction and no
-branch. A module is in one of two states, and its `plugins {}` block says which.
+Every module's coverage is described in ONE place: the `coverage { }` block in the root build file
+(`snapsync.coverage`, `build-logic`'s `CoveragePlugin` and `CoverageDsl`). An entry names a module and settles each of
+two measurements, with a target or with a `skipped(…)` and its reason:
 
-- **At zero** — `id("snapsync.coverage-zero")`. Its `coverageZero` task (on `check`) reads the module's own Kover
-  `report.xml` and fails on any missed `INSTRUCTION` or `BRANCH`. No ceiling, no percentage: a miss is fixed by a test,
-  never by a number. Today: `:domain:inbound`, `:domain:scheduling`, `:domain:entrypoints`, `:domain:domain` (each at zero from creation, through the
-  `snapsync.layer` plugin), `:domain:model`, `:domain:ports`, `:domain:presentation`,
-  `:domain:feature`, `:domain:services`, `:adapter:generic:app`, `:ui:components`, `:ui:screens` and the three wiring
-  modules, `:domain:compose`, `:domain:host` and `:app:jvm`.
-- **Floored** — `id("snapsync.coverage")` with a `coverageFloors { aggregate(…) packageFloor(…) }` block: Kover
-  `verify` rules on `check`, an `INSTRUCTION` and a `BRANCH` aggregate plus an `INSTRUCTION` package floor, whole
-  percentages that may only rise. Every module that has not yet reached zero keeps these, untouched. A module joins the
-  zero gate only once it measures 0/0, and the change that switches it deletes its floors: the two plugins refuse to
-  be applied together, so switching is one visible edit.
+```kotlin
+coverage {
+    integrationGoal(instructions = 95, branches = 85)
+    ":domain:services" {
+        skipped("SQLDelight's generated code: …", packages = listOf("app.snapsync.services.ledger.db", …))
+        unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":adapter:generic:app", ":test:feature"))
+        integration(instructions = 80, branches = 58)
+    }
+    ":ui:screens" { unit(); integration { skipped("Compose: the suite stays at the intent level") } }
+    ":adapter:generic:mock" { skipped("test equipment: …") }
+}
+```
+
+- **`unit(…)`: the ZERO gate.** The module's `coverageZero` task (on `check`) reads its own Kover `report.xml` and fails
+  on any missed `INSTRUCTION` or `BRANCH`. No number, no percentage: a miss is fixed by a test. The report is filtered
+  to the module's OWN classes, so another module's tests count only when the entry names it in `alsoCoveredBy` (below,
+  "Credit").
+- **`integration(…)`: what `:test:integration` ALONE covers.** The suite's `integrationCoverage` task (on `check`,
+  right after the suite) reads the suite's own Kover binary report through Kover's report library, against each
+  module's JVM classes less its skipped packages, and compares whole percentages. It credits no module and changes no
+  unit measurement: it judges the SUITE. The goal is `integrationGoal`; a target left out is the goal, a higher one is
+  stricter, and a lower one is an **exception**: the module's measurement on the day it was set, rounded down. An
+  exception only rises: lowering one needs a reason stated in its PR, a ratchet carried by review like the complexity
+  ceilings, not by a check. What IS checked: an exception the module no longer needs (it meets the goal) fails the
+  build, so the list shrinks on its own and cannot go stale. A module with no branches meets any branch target. Every
+  run writes `test/integration/build/reports/integration-coverage/summary.md`: each module's measurement, its target,
+  and the gap to the goal. A measurement that moves between two runs of the same code is a flaky test to fix, never a
+  margin. The glue the zero gate excuses (below) is not excused here: a percentage absorbs it.
+  The wiring modules are held at 100/100, the suite being the test written for them, and the entry points too —
+  less the one line the suite cannot yet reach, `OnMetricReport`'s body (the JVM host delivers no process-metric
+  report), so their instructions sit at an exception of 99 until it can.
+- **`skipped(reason, packages)`: the one way to leave something out**, its reason read in review. WHERE it stands
+  decides what it skips: in the entry, the module from every measurement; inside `unit { }` or `integration { }`, only
+  that measurement. With `packages`, only those packages; without, everything at its level. Today it removes generated
+  code (SQLDelight's, the wire's, Compose Resources' `Res` accessors), the integration measurement of the adapters and
+  of the Compose modules, and the test equipment.
+- **The block is complete.** `coverageEntries` (on `check`) fails when a module with a JVM target outside `:test:*` and
+  `:tools:*` has no entry, or an entry names a module Kover cannot measure; an entry that leaves a measurement
+  unsettled, or contradicts itself, fails configuration. So no module is measured — or left out — by nobody's decision.
 
 **What the zero gate excuses: compiler-generated glue, recognised by its shape.** One category: code a compiler
 emits that no input can reach. Nothing a person wrote is ever excused, there is no opt-in annotation or comment
@@ -557,35 +587,36 @@ lines; an uncovered inline helper is untested, not unmeasurable. An inline body 
 measure — the branches a test reaches through one copy were not credited together with another copy's (`invocation`,
 2026-10-08) — so keep such decisions in an ordinary function the inline one calls (`logEntered`/`logReturned`).
 
-**Credit is unit-only, with one placed exception.**
-- Instrumented: `:domain:*`, `:adapter:generic:app`, `:adapter:generic:mock`, `:test:feature`, `:ui:state`, `:ui:screens`,
-  `:ui:components`, `:app:jvm` and `:test:integration`. A module's report is filtered to its OWN classes, so another
-  module's tests count only through a declared **crediting edge** (root `build.gradle.kts`).
-- Unit edges let tests that a placement rule forced elsewhere credit the module they test: the `:domain:*` zones from
-  `:adapter:generic:mock` and from `:test:feature`, and `:ui:components` and `:domain:presentation` from `:ui:screens`.
-- **Wiring edges**: `:domain:compose`, `:domain:host`, `:domain:entrypoints` and `:app:jvm` are credited by
-  `:test:integration`, and nothing else is. "One shared composition" (§2) says the wiring graph is not unit-tested and
-  IS smoke-tested by the integration surface, so for these the integration tests are the tests written for the code.
-  The entry points join them for the same reason (and are credited by the mocks' suite too, which composes the
-  process's metric-report entry point): each orders its trigger's steps and decides nothing (the
-  `entrypoints` tier and `EntryPointShape`), and the integration surface delivers every trigger from the operating
-  system's side, which is exactly what they are for. Integration also
-  runs model, feature, services and the rest, and counts for none of them: a thick integration suite still cannot stand
-  in for a thin unit suite.
-  What integration reaches there is construction and connection only: they hold no decision (`detektAppShell`),
+**Credit: `alsoCoveredBy`, and only where a placement rule put the tests elsewhere.**
+- A module's own tests always count. Another module's count only through its entry's `alsoCoveredBy`, which merges
+  that module's coverage data (Kover's `kover` dependency) — never its classes. The modules whose tests cover others
+  apply Kover themselves: `:adapter:generic:mock`, `:test:feature`, `:test:integration`.
+- Unit placement: the `:domain:*` zones are also covered by `:adapter:generic:mock` and `:test:feature`, `:domain:services`
+  by `:adapter:generic:app` too, and `:ui:components` and `:domain:presentation` by `:ui:screens`.
+- **The wiring**: `:domain:compose`, `:domain:host`, `:domain:entrypoints` and `:app:jvm` are also covered by
+  `:test:integration`. "One shared composition" (§2) says the wiring graph is not unit-tested and IS smoke-tested by
+  the integration surface, so for these the integration tests are the tests written for the code. The entry points
+  join them for the same reason (and are covered by the mocks' suite too, which composes the process's metric-report
+  entry point): each orders its trigger's steps and decides nothing (the `entrypoints` tier and `EntryPointShape`), and
+  the integration surface delivers every trigger from the operating system's side, which is exactly what they are for.
+  The suite covers no other module's unit measurement: a thick integration suite cannot stand in for a thin unit suite
+  — which is why what it covers of the rest is a measurement of its own (`integration`), judged apart.
+  What integration reaches in the wiring is construction and connection only: it holds no decision (`detektAppShell`),
   so every branch the graph needs is a unit-tested feature's or service's, and the JVM root composes through the same
   device bundles (`AppDevicePorts`, `ExtensionDevicePorts`) the phone's roots do.
-- `:test:contracts`, `:test:architecture`, `:tools:*` and the other test modules contribute nothing. Always name leaf
-  modules in an edge: `:domain` is an empty container, and a filter on it measures nothing.
+- The block lives in the root build file because `ModuleSetTest` forbids a `:domain:*` build file to name a module,
+  and `Zones.kt` reads those files as text, where an edge to the covering module would render backwards. Name leaf
+  modules: `:domain` is an empty container, and a report filtered to it measures nothing.
 
-**Out of the zero target**: test equipment (`:adapter:generic:mock`, `:test:*`, `:tools:*`, `:app:desktop`), the
-non-JVM shells (`:app:ios`, `:app:ios:extension`, `:app:android`) and the iOS/Android adapters, which Kover cannot see
+**Outside the block**: the test and tool modules (`:test:*`, `:tools:*`; the mocks and `:app:desktop` are in it, skipped
+as test equipment), the non-JVM shells (`:app:ios`, `:app:ios:extension`, `:app:android`) and the iOS/Android adapters, which Kover cannot see
 (it is JVM-only) and which the port contracts hold to clause completeness instead (§4).
 
 Decision record: `changes/archive/2026-08-28-add-coverage-bounds`, **partly superseded** by this section. D1 (Kover's
 default engine), D3 (`INSTRUCTION` and `BRANCH`, never `LINE`) and D5a (credit follows placement) stand. D2 (aggregate
 + package-floor percentages) gives way to the own-`report.xml` gate — the very alternative D2 deferred — module by
-module as each reaches zero. D4 stands except that integration now credits the three wiring modules. D5 (`compose/`
+module as each reaches zero; every module reached it, and the floors are gone. D4 stands except that integration now
+covers the wiring modules and the entry points, and has a measurement of its own. D5 (`compose/`
 unbounded) rested on Kover crediting per project while `compose/` was a package of `:domain`; it is its own module now,
 so it is measured. D6 (seed at `floor(measured)`) gives way to zero.
 
