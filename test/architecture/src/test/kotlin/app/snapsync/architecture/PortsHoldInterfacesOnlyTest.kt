@@ -127,7 +127,9 @@ class PortsHoldInterfacesOnlyTest {
         """.trimIndent()
         assertTrue(
             declarations(sample).toSet() == setOf("Helper", "helper", "Marker", "Port.None"),
-            "the scan reads a helper, an annotation, a nested implementation and nothing else — data passes: ${declarations(sample)}",
+            "the scan reads a helper, an annotation, a nested implementation and nothing else — data passes: ${declarations(
+                sample,
+            )}",
         )
     }
 

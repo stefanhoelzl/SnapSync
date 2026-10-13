@@ -10,8 +10,8 @@ import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import app.snapsync.android.gallery.MediaStoreResource
 import androidx.work.impl.background.systemjob.SystemJobService
+import app.snapsync.android.gallery.MediaStoreResource
 import app.snapsync.android.gallery.MediaStoreSeeder
 import app.snapsync.android.network.MeteredWifi
 import app.snapsync.android.network.awaitUnrestrictedNetwork

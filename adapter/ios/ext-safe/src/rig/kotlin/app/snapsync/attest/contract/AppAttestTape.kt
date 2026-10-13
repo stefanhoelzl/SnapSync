@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class, ExperimentalAtomicApi::class)
 
 package app.snapsync.attest.contract
 
@@ -15,6 +15,9 @@ import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.NSLocalizedDescriptionKey
 import platform.Foundation.create
+import kotlin.concurrent.AtomicReference
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /*
  * App Attest's operating-system boundary as TEXT (`docs/architecture.md`, "Hosts CI cannot reach are
@@ -36,6 +39,12 @@ import platform.Foundation.create
  */
 
 internal const val MASKED = "<masked>"
+
+/**
+ * The answer a call is recorded with when App Attest never called its completion before the clause ended — what an
+ * offline phone does to a fresh proof. A replay answers it by never calling the completion either.
+ */
+internal const val NO_ANSWER = "no answer"
 
 /** The placeholder bytes a masked attestation or assertion replays as: non-empty, and obviously not Apple's. */
 private val maskedBytes = MASKED.encodeToByteArray()
@@ -73,29 +82,58 @@ private fun ByteArray.toNSData(): NSData = usePinned { NSData.create(bytes = it.
 private fun attestCall(symbol: String, keyId: String, clientDataHash: NSData, keys: MintedKeys) =
     "$symbol(keyId=${keys.render(keyId)} clientDataHash=${clientDataHash.hex()})"
 
-/** Passes every call to [real] and records it, with the answer, in the clause block [recorder] has open. */
+/**
+ * Passes every call to [real] and records it, with the answer, in the clause block [recorder] has open. A call still
+ * unanswered when the clause's subject is disposed is recorded by [recordUnanswered] as [NO_ANSWER]; a completion
+ * arriving after that is not recorded, so each call is on the tape exactly once.
+ */
 internal class RecordingAppAttestApi(private val real: AppAttestApi, private val recorder: Recorder) : AppAttestApi {
     private val keys = MintedKeys()
 
+    /** One call made, and whether its answer is already on the tape. */
+    private class Pending(val call: String) {
+        val settled = AtomicBoolean(false)
+    }
+
+    // Calls are made on whatever thread the adapter waits on; the disposal reads them on the runner's.
+    private val pending = AtomicReference(emptyList<Pending>())
+
+    private fun made(call: String): Pending = Pending(call).also { made ->
+        while (true) {
+            val before = pending.value
+            if (pending.compareAndSet(before, before + made)) break
+        }
+    }
+
+    private fun Pending.answer(answer: () -> String) {
+        if (settled.compareAndSet(expectedValue = false, newValue = true)) recorder.record(call, answer())
+    }
+
+    /** Records every call App Attest has not answered as [NO_ANSWER] — the binding's act, when the clause ends. */
+    fun recordUnanswered() = pending.value.forEach { it.answer { NO_ANSWER } }
+
     override fun isSupported(): Boolean = real.isSupported().also { recorder.record("isSupported()", "$it") }
 
-    override fun generateKey(completion: (String?, NSError?) -> Unit) = real.generateKey { keyId, error ->
-        recorder.record("generateKey()", if (keyId != null) "keyId=${keys.mint(keyId)}" else renderError(error))
-        completion(keyId, error)
+    override fun generateKey(completion: (String?, NSError?) -> Unit) {
+        val made = made("generateKey()")
+        real.generateKey { keyId, error ->
+            made.answer { if (keyId != null) "keyId=${keys.mint(keyId)}" else renderError(error) }
+            completion(keyId, error)
+        }
     }
 
     override fun attestKey(keyId: String, clientDataHash: NSData, completion: (NSData?, NSError?) -> Unit) {
-        val call = attestCall("attestKey", keyId, clientDataHash, keys)
+        val made = made(attestCall("attestKey", keyId, clientDataHash, keys))
         real.attestKey(keyId, clientDataHash) { data, error ->
-            recorder.record(call, if (data != null) "data=$MASKED" else renderError(error))
+            made.answer { if (data != null) "data=$MASKED" else renderError(error) }
             completion(data, error)
         }
     }
 
     override fun generateAssertion(keyId: String, clientDataHash: NSData, completion: (NSData?, NSError?) -> Unit) {
-        val call = attestCall("generateAssertion", keyId, clientDataHash, keys)
+        val made = made(attestCall("generateAssertion", keyId, clientDataHash, keys))
         real.generateAssertion(keyId, clientDataHash) { data, error ->
-            recorder.record(call, if (data != null) "data=$MASKED" else renderError(error))
+            made.answer { if (data != null) "data=$MASKED" else renderError(error) }
             completion(data, error)
         }
     }
@@ -109,6 +147,7 @@ internal class ReplayingAppAttestApi(private val replayer: Replayer) : AppAttest
 
     override fun generateKey(completion: (String?, NSError?) -> Unit) {
         val answer = replayer.answer("generateKey()")
+        if (answer == NO_ANSWER) return
         if (answer.startsWith(
                 "keyId=",
             )
@@ -125,13 +164,9 @@ internal class ReplayingAppAttestApi(private val replayer: Replayer) : AppAttest
     override fun generateAssertion(keyId: String, clientDataHash: NSData, completion: (NSData?, NSError?) -> Unit) =
         answerData(replayer.answer(attestCall("generateAssertion", keyId, clientDataHash, keys)), completion)
 
-    private fun answerData(answer: String, completion: (NSData?, NSError?) -> Unit) =
-        if (answer.startsWith(
-                "data=",
-            )
-        ) {
-            completion(maskedBytes.toNSData(), null)
-        } else {
-            completion(null, parseError(answer))
-        }
+    private fun answerData(answer: String, completion: (NSData?, NSError?) -> Unit) = when {
+        answer == NO_ANSWER -> Unit
+        answer.startsWith("data=") -> completion(maskedBytes.toNSData(), null)
+        else -> completion(null, parseError(answer))
+    }
 }

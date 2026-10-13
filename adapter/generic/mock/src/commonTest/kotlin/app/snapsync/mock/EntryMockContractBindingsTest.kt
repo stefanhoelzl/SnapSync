@@ -29,8 +29,8 @@ import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ProcessingAnswer
-import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.Completion
+import app.snapsync.ports.LinkDelivery
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeChoice
@@ -79,7 +79,9 @@ class EntryMockContractBindingsTest {
                 LinksUnderTest(
                     mock.port().recorded(log),
                     open = { url -> mock.operator.open(url) },
-                    openNotALink = { mock.operator.deliver(LinkDelivery.NotALink("onNewIntent", "android.intent.action.MAIN")) },
+                    openNotALink = {
+                        mock.operator.deliver(LinkDelivery.NotALink("onNewIntent", "android.intent.action.MAIN"))
+                    },
                     openWithoutUrl = { mock.operator.deliver(LinkDelivery.NoUrl("onNewIntent")) },
                     startInstalled = { referrer -> mock.operator.startInstalled(referrer) },
                 ),
@@ -216,7 +218,8 @@ class EntryMockContractBindingsTest {
             UiIntent.RenameStatusConsumed, UiIntent.ConfirmStopSharing, UiIntent.KeepSharing, UiIntent.ShareOn(true),
             UiIntent.ReceiveOn(true), UiIntent.SaveToAlbum(true), UiIntent.RangePreset(RangeChoice.entries.first()),
             UiIntent.RetryLoad, UiIntent.ConfirmJoin, UiIntent.ConfirmSwitch, UiIntent.RetryJoin, UiIntent.CancelJoin,
-            UiIntent.CancelSwitch, UiIntent.SendDiagnostics("note", "screen"), UiIntent.KeepOpenFor(1), UiIntent.KeepOpenDismiss,
+            UiIntent.CancelSwitch, UiIntent.SendDiagnostics("note", "screen"), UiIntent.KeepOpenFor(1),
+            UiIntent.KeepOpenDismiss,
         )
     }
 }

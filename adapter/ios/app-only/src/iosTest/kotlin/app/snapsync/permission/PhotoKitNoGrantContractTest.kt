@@ -1,9 +1,5 @@
 package app.snapsync.permission
 
-import app.snapsync.ports.GalleryReader
-import app.snapsync.contracts.SeededLibrary
-import app.snapsync.contracts.GalleryReaderState
-import app.snapsync.contracts.GalleryReaderContract
 import app.snapsync.contract.photoAccessGallery
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
@@ -11,16 +7,20 @@ import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.GalleryChange
 import app.snapsync.contracts.GalleryContract
+import app.snapsync.contracts.GalleryReaderContract
+import app.snapsync.contracts.GalleryReaderState
 import app.snapsync.contracts.GalleryState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.PhotoAccess
 import app.snapsync.contracts.PhotoAccessContract
 import app.snapsync.contracts.PhotoAccessState
+import app.snapsync.contracts.SeededLibrary
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -87,7 +87,11 @@ class PhotoKitNoGrantContractTest {
         override val reaches = setOf(GalleryReaderState.REFUSED)
 
         override fun create(state: GalleryReaderState, clauseId: String, log: CallLog): Entered<SeededLibrary<GalleryReader>> {
-            if (state !in reaches || currentPhotoPermission() != LibraryGrant.DENIED) return Entered.Unreachable(unreachable)
+            if (state !in reaches || currentPhotoPermission() != LibraryGrant.DENIED) {
+                return Entered.Unreachable(
+                    unreachable,
+                )
+            }
             val reader = IosGalleryReader(Logger.withTag("contract"))
             val gallery = IosGallery(reader, PhotoLibraryPermission(), CoroutineScope(Dispatchers.Default))
             return Entered.Ready(SeededLibrary(gallery.recorded(log)))

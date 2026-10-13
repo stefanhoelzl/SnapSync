@@ -28,14 +28,20 @@ class IosLinksContractTest {
         override val adapter = IosLinks::class
         override val reaches = setOf(LinksState.OPENABLE, LinksState.OPENED_WITH_NO_LINK, LinksState.OPENED_WITH_NO_URL)
         override fun create(state: LinksState, clauseId: String, log: CallLog): Entered<LinksUnderTest> {
-            if (state !in reaches) return Entered.Unreachable("an install referrer is Google Play's: iOS hands the app none")
+            if (state !in reaches) {
+                return Entered.Unreachable(
+                    "an install referrer is Google Play's: iOS hands the app none",
+                )
+            }
             val links = IosLinks(Logger.withTag("contract"))
             val hook = "continueUserActivity"
             return Entered.Ready(
                 LinksUnderTest(
                     links.recorded(log),
                     open = { url ->
-                        val activity = NSUserActivity(NSUserActivityTypeBrowsingWeb).apply { webpageURL = NSURL(string = url) }
+                        val activity = NSUserActivity(
+                            NSUserActivityTypeBrowsingWeb,
+                        ).apply { webpageURL = NSURL(string = url) }
                         links.deliverUserActivity(hook, activity)
                     },
                     // Handoff of another kind of activity, and a web-browsing one that carries no URL.

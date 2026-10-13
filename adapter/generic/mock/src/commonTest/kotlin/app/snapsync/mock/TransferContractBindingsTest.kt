@@ -2,9 +2,6 @@
 
 package app.snapsync.mock
 
-import app.snapsync.ports.ChangeOutcome
-import app.snapsync.contracts.Relaunch
-import app.snapsync.contracts.uploadTarget
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -19,6 +16,7 @@ import app.snapsync.contracts.Landed
 import app.snapsync.contracts.OsUploadQueueContract
 import app.snapsync.contracts.OsUploadQueueState
 import app.snapsync.contracts.QueueUnderTest
+import app.snapsync.contracts.Relaunch
 import app.snapsync.contracts.SessionUnderTest
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.TransferSessionContract
@@ -29,9 +27,11 @@ import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.uploadClauseKey
+import app.snapsync.contracts.uploadTarget
 import app.snapsync.contracts.verify
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Download
 import app.snapsync.ports.GalleryResourceHandle
@@ -215,7 +215,9 @@ class TransferContractBindingsTest {
                     repeat(UploadSessionMock.LIVE_CAP) { n ->
                         val url = base + TransferSessionContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
                         val target = UploadTarget(url, emptyMap(), TransferNetwork.ANY)
-                        check(mock.port().create(file, target, uploadClauseKey(clauseId, n + 1)) == CreateOutcome.CREATED)
+                        check(
+                            mock.port().create(file, target, uploadClauseKey(clauseId, n + 1)) == CreateOutcome.CREATED,
+                        )
                     }
                 }
             }
@@ -226,7 +228,9 @@ class TransferContractBindingsTest {
                 val tag = TransferSessionContract.relaunchedTag(clauseId)
                 val refused = base + TransferSessionContract.path(clauseId, FixtureAnswer.Respond(403))
                 runEntry {
-                    check(mock.port().create(file, UploadTarget(refused, emptyMap(), TransferNetwork.ANY), tag) == CreateOutcome.CREATED)
+                    check(
+                        mock.port().create(file, UploadTarget(refused, emptyMap(), TransferNetwork.ANY), tag) == CreateOutcome.CREATED,
+                    )
                 }
                 Relaunch(
                     deliver = {
@@ -247,7 +251,9 @@ class TransferContractBindingsTest {
                     base = base,
                     // The mocked session sends a file, as the app's `URLSession` does — and a resource where it plays Android's.
                     usable = { if (resources) TransferSource.Resource(photo) else file },
-                    unusable = { if (resources) TransferSource.Resource(NotThisPlatformsHandle) else TransferSource.Resource(photo) },
+                    unusable = {
+                        TransferSource.Resource(if (resources) NotThisPlatformsHandle else photo)
+                    },
                     ended = { ended.toList() },
                     objects = landedOn(received),
                     liftRestriction = {

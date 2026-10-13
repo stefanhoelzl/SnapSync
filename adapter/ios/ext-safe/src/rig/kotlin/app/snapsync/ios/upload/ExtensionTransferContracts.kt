@@ -12,7 +12,6 @@ import app.snapsync.contracts.CallLog
 import app.snapsync.contracts.Clause
 import app.snapsync.contracts.Contract
 import app.snapsync.contracts.Entered
-import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.FixtureObjects
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.Landed
@@ -44,7 +43,6 @@ import platform.Foundation.NSSortDescriptor
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetMediaTypeImage
 import platform.Photos.PHAssetResource
-import platform.Photos.PHAssetResourceUploadJob
 import platform.Photos.PHFetchOptions
 
 /*
@@ -139,7 +137,6 @@ internal fun photoKitUploadInState(
     objects: FixtureObjects,
     photo: GalleryResourceHandle,
     log: CallLog,
-    jobLimit: () -> Int = { error("only the at-cap state reads the cap") },
     afterDispose: () -> Unit = {},
 ): Entered<QueueUnderTest> {
     if (state !in EXTENSION_RECORDED) return Entered.Unreachable(NOT_RECORDED_IN_THE_EXTENSION)
