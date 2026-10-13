@@ -94,6 +94,39 @@ class LaneLoopTest {
         assertNull(settled.poll(100, TimeUnit.MILLISECONDS), "a settle inside the advance is not reported")
     }
 
+    // An act advances the clock from the loop's own operator lane: finding the loop quiet resumes the act on that lane,
+    // and the thread that found it must not sleep through its own work.
+    @Test
+    fun an_advance_made_on_a_lane_of_the_loop_finishes_under_every_interleaving() {
+        listOf(Interleaving.Turns, Interleaving.Shuffled(5), Interleaving.Parallel).forEach { interleaving ->
+            runBlocking {
+                clock.now = start
+                val loop = loop(interleaving = interleaving)
+                val app = loop.lane("composition", checked = false)
+                val operator = loop.lane("operator", checked = false)
+                val ticks = Collections.synchronizedList(mutableListOf<Instant>())
+                withContext(app) {
+                    CoroutineScope(app).launch {
+                        repeat(3) {
+                            delay(2.seconds)
+                            ticks += clock.now
+                        }
+                    }
+                }
+                // Not a child of the test's own job: an advance stuck on the loop cannot then hang the test with it.
+                val advanced = CompletableDeferred<Unit>()
+                CoroutineScope(operator).launch {
+                    loop.advance(7.seconds)
+                    advanced.complete(Unit)
+                }
+                withTimeoutOrNull(5.seconds) { advanced.await() }
+                    ?: error("the advance never finished under $interleaving: ${loop.report()}")
+                assertEquals(listOf(2, 4, 6).map { start + it.seconds }, ticks.toList(), "under $interleaving")
+                loop.close()
+            }
+        }
+    }
+
     @Test
     fun a_timeout_runs_on_mocked_time() = runBlocking {
         val loop = loop()

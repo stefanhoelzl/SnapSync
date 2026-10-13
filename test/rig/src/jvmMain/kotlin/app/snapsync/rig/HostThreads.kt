@@ -139,7 +139,9 @@ private class LoopActs(private val lane: CoroutineDispatcher, private val events
 internal class JvmWorld(private val threads: HostThreads) : WorldLevers {
     override fun events(): Flow<WorldEvent> = threads.events.flow()
 
-    override suspend fun tagNextAct(tag: String) = threads.events.tagNextAct(tag)
+    override suspend fun tagActs(tag: String?) = threads.events.tagActs(tag)
+
+    override suspend fun actsTagged(tag: String): Int = threads.events.actsTagged(tag)
 
     override suspend fun advance(millis: Long) {
         if (threads.time != LoopTime.MOCKED) {

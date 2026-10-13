@@ -1,13 +1,15 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.rig.DownloadView
+import app.snapsync.ui.state.DirectionCount
+import app.snapsync.ui.state.Layer
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The duplicate-import defect, end to end over the real stack, driven through the control protocol (Bugsink
@@ -241,28 +243,43 @@ class InterruptedImportIntegrationTest {
      * settlement is observed through the staging directory: a settled row releases its bytes.
      */
     @Test
-    fun under_a_partial_grant_the_sweep_waits_for_the_selection_snapshot() = rigTest {
-        createAndJoin()
-        val ownBefore = libraryIds()
-        stageWithAbandonedImport(joined = true)
-        val created = (libraryIds() - ownBefore).single()
-        val staged = stagedFiles()
-        assertTrue(staged.isNotEmpty(), "precondition: the unconfirmed import holds its bytes")
+    fun under_a_partial_grant_the_sweep_waits_for_the_selection_snapshot() = behaviour {
+        given {
+            joinedEvent()
+            step(
+                "a member's photo on its way, its import to be abandoned once the library has created it",
+                act = {
+                    publicBackend.foreignDevice(foreignDevice, listOf(foreignAsset))
+                    device("import/suspend-next", "afterCommit" to "true")
+                    os("app", "onForeground")
+                },
+                until = { settled { true } },
+            )
+            // The import fires from the staged-resource callback, and parks there: the asset exists, the row does not know.
+            step("its bytes staged", act = { device("downloads/stage") }, until = { settled { true } })
+            step(
+                "the grant narrowed",
+                act = { device("permission", "status" to "LIMITED") },
+                until = { settled { true } },
+            )
+            // No emission yet, so the relaunched app's sweep has no snapshot to ask: one that ran anyway would read
+            // UNKNOWN and settle nothing — permanently, because nothing re-arms it.
+            step(
+                "the app relaunched and opened",
+                act = {
+                    device("relaunch")
+                    os("app", "onForeground")
+                },
+                until = { settled { true } },
+            )
+        }
 
-        permission("LIMITED")
-        relaunchAndAssemble()
-
-        // No emission yet: the snapshot is null, so an eager sweep would read UNKNOWN and settle nothing —
-        // permanently, because nothing re-arms it. Give it room to do the wrong thing.
-        stagingNeverChangesWithin(staged, what = "the sweep must NOT have settled the row before a snapshot")
-
-        // The observer emits, and the created asset is in the member's hand-picked selection.
-        device("selection/change", "assets" to created)
-
-        eventually(read = {
-            stagedFiles()
-        }) { files -> files.none { it in staged } } // once the snapshot exists, the sweep settles
-        awaitDownloadSettled()
+        // The observer emits, and the created asset is in the member's hand-picked selection; they look again.
+        whenever {
+            device("selection/change", "assets" to "imported-$foreignDevice-$foreignAsset")
+            os("app", "onForeground")
+        }
+        then { screen<Layer.Joined> { it.received() == DirectionCount.Progress(1, 1) } }
     }
 
     // ---- helpers --------------------------------------------------------------------------------
@@ -313,17 +330,8 @@ class InterruptedImportIntegrationTest {
     private suspend fun Rig.stagedFiles(): Set<String> =
         deviceJson("staging").getValue("files").jsonArray.mapTo(mutableSetOf()) { it.jsonPrimitive.content }
 
-    /** Every asset id the library holds. */
-    private suspend fun Rig.libraryIds(): Set<String> = gallery().policy!!.assets.mapTo(mutableSetOf()) { it.assetId }
-
-    /** The staging directory still holds every one of [staged] for the whole window — a true negative. */
-    private suspend fun Rig.stagingNeverChangesWithin(staged: Set<String>, what: String) {
-        val deadline = kotlin.time.TimeSource.Monotonic.markNow() + 500.milliseconds
-        while (deadline.hasNotPassedNow()) {
-            assertTrue(stagedFiles().containsAll(staged), what)
-            kotlinx.coroutines.delay(50.milliseconds)
-        }
-    }
+    /** What the joined screen counts as received. */
+    private fun Layer.Joined.received() = counts?.received
 
     private companion object {
         /** Any wake runs the tail, whose first unit is the import drain; the heartbeat is the one a test can force. */

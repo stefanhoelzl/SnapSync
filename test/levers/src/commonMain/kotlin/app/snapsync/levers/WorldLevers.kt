@@ -22,8 +22,14 @@ interface WorldLevers {
      */
     fun events(): Flow<WorldEvent>
 
-    /** Marks the next act this host runs with [tag], so its caller finds where its act begins in [events]. */
-    suspend fun tagNextAct(tag: String)
+    /**
+     * Marks every act this host runs from now on with [tag] — until another tag, or `null` for none — so a caller finds
+     * where its acts begin and end in [events].
+     */
+    suspend fun tagActs(tag: String?)
+
+    /** How many acts this host has run marked with [tag]. */
+    suspend fun actsTagged(tag: String): Int
 
     /**
      * Moves the mocked clock [millis] ahead, firing every timer due on the way at its own instant and settling between
