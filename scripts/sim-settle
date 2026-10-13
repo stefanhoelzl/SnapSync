@@ -4,7 +4,7 @@
 #
 #   scripts/sim-settle <udid>
 #
-# A runner's first boot of the image's iPhone 17 spends minutes, at a load of 100-480 on 3 vCPUs, building what the
+# A runner's first boot of the image's iPhone 17 Pro Max spends minutes, at a load of 100-480 on 3 vCPUs, building what the
 # device keeps in its own directory: the LaunchServices database, widget and wallpaper registrations, the Photos
 # library and its caches (run 38393803729: boot 1.8 min, then 2.6 min to install the app under that load). This boots
 # it, stops the daemons nothing tested needs (`scripts/lib/sim.sh` — `disable` persists, so a later boot never starts

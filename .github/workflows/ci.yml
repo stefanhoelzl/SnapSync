@@ -497,6 +497,17 @@ jobs:
       # about three).
       - name: Platform tests on the simulator
         run: ./gradlew iosPlatformTest
+      # Seed the Gradle cache main saves from this job with what only a rig simulator app compiles — the control channel,
+      # the launch-time adapters, the mocks, the rig source sets of the iOS adapters, the host and both frameworks' links —
+      # against the same `prod` deployment, so `screenshots.yml`, which restores this job's cache, finds them. Nothing
+      # else ever cached them: journeys (ios) saves nothing, and its `local` deployment changes `domain:model`, so its
+      # outputs would not match anyway. The library modules' keys are the same with or without the rig flag, so those
+      # stay UP-TO-DATE here. Main only: no other ref saves the cache. ~TODO measured.
+      - name: Seed the Gradle cache with the rig simulator app
+        if: github.ref == 'refs/heads/main'
+        run: |
+          ./gradlew -Psnapsync.rig=true \
+            :app:ios:linkDebugFrameworkIosSimulatorArm64 :app:ios:extension:linkDebugFrameworkIosSimulatorArm64
       # One `-device-` entry for this job: the archive action restored it, and it is saved only here, after the tests,
       # so it carries the simulator caches they built as well as the device ones.
       - name: Save Kotlin/Native (~/.konan)
@@ -678,62 +689,13 @@ jobs:
         uses: ./.github/actions/konan-restore
         with:
           family: device
-      # The simulator, already past its first boot: the image's iPhone 17 (`scripts/lib/sim.sh`), its device directory
-      # cached as `scripts/sim-settle` leaves it — booted, the unneeded daemons disabled, Photos' library created, shut
-      # down clean, no app and no photo. A first boot on the runner otherwise spent ~4.5 min at a load of 100-480
-      # booting and installing (run 38393803729); restored, boot and install took 2.7 min and the library's migration 4 s
-      # (run 38402060923). Keyed on the image version, the device and the settle scripts. On a miss the device is
-      # settled (~12 min) and saved on main only; anywhere else the image's own directory is put back.
-      - name: Find the image's simulator
-        id: sim
-        if: matrix.platform == 'ios'
-        run: |
-          . scripts/lib/sim.sh
-          UDID="$(image_iphone)"
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-          echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
-          [ -z "$UDID" ] || mv "$HOME/Library/Developer/CoreSimulator/Devices/$UDID" "$HOME/Library/Developer/CoreSimulator/Devices/$UDID.image"
+      # The simulator past its first boot (`.github/actions/settled-simulator`): settled and saved on main, restored
+      # elsewhere. The journeys' device is the screenshots' too, so this one entry serves both.
       - name: Restore the settled simulator
-        id: sim-restore
-        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
-        uses: actions/cache/restore@v6
+        if: matrix.platform == 'ios'
+        uses: ./.github/actions/settled-simulator
         with:
-          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
-          key: sim-settled-${{ steps.sim.outputs.image }}-${{ steps.sim.outputs.udid }}-${{ hashFiles('scripts/sim-settle', 'scripts/lib/sim.sh') }}
-      - name: Settle the simulator
-        id: sim-settle
-        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
-        env:
-          UDID: ${{ steps.sim.outputs.udid }}
-          HIT: ${{ steps.sim-restore.outputs.cache-hit }}
-          SETTLE: ${{ github.ref == 'refs/heads/main' }}
-        run: |
-          D="$HOME/Library/Developer/CoreSimulator/Devices/$UDID"
-          if [ "$HIT" = true ]; then
-            rm -rf "$D.image"; echo "restored the settled simulator ($(du -sh "$D" | cut -f1))"
-          else
-            rm -rf "$D"; mv "$D.image" "$D"
-            if [ "$SETTLE" = true ]; then scripts/sim-settle "$UDID" && echo "save=true" >> "$GITHUB_OUTPUT"; fi
-          fi
-          # CoreSimulatorService read the device set before its directory moved; the next simctl starts it afresh.
-          killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
-      - name: Save the settled simulator
-        if: steps.sim-settle.outputs.save == 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
-          key: ${{ steps.sim-restore.outputs.cache-primary-key }}
-      # One entry is ~0.9 GB of a full 10 GB budget: drop the ones a new image or a changed settle superseded.
-      - name: Reclaim superseded simulator entries
-        if: steps.sim-settle.outputs.save == 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          KEEP: ${{ steps.sim-restore.outputs.cache-primary-key }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=sim-settled-" \
-            --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
-            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
+          settle: ${{ github.ref == 'refs/heads/main' }}
       # The SwiftPM checkout (sentry-cocoa) ios-build's archive restores and main saves (`.github/actions/ios-archive`
       # says why the key is the pbxproj): the same directory under the same derived-data path, read only here.
       - name: Restore the resolved SwiftPM checkout

@@ -109,19 +109,18 @@ stage "backend: starting"
 BACKEND_PID=$!
 BACKEND="http://127.0.0.1:8080/api/v2"
 
-# On CI, the runner image's own iPhone 17 on the newest iOS runtime: the image booted it once when it was built,
-# so it skips the first-boot data-container and photo-library migration a created device pays (minutes under the
-# build's load; `screenshots.yml` measured 209-224 s of it), and the runner VM is discarded, so it is as fresh as a
-# created one (`scripts/sim-settle` says how CI caches it already booted and settled). Anywhere else an iPhone 17
-# is created, because a reused one keeps the photos earlier runs seeded.
+# On CI, the runner image's own iPhone 17 Pro Max on the newest iOS runtime — the store's 6.9" screenshot device, so the
+# screenshots restore the same settled entry (`.github/actions/settled-simulator`, which says how CI caches it booted and
+# settled; the image itself never booted it). The runner VM is discarded, so it is as fresh as a created one. Anywhere
+# else an iPhone 17 Pro Max is created, because a reused one keeps the photos earlier runs seeded.
 DEVICE=""; CREATED=""
 if [ "${CI:-}" = true ]; then
     DEVICE="$(image_iphone)"
-    if [ -n "$DEVICE" ]; then echo "sim-contracts: reusing the image's iPhone 17 $DEVICE"
-    else echo "sim-contracts: the image carries no iPhone 17 — creating a device"; fi
+    if [ -n "$DEVICE" ]; then echo "sim-contracts: reusing the image's iPhone 17 Pro Max $DEVICE"
+    else echo "sim-contracts: the image carries no iPhone 17 Pro Max — creating a device"; fi
 fi
 if [ -z "$DEVICE" ]; then
-    DEVICE="$(xcrun simctl create "contracts-$$" 'iPhone 17')" || fail "could not create a simulator"
+    DEVICE="$(xcrun simctl create "contracts-$$" 'iPhone 17 Pro Max')" || fail "could not create a simulator"
     CREATED=1
 fi
 cleanup() {

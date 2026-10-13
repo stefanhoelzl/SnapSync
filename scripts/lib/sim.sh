@@ -1,6 +1,6 @@
 # Shared by scripts/sim-contracts and scripts/sim-settle (POSIX sh, sourced).
 
-# The runner image's own iPhone 17 on its newest iOS runtime, by UDID; nothing when the image carries none.
+# The runner image's own iPhone 17 Pro Max on its newest iOS runtime, by UDID; nothing when the image carries none.
 image_iphone() {
     xcrun simctl list -j devices available | python3 -c '
 import json, sys
@@ -9,7 +9,7 @@ ios = sorted((r for r in runtimes if ".SimRuntime.iOS-" in r),
              key=lambda r: [int(x) for x in r.rsplit("iOS-", 1)[1].split("-")], reverse=True)
 for r in ios:
     for d in runtimes[r]:
-        if d["name"] == "iPhone 17":
+        if d["name"] == "iPhone 17 Pro Max":
             print(d["udid"]); sys.exit(0)
 '
 }

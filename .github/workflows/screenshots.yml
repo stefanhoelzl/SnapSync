@@ -38,7 +38,7 @@
 # as the others. The one residue is the simulator's anti-aliasing of the Dynamic Island's rim (≤~120 pixels, each
 # ≤2/255), which is noise: never commit a raw whose only diff is that.
 #
-# WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 16 Pro Max, 1320x2868)
+# WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 17 Pro Max, 1320x2868)
 # and App Store Connect auto-scales it down to the 6.5"/6.7" listings. Older classes and iPad are not
 # required (SnapSync is iPhone-only) and are deliberately omitted.
 #
@@ -58,6 +58,12 @@ permissions:
 jobs:
   screenshots:
     runs-on: macos-26
+    # Gradle's cache: ios-build's, read only, as journeys (ios) reads it. Under its own job name this restored an entry
+    # only a dispatch on main ever wrote — five days stale once, so nearly every task rebuilt — while ios-build's carries
+    # what this build needs: the simulator libraries its platform tests compile and, on main, the rig app's own (its
+    # "Seed the Gradle cache with the rig simulator app" step).
+    env:
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: ios-build
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v6
@@ -65,6 +71,8 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
       # The Kotlin/Native cache ci.yml's `journeys (ios)` warms — it builds this same rig simulator app — so a warm run
       # skips the toolchain download and klib recompile. RESTORE-ONLY: main owns that entry, and this dispatch-only
       # workflow is a pure consumer. That is also what it already did, just accidentally: with a key
@@ -134,14 +142,18 @@ jobs:
           ./gradlew -q --stop
           pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' || true
 
-      # Boot a 6.9" iPhone and install: a created iPhone 16 Pro Max, the device every committed raw came from. Its first
-      # boot spends ~1:50 "Waiting on Data Migration" (209-224 s for the whole step). Reusing an image device does NOT
-      # skip that on macos-26 — the image carries no iPhone 16, and its own iPhone 17 Pro Max, never booted, paid the
-      # same 1:49 (run 38458729276) — so this creates rather than looks. Skipping it would take a cached, settled device,
-      # as journeys (ios) keeps one (`scripts/sim-settle`).
+      # The 6.9" iPhone journeys (ios) runs on, restored past its first boot (`.github/actions/settled-simulator`; main
+      # settles and saves it): a first boot spent 1:50-3:46 "Waiting on Data Migration", created or the image's own
+      # alike. Restored only, never settled here — on a miss (a new image, before main re-settles) the image's device
+      # boots as it shipped; a created one only if the image ever carries no iPhone 17 Pro Max.
+      - name: Restore the settled simulator
+        id: sim
+        uses: ./.github/actions/settled-simulator
       - name: Boot the 6.9" simulator and install
+        env:
+          DEVICE: ${{ steps.sim.outputs.udid }}
         run: |
-          DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 16 Pro Max')"
+          [ -n "$DEVICE" ] || DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 17 Pro Max')"
           echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
