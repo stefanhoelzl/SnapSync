@@ -8,9 +8,9 @@
 # device keeps in its own directory: the LaunchServices database, widget and wallpaper registrations, the Photos
 # library and its caches (run 38393803729: boot 1.8 min, then 2.6 min to install the app under that load). This boots
 # it, stops the daemons nothing tested needs (`scripts/lib/sim.sh` — `disable` persists, so a later boot never starts
-# them), opens Photos so its library is created and migrated, waits for the load to fall, and shuts it down cleanly.
-# No app is installed and no photo is added: the device stays as fresh as the image shipped it, only past its first
-# boot.
+# them), opens Photos and awaits its library's background migration, waits for the load to fall, and shuts it down
+# cleanly. No app is installed and no photo is added: the device stays as fresh as the image shipped it, only past its
+# first boot.
 set -u
 DEVICE="${1:?usage: scripts/sim-settle <udid>}"
 . scripts/lib/sim.sh
@@ -22,6 +22,12 @@ xcrun simctl bootstatus "$DEVICE" -b >/dev/null || { log "FAILED to finish booti
 log "booted"
 stop_daemons "$DEVICE"
 xcrun simctl launch "$DEVICE" com.apple.mobileslideshow >/dev/null
+# Opening Photos opens the system library, whose background migration `dasd` then runs when it chooses — minutes
+# later, 3-449 s measured. Awaited here, so the cached library is already migrated; never fatal, `sim-contracts` awaits
+# it again.
+python3 scripts/await-photo-migration.py --device "$DEVICE" --log "${RUNNER_TEMP:-/tmp}/settle-photo-migration.log" \
+    || log "the photo library's migration did not settle (sim-contracts will wait for it)"
+log "photo library migrated"
 # Settled: the 1-minute load under 4 for three samples in a row, 10 s apart — at most 10 min, after which it is saved
 # as it is (a later boot finishes what is left).
 calm=0; i=0
