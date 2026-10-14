@@ -9,6 +9,10 @@
 # The system image is not on the runner image, and is downloaded each run (~40 s). It is deliberately NOT cached: one
 # entry is ~1.5 GB of the repository's 10 GB, and saved it evicted the ~/.konan entries, which save minutes, not seconds.
 # The emulator itself ships on the runner image.
+#
+# Before `script`, two lines of the action's own: the emulator's whole logcat (every buffer, from its boot) streams to
+# a file, kept as an artifact when the job fails; and `settle.sh` waits out the cold boot's rush and answers the ANR
+# dialogs it leaves, which a test's first HOME key would otherwise answer by killing SystemUI or the launcher mid-run.
 name: Android emulator
 description: Enable KVM, install the system image, boot the emulator and run a script on it.
 
@@ -47,4 +51,18 @@ runs:
         # in ~1 CI boot in 10 on 37.2.12.
         emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swangle_indirect -memory 3072 -feature -WiFiPacketStream
         disable-animations: ${{ inputs.disable-animations }}
-        script: ${{ inputs.script }}
+        # Each line is its own shell, so the capture is detached: it ends when the emulator does.
+        script: |
+          adb logcat -G 16M
+          nohup sh -c 'adb logcat -b all -v threadtime > "${{ runner.temp }}/emulator-logcat.txt" 2>&1' > /dev/null 2>&1 &
+          bash ${{ github.action_path }}/settle.sh
+          ${{ inputs.script }}
+    # The device's side of a failure: what the system did around it (ANRs, kills, window and activity changes), which
+    # the test's own report does not carry. One per job and attempt.
+    - name: Keep the emulator's logcat
+      if: failure()
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: emulator-logcat-${{ github.job }}-${{ github.run_attempt }}
+        path: ${{ runner.temp }}/emulator-logcat.txt
+        if-no-files-found: ignore
