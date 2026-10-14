@@ -91,8 +91,9 @@ interface LibraryLevers {
     suspend fun deleteAlbum(album: String)
 
     /**
-     * The person renames the app's folder album [album] to [title] in a gallery app: its photos move to a folder of the
-     * new name, and the album the app knows is left empty. A collection album's title is not where its photos live.
+     * The person renames the app's album [album] to [title] in a gallery app. A collection album (an iPhone's) only takes
+     * the new title: it is the same album, still the app's. A folder album's photos move to a folder of the new name,
+     * and the album the app knows is left empty.
      */
     suspend fun renameAlbum(album: String, title: String)
 
@@ -115,6 +116,13 @@ interface LibraryLevers {
         { serviceDescriptorOf() },
     )
 }
+
+/**
+ * Bytes no photo library can decode — what a download brings (`DownloadSessionLevers.finish`'s bytes) when a member
+ * receives a file their phone cannot open. The library mock fails exactly these, and its contract binding holds them
+ * equal to the bytes the photo-library contracts stage on every real host.
+ */
+val NOT_AN_IMAGE: ByteArray = "this is not an image".encodeToByteArray()
 
 /** What a photo the person takes is — each a shape the app's selection policy decides on. */
 @Serializable

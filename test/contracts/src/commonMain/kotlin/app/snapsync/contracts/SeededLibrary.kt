@@ -1,5 +1,6 @@
 package app.snapsync.contracts
 
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 
 /**
@@ -15,6 +16,11 @@ class SeededLibrary<T>(
     val ids: Set<PlatformAssetId> = emptySet(),
     /** A platform path the clause may write [name] to — and what such a path holds now, `null` for nothing. */
     val files: ClauseFiles? = null,
+    /**
+     * The member renaming an album in their gallery app — a change made outside the port, as Photos makes it — for the
+     * states whose library holds collection albums; `null` where the binding has no such hand.
+     */
+    val renameAlbum: ((PlatformAlbumId, String) -> Unit)? = null,
 )
 
 /** Where a clause may have the platform write a file, and what it reads back there. */
@@ -32,3 +38,10 @@ fun absentAssetId(clauseId: String): PlatformAssetId {
         .padEnd(12, '0').take(12)
     return PlatformAssetId("00000000-0000-4000-8000-$digits/L0/001")
 }
+
+/**
+ * An album id no library holds: a well-formed PhotoKit collection `localIdentifier` derived from the clause id — what an
+ * album the member deleted leaves behind in the app's record.
+ */
+fun absentAlbumId(clauseId: String): PlatformAlbumId =
+    PlatformAlbumId("00000000-0000-4000-8000-${clauseId.length.toString().padStart(12, '0')}/L0/040")

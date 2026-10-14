@@ -23,7 +23,9 @@ as an album named after the event and whose photos sit in the same timeline (cap
 app SHALL have no gallery of its own. A member joining an event already under way SHALL receive its existing
 photos straight away, whether or not the event's start date has passed. This device's own photos SHALL never
 be downloaded back to it. Receiving SHALL work the same under full and under limited photo access (capability
-`photo-access`).
+`photo-access`). A received file the
+phone's photo library cannot open SHALL NOT hold up the others: it is not saved, every other photo still
+arrives, and the member is shown as up to date without it (capability `sync-status`).
 
 #### Scenario: Receiving under limited access
 - **WHEN** a member who granted limited access receives photos from others
@@ -48,6 +50,10 @@ be downloaded back to it. Receiving SHALL work the same under full and under lim
 #### Scenario: Own photos are not received back
 - **WHEN** this device's own shared photos are part of the event
 - **THEN** none of them is downloaded or saved again on this device
+
+#### Scenario: A photo the phone cannot open
+- **WHEN** another member shares a file this phone's photo library cannot open, together with an ordinary photo
+- **THEN** the ordinary photo appears in the library, the unreadable one does not, and the member is shown as up to date
 
 ### Requirement: Received photos keep full fidelity
 

@@ -25,6 +25,7 @@ import app.snapsync.contracts.GalleryReaderContract
 import app.snapsync.contracts.GalleryReaderState
 import app.snapsync.contracts.GalleryState
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.ImportAlbum
 import app.snapsync.contracts.ImportDeliveries
 import app.snapsync.contracts.ImportedLibrary
 import app.snapsync.contracts.InAppContract
@@ -62,6 +63,7 @@ import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ImportFile
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.ResourceKind
@@ -218,7 +220,10 @@ class SimAppGalleryReaderBinding : Binding<GalleryReaderState, SeededLibrary<Gal
         ) { PlatformAssetId(it) }
         val scratch = scratch(GalleryReaderContract.name, clauseId)
         val files = ClauseFiles({ "$scratch/$it" }, { path -> NSData.dataWithContentsOfFile(path)?.toByteArray() })
-        return Entered.Ready(SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log), ids, files))
+        val rename = { album: PlatformAlbumId, title: String -> renameCollection(album.value, title) }
+        return Entered.Ready(
+            SeededLibrary(IosGalleryReader(Logger.withTag("contract")).recorded(log), ids, files, renameAlbum = rename),
+        )
     }
 }
 
@@ -261,12 +266,14 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
     override val reaches = setOf(
         GalleryImportState.GRANTED_VALID_STAGED,
         GalleryImportState.GRANTED_INVALID_STAGED,
+        GalleryImportState.GRANTED_VALID_STAGED_WITH_AN_ALBUM,
+        GalleryImportState.GRANTED_VALID_STAGED_ALBUM_GONE,
     )
 
     override fun create(state: GalleryImportState, clauseId: String, log: CallLog): Entered<StagedImport> {
         val bytes = when (state) {
-            GalleryImportState.GRANTED_VALID_STAGED -> PhotoLibrary.jpeg
             GalleryImportState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
+            else -> PhotoLibrary.jpeg
         }
         val delivered = ImportDeliveries()
         val importer = contractGallery().recorded(log).apply { inbound(delivered.handlers) }
@@ -292,7 +299,17 @@ class SimAppImporterBinding : Binding<GalleryImportState, StagedImport> {
                 (IosGalleryReader(Logger.withTag("contract")).resources(setOf(id)) as? GalleryRead.Read)
                     ?.value?.firstOrNull()?.resources?.firstOrNull { it.kind == ResourceKind.PHOTO }?.originalFilename
         }
-        return Entered.Ready(StagedImport(importer, stage, library))
+        // An album made as Photos makes one, its members read through the reader's own album read.
+        val album = if (state == GalleryImportState.GRANTED_VALID_STAGED_WITH_AN_ALBUM) {
+            val id = PlatformAlbumId(createCollection("contract $clauseId"))
+            ImportAlbum(id) { asset ->
+                (IosGalleryReader(Logger.withTag("contract")).albumMembers(id, null) as? GalleryRead.Read)
+                    ?.value?.contains(asset) == true
+            }
+        } else {
+            null
+        }
+        return Entered.Ready(StagedImport(importer, stage, library, album))
     }
 }
 

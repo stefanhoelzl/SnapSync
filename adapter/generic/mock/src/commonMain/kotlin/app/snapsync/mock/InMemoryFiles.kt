@@ -157,7 +157,7 @@ internal class InMemoryFiles(
         return FileResult.Ok(files.keys.toList().filter { it.startsWith("$directory/") }.sorted())
     }
 
-    private companion object {
+    internal companion object {
         const val MEM = "mem:/"
     }
 }

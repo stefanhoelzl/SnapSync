@@ -5,7 +5,10 @@ package app.snapsync.mock
 import app.snapsync.contracts.inboundOf
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.levers.NOT_AN_IMAGE
 import app.snapsync.model.AssetRef
+import app.snapsync.model.FileArea
+import app.snapsync.model.FileResult
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImportRequest
@@ -16,6 +19,8 @@ import app.snapsync.services.gallery.correlation
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -106,5 +111,29 @@ class PhotoLibraryImportTest {
             library.contents.value.map { it.id }.toSet().size == 2,
             "two created assets, two distinct identifiers in the library",
         )
+    }
+
+    /**
+     * A library decides by the file it is handed: the bytes another member shared as no image fail the import with the
+     * file consumed, while an ordinary file beside them is saved — both read off the device's own disk.
+     */
+    @Test
+    fun a_file_that_is_no_image_fails_and_is_consumed_while_an_ordinary_one_is_saved() = runTest {
+        val device = MockDevice()
+        device.disk.write(FileArea.SHARED, "staged/bad", NOT_AN_IMAGE)
+        device.disk.write(FileArea.SHARED, "staged/good", "an ordinary photo".encodeToByteArray())
+        val importer = importer(device.library)
+        fun at(path: String) = (device.disk.port().locate(FileArea.SHARED, path) as FileResult.Ok).value
+        fun request(id: String, path: String) = GalleryImportRequest(
+            AssetRef(testDeviceId("DEV-F"), AssetId(id)).correlation(),
+            listOf(ImportFile(at(path), "image/jpeg", ResourceKind.PHOTO, "IMG.JPG")),
+            Instant.parse("2026-06-30T10:00:00Z"),
+            album = null,
+        )
+
+        val bad = assertIs<ImportOutcome.Failed>(importer.import(request("BAD", "staged/bad")))
+        assertTrue(bad.consumedResources, "the library takes the file before it decodes it")
+        assertIs<ImportOutcome.Imported>(importer.import(request("GOOD", "staged/good")))
+        assertEquals(1, device.library.contents.value.size, "only the ordinary photo is in the library")
     }
 }
