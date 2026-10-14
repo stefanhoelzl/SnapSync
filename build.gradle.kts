@@ -105,13 +105,16 @@ coverage {
         // 72 → 71 in phase 4.1 (trust): the trust vocabulary the suite covered left for ports and data, so what stays
         // is the same code measured without it — no test was lost. 71/40 → 76/46 when the JVM host began playing
         // process-metric reports, which run the rule that reads them (`ProcessMetricsKt`). 76/46 → 77/47 when the suite
-        // began claiming the scenarios an Android phone's answers decide (folder albums, the install referrer).
-        integration(instructions = 77, branches = 47)
+        // began claiming the scenarios an Android phone's answers decide (folder albums, the install referrer). → 79/48
+        // when the update test began updating from every older install (`AppUpdateIntegrationTest`): the legacy
+        // membership's codec.
+        integration(instructions = 79, branches = 48)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
     ":domain:ports" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
+        // → 90 with the update test (`AppUpdateIntegrationTest`), and 91 since.
         integration(instructions = 91, branches = 85) // no branches: any branch target is met
     }
     ":domain:services" {
@@ -123,7 +126,9 @@ coverage {
         // Beside the JVM adapters runs the encrypted file format's cipher, held to Tink's reference implementation.
         unit(alsoCoveredBy = listOf(":adapter:generic:app", ":adapter:generic:mock", ":test:feature"))
         // 81/59 → 82/60 when the JVM host began playing process-metric reports (`ProcessAccount`, `FootprintSampler`).
-        integration(instructions = 82, branches = 60)
+        // 82/60 → 85/64 when the update test began updating from every older install (`AppUpdateIntegrationTest`): the
+        // shared records' legacy copy, the older databases' migrations, a 0.4 transfer's tag.
+        integration(instructions = 85, branches = 64)
     }
     ":domain:wire" {
         skipped(
@@ -136,7 +141,8 @@ coverage {
     }
     ":domain:feature" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        integration(instructions = 91, branches = 73)
+        // 90/73 → 91/74 with the update test (`AppUpdateIntegrationTest`): the upload gate's pause for legacy records.
+        integration(instructions = 91, branches = 74)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.

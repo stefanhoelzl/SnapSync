@@ -7,6 +7,7 @@ import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LogProcess
 import app.snapsync.levers.OlderInstallLevers
+import app.snapsync.levers.SeededInstall
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.model.APP_LOG_FILE_NAME
@@ -79,6 +80,9 @@ internal class OlderInstall(private val world: MockWorld) : OlderInstallLevers {
         paths.forEach { world.device.disk.write(FileArea.SHARED, it, LEGACY_BYTES) }
         return paths.size.toLong() * LEGACY_BYTES.size
     }
+
+    override suspend fun installedAt(ledgerBehind: Int?, downloadsBehind: Int?): SeededInstall =
+        OlderInstalls(world).installedAt(ledgerBehind, downloadsBehind)
 
     private companion object {
         /** The device a backlog is seeded for when the caller names none — a device id like every other. */

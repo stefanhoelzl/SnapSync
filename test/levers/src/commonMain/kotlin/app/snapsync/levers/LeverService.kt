@@ -105,6 +105,9 @@ enum class LeverNeed(val what: String) {
     /** The device's Keychain is the mock's. */
     KEYCHAIN_MOCKED("the device's Keychain, mocked"),
 
+    /** The device's Preferences (user defaults) are the mock's. */
+    PREFERENCES_MOCKED("the device's Preferences, mocked"),
+
     /** The app's foreground life is the mock, whose operator the service is. */
     LIFECYCLE_MOCKED("the foreground life's mock"),
 

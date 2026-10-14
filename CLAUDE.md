@@ -559,7 +559,10 @@ their hosts, and why some coverage is measured on hardware rather than asserted.
   code that tolerates an older app build, an older stored or on-device format, an older api, or an OS transfer
   left by a previous build: what it is, where (file anchors), why, its unlock condition (an app-version floor, a
   date, a one-off op), and the removal steps. The PR that removes the shim deletes its entry. Raising
-  `MIN_APP_VERSION` starts by reading its section.
+  `MIN_APP_VERSION` starts by reading its section. A shim that reads what an older build left **on the device** also
+  gets, in the same PR, the layer that writes that state (`older-install.installedAt`, `test/rig/.../OlderInstalls.kt`)
+  — `AppUpdateIntegrationTest` then updates through it — and its entry names both; the PR that removes it removes its
+  layer. A new database migration needs no test of its own: the update test builds every version the chain builds.
 - **`/ship` is a GLOBAL skill** (`~/.claude/skills/ship/`), not a file in this repo. Everything that
   varies per repo lives in **`.ship/`** — `gates.md` (the local half of what gates a merge),
   `pr-title.md` (the App Store title policy), `post-merge.md` (the Bugsink resolve), and a

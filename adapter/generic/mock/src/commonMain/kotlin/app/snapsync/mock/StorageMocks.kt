@@ -131,6 +131,12 @@ class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: Strin
     /** Delete every database, as deleting the app does (in-memory databases only). */
     fun deleteAll() = held.deleteAll()
 
+    /**
+     * Delete database [name] alone (in-memory databases only): its next open creates it anew — how the inspector puts a
+     * database an older build left in its place. A process that holds it keeps the copy it holds until it dies.
+     */
+    fun delete(name: String) = held.delete(name)
+
     internal val armed: List<DatabaseFault> get() = held.armed
 }
 
@@ -151,6 +157,9 @@ class PreferencesMock {
     internal val values = SnapshotMap<String, String>()
 
     fun port(): Preferences = InMemoryPreferences(values)
+
+    /** Every key the device holds now: one snapshot, however the app writes meanwhile — the inspector's read. */
+    fun keys(): Set<String> = values.snapshot().keys
 }
 
 /**

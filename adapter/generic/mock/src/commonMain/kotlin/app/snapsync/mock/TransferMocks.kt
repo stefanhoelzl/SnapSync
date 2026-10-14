@@ -350,6 +350,17 @@ class UploadSessionMock(
     fun view(): UploadSessionView = locked { UploadSessionView(live.map { it.tag }, created.toList(), handbacks) }
 
     /**
+     * The live transfer tagged [tag] put back as an earlier build started it — its target as [rewritten] by that build —
+     * since the operating system holds a transfer across an update. The inspector's hand, told to no one. Answers
+     * whether such a transfer was live.
+     */
+    fun startedEarlier(tag: String, rewritten: (UploadTarget) -> UploadTarget): Boolean = locked {
+        val i = live.indexOfFirst { it.tag == tag }
+        if (i >= 0) live[i] = Live(tag, rewritten(live[i].target), live[i].from)
+        i >= 0
+    }
+
+    /**
      * The operating system relaunches the app for this session's events, handing [completion] — the played OS's
      * delivery (the `os` service), never an operator's: a live completion does not cross the channel. The ends of transfers that
      * landed while no process ran were reported as they happened, so the drain report follows at once.
@@ -521,6 +532,17 @@ class DownloadSessionMock(
             started = started.map { it.view() },
             inFlight = inFlight().map { it.view() },
         )
+    }
+
+    /**
+     * The in-flight transfer described [description] put back as an earlier build started it — under the description
+     * and URL [rewritten] gives it, as that build did — since the operating system holds a transfer across an update.
+     * The inspector's hand, told to no one. Answers whether such a transfer was in flight.
+     */
+    fun startedEarlier(description: String, rewritten: (Started) -> Started): Boolean = locked {
+        val i = started.indexOfFirst { it.description == description && !it.cancelled && !it.finished }
+        if (i >= 0) started[i] = rewritten(started[i])
+        i >= 0
     }
 
     /** The transfers still awaiting a finish, de-duplicated by tag; under the lock. */

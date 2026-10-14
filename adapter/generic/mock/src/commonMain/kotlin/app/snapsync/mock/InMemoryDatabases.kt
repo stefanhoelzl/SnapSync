@@ -145,6 +145,17 @@ internal class InMemoryDatabases(
         }
     }
 
+    /** Delete database [name] alone, its armed faults with it: the next open of [name] creates it anew. In-memory only. */
+    fun delete(name: String) {
+        check(
+            directory == null,
+        ) { "deleting a file-backed database is not modelled; the app host's uninstall deletes them" }
+        lock.locked {
+            held.remove(name)
+            faults.removeAll { it.database == name }
+        }
+    }
+
     /**
      * [driver] as [by] holds it: each commit through it is announced to the other processes that opened [name], and —
      * where [faulted] — each statement an armed fault names fails.
