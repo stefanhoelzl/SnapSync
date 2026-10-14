@@ -100,7 +100,7 @@ class DeviceManifestServiceTest {
     @Test
     fun `an unreadable record is not believed and a locked store raises nothing`() {
         service().saveLastUploaded(UploadedManifest(testEventId("E"), 1, "a"))
-        databases.operator.lock()
+        databases.lock()
         val service = service()
 
         assertNull(service.loadLastUploaded())
@@ -108,7 +108,7 @@ class DeviceManifestServiceTest {
         service.saveLastUploaded(UploadedManifest(testEventId("E"), 2, "b"))
         service.clearLastUploaded()
 
-        databases.operator.lock(false)
+        databases.lock(false)
         assertEquals(
             UploadedManifest(testEventId("E"), 1, "a"),
             service().loadLastUploaded(),

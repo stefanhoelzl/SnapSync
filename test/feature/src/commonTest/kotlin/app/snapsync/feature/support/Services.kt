@@ -4,6 +4,7 @@ package app.snapsync.feature.support
 
 import app.cash.sqldelight.db.QueryResult
 import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
@@ -125,9 +126,14 @@ class RecordingFiles(
 class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
     val db: SharedDatabase = SharedDatabase(databases.port(), LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
 
+    /** The same database through the operator's own hand, which no armed fault reaches: how a test seeds and reads. */
+    private val inspected = SharedDatabase(
+        databases.inspectorPort(),
+        LegacyRecords(inMemoryFiles(), inMemoryPreferences()),
+    )
+
     private var saves = 0
     private var clears = 0
-    private var refusesSaves = false
 
     init {
         db.use { }
@@ -151,25 +157,23 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
      * written past the levers below: a test seeds the store it then locks or refuses.
      */
     fun persist(config: EventConfig?) {
-        val locked = databases.operator.locked
-        databases.operator.lock(false)
-        if (refusesSaves) databases.operator.execute(LEDGER_DB_NAME, "DROP TRIGGER membershipRefused")
-        db.use { database ->
+        val locked = databases.locked
+        databases.lock(false)
+        inspected.use { database ->
             if (config == null) {
                 database.membershipQueries.clearMembership()
             } else {
                 database.membershipQueries.saveMembership(config)
             }
         }
-        if (refusesSaves) refuseSaves()
-        databases.operator.lock(locked)
+        databases.lock(locked)
         saves = 0
         clears = 0
     }
 
     /** What the membership row holds now, or `null` when there is none. */
     fun persistedConfig(): EventConfig? =
-        db.use { it.membershipQueries.selectMembership().executeAsOneOrNull()?.toConfig() }
+        inspected.use { it.membershipQueries.selectMembership().executeAsOneOrNull()?.toConfig() }
 
     /** The membership's writes that reached the database since it was seeded. */
     val configSaves: Int get() = saves
@@ -177,25 +181,14 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
     /** Whether a clear of the membership reached the database (a leave, a reset). */
     val configCleared: Boolean get() = clears > 0
 
-    /** Lever: every membership save fails at the store, as a full disk's write does. */
-    fun failSaves() {
-        refusesSaves = true
-        refuseSaves()
-    }
+    /** Lever: the next membership save fails at the store, as a write SQLite cannot make does. */
+    fun failSaves() = databases.fail(LEDGER_DB_NAME, "membership", WriteKind.INSERT)
 
-    /** Lever: the membership cannot be deleted — a clear fails at the store, so the device stays joined. */
-    fun failClears() = databases.operator.execute(
-        LEDGER_DB_NAME,
-        "CREATE TRIGGER membershipKept BEFORE DELETE ON membership BEGIN SELECT RAISE(ABORT, 'undeletable'); END",
-    )
+    /** Lever: the next clear of the membership fails at the store, so the device stays joined. */
+    fun failClears() = databases.fail(LEDGER_DB_NAME, "membership", WriteKind.DELETE)
 
     /** Lever: every database is unreadable — a device locked since boot. */
-    fun membershipUnreadable() = databases.operator.lock()
-
-    private fun refuseSaves() = databases.operator.execute(
-        LEDGER_DB_NAME,
-        "CREATE TRIGGER membershipRefused BEFORE INSERT ON membership BEGIN SELECT RAISE(ABORT, 'disk full'); END",
-    )
+    fun membershipUnreadable() = databases.lock()
 
     private fun driver() =
         (databases.port().open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = true) as DbOpen.Opened).driver

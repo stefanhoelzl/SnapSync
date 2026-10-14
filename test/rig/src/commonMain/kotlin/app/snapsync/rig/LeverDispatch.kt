@@ -4,17 +4,21 @@ import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BuildLevers
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.CrashReporterLevers
+import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.JoinedEvent
+import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LEVER_SERVICES
 import app.snapsync.levers.LeverNeed
 import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.LeverService
 import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.NetworkLevers
+import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.ProcessInfoLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.RigLevers
@@ -111,6 +115,10 @@ private fun MockWorld.implementationOf(service: LeverService<*>, reconcileUpload
         SystemUiLevers -> device.systemUi.operator
         DevControlsLevers -> ReconcilingControls(controls, reconcileUploads)
         BuildLevers -> DeclaredBuild(checkNotNull(version))
+        DatabasesLevers -> device.databases.operator
+        FilesLevers -> device.disk.operator
+        KeychainLevers -> Keychain(this)
+        OlderInstallLevers -> OlderInstall(this)
         else -> error("$service has no implementation in this world")
     }
 
@@ -129,6 +137,9 @@ private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.CRASH_REPORTER_MOCKED -> Need.Mocked(MockedSystem.CRASH_REPORTER)
     LeverNeed.SYSTEM_UI_MOCKED -> Need.Mocked(MockedSystem.SYSTEM_UI)
     LeverNeed.VERSION_SETTABLE -> Need.Version
+    LeverNeed.FILES_MOCKED -> Need.Mocked(MockedSystem.FILES)
+    LeverNeed.DATABASES_MOCKED -> Need.Mocked(MockedSystem.DATABASES)
+    LeverNeed.KEYCHAIN_MOCKED -> Need.Mocked(MockedSystem.KEYCHAIN)
 }
 
 /** The build's development controls, a pin reconciled with the app's uploads as it lands. */

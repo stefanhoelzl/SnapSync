@@ -266,7 +266,7 @@ class WorldInspectorController(
      * The membership made **unreadable** — the state a real device is in before its first unlock after a boot, when
      * every database is locked. A lever here because it is otherwise unreachable by a reviewer.
      */
-    fun setMembershipUnreadable(unreadable: Boolean) = launchMutation { mocks.databases.operator.lock(unreadable) }
+    fun setMembershipUnreadable(unreadable: Boolean) = launchMutation { mocks.databases.lock(unreadable) }
 
     /**
      * Hold one of [HOLDS] unanswered, or answer it — the only way to review a screen the app shows only while it waits:
@@ -510,7 +510,7 @@ class WorldInspectorController(
                     it.name,
                 )
             },
-            membershipUnreadable = mocks.databases.operator.locked,
+            membershipUnreadable = mocks.databases.locked,
             held = mocks.backend.operator.switches().held.mapTo(mutableSetOf()) { it.key } +
                 listOfNotNull(ENUMERATION.takeIf { mocks.library.operator.library().enumerationHeld }),
         )

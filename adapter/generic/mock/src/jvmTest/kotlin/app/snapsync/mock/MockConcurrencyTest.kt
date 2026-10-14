@@ -37,7 +37,7 @@ class MockConcurrencyTest {
                     batch.forEach { app.write(FileArea.SHARED, it, byteArrayOf(1)) }
                     batch.forEach { app.delete(FileArea.SHARED, it) }
                 },
-                read = { disk.operator.paths(FileArea.SHARED).whole() },
+                read = { disk.paths(FileArea.SHARED).whole() },
             ),
         )
     }
@@ -158,7 +158,7 @@ class MockConcurrencyTest {
         assertWhole(
             tears(
                 write = { round -> if (round < CAP) port.open("db", Schema, readOnly = true) },
-                read = { databases.operator.opened.whole() },
+                read = { databases.opened.whole() },
             ),
         )
     }

@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.KeychainItem
 import app.snapsync.model.LINK_ORIGIN
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -93,7 +94,7 @@ class EncryptedEventIntegrationTest {
         val settingsBefore = state().ready
 
         // The phone was restored onto a new device: the membership came back, the key did not.
-        device("event-key/lose")
+        keychain.forget(KeychainItem.EVENT_KEY)
         foreground()
         awaitState { it.joined?.health == SyncHealth.KeyLost }
         assertNull(state().joined?.inviteUrl, "no invite is offered without its key")

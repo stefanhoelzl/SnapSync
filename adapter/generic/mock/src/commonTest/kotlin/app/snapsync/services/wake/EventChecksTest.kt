@@ -51,21 +51,21 @@ class EventChecksTest {
     @Test
     fun `an unreadable time counts as due`() {
         checks.stamp(EventCheck.PHOTOS, testEventId(EVENT))
-        databases.operator.lock()
+        databases.lock()
         assertTrue(checks.due(EventCheck.PHOTOS, testEventId(EVENT)), "unreadable")
     }
 
     @Test
     fun `an ask that cannot be recorded leaves the event due`() {
-        databases.operator.lock()
+        databases.lock()
         checks.stamp(EventCheck.PHOTOS, testEventId(EVENT))
-        databases.operator.lock(false)
+        databases.lock(false)
         assertTrue(checks.due(EventCheck.PHOTOS, testEventId(EVENT)), "the next wake asks again")
     }
 
     @Test
     fun `a clear that cannot reach the store raises nothing`() {
-        databases.operator.lock()
+        databases.lock()
         checks.clear(testEventId(EVENT))
     }
 

@@ -92,9 +92,9 @@ open class MockDevice(
      * the device id), the photo library and everything the backend holds. Reinstalling is this followed by a launch.
      */
     fun uninstallApp() {
-        disk.operator.area(FileArea.SHARED).clear()
-        disk.operator.area(FileArea.PRIVATE).clear()
-        databases.operator.deleteAll()
+        disk.area(FileArea.SHARED).clear()
+        disk.area(FileArea.PRIVATE).clear()
+        databases.deleteAll()
         preferences.values.clear()
         library.state.access.value = LibraryGrant.NOT_DETERMINED
         library.state.answer = LibraryGrant.NOT_DETERMINED

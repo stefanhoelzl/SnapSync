@@ -49,7 +49,8 @@ class FootprintTrail(
         else -> emptyList()
     }
 
-    private companion object {
+    companion object {
+        /** Where the trail is kept, in the private area: diagnostics, which the rig leaves out of the app's storage. */
         const val PATH = "process-metrics/footprints.json"
     }
 }

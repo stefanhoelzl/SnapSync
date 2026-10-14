@@ -8,11 +8,15 @@ import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BuildLevers
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.CrashReporterLevers
+import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.FilesLevers
+import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.NetworkLevers
+import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
@@ -62,8 +66,8 @@ fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {
  * the operating system does.
  *
  * Every assertion a test makes reads through here — the reduced [RigState.ui], or what a system outside the app
- * recorded (the backend, the photo library, the operating system's jobs, the staging directory, the reporter, the
- * pushes sent). Never the ledger: it is the app's own bookkeeping, and the protocol no longer carries it.
+ * recorded (the backend, the photo library, the operating system's jobs and its record of the storage the app takes, the
+ * reporter, the pushes sent). Never the ledger: it is the app's own bookkeeping, and the protocol no longer carries it.
  */
 class Rig(val client: RigClient) {
     /** The backend operator's levers and reads — the backend mock's, refused where the backend is real. */
@@ -114,6 +118,18 @@ class Rig(val client: RigClient) {
     suspend fun advanceTo(at: String) =
         if (WORLD_ADVANCE in client.device().honoured) world.advanceTo(at) else clock.set(at)
 
+    /** The device's databases' faults. */
+    val databases: DatabasesLevers = client.levers(DatabasesLevers)
+
+    /** What a test may add to the device's files. */
+    val files: FilesLevers = client.levers(FilesLevers)
+
+    /** The device's Keychain. */
+    val keychain: KeychainLevers = client.levers(KeychainLevers)
+
+    /** What an older build left on the device. */
+    val olderInstall: OlderInstallLevers = client.levers(OlderInstallLevers)
+
     suspend fun state(): RigState = client.state()
 
     suspend fun awaitState(timeout: Duration = 10.seconds, until: (RigState) -> Boolean): RigState =
@@ -161,6 +177,21 @@ class Rig(val client: RigClient) {
         while (deadline.hasNotPassedNow()) {
             val s = state()
             if (condition(s)) fail("$what — but it did: $s")
+            delay(POLL)
+        }
+    }
+
+    /** Assert [read] satisfies [condition] for the whole [window] — a true negative over a system outside the app. */
+    suspend fun <T> holdsWithin(
+        window: Duration = 500.milliseconds,
+        what: String,
+        read: suspend () -> T,
+        condition: (T) -> Boolean,
+    ) {
+        val deadline = kotlin.time.TimeSource.Monotonic.markNow() + window
+        while (deadline.hasNotPassedNow()) {
+            val value = read()
+            assertTrue(condition(value), "$what — but it read $value")
             delay(POLL)
         }
     }

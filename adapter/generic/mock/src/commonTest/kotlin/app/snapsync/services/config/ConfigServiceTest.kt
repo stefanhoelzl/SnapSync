@@ -58,9 +58,9 @@ class ConfigServiceTest {
     @Test
     fun `the row is the membership - seeded at first use and never at construction`() {
         stored(SEED)
-        val opened = databases.operator.opened.size
+        val opened = databases.opened.size
         val service = service()
-        assertEquals(opened, databases.operator.opened.size, "constructing the service opens no database")
+        assertEquals(opened, databases.opened.size, "constructing the service opens no database")
 
         assertEquals(SEED, service.config.value, "seeded synchronously at the first read of it")
         assertEquals(ConfigRead.Joined(SEED), service.read())
@@ -84,7 +84,7 @@ class ConfigServiceTest {
     @Test
     fun `a locked database is unreadable and never not joined`() {
         stored(SEED)
-        databases.operator.lock()
+        databases.lock()
         val service = service()
 
         assertIs<ConfigRead.Unavailable>(service.read())
@@ -117,12 +117,12 @@ class ConfigServiceTest {
     fun `a save that cannot be written is refused and changes nothing`() = runTest {
         stored(SEED)
         val service = service().apply { config.value }
-        databases.operator.lock()
+        databases.lock()
 
         assertFailsWith<IllegalStateException> { service.save(WRITTEN) }
 
         assertEquals(SEED, service.config.value)
-        databases.operator.lock(false)
+        databases.lock(false)
         assertEquals(ConfigRead.Joined(SEED), service().read())
     }
 
@@ -143,7 +143,7 @@ class ConfigServiceTest {
     fun `a leave that cannot delete the row is refused and changes nothing`() = runTest {
         stored(SEED)
         val service = service().apply { config.value }
-        databases.operator.lock()
+        databases.lock()
 
         assertFailsWith<IllegalStateException> { service.clear() }
 
@@ -171,7 +171,7 @@ class ConfigServiceTest {
     fun `a reload that cannot read keeps the last good membership`() {
         stored(SEED)
         val service = service().apply { config.value }
-        databases.operator.lock()
+        databases.lock()
 
         service.reload()
 
@@ -184,16 +184,16 @@ class ConfigServiceTest {
         val app = service()
         assertNull(app.joinedOrRead(), "no row")
 
-        databases.operator.lock()
+        databases.lock()
         assertNull(app.joinedOrRead(), "an unreadable database holds no membership this reader may use")
 
-        databases.operator.lock(false)
+        databases.lock(false)
         service().save(SEED) // another process joins
         assertEquals(SEED, app.joinedOrRead(), "the row's, before this process re-read it")
 
         val held = SEED.copy(eventId = testEventId("E-held"))
         app.save(held)
-        databases.operator.lock()
+        databases.lock()
         assertEquals(held, app.joinedOrRead(), "the held one, without asking the database")
     }
 
@@ -256,7 +256,7 @@ class ConfigServiceTest {
     @Test
     fun `an unreadable config has not ended`() {
         stored(SEED.copy(maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-06-01T00:00:00Z"))))
-        databases.operator.lock()
+        databases.lock()
         assertFalse(service().freshReadShareHasEnded())
     }
 }

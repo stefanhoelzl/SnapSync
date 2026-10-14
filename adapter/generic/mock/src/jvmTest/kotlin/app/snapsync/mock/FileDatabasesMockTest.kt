@@ -37,6 +37,7 @@ class FileDatabasesMockTest {
                 DatabasesState.NEWER,
                 DatabasesState.UNOPENABLE,
                 DatabasesState.SHARED,
+                DatabasesState.CONTENDED,
             )
         override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<DatabasesSubject> {
             val refusals = if (state == DatabasesState.UNOPENABLE) {
@@ -49,12 +50,15 @@ class FileDatabasesMockTest {
             val device = DatabasesMock(refusals, directory())
             val databases = device.port().recorded(log)
             when (state) {
-                DatabasesState.CURRENT, DatabasesState.SHARED -> DatabasesContract.enterCurrent(databases)
+                DatabasesState.CURRENT, DatabasesState.SHARED, DatabasesState.CONTENDED ->
+                    DatabasesContract.enterCurrent(databases)
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)
                 DatabasesState.NEWER -> DatabasesContract.enterNewer(databases)
                 DatabasesState.ABSENT, DatabasesState.UNOPENABLE -> Unit
             }
-            return Entered.Ready(DatabasesSubject(databases, elsewhere = device::port))
+            return Entered.Ready(
+                DatabasesSubject(databases, elsewhere = device::port, contend = { device.contend() }),
+            )
         }
     }
 

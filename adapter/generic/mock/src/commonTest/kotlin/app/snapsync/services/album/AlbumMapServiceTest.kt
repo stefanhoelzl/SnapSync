@@ -62,7 +62,7 @@ class AlbumMapServiceTest {
     @Test
     fun `a locked database places nothing - remembers nothing - raises nothing`() {
         service().put(testEventId("E"), "album-1")
-        databases.operator.lock()
+        databases.lock()
         val service = service()
 
         assertNull(service.get(testEventId("E")), "unreadable: ensure-then-remember again, never a lost photo")
@@ -73,7 +73,7 @@ class AlbumMapServiceTest {
         service.put(testEventId("E"), "album-2")
         service.markFilled(testEventId("E"))
 
-        databases.operator.lock(false)
+        databases.lock(false)
         assertEquals("album-1", service().get(testEventId("E")))
         assertFalse(service().filled(testEventId("E")))
     }

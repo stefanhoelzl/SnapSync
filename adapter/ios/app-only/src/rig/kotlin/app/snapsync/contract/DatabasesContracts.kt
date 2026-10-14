@@ -27,7 +27,9 @@ class SimAppDatabasesBinding : Binding<DatabasesState, DatabasesSubject> {
     override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<DatabasesSubject> {
         when (state) {
             DatabasesState.CURRENT, DatabasesState.SHARED -> Unit
-            DatabasesState.ABSENT, DatabasesState.OLD, DatabasesState.NEWER, DatabasesState.UNOPENABLE ->
+            DatabasesState.ABSENT, DatabasesState.OLD, DatabasesState.NEWER, DatabasesState.UNOPENABLE,
+            DatabasesState.CONTENDED,
+            ->
                 return Entered.Unreachable(ONE_PROCESS_STATES)
         }
         val dir = scratch("Databases", clauseId)

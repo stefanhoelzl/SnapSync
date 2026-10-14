@@ -52,10 +52,13 @@ class Expectations internal constructor() {
         all += Expectation.Times(n, step)
     }
 
-    /** The settle that ends this `then` satisfies [that] — what its next timer is, say. */
-    fun settled(that: (WorldEvent.Settled) -> Boolean) {
-        all += Expectation.SettledWith(that)
-    }
+    /**
+     * The settle that ends this `then` satisfies [that] — what its next timer is, or what the systems outside the app
+     * record ([WorldEvent.Settled.state]). The settle itself, once the `then` holds: how a step hands a later `then` the
+     * world as it left it.
+     */
+    fun settled(that: (WorldEvent.Settled) -> Boolean = { true }): Seen<WorldEvent.Settled> =
+        Seen<WorldEvent.Settled>().also { seen -> all += Expectation.SettledWith(that) { seen.take(it) } }
 
     @PublishedApi internal fun expect(expectation: Expectation) {
         all += expectation
@@ -104,7 +107,11 @@ sealed interface Expectation {
         override val label = "times($n, ${step.label})"
     }
 
-    class SettledWith(val that: (WorldEvent.Settled) -> Boolean) : Expectation {
+    class SettledWith(
+        val that: (WorldEvent.Settled) -> Boolean,
+        /** Told the settle, once its `then` has held. */
+        val keep: (WorldEvent.Settled) -> Unit = {},
+    ) : Expectation {
         override val label = "settled { … }"
     }
 }
@@ -182,6 +189,8 @@ internal class Judge(
             expectations.filterIsInstance<Expectation.Positive>().forEach { positive ->
                 matchedAt[positive]?.let { at -> positive.keep(events[at]) }
             }
+            val settle = settled ?: return
+            expectations.filterIsInstance<Expectation.SettledWith>().forEach { it.keep(settle) }
         }
 
         fun settle(i: Int, event: WorldEvent.Settled) {

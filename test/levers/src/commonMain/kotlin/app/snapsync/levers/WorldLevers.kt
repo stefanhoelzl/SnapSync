@@ -67,16 +67,25 @@ sealed interface WorldEvent {
     /**
      * Nothing in the app runs or is runnable at [now], and nothing outside it is in flight but what an operator holds.
      * [nextTimer] is when the app's next timer is due — `null` when none is pending, so nothing will happen until the
-     * world moves.
+     * world moves. [state] is what systems outside the app record at that moment.
      */
     @Serializable
     @SerialName("settled")
-    data class Settled(val now: String, val nextTimer: String? = null) : WorldEvent
+    data class Settled(val now: String, val nextTimer: String? = null, val state: SettledState = SettledState()) :
+        WorldEvent
 
     /** Work reached the app from a thread the host's loop does not own — what would make a [Settled] lie. */
     @Serializable
     @SerialName("lane-violation")
     data class LaneViolation(val what: String) : WorldEvent
+
+    /**
+     * A statement of [kind] on [table] of [database] failed, as an operator's [DatabasesLevers.fail] armed it: the fault
+     * was spent, on the statement the app made.
+     */
+    @Serializable
+    @SerialName("database-faulted")
+    data class DatabaseFaulted(val database: String, val table: String, val kind: WriteKind) : WorldEvent
 
     /** What the backend recorded. */
     @Serializable
@@ -169,3 +178,21 @@ sealed interface WorldEvent {
     @SerialName("dump-received")
     data class DumpReceived(val dump: ReceivedDump) : WorldEvent
 }
+
+/**
+ * What systems outside the app record at a [WorldEvent.Settled], read at exactly that settle — so a test judges the
+ * settle it waited for, never a later read.
+ *
+ * A field joins only when it is (a) something a system outside the app records — the observability rule
+ * (`docs/testing.md` §7, "The rules") holds here too; (b) cheap to read at every settle; and (c) asserted by some test at a
+ * settle. `null` where the system it reads is not the mock's.
+ */
+@Serializable
+data class SettledState(
+    /**
+     * The bytes the app's files take on the device — what Settings' storage page shows a person — its diagnostics (the
+     * device logs, the memory trail, a saved report) left out, which grow with whatever the app does and would drown out
+     * what a test measures.
+     */
+    val appStorageBytes: Long? = null,
+)

@@ -144,8 +144,8 @@ class MockStateTest {
     @Test
     fun the_restored_disk_keychain_clock_and_queue_answer_as_the_originals_did() = runTest {
         val copy = copyOf(drive())
-        assertEquals("{}", copy.disk.operator.read(FileArea.SHARED, "eventconfig.json")?.decodeToString())
-        assertTrue(copy.disk.operator.isDenied(FileArea.PRIVATE, "secret"))
+        assertEquals("{}", copy.disk.read(FileArea.SHARED, "eventconfig.json")?.decodeToString())
+        assertTrue(copy.disk.isDenied(FileArea.PRIVATE, "secret"))
         assertEquals(Instant.parse("2026-07-01T12:00:00Z"), copy.clock.now)
         assertEquals(TimeZone.of("Europe/Berlin"), copy.clock.port().timeZone())
         assertEquals(
@@ -202,9 +202,9 @@ class MockStateTest {
         gallery.addToAlbum(album, setOf(PlatformAssetId("A1")))
         device.library.state.imports.restoreImported(listOf("D2/F1"))
 
-        device.disk.operator.write(FileArea.SHARED, "eventconfig.json", "{}".encodeToByteArray())
-        device.disk.operator.write(FileArea.PRIVATE, "secret", byteArrayOf(0, 1, 2, -1))
-        device.disk.operator.deny(FileArea.PRIVATE, "secret")
+        device.disk.write(FileArea.SHARED, "eventconfig.json", "{}".encodeToByteArray())
+        device.disk.write(FileArea.PRIVATE, "secret", byteArrayOf(0, 1, 2, -1))
+        device.disk.deny(FileArea.PRIVATE, "secret")
         device.preferences.port().set("k", "v")
         device.keychain.port().write(SLOT, "v")
         device.enclave.port(available = true).prove("challenge", null)

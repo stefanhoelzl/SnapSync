@@ -3,6 +3,7 @@ package app.snapsync.rig
 import app.snapsync.jvm.JvmLanes
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.levers.LeverRefused
+import app.snapsync.levers.SettledState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
 import app.snapsync.logging.JvmThreadLabel
@@ -124,7 +125,10 @@ internal class HostThreads private constructor(
                 time,
                 Interleaving.parse(System.getProperty(LANES_PROPERTY)),
                 clock,
-                onSettled = { events.tell(WorldEvent.Settled(it.now.toString(), it.nextTimer?.toString())) },
+                onSettled = {
+                    val state = SettledState(appStorageBytes = mocks.disk.appStorageBytes())
+                    events.tell(WorldEvent.Settled(it.now.toString(), it.nextTimer?.toString(), state))
+                },
                 onViolation = {
                     violations += it
                     events.tell(WorldEvent.LaneViolation(it))
@@ -138,6 +142,7 @@ internal class HostThreads private constructor(
             mocks.downloads.watch { events.tell(it) }
             mocks.systemUi.watch { events.tell(it) }
             mocks.crashReporter.watch { events.tell(it) }
+            mocks.databases.watch { events.tell(it) }
             return HostThreads(
                 time,
                 mocks,

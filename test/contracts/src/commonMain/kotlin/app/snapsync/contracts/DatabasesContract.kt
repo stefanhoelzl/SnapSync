@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -43,13 +44,31 @@ enum class DatabasesState {
      * over one App-Group file. A binding whose platform runs one process (Android) does not reach it.
      */
     SHARED,
+
+    /**
+     * As [CURRENT], and the binding can make this process's writes fail while the database stays open
+     * ([DatabasesSubject.contend]) — on a real platform another writer holding the database's write lock, which SQLite
+     * answers with `SQLITE_BUSY` once its busy timeout runs out: the app and the upload extension over one file.
+     */
+    CONTENDED,
 }
 
 /**
  * The port as a clause receives it: [databases], this process's — the one the clause observes — and, where the binding
  * can stand one up, [elsewhere]: another process's own [Databases] over the same storage, a new one each call.
  */
-data class DatabasesSubject(val databases: Databases, val elsewhere: (() -> Databases)? = null)
+data class DatabasesSubject(
+    val databases: Databases,
+    val elsewhere: (() -> Databases)? = null,
+    /**
+     * [DatabasesState.CONTENDED]'s act: from now on, an insert, an update and a delete of the probe table each fail —
+     * once, at least — until the returned release is called. A real binding takes the write lock through a connection
+     * of its platform's own SQLite to the same file — `BEGIN IMMEDIATE` and an insert of
+     * [DatabasesContract.HELD_ROW], never committed — as the other process's writer holds it mid-commit; a double arms
+     * its faults.
+     */
+    val contend: (() -> () -> Unit)? = null,
+)
 
 /**
  * What a `Databases` promises (`docs/architecture.md`; the port's KDoc carries why).
@@ -124,6 +143,9 @@ object DatabasesContract : Contract<DatabasesState, DatabasesSubject>("Databases
 
     /** Enter [DatabasesState.NEWER]: create [NAME] at [Newer] with one row, then close it. */
     fun enterNewer(databases: Databases) = seed(databases, Newer)
+
+    /** The row a contending writer inserts and never commits ([DatabasesSubject.contend]). */
+    const val HELD_ROW = 99L
 
     private fun seed(databases: Databases, schema: SqlSchema<QueryResult.Value<Unit>>) {
         val opened = databases.open(NAME, schema, readOnly = false)
@@ -245,6 +267,7 @@ object DatabasesContract : Contract<DatabasesState, DatabasesSubject>("Databases
         }
 
         changeClauses()
+        contendedClauses()
 
         clause(
             "UNOPENABLE_READ_WRITE_FAILS",
@@ -350,6 +373,50 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         here.close()
     }
 }
+
+/**
+ * A statement that fails on a database already open (`Databases`, "A statement can fail"): SQLite answers a write it
+ * cannot make — the write lock held elsewhere, the disk full — by failing that statement, and the caller is told by a
+ * thrown exception; the database stays open, nothing the failed statement asked for happened, and the next write once
+ * the cause is gone goes through. What the mocks' `fail` lever plays rests on this.
+ */
+private fun ClauseList<DatabasesState, DatabasesSubject>.contendedClauses() {
+    clause(
+        "A_REFUSED_WRITE_THROWS_AND_CHANGES_NOTHING",
+        DatabasesState.CONTENDED,
+        covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+    ) { subject ->
+        val here = subject.databases.opened(DatabasesContract.Current, readOnly = false)
+        val release = checkNotNull(subject.contend) { "a CONTENDED binding makes the writes fail" }()
+        try {
+            assertFails("an insert under a held write lock") {
+                here.execute(null, "INSERT INTO probe (id, v) VALUES (2, 'written')", 0)
+            }
+            assertFails("an update under a held write lock") {
+                here.execute(null, "UPDATE probe SET v = 'changed' WHERE id = 1", 0)
+            }
+            assertFails("a delete under a held write lock") {
+                here.execute(null, "DELETE FROM probe WHERE id = 1", 0)
+            }
+        } finally {
+            release()
+        }
+        assertEquals(DatabasesContract.KEPT, here.keptRow(), "a failed statement changed nothing")
+        here.execute(null, "INSERT INTO probe (id, v) VALUES (2, 'written')", 0)
+        assertEquals(listOf(1L, 2L), here.ids(), "once the cause is gone the database takes writes again")
+        here.close()
+    }
+}
+
+private fun SqlDriver.keptRow(): String? =
+    executeQuery(null, "SELECT v FROM probe WHERE id = 1", { c ->
+        QueryResult.Value(if (c.next().value) c.getString(0) else null)
+    }, 0).value
+
+private fun SqlDriver.ids(): List<Long> =
+    executeQuery(null, "SELECT id FROM probe ORDER BY id", { c ->
+        QueryResult.Value(buildList { while (c.next().value) add(c.getLong(0)!!) })
+    }, 0).value
 
 /** Every database [DatabasesSubject.databases] heard another process commit to, in order. */
 private fun DatabasesSubject.listening(): StateFlow<List<String>> {

@@ -391,7 +391,7 @@ private fun OneShotLevers(controller: WorldInspectorController) {
     OutlinedButton(
         onClick = {
             controller.lever("the event key is lost — reopen the event's invite to restore it") {
-                keychain.port().delete(SecureSlots.EVENT_KEY)
+                keychain.forget(SecureSlots.EVENT_KEY)
             }
         },
     ) { Text("Lose the event key") }

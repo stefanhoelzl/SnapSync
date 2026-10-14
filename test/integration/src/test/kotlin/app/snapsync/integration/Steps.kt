@@ -73,13 +73,13 @@ suspend fun Given.inFront() = step("in front", act = { os("app", "onForeground")
 suspend fun Given.inviteFor(eventId: String): String =
     step("the invite for $eventId", act = { inviteLink(eventId) }, until = {})
 
-/** [eventId]'s invite, as the device that created it shares it. */
-suspend fun Acts.inviteLink(eventId: String): String {
+/** [eventId]'s invite, as the device that created it shares it — joining at once when [autoJoin]. */
+suspend fun Acts.inviteLink(eventId: String, autoJoin: Boolean = false): String {
     val invite = Json.parseToJsonElement(
         device("invite", "event" to eventId),
     ).jsonObject["invite"]!!.jsonPrimitive.content
     val key = (decodeEventUrl(invite) as ConfigDecodeResult.Success).payload.key
-    return encodeEventUrl(EventLinkPayload(testEventId(eventId), autoJoin = false, minPhotoDate = null, key = key))
+    return encodeEventUrl(EventLinkPayload(testEventId(eventId), autoJoin = autoJoin, minPhotoDate = null, key = key))
 }
 
 /** The operating system delivers a scanned event link. */

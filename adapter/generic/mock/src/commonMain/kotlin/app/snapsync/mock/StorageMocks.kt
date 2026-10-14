@@ -1,5 +1,13 @@
 package app.snapsync.mock
 
+import app.snapsync.levers.DatabaseFault
+import app.snapsync.levers.DatabaseSwitches
+import app.snapsync.levers.DatabasesLevers
+import app.snapsync.levers.FilesLevers
+import app.snapsync.levers.LogProcess
+import app.snapsync.levers.WriteKind
+import app.snapsync.model.APP_LOG_FILE_NAME
+import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -18,64 +26,69 @@ import app.snapsync.ports.StoredProtection
  * The device's files: the shared (App-Group) and the app's private area. Read while written — the app writes from its
  * own threads, an inspector (a rig `/device` request) reads from another — so each area is a [SnapshotMap], and so is
  * the denied set (its keys; a process is handed the live key view).
+ *
+ * The inspector's hand on the disk — read, write, list — is here, on the mock: plumbing for the channel and the other
+ * mocks, never a lever a test pulls (the app's private files are not observable, `docs/testing.md` §7).
  */
 class FileSystemMock {
     internal val shared = SnapshotMap<String, ByteArray>()
     internal val private = SnapshotMap<String, ByteArray>()
     internal val denied = SnapshotMap<Pair<FileArea, String>, Unit>()
-    internal val undeletable = SnapshotMap<Pair<FileArea, String>, Unit>()
 
     /** A process's face. The upload extension reaches only the shared area: pass `privateArea = false`. */
     fun port(privateArea: Boolean = true): Files = InMemoryFiles(
         mapOf(FileArea.SHARED to shared, FileArea.PRIVATE to private.takeIf { privateArea }),
         denied.keys,
-        undeletable.keys,
     )
 
     val operator: FileSystemOperator = FileSystemOperator(this)
-}
-
-/** The device's files as an inspector with the device open sees and edits them. */
-class FileSystemOperator internal constructor(private val disk: FileSystemMock) {
 
     /** An area's files, path → bytes — live: a write here is a write to the device's disk. */
     fun area(area: FileArea): MutableMap<String, ByteArray> = held(area)
 
-    private fun held(area: FileArea): SnapshotMap<String, ByteArray> = when (area) {
-        FileArea.SHARED -> disk.shared
-        FileArea.PRIVATE -> disk.private
+    internal fun held(area: FileArea): SnapshotMap<String, ByteArray> = when (area) {
+        FileArea.SHARED -> shared
+        FileArea.PRIVATE -> private
     }
 
-    fun read(area: FileArea, path: String): ByteArray? = area(area)[path]
+    fun read(area: FileArea, path: String): ByteArray? = held(area)[path]
 
     /** The paths [area] holds now: one whole snapshot of it, however the app writes meanwhile. */
     fun paths(area: FileArea): List<String> = held(area).snapshot().keys.toList()
 
     fun write(area: FileArea, path: String, bytes: ByteArray) {
-        area(area)[path] = bytes
+        held(area)[path] = bytes
+    }
+
+    fun remove(area: FileArea, path: String) {
+        held(area).remove(path)
     }
 
     /** Append [text] to a file — how a process's log grows. */
     fun append(area: FileArea, path: String, text: String) {
-        held(
-            area,
-        ).edit { files -> files + (path to (files[path]?.decodeToString().orEmpty() + text).encodeToByteArray()) }
-    }
-
-    fun remove(area: FileArea, path: String) {
-        area(area).remove(path)
+        held(area).edit { files ->
+            files + (path to (files[path]?.decodeToString().orEmpty() + text).encodeToByteArray())
+        }
     }
 
     /** Make a present file unreadable to the app ([denied]), or readable again — a file the OS protects. */
     fun deny(area: FileArea, path: String, denied: Boolean = true) {
-        if (denied) disk.denied[area to path] = Unit else disk.denied.remove(area to path)
+        if (denied) this.denied[area to path] = Unit else this.denied.remove(area to path)
     }
 
-    fun isDenied(area: FileArea, path: String): Boolean = (area to path) in disk.denied
+    fun isDenied(area: FileArea, path: String): Boolean = (area to path) in denied
 
-    /** Make a file's delete fail ([FileResult.Denied]) while it stays readable and writable — or deletable again. */
-    fun failDeletes(area: FileArea, path: String, failing: Boolean = true) {
-        if (failing) disk.undeletable[area to path] = Unit else disk.undeletable.remove(area to path)
+    /** The bytes the files in both areas take, the paths [leftOut] names excepted. */
+    fun bytes(leftOut: (FileArea, String) -> Boolean = { _, _ -> false }): Long = FileArea.entries.sumOf { area ->
+        held(area).snapshot().filterKeys { !leftOut(area, it) }.values.sumOf { it.size.toLong() }
+    }
+}
+
+/** What a test may add to the device's files ([FilesLevers]). */
+class FileSystemOperator internal constructor(private val disk: FileSystemMock) : FilesLevers {
+    override suspend fun appendLog(process: LogProcess, text: String) = when (process) {
+        LogProcess.APP -> disk.append(FileArea.PRIVATE, APP_LOG_FILE_NAME, text)
+        LogProcess.EXTENSION -> disk.append(FileArea.SHARED, EXTENSION_LOG_FILE_NAME, text)
     }
 }
 
@@ -83,6 +96,9 @@ class FileSystemOperator internal constructor(private val disk: FileSystemMock) 
  * The device's SQLite databases: real in-memory SQLite, one per name, held for the mock's lifetime — so a relaunched
  * process opens what the last one wrote. [refusals] answers an open of that name with the refusal given. With a
  * [directory], each is a file there instead, which outlives the process — the launch-time adapters' persisted state.
+ *
+ * The inspector's hand — the opens it saw, the lock, deleting them all, its own reads around every fault — is here, on
+ * the mock: plumbing, never a lever a test pulls.
  */
 class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: String? = null) {
     private val held = InMemoryDatabases(refusals, directory)
@@ -93,15 +109,16 @@ class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: Strin
      */
     fun port(): Databases = held.process()
 
-    val operator: DatabasesOperator = DatabasesOperator(held)
-}
+    /** The operator's own face over the same databases: what it reads is never a statement a fault was armed for. */
+    fun inspectorPort(): Databases = held.process(faulted = false)
 
-class DatabasesOperator internal constructor(private val held: InMemoryDatabases) {
+    val operator: DatabasesOperator = DatabasesOperator(this)
+
     /** Every open the device saw, by name, in order — a process's opens and every later one's. */
     val opened: List<String> get() = held.opened
 
-    /** Delete every database, as deleting the app does (in-memory databases only). */
-    fun deleteAll() = held.deleteAll()
+    /** Whether the databases are locked ([lock]). */
+    val locked: Boolean get() = held.locked
 
     /**
      * Make every database unreadable, or readable again — a device before its first unlock since boot, when iOS keeps
@@ -111,11 +128,28 @@ class DatabasesOperator internal constructor(private val held: InMemoryDatabases
         held.locked = on
     }
 
-    /** Whether the databases are locked. */
-    val locked: Boolean get() = held.locked
+    /** The next [times] statements of [kind] on [table] of [database] fail ([DatabasesLevers.fail]). */
+    fun fail(database: String, table: String, kind: WriteKind, times: Int = 1) = held.arm(database, table, kind, times)
 
-    /** Run [sql] on database [name] — an operator's hand on the system, such as a trigger that refuses a change. */
-    fun execute(name: String, sql: String) = held.execute(name, sql)
+    /** Told each fault as the app's statement spends it. */
+    fun watch(listener: DatabasesWatcher) {
+        held.faultWatcher = listener
+    }
+
+    /** Delete every database, as deleting the app does (in-memory databases only). */
+    fun deleteAll() = held.deleteAll()
+
+    internal val armed: List<DatabaseFault> get() = held.armed
+}
+
+/** The faults a real SQLite answers, which a test plays on the device's databases ([DatabasesLevers]). */
+class DatabasesOperator internal constructor(private val mock: DatabasesMock) : DatabasesLevers {
+    override suspend fun lock(on: Boolean) = mock.lock(on)
+
+    override suspend fun fail(database: String, table: String, kind: WriteKind, times: Int?) =
+        mock.fail(database, table, kind, times ?: 1)
+
+    override suspend fun switches(): DatabaseSwitches = DatabaseSwitches(mock.locked, mock.armed)
 }
 
 /** The device's user defaults — read while the app writes them, so a [SnapshotMap]. */
@@ -136,4 +170,9 @@ class SecureStoreMock(seed: Map<SecureSlot, String> = emptyMap()) {
 
     /** A process's face; [unavailable] is one that cannot read the Keychain at all (locked since boot). */
     fun port(unavailable: Boolean = false): SecureStore = InMemorySecureStore(items, unavailable)
+
+    /** [slot]'s item gone, everything else kept — the inspector's hand behind the channel's `KeychainLevers.forget`. */
+    fun forget(slot: SecureSlot) {
+        items.remove(slot)
+    }
 }

@@ -131,7 +131,7 @@ class PendingLeavesTest {
     @Test
     fun `a locked record answers nothing outstanding and raises nothing`() = runTest {
         leaves().record(testEventId("E"))
-        databases.operator.lock()
+        databases.lock()
         val log = CapturingLogWriter()
         val leaves = PendingLeaves(sharedOver(databases.port()), notifier, log.logger())
 
@@ -143,13 +143,13 @@ class PendingLeavesTest {
             "${log.lines}",
         )
 
-        databases.operator.lock(false)
+        databases.lock(false)
         assertEquals(setOf(testEventId("E")), leaves.outstanding(), "the record was left as it was")
     }
 
     @Test
     fun `a leave that cannot be recorded is logged and still sent this once`() = runTest {
-        databases.operator.lock()
+        databases.lock()
         val log = CapturingLogWriter()
         val leaves = PendingLeaves(sharedOver(databases.port()), notifier, log.logger())
 

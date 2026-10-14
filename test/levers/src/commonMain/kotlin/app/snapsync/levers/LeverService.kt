@@ -84,6 +84,15 @@ enum class LeverNeed(val what: String) {
 
     /** The build's declared version is a cell the channel may change — where the backend is the mock, which reads it. */
     VERSION_SETTABLE("a declared version the channel may change"),
+
+    /** The device's files are the mock's: the disk a test may write to. */
+    FILES_MOCKED("the device's files, mocked"),
+
+    /** The device's databases are the mock's: the SQLite whose faults a test may play. */
+    DATABASES_MOCKED("the device's databases, mocked"),
+
+    /** The device's Keychain is the mock's. */
+    KEYCHAIN_MOCKED("the device's Keychain, mocked"),
 }
 
 /**
@@ -124,6 +133,10 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     SystemUiLevers,
     DevControlsLevers,
     BuildLevers,
+    DatabasesLevers,
+    FilesLevers,
+    KeychainLevers,
+    OlderInstallLevers,
 )
 
 /**
