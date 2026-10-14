@@ -1,6 +1,6 @@
 package app.snapsync.presentation
 
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumContents
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -10,15 +10,18 @@ import kotlin.test.assertTrue
 class RangeFormTest {
 
     @Test
-    fun `an untouched form has the album on — as a collection`() {
+    fun `an untouched form has the album on — holding shared and received photos`() {
         val form = RangeForm()
-        assertEquals(AlbumKind.COLLECTION, form.albumKind)
+        assertEquals(AlbumContents.SHARED_AND_RECEIVED, form.albumContents)
         assertTrue(form.saveToAlbum)
     }
 
     @Test
     fun `a form on a phone with folder albums is a different form`() {
-        assertNotEquals(RangeForm(), RangeForm(albumKind = AlbumKind.FOLDER))
-        assertEquals(RangeForm(albumKind = AlbumKind.FOLDER), RangeForm().copy(albumKind = AlbumKind.FOLDER))
+        assertNotEquals(RangeForm(), RangeForm(albumContents = AlbumContents.RECEIVED))
+        assertEquals(
+            RangeForm(albumContents = AlbumContents.RECEIVED),
+            RangeForm().copy(albumContents = AlbumContents.RECEIVED),
+        )
     }
 }

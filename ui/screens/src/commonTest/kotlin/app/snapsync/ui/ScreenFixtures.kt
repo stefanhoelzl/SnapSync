@@ -1,6 +1,6 @@
 package app.snapsync.ui
 
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.CreateForm
 import app.snapsync.ui.state.CreateStep
 import app.snapsync.ui.state.JoinedEvent
@@ -26,7 +26,7 @@ internal data class Choices(
     val shareOn: Boolean = true,
     val receiveOn: Boolean = true,
     val saveToAlbum: Boolean = true,
-    val albumStyle: AlbumStyle = AlbumStyle.COLLECTION,
+    val albumHolds: AlbumHolds = AlbumHolds.SHARED_AND_RECEIVED,
     val preset: RangeChoice = RangeChoice.EVENT_START,
     val customFrom: LocalDateTime? = null,
     val customUntil: LocalDateTime? = null,
@@ -42,7 +42,7 @@ internal data class Choices(
         shareOn = shareOn,
         receiveOn = receiveOn,
         saveToAlbum = saveToAlbum,
-        albumStyle = albumStyle,
+        albumHolds = albumHolds,
         preset = preset,
         from = when (preset) {
             RangeChoice.EVENT_START -> start

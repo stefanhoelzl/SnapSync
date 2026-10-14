@@ -146,7 +146,7 @@ import app.snapsync.ui.resources.update_detail
 import app.snapsync.ui.resources.update_detail_version
 import app.snapsync.ui.resources.update_eyebrow
 import app.snapsync.ui.resources.waiting_members
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
@@ -1133,7 +1133,7 @@ class StatusScreenTest {
         val withAlbum = MEMBERSHIP.copy(savesToAlbum = true)
         setContent {
             TestStatusScreen(
-                reconfiguring(withAlbum, Choices(saveToAlbum = true, albumStyle = AlbumStyle.FOLDER)),
+                reconfiguring(withAlbum, Choices(saveToAlbum = true, albumHolds = AlbumHolds.RECEIVED)),
             )
         }
         onNodeWithText("including the ones already received", substring = true).assertExists()

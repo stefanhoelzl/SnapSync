@@ -30,7 +30,7 @@ class UiStateFieldContractTest {
         shareOn = false,
         receiveOn = false,
         saveToAlbum = false,
-        albumStyle = AlbumStyle.FOLDER,
+        albumHolds = AlbumHolds.RECEIVED,
         preset = RangeChoice.CUSTOM,
         from = at,
         until = at,

@@ -717,8 +717,8 @@ data class RangeView(
     val shareOn: Boolean,
     val receiveOn: Boolean,
     val saveToAlbum: Boolean,
-    /** How this phone holds the event album — the album note follows it. */
-    val albumStyle: AlbumStyle,
+    /** What the event album holds on this phone — the album note says it. */
+    val albumHolds: AlbumHolds,
     /** Which range choice is selected. */
     val preset: RangeChoice,
     /** The range the choice makes: which of the member's photos are shared. */
@@ -746,11 +746,11 @@ data class RangeView(
 enum class OutsideReach { BEFORE, AFTER, BOTH }
 
 /**
- * How this phone holds an event album, as the album note says it: an album the received
- * photos are added to, or a folder they are saved into.
+ * What the event album holds on this phone, as the album note says it: the photos the member shares and the ones
+ * they receive, or the received ones only — their own stay where the camera saved them.
  */
 @Serializable
-enum class AlbumStyle { COLLECTION, FOLDER }
+enum class AlbumHolds { SHARED_AND_RECEIVED, RECEIVED }
 
 /** The store an update button opens. */
 @Serializable

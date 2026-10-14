@@ -17,7 +17,7 @@ class AppMenuTest {
             shareOn = true,
             receiveOn = true,
             saveToAlbum = true,
-            albumStyle = AlbumStyle.COLLECTION,
+            albumHolds = AlbumHolds.SHARED_AND_RECEIVED,
             preset = RangeChoice.EVENT_START,
             from = start,
             until = end,

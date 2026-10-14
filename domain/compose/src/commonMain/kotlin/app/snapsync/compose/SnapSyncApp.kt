@@ -49,7 +49,7 @@ import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumContents
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
@@ -429,8 +429,8 @@ class AppCore internal constructor(
     /** The device's mobile-data choice, for the status host's menu and waiting line. */
     val mobileDataChoice: StateFlow<Boolean> get() = services.mobileData.allowed
 
-    /** How this phone's library holds an event album, for the status host's album wording. */
-    val albumKind: AlbumKind get() = albumManager.kind
+    /** What the event album holds on this phone, for the status host's album wording. */
+    val albumContents: AlbumContents get() = albumManager.contents
 
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant

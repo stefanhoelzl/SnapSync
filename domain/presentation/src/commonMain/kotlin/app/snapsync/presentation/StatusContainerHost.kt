@@ -15,7 +15,7 @@ import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
 import app.snapsync.feature.membership.readmodel.RenameStatus
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumContents
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.DiagnosticKeys
@@ -138,9 +138,9 @@ class StatusContainerHost(
     private val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
     // Which build this is — the app menu's footer, a constant the composition states.
     private val build: BuildLabel = BuildLabel.UNKNOWN,
-    // How this phone holds an event album: the photo library's own answer, which the
-    // composition reads once and the surfaces' album note follows. Defaulted to the iPhone's answer.
-    private val albumKind: AlbumKind = AlbumKind.COLLECTION,
+    // What the event album holds on this phone, read from the photo library: the composition reads
+    // it once and the surfaces' album note follows. Defaulted to the iPhone's.
+    private val albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
 ) : OrbitContainerHost<ScreenModel, ScreenModel, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,
@@ -207,7 +207,7 @@ class StatusContainerHost(
     }
 
     /** An untouched surface's choices on this phone: all on, the album included. */
-    private val freshForm: RangeForm get() = RangeForm(albumKind = albumKind)
+    private val freshForm: RangeForm get() = RangeForm(albumContents = albumContents)
 
     /**
      * Resolve a form against an event window, in the DEVICE's zone.
@@ -740,7 +740,7 @@ class StatusContainerHost(
          */
         fun onOpenReconfigure() = settings.enqueue {
             val config = config.value ?: return@enqueue
-            val form = reconfigureForm(config, cutoffFormatter::toLocal).copy(albumKind = albumKind)
+            val form = reconfigureForm(config, cutoffFormatter::toLocal).copy(albumContents = albumContents)
             local.update {
                 it.copy(
                     form = form,
@@ -879,7 +879,7 @@ class StatusContainerHost(
             val reseeded = reconfigureForm(
                 inEffect.appliedTo(config),
                 cutoffFormatter::toLocal,
-            ).copy(albumKind = albumKind)
+            ).copy(albumContents = albumContents)
             val surface = if (saved) SettingsSurface.Open else SettingsSurface.SaveFailed
             local.update {
                 it.copy(

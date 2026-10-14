@@ -49,7 +49,7 @@ import app.snapsync.ui.resources.join_both_off
 import app.snapsync.ui.resources.join_button
 import app.snapsync.ui.resources.join_button_allow
 import app.snapsync.ui.resources.members_count
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.RangeView
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -186,8 +186,8 @@ private fun joinAlbumNote(participation: ParticipationState): String = with(part
     stringResource(
         when {
             !saveToAlbum -> Res.string.album_none
-            albumStyle == AlbumStyle.FOLDER && receiveOn -> Res.string.album_folder_receive
-            albumStyle == AlbumStyle.FOLDER -> Res.string.album_folder_nothing
+            albumHolds == AlbumHolds.RECEIVED && receiveOn -> Res.string.album_folder_receive
+            albumHolds == AlbumHolds.RECEIVED -> Res.string.album_folder_nothing
             shareOn && receiveOn -> Res.string.album_share_and_receive
             shareOn -> Res.string.album_share
             receiveOn -> Res.string.album_receive
