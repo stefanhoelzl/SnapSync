@@ -4,12 +4,12 @@ package app.snapsync.rig
 
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.ios.upload.SimulatorUploadJobs
+import app.snapsync.levers.PerformedJob
+import app.snapsync.levers.PlayedJob
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSHTTPURLResponse
@@ -27,7 +27,7 @@ import platform.Photos.PHAssetResourceManager
 import kotlin.coroutines.resume
 
 /**
- * `POST /device/upload-jobs/perform` — **the OS moving the bytes**, on a host where it will not.
+ * `upload-jobs.perform` — **the OS moving the bytes**, on a host where it will not.
  *
  * The substituted upload-job queue accepts a job and reports what the caller says became of it; this verb
  * is the other half — actually performing one, for real, against the destination and headers the cycle
@@ -39,60 +39,37 @@ import kotlin.coroutines.resume
  * the edge-URL builder composed is one the backend accepts, carrying the bytes PhotoKit yields, under a
  * real attestation token. That builder is pinned only by `commonMain` tests on string composition.
  *
- * Failure, by contrast, is worth forging: `?fail=…` skips the PUT entirely so a retry chain is deterministic
+ * Failure, by contrast, is worth forging: `fail` skips the PUT entirely so a retry chain is deterministic
  * without having to break the backend to get one.
  */
 
-private val json = Json {
-    ignoreUnknownKeys = false
-    prettyPrint = true
-}
-
-@Serializable
-private class PerformRequest(
-    /** The destination URL, verbatim from `created[].destination` — the one fact the OS keeps for a job. */
-    val destination: String,
-    /** The headers, verbatim from `created[].headers`. */
-    val headers: Map<String, String> = emptyMap(),
-)
-
 /**
- * The verb.
- *
- * Refuses rather than defaults on every malformed input, for the reason the wipe command already states: a
- * value that silently became something else produces a run the caller did not ask for, and they will read
- * its result as the answer to the scenario they thought they wrote.
+ * The verb: [job]'s resource staged from PhotoKit and sent with the job's own URL and headers — or, with [fail], no
+ * request at all. Deliberately not "PUT and then lie about the result": the point of forging is to reach the engine's
+ * retry chain without a backend that has to misbehave.
  */
-fun performUploadJobCommand(log: Logger = Logger.withTag("rig")): RigCommand = RigCommand { params, body ->
-    val request = runCatching { body?.let { json.decodeFromString<PerformRequest>(it) } }
-        .getOrNull()
-        ?: return@RigCommand CommandResult.badRequest(
-            "a JSON body is required: {\\\"destination\\\":\\\"…\\\",\\\"headers\\\":{…}} " +
-                "— take them verbatim from the created[] entry this job came from",
-        )
-
-    // A forged failure moves no bytes at all. Deliberately not "PUT and then lie about the result": the
-    // point of forging is to reach the engine's retry chain without a backend that has to misbehave.
-    params["fail"]?.let { reason ->
-        log.i { "perform ${request.destination}: forced failure ($reason) — no request was sent" }
-        return@RigCommand CommandResult.ok(
-            """{"destination":${quote(request.destination)},"performed":false,"forcedFailure":${quote(reason)},""" +
-                """"note":"no HTTP request was sent; present this job back as failed to drive the retry chain"}""",
-        )
+internal suspend fun performUploadJob(
+    job: PlayedJob,
+    fail: String?,
+    log: Logger = Logger.withTag(
+        "rig",
+    ),
+): PerformedJob {
+    if (fail != null) {
+        log.i { "perform ${job.destination}: forced failure ($fail) — no request was sent" }
+        return PerformedJob(job.destination, performed = false, forcedFailure = fail)
     }
-
-    val resource = resourceOf(request.destination)
-        ?: return@RigCommand CommandResult.badRequest(
-            "no job this cycle created was made towards '${request.destination}' with a PhotoKit resource — the OS " +
-                "uploads only a job it holds, and the substitute holds this cycle's",
-        )
+    val resource = resourceOf(job.destination) ?: throw IllegalArgumentException(
+        "no job this cycle created was made towards '${job.destination}' with a PhotoKit resource — the OS uploads only " +
+            "a job it holds, and the substitute holds this cycle's",
+    )
     val staged = stageResource(resource)
-        ?: return@RigCommand CommandResult.badRequest(
-            "could not read the bytes for '${request.destination}' from PhotoKit",
-        )
-    val outcome = put(request, staged, log)
-    NSFileManager.defaultManager.removeItemAtURL(staged, error = null)
-    CommandResult.ok(outcome)
+        ?: error("could not read the bytes for '${job.destination}' from PhotoKit")
+    return try {
+        put(job, staged, log)
+    } finally {
+        NSFileManager.defaultManager.removeItemAtURL(staged, error = null)
+    }
 }
 
 /**
@@ -107,10 +84,9 @@ fun performUploadJobCommand(log: Logger = Logger.withTag("rig")): RigCommand = R
  * process, where the OS's own genuinely survive. That is a divergence from the system being impersonated,
  * and it is stated in the `ios-simulator` skill rather than papered over.
  */
-private suspend fun put(request: PerformRequest, file: NSURL, log: Logger): String {
+private suspend fun put(request: PlayedJob, file: NSURL, log: Logger): PerformedJob {
     val url = NSURL.URLWithString(request.destination)
-        ?: return """{"destination":${quote(request.destination)},"performed":false,""" +
-            """"error":"the destination is not a URL this platform accepts"}"""
+        ?: return PerformedJob(request.destination, performed = false, error = "the destination is not a URL this platform accepts")
     val http = NSMutableURLRequest.requestWithURL(url)
     http.setHTTPMethod("PUT")
     request.headers.forEach { (name, value) -> http.setValue(value, forHTTPHeaderField = name) }
@@ -125,9 +101,7 @@ private suspend fun put(request: PerformRequest, file: NSURL, log: Logger): Stri
     val (response, error) = result
     val status = response?.statusCode?.toInt()
     log.i { "perform ${request.destination}: status=${status ?: "none"} error=${error?.localizedDescription ?: "none"}" }
-    return """{"destination":${quote(request.destination)},"performed":true,"status":${status ?: "null"},""" +
-        """"error":${error?.localizedDescription?.let(::quote) ?: "null"},""" +
-        """"succeeded":${status != null && status in 200..299}}"""
+    return PerformedJob(request.destination, performed = true, status = status, error = error?.localizedDescription)
 }
 
 /**
@@ -159,6 +133,3 @@ private suspend fun stageResource(resource: PHAssetResource): NSURL? {
 private suspend fun resourceOf(destination: String): PHAssetResource? =
     (SimulatorUploadJobs.createdThisCycle().lastOrNull { it.destination == destination }?.resource as? PhotoKitResource)
         ?.resource
-
-private fun quote(value: String): String =
-    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""

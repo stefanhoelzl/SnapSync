@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
@@ -121,7 +122,7 @@ class UploadCycleIntegrationTest {
         createAndJoin()
         addPhoto("A")
         permission(PhotoGrant.DENIED)
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         val opened = osRecord().databasesOpened.size
 
         assertEquals("completed", cycle())
@@ -143,7 +144,7 @@ class UploadCycleIntegrationTest {
     )
     fun a_cutoff_keeps_a_pre_cutoff_photo_out_of_the_upload_and_the_union() = rigTest {
         extensionUploadsOnly()
-        createAndJoin("cutoff" to "2026-06-01T00:00:00Z")
+        createAndJoin(Choices(cutoff = "2026-06-01T00:00:00Z"))
         addPhoto("OLD", date = "2026-05-20T10:00:00Z")
         addPhoto("NEW", date = "2026-06-05T10:00:00Z")
 
@@ -251,7 +252,7 @@ class UploadCycleIntegrationTest {
         extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         val opened = osRecord().databasesOpened.size
 
         os.pushToken("0a1b2c3d")

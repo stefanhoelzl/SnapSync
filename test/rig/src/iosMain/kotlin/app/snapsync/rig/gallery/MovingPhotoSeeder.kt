@@ -1,6 +1,6 @@
 package app.snapsync.rig.gallery
 
-import app.snapsync.rig.MovingPhoto
+import app.snapsync.levers.MovingPhoto
 import app.snapsync.rig.refused
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi

@@ -148,7 +148,7 @@ internal class DeviceAppSettingsBinding(private val recorder: Recorder) : Bindin
 }
 
 /**
- * This module's contracts the rig can run on a device, by name — `POST /contract/<name>`. Each answers with the
+ * This module's contracts the rig can run on a device, by name — `contract.run(<name>)`. Each answers with the
  * recording to commit verbatim at `test/contracts/recordings/<name>.rec`, the name its header's `contract`,
  * `host` and (where declared) `grant` lines spell ([recordingName]).
  *

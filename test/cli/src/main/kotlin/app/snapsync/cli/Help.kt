@@ -13,6 +13,10 @@ internal fun topHelp(): String = buildString {
     appendLine()
     appendLine("  --url <base>   the host: http://127.0.0.1:<port> — the JVM host's printed port, or a phone's forward")
     appendLine("  --json         print each answer as one line of JSON")
+    appendLine(
+        "  --timeout <s>  how long one call may take, in seconds (default 60; 0: as long as it takes — a contract",
+    )
+    appendLine("                 run, a big seed, a wipe the device's owner must confirm)")
     appendLine()
     appendLine("services:")
     SERVICE_COMMANDS.forEach { appendLine("  ${it.name.padEnd(SERVICE_COLUMN)}${it.needsLine()}") }

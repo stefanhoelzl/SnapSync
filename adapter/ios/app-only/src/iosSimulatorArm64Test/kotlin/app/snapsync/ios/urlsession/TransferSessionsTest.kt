@@ -42,7 +42,7 @@ class TransferSessionsTest {
             "default",
             transferSessionBinding,
             "the reported binding must match the configuration this target actually builds — the control " +
-                "channel serves this value on /device/state, and a scenario decides what it may assert " +
+                "channel serves this value on host.state(), and a scenario decides what it may assert " +
                 "from it.",
         )
     }

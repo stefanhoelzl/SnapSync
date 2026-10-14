@@ -30,7 +30,7 @@ class PushRegistrationIntegrationTest {
             createdEvent(name = "Trip")
             pushToken(TOKEN)
         }
-        whenever { user("confirmJoin") }
+        whenever { confirmJoin() }
         then {
             screen<Layer.Joined>()
             event<WorldEvent.DeviceRegistered> { it.token == TOKEN }

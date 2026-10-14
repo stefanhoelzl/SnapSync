@@ -9,7 +9,7 @@ package app.snapsync.integration
  * retries, what it admits — states that it drives that cycle alone.
  */
 suspend fun Rig.extensionUploadsOnly() {
-    device("uploaders", "app" to "off")
+    devControls.pin(app = false, extension = true)
 }
 
 /**

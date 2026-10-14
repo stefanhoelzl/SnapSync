@@ -50,7 +50,7 @@ class OsCompletionIntegrationTest {
     )
     fun a_heartbeat_wake_runs_the_tail_then_completes_once_and_re_arms() = rigTest {
         stagedBacklog()
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         val armed = wake.wakes().heartbeatsScheduled
 
         val atRelease = osAtRelease(client.os("app", "onBackgroundTask", HEARTBEAT_TASK).done())
@@ -64,7 +64,7 @@ class OsCompletionIntegrationTest {
     @Test
     fun the_operating_systems_expiry_completes_the_wake_at_once_and_a_cut_tail_still_re_arms() = rigTest {
         stagedBacklog()
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         val armed = wake.wakes().heartbeatsScheduled
         library.suspendNextImport()
 
@@ -99,7 +99,7 @@ class OsCompletionIntegrationTest {
     @Test
     fun a_wake_whose_time_was_up_before_it_ran_is_released_and_runs_no_tail() = rigTest {
         stagedBacklog()
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         val staged = osRecord().stagedFiles
         playedOs.expireNext()
 
@@ -119,7 +119,7 @@ class OsCompletionIntegrationTest {
     )
     fun upload_session_events_release_at_the_drain_then_run_the_tail() = rigTest {
         stagedBacklog()
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
 
         val atRelease = osAtRelease(client.os("app", "onBackgroundTransfers", UPLOAD_SESSION).done())
 
@@ -132,7 +132,7 @@ class OsCompletionIntegrationTest {
     @Test
     fun download_session_events_bring_the_download_session_up_and_not_the_upload_one() = rigTest {
         createAndJoin()
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         assertFalse(osRecord().downloadSessionUp, "precondition: a background launch has no session up")
 
         coroutineScope {
@@ -147,7 +147,7 @@ class OsCompletionIntegrationTest {
     @Test
     fun a_drain_report_that_never_comes_releases_on_the_operating_systems_expiry() = rigTest {
         createAndJoin()
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
 
         coroutineScope {
             val delivery = async { os.backgroundTransfers(DOWNLOAD_SESSION, awaitRelease = true) }
@@ -168,7 +168,7 @@ class OsCompletionIntegrationTest {
         createAndJoin()
         foreignDevice(DEV_F, "FQ")
         reconcile() // the transfer is in flight in the operating system's session
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         // A recorded staging requests its own tail at once, and that import would take the bytes out of staging before
         // the release is read. Failing it keeps them, so the count at the release reads the wake's work alone.
         library.failNextImport()
@@ -211,7 +211,7 @@ class OsCompletionIntegrationTest {
     )
     fun a_push_whose_union_read_fails_still_imports_what_is_staged() = rigTest {
         val event = stagedBacklog()
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         backend.offline(true) // the push's union read fails fast
 
         os.silentPush(event, awaitRelease = true)

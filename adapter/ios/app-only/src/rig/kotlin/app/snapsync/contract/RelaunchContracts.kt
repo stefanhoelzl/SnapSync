@@ -361,8 +361,8 @@ internal fun keptPath(contract: String) =
 internal fun onSimulator() = NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null
 
 /**
- * `POST /contract/TransferSession` on the device app: `?step=arm` prepares the relaunch and exits the app; `?step=collect`
- * answers what the relaunched process recorded. `POST /contract/SharePresenter` collects the share sheet's, which the
+ * `contract.run("TransferSession")` on the device app: `step=arm` prepares the relaunch and exits the app; `step=collect`
+ * answers what the relaunched process recorded. `contract.run("SharePresenter")` collects the share sheet's, which the
  * same relaunch records.
  */
 internal fun relaunchContracts(): List<InAppContract> = listOf(
@@ -386,8 +386,8 @@ internal fun keptRecording(contract: String): String? =
 internal fun collect(contract: String): String {
     val text = keptRecording(contract)
     return text ?: (
-        CONTRACT_REFUSED + "no relaunch has recorded $contract yet: POST /contract/TransferSession?step=arm, wait for iOS to " +
-            "relaunch the app in the background, then open it and collect.\n"
+        CONTRACT_REFUSED + "no relaunch has recorded $contract yet: contract run --name TransferSession " +
+            "--params {\"step\":\"arm\"}, wait for iOS to relaunch the app in the background, then open it and collect.\n"
         )
 }
 
@@ -443,7 +443,7 @@ private fun armRelaunch(): String {
     return CONTRACT_REFUSED +
         "armed (not a recording): the app exits now; iOS starts the transfer in ${BEGIN_AFTER_SECONDS.toInt()} s, the " +
         "server answers 404, and iOS relaunches the app in the background to deliver that. Open the app after a minute, then " +
-        "POST /contract/TransferSession?step=collect and /contract/SharePresenter.\n"
+        "contract run --name TransferSession --params {\"step\":\"collect\"}, and --name SharePresenter.\n"
 }
 
 /**

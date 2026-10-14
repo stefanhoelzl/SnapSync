@@ -17,6 +17,9 @@ APK=${1:-app/android/build/outputs/apk/debug/android-debug.apk}
 PORT=18099
 ADB=${ADB:-adb}
 BASE="http://127.0.0.1:$PORT"
+# The typed services' command line (`:test:cli`), built when it is missing.
+RIG=${RIG:-test/cli/build/install/rig/bin/rig}
+[ -x "$RIG" ] || ./gradlew -q :test:cli:installDist
 
 say() { printf '%s\n' "android-force-stop-check: $*"; }
 fail() { say "FAILED: $*"; "$ADB" logcat -d -s SnapSync:V AndroidRuntime:E | tail -40; exit 1; }
@@ -32,6 +35,9 @@ launch() {
         i=$((i + 1)); [ "$i" -lt 60 ] || fail "the control channel never answered"; sleep 1
     done
 }
+
+# A person's tap: the intent, as the JSON the screen service reads (`rig screen tap --help`).
+tap() { "$RIG" --url "$BASE" screen tap --intent "$1" >/dev/null || fail "tap $1"; }
 
 # Wait up to 30 s for [heartbeats] to satisfy the test in $1 (e.g. "-ge 1").
 await_heartbeats() {
@@ -50,7 +56,7 @@ launch
 CHOICE=$(printf 'screen=real\nlifecycle=real\nclock=real\nwake=real\nbackground-time=real\n'
     for s in backend library files databases preferences keychain integrity crash-reporter process-info \
              extension-registry upload-queue upload-session downloads links push system-ui; do echo "$s=mock"; done)
-curl -fsS --max-time 20 -X POST --data-binary "$CHOICE" "$BASE/device/adapters" >/dev/null || fail "adapter choice refused"
+"$RIG" --url "$BASE" adapters choose --choice "$CHOICE" >/dev/null || fail "adapter choice refused"
 sleep 2
 launch
 
@@ -59,13 +65,21 @@ launch
 TODAY=$(date -u +%Y-%m-%d)
 FROM=$(date -u -d "$TODAY -1 day" +%Y-%m-%d)
 UNTIL=$(date -u -d "$TODAY +5 days" +%Y-%m-%d)
-curl -fsS --max-time 20 -X POST "$BASE/user/create?name=force-stop&startsAt=${FROM}T00:00&endsAt=${UNTIL}T00:00" >/dev/null
+# The create form, as a person fills it: the name, the days swept, each wheel at midnight, Create, a week to join.
+tap '{"type":"CreateName","name":"force-stop"}'
+tap "{\"type\":\"RangeSweep\",\"anchor\":\"$FROM\",\"day\":\"$UNTIL\"}"
+for wheel in RangeFromHour RangeFromMinute RangeUntilHour RangeUntilMinute; do tap "{\"type\":\"$wheel\",\"value\":0}"; done
+tap '{"type":"ConfirmCreate"}'
+tap '{"type":"KeepOpenFor","days":7}'
 i=0
-until curl -fsS --max-time 10 "$BASE/device/state" | grep -q '"Ready"'; do
+until "$RIG" --url "$BASE" --json host state | grep -q '"Ready"'; do
     i=$((i + 1)); [ "$i" -lt 30 ] || fail "the join gate never opened"; sleep 1
 done
-curl -fsS --max-time 20 -X POST \
-    "$BASE/user/confirmJoin?cutoff=${FROM}T00:00:00Z&until=${UNTIL}T00:00:00Z&direction=download&saveToAlbum=false" >/dev/null
+# Receive only, no album, over the event's own dates — then Join.
+tap '{"type":"ShareOn","on":false}'
+tap '{"type":"ReceiveOn","on":true}'
+tap '{"type":"SaveToAlbum","on":false}'
+tap '{"type":"ConfirmJoin"}'
 
 await_heartbeats "-ge 1" || fail "no heartbeat was pending after the join"
 say "joined: $(heartbeats) heartbeat(s) pending"
@@ -79,7 +93,7 @@ await_heartbeats "-ge 1" || fail "opening the app did not restore the heartbeat"
 say "opened again: $(heartbeats) heartbeat(s) pending"
 
 # Leave the app as the smoke check expects it: unjoined, on the default adapter choice.
-curl -fsS --max-time 20 -X POST "$BASE/user/leave" >/dev/null || true
+"$RIG" --url "$BASE" screen tap --intent '{"type":"LeaveEvent"}' >/dev/null || true
 sleep 2
-curl -fsS --max-time 20 -X POST "$BASE/device/adapters/clear" >/dev/null || true
+"$RIG" --url "$BASE" adapters clear >/dev/null || true
 say "PASSED"

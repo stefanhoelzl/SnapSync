@@ -13,7 +13,7 @@ description: >-
 # snapsync-android — the Android control-channel host
 
 The Android app runs on an **emulator** on this Linux box (KVM) — the counterpart of `ios-simulator`, with no Mac —
-or on the **A40**, a real Samsung phone on USB. Either way the same control channel (`rig-channel`: `/os`, `/user`,
+or on the **A40**, a real Samsung phone on USB. Either way the same control channel (`rig-channel`: the typed services, `/os`,
 `/device`) is served from inside it.
 
 | | emulator | A40 |
@@ -39,9 +39,9 @@ Never `adb kill-server` (the server is shared by every workspace), and remove yo
 
 Only the **rig build** (`-Psnapsync.rig=true`) runs. It composes the real app (`snapSyncHost` over
 `AppPorts`, in `SnapSyncRoot`, built in `Application.onCreate`) over an **adapter choice**, read at every start
-from the adapters file (`rig-channel`'s `device/adapters*`, as on the iOS app host):
+from the adapters file (`rig-channel`'s `adapters` service, as on the iOS app host):
 
-- **No file** (a fresh install, or after `POST /device/adapters/clear`): every system mocked but the **screen** and its
+- **No file** (a fresh install, or after `rig adapters clear`): every system mocked but the **screen** and its
   **foreground life**, fresh in memory — an exit forgets them. The mocked clock stands at the **epoch**: an event window
   you create is a 1970 one.
 - **A file** may make real only what Android has a real adapter for — today `screen`, `lifecycle`, `clock`, `files`,
@@ -74,11 +74,12 @@ api logs for it is not yet measured. The local backend serves no request without
 means the phone attested — the api's `attest:` log line says how.
 
 ```bash
-curl -sS -X POST localhost:$H/device/adapters/current      # what this launch runs, and what may be real
+R="test/cli/build/install/rig/bin/rig --url http://127.0.0.1:$H"      # ./gradlew :test:cli:installDist -q, once
+$R adapters current                                         # what this launch runs, and what may be real
 printf 'screen=real\nlifecycle=real\nclock=real\nfiles=real\ndatabases=real\npreferences=real\nkeychain=real\n' > choice
 for s in backend library integrity crash-reporter process-info wake background-time extension-registry \
          upload-queue upload-session downloads links push system-ui; do echo "$s=mock"; done >> choice
-curl -sS -X POST --data-binary @choice localhost:$H/device/adapters
+$R adapters choose --choice "$(cat choice)"
 $A -s $S shell am start -W -n app.snapsync/app.snapsync.android.MainActivity
 $A -s $S shell run-as app.snapsync find files databases -type f   # the real stores (run-as: debuggable build)
 ```
@@ -88,7 +89,7 @@ reporter until phase 5. It talks to the RESOLVED deployment (`prod` by default):
 create, and `$A -s $S shell pm clear app.snapsync` after trying it. Its push service starts only when the deployment names a
 Firebase project (`deployments/components/android.json`); without one it logs "gets no push" and runs on.
 
-**Seeding a real library:** `POST /device/gallery/seed?n=&kind=` inserts the app's OWN photos into `DCIM/Camera` (same
+**Seeding a real library:** `rig gallery seed --n <n> --kind policy|bulk|noise` inserts the app's OWN photos into `DCIM/Camera` (same
 kinds as iOS). Never `adb push` a photo to test with: MediaStore hides a shell-owned photo from every other app, so
 the app never sees it (measured 2026-09-29). A shell write does still fire the library-change wake, which is how to
 cold-start the process through WorkManager. The emulator's AOSP camera saves to `Pictures/` (outside `DCIM`) and
@@ -149,8 +150,8 @@ What differs from the emulator — none of it measured yet, so check before rely
 
 - **Android version.** The A40 tops out at Android 11 (API 30) — exactly our minSdk. So **no partial photo access**
   (that is Android 14+): the grant is full or none. Read it: `$A -s $S shell getprop ro.build.version.sdk`.
-- **The library is real and personal.** Seeding (`/device/gallery/seed`) and wiping write to a real phone's
-  `DCIM` — wipe only what you seeded. 🚫 Never join an event you did not create (CLAUDE.md).
+- **The library is real and personal.** Seeding (`gallery seed`) writes to a real phone's `DCIM`, and the
+  channel wipes nothing there (`gallery wipe` is refused: remove what you seeded through MediaStore yourself). 🚫 Never join an event you did not create (CLAUDE.md).
 - **Samsung**: a locked screen lets `am start` succeed behind the lock screen (`ask` the user to unlock, or
   `$A -s $S shell svc power stayon usb`), and its battery management may defer WorkManager work more than the
   emulator does.
@@ -169,7 +170,7 @@ $A -s $S install -r app/android/build/outputs/apk/debug/android-debug.apk   # th
 $A -s $S shell am start -W -n app.snapsync/app.snapsync.android.MainActivity
 $A -s $S forward tcp:$H tcp:18099                                         # the device's host port → the app's
 curl -sS localhost:$H/health ; curl -sS localhost:$H/device               # host ANDROID_EMU; 409 = refused verb
-curl -sS localhost:$H/device/state
+test/cli/build/install/rig/bin/rig --url http://127.0.0.1:$H host state   # the app's state (`rig-channel`)
 $A -s $S exec-out screencap -p > shot.png                                 # then Read it
 $A -s $S logcat -s SnapSync:V AndroidRuntime:E                            # the whole app log (LogcatSink)
 $A -s $S exec-out run-as app.snapsync cat files/private/debug.log > debug.log # the same log as a file (FileLogSink) — a bug report's app_log
@@ -177,7 +178,7 @@ $A -s $S exec-out run-as app.snapsync cat files/private/debug.log > debug.log # 
 
 Everything past the port is `rig-channel`'s protocol; load it for the verbs, with `B=http://127.0.0.1:$H`. The app's `/os` foreground and background
 go through the REAL lifecycle adapter (`AndroidLifecycle.deliverForeground`); every other `/os` verb through its mock.
-`/os/photokit-ext/*` and the `extension-host` service are refused: Android has no upload extension. `device/relaunch` is refused: force-stop and start.
+`/os/photokit-ext/*` and the `extension-host` service are refused: Android has no upload extension. `host relaunch` is refused: force-stop and start.
 
 ## Opening an event link
 

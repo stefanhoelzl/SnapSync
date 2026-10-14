@@ -25,6 +25,11 @@ abstract class LeverService<@Rpc T : Any>(
     /** Every need a host must meet to honour this service's methods; one unmet refuses them all, with its reason. */
     val needs: Set<LeverNeed>,
     descriptor: () -> RpcServiceDescriptor<T>,
+    /**
+     * The methods that only read — the rest are acts. A host announces each act on the world's event stream and runs a
+     * read unannounced (`docs/testing.md`, "How a test waits"): a caller polling a read makes no act to wait on.
+     */
+    val reads: Set<String> = emptySet(),
 ) {
     /** The compiler plugin's description of the interface: its methods, their parameters and an invoker. */
     val descriptor: RpcServiceDescriptor<T> by lazy(descriptor)
@@ -111,6 +116,14 @@ enum class LeverNeed(val what: String) {
 
     /** The upload extension's registration is the mock's. */
     EXTENSION_REGISTRY_MOCKED("the extension registration's mock"),
+
+    /**
+     * The host serves the service itself, and classifies it **method by method**: each honoured, or refused with the
+     * host's reason. For a verb whose subject is the host — its process, its screen, its launch, its platform — and not
+     * a mocked system: no single need says where it is honoured. A host that serves no implementation of such a
+     * service leaves every method of it unclassified, which its advertisement names.
+     */
+    HOST("this host's own verb"),
 }
 
 /**
@@ -165,6 +178,12 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     WakeLevers,
     BackgroundTimeLevers,
     ExtensionRegistryLevers,
+    ScreenLevers,
+    HostLevers,
+    GalleryLevers,
+    AdaptersLevers,
+    ContractLevers,
+    UploadJobLevers,
 )
 
 /**

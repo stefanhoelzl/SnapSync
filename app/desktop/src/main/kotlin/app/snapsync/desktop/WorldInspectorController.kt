@@ -96,11 +96,11 @@ class WorldInspectorController(
         private set
 
     /** What the app last showed on its screen — the phone pane renders this, and nothing else. */
-    val shown: StateFlow<UiState?> get() = mocks.screen.operator.shown
+    val shown: StateFlow<UiState?> get() = mocks.screen.shown
 
     /** A person's tap on the phone pane, handed to the app as the intent a tap produces. */
     fun tap(intent: UiIntent) {
-        mocks.screen.operator.tap(intent)
+        mocks.screen.tap(intent)
         scope.launch { afterMutation() }
     }
 
@@ -181,11 +181,11 @@ class WorldInspectorController(
      */
     fun createEvent(name: String, startsAt: String, endsAt: String) = launchMutation {
         val intents = createIntents(name, LocalDateTime.parse(startsAt), LocalDateTime.parse(endsAt))
-        intents.forEach(mocks.screen.operator::tap)
+        intents.forEach(mocks.screen::tap)
     }
 
     /** The inspector's Leave button — the phone's Leave, confirmed. */
-    fun leaveEvent() = launchMutation { mocks.screen.operator.tap(UiIntent.LeaveEvent) }
+    fun leaveEvent() = launchMutation { mocks.screen.tap(UiIntent.LeaveEvent) }
 
     // ---- gallery ---------------------------------------------------------------------------------
 
@@ -377,7 +377,7 @@ class WorldInspectorController(
      */
     private fun start() {
         app.composed.host
-        mocks.screen.operator.live()
+        mocks.screen.live()
         mocks.lifecycle.foreground()
         appWatchers?.cancel()
         appWatchers = scope.launch {
@@ -405,10 +405,10 @@ class WorldInspectorController(
         // Should the device's clock stand past the preset's range, Create asks how long others may join: a week, as a
         // host would. Inert otherwise.
         (createIntents(PRESET_EVENT, LocalDateTime.parse(PAST_START), LocalDateTime.parse(PAST_END)) + PRESET_KEEP_OPEN)
-            .forEach(mocks.screen.operator::tap)
+            .forEach(mocks.screen::tap)
         withTimeoutOrNull(AWAIT) { shown.first { (it?.layer as? Layer.JoiningEvent)?.range != null } }
             ?: return null.also { appendConsole("preset: the join gate never opened") }
-        mocks.screen.operator.tap(UiIntent.ConfirmJoin)
+        mocks.screen.tap(UiIntent.ConfirmJoin)
         return withTimeoutOrNull(AWAIT) { shown.first { it?.layer is Layer.Joined } }
             .let { (it?.layer as? Layer.Joined)?.membership?.eventId }
     }

@@ -239,7 +239,7 @@ rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
   feature/upload `UploadCycle`, whose units (`topUp`, `walkAndPublish`) run in the app's one `TailRunner`. Below 26.1 it is the only uploader; from 26.1
   it runs beside the extension, both writing the one App-Group ledger (every write a guarded single transaction).
 
-**Exercising one uploader alone on a device works through the rig**: `POST /device/uploaders?app=on|off&extension=on|off`
+**Exercising one uploader alone on a device works through the rig**: `rig dev-controls pin --app true|false --extension true|false`
 (`rig-channel`). `extension=off` deregisters the extension; `app=off` makes the app's uploader withhold.
 
 There is **no host axis** any more: nothing reads `SIMULATOR_DEVICE_NAME`, and there is no
@@ -251,7 +251,7 @@ simulator, on an unmeasured belief that a background one could not run there; me
 
 ⚠️ The OS's upload-job registration lives in the **system**, not the app, and survives relaunch and
 reinstall. To exercise the app's uploader alone on a ≥26.1 device, switch the extension off with `rig-channel`'s
-`POST /device/uploaders?extension=off`. The on-device loop is in the **`snapsync-device`** skill (root
+`rig dev-controls pin --app true --extension false`. The on-device loop is in the **`snapsync-device`** skill (root
 `CLAUDE.md` → *Runbooks*). Irrelevant on a real 18–26.0 device, where no appex can exist at all.
 
 ## Gotchas

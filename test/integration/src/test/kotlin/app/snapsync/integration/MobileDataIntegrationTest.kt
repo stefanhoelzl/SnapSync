@@ -1,10 +1,13 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.levers.NetworkState
+import app.snapsync.model.Direction
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -23,12 +26,12 @@ import kotlin.test.assertTrue
 class MobileDataIntegrationTest {
 
     private suspend fun Rig.appUploadsOnly() {
-        device("uploaders", "extension" to "off")
+        devControls.pin(app = true, extension = false)
     }
 
     /** The app menu's switch: the device's choice, applied as it is flipped. */
     private suspend fun Rig.mobileData(on: Boolean) {
-        user("mobileData", "on" to on.toString())
+        tap(UiIntent.MobileData(on))
         awaitState { it.ui.mobileData.on == on }
     }
 
@@ -94,7 +97,7 @@ class MobileDataIntegrationTest {
         scenario = "Downloads wait for Wi-Fi when the member chose so",
     )
     fun with_mobile_data_off_a_received_photo_waits_for_wifi() = rigTest {
-        createAndJoin("direction" to "download")
+        createAndJoin(Choices(direction = Direction.DownloadOnly))
         mobileData(false)
         network.set(NetworkState.RESTRICTED)
         foreignDevice(DEV_F, "FA")
@@ -135,7 +138,7 @@ class MobileDataIntegrationTest {
         mobileData(false)
         val event = createAndJoin()
         assertEquals(false, state().ui.mobileData.on)
-        user("rename", "name" to "Off the plan")
+        rename("Off the plan")
         eventually<String?>(read = { state().joined?.membership?.name }) { it == "Off the plan" }
         assertEquals(event, state().ready.eventId)
     }
@@ -150,7 +153,7 @@ class MobileDataIntegrationTest {
         appUploadsOnly()
         createAndJoin()
         mobileData(false)
-        user("leave")
+        tap(UiIntent.LeaveEvent)
         awaitState { it.ui.layer is Layer.CreateEvent }
 
         createAndJoin()

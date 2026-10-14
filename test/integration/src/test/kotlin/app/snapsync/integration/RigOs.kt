@@ -23,12 +23,6 @@ class OsRecord(private val json: JsonObject) {
     /** Whether the app has shown the platform's screen anything — a screen exists only once the host is assembled. */
     val screenShown: Boolean get() = json.getValue("screenShown").jsonPrimitive.boolean
 
-    /** Whether the app has the photo library's selection observer open. */
-    val selectionObserved: Boolean get() = json.getValue("selectionObserved").jsonPrimitive.boolean
-
-    /** How many times the app presented the limited-library picker. */
-    val pickersShown: Int get() = json.int("pickersShown")
-
     private val systemUi get() = json.getValue("systemUi").jsonObject
 
     /** Every text the app handed the share sheet, in order. */

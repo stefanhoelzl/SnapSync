@@ -583,7 +583,7 @@ item is never read as absent).
   (`androidPlatformTest`, a Gradle-managed emulator per module, locally).
 - **`IOS_SIM_APP`: live on every push.** The `journeys (ios)` job builds the app under
   `-Psnapsync.rig=true`, applies the declared grant, launches it, and `scripts/sim-contracts` runs every
-  entry of the host's in-app registry (`GET /contract`) through the rig's contract verb. It fails on any
+  entry of the host's in-app registry (`contract.list`) through the rig's typed `contract` service. It fails on any
   run-failing outcome, any refusal, or an empty registry. Each run starts from a fresh simulator. A host CI
   can run is **never** recorded.
 - **`IOS_DEVICE_APP`, `IOS_DEVICE_PHOTOKIT_EXT`: recorded on the device, replayed on every build.**
@@ -593,7 +593,7 @@ between them. For example, a state that would push the app out of the foreground
 device and the rest runs live. The verb runs the entry for the host it is on. A contract asked to record
 for a host it is not running on **refuses**, so a recording can never be filed under the wrong host.
 
-The JVM rig host refuses the contract verb and `GET /contract` with `409` naming `JVM`. JVM bindings run
+The JVM rig host refuses the `contract` service (`LeverRefused`, naming `JVM`), as the Android app host does. JVM bindings run
 in `build`. The refusal exists so that "run everything the host lists" cannot pass with nothing run.
 
 ### Record and replay
@@ -628,7 +628,7 @@ recording is input to a clause, never an expectation.
   an answer shows up as a diff on the same host.
 
 **Recording.** Build with `-Psnapsync.rig=true`, install on the entitled device, and call
-`POST /contract/<name>` over the rig. It answers with the recording text and the live outcome table, and keeps
+`contract run --name <name>` over the rig (`rig`, `:test:cli`). It answers with the recording text and the live outcome table, and keeps
 it in the app's `Documents/contracts/` too. A production build contains none of the contract module, the
 bindings or the recorder.
 
@@ -724,7 +724,7 @@ Its stated deviation from the phone:
 - both processes live in one JVM: the app and the extension each set their own process up over their own process ports
   (the extension's files reach only the shared area, its crash channel is one nobody observes), and a process that
   supplies no log sinks leaves Kermit's JVM-global writer list alone — the rig's JVM host hands the app's process its
-  recorder, which is how `/device/logs` reads the app's log back.
+  recorder, which is how `host.logs()` reads the app's log back.
 
 The screen's "now" is the launch's `Clock`, like the core's: a test runs on mocked time only, never the wall clock.
 
@@ -733,7 +733,7 @@ The screen's "now" is the launch's `Clock`, like the core's: a test runs on mock
 happens), whose transfers the operator lands (`upload-session`'s `complete`); the extension's cycle runs when a caller
 invokes it (`/os/photokit-ext/processRawValue`) and its jobs land through `upload-queue`'s `completeJob`. Both would take the
 same photos, so a test about one of them says so: a test driving the extension's cycle switches the app's uploader off
-first (`extensionUploadsOnly()`, over `/device/uploaders?app=off` — the build's development controls, which the JVM
+first (`extensionUploadsOnly()`, over `dev-controls.pin(app = false, extension = true)` — the build's development controls, which the JVM
 host honours like a device's rig build), and a test under a partial grant, where the extension withholds by its own
 admission, lands the app's transfers. The push service re-delivers the token it issued to a relaunched process's
 request, as the OS answers every launch's.
@@ -774,21 +774,27 @@ finished initializing. Nothing runs at image load and the root holds no rig fiel
 root the adapter choice's ports too, and decorates its `ExtensionHost` so a requested contract runs in place of a cycle.
 
 Verbs:
+- the **typed services** over kRPC (below) — a person's taps (`screen.tap`), the host's state and process (`host`), its
+  photo library, adapter choice, in-app contracts and played upload-job queue, and the mocks' operator faces,
 - `/os` for OS entry points — each an `EntryDriver` delivery (`:test:contracts`) under the name the iOS shell's
   callback has always carried; the app host drives the iOS adapters' own `deliver…` methods, the JVM host the entry
   mocks' deliveries (`MockEntryDriver`), so one table maps the names for both. The same deliveries are the typed `os`
-  service (below), which every caller uses; the string verbs stay until the string protocol goes (phase 3g), and the
-  simulator's `processRawValue` with job sets in its body is only a string verb,
-- `/user` for user commands at intent level — each the `UiIntent`s a tap produces, handed to the UI port's
-  `onIntent` handler (through `RigUi` on a device, the screen mock on the JVM host),
-- `/device` for state, levers and reads,
+  service (below), which every caller uses; the string verbs stay until the string protocol goes (phase 3g),
+- `/device` for the levers not yet a typed service,
 - `/health`.
 
-**`/device/state` is narrow** (`RigState`): the reduced `UiState`, the readiness derived from it, the download
-progress read-model, the build's facts and the OS's extension answer. Reading it is the screen's pull — it refreshes
-the ledger-count read-model first, as the foreground poll does — but it reports no ledger count: the ledger is the
-app's own bookkeeping, and bytes that landed are read from the backend. 11g2 dropped `ledger`, `permission`,
-`inviteUrl`, `eventName` and `transientError` (the last four are inside `ui`); `/device/reset` answers `{"reset":true}`.
+**A person has one verb: a tap** (`ScreenLevers.tap(UiIntent)`) — the very value the platform's screen hands the `Ui`
+port's `onIntent` handler (through `RigUi` on a device, the screen mock on the JVM host). There is no excluded tap and
+no named command on the host: a form a person fills in several taps is those taps, named on the caller's side
+(`:test:control`'s `Person` and `Taps`: `createEvent`, `confirmJoin`, `setRange`, `reconfigure`, `rename`), so a test,
+a journey and a script tap the same sequences. Only `reconfigure` waits between taps — for the settings to be on screen,
+as a person waits — and the caller says how: on the world's events in a behaviour, by polling the state elsewhere.
+
+**The state read is narrow** (`host.state()`, `RigState`): the reduced `UiState`, the readiness derived from it, the
+download progress read-model, the build's facts and the OS's extension answer. Reading it is the screen's pull — it
+refreshes the ledger-count read-model first, as the foreground poll does — but it reports no ledger count: the ledger
+is the app's own bookkeeping, and bytes that landed are read from the backend. 11g2 dropped `ledger`, `permission`,
+`inviteUrl`, `eventName` and `transientError` (the last four are inside `ui`); the reset is `dev-controls.reset()`.
 
 **On the JVM host every lever and read is a mock's operator face** — the backend's, the photo library's, the upload
 queue's, the download session's, the disk's, the clock's, the reporter's, the screen's — never the composed core
@@ -812,23 +818,22 @@ backend mock's operator has answers `409` with the reason.
   `extension-registry.registered`. The same changes reach the world stream as they happen (`WorldEvent.Os`:
   `WakeScheduled`, `WakeCancelled`, `HoldBegun`, `HoldEnded`, `CompletionReleased`, `PushRegistered`,
   `ExtensionRegistered`), so "released after the wake's own work" is an order of events.
-- `device/os-record` is the string record of the systems not yet typed services: whether a screen was shown, whether
-  the selection observer is open, the transfer sessions, the databases opened, the files staged and the storage the
+- `device/os-record` is the string record of the systems not yet typed services: whether a screen was shown, the
+  transfer sessions, the databases opened, the files staged and the storage the
   app's files take (`appStorageBytes`). A receipted string
   entry's answer carries it **as read at the release** (`osAtRelease`). Each field leaves it as its system becomes a
   typed service.
-- `device/relaunch?scene=false` is a cold **background** launch: the process starts with no scene, so nothing builds
-  a screen. A test about what a wake must not build starts there and reads only the OS record — `/device/state` and
-  `/user` read the screen, and asking would assemble it.
-- `device/reinstall` deletes the app and installs it again: its files, databases and user defaults go, while the
-  Keychain (the device id), the photo library and the backend keep theirs, and a cold foreground launch follows. It
-  is the JVM host's alone; both app hosts refuse it, since deleting the app ends the process that serves the channel.
+- `host.relaunch(scene = false)` is a cold **background** launch: the process starts with no scene, so nothing builds
+  a screen. A test about what a wake must not build starts there and reads only the OS record — the state read and a
+  tap read the screen, and asking would assemble it.
+- `host.reinstall()` deletes the app and installs it again: its files, databases and user defaults go, while the
+  Keychain (the device id), the photo library and the backend keep theirs, and a cold foreground launch follows.
+  Relaunch and reinstall are the JVM host's alone; both app hosts refuse them, since the process they would end serves
+  the channel.
 
 There are **no click, semantics or pixel verbs**. Taps and pixels belong to the UI tier (section 8).
 
-- `/user` is one table both hosts invoke. A command absent on a build answers `409` with the reason. For
-  example, the diagnostics send is absent when no reporter is configured.
-- `/device` and `/os` form **one closed vocabulary** (`RigVocabulary`). Every host classifies every entry
+- The typed services' methods, `/device` and `/os` form **one closed vocabulary** (`RigVocabulary`). Every host classifies every entry
   as honoured or refused, with a reason. `GET /device` lists that classification. A refused entry answers
   `409` with its reason, never `404` and never a silent success. An unknown verb answers `404`. An entry a
   host leaves unclassified makes `GET /device` fail naming it, and the JVM host's tests then fail in
@@ -838,7 +843,7 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
   — the JVM host all of them (the backend mock's operator aside over the real `api/`), the app host those over the
   systems its adapter choice mocks — and refuses the rest naming the real system. The faces that have become typed
   services (below) are not in it: their verbs are derived, and the table is what is left to migrate.
-- `POST /device/reset` voids this device's durable sync state without telling any backend, through the
+- `dev-controls.reset()` voids this device's durable sync state without telling any backend, through the
   development controls' reset (`DevControls.onReset`). Use it
   **whenever a build crosses backends** (for example device ↔ local rig). Otherwise leftover `COMPLETED`
   rows make the device upload nothing, with no error anywhere. It clears the upload ledger, the membership
@@ -846,19 +851,20 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
   keeps the attestation credential, because a foreign token heals itself through a `401`. It is
   best-effort per step. An upload cycle already running may write rows back afterwards, and a second reset
   clears them. The runbook is in `rig-channel` (`changes/archive/2026-08-24-retire-launch-env-triggers`).
-- `:test:control` holds `RigClient` (a `409` is a typed `Reply.Refused`) and the JVM host's tests. Those
-  tests run over **both** backends and prove the protocol is faithful to the application: routes, state
-  encoding, the vocabulary advertisement, refusals. The only untested code in the channel is the iOS
-  gallery seeder and wiper, for the reason its build file gives.
+- `:test:control` holds `RigClient` (a string verb's `409` is a typed `Reply.Refused`, a typed method's refusal a
+  `LeverRefused`), `Person`, and the JVM host's tests. Those tests run over **both** backends and prove the protocol is
+  faithful to the application: routes, state encoding, the vocabulary advertisement, refusals. The only untested code
+  in the channel is the iOS gallery seeder and wiper, for the reason its build file gives.
 
 ### Typed services
 
 A mock's operator face becomes a **typed service**: a Kotlin interface in `:test:levers`, annotated `@Rpc`, whose
-companion object names the service once — its name and what a host must offer before any of its methods is
-honoured (`LeverNeed`: a system mocked, the backend reachable, the build's version a cell the channel may change, the
-clock owned by no loop). The mock's operator implements the interface; a test calls the same interface. A method's
-return type is its reply: `Unit` for a lever, the value for a read. Nothing is echoed back. The backend moved first, as
-two services, and the photo library next:
+companion object names the service once — its name, what a host must offer before any of its methods is honoured
+(`LeverNeed`: a system mocked, the backend reachable, the build's version a cell the channel may change, the clock owned
+by no loop, or the host itself), and which of its methods only read (run unannounced, as a `GET` was; the rest are
+acts). The mock's operator implements the interface; a test calls the same interface. A method's return type is its
+reply: `Unit` for a lever, the value for a read. Nothing is echoed back. The backend moved first, as two services, and
+the photo library next:
 
 - `backend` (`BackendLevers`) — the backend operator's levers and reads, implemented by `BackendOperator`. It needs the
   backend mocked, so over the real `api/` every method is refused, with the reason.
@@ -947,6 +953,28 @@ A delivery hands the app a live completion handler, a thread or a run to expire,
 deliveries are plumbing on the mocks (`LifecycleMock.foreground`, `WakeMock.fire`, `ExtensionHostMock.process`, …),
 called by the played OS and the desktop harness, never members of a face; the extension host's mock has no face at all.
 
+**A verb whose subject is the host** — its screen, its process, its launch, its platform — is a typed service too,
+whose need is the host itself (`LeverNeed.HOST`): every host serves it and classifies it **method by method**, each
+honoured or refused with the host's reason (`HostServices.kt`: a host states each verb as `honoured { … }` or
+`refusing("why")`, and a refused one is never invoked). A host that serves no implementation of such a service leaves
+its methods unclassified, which its advertisement names. They are:
+
+- `screen` (`ScreenLevers`, implemented by `ScreenOperator`) — `tap(intent)`, `shown()`; `live()` only where the screen
+  is the mock's.
+- `host` (`HostLevers`) — `state()`; `logs(process?, bytes?)` (an agent's read: `TestsWaitOnEventsTest` keeps tests off
+  it); `relaunch(scene?)`, `reinstall()` and `invite(event?)` (the JVM host's); `disk(depth?, largest?)` and
+  `processMetrics(fields)` (the iOS app host's: the real disk per container, a synthetic MetricKit report through the
+  app's own handler).
+- `gallery` (`GalleryLevers`) — the photo library a camera fills: `seed(n, kind)`, `wipe(scope, limit?, offset?)`,
+  `addMoving(photo)`, `read(cutoff?, resources?, downloadOnly?)`; PhotoKit's or MediaStore's where the library is real,
+  the mock's otherwise (no wipe, no camera file there).
+- `adapters` (`AdaptersLevers`) — the launch-time adapter choice: `current()`, `choose(choice)` and `clear()`, which
+  exit the app once the answer has left. The app hosts'.
+- `contract` (`ContractLevers`) — `list(grant?, precondition?)` and `run(name, host?, grant?, params?)`, which answers
+  the recording or the outcome table and is refused on a host whose bindings run elsewhere (JVM, Android).
+- `upload-jobs` (`UploadJobLevers`) — the OS's upload-job queue, played where the channel plays it (the iOS simulator
+  app): `process(finished, jobLimit?)`, `perform(job, fail?)`, `extensionRecord(registered?, failNextWith?)`.
+
 **They are served over kRPC**, kotlinx-rpc's protocol, on a WebSocket at `ws://<host>:<port>/rpc` beside the rig's
 HTTP routes. The plugin generates the client a test calls (`client.levers(BackendLevers).offline(true)`,
 `:test:control`) and the stub the rig registers the implementation under, so no message format, route or dispatch is
@@ -1028,13 +1056,13 @@ chosen at launch** (11h): its launch adapters. The systems are the mocks of `Moc
 `process-info`, `network`, `clock`, `wake`, `background-time`, `extension-registry`, `upload-queue`, `upload-session`,
 `downloads`, `lifecycle`, `links`, `push`, `screen`, `system-ui`. Not among them: the development controls (always the
 channel's), the extension's entry port (the channel already plays its invocations through the real adapter) and
-MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launch-adapters`.
+MetricKit (`host.processMetrics` feeds the real handler). Code: `:test:launch-adapters`.
 
 - **The adapters file** is `rig/adapters` in the App Group — the adapter choice: one `system=mock|real` per line, `#`
-  comments, a missing system real. `POST /device/adapters` takes it as the body, checks it, writes it and **exits the
+  comments, a missing system real. `adapters.choose(choice)` takes it, checks it, writes it and **exits the
   app**; the next start of any process — a manual launch, a BGTask, a URLSession relaunch, a silent push, the upload
-  extension — reads it, and the app and the extension compose over ONE adapter choice. `POST /device/adapters/current`
-  reads it (and names the folder it lives in); `POST /device/adapters/clear` deletes the `rig/` folder — the choice
+  extension — reads it, and the app and the extension compose over ONE adapter choice. `adapters.current()`
+  reads it (and names the folder it lives in); `adapters.clear()` deletes the `rig/` folder — the choice
   and every mocked system's state — and exits. On a simulator a script may write the file itself, into the `folder`
   that verb names (`simctl` does not list an ad-hoc-signed app's App Group). On the phone the App Group is not
   reachable over USB, so only the verb writes it, and the relaunch is the `snapsync-device` launch step. The verb
@@ -1076,14 +1104,14 @@ MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launc
 
 The Android rig build (`:app:android` under `-Psnapsync.rig=true`) serves the same protocol from inside the app on an
 emulator or the A40, reached over `adb -s <serial> forward tcp:<host port> tcp:18099` (load `snapsync-android`). It reads its adapter choice from
-the adapters file as the iOS app host does (`device/adapters*` write it, and the app exits), with two differences that
+the adapters file as the iOS app host does (`adapters.choose`/`clear` write it, and the app exits), with two differences that
 both come from Android not having every real adapter yet (today it has the screen, the lifecycle, the clock, the
 storage, attestation, the backend, links, the photo library, the system UI, the wakes, the background-time holds, the
 upload session, the downloads, push and the crash reporter). **No file is not all real**: it is every system mocked but
 the screen and its foreground life, fresh in memory at every start — what every launch without a file has always
 composed. And **a choice may leave real only the systems Android has an adapter for** (`AndroidRig.kt`'s list; naming
 another `real`, or omitting it, refuses the launch, which then composes nothing). A file-chosen launch saves its mocks'
-state beside the file, as on iOS, because a real store then outlives the process. It refuses `device/relaunch`, `device/reinstall` and the
+state beside the file, as on iOS, because a real store then outlives the process. It refuses `host.relaunch`, `host.reinstall` and the
 upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in `GET /device` — the host the
 device tests run on too. The `journeys (android)` CI job drives it over every real adapter Android has
 (`scripts/android-journeys`). A build without the property composes every real adapter and starts; its crash reporter
@@ -1110,7 +1138,7 @@ documented behaviour. Decision record: `changes/timely-background-receiving` (D8
 the SHELL owns (`adb push`, `UiAutomation`) from every other app, so a photo-library contract inserts its own fixture —
 which it reads with no grant and deletes with no confirmation — with the capture date in the file's EXIF as well as
 `DATE_TAKEN`, since publishing re-derives it. For the same reason an end-to-end run seeds through the rig's
-`device/gallery/seed`, which inserts the app's own photos into `DCIM/Camera` where the library is real. The grant is the
+`gallery.seed`, which inserts the app's own photos into `DCIM/Camera` where the library is real. The grant is the
 test process's own and revoking one kills it, so `NO_GRANT` clauses stay the iOS test executable's; the album writes
 are iOS's too (Android files no photo into an album — `GRANTED_SEEDED_ALBUMS_WRITABLE`). The mocks'
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
@@ -1263,7 +1291,7 @@ Photo, scrubbed of its location and silenced, committed under `journeys/resource
 photos (Pixel 6 Pro; Pixel 8a, two video tracks; Samsung One UI 5 and 6 with sound; a One UI 6 HEIC) from Immich's
 test assets. Those are AGPL-3.0, so they are never committed: `:test:integration:fetchMotionPhotos` fetches them pinned
 to one commit and checks each SHA-256, into the journeys' resources under `motionphoto/`. A moving photo reaches the
-app's library through `POST /device/gallery/add-moving` (the camera's files as they are), and the library's census
+app's library through `gallery.addMoving` (the camera's files as they are), and the library's census
 counts what moves (`census.moving`: Live Photos on iPhone, motion photos whose video is where their XMP says on
 Android). It is never a JVM-host lever or a private route,
 because a member the backend could tell apart from a device is not a member. One simulator, because a second
@@ -1324,9 +1352,9 @@ inspector's snapshot also follows the app's own changes (an import landing, the 
 a serial, non-UI scope, matching the device shell's dispatcher lanes.
 
 With `-Psnapsync.attach=<url>` the world harness instead **mirrors a remote rig host** (JVM host,
-simulator or phone). It renders `StatusScreen` from the host's wire `UiState` and sends taps as `/user`
-intents. A tap with no intent is inert and logged. Forward the port first, because hosts bind loopback
-only.
+simulator or phone). It renders `StatusScreen` from the host's wire `UiState` and hands every tap to the host's
+screen as the intent it is (`screen.tap`), surfaces included: they open in the host's container and come back with
+the next state. Forward the port first, because hosts bind loopback only.
 
 **Headless:** to click or screenshot the harness without a display, load `.claude/skills/ui-harness`
 (`:test:harness-driver`, `driveWorld`). **Never** use `java.awt.Robot`, and never capture
@@ -1387,7 +1415,7 @@ Facts worth knowing:
   `401` drops its token and it attests anew.
 - `src/dev/` cannot ship: the bundle is rooted at `src/main.ts`, which imports nothing under it. Running
   `src/main.ts` directly targets the **real** zone and database.
-- Crossing backends with a device build requires `POST /device/reset` (section 6).
+- Crossing backends with a device build requires `dev-controls.reset()` (section 6).
 
 Pointing a device or simulator build at the rig, and the step whose omission fails silently, are in
 `.claude/skills/local-backend`.

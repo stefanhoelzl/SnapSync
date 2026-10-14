@@ -129,11 +129,7 @@ class PlayedOs(
      * leave as its batch types it (`docs/testing.md`, "Typed services").
      */
     fun record(): String = buildJsonObject {
-        if (mocked(MockedSystem.SCREEN)) put("screenShown", device.screen.operator.shown.value != null)
-        if (mocked(MockedSystem.LIBRARY)) {
-            put("selectionObserved", device.library.selectionObserved)
-            put("pickersShown", device.library.pickersShown)
-        }
+        if (mocked(MockedSystem.SCREEN)) put("screenShown", device.screen.shown.value != null)
         if (mocked(MockedSystem.DOWNLOADS)) {
             val session = device.downloads.view()
             putJsonObject("downloadSession") {

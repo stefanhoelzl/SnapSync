@@ -2,9 +2,9 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.DownloadView
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
-import app.snapsync.rig.DownloadView
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
  *
  * The "next pass" that must adjudicate an inherited row is a **relaunch** (`/device/relaunch`): the startup
  * interrupted-import sweep runs at host assembly, which the relaunched app performs when its host is first
- * touched — the next `/device/state` read.
+ * touched — the next `host.state()` read.
  */
 class InterruptedImportIntegrationTest {
 
@@ -284,7 +284,7 @@ class InterruptedImportIntegrationTest {
             step(
                 "the app relaunched and opened",
                 act = {
-                    device("relaunch")
+                    host.relaunch()
                     os.foreground()
                 },
                 until = { settled { true } },
@@ -323,7 +323,7 @@ class InterruptedImportIntegrationTest {
 
     /** Process death and a cold launch, then the first touch of the new app's host — which assembles it. */
     private suspend fun Rig.relaunchAndAssemble() {
-        device("relaunch")
+        host.relaunch()
         state()
     }
 

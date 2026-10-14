@@ -2,6 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.levers.ExtensionAnswer
 import app.snapsync.levers.ExtensionHostLevers
+import app.snapsync.levers.UploadJobLevers
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosThreadLabel
 import app.snapsync.logging.PublicNSLogSink
@@ -74,41 +75,71 @@ fun extensionTriggerGroup(
 )
 
 /**
- * Run one extension cycle and answer with what it produced.
+ * Run one extension cycle and answer with what it produced. The OS's job sets are the typed `upload-jobs.process`'s to
+ * hand in (`uploadJobService`); a body here is refused, naming it.
+ */
+private suspend fun invokeExtensionCycle(process: () -> Int, body: String?, log: Logger): String {
+    if (!body.isNullOrBlank()) {
+        return """{"refused":"job sets are handed in through the typed upload-jobs.process, not a request body"}""" + "\n"
+    }
+    beginStringCycle()
+    return endStringCycle(runExtensionCycle(process, log))
+}
+
+/** Before a string-entry cycle: on a simulator, a cycle with no finished jobs begun on the played queue. */
+internal expect suspend fun beginStringCycle()
+
+/** A string-entry cycle's answer: the raw result, and what the target can report of the queue. */
+internal expect suspend fun endStringCycle(raw: Int): String
+
+/**
+ * One `process()` of the extension root, on the extension root's lane, its log lines in the extension's log.
  *
  * Not gated on any mechanism: both uploaders may write the one App-Group ledger, so this cycle is just another
  * cycle over it, and the extension root's own admission (a full grant, read in its entry gate) decides what it
  * may do — exactly as it does when the OS invokes it (decision record `changes/both-uploaders-active`, D8).
  *
  * Kermit's writer list is process-global and BOTH composition roots set it in their `init`, so touching the
- * extension root redirects the app's own log into `ext-debug.log` and would silence
- * `/device/logs?process=app` for the rest of the process. Snapshot and restore around the call. The
- * cycle's own lines still land in `ext-debug.log`, which is where they belong — `LogTailService`
- * already serves that file as the extension process's log.
+ * extension root redirects the app's own log into `ext-debug.log` and would silence the app's log for the rest of the
+ * process. Snapshot and restore around the call. The cycle's own lines still land in `ext-debug.log`, which is where
+ * they belong — `LogTailService` already serves that file as the extension process's log.
  */
-private suspend fun invokeExtensionCycle(
-    process: () -> Int,
-    body: String?,
-    log: Logger,
-): String {
-    beginUploadJobCycle(body)?.let { refusal -> return refusal }
-    return endUploadJobCycle(runExtensionCycle(process, log))
-}
+internal suspend fun runExtensionCycle(process: () -> Int, log: Logger = Logger.withTag("rig")): Int =
+    withContext(extensionLane) {
+        val saved = Logger.config.logWriterList
+        val raw = try {
+            // Point Kermit at the EXTENSION's log for the duration, then hand the app's writers back.
+            //
+            // Restoring alone is not enough, and the difference was measured. The extension root installs its
+            // writers in its `init`, which runs **once** — so with only a restore, the first invoked cycle
+            // wrote `ext-debug.log` and every cycle after it wrote the app's `debug.log`, because by then the
+            // object was already initialised and nothing re-pointed the writers. Setting them per call makes every
+            // invoked cycle land where an extension's cycle lands.
+            Logger.setLogWriters(
+                SinkLogWriter(listOf(PublicNSLogSink(), FileLogSink(extensionLogDestination().path)), IosThreadLabel),
+            )
+            process()
+        } finally {
+            Logger.setLogWriters(saved)
+        }
+        log.i { "photokit-ext cycle finished: raw=$raw" }
+        raw
+    }
 
 /**
  * The `extension-host` service: the same invocation as `processRawValue` with no job sets handed in, on the extension
- * root's lane — and its end, on the same lane. The simulator's scripted job sets stay the string verb's.
+ * root's lane — and its end, on the same lane. The simulator's scripted job sets are `upload-jobs.process`'s.
  */
 internal fun extensionHost(
     process: () -> Int,
     terminate: () -> Unit,
     log: Logger = Logger.withTag("rig"),
 ): ExtensionHostLevers = object : ExtensionHostLevers {
-    override suspend fun process(): ExtensionAnswer = withContext(extensionLane) {
-        beginUploadJobCycle(null)?.let { refusal -> error(refusal) }
+    override suspend fun process(): ExtensionAnswer {
+        beginStringCycle()
         val raw = runExtensionCycle(process, log)
-        endUploadJobCycle(raw)
-        when (raw) {
+        endStringCycle(raw)
+        return when (raw) {
             PROCESSING_RAW -> ExtensionAnswer.PROCESSING
             COMPLETED_RAW -> ExtensionAnswer.COMPLETED
             else -> ExtensionAnswer.FAILED
@@ -122,57 +153,13 @@ internal fun extensionHost(
 private const val PROCESSING_RAW = 1
 private const val COMPLETED_RAW = 2
 
-/** One extension cycle, its lines in the extension's log: answers the raw processing result. */
-private fun runExtensionCycle(process: () -> Int, log: Logger): Int {
-    val saved = Logger.config.logWriterList
-    val raw = try {
-        // Point Kermit at the EXTENSION's log for the duration, then hand the app's writers back.
-        //
-        // Restoring alone is not enough, and the difference was measured. The extension root installs its
-        // writers in its `init`, which runs **once** — so with only a restore, the first invoked cycle
-        // wrote `ext-debug.log` and every cycle after it wrote the app's `debug.log`, because by then the
-        // object was already initialised and nothing re-pointed the writers. A caller reading
-        // `/device/logs?process=extension` would have seen one cycle and concluded the rest never ran.
-        //
-        // Setting them per call makes every invoked cycle land where an extension's cycle lands, which is
-        // what makes that log answerable at all on this host.
-        Logger.setLogWriters(
-            SinkLogWriter(listOf(PublicNSLogSink(), FileLogSink(extensionLogDestination().path)), IosThreadLabel),
-        )
-        process()
-    } finally {
-        Logger.setLogWriters(saved)
-    }
-    log.i { "photokit-ext cycle finished: raw=$raw" }
-    return raw
-}
-
 /**
- * The `/device` verbs this target's upload-job subsystem adds, if any.
- *
- * Empty on a device: the OS performs its own transfers there, so there is nothing for an operator to
- * perform on its behalf, and offering the verb would invite a caller to move bytes the system was
- * already moving.
+ * The upload-job queue this target's channel plays (`UploadJobLevers`): on a simulator the queue is substituted and the
+ * caller plays the OS — handing each `process()` its job sets ([process] is the extension root's), performing a job's
+ * bytes, planting the registration record — unless the launch mocks the queue or the registration, whose own levers
+ * play them; on a device the OS holds the queue itself, and every verb is refused.
  */
-internal expect fun uploadJobDeviceCommands(): Map<String, RigCommand>
-
-/**
- * The upload-job verbs this target REFUSES, with the reason — the complement of [uploadJobDeviceCommands] within
- * [RigVocabulary.appHostCommands], so `GET /device` classifies them on every iOS target.
- */
-internal expect fun uploadJobRefusals(): Map<String, String>
-
-/**
- * Hand this invocation's job sets to the target's upload-job subsystem, or answer with the reason this
- * target will not take them.
- *
- * Per-target because the subsystem is: on a simulator the queue is substituted and the caller plays the OS,
- * while on a device the OS holds the queue itself and there is nothing to hand in.
- */
-internal expect suspend fun beginUploadJobCycle(body: String?): String?
-
-/** Render this invocation's answer — the raw processing result, plus whatever the target can report. */
-internal expect suspend fun endUploadJobCycle(raw: Int): String
+internal expect fun uploadJobService(world: MockWorld, process: () -> Int): HostService<UploadJobLevers>
 
 /**
  * How a `PHBackgroundResourceUploadProcessingResult` raw value reads back — the inverse of the tested

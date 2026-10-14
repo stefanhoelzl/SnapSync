@@ -95,7 +95,7 @@ class RigDevControls : DevControls {
         override suspend fun controls(): DevControlsView = devControlsView(pin, hints, encrypts)
     }
 
-    /** `/device/reset`: void this device's durable sync state; returns once it is void. */
+    /** `dev-controls.reset()`: void this device's durable sync state; returns once it is void. */
     suspend fun reset() {
         val handlers = checkNotNull(
             handlers,

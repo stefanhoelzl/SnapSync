@@ -30,7 +30,7 @@ class TrustIntegrationTest {
         backend.refuseAttestation(AttestationRefusal.DEVICE_MODIFIED)
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
-        user("confirmJoin")
+        confirmJoin()
         awaitState { state ->
             ((state.ui.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.step ==
                 JoinPhase.Detailed.Step.DeviceRefused
@@ -114,7 +114,7 @@ class TrustIntegrationTest {
         uploadAll()
         assertTrue(primaryKey("P1") in objects(), "the first install's photo is filed under this phone's identifier")
 
-        device("reinstall")
+        host.reinstall()
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join()

@@ -126,7 +126,7 @@ object SnapSyncRoot {
     // ── The OS fact → upload-mechanism PRESENCE (`docs/architecture.md`, "One shared composition") ──
 
     // `internal` (not `private`) for the same single reason as [app]: the rig's contributed hook reports
-    // this OS fact on `/device/state`, and reading the value the app actually resolved is the only
+    // this OS fact on `host.state()`, and reading the value the app actually resolved is the only
     // way to report it without a second resolution that could disagree. `internal` is module-wide and is
     // not exported to the `SnapSyncKit` ObjC header.
     /**

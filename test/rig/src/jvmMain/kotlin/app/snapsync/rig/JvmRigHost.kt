@@ -88,9 +88,6 @@ class JvmRigHost private constructor(
             }
             val bound = CompletableDeferred<Int>()
             val server = RigServer(
-                core = { rig.app.composed.core },
-                // Read per request, never captured: a relaunch replaces the app, and its host with it.
-                host = { rig.app.composed.host },
                 hooks = jvmHooks(rig, publishBoundPort = {
                     bound.complete(it)
                 }, reportBindFailure = { bound.completeExceptionally(BindFailed(port, it)) }),
@@ -166,11 +163,13 @@ class JvmRigHost private constructor(
             val mocks = rig.mocks
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
-                services = rig.world.servedServices(
-                    rig.host,
-                    rig.threads.acts,
-                    reconcileUploads = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },
-                ),
+                servicesOf = { hooks ->
+                    rig.world.servedServices(
+                        rig.host,
+                        rig.threads.acts,
+                        reconcileUploads = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },
+                    ) + rig.world.servedHostServices(jvmHostServices(rig, hooks), rig.threads.acts)
+                },
                 uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",
@@ -213,18 +212,10 @@ class JvmRigHost private constructor(
                         excluded = emptyMap(),
                     ),
                 ),
-                // The platform's own UI is a mock here, so the hand-off taps a device host excludes are driven too.
-                userCommands = userCommands(
-                    dispatch = { mocks.screen.operator.tap(it) },
-                    state = { rig.app.composed.host.screen.value },
-                ) + handOffUserCommands { mocks.screen.operator.tap(it) },
-                excludedUserCommands = excludedUserCommands() - HAND_OFF_EXCLUSIONS,
                 deviceCommands = jvmDeviceCommands(rig),
-                readGallery = rig.world.mockGalleryReader(),
                 osExtensionEnabled = { null },
                 publishBoundPort = publishBoundPort,
                 reportBindFailure = reportBindFailure,
-                contracts = emptyList(),
                 refusals = jvmRefusals(rig),
                 osRecord = rig.os::record,
                 osExtensionNotApplicable =
@@ -289,7 +280,7 @@ internal class JvmRig(
      */
     fun showScreen() {
         app.composed.host
-        mocks.screen.operator.live()
+        mocks.screen.live()
     }
 }
 

@@ -1,6 +1,10 @@
 package app.snapsync.rig
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.levers.CensusView
+import app.snapsync.levers.GalleryView
+import app.snapsync.levers.SeedKind
+import app.snapsync.levers.SeedOutcome
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.DeviceManifestAsset
@@ -8,15 +12,12 @@ import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
 import app.snapsync.rig.gallery.GalleryReport
-import app.snapsync.rig.gallery.SeedKind
-import app.snapsync.rig.gallery.SeedOutcome
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.gallery.assetId
 import app.snapsync.services.gallery.resourcesFrom
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.serialization.json.Json
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -99,7 +100,7 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
 @OptIn(ExperimentalUuidApi::class)
 fun MockWorld.seedMockLibrary(n: Int, kind: SeedKind): SeedOutcome {
     if (kind == SeedKind.NOISE) {
-        throw SeedRefused("the mocked photos carry no bytes, so a seed for bytes on the wire would measure nothing")
+        refused("the mocked photos carry no bytes, so a seed for bytes on the wire would measure nothing")
     }
     val library = device.library
     repeat(n) { i ->
@@ -125,7 +126,7 @@ fun MockWorld.mockGalleryReader(): suspend (
     String?,
     Boolean,
     Boolean,
-) -> String = { cutoff, resources, includesUpload ->
+) -> GalleryView = { cutoff, resources, includesUpload ->
     val library = device.library
     val reader = GalleryReport(
         candidates = PermissionAwareCandidateSource(
@@ -144,7 +145,7 @@ fun MockWorld.mockGalleryReader(): suspend (
             )
         },
     )
-    leverJson.encodeToString(GalleryView.serializer(), reader.read(cutoff, resources, includesUpload))
+    reader.read(cutoff, resources, includesUpload)
 }
 
 /** A fellow member with a primary resource per asset, captured on [filename]. */
@@ -163,11 +164,6 @@ internal fun foreignAsset(
 
 /** A dump as it left the process, read back into its five sections (`model/diagnosticDumpEvent` wrote them). */
 internal fun flag(params: Map<String, String>, name: String): Boolean = params[name]?.toBoolean() ?: true
-
-private val leverJson = Json {
-    encodeDefaults = true
-    prettyPrint = true
-}
 
 /** The app host's bulk-seed date: 2001-09-09, before any event can start. */
 private const val BULK_DATE = "2001-09-09T01:46:40Z"

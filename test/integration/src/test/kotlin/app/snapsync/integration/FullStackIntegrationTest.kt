@@ -1,15 +1,18 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.PhotoGrant
+import app.snapsync.model.Direction
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -337,7 +340,7 @@ class FullStackIntegrationTest {
 
         // The production leave: cancel downloads, stop the producer, clear the membership, then notify the backend
         // FIRE-AND-FORGET.
-        user("leave")
+        tap(UiIntent.LeaveEvent)
 
         // UiState reduces to the setup gate the instant the membership clears...
         awaitState { it.ui.layer is Layer.CreateEvent }
@@ -359,7 +362,7 @@ class FullStackIntegrationTest {
     )
     fun upload_only_uploads_own_but_imports_no_foreign() = rigTest {
         extensionUploadsOnly()
-        createAndJoin("direction" to "upload")
+        createAndJoin(Choices(direction = Direction.UploadOnly))
         addPhoto("A")
         foreignDevice(DEV_F, "FQ")
 
@@ -390,7 +393,7 @@ class FullStackIntegrationTest {
     )
     fun download_only_imports_foreign_and_reads_in_sync_through_a_zero_total() = rigTest {
         extensionUploadsOnly()
-        createAndJoin("direction" to "download")
+        createAndJoin(Choices(direction = Direction.DownloadOnly))
         addPhoto("A") // an un-uploaded own photo remains in the library
         foreignDevice(DEV_F, "FQ")
 
@@ -419,7 +422,7 @@ class FullStackIntegrationTest {
         // THE PRIVACY INVARIANT. The join gate promises "Only receive the event's
         // photos — you won't share yours". On the app-driven tier the APP invokes the cycle — foreground entry, the
         // heartbeat, a silent push — and every one of those reaches exactly this call.
-        val event = createAndJoin("direction" to "download")
+        val event = createAndJoin(Choices(direction = Direction.DownloadOnly))
         addPhoto("A")
 
         cycle()
@@ -444,7 +447,7 @@ class FullStackIntegrationTest {
         // The backend holds the leave's DELETE open: the backend that has not answered yet.
         backend.hold(BackendCall.LEAVE)
 
-        user("leave")
+        tap(UiIntent.LeaveEvent)
 
         // The screen leaves the joined layer immediately — even though the DELETE is still pending.
         awaitState { it.ui.layer is Layer.CreateEvent }

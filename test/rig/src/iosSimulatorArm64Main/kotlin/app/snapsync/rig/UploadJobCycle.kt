@@ -5,9 +5,14 @@ import app.snapsync.ios.upload.CreatedUploadJob
 import app.snapsync.ios.upload.FinishedUploadJob
 import app.snapsync.ios.upload.SimulatorJobAction
 import app.snapsync.ios.upload.SimulatorUploadJobs
+import app.snapsync.levers.ExtensionRecordState
+import app.snapsync.levers.FinishedJob
+import app.snapsync.levers.JobCycle
+import app.snapsync.levers.PlayedJob
+import app.snapsync.levers.UploadJobLevers
+import app.snapsync.mock.MockedSystem
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.UploadJobState
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
@@ -20,90 +25,36 @@ import kotlinx.serialization.json.Json
  * topology instead of inventing a second one. It also means a relaunch cannot leave a queue disagreeing
  * with the durable ledger, and there is nothing here to serialize or migrate.
  *
- * The wire vocabulary is the **platform's own**, and it is already pinned: `UploadJobState`'s five cases
- * are held against the Photos klib by `:test:architecture`'s platform-vocabulary pin, so a case Apple adds
- * fails the Kotlin bump rather than reaching a scenario untaught. A caller playing the OS speaks the OS's
- * terms.
+ * The vocabulary is the **platform's own** (`JobState`, `JobAction`): `UploadJobState`'s cases are held against the
+ * Photos klib by `:test:architecture`'s platform-vocabulary pin, so a case Apple adds fails the Kotlin bump rather than
+ * reaching a scenario untaught. A caller playing the OS speaks the OS's terms.
  */
 
-private val json = Json {
-    ignoreUnknownKeys = false
-    prettyPrint = true
+internal actual fun uploadJobService(world: MockWorld, process: () -> Int): HostService<UploadJobLevers> {
+    // Where the launch mocks the queue, its typed service (`upload-queue`) plays it, and nothing here may race it.
+    val queueMocked = world.isMocked(MockedSystem.UPLOAD_QUEUE)
+    return uploadJobService(
+        process = if (queueMocked) {
+            refusing(QUEUE_MOCKED)
+        } else {
+            honoured { finished, jobLimit ->
+                SimulatorUploadJobs.beginCycle(finished.map { it.platform() }, jobLimit = jobLimit ?: Int.MAX_VALUE)
+                cycleOf(runExtensionCycle(process))
+            }
+        },
+        perform = if (queueMocked) refusing(QUEUE_MOCKED) else honoured { job, fail -> performUploadJob(job, fail) },
+        extensionRecord = if (world.isMocked(MockedSystem.EXTENSION_REGISTRY)) {
+            refusing("the extension's registration is mocked on this launch; its record is the mock's")
+        } else {
+            honoured { registered, failNextWith -> extensionRecord(registered, failNextWith) }
+        },
+    )
 }
 
-/**
- * One job the OS has finished with, as the caller states it.
- *
- * The caller supplies the **retry disposition** — which fetch set the job is presented in — rather than the
- * substitute inferring it from having seen the key fail before. That is what keeps the substitute free of
- * memory between invocations, and it is also more expressive: `retry` and `acknowledge` are the two sets
- * `PHAssetResourceUploadJobAction` actually has, and a caller scripting the free-retry chain needs to say
- * which one this presentation is.
- */
-@Serializable
-private class FinishedJobRequest(
-    /**
-     * The destination URL the job was created (or re-pointed) with — a `created[].destination` from an earlier
-     * cycle's answer — the one fact the OS keeps for a job, which the upload services resolve its ledger row by.
-     */
-    val destination: String,
-    /** `retry` or `acknowledge`. */
-    val action: String,
-    /** `succeeded` · `failed` · `cancelled` · `pending` · `registered`. */
-    val state: String,
-    /** What the OS says of the job's failure — `network`, `http:503`, anything; absent for a success or none said. */
-    val error: String? = null,
-    /** The job's `Content-Type` — `created[].contentType` — as the OS keeps it on the job's request. */
-    val contentType: String? = null,
-)
+/** A cycle the string entry runs: no finished jobs, the cap off — the OS handing in an empty queue. */
+internal actual suspend fun beginStringCycle() = SimulatorUploadJobs.beginCycle(emptyList(), jobLimit = Int.MAX_VALUE)
 
-@Serializable
-private class CycleRequest(
-    val finished: List<FinishedJobRequest> = emptyList(),
-    /**
-     * The OS's in-flight job cap. `createJob` answers `LIMIT_EXCEEDED` at or above it, which is what drives
-     * a cap-truncated cycle: creation stops, the cursor is left un-advanced, and the result is
-     * `processing`.
-     */
-    val jobLimit: Int? = null,
-)
-
-internal actual suspend fun beginUploadJobCycle(body: String?): String? {
-    val request = runCatching { body?.let { json.decodeFromString<CycleRequest>(it) } ?: CycleRequest() }
-        .getOrElse { failure ->
-            // Refused, never defaulted. A malformed body that silently became "no finished jobs" would run
-            // a cycle the caller did not ask for, and the caller would read its result as the answer to the
-            // scenario they thought they wrote.
-            return """{"refused":"could not read the job sets","detail":"${failure.message}",""" +
-                """"shape":"{\\"finished\\":[{\\"destination\\":\\"…\\",\\"action\\":\\"retry|acknowledge\\",""" +
-                """\\"state\\":\\"succeeded|failed|cancelled|pending|registered\\",""" +
-                """\\"error\\":\\"…\\"}],\\"jobLimit\\":N}"}""" + "\n"
-        }
-    val finished = mutableListOf<FinishedUploadJob>()
-    for (job in request.finished) {
-        val action = SimulatorJobAction.entries.firstOrNull { it.name.equals(job.action, ignoreCase = true) }
-            ?: return refusal("action", job.action, SimulatorJobAction.entries.map { it.name })
-        val state = UploadJobState.entries.firstOrNull { it.name.equals(job.state, ignoreCase = true) }
-            ?: return refusal("state", job.state, UploadJobState.entries.map { it.name })
-        finished += FinishedUploadJob(
-            destination = job.destination,
-            action = action,
-            state = state,
-            error = job.error?.let(::TransferFailure),
-            contentType = job.contentType,
-        )
-    }
-    SimulatorUploadJobs.beginCycle(finished, jobLimit = request.jobLimit ?: Int.MAX_VALUE)
-    return null
-}
-
-/**
- * Every unrecognised token is refused with what would have been accepted, rather than resolved to a
- * default. A `state` that quietly became `succeeded` would record `COMPLETED` for a job the caller meant to
- * fail, and the scenario would pass having asserted the opposite of what it drove.
- */
-private fun refusal(field: String, was: String, accepted: List<String>): String =
-    """{"refused":"$field must be one of ${accepted.joinToString("|") { it.lowercase() }}, was '$was'"}""" + "\n"
+internal actual suspend fun endStringCycle(raw: Int): String = json.encodeToString(JobCycle.serializer(), cycleOf(raw)) + "\n"
 
 /**
  * The jobs this cycle created, **with their destination URL and headers verbatim**.
@@ -113,64 +64,41 @@ private fun refusal(field: String, was: String, accepted: List<String>): String 
  * builder is pinned by `commonMain` tests on string-building alone, so until now nothing anywhere
  * demonstrated that a URL it composes is one the backend accepts.
  */
-internal actual suspend fun endUploadJobCycle(raw: Int): String {
-    val created = SimulatorUploadJobs.createdThisCycle()
-    return """{"processRawValue":$raw,"result":"${processingResultName(raw)}","queue":"simulated",""" +
-        """"jobLimit":${SimulatorUploadJobs.jobLimit()},""" +
-        """"created":[${created.joinToString(",") { it.render() }}]}""" + "\n"
-}
+private suspend fun cycleOf(raw: Int): JobCycle = JobCycle(
+    raw = raw,
+    result = processingResultName(raw),
+    jobLimit = SimulatorUploadJobs.jobLimit(),
+    created = SimulatorUploadJobs.createdThisCycle().map { it.typed() },
+)
 
-private fun CreatedUploadJob.render(): String =
-    """{"destination":${quote(destination)},"contentType":${quote(contentType)},""" +
-        """"isRetry":$isRetry,"headers":{${headers.entries.joinToString(",") {
-            "${quote(it.key)}:${quote(it.value)}"
-        }}}}"""
+private fun CreatedUploadJob.typed() = PlayedJob(destination, contentType, isRetry, headers)
 
-/** JSON string escaping, minimal and explicit — a header value may carry a quote or a backslash. */
-private fun quote(value: String): String =
-    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
-
-/**
- * The other half of playing the OS: actually moving one job's bytes. See `PerformUploadJob.kt`.
- */
-internal actual fun uploadJobDeviceCommands(): Map<String, RigCommand> = mapOf(
-    "upload-jobs/perform" to performUploadJobCommand(),
-    "upload-extension/record" to uploadExtensionRecordCommand(),
+private fun FinishedJob.platform() = FinishedUploadJob(
+    destination = destination,
+    action = SimulatorJobAction.valueOf(action.name),
+    state = UploadJobState.valueOf(state.name),
+    error = error?.let(::TransferFailure),
+    contentType = contentType,
 )
 
 /**
- * `POST /device/upload-extension/record?registered=true|false&failNextWith=<PHPhotosError code>`
- *
  * The registration levers — what makes the disable→enable ritual's own contract drivable.
  *
  * Two scenarios it exists for, neither reachable anywhere before. **A stale record**: plant one
  * (`registered=true`) and the leading disable reports that a record existed and was removed, which is the
  * evidence the ritual is built on. **A refused enable**: arm `failNextWith=3202` and the enable fails
  * exactly as it does against a record a differently-signed build left behind — after which, on a device,
- * the OS never launches the extension and nothing else reports it.
+ * the OS never launches the extension and nothing else reports it. `0` disarms it.
  *
  * The failure is **one-shot**, because the ritual is a pair: a sticky lever would fail both halves and
  * could not express "the disable succeeded and the enable did not", which is the interesting case.
  */
-internal fun uploadExtensionRecordCommand(): RigCommand = RigCommand { params, _ ->
-    val registeredRaw = params["registered"]
-    val failRaw = params["failNextWith"]
-    val registered = registeredRaw?.let { it.toBooleanStrictOrNull() }
-    val failWith = failRaw?.let { it.toLongOrNull() }
-    when {
-        registeredRaw != null && registered == null ->
-            CommandResult.badRequest("registered must be true or false, was '$registeredRaw'")
-        failRaw != null && failRaw != "none" && failWith == null ->
-            CommandResult.badRequest("failNextWith must be a PHPhotosError code, or 'none', was '$failRaw'")
-        else -> {
-            registered?.let { SimulatorExtensionRecord.setRegistered(it) }
-            failRaw?.let { SimulatorExtensionRecord.failNextWith(if (it == "none") null else failWith) }
-            CommandResult.ok(
-                """{"registered":${SimulatorExtensionRecord.registered},""" +
-                    """"failNextWith":${SimulatorExtensionRecord.failNextWith ?: "null"}}""",
-            )
-        }
-    }
+private fun extensionRecord(registered: Boolean?, failNextWith: Long?): ExtensionRecordState {
+    registered?.let { SimulatorExtensionRecord.setRegistered(it) }
+    failNextWith?.let { SimulatorExtensionRecord.failNextWith(it.takeIf { code -> code != 0L }) }
+    return ExtensionRecordState(SimulatorExtensionRecord.registered, SimulatorExtensionRecord.failNextWith)
 }
 
-internal actual fun uploadJobRefusals(): Map<String, String> = emptyMap()
+private const val QUEUE_MOCKED = "the upload-job queue is mocked on this launch — its typed service (`upload-queue`) plays it"
+
+private val json = Json { prettyPrint = true }

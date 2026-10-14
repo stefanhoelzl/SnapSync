@@ -82,7 +82,7 @@ internal expect fun transferSessionConfiguration(identifier: String): NSURLSessi
  * inferring it from a log line or from a transfer that stalls.
  *
  * Public, unlike [transferSessionConfiguration], because the control channel reports it on
- * `/device/state`'s `build` map beside `uploadTier` and `uploadBase` (`:test:rig`, linked into `:app:ios`
+ * `host.state()`'s `build` map beside `uploadTier` and `uploadBase` (`:test:rig`, linked into `:app:ios`
  * only under `-Psnapsync.rig=true`). It reports a fact and decides nothing: no production code may branch
  * on it, which is the whole difference between this and the runtime host read that was deleted.
  */

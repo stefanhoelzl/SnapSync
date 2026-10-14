@@ -170,14 +170,14 @@ node ~/.claude/skills/ssh-runner/ssh-runner.ts exec $ID \
 # → "uploadBase" => "http://127.0.0.1:8080/api/v2"   ← your host, not snapsync.stho.net
 ```
 
-On a running app the same fact is `GET /device/state` → `build.uploadBase` (load `rig-channel`).
+On a running app the same fact is `rig host state` → `build.uploadBase` (load `rig-channel`).
 
 ⚠️ `deployments/local.json` is COMMITTED — the edit above is a working-tree change. Revert it
 (`git checkout deployments/local.json`) before you commit anything, or a session's tunnel hostname
 lands in the repo.
 
 A quick tunnel's hostname is **random per session**, so the IPA is rebuilt per session (~1 min
-incremental Debug). ⚠️ Crossing backends needs a **device reset** (`POST /device/reset` over the control
+incremental Debug). ⚠️ Crossing backends needs a **device reset** (`rig dev-controls reset` over the control
 channel) in **both** directions or nothing uploads, silently — load `local-backend` before doing this.
 
 `ci.yml` carries a `workflow_dispatch`: it runs every gate, archives Release and delivers the branch to internal

@@ -25,7 +25,7 @@ class RelaunchIntegrationTest {
         uploadAll()
         val created = jobs().created
 
-        device("relaunch")
+        host.relaunch()
         cycle()
 
         assertEquals(created, jobs().created, "the ledger (an App-Group database) survives: A is not uploaded again")
@@ -42,7 +42,7 @@ class RelaunchIntegrationTest {
         awaitState { it.ui.layer is Layer.UpdateRequired }
 
         backend.minAppVersion() // the gate is lifted, and nothing asks the backend again
-        device("relaunch")
+        host.relaunch()
 
         assertTrue(state().ui.layer is Layer.Joined, "a new process starts with no refusal in memory")
     }

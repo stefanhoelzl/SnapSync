@@ -1,15 +1,21 @@
 package app.snapsync.journeys
 
+import app.snapsync.control.Choices
 import app.snapsync.control.RigClient
 import app.snapsync.control.Verifies
-import app.snapsync.control.done
-import app.snapsync.levers.OsLevers
+import app.snapsync.control.person
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.levers.DevControlsLevers
+import app.snapsync.levers.GalleryLevers
+import app.snapsync.levers.MovingFile
+import app.snapsync.levers.MovingPhoto
+import app.snapsync.levers.OsLevers
+import app.snapsync.levers.RigLevers
+import app.snapsync.levers.SeedKind
 import app.snapsync.model.ConfigDecodeResult
+import app.snapsync.model.Direction
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.decodeEventUrl
-import app.snapsync.rig.MovingFile
-import app.snapsync.rig.MovingPhoto
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.wire.api.Limits
@@ -129,15 +135,15 @@ class Journeys {
     private suspend fun createAndJoin(a: RigClient): String {
         // The contracts ran on this app first and leave photos behind; the durable sync state is cleared so the
         // journey starts unjoined.
-        a.deviceVerb("reset").done()
+        a.levers(DevControlsLevers).reset()
         val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
         // Today through three days out: contains the seeded photos, which are dated an hour ahead of now.
         val startsAt = today.plus(-1, DateTimeUnit.DAY).atTime(LocalTime(0, 0))
         val endsAt = today.plus(3, DateTimeUnit.DAY).atTime(LocalTime(0, 0))
-        a.user("create", mapOf("name" to "Journey", "startsAt" to local(startsAt), "endsAt" to local(endsAt))).done()
+        a.person().createEvent("Journey", local(startsAt), local(endsAt))
         val gate = a.awaitState(JOIN) { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
         val event = (gate.ui.layer as Layer.JoiningEvent).eventId
-        a.user("confirmJoin", mapOf("direction" to "both", "saveToAlbum" to "false")).done()
+        a.person().confirmJoin(Choices(direction = Direction.Both, saveToAlbum = false))
         val joined = a.awaitState(JOIN) { it.ready.configResolved }
         assertTrue(joined.ui.layer is Layer.Joined, "A reached the joined screen: ${joined.ui}")
         assertTrue(joined.ready.eventId == event)
@@ -149,9 +155,9 @@ class Journeys {
      * uploader on the foreground entry, and served by the event's union.
      */
     private suspend fun shareOwnPhotos(a: RigClient, http: HttpClient, event: String) {
-        a.deviceVerb("gallery/seed", mapOf("n" to "4", "kind" to "policy")).done()
+        a.levers(GalleryLevers).seed(4, SeedKind.POLICY)
         val cutoff = a.state().ready.minPhotoDate ?: fail("A's membership carries no cutoff")
-        val admitted = a.gallery(cutoff = cutoff).policy?.assets.orEmpty()
+        val admitted = a.levers(GalleryLevers).read(cutoff = cutoff).policy?.assets.orEmpty()
             .filter { it.admitted }.mapTo(mutableSetOf()) { AssetId(it.assetId) }
         assertTrue(admitted.size >= 2, "the policy seed admits its above-floor half: $admitted")
 
@@ -178,7 +184,7 @@ class Journeys {
         val today = Clock.System.todayIn(TimeZone.UTC)
         val shared = member.share(event, count = MEMBER_PHOTOS, creationDate = "${today}T12:00:00Z")
 
-        val before = a.gallery(cutoff = WHOLE_LIBRARY).census.total
+        val before = a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census.total
         a.levers(OsLevers).foreground()
         val received = a.awaitState(DOWNLOAD) {
             it.download.total >= shared.size && it.download.downloaded == it.download.total
@@ -188,7 +194,7 @@ class Journeys {
             "A downloaded the member's photos: ${received.download}",
         )
         eventually(DOWNLOAD, "the member's photos in A's library") {
-            a.gallery(cutoff = WHOLE_LIBRARY).census.total >= before + shared.size
+            a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census.total >= before + shared.size
         }
     }
 
@@ -202,8 +208,8 @@ class Journeys {
     private suspend fun receiveMovingPhotos(a: RigClient, member: Member) {
         val event = (a.state().ready.eventId) ?: fail("A is not joined")
         val photos = listOf(LIVE_PHOTO.map(::part)) + MOTION_PHOTOS.map { listOf(part(it)) }
-        val before = a.gallery(cutoff = WHOLE_LIBRARY).census
-        val movingBefore = before.moving ?: fail("this host does not count moving photos: ${a.device().host}")
+        val before = a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census
+        val movingBefore = before.moving ?: fail("this host does not count moving photos: ${a.levers(RigLevers).advertise().host}")
         val downloadedBefore = a.state().download.downloaded
         val today = Clock.System.todayIn(TimeZone.UTC)
         member.share(event, photos, creationDate = "${today}T12:00:00Z")
@@ -213,7 +219,7 @@ class Journeys {
             it.download.downloaded >= downloadedBefore + photos.size && it.download.downloaded == it.download.total
         }
         eventually(DOWNLOAD, "the member's ${photos.size} moving photos moving in A's library") {
-            val census = a.gallery(cutoff = WHOLE_LIBRARY).census
+            val census = a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census
             census.total >= before.total + photos.size && (census.moving ?: 0) >= movingBefore + photos.size
         }
     }
@@ -224,7 +230,7 @@ class Journeys {
      * inside the event.
      */
     private suspend fun shareOwnMovingPhotos(a: RigClient, http: HttpClient, event: String, member: Member) {
-        val photos = if (a.device().host.startsWith("IOS")) {
+        val photos = if (a.levers(RigLevers).advertise().host.startsWith("IOS")) {
             listOf(LIVE_PHOTO)
         } else {
             listOf(listOf("motionphoto/samsung-one-ui-6.jpg"), listOf("motionphoto/samsung-one-ui-6.heic"))
@@ -233,7 +239,7 @@ class Journeys {
         val taken = (Clock.System.now() + 1.hours).toString()
         photos.forEach { files ->
             val body = MovingPhoto(taken, files.map { MovingFile(it.substringAfterLast('/'), base64(fixture(it))) })
-            a.deviceVerb("gallery/add-moving", body = Json.encodeToString(MovingPhoto.serializer(), body)).done()
+            a.levers(GalleryLevers).addMoving(body)
         }
 
         a.levers(OsLevers).foreground()

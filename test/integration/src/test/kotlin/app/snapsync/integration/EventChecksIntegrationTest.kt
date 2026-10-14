@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -74,11 +75,11 @@ class EventChecksIntegrationTest {
 
     @Test
     fun a_reconfigure_reads_the_union_once() = rigTest {
-        val event = createAndJoin("saveToAlbum" to "false")
+        val event = createAndJoin(Choices(saveToAlbum = false))
         settleDownloads()
         val before = unionReads(event)
 
-        user("reconfigure", "saveToAlbum" to "true")
+        reconfigure(Choices(saveToAlbum = true))
         awaitState { it.joined?.membership?.savesToAlbum == true }
         settleDownloads()
 

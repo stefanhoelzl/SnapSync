@@ -1,9 +1,9 @@
 package app.snapsync.control
 
 import app.snapsync.levers.DeviceAdvertisement
+import app.snapsync.levers.HostLevers
 import app.snapsync.levers.LeverService
-import app.snapsync.rig.GalleryView
-import app.snapsync.rig.RigState
+import app.snapsync.levers.RigState
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -101,9 +101,8 @@ class RigClient(
     suspend fun device(): DeviceAdvertisement =
         json.decodeFromString(DeviceAdvertisement.serializer(), http.get("$base/device").bodyAsText())
 
-    /** `GET /device/state` — the real reduced UI state, and the read-models beside it. */
-    suspend fun state(): RigState =
-        json.decodeFromString(RigState.serializer(), http.get("$base/device/state").bodyAsText())
+    /** The app's state — the real reduced UI state, and the read-models beside it ([HostLevers.state]). */
+    suspend fun state(): RigState = levers(HostLevers).state()
 
     /**
      * Poll [state] until [until] holds, or fail after [timeout] naming the last state seen. A user command and a
@@ -123,35 +122,6 @@ class RigClient(
         return reached ?: error("the state did not reach the condition within $timeout; last seen: $last")
     }
 
-    /**
-     * `GET /device/gallery` — the photo library as the app's own candidate seam and selection policy read it:
-     * every asset, its policy facts and verdict, and (with [resources]) its resources and capture names.
-     */
-    suspend fun gallery(
-        cutoff: String? = null,
-        resources: Boolean = false,
-        downloadOnly: Boolean = false,
-    ): GalleryView =
-        json.decodeFromString(
-            GalleryView.serializer(),
-            http.get("$base/device/gallery") {
-                cutoff?.let { parameter("cutoff", it) }
-                if (resources) parameter("resources", "true")
-                if (downloadOnly) parameter("direction", "download")
-            }.bodyAsText(),
-        )
-
-    /** `GET /device/logs` — the tail of a process's device log (`app` or `extension`). */
-    suspend fun logs(process: String = "app", bytes: Int? = null): String =
-        http.get("$base/device/logs") {
-            parameter("process", process)
-            bytes?.let { parameter("bytes", it) }
-        }.bodyAsText()
-
-    /** `POST /user/<name>` — a user command at the intent level, as a tap reaches it. */
-    suspend fun user(name: String, params: Map<String, String> = emptyMap()): Reply =
-        http.post("$base/user/$name") { params.forEach { (k, v) -> parameter(k, v) } }.reply()
-
     /** `POST /os/<root>/<member>` — invoke a composition root's real entry point, as the platform would. */
     suspend fun os(root: String, member: String, arg: String? = null, body: String? = null): Reply =
         http.post("$base/os/$root/$member") {
@@ -165,13 +135,6 @@ class RigClient(
             params.forEach { (k, v) -> parameter(k, v) }
             body?.let { setBody(it) }
         }.reply()
-
-    /** `GET /contract` — the contracts this host runs in-app, or its refusal. */
-    suspend fun contracts(): Reply = http.get("$base/contract").reply()
-
-    /** `POST /contract/<name>` — run a port contract in-app, or read this host's refusal. */
-    suspend fun contract(name: String, params: Map<String, String> = emptyMap()): Reply =
-        http.post("$base/contract/$name") { params.forEach { (k, v) -> parameter(k, v) } }.reply()
 
     override fun close() {
         if (rpc.isInitialized()) rpc.value.close()
@@ -188,17 +151,13 @@ class RigClient(
         }
     }
 
-    /** The reason a `409` carries: a device verb's `refused` field, or the contract verb's marker line. */
+    /** The reason a `409` carries: a device verb's `refused` field. */
     private fun reasonOf(text: String): String =
-        runCatching { json.parseToJsonElement(text).jsonObject["refused"]?.jsonPrimitive?.content }.getOrNull()
-            ?: text.trim().removePrefix(CONTRACT_MARKER)
+        runCatching { json.parseToJsonElement(text).jsonObject["refused"]?.jsonPrimitive?.content }.getOrNull() ?: text.trim()
 
     private companion object {
         val json = Json { ignoreUnknownKeys = false }
         val POLL = 50.milliseconds
-
-        /** The contract verb's refusal marker (`docs/architecture.md`). */
-        const val CONTRACT_MARKER = "refused: "
     }
 }
 

@@ -169,8 +169,6 @@ class LeverFacesTest {
         val ANY_MEMBERS = setOf("equals", "hashCode", "toString")
 
         /** The faces that are not typed services yet (phases 3a–3f): the list only shrinks. */
-        val NOT_MIGRATED = setOf(
-            "ScreenOperator",
-        )
+        val NOT_MIGRATED = emptySet<String>()
     }
 }

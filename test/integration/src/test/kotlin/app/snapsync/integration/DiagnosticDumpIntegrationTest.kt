@@ -13,6 +13,7 @@ import app.snapsync.model.DiagnosticKeys
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.ReportNotice
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -20,7 +21,7 @@ import kotlin.test.assertTrue
 
 /**
  * The operator-initiated diagnostic dump over the **real** stack:
- * the same `snapSyncApp` core the device shells call, fired through `/user/sendDiagnostics` — the same
+ * the same `snapSyncApp` core the device shells call, fired through the diagnostics sheet's tap (`UiIntent.SendDiagnostics`) — the same
  * `UserCommands` bundle presentation fires — landing in the host's reporter (the `crash-reporter` service, and the
  * world's `DumpReceived`).
  *
@@ -45,11 +46,11 @@ class DiagnosticDumpIntegrationTest {
     private suspend fun Acts.appendLog(process: LogProcess, text: String) = files.appendLog(process, text)
 
     private suspend fun Rig.sendDiagnostics(note: String, screen: String = SCREEN) {
-        user("sendDiagnostics", "note" to note, "screen" to screen)
+        tap(UiIntent.SendDiagnostics(note, screen))
     }
 
     private suspend fun Acts.sendDiagnostics(note: String, screen: String = SCREEN) {
-        user("sendDiagnostics", "note" to note, "screen" to screen)
+        tap(UiIntent.SendDiagnostics(note, screen))
     }
 
     /**

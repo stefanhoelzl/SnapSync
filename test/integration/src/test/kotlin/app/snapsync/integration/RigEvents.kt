@@ -1,5 +1,7 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
+import app.snapsync.levers.AssetView
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.ParkedImport
 import app.snapsync.levers.PhotoGrant
@@ -7,11 +9,10 @@ import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.decodeEventUrl
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.rig.AssetView
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
-import kotlinx.serialization.json.jsonPrimitive
+import app.snapsync.ui.state.UiIntent
 
 // The protocol calls that make up a person's events and photos — joining, creating, leaving, the library.
 
@@ -26,14 +27,14 @@ suspend fun Rig.create(
     startsAt: String = Rig.WINDOW_START,
     endsAt: String = Rig.WINDOW_END,
 ): String {
-    user("create", "name" to name, "startsAt" to startsAt, "endsAt" to endsAt)
+    createEvent(name, startsAt, endsAt)
     val gate = awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
     return (gate.ui.layer as Layer.JoiningEvent).eventId
 }
 
-/** Confirm the open join gate with [choices] (`direction`, `saveToAlbum`, `cutoff`, `until`), and wait to be joined. */
-suspend fun Rig.join(vararg choices: Pair<String, String>): String {
-    user("confirmJoin", *choices)
+/** Confirm the open join gate with [choices], and wait to be joined. */
+suspend fun Rig.join(choices: Choices = Choices()): String {
+    confirmJoin(choices)
     return awaitState { it.ready.configResolved }.ready.eventId!!
 }
 
@@ -46,13 +47,13 @@ suspend fun Rig.awaitAlbum(): List<Album> = eventually(read = { albums() }) { it
 
 /** Create an event and join it. Answers its id. */
 suspend fun Rig.createAndJoin(
-    vararg choices: Pair<String, String>,
+    choices: Choices = Choices(),
     name: String = Rig.EVENT_NAME,
     startsAt: String = Rig.WINDOW_START,
     endsAt: String = Rig.WINDOW_END,
 ): String {
     create(name, startsAt, endsAt)
-    return join(*choices)
+    return join(choices)
 }
 
 /** An event that exists on the backend and that this device has not joined: created, then the gate abandoned. */
@@ -62,7 +63,7 @@ suspend fun Rig.registerEvent(
     endsAt: String = Rig.WINDOW_END,
 ): String {
     val event = create(name, startsAt, endsAt)
-    user("cancelJoin")
+    tap(UiIntent.CancelJoin)
     awaitState { it.ui.layer is Layer.CreateEvent }
     return event
 }
@@ -95,12 +96,12 @@ suspend fun Rig.inviteLink(
 
 /** [eventId]'s key as its invite carries it, or `null` for a plain event. */
 suspend fun Rig.keyOf(eventId: String): String? {
-    val invite = deviceJson("invite", "event" to eventId)["invite"]!!.jsonPrimitive.content
+    val invite = host.invite(eventId)
     return (decodeEventUrl(invite) as ConfigDecodeResult.Success).payload.key
 }
 
 suspend fun Rig.leave() {
-    user("leave")
+    tap(UiIntent.LeaveEvent)
     awaitState { !it.ready.configResolved }
 }
 

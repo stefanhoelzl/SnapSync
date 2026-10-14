@@ -70,9 +70,26 @@ private fun MethodCommand.parseFlags(flags: List<String>): Map<String, List<Stri
 private fun ParameterFlag.decode(values: List<String?>): Any? {
     val element = if (repeatable) {
         val itemDescriptor = descriptor.getElementDescriptor(0)
-        JsonArray(
-            values.flatMap { it.orEmpty().split(',') }.filter { it.isNotEmpty() }.map { json(itemDescriptor, it) },
-        )
+        val item = itemDescriptor.valueDescriptor()
+        if (item.kind is PrimitiveKind || item.kind == SerialKind.ENUM) {
+            JsonArray(
+                values.flatMap { it.orEmpty().split(',') }.filter { it.isNotEmpty() }.map { json(itemDescriptor, it) },
+            )
+        } else {
+            // A structure's JSON holds commas of its own: each flag is one item, or the whole list as a JSON array.
+            JsonArray(
+                values.map { it.orEmpty().trim() }.filter { it.isNotEmpty() }.flatMap { text ->
+                    if (text.startsWith(
+                            '[',
+                        )
+                    ) {
+                        Json.parseToJsonElement(text) as JsonArray
+                    } else {
+                        listOf(json(itemDescriptor, text))
+                    }
+                },
+            )
+        }
     } else {
         values.single()?.let { json(descriptor, it) } ?: JsonPrimitive(true)
     }

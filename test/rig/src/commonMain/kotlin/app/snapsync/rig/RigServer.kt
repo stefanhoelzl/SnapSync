@@ -2,16 +2,11 @@
 
 package app.snapsync.rig
 
-import app.snapsync.compose.AppCore
-import app.snapsync.contracts.CONTRACT_REFUSED
-import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.currentHost
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.LeverService
-import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -36,7 +31,6 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
@@ -90,7 +84,8 @@ private val json = Json {
  * projection of a contract that already exists elsewhere, so there is no second way-to-drive that can rot or lie.
  *
  * ## The core arrives as a THUNK, never a value
- * [core] and [host] are thunks on purpose. `SnapSyncRoot.app` and `.host` are `by lazy` deliberately —
+ * The host's own services read the app through thunks (`HostServices.kt`), never a value, on purpose.
+ * `SnapSyncRoot.app` and `.host` are `by lazy` deliberately —
  * *"nothing resolves the device identity or opens a protected store earlier than before (the
  * locked-background-launch property)"* — and touching `host` calls `installPermissionSubscriptions()`,
  * which must never happen on a cold background wake. So binding the socket must
@@ -108,8 +103,6 @@ private val json = Json {
  * same absence-collapse this design guards against everywhere else, reintroduced where nobody would look.
  */
 class RigServer(
-    private val core: () -> AppCore,
-    private val host: () -> StatusContainerHost,
     private val hooks: RigHooks,
     private val port: Int = DEFAULT_RIG_PORT,
     private val log: Logger = Logger.withTag("rig"),
@@ -220,14 +213,8 @@ class RigServer(
             // `/os/<root>/<member>` — the root segment names WHOSE entry point this is, because the
             // channel reaches more than one composition root. See `RigHooks.triggerGroups`.
             post("/os/{path...}") { call.traced { call.respondTrigger() } }
-            post("/user/{name}") { call.traced { call.respondUserCommand() } }
 
-            get("/device/state") { call.traced { call.respondState() } }
-            get("/device/logs") { call.traced { call.respondLogs() } }
-            get("/device/gallery") { call.traced { call.respondGallery() } }
             post("/device/{name...}") { call.traced { call.respondDeviceCommand() } }
-            get("/contract") { call.traced { call.respondContractList() } }
-            post("/contract/{name}") { call.traced { call.respondContract() } }
             // The upload receiver the upload-job contract's jobs are pointed at (`docs/architecture.md`): the OS's
             // upload daemon PUTs each job's bytes here, over the rig build's loopback upload base, in the fixture route
             // grammar `scripts/transfer-fixture.py` serves the simulator app (`TransferFixture`). The answer is a
@@ -294,16 +281,9 @@ class RigServer(
     }
 
     /** `409` with the host's reason when it refuses [verb], or `false` to let the route proceed. */
-    private suspend fun ApplicationCall.respondIfRefused(verb: String, marker: String = ""): Boolean {
+    private suspend fun ApplicationCall.respondIfRefused(verb: String): Boolean {
         val reason = hooks.refusals[verb] ?: return false
-        val body = if (marker.isEmpty()) {
-            "{\"refused\":${jsonString(
-                reason,
-            )},\"verb\":\"$verb\"}\n"
-        } else {
-            "$marker$reason\n"
-        }
-        respondText(body, status = HttpStatusCode.Conflict)
+        respondText("{\"refused\":${jsonString(reason)},\"verb\":\"$verb\"}\n", status = HttpStatusCode.Conflict)
         return true
     }
 
@@ -337,35 +317,6 @@ class RigServer(
         }
     }
 
-    private suspend fun ApplicationCall.respondState() {
-        if (respondIfUncomposed()) return
-        respondText(json.encodeToString(RigState.serializer(), readState(core(), host(), hooks)))
-    }
-
-    /**
-     * `/logs?process=app|extension&bytes=N` — a pass-through to [LogTailService.tail].
-     *
-     * The port answers `null` for "no such log" and "could not read it" alike, having decided those are
-     * identical downstream. They are **not** identical here: an empty `200` would read as "the log is
-     * empty", so the absence is reported as a stated reason with a non-2xx status instead. Re-collapsing
-     * an absence the port was careful to keep distinct is the failure this codebase keeps paying for.
-     */
-    private suspend fun ApplicationCall.respondLogs() {
-        val which = request.queryParameters["process"] ?: "app"
-        val bytes = request.queryParameters["bytes"]?.toIntOrNull() ?: DEFAULT_LOG_BYTES
-        val process = LOG_PROCESSES[which]
-            ?: return respondText(
-                "unknown process '$which' — expected one of ${LOG_PROCESSES.keys.joinToString("|")}\n",
-                status = HttpStatusCode.BadRequest,
-            )
-        val tail = hooks.deviceLog(process, bytes)
-            ?: return respondText(
-                "no log for process=$which: it does not exist on this device, or it could not be read\n",
-                status = HttpStatusCode.NotFound,
-            )
-        respondText(tail)
-    }
-
     /**
      * The request body, or `null` when there is none.
      *
@@ -392,101 +343,6 @@ class RigServer(
         request.path().removePrefix(prefix).trim('/')
 
     /**
-     * `POST /user/{name}?…` — invoke a real user command on the main lane.
-     *
-     * Answered `202` without waiting, because the command IS an Orbit intent: it returns a `Job`, and its
-     * effect is observed through `/device/state`, which is the same way the screen observes it. Inventing a
-     * completion signal here would be inventing one the UI does not have.
-     */
-    private suspend fun ApplicationCall.respondUserCommand() {
-        if (respondIfUncomposed()) return
-        val name = routeName("/user")
-        val command = hooks.userCommands[name]
-            ?: return respondText(
-                excludedOrUnknown(name, hooks.excludedUserCommands, "user command"),
-                status = HttpStatusCode.NotFound,
-            )
-        val params = request.queryParameters.entries().associate { it.key to it.value.first() }
-        val refusal = withContext(hooks.mainLane) {
-            try {
-                command.run(params)
-                null
-            } catch (refused: UserCommandRefused) {
-                refused.reason
-            }
-        }
-        if (refusal != null) {
-            return respondText("{\"refused\":${jsonString(refusal)}}\n", status = HttpStatusCode.Conflict)
-        }
-        respondText(
-            "{\"command\":\"$name\",\"accepted\":true,\"waited\":false," +
-                "\"note\":\"a user command is an intent, exactly as a tap is — poll /device/state\"}\n",
-            status = HttpStatusCode.Accepted,
-        )
-    }
-
-    /**
-     * `POST /contract/{name}` — run a port contract in-app and answer with its body: a device recording, to be
-     * committed unedited as `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`, or a simulator-app outcome
-     * table. Off the main lane, like the device
-     * commands: it blocks until every clause has run.
-     */
-    private suspend fun ApplicationCall.respondContract() {
-        if (respondIfRefused(RigVocabulary.CONTRACT, marker = CONTRACT_REFUSED)) return
-        val name = routeName("/contract")
-        // One name can be registered for two hosts — `LinkOpener` is recorded on a device and run live on the
-        // simulator app — so this process's own entry wins; another host's entry still answers, with its refusal.
-        //
-        // `?host=<HOST>` selects one entry by the host it records for — how a run inside the upload extension
-        // (`IOS_DEVICE_PHOTOKIT_EXT`), which the app requests on the extension's behalf, is chosen over an entry
-        // of the same name this process runs itself.
-        //
-        // `?grant=<GRANT>` selects the entries taken under that photo grant; without it, the default one's.
-        val wanted = request.queryParameters["host"]
-        val grant = request.queryParameters["grant"]
-        val named = hooks.contracts.filter {
-            it.name == name && (wanted == null || it.host.name == wanted) && it.grant?.name == grant
-        }
-        val contract = (named.firstOrNull { it.host == currentHost } ?: named.firstOrNull())?.run
-            ?: return respondText(
-                excludedOrUnknown(name, emptyMap(), "contract"),
-                status = HttpStatusCode.NotFound,
-            )
-        // A contract that finds itself on the wrong host answers with the refusal marker rather than a
-        // recording: a 200 would let a caller redirect it straight into a `.rec` file under a host name it
-        // never ran on. The `when` lives here because the hook file may hold no decisions.
-        val params = request.queryParameters.entries().associate { it.key to it.value.first() }
-        val body = withContext(Dispatchers.Default) { contract(params) }
-        val status = when {
-            body.startsWith(CONTRACT_REFUSED) -> HttpStatusCode.Conflict
-            // A run inside the extension that never answered: no recording, and a status that cannot be mistaken
-            // for one.
-            body.startsWith(CONTRACT_TIMEOUT) -> HttpStatusCode.GatewayTimeout
-            else -> HttpStatusCode.OK
-        }
-        respondText(body, status = status)
-    }
-
-    /**
-     * `GET /contract[?grant=<GRANT>][&precondition=<PRECONDITION>]` — the names of the contracts registered for the host
-     * this process is, under the default photo grant or the one named, and with no precondition or the one named, one
-     * per line. The `journeys (ios)` job runs exactly these lists, so a
-     * contract registered for the simulator app is run on every push, and one registered for nothing is run by nobody
-     * (`docs/architecture.md`).
-     */
-    private suspend fun ApplicationCall.respondContractList() {
-        // Refused rather than empty on a host with no in-app registry, so "run every contract this host lists"
-        // can never pass vacuously against it (`docs/architecture.md`).
-        if (respondIfRefused(RigVocabulary.CONTRACT, marker = CONTRACT_REFUSED)) return
-        val grant = request.queryParameters["grant"]
-        val precondition = request.queryParameters["precondition"]
-        val listed = hooks.contracts.filter {
-            it.host == currentHost && it.grant?.name == grant && it.precondition == precondition
-        }
-        respondText(listed.joinToString("") { it.name + "\n" })
-    }
-
-    /**
      * `POST /device/{name}?…` — run a device command to completion and answer with what it did.
      *
      * NOT on [RigHooks.mainLane]: these block (a photo-library change block waits on the system's own
@@ -497,7 +353,7 @@ class RigServer(
     private suspend fun ApplicationCall.respondDeviceCommand() {
         val name = routeName("/device")
         if (respondIfRefused("device/$name")) return
-        if ("device/$name" !in RigVocabulary.adapterCommands && respondIfUncomposed()) return
+        if (respondIfUncomposed()) return
         val command = hooks.deviceCommands[name]
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "device command"),
@@ -506,25 +362,6 @@ class RigServer(
         val params = request.queryParameters.entries().associate { it.key to it.value.first() }
         val result = command.run(params, receiveTextOrNull())
         respondText(result.body, status = HttpStatusCode.fromValue(result.status))
-    }
-
-    /**
-     * `GET /device/gallery?cutoff=…&resources=…&direction=…` — the library, through the app's own policy.
-     *
-     * Its own route rather than a field of `/device/state`, for two reasons that both bite. Enumerating is
-     * expensive where reading state is not, and a caller polling state must not pay for it. And under a
-     * partial grant a `PHAsset` fetch can surface iOS's own limited-access alert — a `GET` that puts a modal
-     * on the device is surprising enough that it should at least be a `GET` the caller asked for by name.
-     */
-    private suspend fun ApplicationCall.respondGallery() {
-        if (respondIfRefused("device/gallery")) return
-        if (respondIfUncomposed()) return
-        val cutoff = request.queryParameters["cutoff"]
-        val resources = request.queryParameters["resources"].toBoolean()
-        // `direction=download` reads the library through a NON-contributing policy — the deny-everything
-        // rule. Defaults to contributing, which is what every existing caller wants.
-        val includesUpload = request.queryParameters["direction"] != "download"
-        respondText(hooks.readGallery(cutoff, resources, includesUpload))
     }
 
     /**
@@ -616,12 +453,5 @@ class RigServer(
     private companion object {
         /** The kRPC route the typed services are served on (`ws://<host>:<port>/rpc`). */
         const val RPC_PATH = "/rpc"
-
-        /** ~200 KB: comfortably more than a single cycle's lines, well under the port's 10 MB roll cap. */
-        const val DEFAULT_LOG_BYTES = 200_000
-        val LOG_PROCESSES = mapOf(
-            "app" to LogTailService.Process.APP,
-            "extension" to LogTailService.Process.EXTENSION,
-        )
     }
 }

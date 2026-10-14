@@ -1,45 +1,32 @@
 package app.snapsync.rig
 
-/**
- * The device target: **the OS holds the job queue**, so there is nothing to hand in and nothing to hand
- * back beyond the cycle's own result.
- *
- * A body is REFUSED rather than ignored. A caller who sends job sets here has mistaken this host for the
- * simulator, and silently discarding them would produce a cycle that looks like it honoured a scripted
- * queue while actually driving the real one — the shape most likely to be read as evidence for something
- * it did not test.
- */
-internal actual suspend fun beginUploadJobCycle(body: String?): String? =
-    if (body == null) {
-        null
-    } else {
-        """{"refused":"this target drives the REAL OS upload-job queue, so job sets cannot be handed in",""" +
-            """"queue":"os","hint":"invoke with no body; the OS holds the queue and this cycle reads it"}""" +
-            "\n"
-    }
+import app.snapsync.levers.UploadJobLevers
 
 /**
- * What a device can report: the raw processing result and the fact that the queue was the OS's own.
- *
- * No created-job list, and that absence is stated rather than left as an empty array: the jobs this cycle
- * created live in the system's queue, where only the OS can enumerate them, and an empty `created` would
- * read as "it created nothing".
+ * The device target: **the OS holds the job queue**, so there is nothing to hand in, nothing to perform and no record to
+ * plant — an operator would be racing the system for the same jobs, and the outcome would say nothing about what the OS
+ * did. Every verb is refused; the string `processRawValue` entry drives the real queue, reporting only its result.
  */
-internal actual suspend fun endUploadJobCycle(raw: Int): String =
+internal actual fun uploadJobService(
+    world: MockWorld,
+    process: () -> Int,
+): HostService<UploadJobLevers> = uploadJobService(
+    process = refusing(OS_OWNS_THE_QUEUE),
+    perform = refusing(OS_OWNS_THE_QUEUE),
+    extensionRecord = refusing(OS_OWNS_THE_QUEUE),
+)
+
+/** Nothing to begin: the OS hands its own sets to the real `process()`. */
+internal actual suspend fun beginStringCycle() = Unit
+
+/**
+ * What a device can report: the raw processing result and the fact that the queue was the OS's own. No created-job
+ * list, and that absence is stated: the jobs live in the system's queue, where only the OS can enumerate them.
+ */
+internal actual suspend fun endStringCycle(raw: Int): String =
     """{"processRawValue":$raw,"result":"${processingResultName(raw)}","queue":"os",""" +
-        """"created":null,"note":"the OS owns this queue; jobs it created are not enumerable from here"}""" +
-        "\n"
+        """"created":null,"note":"the OS owns this queue; jobs it created are not enumerable from here"}""" + "\n"
 
-/**
- * None. The OS moves the bytes on this target, so `perform` would be an operator racing the system for the
- * same job — and its outcome would say nothing about what the OS did.
- */
-internal actual fun uploadJobDeviceCommands(): Map<String, RigCommand> = emptyMap()
-
-internal actual fun uploadJobRefusals(): Map<String, String> = listOf(
-    "device/upload-jobs/perform",
-    "device/upload-extension/record",
-).associateWith {
-    "the operating system owns the upload-job queue on a device, so the channel cannot perform or record a job " +
-        "for it; the simulator app, which has no such queue, plays it and serves this verb"
-}
+private const val OS_OWNS_THE_QUEUE =
+    "the operating system owns the upload-job queue on a device, so the channel cannot hand it job sets, perform a " +
+        "job or record a registration for it; the simulator app, which has no such queue, plays it"

@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,7 +41,7 @@ class LostUploadAckIntegrationTest {
         assertTrue(primaryKey("A") in objects(), "the bytes landed")
 
         // ── the process dies here. Everything the adapter held in memory goes with it. ──
-        device("relaunch")
+        host.relaunch()
         state() // the relaunched app's host is assembled on first touch, as a scene connecting does
 
         cycle()
@@ -64,7 +65,7 @@ class LostUploadAckIntegrationTest {
         // The PhotoKit tier's shape: that tier has no callback outside the cycle — its adapter fetches the
         // finished jobs, records them settled and acknowledges in place. The album is not waiting for that: the photo
         // is placed when its upload is first enqueued, so the completion changes nothing about the album.
-        val event = createAndJoin("saveToAlbum" to "true")
+        val event = createAndJoin(Choices(saveToAlbum = true))
         awaitAlbum() // a cycle places only into an album that exists
         addPhoto("A")
 

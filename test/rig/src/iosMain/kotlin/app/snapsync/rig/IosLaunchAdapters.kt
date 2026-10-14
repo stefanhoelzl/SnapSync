@@ -27,9 +27,7 @@ import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
@@ -109,20 +107,16 @@ fun rigLaunch(platform: AppDevicePorts): RigLaunch {
 }
 
 /**
- * The adapter choice verbs (`launchAdapterCommands`), as the iOS app host serves them: `/device/adapters/current` says
- * why this launch's choice was refused, if it was; and `/device/adapters/clear` deletes the adapter choice's whole
- * folder — the choice and every mocked system's state — so the app exits and starts all real.
+ * The adapter choice verbs (`adaptersService`), as the iOS app host serves them: `current` says why this launch's choice
+ * was refused, if it was; and `clear` deletes the adapter choice's whole folder — the choice and every mocked system's
+ * state — so the app exits and starts all real.
  */
-fun adapterCommands(launch: RigLaunch): Map<String, RigCommand> = launchAdapterCommands(
+internal fun adapterVerbs(launch: RigLaunch): AdapterVerbs =
     AdapterVerbs(
         files = launch.files,
         world = launch.world,
         launchLine = launch.uncomposed?.let { "refused" } ?: launch.description,
-        current = {
-            putJsonArray(
-                "refusedBecause",
-            ) { (launch.launch as? LaunchAdapters.Refused)?.reasons.orEmpty().forEach { add(JsonPrimitive(it)) } }
-        },
+        current = { it.copy(refusedBecause = (launch.launch as? LaunchAdapters.Refused)?.reasons.orEmpty()) },
         refusal = { choice ->
             val incoherence = choice.incoherence()
             if (incoherence.isEmpty()) null else "the adapter choice is not coherent: " + incoherence.joinToString("; ")
@@ -132,66 +126,25 @@ fun adapterCommands(launch: RigLaunch): Map<String, RigCommand> = launchAdapterC
         clear = {
             val folder = (launch.files.locate(FileArea.SHARED, AdapterFiles.FOLDER) as? FileResult.Ok)?.value
             if (folder == null) {
-                Cleared.Failed(
-                    CommandResult.refused("the App Group has no location, so there is no adapter choice to clear"),
-                )
+                Cleared.Failed("the App Group has no location, so there is no adapter choice to clear", refused = true)
             } else {
                 NSFileManager.defaultManager.removeItemAtPath(folder, error = null)
                 Cleared.Done(folder)
             }
         },
         exit = { platform.posix.exit(0) },
-    ),
-)
+    )
 
 /**
  * The app host's refusals of the shared vocabulary for this launch (`docs/testing.md`): every operator lever over a
- * system its adapter choice leaves real, the played operating system's expiry unless the background-time holds are mocked, and
- * the verbs whose subject the adapter choice replaced.
+ * system its adapter choice leaves real, the played operating system's expiry unless the background-time holds are
+ * mocked, and the verbs a phone keeps outside the channel. Its own services refuse theirs themselves (`rigServices`).
  */
 fun iosRefusals(launch: RigLaunch, host: HostServices): Map<String, String> = buildMap {
     val world = launch.world
     putAll(world.leverRefusals(host))
     world.refusalFor(MockedSystem.BACKGROUND_TIME)?.let { reason ->
         RigVocabulary.playedOsEntries.forEach { put(it, "a real operating system's expiry is its own. $reason") }
-    }
-    put(
-        "device/relaunch",
-        "process death on a device is the app's exit (POST /device/adapters does one) followed by a launch; the channel " +
-            "cannot relaunch the process it runs in",
-    )
-    put(
-        "device/reinstall",
-        "deleting the app ends the process the channel runs in; delete and reinstall it from outside (`ios-device` / " +
-            "`simctl uninstall`, then install)",
-    )
-    put(
-        "device/invite",
-        "an event's key leaves the creating phone only inside its invite: read it from the joined screen's share link",
-    )
-    if (world.isMocked(MockedSystem.LIBRARY)) {
-        put(
-            "device/gallery/wipe",
-            "the photo library is mocked on this launch; a mocked library is never PhotoKit's to wipe",
-        )
-        put(
-            "device/gallery/add-moving",
-            "the photo library is mocked on this launch and holds no media bytes; its moving photo is the typed " +
-                "`library` service's `add` of kind `live-photo`",
-        )
-    }
-    putAll(uploadJobRefusals())
-    if (world.isMocked(MockedSystem.UPLOAD_QUEUE)) {
-        put(
-            "device/upload-jobs/perform",
-            "the upload-job queue is mocked on this launch — its typed service (`upload-queue`) plays it",
-        )
-    }
-    if (world.isMocked(MockedSystem.EXTENSION_REGISTRY)) {
-        put(
-            "device/upload-extension/record",
-            "the extension's registration is mocked on this launch; its record is the mock's",
-        )
     }
 }
 

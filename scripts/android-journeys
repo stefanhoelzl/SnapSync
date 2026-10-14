@@ -28,6 +28,8 @@ ADB=${ADB:-adb}
 APK=app/android/build/outputs/apk/release/android-release.apk
 RIG_PORT=18099
 RIG="http://127.0.0.1:$RIG_PORT"
+# The control channel's typed services, from a shell (`:test:cli`, built with the journeys): `rig_cli <service> <method>`.
+rig_cli() { test/cli/build/install/rig/bin/rig --url "$RIG" "$@"; }
 BACKEND="http://127.0.0.1:8080/api/v2"
 
 fail() {
@@ -93,25 +95,29 @@ choice="$OUT/adapters"
 for s in screen lifecycle clock files databases preferences keychain integrity backend links library system-ui wake \
          background-time upload-session downloads push process-info; do echo "$s=real" >> "$choice"; done
 for s in crash-reporter extension-registry upload-queue; do echo "$s=mock" >> "$choice"; done
-code="$(curl -sS -o "$OUT/adapters.answer" -w '%{http_code}' -X POST --data-binary @"$choice" "$RIG/device/adapters")"
-[ "$code" = 200 ] || { cat "$OUT/adapters.answer"; fail "the adapter choice was refused (HTTP $code)"; }
+rig_cli adapters choose --choice "$(cat "$choice")" > "$OUT/adapters.answer" 2>&1 \
+    || { cat "$OUT/adapters.answer"; fail "the adapter choice was refused"; }
 # The process exits after answering; wait for it to be gone before starting it again.
 i=0
 while "$ADB" shell pidof app.snapsync >/dev/null 2>&1; do
     i=$((i + 1)); [ $i -le 30 ] || fail "the app did not exit after the adapter choice"; sleep 1
 done
 launch
-curl -sS -X POST "$RIG/device/adapters/current" > "$OUT/adapters.current"
+rig_cli adapters current > "$OUT/adapters.current" 2>&1
 stage "app: relaunched over the chosen adapters"
 
 # Never drive an app baked for another backend: that is the shared production one, and these journeys create events
 # and upload photos.
-base="$(curl -sS "$RIG/device/state" | python3 -c 'import json,sys; print(json.load(sys.stdin)["build"].get("uploadBase",""))')"
+base="$(rig_cli --json host state | python3 -c 'import json,sys; print(json.load(sys.stdin)["build"].get("uploadBase",""))')"
 [ "$base" = "$BACKEND" ] || fail "the app is baked for '$base', not the local backend $BACKEND — refusing to run"
 
 # The app host's classification of the control vocabulary, read once: an unclassified entry answers 500.
-code="$(curl -sS -o "$OUT/device.json" -w '%{http_code}' "$RIG/device")"
-[ "$code" = 200 ] || { cat "$OUT/device.json"; fail "GET /device answered $code"; }
+rig_cli --json rig advertise > "$OUT/device.json" || { cat "$OUT/device.json"; fail "the app host did not advertise"; }
+python3 - "$OUT/device.json" <<'PY' || fail "the app host leaves vocabulary entries unaccounted"
+import json, sys
+ad = json.load(open(sys.argv[1]))
+sys.exit(1 if ad.get("unclassified") or ad.get("outsideVocabulary") else 0)
+PY
 
 # A bare JVM, NOT Gradle — as on iOS, no daemon beside the emulator.
 run_journeys "$RIG"

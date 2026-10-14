@@ -3,6 +3,7 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.step
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -50,7 +51,7 @@ class ShareSetIntegrationTest {
     private suspend fun Rig.switchTo(eventId: String) {
         openLink(inviteLink(eventId))
         awaitState { it.joined?.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready }
-        user("confirmSwitch")
+        tap(UiIntent.ConfirmSwitch)
         awaitState { !it.ready.configResolved }
         join()
         assertEquals(eventId, state().ready.eventId)

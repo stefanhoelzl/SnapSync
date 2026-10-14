@@ -45,7 +45,7 @@ about to exit, and it runs beside your `dev:local` without colliding. It exits w
 3. **Install, launch, then RESET over the channel** — load **`snapsync-device`** (it has you load the
    global `device` skill, which owns the per-phone lock — `SE2`, `XS` — every phone command requires) to sign, install
    and launch, then **`rig-channel`** for
-   `POST /device/reset`. The reset is not optional; see below.
+   `rig dev-controls reset` (`rig-channel`). The reset is not optional; see below.
 
 Reset is `rm -rf api/.localstore`. This is the deliberate **inverse** of the production rule: no
 whole-zone reset tool exists for bunny because that one zone holds real users' photos; the local store
@@ -60,7 +60,7 @@ job now, on a build made with `-Psnapsync.rig=true` (load **`rig-channel`**):
 
 ```bash
 B=http://127.0.0.1:18101          # the phone's host port (devices.json; the SE2's here)
-curl -X POST --max-time 180 $B/device/reset
+test/cli/build/install/rig/bin/rig --url $B dev-controls reset
 ```
 
 It answers `{"reset":true}` once the reset ran (the ledger counts it used to return left the protocol with the
@@ -78,7 +78,7 @@ so a leave becomes a no-op rather than a `DELETE` aimed at the backend you are d
 build at a different backend and the bytes are on the one you left while the ledger still says
 `COMPLETED`, so the device uploads **nothing** — no error, no failed request, no log line. Clearing the
 ledger alone is **not enough** either: the discovery cursor is a `PHPersistentChangeToken`, and with it
-retained the next cycle sees no changes and enumerates nothing. `/device/reset` clears both, plus the
+retained the next cycle sees no changes and enumerates nothing. The reset clears both, plus the
 membership config (**locally**, notifying no backend) and prunable download rows; it **keeps**
 imported download rows, whose `createdLocalId` suppresses re-uploading photos this device downloaded.
 

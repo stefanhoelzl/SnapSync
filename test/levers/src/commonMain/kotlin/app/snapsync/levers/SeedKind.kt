@@ -1,4 +1,6 @@
-package app.snapsync.rig.gallery
+package app.snapsync.levers
+
+import kotlinx.serialization.Serializable
 
 /**
  * What a seed is *for*. Two shapes, because they answer different questions and neither substitutes.
@@ -7,6 +9,7 @@ package app.snapsync.rig.gallery
  * environment variable takes no parameters. They are one function with a boolean and are now one command
  * with a parameter.
  */
+@Serializable
 enum class SeedKind {
 
     /**
@@ -50,5 +53,6 @@ enum class SeedKind {
     NOISE,
 }
 
-/** What a seed did, for the command's response. */
-class SeedOutcome(val requested: Int, val created: Int, val kind: SeedKind, val failedAtChunk: Int?)
+/** What a seed did. */
+@Serializable
+data class SeedOutcome(val requested: Int, val created: Int, val kind: SeedKind, val failedAtChunk: Int?)

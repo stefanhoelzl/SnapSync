@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * host's loop moves. So its sources name no wall clock and no thread of their own, and the app code the host runs names
  * no dispatcher or thread the loop cannot see — or the loop's "settled" would lie and a negative would pass early.
  *
- * Each rule the suite does not meet yet carries a list of the test classes still waiting the old way. The lists may
+ * Each rule the suite does not meet yet carries a list of the test classes still waiting (or reading) the old way. The lists may
  * only shrink — exact both ways, so a class that complies leaves its list in the same change — and phase 3g empties
  * them.
  */
@@ -47,6 +47,22 @@ class TestsWaitOnEventsTest {
         )
     }
 
+    /**
+     * Log text is no outcome a person observes (`docs/testing.md`, "The rules"): the host's log read (`HostLevers.logs`)
+     * is an agent's, through the `rig` CLI, never a test's.
+     */
+    @Test
+    fun `integration sources read no log text`() {
+        val reading = integration.filter { source -> LOG_READ.containsMatchIn(ZoneGates.stripComments(source.text)) }
+            .map { it.file.nameWithoutExtension }.toSet()
+        assertEquals(
+            STILL_READING_LOGS.toSortedSet(),
+            reading.toSortedSet(),
+            "an integration test observes the screen and what a system outside the app records — never the app's log. A " +
+                "class leaves the list once it reads none; no class joins it.",
+        )
+    }
+
     @Test
     fun `the app code the JVM host runs names no dispatcher or thread`() {
         val scanned = SourceScan.kotlinFiles().filter { source -> APP_CODE.any { it.matches(source.path) } }
@@ -75,6 +91,9 @@ class TestsWaitOnEventsTest {
         val TEST = Regex("""@Test\b""")
         val FUNCTION = Regex("""\bfun\s+(`[^`]+`|\w+)""")
         val CLASS_CLAIM = Regex("""@Verifies\([^)]*\)\s*(@\w+[^\n]*\s*)*class\s""")
+
+        /** A read of the host's device log. */
+        val LOG_READ = Regex("""\.logs\(""")
 
         val WALL_CLOCK =
             Regex("""\bdelay\(|Thread\.sleep|\bwithTimeout|Clock\.System|\bDispatchers\.|TimeSource\.Monotonic""")
@@ -111,9 +130,11 @@ class TestsWaitOnEventsTest {
             "VersionGateIntegrationTest",
         )
 
+        /** May only shrink: classes that still read the app's log to learn what it did. */
+        val STILL_READING_LOGS = setOf("HandOffIntegrationTest", "ReinstallIntegrationTest")
+
         /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */
         val STILL_WAITING_BY_TIME = setOf(
-            "JoinGateIntegrationTest",
             "OsCompletionIntegrationTest",
             "Rig",
         )

@@ -9,6 +9,7 @@ import app.snapsync.levers.LifecycleLevers
 import app.snapsync.levers.LinksLevers
 import app.snapsync.levers.PushLevers
 import app.snapsync.levers.PushView
+import app.snapsync.levers.ScreenLevers
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
@@ -214,7 +215,7 @@ class PushServiceOperator internal constructor(private val mock: PushServiceMock
  */
 class ScreenMock {
     internal val handlers = HandlerSlot<UiHandlers<UiState, UiIntent>>("Ui", BeforeListen.Thrown)
-    internal val shown = MutableStateFlow<UiState?>(null)
+    private val state = MutableStateFlow<UiState?>(null)
 
     /** Who is told each state the app shows, as it shows it — the control channel's event stream, or no one. */
     @Volatile private var watcher: ScreenWatcher = ScreenWatcher {}
@@ -222,22 +223,36 @@ class ScreenMock {
     fun port(): Ui<UiState, UiIntent> = Face()
 
     /**
-     * Tells [listener] every state the app shows, on the showing thread, as it shows it — each one, where [ScreenOperator.shown]
-     * keeps only the last. One listener: the control channel's event stream (`docs/testing.md`, "How a test waits").
+     * The last state the app showed, or `null` before any — plumbing for what composes over the mock in-process (the
+     * world harness, the rig); a test reads it through [ScreenOperator.shown].
+     */
+    val shown: StateFlow<UiState?> = state.asStateFlow()
+
+    /** [ScreenOperator.live], for a caller on no coroutine of its own (the world harness's start). */
+    fun live() {
+        show(handlers.require("a live screen").onLive.deliver(Unit))
+    }
+
+    /** [ScreenOperator.tap], for a caller on no coroutine of its own (the world harness's phone pane). */
+    fun tap(intent: UiIntent) = handlers.require("a tap").onIntent.deliver(intent)
+
+    /**
+     * Tells [listener] every state the app shows, on the showing thread, as it shows it — each one, where [shown] keeps
+     * only the last. One listener: the control channel's event stream (`docs/testing.md`, "How a test waits").
      */
     fun watch(listener: ScreenWatcher) {
         watcher = listener
     }
 
     internal fun show(state: UiState) {
-        shown.value = state
+        this.state.value = state
         watcher.shown(state)
     }
 
     /** The port face a process is handed. */
     internal inner class Face : Ui<UiState, UiIntent> {
         init {
-            shown.value = null
+            state.value = null
         }
 
         @CompositionOnly
@@ -256,17 +271,12 @@ fun interface ScreenWatcher {
     fun shown(state: UiState)
 }
 
-class ScreenOperator internal constructor(private val mock: ScreenMock) {
-    /** The last state the app showed, or `null` before any. */
-    val shown: StateFlow<UiState?> = mock.shown.asStateFlow()
+class ScreenOperator internal constructor(private val mock: ScreenMock) : ScreenLevers {
+    override suspend fun tap(intent: UiIntent) = mock.tap(intent)
 
-    /** A live screen is about to be built: it renders the state the app answers, before its first frame. */
-    fun live() {
-        mock.show(mock.handlers.require("a live screen").onLive.deliver(Unit))
-    }
+    override suspend fun shown(): UiState? = mock.shown.value
 
-    /** A person did [intent] on the screen. */
-    fun tap(intent: UiIntent) = mock.handlers.require("a tap").onIntent.deliver(intent)
+    override suspend fun live() = mock.live()
 }
 
 /**

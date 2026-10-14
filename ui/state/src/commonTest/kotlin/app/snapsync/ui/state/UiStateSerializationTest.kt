@@ -13,7 +13,7 @@ import kotlin.test.assertNull
  * `UiState` round-trips through JSON — every layer, not just the easy ones.
  *
  * This is not decoration. `UiState` is `@Serializable` because the control channel serves it as
- * `/device/state`, which is how every on-device check in this repo reads what the screen is showing; a
+ * `host.state()`, which is how every on-device check in this repo reads what the screen is showing; a
  * layer that failed to round-trip would make the app undriveable at exactly the moment someone needed
  * to see it. The encoder is compiler-generated, so what this really pins is that the sealed tree stays
  * serializable as it grows — a new layer carrying a non-serializable field fails HERE rather than on a

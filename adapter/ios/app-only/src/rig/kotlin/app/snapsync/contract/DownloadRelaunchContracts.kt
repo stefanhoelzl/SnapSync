@@ -270,7 +270,7 @@ internal class DeviceRelaunchedDownloadBinding(
 // ---- the run, across two processes -------------------------------------------------------------------------------
 
 /**
- * `POST /contract/Download` on the device app: `?step=arm` prepares the relaunch and exits the app; `?step=collect`
+ * `contract.run("Download")` on the device app: `step=arm` prepares the relaunch and exits the app; `step=collect`
  * answers what the relaunched process recorded.
  */
 internal fun downloadRelaunchContracts(): List<InAppContract> = listOf(
@@ -278,9 +278,9 @@ internal fun downloadRelaunchContracts(): List<InAppContract> = listOf(
         when (params["step"]) {
             "arm" -> armDownloadRelaunch()
             "collect" -> keptRecording(DownloadContract.name) ?: (
-                CONTRACT_REFUSED + "no relaunch has recorded ${DownloadContract.name} yet: POST " +
-                    "/contract/${DownloadContract.name}?step=arm, wait for iOS to relaunch the app in the background, " +
-                    "then open it and collect.\n"
+                CONTRACT_REFUSED + "no relaunch has recorded ${DownloadContract.name} yet: " +
+                    "contract run --name ${DownloadContract.name} --params {\"step\":\"arm\"}, wait for iOS to relaunch " +
+                    "the app in the background, then open it and collect.\n"
                 )
             else ->
                 CONTRACT_REFUSED +
@@ -328,7 +328,7 @@ private fun armDownloadRelaunch(): String {
     return CONTRACT_REFUSED +
         "armed (not a recording): the app exits now; iOS starts the transfer in ${BEGIN_AFTER_SECONDS.toInt()} s, the " +
         "server answers 404, and iOS relaunches the app in the background to deliver that. Open the app after a minute, " +
-        "then POST /contract/${DownloadContract.name}?step=collect.\n"
+        "then contract run --name ${DownloadContract.name} --params {\"step\":\"collect\"}.\n"
 }
 
 /**

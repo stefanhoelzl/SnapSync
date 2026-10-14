@@ -227,7 +227,7 @@ internal fun resumeMetricWait() {
 }
 
 /**
- * `POST /contract/ProcessMetrics` on the device app: `?step=arm` subscribes and waits — across launches — for MetricKit's
+ * `contract.run("ProcessMetrics")` on the device app: `step=arm` subscribes and waits — across launches — for MetricKit's
  * next delivery, about a day away; `?step=collect` answers the recording once one arrived.
  */
 internal fun metricsContracts(): List<InAppContract> = listOf(
@@ -263,7 +263,7 @@ private fun armMetricWait(): String {
     MetricWait.start()
     return CONTRACT_REFUSED +
         "armed (not a recording): the run waits for MetricKit's next delivery, about a day away, and keeps waiting " +
-        "across launches. Collect with POST /contract/ProcessMetrics?step=collect.\n"
+        "across launches. Collect with contract run --name ProcessMetrics --params {\"step\":\"collect\"}.\n"
 }
 
 /** Every run that spans a launch, resumed as a rig build's adapter set is built. */

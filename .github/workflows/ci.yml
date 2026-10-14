@@ -792,13 +792,13 @@ jobs:
             while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
 
       # Android: the rig RELEASE build (R8 as the store build runs it, so every journey exercises R8 output) baked for
-      # the local backend, and the journeys' classpath, built BEFORE the emulator boots and with the daemons stopped
+      # the local backend, the journeys' classpath and the `rig` CLI the script drives the app with, built BEFORE the emulator boots and with the daemons stopped
       # after, so the two never hold memory at once; then the emulator and `scripts/android-journeys`.
       - name: Build the rig app and the journeys
         if: matrix.platform == 'android'
         run: |
           ./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
-            -Psnapsync.rig=true -Psnapsync.deployment=local
+            :test:cli:installDist -Psnapsync.rig=true -Psnapsync.deployment=local
           ./gradlew --stop
       # The emulator (`.github/actions/android-emulator`): KVM, the system image, and the journeys run on it.
       - name: Run the journeys on the emulator
