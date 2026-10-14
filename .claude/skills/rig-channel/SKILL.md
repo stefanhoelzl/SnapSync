@@ -598,9 +598,8 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     Keychain, photo library and backend kept.
 - The **operator levers** (on the app host, only for the systems its adapter choice mocks): the transfers' — the
   upload-job queue, the app's upload session and the download session — are typed services (below, "The transfers'
-  typed services"); `device/permission?status=`,
-  `device/import/fail-next`, `device/databases/locked?on=`, `device/membership/undeletable?on=`,
-  `device/album/place?album=&asset=`, `device/album/hold-adds?on=`,
+  typed services"), and so is the photo library's (below); `device/databases/locked?on=`,
+  `device/membership/undeletable?on=`,
   `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read),
   `device/encrypt-new-events?on=false` (the next event this device creates is PLAIN — its invite the fragment form;
   a rig build encrypts by default, its invite carrying `#k=` — unlike a shipped one, which creates plain events until
@@ -612,21 +611,20 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
 - The **integration surface's** levers and reads (the same rule on the app host):
   - `diagnostics/sent` (the dumps the reporter received);
   - the backend: its two **typed services**, below;
-  - OS and library: `clock/advance?to=<instant>`, `network?access=online|offline|blocked` (what the OS reports to
+  - the photo library: its **typed service**, below;
+  - OS: `clock/advance?to=<instant>`, `network?access=online|offline|blocked` (what the OS reports to
     the app; a notice follows after the watch's ~5 s grace, and only while the app is foregrounded — pair `offline`
     with the backend's `offline(true)` to play a network that is really gone), `conditions?<key>=<value>|unsupported|failed:<reason>[&hold=true|false]`
     (power saving, battery, thermal state and background allowance as a bug report reads them; the keys are the report's —
     `power_saving`, `background_refresh`, `standby_bucket`, `battery_optimization_exempt`, `battery_percent`,
-    `battery_charging`, `thermal`; `hold=true` leaves every read unanswered), `app-version?version=`, `relaunch[?scene=false]`, `selection/change?assets=a,b`,
-    `gallery/add?id=&date=&kind=photo|low-res|screenshot|screen-recording|hd-video|live-photo|gif`,
-    `gallery/remove?id=`, `gallery/fail-next-enumeration`, `gallery/hold-enumeration?on=` (every walk waits — the
-    status screen before anything is counted), `import/suspend-next[?afterCommit=true]`, `import/await-parked`,
-    `import/resume?succeeded=`, `logs/append?process=app|extension` (body = text),
+    `battery_charging`, `thermal`; `hold=true` leaves every read unanswered), `app-version?version=`, `relaunch[?scene=false]`,
+    `logs/append?process=app|extension` (body = text),
     `staging/seed-legacy-backlog` (the one lever that writes app-private state: an upgraded install's leftovers).
-- Device facts off the mocked disk and library: `device/staging`, `device/album/contents`.
+- Device facts off the mocked disk: `device/staging`.
 - `/contract` refuses on this host (`409`, naming `JVM`): JVM contract bindings run under Gradle.
 - Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception), and
-  `client.levers(BackendLevers)` / `client.levers(PublicBackendLevers)` for the typed services, over kRPC (a refusal
+  `client.levers(BackendLevers)` / `client.levers(PublicBackendLevers)` / `client.levers(LibraryLevers)` for the typed
+  services, over kRPC (a refusal
   throws `LeverRefused`).
 - Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line
   contains that string: it matches itself.
@@ -722,6 +720,34 @@ $R --url $B download-session finish --base64-bytes "$(base64 -w0 motion.jpg)"
 $R --url $B download-session report-events-drained
 ```
 
+### The photo library's typed service
+
+- `library` (`LibraryLevers`) — the photo library mock's operator; refused where the library is real (a real
+  library has no switch for how it answers, and its photos are the member's). Levers: `add(id, kind?, date?)` (a photo
+  the person takes — `LibraryPhotoKind.PHOTO|LOW_RES|SCREENSHOT|SCREEN_RECORDING|HD_VIDEO|LIVE_PHOTO|GIF`, a camera
+  photo by default, dated 2026-06-01T10:00:00Z unless given), `remove(asset)`, `permission(grant)` /
+  `requestAnswer(grant)` (`PhotoGrant.NOT_DETERMINED|DENIED|LIMITED|GRANTED` — the grant in Settings, and the answer to
+  the one permission dialog), `changeSelection(assets)` (the partial selection as the picker delivers it; fails while
+  no selection observer is open), `failNextEnumeration()`, `holdEnumeration(on)` (every walk waits — the status screen
+  before anything is counted), `byIdReadable(on)`, `failNextImport(afterCreating?)`, `suspendNextImport(afterCommit?)`
+  (parked before the commit lands, or after it — the shape a process death leaves), `resumeImport(succeeded?)`,
+  `attemptCap(cap)`, `placeIn(title, asset)` (another app's album — `WhatsApp`), `holdAdds(on)`, `albumKind(kind)`
+  (`AlbumKind.COLLECTION|FOLDER`: read as the app starts — relaunch after it), `deleteAlbum(album)`,
+  `renameAlbum(album, title)` (a folder album only). Reads: `library()` (photos, grant, selection, observer, pickers
+  shown, holds), `albums()` (each album the app made: its photos now, and every photo it asked to add), `imports()`
+  (what was imported, the import parked now).
+
+```bash
+$R --url $B library add --id A1 --kind screenshot
+$R --url $B library change-selection --assets A1,A2
+$R --url $B library albums
+```
+
+Gone with the move: `selection/change`, `permission`, `gallery/add|remove|fail-next-enumeration|hold-enumeration`,
+`import/fail-next|suspend-next|resume|await-parked` (an import parked is the `LibraryImportParked` event, or
+`library.imports().parked`), `album/place|hold-adds|kind|delete|contents`. The real library's own verbs stay strings:
+`device/gallery/seed`, `device/gallery/wipe`, `device/gallery/add-moving` and the `device/gallery` read.
+
 ### The world's events — waiting without polling (JVM host only)
 
 The JVM host runs the app on **one loop** (`LaneLoop`): every lane of both processes, and the channel's own, is a lane
@@ -743,11 +769,16 @@ The `world` service (`WorldLevers`, kRPC, refused by a device host):
 RigClient("http://127.0.0.1:$PORT").use { client ->
     val world = client.levers(WorldLevers)
     world.events().collect { println(it) }   // from the host's start: Acted, UiChanged, BackendReceived, BackendHeld,
-                                              // UploadJobCreated, SessionTransferCreated, DownloadStarted, Settled, LaneViolation
+                                              // UploadJobCreated, SessionTransferCreated, DownloadStarted, Library…,
+                                              // Settled, LaneViolation
     world.advance(5_000)                      // an act: the mocked clock 5 s on
     world.whyNotSettled()                     // what runs, what is queued, what it waits on outside
 }
 ```
+
+The library's events: a walk, an add or an import parked on a hold (`LibraryEnumerationHeld`, `LibraryAddHeld`,
+`LibraryImportParked`), a photo an import created (`LibraryAssetCreated`), an album the app made
+(`LibraryAlbumCreated`) and a photo that joined one, once per photo (`LibraryJoinedAlbum`).
 
 `tagActs(tag)` / `actsTagged(tag)` mark a caller's acts so it finds where they begin in the stream — the behaviour DSL's
 own bookkeeping. A test never reads the stream by hand: it states a `behaviour { given / whenever / then }`
