@@ -69,14 +69,14 @@ class HeldScreenIntegrationTest {
     @Test
     @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
     fun a_held_enumeration_keeps_the_joined_screen_loading_until_released() = rigTest {
-        device("gallery/hold-enumeration", "on" to "true")
+        library.holdEnumeration(on = true)
 
         createAndJoin()
         awaitHealth { it == SyncHealth.Loading }
         foreground(awaited = false)
         neverWithin(what = "the status counted a library whose walk was held") { it.health != SyncHealth.Loading }
 
-        device("gallery/hold-enumeration", "on" to "false")
+        library.holdEnumeration(on = false)
         foreground()
         awaitInSync()
     }

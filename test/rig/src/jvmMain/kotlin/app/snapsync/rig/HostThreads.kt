@@ -131,6 +131,7 @@ internal class HostThreads private constructor(
                 },
             )
             mocks.backend.watch { events.tell(it) }
+            mocks.library.watch { events.tell(it) }
             mocks.screen.watch { events.tell(WorldEvent.UiChanged(it)) }
             mocks.uploadQueue.watch { events.tell(it) }
             mocks.uploadSession.watch { events.tell(it) }

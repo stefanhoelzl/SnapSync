@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.presentation.url
 import app.snapsync.ui.state.AppLink
 import kotlin.test.Test
@@ -51,7 +52,7 @@ class HandOffIntegrationTest {
 
     @Test
     fun choosing_more_photos_presents_the_platform_s_picker() = rigTest {
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
 
         user("choosePhotos")
 

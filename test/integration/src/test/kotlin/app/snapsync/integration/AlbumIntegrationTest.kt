@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.AlbumKind
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.AlbumStyle
 import app.snapsync.ui.state.Layer
@@ -105,7 +106,7 @@ class AlbumIntegrationTest {
         val first = albums().single()
         assertEquals(listOf(RECEIVED), first.assets)
 
-        device("album/delete", "album" to first.id) // the gallery app deletes the folder, and its photo with it
+        library.deleteAlbum(first.id) // the gallery app deletes the folder, and its photo with it
         foreignDevice(DEV_F, "FR")
         downloadAll()
         assertEquals(listOf(first.id), albums().map { it.id }, "no album was brought back")
@@ -146,13 +147,13 @@ class AlbumIntegrationTest {
         val event = createAndJoin("saveToAlbum" to "false")
         addPhoto("A")
         uploadAll()
-        device("album/hold-adds")
+        library.holdAdds(on = true)
 
         // If the Save awaited the gather, it would never land: every add is held.
         user("reconfigure", "saveToAlbum" to "true")
         awaitState { it.joined?.membership?.savesToAlbum == true }
         assertTrue(awaitAlbum().single().assets.isEmpty(), "the Save landed with its gather still held")
-        device("album/hold-adds", "on" to "false")
+        library.holdAdds(on = false)
         eventually(read = { albums().single().assets }) { it == listOf("A") }
 
         // A join's gather: a photo received in this event, whose import is permanent across a leave.
@@ -161,7 +162,7 @@ class AlbumIntegrationTest {
         foreignDevice(DEV_F, "FQ")
         downloadAll()
         leave()
-        device("album/hold-adds")
+        library.holdAdds(on = true)
         val placed = albums().single().assets.size
 
         openLink(inviteLink(event))
@@ -169,13 +170,13 @@ class AlbumIntegrationTest {
         join("saveToAlbum" to "true") // returns once joined
 
         assertEquals(placed, albums().single().assets.size, "the join landed with its gather still held")
-        device("album/hold-adds", "on" to "false")
+        library.holdAdds(on = false)
         eventually<Int>(read = { albums().single().assets.size }) { it > placed }
     }
 
     /** The photo library plays an Android phone's, whose albums are folders — read once at host assembly. */
     private suspend fun Rig.androidLibrary() {
-        device("album/kind", "kind" to "folder")
+        library.albumKind(AlbumKind.FOLDER)
         device("relaunch")
     }
 

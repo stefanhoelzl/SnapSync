@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -83,7 +84,7 @@ class UnreadStatusIntegrationTest {
         // Foreground flow's scope — an escaping failure would cancel the download reconcile, the staged-byte
         // reclaim and the membership refresh, none of which have anything to do with enumerating a library
         // (design D5).
-        device("gallery/fail-next-enumeration")
+        library.failNextEnumeration()
         refresh() // must NOT fail
 
         // The consequence, named rather than hidden: the total stays UNKNOWN, so the screen holds its neutral
@@ -104,7 +105,7 @@ class UnreadStatusIntegrationTest {
         // per-asset resource read (~110 ms each), while the foreground status refresh is two SQLite reads and an
         // in-memory count. The refresh wins. Here the selection observer never emits, which holds that window
         // open.
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         createAndJoin()
         addPhoto("A")
 
@@ -118,14 +119,14 @@ class UnreadStatusIntegrationTest {
 
     @Test
     fun `the arriving selection is what counts — and it counts a real total`() = rigTest {
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         createAndJoin()
         addPhoto("A")
         refresh()
 
         // The sanctioned read lands. This is the ONLY thing that turns the un-answerable window into an answer —
         // and it proves the test above measured the window rather than a fixture that could never count at all.
-        device("selection/change", "assets" to "A")
+        library.changeSelection(listOf("A"))
 
         assertIs<SyncHealth.Syncing>(awaitHealth { it is SyncHealth.Syncing })
     }
@@ -137,14 +138,14 @@ class UnreadStatusIntegrationTest {
         scenario = "Nothing to share still settles",
     )
     fun `an empty selection under a limited grant is still a counted zero`() = rigTest {
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         createAndJoin()
         addPhoto("A") // in the library, but not selected — outside this membership's scope
 
         // A snapshot DID arrive and it is empty. Receive-only under a partial grant is a valid resting state, so
         // this must still settle — the fix must not turn every limited
         // member's screen into a permanent "Syncing…".
-        device("selection/change", "assets" to "")
+        library.changeSelection(emptyList())
         refresh()
 
         assertEquals(SyncHealth.InSync, awaitInSync())

@@ -62,7 +62,7 @@ class FolderAlbumCoordinatorTest {
         deletesAt = DeletesAt(TimestampText.parse("2026-10-30T00:00:00Z")),
         saveToAlbum = true,
     )
-    private val library = PhotoLibraryMock().apply { operator.albumKind = LibraryAlbumKind.FOLDER }
+    private val library = PhotoLibraryMock(albumKind = LibraryAlbumKind.FOLDER)
     private val gallery: Gallery = library.port().apply {
         inbound(GalleryHandlers(onImportPlaceholder = inboundOf {}, onImportSettled = inboundOf {}))
     }
@@ -85,6 +85,10 @@ class FolderAlbumCoordinatorTest {
         return id
     }
 
+    /** The app's album folder [asset] lives in, as the library reads it — `null`: the camera folder. */
+    private suspend fun folderOf(asset: PlatformAssetId): String? =
+        library.operator.albums().firstOrNull { asset.value in it.photos }?.id
+
     private suspend fun ensure(optIn: Boolean = true) = coordinator.ensureAlbum(
         testEventId(event.value),
         "Party",
@@ -101,14 +105,14 @@ class FolderAlbumCoordinatorTest {
             "the first received photo goes into it",
         )
         assertEquals(album, ensure(optIn = false), "a launch's replay reuses it rather than making a second")
-        assertEquals(1, library.operator.created.size)
+        assertEquals(1, library.operator.albums().size)
     }
 
     @Test
     fun `a received photo lands in the album and the album is then filled`() = runTest {
         val album = assertNotNull(ensure())
         val id = receive("R1", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
-        assertEquals(album, library.operator.folderOf(id))
+        assertEquals(album, folderOf(id))
         assertTrue(store.filled(testEventId(event.value)))
     }
 
@@ -116,16 +120,16 @@ class FolderAlbumCoordinatorTest {
     fun `an album the member deleted sends later photos to the camera folder until they opt in again`() = runTest {
         val album = assertNotNull(ensure())
         receive("R1", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
-        library.operator.delete(album)
+        library.operator.deleteAlbum(album)
 
         assertNull(
             coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true),
             "no folder is brought back by an import",
         )
         val later = receive("R2", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
-        assertNull(library.operator.folderOf(later), "the photo arrives in the camera folder")
+        assertNull(folderOf(later), "the photo arrives in the camera folder")
         assertNull(ensure(optIn = false), "a launch's replay recreates nothing")
-        assertEquals(1, library.operator.created.size)
+        assertEquals(1, library.operator.albums().size)
 
         val recreated = assertNotNull(ensure(optIn = true), "an opt-in recreates it")
         assertNotEquals(album, recreated)
@@ -136,7 +140,7 @@ class FolderAlbumCoordinatorTest {
     fun `an album the member renamed counts as deleted`() = runTest {
         val album = assertNotNull(ensure())
         receive("R1", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
-        library.operator.rename(album, "Party 2026")
+        library.operator.renameAlbum(album, "Party 2026")
 
         assertNull(
             coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true),
@@ -148,7 +152,7 @@ class FolderAlbumCoordinatorTest {
     fun `own photos are never placed — and received ones are moved in`() = runTest {
         val album = assertNotNull(ensure())
         val own = PlatformAssetId("camera-1")
-        library.operator.add(
+        library.add(
             LibraryAssets.photo(
                 own.value,
                 "2026-09-30T10:00:00Z",
@@ -160,8 +164,8 @@ class FolderAlbumCoordinatorTest {
         coordinator.place(testEventId(event.value), listOf(own.assetId()))
         coordinator.placeReceived(testEventId(event.value), listOf(received.assetId()))
 
-        assertNull(library.operator.folderOf(own), "the member's own photo stays in the camera folder")
-        assertEquals(album, library.operator.folderOf(received), "the received photo moved into the album")
+        assertNull(folderOf(own), "the member's own photo stays in the camera folder")
+        assertEquals(album, folderOf(received), "the received photo moved into the album")
         assertTrue(store.filled(testEventId(event.value)), "a move that landed fills the album")
     }
 

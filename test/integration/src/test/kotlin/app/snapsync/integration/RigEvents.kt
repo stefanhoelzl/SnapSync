@@ -1,5 +1,8 @@
 package app.snapsync.integration
 
+import app.snapsync.levers.LibraryPhotoKind
+import app.snapsync.levers.ParkedImport
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.decodeEventUrl
@@ -101,15 +104,18 @@ suspend fun Rig.leave() {
     awaitState { !it.ready.configResolved }
 }
 
-/** Add one own photo — a camera photo unless [kind] says otherwise (`gallery/add`'s kinds). */
-suspend fun Rig.addPhoto(id: String, date: String = Rig.PHOTO_DATE, kind: String = "photo") {
-    device("gallery/add", "id" to id, "date" to date, "kind" to kind)
+/** Add one own photo — a camera photo unless [kind] says otherwise. */
+suspend fun Rig.addPhoto(id: String, date: String = Rig.PHOTO_DATE, kind: LibraryPhotoKind = LibraryPhotoKind.PHOTO) {
+    library.add(id, kind, date)
 }
 
 /** The own photo's asset in the library, by id. */
 suspend fun Rig.asset(id: String, resources: Boolean = false): AssetView? =
     gallery(resources).policy?.assets?.firstOrNull { it.assetId == id }
 
-suspend fun Rig.permission(status: String) {
-    device("permission", "status" to status)
+suspend fun Rig.permission(grant: PhotoGrant) {
+    library.permission(grant)
 }
+
+/** Wait until an import the operator asked to suspend has parked in the library; answers it. */
+suspend fun Rig.awaitImportParked(): ParkedImport = eventually(read = { library.imports().parked }) { it != null }!!

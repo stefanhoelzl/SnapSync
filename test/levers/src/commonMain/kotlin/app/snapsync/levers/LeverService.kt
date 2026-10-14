@@ -54,6 +54,9 @@ enum class LeverNeed(val what: String) {
 
     /** The background download session is the mock, whose operator the service is. */
     DOWNLOADS_MOCKED("the download session's mock"),
+
+    /** The photo library is the mock, whose operator the service is: a real library's photos are the member's. */
+    LIBRARY_MOCKED("the photo library mock's operator"),
 }
 
 /**
@@ -85,6 +88,7 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     UploadQueueLevers,
     UploadSessionLevers,
     DownloadSessionLevers,
+    LibraryLevers,
 )
 
 /**

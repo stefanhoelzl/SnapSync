@@ -8,6 +8,7 @@ import app.snapsync.levers.LEVER_SERVICES
 import app.snapsync.levers.LeverNeed
 import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.LeverService
+import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.ThisDevice
@@ -85,6 +86,7 @@ private fun MockWorld.implementationOf(service: LeverService<*>): Any = when (se
     UploadQueueLevers -> device.uploadQueue.operator
     UploadSessionLevers -> device.uploadSession.operator
     DownloadSessionLevers -> device.downloads.operator
+    LibraryLevers -> device.library.operator.also { check(isMocked(MockedSystem.LIBRARY)) }
     else -> error("$service has no implementation in this world")
 }
 
@@ -94,6 +96,7 @@ private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.UPLOAD_QUEUE_MOCKED -> Need.Mocked(MockedSystem.UPLOAD_QUEUE)
     LeverNeed.UPLOAD_SESSION_MOCKED -> Need.Mocked(MockedSystem.UPLOAD_SESSION)
     LeverNeed.DOWNLOADS_MOCKED -> Need.Mocked(MockedSystem.DOWNLOADS)
+    LeverNeed.LIBRARY_MOCKED -> Need.Mocked(MockedSystem.LIBRARY)
 }
 
 /** How an omitted `@JoinedEvent` / `@ThisDevice` argument is named: by this world's joined event and device. */

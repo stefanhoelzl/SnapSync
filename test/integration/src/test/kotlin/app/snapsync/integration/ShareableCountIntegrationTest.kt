@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.LibraryPhotoKind
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ShareCount
 import kotlin.test.Test
@@ -25,8 +27,8 @@ class ShareableCountIntegrationTest {
     fun the_preview_count_equals_the_set_the_cycle_uploads() = rigTest {
         extensionUploadsOnly()
         addPhoto("CAM") // an ordinary camera photo — admitted
-        addPhoto("SHOT", kind = "screenshot") // excluded by subtype
-        addPhoto("WA", kind = "low-res") // 1.9 MP → below the 3 MP floor, excluded
+        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT) // excluded by subtype
+        addPhoto("WA", kind = LibraryPhotoKind.LOW_RES) // 1.9 MP → below the 3 MP floor, excluded
 
         // The preview for the same cutoff the cycle applies: exactly the camera photo.
         create()
@@ -70,12 +72,12 @@ class ShareableCountIntegrationTest {
         create()
         awaitShareCount(ShareCount.Ready(1)) // counted under the grant — so an absent count below is the grant's doing
 
-        permission("DENIED")
+        permission(PhotoGrant.DENIED)
         awaitShareCount(ShareCount.Unavailable, "a denied grant yields no count")
 
-        permission("GRANTED")
+        permission(PhotoGrant.GRANTED)
         awaitShareCount(ShareCount.Ready(1))
-        permission("NOT_DETERMINED")
+        permission(PhotoGrant.NOT_DETERMINED)
         awaitShareCount(ShareCount.Unavailable, "an unresolved grant yields no count")
     }
 }

@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,7 +31,7 @@ class SelectionPolicyIntegrationTest {
         extensionUploadsOnly()
         val event = createAndJoin()
         addPhoto("CAM") // an ordinary camera photo
-        addPhoto("SHOT", kind = "screenshot") // …and a screenshot taken at the same event
+        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT) // …and a screenshot taken at the same event
 
         cycle()
 
@@ -57,7 +58,7 @@ class SelectionPolicyIntegrationTest {
         val event = createAndJoin()
         addPhoto("CAM")
         addPhoto("WA")
-        device("album/place", "album" to "WhatsApp", "asset" to "WA") // saved by WhatsApp, not taken here
+        library.placeIn("WhatsApp", "WA") // saved by WhatsApp, not taken here
 
         cycle()
 
@@ -84,8 +85,8 @@ class SelectionPolicyIntegrationTest {
         // The single most dangerous line in this policy: 1080p video is 2.07 MP, BELOW the 3 MP image floor.
         // If the floors were shared, every video anyone recorded at the event would silently disappear.
         createAndJoin()
-        addPhoto("WA", kind = "low-res") // 1600x1200 = 1.9 MP → excluded
-        addPhoto("CLIP", kind = "hd-video") // 1920x1080 = 2.07 MP → ADMITTED
+        addPhoto("WA", kind = LibraryPhotoKind.LOW_RES) // 1600x1200 = 1.9 MP → excluded
+        addPhoto("CLIP", kind = LibraryPhotoKind.HD_VIDEO) // 1920x1080 = 2.07 MP → ADMITTED
         addPhoto("CAM")
 
         cycle()
@@ -108,8 +109,8 @@ class SelectionPolicyIntegrationTest {
         // screen reaching In sync once the one admitted photo lands IS the total excluding the other two.
         val event = createAndJoin()
         addPhoto("CAM")
-        addPhoto("SHOT", kind = "screenshot")
-        addPhoto("WA", kind = "low-res")
+        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT)
+        addPhoto("WA", kind = LibraryPhotoKind.LOW_RES)
 
         refresh()
         awaitHealth { it is SyncHealth.Syncing } // the admitted photo is outstanding

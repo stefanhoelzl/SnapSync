@@ -17,9 +17,6 @@ import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
-import app.snapsync.ports.LibraryAlbumKind
-import app.snapsync.ports.LibraryGrant
-import app.snapsync.ports.PlatformAssetId
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
@@ -28,14 +25,12 @@ import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.gallery.assetId
-import app.snapsync.services.gallery.assetRefOf
 import app.snapsync.services.gallery.resourcesFrom
 import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
@@ -43,7 +38,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
-import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -106,7 +100,7 @@ private fun mocked(system: MockedSystem, command: RigCommand) = Lever(listOf(Nee
 
 /** The whole table, bound to this world. */
 internal fun MockWorld.levers(): Map<String, Lever> {
-    return reporterReads() + versionLevers() + libraryLevers() + deviceLevers() +
+    return reporterReads() + versionLevers() + deviceLevers() +
         deviceFacts()
 }
 
@@ -132,170 +126,6 @@ private fun MockWorld.versionLevers(): Map<String, Lever> = mapOf(
             val version = params["version"] ?: return@RigCommand CommandResult.badRequest("version is required")
             this.version!!.value = version
             CommandResult.ok(buildJsonObject { put("appVersion", version) }.toString())
-        },
-    ),
-)
-
-private fun MockWorld.libraryLevers(): Map<String, Lever> = mapOf(
-    "import/fail-next" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { _, _ ->
-            device.library.operator.imports.failNextImport = true
-            CommandResult.ok("""{"armed":true}""")
-        },
-    ),
-    "permission" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val status = LibraryGrant.entries.firstOrNull { it.name.equals(params["status"], ignoreCase = true) }
-            if (status == null) {
-                CommandResult.badRequest("status must be one of ${LibraryGrant.entries.joinToString("|")}, was '${params["status"]}'")
-            } else {
-                device.library.operator.access = status
-                CommandResult.ok("""{"permission":"${status.name}"}""")
-            }
-        },
-    ),
-    // How the library holds an album (`kind=folder`: an Android phone's; `collection`: an iPhone's). The composition
-    // reads it once, at host assembly, so a test sets it and then relaunches.
-    "album/kind" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val kind = LibraryAlbumKind.entries.firstOrNull { it.name.equals(params["kind"], ignoreCase = true) }
-            if (kind == null) {
-                CommandResult.badRequest("kind is one of ${LibraryAlbumKind.entries.joinToString { it.name.lowercase() }}")
-            } else {
-                device.library.operator.albumKind = kind
-                CommandResult.ok("""{"albumKind":"${kind.name.lowercase()}"}""")
-            }
-        },
-    ),
-    // The person deletes an album the app made — under `folder`, with the photos in it.
-    "album/delete" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val album = params["album"] ?: return@RigCommand CommandResult.badRequest("album is required")
-            device.library.operator.delete(album)
-            CommandResult.ok("""{"deleted":${jsonString(album)}}""")
-        },
-    ),
-    // Every add to an album waits until released (`on=false`) — the photo library's change blocks held.
-    "album/hold-adds" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val on = flag(params, "on")
-            if (on) device.library.operator.holdAdds() else device.library.operator.releaseAdds()
-            CommandResult.ok("""{"held":$on}""")
-        },
-    ),
-    "album/place" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val album = params["album"]
-            val asset = params["asset"]
-            if (album == null || asset == null) {
-                CommandResult.badRequest("album and asset are both required")
-            } else {
-                device.library.operator.placeIn(album, asset)
-                CommandResult.ok("""{"album":${jsonString(album)},"asset":${jsonString(asset)}}""")
-            }
-        },
-    ),
-    // The limited selection, as the picker's outcome delivers it: exactly `assets` (comma-separated; empty allowed).
-    "selection/change" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val library = device.library.operator
-            if (!library.observing) {
-                return@RigCommand CommandResult.refused("no selection observer is open — the host was never assembled, so nothing would hear it")
-            }
-            val assets = params["assets"]?.split(',')?.filter { it.isNotBlank() }.orEmpty()
-            val wanted = assets.mapTo(mutableSetOf(), ::PlatformAssetId)
-            library.changeSelection(library.current().filter { it.asset.id in wanted })
-            CommandResult.ok(buildJsonObject { putJsonArray("selected") { assets.forEach { add(JsonPrimitive(it)) } } }.toString())
-        },
-    ),
-    // One own photo of a chosen id, capture date and kind — what `gallery/seed`'s random batch cannot say.
-    "gallery/add" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val id = params["id"] ?: return@RigCommand CommandResult.badRequest("id is required")
-            val date = params["date"] ?: LibraryAssets.DEFAULT_DATE
-            val asset = when (params["kind"] ?: "photo") {
-                "photo" -> LibraryAssets.photo(id, creationDate = date)
-                "low-res" -> LibraryAssets.lowResPhoto(id, date)
-                "screenshot" -> LibraryAssets.screenshot(id, date)
-                "screen-recording" -> LibraryAssets.screenRecording(id, date)
-                "hd-video" -> LibraryAssets.hdVideo(id, date)
-                "live-photo" -> LibraryAssets.livePhoto(id, date)
-                "gif" -> LibraryAssets.gif(id, date)
-                else -> return@RigCommand CommandResult.badRequest(
-                    "kind must be photo|low-res|screenshot|screen-recording|hd-video|live-photo|gif, was '${params["kind"]}'",
-                )
-            }
-            device.library.operator.add(asset)
-            CommandResult.ok(
-                buildJsonObject {
-                    put("added", id)
-                    put("date", date)
-                }.toString(),
-            )
-        },
-    ),
-    // The person deletes an own photo from the library.
-    "gallery/remove" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val id = params["id"] ?: return@RigCommand CommandResult.badRequest("id is required")
-            device.library.operator.remove(PlatformAssetId(id))
-            CommandResult.ok(buildJsonObject { put("removed", id) }.toString())
-        },
-    ),
-    // Every walk of the library waits until released (`on=false`) — a library not yet enumerated, so nothing is counted.
-    "gallery/hold-enumeration" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val on = flag(params, "on")
-            if (on) device.library.operator.holdEnumeration() else device.library.operator.releaseEnumeration()
-            CommandResult.ok("""{"held":$on}""")
-        },
-    ),
-    "gallery/fail-next-enumeration" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { _, _ ->
-            device.library.operator.failNextEnumeration = true
-            CommandResult.ok("""{"armed":true}""")
-        },
-    ),
-    // `afterCommit=true`: the asset is created and the report never comes (a process death mid-import); otherwise the
-    // transaction is held open before its commit lands.
-    "import/suspend-next" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            val imports = device.library.operator.imports
-            if (params["afterCommit"]?.toBoolean() == true) imports.suspendNextImportAfterCommit = true else imports.suspendNextImport = true
-            CommandResult.ok("""{"armed":true}""")
-        },
-    ),
-    "import/await-parked" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { _, _ ->
-            val parked = withTimeoutOrNull(AWAIT) { device.library.operator.imports.suspendedImport.await() }
-                ?: return@RigCommand CommandResult.refused("no import parked within $AWAIT")
-            val ref = assetRefOf(parked)
-            CommandResult.ok(
-                buildJsonObject {
-                    put("device", ref.sourceDeviceId.value)
-                    put("asset", ref.sourceAssetId.value)
-                }.toString(),
-            )
-        },
-    ),
-    "import/resume" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { params, _ ->
-            device.library.operator.imports.resumeSuspendedImport(succeeded = params["succeeded"]?.toBoolean() ?: true)
-            CommandResult.ok("""{"resumed":true}""")
         },
     ),
 )
@@ -448,29 +278,6 @@ private fun MockWorld.deviceFacts(): Map<String, Lever> = mapOf(
             )
         },
     ),
-    // Every album this app created, with the photos it holds now, each once — what a person sees in it, not how often
-    // the app asked (adding a member again is a no-op on the platform).
-    "album/contents" to mocked(
-        MockedSystem.LIBRARY,
-        RigCommand { _, _ ->
-            val library = device.library.operator
-            CommandResult.ok(
-                buildJsonObject {
-                    putJsonArray("albums") {
-                        library.created.forEach { (id, name) ->
-                            add(
-                                buildJsonObject {
-                                    put("id", id)
-                                    put("name", name)
-                                    putJsonArray("assets") { library.contentsOf(id).forEach { add(JsonPrimitive(it.value)) } }
-                                },
-                            )
-                        }
-                    }
-                }.toString(),
-            )
-        },
-    ),
 )
 
 /**
@@ -485,7 +292,7 @@ fun MockWorld.seedMockLibrary(n: Int, kind: SeedKind): SeedOutcome {
     if (kind == SeedKind.NOISE) {
         throw SeedRefused("the mocked photos carry no bytes, so a seed for bytes on the wire would measure nothing")
     }
-    val library = device.library.operator
+    val library = device.library
     repeat(n) { i ->
         val id = Uuid.random().toString()
         library.add(
@@ -513,14 +320,14 @@ fun MockWorld.mockGalleryReader(): suspend (
     val library = device.library
     val reader = GalleryReport(
         candidates = PermissionAwareCandidateSource(
-            permission = GalleryAccessState(library.operator.grant).grant,
+            permission = GalleryAccessState(library.grant).grant,
             walk = GalleryCandidateSource(library.port()),
             // Read per request, as the rest of this reader is.
-            selection = MutableStateFlow(library.operator.selection.value?.let(::resourcesFrom)),
+            selection = MutableStateFlow(library.selection.value?.let(::resourcesFrom)),
         ),
-        grant = { library.operator.access.name },
+        grant = { library.grant.value.name },
         census = {
-            val facts = library.operator.current().map { it.asset }
+            val facts = library.contents.value.map { it.asset }
             CensusView(
                 total = facts.size.toLong(),
                 screenshots = facts.count { it.isScreenshot }.toLong(),
@@ -591,7 +398,6 @@ private val leverJson = Json {
     encodeDefaults = true
     prettyPrint = true
 }
-private val AWAIT = 10.seconds
 private val LEGACY_BYTES = "staged".encodeToByteArray()
 
 /** The app host's bulk-seed date: 2001-09-09, before any event can start. */

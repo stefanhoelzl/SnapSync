@@ -1,7 +1,6 @@
 package app.snapsync.integration
 
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -115,15 +114,7 @@ class Album(val name: String, val assets: List<String>, val id: String = "") {
 }
 
 /** Every album this app created, with the photos it holds now. */
-suspend fun Rig.albums(): List<Album> =
-    deviceJson("album/contents").getValue("albums").jsonArray.map { a ->
-        val o = a.jsonObject
-        Album(
-            o.getValue("name").jsonPrimitive.content,
-            o.getValue("assets").jsonArray.map { it.jsonPrimitive.content },
-            o.getValue("id").jsonPrimitive.content,
-        )
-    }
+suspend fun Rig.albums(): List<Album> = library.albums().map { Album(it.title, it.photos, it.id) }
 
 /** How many push registrations the backend stored for this device — the config is last-write-wins, the count is not. */
 suspend fun Rig.registrations(): Int =

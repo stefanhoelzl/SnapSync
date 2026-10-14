@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SyncHealth
@@ -101,8 +102,8 @@ class AdmittedSetIntegrationTest {
         // The ceiling is the bound that drifted, but the property is about the SET, not about one rule: a
         // screenshot and a sub-floor image must be absent from all four answers just as firmly.
         addPhoto("CAM", date = inWindow)
-        addPhoto("SHOT", date = inWindow, kind = "screenshot")
-        addPhoto("WA", date = inWindow, kind = "low-res")
+        addPhoto("SHOT", date = inWindow, kind = LibraryPhotoKind.SCREENSHOT)
+        addPhoto("WA", date = inWindow, kind = LibraryPhotoKind.LOW_RES)
 
         create(startsAt = closedStart, endsAt = closedEnd)
         assertEquals(1, awaitShareCount())

@@ -80,7 +80,7 @@ class PhotoLibraryImportTest {
     fun a_failed_attempt_still_consumes_an_identifier() = runTest {
         val library = PhotoLibraryMock()
         val importer = importer(library)
-        library.operator.imports.failNextImport = true
+        library.operator.failNextImport()
 
         assertTrue(importer.importOnce() is ImportOutcome.Failed)
         val afterFailure = importer.importOnce() as ImportOutcome.Imported
@@ -103,7 +103,7 @@ class PhotoLibraryImportTest {
         importer.importOnce()
 
         assertTrue(
-            library.operator.current().map { it.id }.toSet().size == 2,
+            library.contents.value.map { it.id }.toSet().size == 2,
             "two created assets, two distinct identifiers in the library",
         )
     }

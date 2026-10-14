@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.rig.RigState
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -60,7 +61,7 @@ enum class Shot(val id: String, val settled: (RigState) -> Boolean) {
  */
 suspend fun Rig.reach(shot: Shot, relaunch: suspend Rig.() -> Unit): RigState {
     // The clock last: a launch-adapters host saves every changed system together, so the clock saved means both were.
-    permission("granted")
+    permission(PhotoGrant.GRANTED)
     device("clock/advance", "to" to Shot.NOW)
     relaunch()
     // Plain events, as a shipped build creates them (`PENDING_CLEANUPS.md`): the other member's photos are seeded

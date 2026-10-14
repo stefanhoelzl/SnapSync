@@ -1,5 +1,15 @@
 package app.snapsync.mock
 
+import app.snapsync.levers.AlbumKind
+import app.snapsync.levers.AppAlbum
+import app.snapsync.levers.HeldPhoto
+import app.snapsync.levers.ImportsView
+import app.snapsync.levers.LibraryLevers
+import app.snapsync.levers.LibraryPhotoKind
+import app.snapsync.levers.LibraryView
+import app.snapsync.levers.ParkedImport
+import app.snapsync.levers.PhotoGrant
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.AlbumId
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAssetResources
@@ -19,11 +29,17 @@ import kotlin.concurrent.Volatile
  * **The photo library's mock** (`docs/testing.md`, "Mocks"): the library the device keeps — its assets, the grant,
  * the albums, what was imported — which survives a relaunch of the app; the [port] face a process
  * reads it through; and the [operator] face that plays the person holding the phone and the library's own answers.
+ *
+ * The cells and writes beside the faces are plumbing between the mocks and the tools that compose them (the rig's
+ * seed and gallery read, the desktop inspector, the contract bindings): the library in the platform's own vocabulary,
+ * which no typed service carries.
  */
 class PhotoLibraryMock(
     access: LibraryGrant = LibraryGrant.GRANTED,
     /** What the person answers the permission dialog with, the one time it is asked. */
     requestAnswer: LibraryGrant = LibraryGrant.GRANTED,
+    /** How this library holds an album: an iPhone's [LibraryAlbumKind.COLLECTION] or an Android phone's. */
+    albumKind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION,
 ) {
     internal val state = LibraryState(
         library = MutableStateFlow(emptyList()),
@@ -31,181 +47,220 @@ class PhotoLibraryMock(
         userAlbums = MutableStateFlow(emptyMap()),
         answer = requestAnswer,
         answers = null,
-    )
+    ).also { it.albumKind = albumKind }
 
     /** One process's face of the library. */
     fun port(): Gallery = InMemoryGallery(state)
 
     val operator: PhotoLibraryOperator = PhotoLibraryOperator(state)
-}
 
-/**
- * What the person holding the phone — and the photo library itself — can do, and what a test can read of it. None of
- * it is on the [Gallery] port.
- */
-class PhotoLibraryOperator internal constructor(private val state: LibraryState) {
-
-    // ---- the library ------------------------------------------------------------------------------
-
-    /** The whole library, unscoped — an operator read (the app has no unbounded walk). */
-    fun current(): List<GalleryAssetResources> = state.library.value
-
-    /** The library as a cell. */
+    /** The whole library, unscoped, as a cell — the app has no unbounded walk. */
     val contents: StateFlow<List<GalleryAssetResources>> = state.library.asStateFlow()
+
+    /** The grant, as a cell. */
+    val grant: StateFlow<LibraryGrant> = state.access.asStateFlow()
+
+    /** The person's partial selection as they last picked it, as a cell — `null` until they have. */
+    val selection: StateFlow<List<GalleryAssetResources>?> = state.selection.asStateFlow()
+
+    /** Whether the running process's selection observer is open — the operating system's own record of it. */
+    val selectionObserved: Boolean get() = state.observer != null
+
+    /** How many times the app presented the limited-library picker — the operating system's own record of it. */
+    val pickersShown: Int get() = state.pickersShown
+
+    // The app imports into the same cell from its own thread: each change is one atomic update, never a read and a
+    // write another change can land between.
+    /** [asset], described as the platform describes it, is in the library from now on. */
+    fun add(asset: GalleryAssetResources) {
+        state.library.update { it + asset }
+    }
 
     /** The library becomes exactly [assets]. */
     fun set(assets: List<GalleryAssetResources>) {
         state.library.value = assets
     }
 
-    // The app imports into the same cell from its own thread: each change is one atomic update, never a read and a
-    // write another change can land between.
-    fun add(asset: GalleryAssetResources) {
+    /**
+     * Tells [listener] what this library records as it records it — each walk, add and import an operator's hold parks,
+     * each photo an import creates, each album the app makes and each photo that joins one — on the thread that did it.
+     * One listener: the control channel's event stream (`docs/testing.md`, "How a test waits").
+     */
+    fun watch(listener: LibraryWatcher) {
+        state.watcher = listener
+    }
+}
+
+/** Told what the library records, on the thread that recorded it, before that thread goes on. */
+fun interface LibraryWatcher {
+    fun told(event: WorldEvent.Library)
+}
+
+/**
+ * What the person holding the phone — and the photo library itself — can do, and what a test can read of it
+ * ([LibraryLevers]). None of it is on the [Gallery] port.
+ */
+class PhotoLibraryOperator internal constructor(private val state: LibraryState) : LibraryLevers {
+
+    // ---- the library ------------------------------------------------------------------------------
+
+    override suspend fun add(id: String, kind: LibraryPhotoKind?, date: String?) {
+        val at = date ?: LibraryAssets.DEFAULT_DATE
+        val asset = when (kind ?: LibraryPhotoKind.PHOTO) {
+            LibraryPhotoKind.PHOTO -> LibraryAssets.photo(id, creationDate = at)
+            LibraryPhotoKind.LOW_RES -> LibraryAssets.lowResPhoto(id, at)
+            LibraryPhotoKind.SCREENSHOT -> LibraryAssets.screenshot(id, at)
+            LibraryPhotoKind.SCREEN_RECORDING -> LibraryAssets.screenRecording(id, at)
+            LibraryPhotoKind.HD_VIDEO -> LibraryAssets.hdVideo(id, at)
+            LibraryPhotoKind.LIVE_PHOTO -> LibraryAssets.livePhoto(id, at)
+            LibraryPhotoKind.GIF -> LibraryAssets.gif(id, at)
+        }
         state.library.update { it + asset }
     }
 
-    fun remove(assetId: PlatformAssetId) {
-        state.library.update { library -> library.filterNot { it.id == assetId } }
+    override suspend fun remove(asset: String) {
+        state.library.update { library -> library.filterNot { it.id.value == asset } }
     }
 
     // ---- the grant --------------------------------------------------------------------------------
 
-    /** The grant, as a cell. */
-    val grant: StateFlow<LibraryGrant> = state.access.asStateFlow()
+    override suspend fun permission(grant: PhotoGrant) {
+        state.access.value = LibraryGrant.valueOf(grant.name)
+    }
 
-    /** The grant, as the person set it in Settings. */
-    var access: LibraryGrant by state.access::value
+    override suspend fun requestAnswer(grant: PhotoGrant) {
+        state.answer = LibraryGrant.valueOf(grant.name)
+    }
 
-    /** What the person answers the permission dialog with, the one time it is asked. */
-    var requestAnswer: LibraryGrant by state::answer
-
-    // ---- the selection observer -------------------------------------------------------------------
-
-    /**
-     * The person's selection under a partial grant, as they last picked it — `null` until they have. The operating
-     * system keeps it across a process; which of it a process has been told is that process's own business.
-     */
-    val selection: StateFlow<List<GalleryAssetResources>?> = state.selection.asStateFlow()
-
-    /** Whether the running process's selection observer is open (composition opens it, on every start). */
-    val observing: Boolean get() = state.observer != null
-
-    /** How many times the app presented the limited-library picker — the person's answer arrives as [changeSelection]. */
-    val pickersShown: Int get() = state.pickersShown
-
-    /**
-     * The person's selection under a partial grant is now [assets] — delivered whole, with its resources, to the running
-     * process's observer, as the real observer delivers one. Fails loudly when no observer is open, rather than doing
-     * nothing: a process whose observer is closed would hear nothing.
-     */
-    fun changeSelection(assets: List<GalleryAssetResources>) {
-        val observer = checkNotNull(state.observer) { "the selection observer is not open — the composition opens it" }
-        state.selection.value = assets
-        observer.deliver(SelectionSnapshot(assets))
+    /** Delivered whole, with its resources, to the running process's observer, as the real observer delivers one. */
+    override suspend fun changeSelection(assets: List<String>) {
+        val observer = checkNotNull(state.observer) {
+            "no selection observer is open — the host was never assembled, so nothing would hear it"
+        }
+        val wanted = assets.toSet()
+        val selected = state.library.value.filter { it.id.value in wanted }
+        state.selection.value = selected
+        observer.deliver(SelectionSnapshot(selected))
     }
 
     // ---- the library's answers --------------------------------------------------------------------
 
-    /** The next walk throws, as a platform walk can — a failure, never a successful read with no answer. */
-    var failNextEnumeration: Boolean
-        get() = state.failNextEnumeration
-        set(value) { state.failNextEnumeration = value }
+    override suspend fun failNextEnumeration() {
+        state.failNextEnumeration = true
+    }
 
-    /** Whether a by-identifier read can see the library; when not, every presence answer is `NotReadable`. */
-    var byIdReadable: Boolean by state::byIdReadable
+    /** Holding again while held changes nothing. */
+    override suspend fun holdEnumeration(on: Boolean) {
+        if (on) state.enumeration.hold() else state.enumeration.release()
+    }
 
-    /** How the library answers each import's change, and what was imported. */
-    val imports: ImportScript get() = state.imports
+    override suspend fun byIdReadable(on: Boolean) {
+        state.byIdReadable = on
+    }
+
+    override suspend fun failNextImport(afterCreating: Boolean?) {
+        if (afterCreating == true) state.imports.failNextImportAfterCreating = true else state.imports.failNextImport = true
+    }
+
+    override suspend fun suspendNextImport(afterCommit: Boolean?) {
+        if (afterCommit == true) state.imports.suspendNextImportAfterCommit = true else state.imports.suspendNextImport = true
+    }
+
+    override suspend fun resumeImport(succeeded: Boolean?) = state.imports.resumeSuspendedImport(succeeded != false)
+
+    override suspend fun attemptCap(cap: Int) {
+        state.imports.attemptCap = cap
+    }
 
     // ---- albums -----------------------------------------------------------------------------------
 
-    /** Every album the app created, in order: (album id, title). */
-    val created: List<Pair<String, String>> get() = state.locked { state.createdLog.toList() }
-
-    /** Every add the app made, in order: (album id, the assets asked for). */
-    val added: List<Pair<String, List<PlatformAssetId>>> get() = state.locked { state.addedLog.toList() }
-
-    /** Every asset id the app asked to add to [albumId], across all adds, in order. */
-    fun assetsIn(albumId: String): List<PlatformAssetId> =
-        state.locked { state.addedLog.filter { it.first == albumId }.flatMap { it.second } }
-
-    /**
-     * The photos the app's album [albumId] holds now, as a person sees it — each once, and only while the library still
-     * holds it: under [LibraryAlbumKind.COLLECTION] its members in the order they first joined, under
-     * [LibraryAlbumKind.FOLDER] the photos its folder holds. What the app ASKED for, repeats included, is [assetsIn].
-     */
-    fun contentsOf(albumId: String): List<PlatformAssetId> {
-        val held = state.library.value.mapTo(mutableSetOf()) { it.id }
-        return state.locked {
-            when (state.albumKind) {
-                LibraryAlbumKind.COLLECTION -> state.created[albumId]?.members.orEmpty().filter { it in held }
-                LibraryAlbumKind.FOLDER ->
-                    state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
-            }
-        }
-    }
-
-    /** Put [assetId] into an album some other app made, titled [title] — e.g. `placeIn("WhatsApp", "A1")`. */
-    fun placeIn(title: String, assetId: String) {
+    override suspend fun placeIn(title: String, asset: String) {
         val cell = checkNotNull(state.writableAlbums) { "this library's other-app albums are a read-only cell" }
-        cell.update { albums -> albums + (title to (albums[title].orEmpty() + PlatformAssetId(assetId))) }
+        cell.update { albums -> albums + (title to (albums[title].orEmpty() + PlatformAssetId(asset))) }
     }
 
-    /**
-     * The person deletes an album the app made: it no longer resolves. Under [LibraryAlbumKind.FOLDER] the folder goes with
-     * its photos, as a gallery app's folder delete does.
-     */
-    fun delete(albumId: String) {
+    /** Holding again while held changes nothing. */
+    override suspend fun holdAdds(on: Boolean) {
+        if (on) state.adds.hold() else state.adds.release()
+    }
+
+    override suspend fun albumKind(kind: AlbumKind) {
+        state.albumKind = LibraryAlbumKind.valueOf(kind.name)
+    }
+
+    override suspend fun deleteAlbum(album: String) {
         when (state.albumKind) {
-            LibraryAlbumKind.COLLECTION -> state.locked { state.deletedAlbums += albumId }
+            LibraryAlbumKind.COLLECTION -> state.locked { state.deletedAlbums += album }
             LibraryAlbumKind.FOLDER -> state.locked {
-                val inside = state.folderOf.filterValues { it == albumId }.keys.toSet()
+                val inside = state.folderOf.filterValues { it == album }.keys.toSet()
                 state.folderOf.keys.removeAll(inside)
                 state.library.update { library -> library.filterNot { it.id in inside } }
             }
         }
     }
 
-    /**
-     * The person renames a [LibraryAlbumKind.FOLDER] album the app made in a gallery app: its photos move to a folder of the new
-     * name, still inside the SnapSync folder, and the album the app knows is left empty.
-     */
-    fun rename(albumId: String, newTitle: String) {
+    override suspend fun renameAlbum(album: String, title: String) {
         check(state.albumKind == LibraryAlbumKind.FOLDER) { "a collection album's title is not where its photos live" }
         state.locked {
             val renamed = "renamed-${state.albumCounter++}"
-            state.created[renamed] = LibraryState.Album(newTitle)
-            state.folderOf.entries.filter { it.value == albumId }.forEach { it.setValue(renamed) }
+            state.created[renamed] = LibraryState.Album(title)
+            state.folderOf.entries.filter { it.value == album }.forEach { it.setValue(renamed) }
         }
     }
 
-    /** The album folder [assetId] lives in under [LibraryAlbumKind.FOLDER], or `null` — the camera folder. */
-    fun folderOf(assetId: PlatformAssetId): String? = state.locked { state.folderOf[assetId] }
+    // ---- reads ------------------------------------------------------------------------------------
 
-    /** Every add waits until [releaseAdds]. Holding again while held changes nothing. */
-    fun holdAdds() = state.adds.hold()
+    override suspend fun library(): LibraryView = state.locked {
+        LibraryView(
+            photos = state.library.value.map {
+                HeldPhoto(it.id.value, it.asset.created?.toString(), imported = it.id in state.ownImports)
+            },
+            grant = PhotoGrant.valueOf(state.access.value.name),
+            requestAnswer = PhotoGrant.valueOf(state.answer.name),
+            selection = state.selection.value?.map { it.id.value },
+            observing = state.observer != null,
+            pickersShown = state.pickersShown,
+            enumerationHeld = state.enumeration.held,
+            addsHeld = state.adds.held,
+            byIdReadable = state.byIdReadable,
+            albumKind = AlbumKind.valueOf(state.albumKind.name),
+        )
+    }
 
-    fun releaseAdds() = state.adds.release()
+    override suspend fun albums(): List<AppAlbum> = state.locked {
+        state.createdLog.map { (id, title) ->
+            AppAlbum(
+                id = id,
+                title = title,
+                photos = contentsOf(id).map { it.value },
+                asked = state.addedLog.filter { it.first == id }.flatMap { it.second }.map { it.value },
+            )
+        }
+    }
+
+    override suspend fun imports(): ImportsView = ImportsView(
+        imported = state.imports.imported,
+        parked = state.imports.parkedCorrelation?.let {
+            ParkedImport(
+                it.substringBeforeLast('/'),
+                it.substringAfterLast('/'),
+            )
+        },
+    )
 
     /**
-     * Every walk waits until [releaseEnumeration] — a library that has not been enumerated yet. Holding again while
-     * held changes nothing.
+     * The photos the app's album [albumId] holds now, as a person sees it — each once, and only while the library still
+     * holds it: under [LibraryAlbumKind.COLLECTION] its members in the order they first joined, under
+     * [LibraryAlbumKind.FOLDER] the photos its folder holds. Called under the state's lock.
      */
-    fun holdEnumeration() = state.enumeration.hold()
-
-    /** Whether walks are held. */
-    val enumerationHeld: Boolean get() = state.enumeration.held
-
-    /** A held walk, and every later one, reads. */
-    fun releaseEnumeration() = state.enumeration.release()
-
-    // ---- the platform -----------------------------------------------------------------------------
-
-    /**
-     * How this library holds an album: an iPhone's [LibraryAlbumKind.COLLECTION] (the default) or an Android phone's
-     * [LibraryAlbumKind.FOLDER]. Set before composing to play an Android library.
-     */
-    var albumKind: LibraryAlbumKind by state::albumKind
+    private fun contentsOf(albumId: String): List<PlatformAssetId> {
+        val held = state.library.value.mapTo(mutableSetOf()) { it.id }
+        return when (state.albumKind) {
+            LibraryAlbumKind.COLLECTION -> state.created[albumId]?.members.orEmpty().filter { it in held }
+            LibraryAlbumKind.FOLDER ->
+                state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
+        }
+    }
 }
 
 /**
@@ -232,7 +287,7 @@ internal class LibraryState(
     /** The process whose composition registered last, and its handlers. */
     class Listener(val face: Any, val handlers: GalleryHandlers)
 
-    val imports = ImportScript()
+    val imports = ImportScript { watcher.told(it) }
     val selection = MutableStateFlow<List<GalleryAssetResources>?>(null)
 
     /** How many times the app presented the limited-library picker. */
@@ -279,6 +334,9 @@ internal class LibraryState(
 
     /** [userAlbums] as the operator writes it — a caller-supplied read-only cell is never written. */
     val writableAlbums: MutableStateFlow<Map<String, Set<PlatformAssetId>>>? get() = userAlbums as? MutableStateFlow
+
+    /** Who is told what this library records, as it records it — the control channel's event stream, or no one. */
+    @Volatile var watcher: LibraryWatcher = LibraryWatcher {}
 }
 
 /**
@@ -286,9 +344,10 @@ internal class LibraryState(
  * imported. Each lever fires once: [failNextImport] refuses the change before anything is created,
  * [failNextImportAfterCreating] creates the asset and then reports failure, [suspendNextImport] holds the transaction
  * open before its commit lands (the library answers *absent* about it meanwhile), and [suspendNextImportAfterCommit]
- * holds it after the commit (the asset exists, the report never comes — the shape a process death leaves).
+ * holds it after the commit (the asset exists, the report never comes — the shape a process death leaves). A park is
+ * [told] as it happens, so a caller waits on the event rather than guessing at a delay.
  */
-class ImportScript internal constructor() {
+internal class ImportScript(private val told: (WorldEvent.Library) -> Unit) {
     // The operator scripts and reads from its thread while the app imports on another.
     private val lock = mockLock()
 
@@ -297,7 +356,7 @@ class ImportScript internal constructor() {
     /** The correlations of the imports that created an asset, one entry per created asset (a repeat shows twice). */
     val imported: List<String> get() = lock.locked { importedCorrelations.toList() }
 
-    internal fun restoreImported(correlations: List<String>) = lock.locked { importedCorrelations.addAll(correlations) }
+    fun restoreImported(correlations: List<String>) = lock.locked { importedCorrelations.addAll(correlations) }
 
     @Volatile var failNextImport: Boolean = false
 
@@ -307,44 +366,37 @@ class ImportScript internal constructor() {
 
     @Volatile var suspendNextImportAfterCommit: Boolean = false
 
-    private var parked: CompletableDeferred<Boolean>? = null
+    private var parked: Pair<String, CompletableDeferred<Boolean>>? = null
 
-    /**
-     * Completes once an import has actually parked, so a caller awaits the live transaction rather than guessing at a
-     * delay — completed with the parked import's correlation. **Replaced on every park**: a completed deferred would
-     * hand a second waiter the STALE one at once.
-     */
-    @Volatile var suspendedImport: CompletableDeferred<String> = CompletableDeferred()
-        private set
+    /** The correlation of the import parked now, or `null`. */
+    val parkedCorrelation: String? get() = lock.locked { parked?.first }
 
     /** Deliver the parked import's outcome: on [succeeded] the asset lands; otherwise its marker is cleared. */
     fun resumeSuspendedImport(succeeded: Boolean) {
         val gate = lock.locked { parked.also { parked = null } } ?: error("no import is suspended")
-        gate.complete(succeeded)
+        gate.second.complete(succeeded)
     }
 
     /**
      * How many times ONE import may be made before the library raises: an unbounded re-selection of one asset is a
      * live-lock, and a live-lock in a test is a hang that names nothing. The cap turns it into a failure naming the count.
      */
-    var attemptCap: Int = DEFAULT_ATTEMPT_CAP
+    @Volatile var attemptCap: Int = DEFAULT_ATTEMPT_CAP
 
     private val attempts = mutableMapOf<String, Int>()
 
     private suspend fun park(correlation: String): String? {
         val gate = CompletableDeferred<Boolean>()
-        val announced = lock.locked {
+        lock.locked {
             // A second park would overwrite the first's gate and strand that import: refuse it, loudly.
             check(parked == null) { "an import is already suspended; resume it before suspending $correlation" }
-            parked = gate
-            if (suspendedImport.isCompleted) suspendedImport = CompletableDeferred()
-            suspendedImport
+            parked = correlation to gate
         }
-        announced.complete(correlation)
+        told(WorldEvent.LibraryImportParked(correlation.substringBeforeLast('/'), correlation.substringAfterLast('/')))
         return if (gate.await()) null else "suspended import resumed as failed"
     }
 
-    internal val answers = object : LibraryChangeAnswers {
+    val answers = object : LibraryChangeAnswers {
         override suspend fun beforeChange(correlation: String): String? {
             if (!failNextImport) return null
             failNextImport = false
@@ -370,7 +422,7 @@ class ImportScript internal constructor() {
     }
 
     /** Counts an import of [correlation] against [attemptCap], raising at the cap. */
-    internal fun attempt(correlation: String) {
+    fun attempt(correlation: String) {
         val attempt = lock.locked { (attempts.getOrElse(correlation) { 0 } + 1).also { attempts[correlation] = it } }
         check(attempt <= attemptCap) {
             "imported $correlation $attempt times (cap $attemptCap) — the drain is live-locking " +
