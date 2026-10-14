@@ -8,9 +8,9 @@ import app.snapsync.levers.ExtensionAnswer
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
+import app.snapsync.mock.StorePage
 import app.snapsync.model.ProcessingAnswer
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.model.uploadersCarried
 import app.snapsync.rig.time.LoopTime
 import app.snapsync.services.logs.LogTailService
@@ -119,12 +119,13 @@ class JvmRigHost private constructor(
         private fun compose(scope: CoroutineScope, backend: RigBackend, threads: HostThreads): JvmRig {
             val mocks = threads.mocks
             val version = DeclaredVersion(SERVED_VERSION)
+            val store = StorePage(Store(APP_STORE, APP_STORE_URL))
             val log = RecordedLog()
             val build = BuildInfoMock(
                 uploadHost = backend.base,
                 declaredVersion = version,
                 dsn = DSN,
-                store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
+                store = store,
                 pushEnvironment = "sandbox",
             )
             val app = JvmApp(scope, threads.lanes, mocks) { device ->
@@ -140,6 +141,7 @@ class JvmRigHost private constructor(
                 app,
                 backend,
                 version,
+                store,
                 log,
                 threads,
                 scope,
@@ -195,7 +197,8 @@ class JvmRigHost private constructor(
         /** Where the host's build reports: it plays a distributed build, which reports (to the reporter mock). */
         private const val DSN = "in-memory://jvm-rig"
 
-        /** The App Store page the host's build names — the update-required screen's one remedy. */
+        /** The store page the host's build names until a caller plays another — the update-required screen's one remedy. */
+        private const val APP_STORE = "App Store"
         private const val APP_STORE_URL = "https://apps.apple.com/app/id0000000000"
 
         /**
@@ -207,12 +210,13 @@ class JvmRigHost private constructor(
 
 /**
  * What the JVM host drives: the composed [app], the device it runs on ([mocks], the app's durable state), the backend
- * [reach] and the build's declared [version].
+ * [reach], the build's declared [version] and its [store] page.
  */
 internal class JvmRig(
     val app: JvmApp<JvmMocks>,
     val backend: RigBackend,
     val version: DeclaredVersion,
+    val store: StorePage,
     val log: RecordedLog,
     /** The host's loop and every lane both processes run on (`docs/testing.md`, "How a test waits"). */
     val threads: HostThreads,

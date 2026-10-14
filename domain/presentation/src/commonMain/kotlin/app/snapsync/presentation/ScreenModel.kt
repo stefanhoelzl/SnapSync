@@ -11,8 +11,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeBounds
 import app.snapsync.presentation.range.view
@@ -29,7 +28,6 @@ import app.snapsync.ui.state.RangeView
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.ReportNotice
 import app.snapsync.ui.state.ReportTarget
-import app.snapsync.ui.state.StoreName
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.flow.FlowCollector
@@ -53,7 +51,7 @@ data class ScreenModel(val ui: UiState, val shown: Shown)
  * each `null` when no surface shows it.
  */
 data class Shown(
-    val store: StoreLink? = null,
+    val store: Store? = null,
     val range: ResolvedRange? = null,
     val countedRange: ResolvedRange? = null,
 )
@@ -186,12 +184,6 @@ internal val AlbumContents.shown: AlbumHolds
     get() = when (this) {
         AlbumContents.SHARED_AND_RECEIVED -> AlbumHolds.SHARED_AND_RECEIVED
         AlbumContents.RECEIVED -> AlbumHolds.RECEIVED
-    }
-
-internal val StoreKind.shown: StoreName
-    get() = when (this) {
-        StoreKind.APP_STORE -> StoreName.APP_STORE
-        StoreKind.GOOGLE_PLAY -> StoreName.GOOGLE_PLAY
     }
 
 internal val DeviceRefusal.cause: RefusalCause

@@ -96,7 +96,7 @@ class UiStateFieldContractTest {
     fun `a layer requires only what identifies it`() {
         assertFieldContract(
             Layer.UpdateRequired.serializer(),
-            Layer.UpdateRequired("1.3", StoreName.APP_STORE),
+            Layer.UpdateRequired("1.3", "App Store"),
             optional = setOf("minimumVersion", "store"),
         )
         assertFieldContract(

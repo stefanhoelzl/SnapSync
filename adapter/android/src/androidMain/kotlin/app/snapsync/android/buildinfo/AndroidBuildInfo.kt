@@ -4,8 +4,7 @@ import android.os.Build
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
 import app.snapsync.model.Platform
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.ports.BuildInfo
 
 /**
@@ -43,12 +42,7 @@ class AndroidBuildInfo(
     /** The environment the build's crash reports are filed under (`production`, `development`). */
     override val reporterEnvironment: String,
 ) : BuildInfo {
-    override val store: StoreLink? = playStoreUrl.takeIf { it.isNotEmpty() }?.let {
-        StoreLink(
-            it,
-            StoreKind.GOOGLE_PLAY,
-        )
-    }
+    override val store: Store? = playStoreUrl.takeIf { it.isNotEmpty() }?.let { Store(GOOGLE_PLAY, it) }
 
     override val platform: Platform = Platform.ANDROID
 
@@ -58,3 +52,6 @@ class AndroidBuildInfo(
 
     override val deviceModel: String = "${Build.MANUFACTURER} ${Build.MODEL}"
 }
+
+/** The store an Android build is distributed through, as the update notice names it: a brand, never translated. */
+private const val GOOGLE_PLAY = "Google Play"

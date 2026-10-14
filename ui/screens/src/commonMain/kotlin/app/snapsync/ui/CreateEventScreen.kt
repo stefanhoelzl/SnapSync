@@ -53,8 +53,7 @@ import app.snapsync.ui.resources.keep_open_body
 import app.snapsync.ui.resources.keep_open_choice
 import app.snapsync.ui.resources.keep_open_title
 import app.snapsync.ui.resources.message_report_this
-import app.snapsync.ui.resources.store_app_store
-import app.snapsync.ui.resources.store_google_play
+import app.snapsync.ui.resources.store_open
 import app.snapsync.ui.resources.update_detail
 import app.snapsync.ui.resources.update_detail_version
 import app.snapsync.ui.resources.update_eyebrow
@@ -67,10 +66,8 @@ import app.snapsync.ui.state.KeepOpenSheet
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.ScreenMessage
-import app.snapsync.ui.state.StoreName
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
-import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -315,14 +312,8 @@ internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenStore: () -
         }
         layer.store?.let { store ->
             Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-                PrimaryButton(label = stringResource(storeButtonLabel(store)), onClick = onOpenStore)
+                PrimaryButton(label = stringResource(Res.string.store_open, store), onClick = onOpenStore)
             }
         }
     }
-}
-
-/** The update notice's one button names the store it opens — the one the build is distributed through. */
-internal fun storeButtonLabel(store: StoreName): StringResource = when (store) {
-    StoreName.APP_STORE -> Res.string.store_app_store
-    StoreName.GOOGLE_PLAY -> Res.string.store_google_play
 }

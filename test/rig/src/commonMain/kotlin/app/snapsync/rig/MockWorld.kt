@@ -10,6 +10,7 @@ import app.snapsync.levers.DevControlsLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
+import app.snapsync.mock.StorePage
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.ManifestResource
@@ -68,6 +69,8 @@ class MockWorld(
     val operatorRefusal: (lever: String) -> String,
     /** The marketing version the app declares to the backend — a cell an operator may change — or `null`. */
     val version: DeclaredVersion?,
+    /** The build's store page — a cell an operator may change — or `null` where the build is the device's own. */
+    val store: StorePage?,
     /** The operating system's side of the handlers the channel hands the app, where it plays the OS. */
     val os: PlayedOs,
     /** This device's id, as the app's Keychain holds it. */

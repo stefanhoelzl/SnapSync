@@ -97,8 +97,7 @@
     <!-- %1$s is the oldest version the backend serves. -->
     <string name="update_detail_version">SnapSync %1$s or newer is needed to keep sharing photos.</string>
     <string name="update_detail">A newer version of SnapSync is needed to keep sharing photos.</string>
-    <string name="store_app_store">Open the App Store</string>
-    <string name="store_google_play">Open Google Play</string>
+    <string name="store_open">Open %1$s</string>
 
     <!-- The join surface. -->
     <string name="join_access_notice">You'll be asked for access to your photos next</string>

@@ -104,14 +104,15 @@ coverage {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
         // 72 → 71 in phase 4.1 (trust): the trust vocabulary the suite covered left for ports and data, so what stays
         // is the same code measured without it — no test was lost. 71/40 → 76/46 when the JVM host began playing
-        // process-metric reports, which run the rule that reads them (`ProcessMetricsKt`).
-        integration(instructions = 76, branches = 46)
+        // process-metric reports, which run the rule that reads them (`ProcessMetricsKt`). 76/46 → 77/47 when the suite
+        // began claiming the scenarios an Android phone's answers decide (folder albums, the install referrer).
+        integration(instructions = 77, branches = 47)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
     ":domain:ports" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        integration(instructions = 88, branches = 85) // no branches: any branch target is met
+        integration(instructions = 91, branches = 85) // no branches: any branch target is met
     }
     ":domain:services" {
         skipped(
@@ -135,7 +136,7 @@ coverage {
     }
     ":domain:feature" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        integration(instructions = 90, branches = 73)
+        integration(instructions = 91, branches = 73)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.
@@ -184,7 +185,7 @@ coverage {
     }
     ":domain:presentation" {
         unit(alsoCoveredBy = listOf(":ui:screens"))
-        integration(instructions = 87, branches = 76)
+        integration(instructions = 87, branches = 77)
     }
     ":app:jvm" {
         unit(alsoCoveredBy = listOf(":test:integration"))

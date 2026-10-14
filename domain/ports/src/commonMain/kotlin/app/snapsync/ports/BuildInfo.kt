@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
 import app.snapsync.model.Platform
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 
 /**
  * **What the running build is** — the constants its bundle carries, and the few facts of the running OS a process
@@ -26,7 +26,7 @@ interface BuildInfo : Port {
      * This build's store page — the App Store on iOS, Google Play on Android — or `null` when it carries none: the one
      * remedy the update-required screen offers.
      */
-    val store: StoreLink?
+    val store: Store?
 
     /** The build number the store and the dump name it by (`CFBundleVersion` on iOS, the version code on Android). */
     val buildNumber: String

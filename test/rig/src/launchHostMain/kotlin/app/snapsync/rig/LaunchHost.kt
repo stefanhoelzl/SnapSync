@@ -67,6 +67,7 @@ internal fun launchWorld(
     reachRefusal = realBackend,
     operatorRefusal = { realBackend },
     version = device.declaredVersion.takeIf { MockedSystem.BACKEND in mocked },
+    store = null,
     os = PlayedOs(device) { it in mocked },
     ownDeviceId = { (ports.secureStore.value.read(TrustSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
     joinedEventId = {

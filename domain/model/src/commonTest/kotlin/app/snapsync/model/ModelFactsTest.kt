@@ -37,14 +37,3 @@ class ModelFactsTest {
         assertTrue(membership.copy(keyId = "k1").encrypted)
     }
 }
-
-/** A build's store page (capability `app-update-required`): the address and the store, one value. */
-class StoreLinkTest {
-
-    @Test
-    fun `a store page names its store`() {
-        val play = StoreLink("https://play.google.com/store/apps/details?id=app.snapsync", StoreKind.GOOGLE_PLAY)
-        assertEquals(StoreKind.GOOGLE_PLAY, play.kind)
-        assertEquals(listOf(StoreKind.APP_STORE, StoreKind.GOOGLE_PLAY), StoreKind.entries)
-    }
-}

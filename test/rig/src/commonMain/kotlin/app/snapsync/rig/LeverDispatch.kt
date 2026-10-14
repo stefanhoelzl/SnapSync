@@ -39,6 +39,8 @@ import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WorldLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockedSystem
+import app.snapsync.mock.StorePage
+import app.snapsync.model.Store
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
@@ -56,7 +58,8 @@ import kotlinx.rpc.internal.utils.ExperimentalRpcApi
 
 /**
  * A declared service as this world serves it: the wrapper the kRPC route registers, why it refuses every method, if it
- * does, and the methods it refuses one by one ([methodRefusals], by method name — a host's own service).
+ * does, and the methods it refuses one by one ([methodRefusals], by method name — a host's own service, or a method
+ * whose system is not a mock where its service's others are).
  */
 class ServedService internal constructor(
     val service: LeverService<*>,
@@ -123,7 +126,7 @@ fun MockWorld.servedServices(
 }.map { service ->
     val refusal = refusalFor(service.needs.map(::needOf), service.name) ?: host.refusalOf(service)
     val implementation = if (refusal == null) implementationOf(service, host, reconcileUploads) else null
-    served(service, implementation, refusal, acts, resolving(this))
+    served(service, implementation, refusal, acts, resolving(this), methodRefusalsOf(service))
 }
 
 /**
@@ -177,9 +180,7 @@ internal val SERVICE_ENTRIES: List<String> = LEVER_SERVICES.filter { it !== RigL
 /** The refusal of each method of every service this world refuses, by advertisement entry. */
 internal fun MockWorld.serviceRefusals(
     host: HostServices,
-): Map<String, String> = servedServices(host).flatMap { served ->
-    served.refusal?.let { why -> served.service.entries.map { it to why } }.orEmpty()
-}.toMap()
+): Map<String, String> = servedServices(host).fold(emptyMap()) { refused, served -> refused + served.refused }
 
 private fun MockWorld.implementationOf(
     service: LeverService<*>,
@@ -201,7 +202,7 @@ private fun MockWorld.implementationOf(
         CrashReporterLevers -> device.crashReporter.operator
         SystemUiLevers -> device.systemUi.operator
         DevControlsLevers -> ReconcilingControls(controls, reconcileUploads)
-        BuildLevers -> DeclaredBuild(checkNotNull(version))
+        BuildLevers -> PlayedBuild(checkNotNull(version), store)
         DatabasesLevers -> device.databases.operator
         FilesLevers -> DeviceFiles(device.disk)
         KeychainLevers -> Keychain(this)
@@ -262,13 +263,27 @@ private class ReconcilingControls(
     }
 }
 
-/** The build's declared version, as a cell the channel changes. */
-private class DeclaredBuild(private val version: DeclaredVersion) : BuildLevers {
+/** Why this world refuses some methods of a service it serves: the store page, where the build is the device's own. */
+private fun MockWorld.methodRefusalsOf(service: LeverService<*>): Map<String, String> = when (service) {
+    BuildLevers -> mapOf(BuildLevers::store.name to STORE_IS_BAKED).takeIf { store == null }.orEmpty()
+    else -> emptyMap()
+}
+
+/** Why a device's build store page is no lever. */
+private const val STORE_IS_BAKED = "this build's store page is its bundle's, not a cell the channel may change"
+
+/** The build's declared version and its store page, as cells the channel changes. */
+private class PlayedBuild(private val version: DeclaredVersion, private val store: StorePage?) : BuildLevers {
     override suspend fun declare(version: String) {
         this.version.value = version
     }
 
     override suspend fun declared(): String? = version.value
+
+    override suspend fun store(name: String?, url: String?) {
+        require((name == null) == (url == null)) { "a store page is a name AND a url, or neither" }
+        checkNotNull(store).value = name?.let { Store(it, checkNotNull(url)) }
+    }
 }
 
 /** How an omitted `@JoinedEvent` / `@ThisDevice` argument is named: by this world's joined event and device. */

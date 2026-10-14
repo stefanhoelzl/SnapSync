@@ -8,13 +8,11 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.TimestampText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
-import app.snapsync.ui.state.StoreName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,7 +53,7 @@ class VersionGateHostTest {
             val layer = awaitShown().layer
             assertIs<Layer.UpdateRequired>(layer)
             assertEquals("0.4", layer.minimumVersion)
-            assertEquals(StoreName.APP_STORE, layer.store, "a screen whose only remedy is a link names where it leads")
+            assertEquals("App Store", layer.store, "a screen whose only remedy is a link names where it leads")
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -172,7 +170,7 @@ private val GATE_CEILING = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:
 private fun gateHost(
     scope: CoroutineScope,
     refusal: MutableStateFlow<VersionRefusal?> = MutableStateFlow(null),
-    store: StoreLink? = StoreLink(STORE_URL, StoreKind.APP_STORE),
+    store: Store? = Store("App Store", STORE_URL),
     config: EventConfig? = null,
     openLink: (String) -> Unit = {},
 ) = StatusContainerHost(

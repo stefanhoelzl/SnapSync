@@ -48,8 +48,7 @@ import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
@@ -101,7 +100,7 @@ import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.stop_sharing_confirm
 import app.snapsync.ui.resources.stop_sharing_keep
-import app.snapsync.ui.resources.store_app_store
+import app.snapsync.ui.resources.store_open
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface
@@ -164,7 +163,7 @@ private val CUTOFF = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z
 private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(EventId.parse(eventId)!!))
 
 // A test reads the words the screen shows; production never blocks on a resource.
-private fun str(res: StringResource): String = runBlocking { getString(res) }
+private fun str(res: StringResource, vararg args: Any): String = runBlocking { getString(res, *args) }
 
 /**
  * The status screen's tour, shared by every platform's [Ui] adapter binding (`docs/testing.md`, "The Ui contract"): the
@@ -243,7 +242,7 @@ abstract class StatusScreenTour {
                 config = this.config,
                 versionRefusal = MutableStateFlow(refusal),
                 verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
-                store = StoreLink(STORE_URL, StoreKind.APP_STORE),
+                store = Store("App Store", STORE_URL),
                 network = object : NetworkStatusSource {
                     override val access: StateFlow<NetworkAccess> = MutableStateFlow(
                         NetworkAccess.Online(restricted = false),
@@ -355,7 +354,7 @@ abstract class StatusScreenTour {
 
     private fun ComposeUiTest.updateRequired() {
         use(Rig(refusal = VersionRefusal("0.4"))) { it.layer is Layer.UpdateRequired }
-        onNodeWithText(str(Res.string.store_app_store)).performClick()
+        onNodeWithText(str(Res.string.store_open, "App Store")).performClick()
     }
 
     private fun ComposeUiTest.refusedDevice() {

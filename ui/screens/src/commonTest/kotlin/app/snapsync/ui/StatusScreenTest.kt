@@ -137,8 +137,7 @@ import app.snapsync.ui.resources.stop_sharing_body
 import app.snapsync.ui.resources.stop_sharing_confirm
 import app.snapsync.ui.resources.stop_sharing_keep
 import app.snapsync.ui.resources.stop_sharing_title
-import app.snapsync.ui.resources.store_app_store
-import app.snapsync.ui.resources.store_google_play
+import app.snapsync.ui.resources.store_open
 import app.snapsync.ui.resources.timing_ended
 import app.snapsync.ui.resources.timing_ends_in
 import app.snapsync.ui.resources.timing_starts_in
@@ -163,7 +162,6 @@ import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.SharingNote
-import app.snapsync.ui.state.StoreName
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.TimeLeft
@@ -306,14 +304,14 @@ class StatusScreenTest {
         setContent {
             TestStatusScreen(
                 UiState(
-                    Layer.UpdateRequired(minimumVersion = "0.4", store = StoreName.APP_STORE),
+                    Layer.UpdateRequired(minimumVersion = "0.4", store = "App Store"),
                 ),
                 actions = testActions(onOpenStore = { opened++ }),
             )
         }
         onNodeWithText(str(Res.string.update_eyebrow)).assertExists() // its own verb, not another surface's
         onNodeWithText(str(Res.string.update_detail_version, "0.4")).assertExists()
-        onNodeWithText(str(Res.string.store_app_store)).performClick()
+        onNodeWithText(str(Res.string.store_open, "App Store")).performClick()
         assertEquals(1, opened)
     }
 
@@ -328,8 +326,8 @@ class StatusScreenTest {
             )
         }
         onNodeWithText(str(Res.string.update_detail)).assertExists()
-        onNodeWithText(str(Res.string.store_app_store)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.store_google_play)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.store_open, "App Store")).assertDoesNotExist()
+        onNodeWithText(str(Res.string.store_open, "Google Play")).assertDoesNotExist()
     }
 
     @Test
@@ -338,13 +336,13 @@ class StatusScreenTest {
         setContent {
             TestStatusScreen(
                 UiState(
-                    Layer.UpdateRequired(minimumVersion = "0.4", store = StoreName.GOOGLE_PLAY),
+                    Layer.UpdateRequired(minimumVersion = "0.4", store = "Google Play"),
                 ),
                 actions = testActions(onOpenStore = { opened++ }),
             )
         }
-        onNodeWithText(str(Res.string.store_app_store)).assertDoesNotExist()
-        onNodeWithText(str(Res.string.store_google_play)).performClick()
+        onNodeWithText(str(Res.string.store_open, "App Store")).assertDoesNotExist()
+        onNodeWithText(str(Res.string.store_open, "Google Play")).performClick()
         assertEquals(1, opened)
     }
 

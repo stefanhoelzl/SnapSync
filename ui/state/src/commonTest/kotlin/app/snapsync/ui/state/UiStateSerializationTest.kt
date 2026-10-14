@@ -54,7 +54,7 @@ class UiStateSerializationTest {
             UiState(
                 Layer.UpdateRequired(
                     minimumVersion = "0.4",
-                    store = StoreName.APP_STORE,
+                    store = "App Store",
                 ),
             ),
         )

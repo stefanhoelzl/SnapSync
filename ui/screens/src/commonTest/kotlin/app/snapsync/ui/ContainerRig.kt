@@ -38,8 +38,7 @@ import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
@@ -113,7 +112,7 @@ internal class ContainerRig(
             creation = creation,
             versionRefusal = MutableStateFlow(refusal),
             verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
-            store = StoreLink(RIG_STORE_URL, StoreKind.APP_STORE),
+            store = Store("App Store", RIG_STORE_URL),
             network = object : NetworkStatusSource {
                 override val access: StateFlow<NetworkAccess> = MutableStateFlow(network)
                 override val returned: Flow<Unit> = emptyFlow()
