@@ -177,6 +177,55 @@ sealed interface WorldEvent {
     @Serializable
     @SerialName("dump-received")
     data class DumpReceived(val dump: ReceivedDump) : WorldEvent
+
+    /** The backend stored [device]'s registration — its push [token], or none — as `putDevice` stores it. */
+    @Serializable
+    @SerialName("backend-device-registered")
+    data class DeviceRegistered(val device: String, val token: String?) : Backend
+
+    /** The backend sent [device] a silent push for [event], to [token] — what the push service delivers. */
+    @Serializable
+    @SerialName("backend-push-sent")
+    data class PushSent(val event: String, val device: String, val token: String) : Backend
+
+    /** What the operating system recorded of the app, as it happened — never an app-side fact. */
+    @Serializable
+    sealed interface Os : WorldEvent
+
+    /** The operating system accepted a wake request — one replaces the pending one of its [wake]. */
+    @Serializable
+    @SerialName("wake-scheduled")
+    data class WakeScheduled(val wake: PendingWake) : Os
+
+    /** The app cancelled its request for [wake] (`heartbeat`, `library-changed`). */
+    @Serializable
+    @SerialName("wake-cancelled")
+    data class WakeCancelled(val wake: String) : Os
+
+    /** The app began a background-time hold, under [name] — as `beginBackgroundTask(withName:)` names it, verbatim. */
+    @Serializable
+    @SerialName("hold-begun")
+    data class HoldBegun(val name: String) : Os
+
+    /** The app ended the background-time hold it began under [name]. */
+    @Serializable
+    @SerialName("hold-ended")
+    data class HoldEnded(val name: String) : Os
+
+    /** The app released a completion handler the operating system handed it — [again] for one already released. */
+    @Serializable
+    @SerialName("completion-released")
+    data class CompletionReleased(val again: Boolean) : Os
+
+    /** The app asked the push service for its token. */
+    @Serializable
+    @SerialName("push-registered")
+    data object PushRegistered : Os
+
+    /** The upload extension's registration was set [on] or off, as the operating system took the app's request. */
+    @Serializable
+    @SerialName("extension-registered")
+    data class ExtensionRegistered(val on: Boolean) : Os
 }
 
 /**

@@ -149,9 +149,9 @@ fun adapterCommands(launch: RigLaunch): Map<String, RigCommand> = launchAdapterC
  * system its adapter choice leaves real, the played operating system's expiry unless the background-time holds are mocked, and
  * the verbs whose subject the adapter choice replaced.
  */
-fun iosRefusals(launch: RigLaunch): Map<String, String> = buildMap {
+fun iosRefusals(launch: RigLaunch, host: HostServices): Map<String, String> = buildMap {
     val world = launch.world
-    putAll(world.leverRefusals())
+    putAll(world.leverRefusals(host))
     world.refusalFor(MockedSystem.BACKGROUND_TIME)?.let { reason ->
         RigVocabulary.playedOsEntries.forEach { put(it, "a real operating system's expiry is its own. $reason") }
     }

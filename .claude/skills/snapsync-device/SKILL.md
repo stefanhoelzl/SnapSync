@@ -177,6 +177,6 @@ group. A wrong group reads as **no device id**, and the id is written once and n
 
 Global `device` build (`ios.md`, with `snapsync.rig=true`) → `sign` → take the phone → `connect` → `install` →
 `dvt launch app.snapsync` →
-join over the channel (`POST /os/app/onSceneContinueActivity?arg=<link>`, using a **fresh event id** you
+join over the channel (`rig os continue-link --url <link>`, the `rig-channel` skill; using a **fresh event id** you
 created, or the reconcile seeds already-stored photos and nothing uploads) → the OS invokes the upload
 extension on its own cadence → confirm the objects landed in the backend's storage zone.

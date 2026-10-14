@@ -107,7 +107,7 @@ class NetworkIntegrationTest {
             step("told so", act = { advance(NetworkWatch.DEFAULT_GRACE) }, until = {
                 screen<Layer.Joined> { it.health is SyncHealth.NoNetwork }
             })
-            step("in the background", act = { os("app", "onBackground") }, until = { settled { true } })
+            step("in the background", act = { os.background() }, until = { settled { true } })
         }
 
         // Not now, and not later: the app reaches nothing, and leaves no timer that would.

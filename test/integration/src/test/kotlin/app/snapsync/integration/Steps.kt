@@ -4,6 +4,7 @@ import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.levers.NetworkState
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.EventLinkPayload
@@ -41,10 +42,20 @@ suspend fun Given.registeredEvent(name: String = Rig.EVENT_NAME): String {
     return event
 }
 
-/** An event created and joined, on its joined screen. Answers its id. */
-suspend fun Given.joinedEvent(vararg choices: Pair<String, String>): String {
-    val event = createdEvent()
-    step("joined", act = { user("confirmJoin", *choices) }, until = { screen<Layer.Joined>() })
+/**
+ * An event running [startsAt]..[endsAt] created and joined with [choices] (`direction`, `saveToAlbum`, …), on its joined
+ * screen, and whatever the join started done. Answers its id.
+ */
+suspend fun Given.joinedEvent(
+    vararg choices: Pair<String, String>,
+    startsAt: String = Rig.WINDOW_START,
+    endsAt: String = Rig.WINDOW_END,
+): String {
+    val event = createdEvent(startsAt = startsAt, endsAt = endsAt)
+    step("joined", act = { user("confirmJoin", *choices) }, until = {
+        screen<Layer.Joined>()
+        settled { true }
+    })
     return event
 }
 
@@ -67,7 +78,34 @@ suspend fun Given.joinedSavingToAlbum(name: String = Rig.EVENT_NAME): Pair<Strin
 }
 
 /** The app comes to the front, and does what it does there until it is settled. */
-suspend fun Given.inFront() = step("in front", act = { os("app", "onForeground") }, until = { settled { true } })
+suspend fun Given.inFront() = step("in front", act = { os.foreground() }, until = { settled { true } })
+
+/**
+ * The process dies, and the operating system starts it again for a wake, with no scene: a background launch, which
+ * builds no screen.
+ */
+suspend fun Given.backgroundLaunch() =
+    step("a background launch", act = { device("relaunch", "scene" to "false") }, until = { settled { true } })
+
+/** A fellow member, [device], with complete photos [assets] in the joined event, and whatever they caused done. */
+suspend fun Given.fellowMember(device: String, vararg assets: String) = step(
+    "$device shares ${assets.joinToString()}",
+    act = { publicBackend.foreignDevice(device, assets.toList()) },
+    until = { settled { true } },
+)
+
+/** The photo library's grant is [grant], and whatever it changed done. */
+suspend fun Given.photoAccess(grant: PhotoGrant) =
+    step("photo access $grant", act = { library.permission(grant) }, until = { settled { true } })
+
+/** The push service issued this device [token], and the app did what it does with it. */
+suspend fun Given.pushToken(token: String) =
+    step("the push token $token", act = { os.pushToken(token) }, until = { settled { true } })
+
+/** The operating system runs the heartbeat task. */
+suspend fun Acts.heartbeat() {
+    os.backgroundTask(HEARTBEAT_TASK)
+}
 
 /** The link a member scans for [eventId]: its whole invite, an encrypted event's key included. */
 suspend fun Given.inviteFor(eventId: String): String =
@@ -84,7 +122,7 @@ suspend fun Acts.inviteLink(eventId: String, autoJoin: Boolean = false): String 
 
 /** The operating system delivers a scanned event link. */
 suspend fun Acts.openLink(url: String) {
-    os("app", "onSceneContinueActivity", url)
+    os.continueLink(url)
 }
 
 /**
@@ -116,5 +154,4 @@ suspend fun Acts.takePhoto(id: String) {
 }
 
 /** One upload cycle, as the OS-driven extension runs it. Answers what it tells the system (`completed`, `processing`). */
-suspend fun Acts.cycle(): String =
-    Json.parseToJsonElement(os("photokit-ext", "processRawValue")).jsonObject.getValue("result").jsonPrimitive.content
+suspend fun Acts.cycle(): String = extensionHost.process().name.lowercase()

@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
 import app.snapsync.ports.ExtensionRegistry
@@ -14,6 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 internal class InMemoryExtensionRegistry(
     private val record: MutableStateFlow<Boolean>?,
     private val partialGrant: Boolean = false,
+    /** Told each change taken, as the operating system records it. */
+    private val watcher: OsWatcher = OsWatcher {},
 ) : ExtensionRegistry {
     override val supported: Boolean = record != null
 
@@ -30,6 +33,7 @@ internal class InMemoryExtensionRegistry(
             )
         }
         cell.value = enabled
+        watcher.told(WorldEvent.ExtensionRegistered(enabled))
         return RegistrationAnswer.Answered(ok = true, domain = null, code = null)
     }
 

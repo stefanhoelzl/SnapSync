@@ -5,6 +5,7 @@ import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.BackgroundTimeLevers
 import app.snapsync.levers.BuildLevers
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.CrashReporterLevers
@@ -12,15 +13,20 @@ import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.OlderInstallLevers
+import app.snapsync.levers.OsLevers
+import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.PushLevers
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
+import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WorldLevers
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost
@@ -130,6 +136,24 @@ class Rig(val client: RigClient) {
     /** What an older build left on the device. */
     val olderInstall: OlderInstallLevers = client.levers(OlderInstallLevers)
 
+    /** The operating system's deliveries to the app's entry points. */
+    val os: OsLevers = client.levers(OsLevers)
+
+    /** What only a played operating system does — its expiry — and its record of the completion handlers. */
+    val playedOs: PlayedOsLevers = client.levers(PlayedOsLevers)
+
+    /** The operating system's invocations of the upload extension. */
+    val extensionHost: ExtensionHostLevers = client.levers(ExtensionHostLevers)
+
+    /** The push service: what it is, whether it issues tokens, and what the app asked of it. */
+    val push: PushLevers = client.levers(PushLevers)
+
+    /** The operating system's scheduled wakes. */
+    val wake: WakeLevers = client.levers(WakeLevers)
+
+    /** The operating system's background-time holds. */
+    val backgroundTime: BackgroundTimeLevers = client.levers(BackgroundTimeLevers)
+
     suspend fun state(): RigState = client.state()
 
     suspend fun awaitState(timeout: Duration = 10.seconds, until: (RigState) -> Boolean): RigState =
@@ -143,9 +167,6 @@ class Rig(val client: RigClient) {
 
     /** A user command, answered however the host answers it. */
     suspend fun userReply(name: String, vararg params: Pair<String, String>): Reply = client.user(name, mapOf(*params))
-
-    /** An operating-system entry point, which must be answered. */
-    suspend fun os(root: String, member: String, arg: String? = null): String = client.os(root, member, arg).done()
 
     /** A device verb, which must be honoured. */
     suspend fun device(name: String, vararg params: Pair<String, String>, body: String? = null): String =

@@ -124,7 +124,9 @@ GET  /device                            what THIS host honours and refuses of th
 
 POST /os/<root>/<entry>?arg=…           the real @PlatformEntry member, invoked as the platform invokes it
                                         <root> is app | photokit-ext — WHOSE entry point, since the
-                                        channel reaches two composition roots
+                                        channel reaches two composition roots. The app root's entries are
+                                        the typed `os` service now (`rig os …`, below); the string verbs stay
+                                        until the string protocol goes
 POST /user/<command>?…                  the real StatusContainerHost command, as a tap invokes it
 
 GET  /device/state                      the real UiState + readiness + download progress + build facts
@@ -334,7 +336,7 @@ defined in the same call (see "Building and connecting").
 
 ```
 # JOIN — the warm universal-link path, same decode -> gate -> join a scanned QR takes
-curl -X POST "$B/os/app/onSceneContinueActivity?arg=https://snapsync.stho.net/join%23v=3&d=<payload>"
+$R --url $B os continue-link --url "https://snapsync.stho.net/join#v=3&d=<payload>"   # R: `rig`, below
 
 # CREATE — exactly as a user creates one: mint, then confirm the gate it opens
 curl -X POST "$B/user/create?name=Trip&startsAt=2026-08-23T00:00&endsAt=2026-08-30T00:00"
@@ -497,25 +499,36 @@ curl -s -X POST $B/device/adapters/clear  # back to all real; exits
 
 ## Triggers return what the PLATFORM returns
 
-⚠️ **`onForeground` returns `202` and does NOT wait** — and it is the trigger you will reach for most.
+The app root's entries are the **`os` typed service** (`OsLevers`; `rig os <method>`, below), which every host serves
+— each delivery through the system's mock where the host mocks it, the platform's adapter where it is real:
+
+```bash
+$R --url $B os foreground                 # also: background, push-token --token <hex>, push-token-failure --description …
+$R --url $B os continue-link --url <link>
+$R --url $B os silent-push --event <id> --await-release            # → {"heldMs": …}
+$R --url $B os background-task --identifier app.snapsync.upload.heartbeat --await-release
+$R --url $B os background-transfers --identifier app.snapsync.upload.session --await-release
+```
+
+⚠️ **`foreground` answers at once and does NOT wait** — and it is the delivery you will reach for most.
 The platform hands it no completion handler, so neither does the rig. **Poll `/device/state`.**
 
-The three entries the OS *does* wait on — `onSilentPush`, `onBackgroundTask`, `onBackgroundTransfers` —
-block until the app releases the handler and return `heldMs`. A push and a transfer wake release after
-their **own work** (the push's union read and enqueue; the session's staging and drain report) and run the
-rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; poll
-`/device/state` for its effects. The heartbeat releases after its tail. The last two take the identifier
-the OS would deliver as `arg`: `onBackgroundTask?arg=app.snapsync.upload.heartbeat` (the busy heartbeat) or
-`?arg=app.snapsync.heartbeat.idle` (the idle heartbeat, an app refresh) — the same wake to the core; the download
-backstop is deleted — and
-`onBackgroundTransfers?arg=app.snapsync.upload.session` for the app uploader's session (any other channel
-routes to the downloads). An unknown task identifier is completed at once and logged.
+The three entries the OS *does* hand a completion handler — `silent-push`, `background-task`,
+`background-transfers` — answer once delivered; with `--await-release` they block until the app releases the handler
+and answer `heldMs` (on the JVM host, a test waits on the world's `CompletionReleased` instead). A push and a transfer
+wake release after their **own work** (the push's union read and enqueue; the session's staging and drain report) and
+run the rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; poll
+`/device/state` for its effects. The heartbeat releases after its tail. The last two take the identifier the OS would
+deliver: `app.snapsync.upload.heartbeat` (the busy heartbeat) or `app.snapsync.heartbeat.idle` (the idle heartbeat, an
+app refresh) — the same wake to the core; the download backstop is deleted — and `app.snapsync.upload.session` for the
+app uploader's session (any other channel routes to the downloads). An unknown task identifier is completed at once
+and logged.
 
 🧭 **The rig classifies nothing.** A release carries no outcome, so "released after the own work" vs
 "released on the operating system's expiry" is **not** derivable from `heldMs`. The authoritative answer is
 the runtime's expiry line `operating system expiry: cancelling trigger=…`, which it writes on the expiry path
-and no other — read it via `/device/logs` after this request's `[rig] → /os/…` marker. Every
-request writes that marker, so it doubles as the log cursor.
+and no other — read it via `/device/logs` after the call's `[rig] → os.<method>` marker. Every
+call writes that marker, so it doubles as the log cursor.
 
 Excluded members answer with **the reason they are excluded**, not a bare 404 — `onLaunch` re-registers
 `NSNotificationCenter` observers documented as never removed, so re-invoking it corrupts the process under
@@ -557,7 +570,7 @@ answer reports the switch and the registration fact it produces:
 ```
 
 To drive the app's uploader alone on a ≥26.1 device: `extension=off`, then fire
-`POST /os/app/onBackgroundTask?arg=app.snapsync.upload.heartbeat` (the app uploader's heartbeat). The switch dies with the process.
+`rig os background-task --identifier app.snapsync.upload.heartbeat` (the app uploader's heartbeat). The switch dies with the process.
 
 Note `/device/state`'s `build.uploadTier` is a **build fact** — which uploaders this OS carries
 (`app` or `app+extension`) — and does not move with the switch.
@@ -577,24 +590,22 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
 - `mock` (the default) is the in-memory backend mock; `deno` starts the real `api/` (`serve.ts --ephemeral`,
   loopback-only). On `deno`, a lever only the backend mock's operator can pull (`backend.offline`, …) is refused
   "unavailable on this backend".
-- Same `/os`, `/user`, `/device/state` shapes as the app. `/os` drives the mocks' operator faces (the OS played);
-  `os/app/onSceneContinueActivity?arg=<link>` reaches the `Links` port's handler, `os/photokit-ext/processRawValue`
-  invokes the extension's entry port, whose cycle creates jobs on the upload-queue mock.
+- Same `os`, `/user`, `/device/state` shapes as the app. `os` drives the mocks' deliveries (the OS played);
+  `os continue-link` reaches the `Links` port's handler, `extension-host process` invokes the extension's entry port,
+  whose cycle creates jobs on the upload-queue mock.
 - Every lever and read below is a mock's operator face — what the OS, the photo library or the backend does or
   recorded, never the composed app. A lever answers at once; what the app makes of it is **observed, not awaited**
-  (poll `/device/state`, the backend, the library, `device/os-record`). The download reconcile and the status read are
-  the foreground's: `os/app/onForeground`. `/device/gallery` is the library's answer under the person's grant.
+  (poll `/device/state`, the backend, the library, the OS's reads). The download reconcile and the status read are
+  the foreground's: `os foreground`. `/device/gallery` is the library's answer under the person's grant.
 - **The OS is played, its expiry and its record included** (the app host only for what its adapter choice mocks —
-  `onExpiry` needs `background-time` mocked):
-  - `os/app/onExpiry` — time is up for every held completion handler and background-time hold; `?arg=next` hands the
-    next handler over already expired. Hold a receipted entry open (a second request) and expire it.
-  - `device/os-record` — handlers handed/released/`releasedAgain`/held, `screenShown`, `selectionObserved`,
-    `heartbeatsScheduled`, `pendingWake` (`{cadence: busy|idle, earliestSeconds}` or `null`), `backgroundTimeHolds` (by name: `onForeground`, `onSilentPush`, `tail(…)`, …),
-    `pushRegistrations`, the download session (`up`, `started`, `inFlight`), `uploadSessionHandbacks`,
-    `databasesOpened`, `stagedFiles`, `appStorageBytes` (the bytes the app's files take, its diagnostics — logs, memory
-    trail, saved report — left out: what the storage page shows a person). A receipted `/os` answer carries it as read at the release (`osAtRelease`).
-  - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only `device/os-record`
-    until an `os/app/onForeground`: `/device/state` and `/user` read the screen and would assemble it.
+  `played-os` needs `background-time` mocked): see "The operating system's typed services" below.
+  - `device/os-record` — the string record of the systems not yet typed: `screenShown`, `selectionObserved`,
+    `pickersShown`, the download session (`up`, `started`, `inFlight`), `uploadSessionHandbacks`, `databasesOpened`,
+    `stagedFiles`, `appStorageBytes` (the bytes the app's files take, its diagnostics — logs, memory trail, saved report —
+    left out: what the storage page shows a person). A receipted string `/os` answer carries it as read at the release
+    (`osAtRelease`).
+  - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only the OS's reads
+    until an `os foreground`: `/device/state` and `/user` read the screen and would assemble it.
   - `device/reinstall` (JVM host only) — delete the app and launch it again: files, databases and user defaults gone;
     Keychain, photo library and backend kept.
 - The **operator levers** (on the app host, only for the systems its adapter choice mocks): the transfers' — the
@@ -796,6 +807,30 @@ $R --url $B keychain forget --item event-key
 Gone with the move: `device/databases/locked`, `device/membership/undeletable`, `device/event-key/lose`,
 `device/logs/append`, `device/staging/seed-legacy-backlog`, and the `device/staging` fact.
 
+### The operating system's typed services
+
+The operating system as the app meets it (`docs/testing.md`, "Typed services") — the same `rig` and `client.levers(…)`:
+
+- `os` (`OsLevers`) — the deliveries to the app's entry points ("Triggers return what the PLATFORM returns", above).
+  Needs nothing: every host serves it.
+- `played-os` (`PlayedOsLevers`) — what only a played OS does; needs `background-time` mocked (a real OS's expiry is
+  its own): `expire()` (time is up for every held completion handler and background-time hold — hold a receipted
+  delivery open with `--await-release` in a second call and expire it), `expireNext()` (the next handler arrives
+  already expired), and the read `completions()` (`handed`, `released`, `releasedAgain`, `held`).
+- `extension-host` (`ExtensionHostLevers`) — `process()` (the OS invokes the extension's `process()`: answers
+  `completed|processing|failed`) and `terminate()`. The JVM host and the iOS app host serve it; Android refuses it. The
+  simulator's scripted job sets are still the string verb `/os/photokit-ext/processRawValue`'s (body), see
+  `ios-simulator`.
+- Each OS system's face, needing its system mocked: `lifecycle` (`everActive()`), `links` (`startInstalled(referrer)`,
+  the install referrer only a store delivers, once per installation), `push` (`kind(kind)` — `apns|fcm`, read as the
+  app composes, so it takes effect at a relaunch; `refuseTokens(reason?)` — none: tokens again; the read `push()`:
+  registrations, kind, refusal), `wake` (the read `wakes()`: heartbeats accepted, and every request pending with its
+  cadence and delay), `background-time` (the read `holds()`, each by the name the app began it under, verbatim;
+  `expireAll()`), `extension-registry` (the read `registered()`; `null` where the platform has no extension).
+
+Gone with the move: `device/os-record`'s completions, `heartbeatsScheduled`, `pendingWake`, `backgroundTimeHolds` and
+`pushRegistrations` — each is its service's read above.
+
 ### The world's events — waiting without polling (JVM host only)
 
 The JVM host runs the app on **one loop** (`LaneLoop`): every lane of both processes, and the channel's own, is a lane
@@ -819,6 +854,7 @@ RigClient("http://127.0.0.1:$PORT").use { client ->
     world.events().collect { println(it) }   // from the host's start: Acted, UiChanged, BackendReceived, BackendHeld,
                                               // UploadJobCreated, SessionTransferCreated, DownloadStarted, Library…,
                                               // Shared, UrlOpened, SettingsOpened, DumpReceived, DatabaseFaulted,
+                                              // the OS's (WakeScheduled, HoldBegun, CompletionReleased, …),
                                               // Settled (its state: appStorageBytes), LaneViolation
     world.advance(5_000)                      // an act: the mocked clock 5 s on
     world.advanceTo("2026-06-02T09:00:00Z")   // an act: the mocked clock to an instant (back: fires nothing)

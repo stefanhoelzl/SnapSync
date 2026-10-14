@@ -1,14 +1,9 @@
 package app.snapsync.integration
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-
 // The protocol calls that move photos — uploads, the backend's reads, other members and downloads.
 
 /** One upload cycle, as the OS-driven extension runs it. Answers the cycle's result (`completed`, `processing`, …). */
-suspend fun Rig.cycle(): String =
-    Json.parseToJsonElement(os("photokit-ext", "processRawValue")).jsonObject.getValue("result").jsonPrimitive.content
+suspend fun Rig.cycle(): String = extensionHost.process().name.lowercase()
 
 /** The operating system's upload jobs: the ones still live (`<assetId>/<role>`), and how many were ever created. */
 suspend fun Rig.jobs(): Rig.Jobs = uploadQueue.queue().let { Rig.Jobs(live = it.live, created = it.created.size) }
@@ -80,14 +75,14 @@ suspend fun Rig.settleDownloads() {
     var last: String? = null
     var steady = 0
     eventually(read = {
-        val os = osRecord()
+        val holds = backgroundTime.holds()
         val now = listOf(
-            os.backgroundTimeHolds.toString(),
+            holds.toString(),
             state().download.toString(),
-            os.appStorageBytes.toString(),
+            osRecord().appStorageBytes.toString(),
             gallery().census.total.toString(),
         ).joinToString("|")
-        steady = if (now == last && os.backgroundTimeHolds.isEmpty()) steady + 1 else 0
+        steady = if (now == last && holds.isEmpty()) steady + 1 else 0
         last = now
         steady to now
     }) { (reads, _) -> reads >= SETTLED_READS }

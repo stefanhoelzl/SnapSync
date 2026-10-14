@@ -673,7 +673,10 @@ internal class BackendState(
         } else {
             recipients.shuffled().take(BackendMock.FANOUT_MAX_RECIPIENTS).toSet()
         }
-        recipients.filter { it in woken }.forEach { (deviceId, token) -> pushes += SentPush(eventId, deviceId, token, seq) }
+        recipients.filter { it in woken }.forEach { (deviceId, token) ->
+            pushes += SentPush(eventId, deviceId, token, seq)
+            watcher.told(WorldEvent.PushSent(eventId, deviceId, token))
+        }
     }
 
     companion object {

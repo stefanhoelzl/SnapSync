@@ -28,7 +28,7 @@ class EventCompletionIntegrationTest {
         val published = checkNotNull(backend.membership(event).manifest)
         assertEquals(true, published.final, "the share is settled after the end")
 
-        os("app", "onForeground")
+        os.foreground()
 
         neverWithin(what = "a finished event never ends a membership") { !it.ready.configResolved }
         assertFalse(departed(event), "and the backend heard of no leave")
@@ -44,7 +44,7 @@ class EventCompletionIntegrationTest {
         downloadAll()
         advanceTo(AFTER_THE_END)
 
-        os("app", "onForeground")
+        os.foreground()
 
         neverWithin(what = "an event still being shared never ends a membership") { !it.ready.configResolved }
     }
@@ -59,7 +59,7 @@ class EventCompletionIntegrationTest {
         // The clock ran out while this member was away: the sweep completed the event.
         backend.complete(event)
 
-        os("app", "onSilentPush", event)
+        os.silentPush(event, awaitRelease = true)
 
         neverWithin(what = "a deleted event is never left on its own") { !it.ready.configResolved }
         assertFalse(departed(event), "the backend heard of no leave")
@@ -79,7 +79,7 @@ class EventCompletionIntegrationTest {
         assertFalse(departed(event), "the backend was unreachable")
 
         backend.offline(false)
-        os("app", "onForeground")
+        os.foreground()
 
         val delivered = eventually(read = { departed(event) }, until = { it })
         assertTrue(delivered, "the recorded leave was delivered without the member doing anything")

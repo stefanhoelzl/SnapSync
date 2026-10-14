@@ -4,8 +4,11 @@ package app.snapsync.rig
 
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
+import app.snapsync.levers.ExtensionAnswer
+import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
+import app.snapsync.model.ProcessingAnswer
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
 import app.snapsync.model.uploadersCarried
@@ -153,7 +156,7 @@ class JvmRigHost private constructor(
                 ) { device ->
                     heldToken(mocks.keychain.port(), device.takeIf { it == mocks.ownDeviceId })
                 },
-                PlayedOs(mocks),
+                PlayedOs(mocks).also { os -> os.watch { threads.events.tell(it) } },
             )
             rig.showScreen()
             return rig
@@ -164,6 +167,7 @@ class JvmRigHost private constructor(
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
                 services = rig.world.servedServices(
+                    rig.host,
                     rig.threads.acts,
                     reconcileUploads = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },
                 ),
@@ -182,7 +186,7 @@ class JvmRigHost private constructor(
                     "app" to TriggerGroup(
                         lane = rig.lane,
                         wired = appTriggers(MockEntryDriver(mocks, rig.os)) + (
-                            "onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") rig.os.expireNext() else rig.os.expire() }
+                            "onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") rig.os.expireNextNow() else rig.os.expireNow() }
                             ),
                         excluded = emptyMap(),
                     ),
@@ -198,13 +202,13 @@ class JvmRigHost private constructor(
                                     // On the operating system's own thread, which the answer blocks: work the loop
                                     // waits on, while the cycle itself runs on the extension's lane.
                                     val result = rig.threads.loop.outside("the extension's process()") {
-                                        mocks.extensionHost.operator.process(rig.threads.osThread)
+                                        mocks.extensionHost.process(rig.threads.osThread)
                                     }
                                     """{"result":"${result.toString().lowercase()}","queue":"mock",""" +
                                         """"created":${mocks.uploadQueue.view().created.size}}""" + "\n"
                                 }
                             },
-                            "onTerminate" to RigTrigger.Fire { mocks.extensionHost.operator.terminate() },
+                            "onTerminate" to RigTrigger.Fire { mocks.extensionHost.terminate() },
                         ),
                         excluded = emptyMap(),
                     ),
@@ -271,6 +275,14 @@ internal class JvmRig(
     val world: MockWorld by lazy { jvmWorld(this, os) }
 
     /**
+     * The services this host implements itself: the operating system's deliveries, through the mocks on the composition
+     * lane, and the extension's invocations, on the operating system's own thread.
+     */
+    val host: HostServices by lazy {
+        HostServices(entries = PlayedEntries(MockEntryDriver(mocks, os), lane), extensionHost = JvmExtensionHost(this))
+    }
+
+    /**
      * What the phone's UI does that nothing else here does: it builds a live screen, whose `onLive` assembles the status
      * host and starts showing it every state — and the host's Orbit container starts its reduction only once its state
      * is collected. Done at start, and again after every relaunch, whose new app no screen has been built for.
@@ -279,4 +291,24 @@ internal class JvmRig(
         app.composed.host
         mocks.screen.operator.live()
     }
+}
+
+/**
+ * The `extension-host` service on the JVM host: the operating system invokes the extension's `process()` on a thread of
+ * its own ([HostThreads.osThread]), which the answer blocks — work the loop waits on, while the cycle itself runs on the
+ * extension's lane.
+ */
+internal class JvmExtensionHost(private val rig: JvmRig) : ExtensionHostLevers {
+    override suspend fun process(): ExtensionAnswer {
+        val answer = rig.threads.loop.outside("the extension's process()") {
+            rig.mocks.extensionHost.process(rig.threads.osThread)
+        }
+        return when (answer) {
+            ProcessingAnswer.COMPLETED -> ExtensionAnswer.COMPLETED
+            ProcessingAnswer.PROCESSING -> ExtensionAnswer.PROCESSING
+            ProcessingAnswer.FAILED -> ExtensionAnswer.FAILED
+        }
+    }
+
+    override suspend fun terminate() = rig.mocks.extensionHost.terminate()
 }

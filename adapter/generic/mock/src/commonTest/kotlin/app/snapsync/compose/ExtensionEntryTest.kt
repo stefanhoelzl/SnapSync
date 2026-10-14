@@ -57,7 +57,7 @@ class ExtensionEntryTest {
         snapSyncExtension(extensionPorts(host), lane = Dispatchers.Default, answerOn = null)
         joinedWithAToken("token-before")
 
-        host.operator.process(Dispatchers.Default)
+        host.process(Dispatchers.Default)
         assertEquals(
             listOf<String?>("token-before"),
             publishedWith,
@@ -67,7 +67,7 @@ class ExtensionEntryTest {
         // The app renews into the shared item, and a new manifest is due (the app's enrolment invalidates the record).
         attest.setToken(TokenText.parse("token-after"))
         DeviceManifestService(appDatabase).clearLastUploaded()
-        host.operator.process(Dispatchers.Default)
+        host.process(Dispatchers.Default)
         assertEquals(
             listOf<String?>("token-before", "token-after"),
             publishedWith,

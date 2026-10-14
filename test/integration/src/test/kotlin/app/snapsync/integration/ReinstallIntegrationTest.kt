@@ -153,7 +153,7 @@ class ReinstallIntegrationTest {
         assertEquals(SyncHealth.Loading, state().joined?.health, "the status stays on its neutral line")
 
         backend.failUnion(false)
-        recognisedAfter { os("app", "onForeground") }
+        recognisedAfter { os.foreground() }
         uploadAll()
 
         assertEquals(
@@ -178,10 +178,10 @@ class ReinstallIntegrationTest {
         device("reinstall")
         backend.failUnion(true)
         rejoinUnrecognised(event)
-        os("app", "onBackground")
+        os.background()
         backend.failUnion(false)
 
-        recognisedAfter { os("app", "onBackgroundTask", HEARTBEAT) }
+        recognisedAfter { os.backgroundTask(HEARTBEAT, awaitRelease = true) }
         cycle()
         assertEquals(0, jobs().created, "the received photo is recognised, not shared")
     }
@@ -290,7 +290,7 @@ class ReinstallIntegrationTest {
         // its import ran while the grant's adoption was still reading names (2026-10-01). Every import drain now waits
         // for the membership's adoption (`DownloadControllerTest` pins that order; here the mock's reads are instant).
         permission(PhotoGrant.GRANTED)
-        os("app", "onForeground")
+        os.foreground()
         // The grant's adoption is the app's answer to it, and it runs before the uploads are armed; a cycle forced
         // here directly (as a test may) must not overtake it, as none can on a phone.
         eventually(read = { adoptions() }) { it > before }

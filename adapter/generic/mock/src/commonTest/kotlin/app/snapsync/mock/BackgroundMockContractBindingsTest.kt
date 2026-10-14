@@ -64,7 +64,7 @@ class BackgroundMockContractBindingsTest {
                 else -> WakeMock()
             }
             val port = mock.port().recorded(log)
-            val pending = { mock.operator.pendingWakes.count { (id, _) -> id == WakeId.Heartbeat } }
+            val pending = { mock.pending.value.count { (id, _) -> id == WakeId.Heartbeat } }
             val delivering = state == WakeState.DELIVERING || state == WakeState.DELIVERING_LIBRARY_CHANGES
             if (!delivering) return Entered.Ready(ScheduledWakes(port) { pending() })
             // The operating system: a wake due now is delivered once it is asked for; a library wake when the library changes.
@@ -75,7 +75,7 @@ class BackgroundMockContractBindingsTest {
                 mock.pending.collect { queue ->
                     queue.filter { (_, trigger) -> trigger is WakeTrigger.After && trigger.earliest == Duration.ZERO }
                         .forEach { (id, _) ->
-                            val run = mock.operator.fire(id, Completion.None)
+                            val run = mock.fire(id, Completion.None)
                             running.update { it + run }
                         }
                 }
@@ -83,7 +83,7 @@ class BackgroundMockContractBindingsTest {
             val os = WakeOs(
                 changeLibrary = {
                     mock.pending.first { WakeId.LibraryChanged in it }
-                    mock.operator.fire(WakeId.LibraryChanged, Completion.None)
+                    mock.fire(WakeId.LibraryChanged, Completion.None)
                 },
                 endRunningWake = { running.load().forEach { it.expire() } },
             )
@@ -102,7 +102,7 @@ class BackgroundMockContractBindingsTest {
             if (state == BackgroundTimeState.TIME_REMAINS) return Entered.Ready(mock.port().recorded(log))
             // The operating system: every hold's time runs out once it is begun.
             val system = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-            system.launch { mock.operator.holds.collect { held -> held.forEach { it.expire() } } }
+            system.launch { mock.held.collect { held -> held.forEach { it.expire() } } }
             return Entered.Ready(mock.port().recorded(log)) { system.cancel() }
         }
     }

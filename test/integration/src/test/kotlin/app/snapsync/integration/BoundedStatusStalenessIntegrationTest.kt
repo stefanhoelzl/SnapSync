@@ -38,7 +38,7 @@ class BoundedStatusStalenessIntegrationTest {
 
         // The foreground entry read: counted zeros on both arms, so the screen legitimately settles. The entry
         // also starts the foreground-gated poll.
-        os("app", "onForeground")
+        os.foreground()
         awaitInSync()
 
         // Discovery lands AFTER that read — the order `Foreground` actually produces, since the status refresh
@@ -53,7 +53,7 @@ class BoundedStatusStalenessIntegrationTest {
         // what is asserted is that the screen corrects itself ON A TICK.
         assertIs<SyncHealth.Syncing>(awaitHealth { it is SyncHealth.Syncing })
 
-        os("app", "onBackground") // the poll stops with the foreground
+        os.background() // the poll stops with the foreground
     }
 
     @Test
@@ -63,7 +63,7 @@ class BoundedStatusStalenessIntegrationTest {
 
         // A read while the burst is outstanding: the download arm holds the screen at "Syncing". The foreground
         // entry reads the status, plans the download, and starts the poll.
-        os("app", "onForeground")
+        os.foreground()
         awaitHealth { it is SyncHealth.Syncing }
 
         // The asset arrives. This is the download arm's own progress — no ledger change, no upload, nothing the
@@ -72,6 +72,6 @@ class BoundedStatusStalenessIntegrationTest {
 
         assertIs<SyncHealth.InSync>(awaitHealth { it is SyncHealth.InSync })
 
-        os("app", "onBackground")
+        os.background()
     }
 }

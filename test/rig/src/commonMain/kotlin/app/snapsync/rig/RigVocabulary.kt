@@ -18,7 +18,7 @@ object RigVocabulary {
 
     /** The app root's wired entry points — the iOS shell's `SnapSyncRoot` names, which the JVM host maps onto the
      *  entry ports (`Lifecycle`, `Links`, `PushNotifications`, `Wake`, the transfer sessions) with the same argument
-     *  shapes. */
+     *  shapes. The typed `os` service makes the same deliveries; these string verbs go with the string protocol. */
     val appEntries: List<String> = listOf(
         "onForeground",
         "onBackground",
@@ -33,8 +33,9 @@ object RigVocabulary {
     /**
      * What only an operating system that is PLAYED can deliver: its expiry — every completion handler it holds and every
      * background-time hold told their time is up (`os/app/onExpiry`; `?arg=next` hands the next handler over already
-     * expired). A real operating system's expiry is its own, so a host honours it only where the background-time holds
-     * are mocked — always on the JVM host, and on the app host when its adapter choice mocks them.
+     * expired), the string form of `played-os`. A real operating system's expiry is its own, so a host honours it only
+     * where the background-time holds are mocked — always on the JVM host, and on the app host when its adapter choice
+     * mocks them.
      */
     val playedOsEntries: List<String> = listOf("os/app/onExpiry")
 
@@ -66,10 +67,9 @@ object RigVocabulary {
      */
     val worldLevers: List<String> = listOf(
         // The integration surface's observable reads of the world's simulated systems (`docs/testing.md`, "The
-        // seam-to-UI-state integration surface"): what the operating system recorded of the app — the completion
-        // handlers it handed over and got back, the screen, the selection observer, the heartbeat requests, the
-        // background-time holds, the push registrations and the transfer sessions. The backend's, the crash
-        // reporter's and the system UI's are their services'.
+        // seam-to-UI-state integration surface"): what the operating system recorded of the app, for the systems not yet
+        // typed services — the screen, the selection observer, the transfer sessions, the databases and the staged
+        // files. The backend's, the crash reporter's, the system UI's and the operating system's own are their services'.
         "device/os-record",
         // ...and the levers that put those systems and the operating system into the states a test starts from. The
         // photo library's are its typed service's (`library`, `LibraryLevers`), the device's surroundings theirs.

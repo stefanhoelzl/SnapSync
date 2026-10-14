@@ -35,7 +35,7 @@ class EventChecksIntegrationTest {
         val before = unionReads(event)
 
         advanceTo(T0_PLUS_10_MIN)
-        os("app", "onSilentPush", event)
+        os.silentPush(event, awaitRelease = true)
         eventually(read = { unionReads(event) }) { it == before + 1 }
 
         advanceTo(T0_PLUS_20_MIN)
@@ -51,7 +51,7 @@ class EventChecksIntegrationTest {
         foreignDevice(DEV_F, "FQ")
         // The join's own wake runs on after the join answers, and asks the event whenever it ends — it is not bounded:
         // awaited before the end passes, or a late one reads the event's state between the two heartbeats.
-        awaitOs { it.backgroundTimeHolds.isEmpty() }
+        awaitNoHolds()
         advanceTo(AFTER_THE_END)
         heartbeat()
         val first = eventReads(event)
@@ -60,7 +60,7 @@ class EventChecksIntegrationTest {
         heartbeat()
         assertEquals(first, eventReads(event), "a wake within the hour reads no state")
 
-        os("app", "onSilentPush", event)
+        os.silentPush(event, awaitRelease = true)
         eventually<Int>(read = { eventReads(event) }) { it == first + 1 }
     }
 
@@ -86,7 +86,7 @@ class EventChecksIntegrationTest {
     }
 
     private suspend fun Rig.heartbeat() {
-        os("app", "onBackgroundTask", HEARTBEAT_TASK)
+        os.backgroundTask(HEARTBEAT_TASK, awaitRelease = true)
     }
 
     private suspend fun Rig.unionReads(event: String): Int =

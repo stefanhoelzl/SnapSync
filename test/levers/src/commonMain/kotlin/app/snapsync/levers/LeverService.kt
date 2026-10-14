@@ -93,6 +93,24 @@ enum class LeverNeed(val what: String) {
 
     /** The device's Keychain is the mock's. */
     KEYCHAIN_MOCKED("the device's Keychain, mocked"),
+
+    /** The app's foreground life is the mock, whose operator the service is. */
+    LIFECYCLE_MOCKED("the foreground life's mock"),
+
+    /** The links the platform opens the app with are the mock's. */
+    LINKS_MOCKED("the links' mock"),
+
+    /** The push service is the mock, whose operator the service is. */
+    PUSH_MOCKED("the push service's mock"),
+
+    /** The operating system's scheduled wakes are the mock's. */
+    WAKE_MOCKED("the scheduled wakes' mock"),
+
+    /** The operating system's background-time holds are the mock's: the operating system is played, its expiry too. */
+    BACKGROUND_TIME_MOCKED("the background-time holds' mock"),
+
+    /** The upload extension's registration is the mock's. */
+    EXTENSION_REGISTRY_MOCKED("the extension registration's mock"),
 }
 
 /**
@@ -107,9 +125,10 @@ annotation class JoinedEvent
 annotation class ThisDevice
 
 /**
- * On a public-route method: the operator [members] it stands in for — what a test reaches through the backend's public
- * surface instead of through the operator, so it holds against the real `api/` too. The gate (`LeverFacesTest`) accepts
- * a face member that is no method of its interface only when a public-route method names it here.
+ * On a public-route method: the operator [members] it stands in for, each as `<Face>.<member>` — what a test reaches
+ * through a surface every host serves instead of through the operator: the backend's public routes, so it holds against
+ * the real `api/` too, or the operating system's deliveries. The gate (`LeverFacesTest`) accepts a face member that is no
+ * method of its interface only when such a method names it here — that face's member, and no other face's of the name.
  */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
@@ -137,6 +156,15 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     FilesLevers,
     KeychainLevers,
     OlderInstallLevers,
+    OsLevers,
+    PlayedOsLevers,
+    ExtensionHostLevers,
+    LifecycleLevers,
+    LinksLevers,
+    PushLevers,
+    WakeLevers,
+    BackgroundTimeLevers,
+    ExtensionRegistryLevers,
 )
 
 /**

@@ -34,6 +34,7 @@ import app.snapsync.rig.deviceCommands
 import app.snapsync.rig.excludedUserCommands
 import app.snapsync.rig.extensionTriggerGroup
 import app.snapsync.rig.galleryReader
+import app.snapsync.rig.iosHostServices
 import app.snapsync.rig.iosRefusals
 import app.snapsync.rig.noMembershipRefusal
 import app.snapsync.rig.osExtensionEnabled
@@ -168,6 +169,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     readGallery = galleryReader(launch, core = { SnapSyncRoot.app }),
     // The typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it.
     services = launch.world.servedServices(
+        hostServices(launch),
         reconcileUploads = { SnapSyncRoot.app.uploadTransitions.onOverrideChanged() },
     ),
     // The registration the app runs over — the adapter choice's, where it mocks it.
@@ -191,11 +193,22 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
             ),
         ),
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
-    refusals = iosRefusals(launch),
+    refusals = iosRefusals(launch, hostServices(launch)),
     recordLanded = ::recordLanded,
     osRecord = osRecord(launch),
     adapters = launch.description,
     uncomposed = launch.uncomposed,
+)
+
+/**
+ * The typed services this host implements itself (`os`, `extension-host`): the same driver and the same extension root
+ * thunks as the `/os` groups above — thunks, never method references, for the reason given there.
+ */
+private fun hostServices(launch: RigLaunch) = iosHostServices(
+    launch,
+    IosEntryDriver,
+    process = { UploadExtensionRoot.processRawValue() },
+    terminate = { UploadExtensionRoot.onTerminate() },
 )
 
 /**

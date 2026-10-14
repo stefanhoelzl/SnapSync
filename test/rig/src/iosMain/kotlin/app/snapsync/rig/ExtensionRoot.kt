@@ -1,5 +1,7 @@
 package app.snapsync.rig
 
+import app.snapsync.levers.ExtensionAnswer
+import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosThreadLabel
 import app.snapsync.logging.PublicNSLogSink
@@ -9,6 +11,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.newSingleThreadContext
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -89,6 +92,38 @@ private suspend fun invokeExtensionCycle(
     log: Logger,
 ): String {
     beginUploadJobCycle(body)?.let { refusal -> return refusal }
+    return endUploadJobCycle(runExtensionCycle(process, log))
+}
+
+/**
+ * The `extension-host` service: the same invocation as `processRawValue` with no job sets handed in, on the extension
+ * root's lane — and its end, on the same lane. The simulator's scripted job sets stay the string verb's.
+ */
+internal fun extensionHost(
+    process: () -> Int,
+    terminate: () -> Unit,
+    log: Logger = Logger.withTag("rig"),
+): ExtensionHostLevers = object : ExtensionHostLevers {
+    override suspend fun process(): ExtensionAnswer = withContext(extensionLane) {
+        beginUploadJobCycle(null)?.let { refusal -> error(refusal) }
+        val raw = runExtensionCycle(process, log)
+        endUploadJobCycle(raw)
+        when (raw) {
+            PROCESSING_RAW -> ExtensionAnswer.PROCESSING
+            COMPLETED_RAW -> ExtensionAnswer.COMPLETED
+            else -> ExtensionAnswer.FAILED
+        }
+    }
+
+    override suspend fun terminate() = withContext(extensionLane) { terminate() }
+}
+
+/** `PHBackgroundResourceUploadProcessingResult`'s raw values the answer distinguishes. */
+private const val PROCESSING_RAW = 1
+private const val COMPLETED_RAW = 2
+
+/** One extension cycle, its lines in the extension's log: answers the raw processing result. */
+private fun runExtensionCycle(process: () -> Int, log: Logger): Int {
     val saved = Logger.config.logWriterList
     val raw = try {
         // Point Kermit at the EXTENSION's log for the duration, then hand the app's writers back.
@@ -109,7 +144,7 @@ private suspend fun invokeExtensionCycle(
         Logger.setLogWriters(saved)
     }
     log.i { "photokit-ext cycle finished: raw=$raw" }
-    return endUploadJobCycle(raw)
+    return raw
 }
 
 /**

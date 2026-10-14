@@ -3,6 +3,12 @@ package app.snapsync.mock
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Running
+import app.snapsync.levers.BackgroundTimeLevers
+import app.snapsync.levers.ExtensionRegistryLevers
+import app.snapsync.levers.PendingWake
+import app.snapsync.levers.WakeLevers
+import app.snapsync.levers.WakeView
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.ScheduleResult
@@ -13,8 +19,6 @@ import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlin.concurrent.Volatile
 
 // The mocks of the operating system's background execution (`docs/testing.md`, "Mocks"): when it wakes the app, how
@@ -36,6 +40,14 @@ class WakeMock(
 
     @Volatile internal var scheduled = 0
 
+    /** Who is told each request the app makes — the control channel's event stream, or no one. */
+    @Volatile private var watcher: OsWatcher = OsWatcher {}
+
+    /** Tells [listener] each request the app makes, as it makes it (`docs/testing.md`, "How a test waits"). */
+    fun watch(listener: OsWatcher) {
+        watcher = listener
+    }
+
     fun port(): Wake = Face()
 
     /** The port face a process is handed. */
@@ -48,33 +60,47 @@ class WakeMock(
         }
 
         override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
-            refusal?.let { ScheduleResult.Refused(it) } ?: queue.schedule(
-                id,
-                trigger,
-            ).also { if (id == WakeId.Heartbeat && it == ScheduleResult.Scheduled) scheduled++ }
+            refusal?.let { ScheduleResult.Refused(it) } ?: queue.schedule(id, trigger).also {
+                if (it != ScheduleResult.Scheduled) return@also
+                if (id == WakeId.Heartbeat) scheduled++
+                watcher.told(WorldEvent.WakeScheduled(pendingWake(id, trigger)))
+            }
 
         override fun cancel(id: WakeId) {
             queue.cancel(id)
+            watcher.told(WorldEvent.WakeCancelled(wakeName(id)))
         }
+    }
+
+    /**
+     * The operating system wakes the app for [id], handing it [completion]; answers the run its expiry expires.
+     * Plumbing: the completion is the played operating system's, and crosses no wire (`OsLevers.backgroundTask`).
+     */
+    fun fire(id: WakeId, completion: Completion): Running {
+        val current = handlers.require("a $id wake")
+        // Every wake is one-shot: the operating system launching it is what consumes the request.
+        pending.value -= id
+        return current.onWake.handle(id, completion)
     }
 
     val operator: WakeOperator = WakeOperator(this)
 }
 
-class WakeOperator internal constructor(private val mock: WakeMock) {
-    /** How many heartbeat requests the operating system accepted. */
-    val heartbeatsScheduled: Int get() = mock.scheduled
+class WakeOperator internal constructor(private val mock: WakeMock) : WakeLevers {
+    override suspend fun wakes(): WakeView =
+        WakeView(mock.scheduled, mock.pending.value.map { (id, trigger) -> pendingWake(id, trigger) })
+}
 
-    /** The requests it holds right now. */
-    val pendingWakes: Map<WakeId, WakeTrigger> get() = mock.pending.value
+/** A wake request as the operating system holds it, on the wire. */
+internal fun pendingWake(id: WakeId, trigger: WakeTrigger): PendingWake = when (trigger) {
+    is WakeTrigger.After -> PendingWake(wakeName(id), trigger.cadence.name.lowercase(), trigger.earliest.inWholeSeconds)
+    is WakeTrigger.LibraryChange -> PendingWake(wakeName(id))
+}
 
-    /** The operating system wakes the app for [id], handing it [completion]; answers the run its expiry expires. */
-    fun fire(id: WakeId, completion: Completion): Running {
-        val handlers = mock.handlers.require("a $id wake")
-        // Every wake is one-shot: the operating system launching it is what consumes the request.
-        mock.pending.value -= id
-        return handlers.onWake.handle(id, completion)
-    }
+/** A wake's name on the wire: `heartbeat`, `library-changed`. */
+internal fun wakeName(id: WakeId): String = when (id) {
+    WakeId.Heartbeat -> "heartbeat"
+    WakeId.LibraryChanged -> "library-changed"
 }
 
 /**
@@ -84,19 +110,28 @@ class WakeOperator internal constructor(private val mock: WakeMock) {
 class BackgroundTimeMock {
     internal val held = MutableStateFlow<List<HeldBackgroundTime>>(emptyList())
 
-    fun port(): BackgroundTime = InMemoryBackgroundTime(held)
+    /** Who is told each hold begun and ended — the control channel's event stream, or no one. */
+    @Volatile private var watcher: OsWatcher = OsWatcher {}
+
+    /** Tells [listener] each hold the app begins and ends, as it does (`docs/testing.md`, "How a test waits"). */
+    fun watch(listener: OsWatcher) {
+        watcher = listener
+    }
+
+    fun port(): BackgroundTime = InMemoryBackgroundTime(held) { watcher.told(it) }
+
+    /** The operating system says every outstanding hold's time is up. */
+    fun expireAll() {
+        held.value.forEach { it.expire() }
+    }
 
     val operator: BackgroundTimeOperator = BackgroundTimeOperator(this)
 }
 
-class BackgroundTimeOperator internal constructor(private val mock: BackgroundTimeMock) {
-    /** The holds outstanding, as a cell. */
-    val holds: StateFlow<List<HeldBackgroundTime>> = mock.held.asStateFlow()
+class BackgroundTimeOperator internal constructor(private val mock: BackgroundTimeMock) : BackgroundTimeLevers {
+    override suspend fun holds(): List<String> = mock.held.value.map { it.label }
 
-    /** The operating system says every outstanding hold's time is up. */
-    fun expireAll() {
-        mock.held.value.forEach { it.expire() }
-    }
+    override suspend fun expireAll() = mock.expireAll()
 }
 
 /**
@@ -111,12 +146,19 @@ class ExtensionRegistryMock(
 ) {
     internal val record: MutableStateFlow<Boolean>? = if (supported) MutableStateFlow(registered) else null
 
-    fun port(): ExtensionRegistry = InMemoryExtensionRegistry(record, partialGrant)
+    /** Who is told each registration change — the control channel's event stream, or no one. */
+    @Volatile private var watcher: OsWatcher = OsWatcher {}
+
+    /** Tells [listener] each change the operating system takes, as it takes it (`docs/testing.md`, "How a test waits"). */
+    fun watch(listener: OsWatcher) {
+        watcher = listener
+    }
+
+    fun port(): ExtensionRegistry = InMemoryExtensionRegistry(record, partialGrant) { watcher.told(it) }
 
     val operator: ExtensionRegistryOperator = ExtensionRegistryOperator(this)
 }
 
-class ExtensionRegistryOperator internal constructor(private val mock: ExtensionRegistryMock) {
-    /** Whether a registration exists; `null` on a platform without the extension. */
-    val registered: Boolean? get() = mock.record?.value
+class ExtensionRegistryOperator internal constructor(private val mock: ExtensionRegistryMock) : ExtensionRegistryLevers {
+    override suspend fun registered(): Boolean? = mock.record?.value
 }

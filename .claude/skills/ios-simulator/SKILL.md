@@ -32,7 +32,7 @@ State these before writing a scenario against this host, or you will write one t
 - **No `GalleryAccess.LIMITED`.** `simctl privacy` has no `photos-limited` (though `contacts-limited`
   exists). Accepted everywhere-gap: the device needs taps for it too.
 - **No APNs token** — `no valid "aps-environment" entitlement string found`. `simctl push` never contacts
-  Apple, so a synthetic token through the `onPushToken` trigger is the way in.
+  Apple, so a synthetic token through `rig os push-token --token <hex>` is the way in.
 - **The OS never invokes the upload extension — so the CHANNEL invokes its root instead.** Under a full
   grant the extension is registrable here, exactly as on a ≥26.1 device, and its root now runs:
   `/os/photokit-ext/processRawValue` calls the **real** `UploadExtensionRoot`, so the shared `uploadCycle`,
@@ -363,8 +363,8 @@ SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18101 xcrun simctl launch "$DEV_A" app.snapsync
 SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18102 xcrun simctl launch "$DEV_B" app.snapsync
 ```
 
-Everything past `/health` — `/state`, `/logs`, `POST /os/<root>/<member>`, the receipted-vs-202
-split, the `onForeground`-before-membership ordering trap — is in `rig-channel` and is identical here.
+Everything past `/health` — `/state`, `/logs`, the `os` service and `POST /os/<root>/<member>`, the
+receipted-vs-immediate split, the `foreground`-before-membership ordering trap — is in `rig-channel` and is identical here.
 
 ## Driving an event
 
@@ -379,7 +379,7 @@ curl -X POST "localhost:$P/user/confirmJoin?cutoff=2026-08-24T00:00:00Z&until=20
 ```
 
 To put a SECOND instance on the same event, drive its channel through the warm universal-link entry —
-`POST /os/app/onSceneContinueActivity?arg=<link>` — which takes the same decode → gate → join path a scanned QR
+`rig os continue-link --url <link>` (the `rig-channel` skill) — which takes the same decode → gate → join path a scanned QR
 does. `simctl openurl` cannot be used for this (see the entitlement note above).
 
 ⚠️ **Never join an event you did not create.**

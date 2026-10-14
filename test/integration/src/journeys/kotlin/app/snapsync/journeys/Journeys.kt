@@ -3,6 +3,7 @@ package app.snapsync.journeys
 import app.snapsync.control.RigClient
 import app.snapsync.control.Verifies
 import app.snapsync.control.done
+import app.snapsync.levers.OsLevers
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.ResourceRole
@@ -154,7 +155,7 @@ class Journeys {
             .filter { it.admitted }.mapTo(mutableSetOf()) { AssetId(it.assetId) }
         assertTrue(admitted.size >= 2, "the policy seed admits its above-floor half: $admitted")
 
-        a.os("app", "onForeground").done()
+        a.levers(OsLevers).foreground()
         eventually(UPLOAD, "A's photos in the event union") {
             unionAssetIds(http, event).containsAll(admitted)
         }
@@ -178,7 +179,7 @@ class Journeys {
         val shared = member.share(event, count = MEMBER_PHOTOS, creationDate = "${today}T12:00:00Z")
 
         val before = a.gallery(cutoff = WHOLE_LIBRARY).census.total
-        a.os("app", "onForeground").done()
+        a.levers(OsLevers).foreground()
         val received = a.awaitState(DOWNLOAD) {
             it.download.total >= shared.size && it.download.downloaded == it.download.total
         }
@@ -207,7 +208,7 @@ class Journeys {
         val today = Clock.System.todayIn(TimeZone.UTC)
         member.share(event, photos, creationDate = "${today}T12:00:00Z")
 
-        a.os("app", "onForeground").done()
+        a.levers(OsLevers).foreground()
         a.awaitState(DOWNLOAD) {
             it.download.downloaded >= downloadedBefore + photos.size && it.download.downloaded == it.download.total
         }
@@ -235,7 +236,7 @@ class Journeys {
             a.deviceVerb("gallery/add-moving", body = Json.encodeToString(MovingPhoto.serializer(), body)).done()
         }
 
-        a.os("app", "onForeground").done()
+        a.levers(OsLevers).foreground()
         eventually(UPLOAD, "A's ${photos.size} moving photo(s) in the event union, whole") {
             val own = union(http, event).filter { it["deviceId"]?.jsonPrimitive?.content != member.deviceId }
             photos.all { files -> own.any { shapeOf(it) == files.map(::part).map { p -> p.role.wire to p.filename }.toSet() } }

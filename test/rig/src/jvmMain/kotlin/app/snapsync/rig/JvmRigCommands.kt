@@ -100,7 +100,7 @@ internal fun joinedEventId(rig: JvmRig): String? {
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */
 internal fun jvmRefusals(
     rig: JvmRig,
-): Map<String, String> = rig.world.leverRefusals() + RigVocabulary.adapterRefusals + buildMap {
+): Map<String, String> = rig.world.leverRefusals(rig.host) + RigVocabulary.adapterRefusals + buildMap {
     put(
         "device/gallery/wipe",
         "a mocked photo library is fresh for every host, so there is nothing to wipe; the wipe's answer is PhotoKit's " +
