@@ -18,7 +18,6 @@ import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
-import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadTarget
 import app.snapsync.wire.api.ChallengeReply
@@ -150,8 +149,8 @@ class MockStateTest {
             mapOf(WakeId.Heartbeat to WakeTrigger.After(1.hours, network = WakeNetwork.ANY)),
             copy.wakes.operator.pendingWakes,
         )
-        assertEquals(listOf("A1/primary"), copy.uploadQueue.operator.liveJobs())
-        assertEquals(1, copy.uploadQueue.operator.created.size)
+        assertEquals(listOf("A1/primary"), copy.uploadQueue.view().live)
+        assertEquals(1, copy.uploadQueue.view().created.size)
         assertEquals(true, copy.extensionRegistry.operator.registered)
         assertEquals(Availability.UNAVAILABLE, copy.processInfo.operator.protectedData)
         assertEquals(NetworkAccess.Blocked, copy.connectivity.operator.access)
@@ -232,7 +231,7 @@ class MockStateTest {
                 TransferNetwork.UNRESTRICTED_ONLY,
             ),
         )
-        device.uploadQueue.operator.failJob("A1/primary", TransferFailure("http:503"))
+        device.uploadQueue.operator.failJob("A1/primary", "http:503")
         device.uploadSession.handbacks = 2
         device.downloads.port().start(
             "https://in-memory.backend/api/v2/events/E/files/devices/D2/F1/primary",

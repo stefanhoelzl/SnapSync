@@ -45,6 +45,15 @@ enum class LeverNeed(val what: String) {
      * methods work against the real `api/` as well as the mock.
      */
     BACKEND_REACHABLE("the backend's public surface"),
+
+    /** The operating system's upload-job queue is the mock, whose operator the service is. */
+    UPLOAD_QUEUE_MOCKED("the upload-job queue's mock"),
+
+    /** The app uploader's background transfer session is the mock, whose operator the service is. */
+    UPLOAD_SESSION_MOCKED("the upload session's mock"),
+
+    /** The background download session is the mock, whose operator the service is. */
+    DOWNLOADS_MOCKED("the download session's mock"),
 }
 
 /**
@@ -73,6 +82,9 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     WorldLevers,
     BackendLevers,
     PublicBackendLevers,
+    UploadQueueLevers,
+    UploadSessionLevers,
+    DownloadSessionLevers,
 )
 
 /**

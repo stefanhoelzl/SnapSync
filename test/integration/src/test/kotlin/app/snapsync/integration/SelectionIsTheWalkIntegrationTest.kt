@@ -38,7 +38,7 @@ class SelectionIsTheWalkIntegrationTest {
         assertEquals(all.map(::primaryJob).toSet(), jobs().live.toSet(), "all four in flight")
 
         // The network returns: every object lands, and no acknowledgement ever reaches the app.
-        device("jobs/complete") // the OS finishes all four jobs; the extension is never invoked
+        uploadQueue.completeJob() // the OS finishes all four jobs; the extension is never invoked
 
         // Access narrows to two of the four, and the selection is read. Under a partial grant the extension withholds,
         // so the app's uploader is the one that runs: its selection change walks the read selection.
@@ -68,7 +68,7 @@ class SelectionIsTheWalkIntegrationTest {
         permission("GRANTED")
         val event = createAndJoin()
         addPhoto("A")
-        device("jobs/limit", "n" to "0") // discovered and declared, no job: the row the old collapse deleted
+        uploadQueue.jobLimit(0) // discovered and declared, no job: the row the old collapse deleted
         cycle()
         assertEquals(setOf("A"), manifest(event)?.keys, "declared on discovery")
         assertEquals(0, jobs().created)
@@ -117,10 +117,6 @@ class SelectionIsTheWalkIntegrationTest {
         assertEquals(listOf(primaryKey("B")), awaitAppUploads(1).live, "uploaded again")
         assertEquals(3, appUploads().created)
         eventually<Set<String>?>(read = { manifest(event)?.keys }) { it == setOf("A", "B") }
-    }
-
-    private companion object {
-        const val UNLIMITED = "2147483647"
     }
 }
 

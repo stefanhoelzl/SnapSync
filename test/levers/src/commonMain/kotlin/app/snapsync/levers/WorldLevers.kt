@@ -84,4 +84,23 @@ sealed interface WorldEvent {
     @Serializable
     @SerialName("backend-held")
     data class BackendHeld(val call: BackendCall) : Backend
+
+    /** What the operating system's background transfers recorded: the work the app handed them. */
+    @Serializable
+    sealed interface Transfer : WorldEvent
+
+    /** The app created an upload job on the operating system's queue, named by what its destination names. */
+    @Serializable
+    @SerialName("upload-job-created")
+    data class UploadJobCreated(val job: String) : Transfer
+
+    /** The app handed its upload session a transfer, tagged with its upload [key]. */
+    @Serializable
+    @SerialName("session-transfer-created")
+    data class SessionTransferCreated(val key: String) : Transfer
+
+    /** The app started a download, under its [description]. */
+    @Serializable
+    @SerialName("download-started")
+    data class DownloadStarted(val description: String) : Transfer
 }

@@ -1,7 +1,10 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -248,41 +251,54 @@ class EntryIntegrationTest {
     }
 
     @Test
-    fun an_upload_that_ends_fills_its_freed_slot() = rigTest {
-        createAndJoin()
-        repeat(6) { addPhoto("P$it") } // more than the session holds live at once
-        foreground()
-        val live = awaitAppUploads(4)
-        awaitOs { it.backgroundTimeHolds.isEmpty() }
+    fun an_upload_that_ends_fills_its_freed_slot() = behaviour {
+        val first = given {
+            joinedEvent()
+            sessionFull()
+        }
 
-        completeAppUploads(live.live.first())
+        whenever { uploadSession.complete(first) }
 
-        // The freed slot is filled from the backlog, by work the end starts and does not await: awaited to its end.
-        eventually(read = { appUploads().created }) { it == live.created + 1 }
-        awaitOs { it.backgroundTimeHolds.isEmpty() }
-        assertEquals(live.created + 1, appUploads().created, "one end fills one slot")
+        // The freed slot is filled from the backlog, by work the end starts and does not await: one end, one slot.
+        then { times(1) { event<WorldEvent.SessionTransferCreated>() } }
     }
 
     @Test
-    fun an_upload_that_ends_while_the_app_may_not_create_fills_no_slot() = rigTest {
-        createAndJoin()
-        repeat(6) { addPhoto("P$it") } // more than the session holds live at once
-        foreground()
-        awaitAppUploads(4)
-        awaitOs { it.backgroundTimeHolds.isEmpty() }
-        val created = appUploads().created
-        device("uploaders", "app" to "off")
-        completeAppUploads()
-        awaitOs { it.backgroundTimeHolds.isEmpty() }
-        assertEquals(
-            created,
-            appUploads().created,
-            "a finished upload's freed slot stays empty while the app may not create",
+    fun an_upload_that_ends_while_the_app_may_not_create_fills_no_slot() = behaviour {
+        given {
+            joinedEvent()
+            sessionFull()
+            step("the app's uploader off", act = { device("uploaders", "app" to "off") }, until = { settled { true } })
+        }
+
+        whenever { uploadSession.complete() }
+
+        then { never<WorldEvent.SessionTransferCreated>() }
+    }
+
+    /**
+     * More photos than the app's upload session holds live at once, and the app in front: the session full, the rest
+     * waiting. Answers the key of the first transfer created.
+     */
+    private suspend fun Given.sessionFull(): String {
+        lateinit var first: Seen<WorldEvent.SessionTransferCreated>
+        step(
+            "the session full, two photos waiting",
+            act = {
+                repeat(SESSION_CAP + 2) { takePhoto("P$it") }
+                os("app", "onForeground")
+            },
+            until = {
+                first = event<WorldEvent.SessionTransferCreated>()
+                times(SESSION_CAP) { event<WorldEvent.SessionTransferCreated>() }
+            },
         )
-        assertTrue(appUploads().live.isEmpty(), "and every end was recorded")
+        return first.value.key
     }
 
     private companion object {
+        /** The live transfers the app uploader's session holds at once. */
+        const val SESSION_CAP = 4
         const val TOKEN = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
         const val OTHER_EVENT = "33333333-3333-4333-8333-333333333333"
     }

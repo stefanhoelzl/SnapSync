@@ -144,13 +144,14 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         }
         if (mocked(MockedSystem.PUSH)) put("pushRegistrations", device.pushService.operator.registrations)
         if (mocked(MockedSystem.DOWNLOADS)) {
+            val session = device.downloads.view()
             putJsonObject("downloadSession") {
-                put("up", device.downloads.operator.realized)
-                put("started", device.downloads.operator.started.size)
-                put("inFlight", device.downloads.operator.inFlight().size)
+                put("up", session.up)
+                put("started", session.started.size)
+                put("inFlight", session.inFlight.size)
             }
         }
-        if (mocked(MockedSystem.UPLOAD_SESSION)) put("uploadSessionHandbacks", device.uploadSession.operator.handbacks)
+        if (mocked(MockedSystem.UPLOAD_SESSION)) put("uploadSessionHandbacks", device.uploadSession.view().handbacks)
         // The device's disk: every database any process opened, and the files in the download staging directory.
         if (mocked(MockedSystem.DATABASES)) {
             putJsonArray("databasesOpened") { device.databases.operator.opened.forEach { add(JsonPrimitive(it)) } }

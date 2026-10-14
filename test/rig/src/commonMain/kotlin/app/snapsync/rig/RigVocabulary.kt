@@ -65,17 +65,10 @@ object RigVocabulary {
      * adapters") — refused, naming the real system, everywhere else.
      */
     val worldLevers: List<String> = listOf(
-        "device/jobs",
-        "device/jobs/limit",
-        "device/jobs/complete",
-        "device/jobs/fail",
-        "device/uploads",
-        "device/uploads/complete",
         "device/import/fail-next",
         "device/databases/locked",
         "device/membership/undeletable",
         "device/permission",
-        "device/downloads/stage",
         "device/album/place",
         "device/album/hold-adds",
         "device/album/kind",

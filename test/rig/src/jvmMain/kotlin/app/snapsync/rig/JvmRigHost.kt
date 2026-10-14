@@ -201,7 +201,7 @@ class JvmRigHost private constructor(
                                         mocks.extensionHost.operator.process(rig.threads.osThread)
                                     }
                                     """{"result":"${result.toString().lowercase()}","queue":"mock",""" +
-                                        """"created":${mocks.uploadQueue.operator.created.size}}""" + "\n"
+                                        """"created":${mocks.uploadQueue.view().created.size}}""" + "\n"
                                 }
                             },
                             "onTerminate" to RigTrigger.Fire { mocks.extensionHost.operator.terminate() },

@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
  * they had just excluded — at 16 rows a cycle, for as long as the backlog took to drain, against a surface that had
  * shown them a smaller count.
  *
- * The fixture forges the backlog the way a device does: the OS refuses jobs for one cycle (`jobs/limit?n=0`), so
+ * The fixture forges the backlog the way a device does: the OS refuses jobs for one cycle (a job limit of 0), so
  * the walk records its rows — declared in the manifest — and enqueues nothing. Raising the cutoff then leaves those
  * rows needing a job under a policy that no longer admits them.
  *
@@ -44,13 +44,13 @@ class NarrowedScopeIntegrationTest {
         addPhoto("LATE", date = late)
 
         // A backlog the wide policy recorded and no cycle has drained: the OS accepted no job.
-        device("jobs/limit", "n" to "0")
+        uploadQueue.jobLimit(0)
         cycle()
         assertEquals(setOf("EARLY", "LATE"), manifest(event)?.keys, "both were recorded under the wide cutoff")
         assertEquals(0, jobs().created, "nothing was enqueued yet")
 
         // The member narrows. EARLY is now outside the membership's scope.
-        device("jobs/limit", "n" to UNLIMITED)
+        uploadQueue.jobLimit()
         narrow()
 
         cycle()
@@ -80,11 +80,11 @@ class NarrowedScopeIntegrationTest {
         repeat(20) { i -> addPhoto("A${(i + 1).toString().padStart(2, '0')}", date = early) }
         addPhoto("Z01", date = late)
 
-        device("jobs/limit", "n" to "0")
+        uploadQueue.jobLimit(0)
         cycle()
         assertEquals(21, manifest(event)?.size, "every asset was recorded under the wide cutoff")
 
-        device("jobs/limit", "n" to UNLIMITED)
+        uploadQueue.jobLimit()
         narrow()
         cycle()
 
@@ -111,9 +111,9 @@ class NarrowedScopeIntegrationTest {
         addPhoto("EARLY", date = early)
         addPhoto("LATE", date = late)
 
-        device("jobs/limit", "n" to "0")
+        uploadQueue.jobLimit(0)
         cycle()
-        device("jobs/limit", "n" to UNLIMITED)
+        uploadQueue.jobLimit()
         narrow()
 
         uploadAll()
@@ -122,9 +122,5 @@ class NarrowedScopeIntegrationTest {
         val uploaded = objects().mapTo(mutableSetOf()) { assetIdFromUploadKey(it).value }
         assertEquals(setOf("LATE"), listed, "the manifest declares only what the narrowed policy admits")
         assertEquals(listed, uploaded, "what is declared and what is uploaded are one set")
-    }
-
-    private companion object {
-        const val UNLIMITED = "2147483647"
     }
 }

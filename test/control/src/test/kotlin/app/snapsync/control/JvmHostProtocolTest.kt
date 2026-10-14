@@ -7,6 +7,7 @@ import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.RigLevers
+import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import app.snapsync.ui.state.Layer
@@ -269,7 +270,7 @@ class JvmHostProtocolTest {
         val cycle = client.os("photokit-ext", "processRawValue").done()
         assertTrue("\"created\":1" in cycle, cycle)
 
-        client.deviceVerb("jobs/complete").done()
+        client.levers(UploadQueueLevers).completeJob()
         client.os("photokit-ext", "processRawValue").done()
         val backend = client.levers(PublicBackendLevers)
         val objects = backend.objects()
@@ -303,7 +304,7 @@ class JvmHostProtocolTest {
 
         assertEquals(event, client.awaitState { it.ready.configResolved }.ready.eventId, "the membership survives")
         assertEquals(1L, client.gallery(cutoff = "1970-01-01T00:00:00Z").census.total, "the library survives")
-        assertTrue("\"created\":1" in client.deviceVerb("jobs").done(), "the OS's upload job survives")
+        assertEquals(1, client.levers(UploadQueueLevers).queue().created.size, "the OS's upload job survives")
     }
 
     private fun onHost(backend: String = "mock", block: suspend (RigClient) -> Unit) =

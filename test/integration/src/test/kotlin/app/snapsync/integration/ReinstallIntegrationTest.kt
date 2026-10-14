@@ -279,7 +279,7 @@ class ReinstallIntegrationTest {
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join(*choices)
         // The downloads the rejoin planned finish while the dialog is still open, as they did on the phone.
-        device("downloads/stage")
+        downloadSession.finish()
         val before = adoptions()
         // Closing the dialog makes the app active: iOS delivers the foreground right after the grant, and on the SE2
         // its import ran while the grant's adoption was still reading names (2026-10-01). Every import drain now waits

@@ -99,7 +99,7 @@ class TransferContractBindingsTest {
             val mock = UploadQueueMock(answeringNetwork(received), restricted = { false })
             if (state in OsUploadQueueContract.PRESENTED) runEntry { present(mock, state, clauseId) }
             if (state == OsUploadQueueState.AT_CAP) {
-                mock.operator.jobLimit = CAP
+                mock.jobLimit = CAP
                 runEntry {
                     repeat(CAP) { n ->
                         val url = base + OsUploadQueueContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
@@ -130,7 +130,7 @@ class TransferContractBindingsTest {
     private suspend fun present(mock: UploadQueueMock, state: OsUploadQueueState, clauseId: String) {
         val target = uploadTarget(base, OsUploadQueueContract.preparedRoute(clauseId, state))
         check(mock.port().create(photo, target) == CreateOutcome.CREATED)
-        val name = mock.operator.liveJobs().single()
+        val name = mock.view().live.single()
         mock.operator.completeJob(name)
         if (state == OsUploadQueueState.PRESENTED_RETRY_SPENT) {
             check(mock.port().retry(mock.port().retryOffered().single(), target) == ChangeOutcome.Applied)
@@ -235,7 +235,7 @@ class TransferContractBindingsTest {
                 Relaunch(
                     deliver = {
                         runEntry { mock.operator.complete(tag) }
-                        mock.operator.handBack(
+                        mock.handBack(
                             object : Completion {
                                 override fun complete() = Unit
                             },
@@ -293,7 +293,7 @@ class TransferContractBindingsTest {
         fun answerHeld() = urls.forEach { (tag, url) -> answer(tag, url) }
 
         private fun answer(tag: String, url: String) {
-            if (mock.operator.inFlight().none { it.description == tag }) return
+            if (mock.locked { mock.inFlight() }.none { it.description == tag }) return
             when (val answer = TransferFixture.answerOf(routeOf(url))) {
                 // The network the binding plays follows a redirect, as a real transport does: the target answers.
                 is FixtureAnswer.Redirect -> respond(tag, answer.to)
@@ -312,7 +312,7 @@ class TransferContractBindingsTest {
             )
             if (!wakes) return mock.operator.finish(tag, outcome)
             wakesReleased = false
-            mock.operator.handBack(
+            mock.handBack(
                 object : Completion {
                     override fun complete() {
                         wakesReleased = true
@@ -320,7 +320,7 @@ class TransferContractBindingsTest {
                 },
             )
             mock.operator.finish(tag, outcome)
-            mock.operator.reportEventsDrained()
+            mock.operator.drain()
         }
     }
 
@@ -377,13 +377,13 @@ class TransferContractBindingsTest {
                     },
                     wakeEnded = { opened.all { it.wakesReleased } },
                     relaunch = {
-                        mock.operator.handBack(
+                        mock.handBack(
                             object : Completion {
                                 override fun complete() = Unit
                             },
                         )
                         mock.operator.finish(DownloadContract.RELAUNCHED_TAG)
-                        mock.operator.reportEventsDrained()
+                        mock.operator.drain()
                     },
                 ),
             )
