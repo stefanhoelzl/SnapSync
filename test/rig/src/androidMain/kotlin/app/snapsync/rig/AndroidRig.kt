@@ -28,7 +28,6 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.put
 import java.io.File
 import kotlin.system.exitProcess
 import kotlin.time.Clock
@@ -135,7 +134,7 @@ private fun adapterVerbs(launch: AndroidRigLaunch): AdapterVerbs =
 /**
  * Start the control channel over the composed app, once the main thread is done with the root's own launch — the
  * server reads the process services and the composition, which exist after it. [lifecycle] is the real adapter the
- * `/os` foreground and background verbs deliver through; [context] is the application — its files directory is where
+ * `os` service's foreground and background deliveries go through; [context] is the application — its files directory is where
  * the bound port is published, and a real library is seeded through its media store.
  */
 fun AndroidRigLaunch.start(
@@ -161,18 +160,7 @@ private fun AndroidRigLaunch.hooks(
     uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
     uploadBase = uploadBase,
     transferBinding = "mock",
-    // The platform calls the app's entry points on the main thread, so the rig does too.
-    mainLane = Dispatchers.Main,
     deviceLog = LogTailService(ports.files.value)::tail,
-    triggerGroups = mapOf(
-        "app" to TriggerGroup(
-            lane = Dispatchers.Main,
-            wired = appTriggers(androidEntries(world, lifecycle, links)) +
-                ("onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") world.os.expireNextNow() else world.os.expireNow() }),
-            excluded = emptyMap(),
-        ),
-    ),
-    deviceCommands = world.honouredLevers(),
     osExtensionEnabled = { null },
     servicesOf = { hooks ->
         world.servedServices(
@@ -187,7 +175,6 @@ private fun AndroidRigLaunch.hooks(
     },
     refusals = androidRefusals(world, androidHostServices(world, lifecycle, links)),
     osExtensionNotApplicable = "Android has no upload extension: its uploader runs in the app's own process",
-    osRecord = world.os::record,
     adapters = description,
 )
 
@@ -231,20 +218,13 @@ private fun androidEntries(world: MockWorld, lifecycle: AndroidLifecycle, links:
 
 /** The services this host implements itself: the deliveries, on the main thread the platform delivers on. No extension. */
 private fun androidHostServices(world: MockWorld, lifecycle: AndroidLifecycle, links: AndroidLinks) = HostServices(
-    entries = PlayedEntries(androidEntries(world, lifecycle, links), Dispatchers.Main),
+    entries = PlayedEntries(androidEntries(world, lifecycle, links), Dispatchers.Main, world.os::atRelease),
     extensionHost = null,
     noExtensionHost = "Android has no upload extension: its uploader runs in the app's own process",
 )
 
 /** What the Android host refuses of the shared vocabulary, each with its reason. */
-private fun androidRefusals(
-    world: MockWorld,
-    host: HostServices,
-): Map<String, String> = world.leverRefusals(host) + buildMap {
-    RigVocabulary.extensionEntries.forEach {
-        put(it, "Android has no upload extension: its uploader runs in the app's own process, and none is composed yet")
-    }
-}
+private fun androidRefusals(world: MockWorld, host: HostServices): Map<String, String> = world.serviceRefusals(host)
 
 /**
  * The Android host's own services (`HostServices.kt`): its screen, its process — which the channel cannot relaunch,

@@ -12,8 +12,8 @@ import kotlinx.serialization.Serializable
 @Rpc
 interface RigLevers {
     /**
-     * What this host honours and refuses: every typed service's methods (`<service>.<method>`) and every string verb
-     * not yet a typed service, each refused one with its reason. `GET /device` answers the same.
+     * What this host honours and refuses: every typed service's methods (`<service>.<method>`), each refused one with
+     * its reason. `GET /device` answers the same.
      */
     suspend fun advertise(): DeviceAdvertisement
 

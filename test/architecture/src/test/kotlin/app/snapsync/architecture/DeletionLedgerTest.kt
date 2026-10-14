@@ -208,4 +208,37 @@ class DeletionLedgerTest {
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
     }
+
+    /**
+     * The control protocol's string commands (3g-a): the `/os/<root>/<member>` entry routes and their trigger groups, the
+     * `/device` verbs and their lever table, the operating system's record as one untyped grab-bag, and the client's
+     * calls of them. Each became a typed service — `os`, `played-os`, `extension-host`, and a value read on the service
+     * owning each fact — so a string route back is a second, untyped way to drive the same delivery, which no service's
+     * refusals classify and no compiler checks.
+     */
+    @Test
+    fun `the control protocol's string commands stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val plumbing = """(class|interface) (Trigger""" + "Group|RigTrig" + "ger|RigCom" + "mand|CommandRe" + "sult)\\b"
+            declared(files, plumbing).forEach {
+                add("the string routes' plumbing in $it (the typed services replaced it — 3g-a)")
+            }
+            val tables = """\b(trigger""" + "Groups|device" + "Commands|honoured" + "Levers|lever" + "Refusals)\\b"
+            declared(files, tables).forEach {
+                add("a string-route table in $it (each host serves its typed services — 3g-a)")
+            }
+            val calls = """\bfun (device""" + "Verb|os" + "Record|os" + "AtRelease)\\b|\\bclass Os" + "Record\\b"
+            declared(files, calls).forEach {
+                add("a string verb's call or the untyped OS record in $it (typed reads on the owning service — 3g-a)")
+            }
+            declared(files, """/os/(app|photo""" + "kit-ext)/|device/os-" + "record").forEach {
+                add("a string route in $it (`os`, `played-os`, `extension-host` and the typed reads — 3g-a)")
+            }
+            if (File(repoRoot, "test/rig/src/commonMain/kotlin/app/snapsync/rig/Mock" + "Levers.kt").exists()) {
+                add("MockLevers.kt (the levers are the typed services' — 3g-a)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
 }

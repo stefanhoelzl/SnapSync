@@ -3,19 +3,14 @@
 package app.snapsync.rig
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Running
+import app.snapsync.levers.AtRelease
 import app.snapsync.levers.Completions
 import app.snapsync.levers.PlayedOsLevers
+import app.snapsync.levers.Released
 import app.snapsync.levers.WorldEvent
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.OsWatcher
-import app.snapsync.model.FileArea
-import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
 import kotlin.concurrent.Volatile
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -102,58 +97,27 @@ class PlayedOs(
      * The operating system says time is up: every handler it still holds is told so (its registered expiry runs), and
      * every outstanding background-time hold expires.
      */
-    override suspend fun expire() = expireNow()
-
-    /** [expire], from a caller that does not suspend: the string verb's. */
-    fun expireNow() {
+    override suspend fun expire() {
         val expiring = locked { held.filterNot { it.released }.onEach { it.expired = true } }
         expiring.mapNotNull { it.running }.distinct().forEach { it.expire() }
         device.backgroundTime.expireAll()
     }
 
     /** The next grant of time handed over arrives already withdrawn. */
-    override suspend fun expireNext() = expireNextNow()
-
-    /** [expireNext], from a caller that does not suspend: the string verb's. */
-    fun expireNextNow() = locked { nextExpired = true }
+    override suspend fun expireNext() = locked { nextExpired = true }
 
     override suspend fun completions(): Completions =
         locked { Completions(handed, released, releasedAgain, held.count { !it.released }) }
 
     /**
-     * What the operating system recorded of the app, read off the mocks' operator faces — `/device/os-record`. A
-     * system the launch leaves real keeps its own counsel, so its fields are absent rather than read off an idle mock.
-     *
-     * Only the systems not yet typed services: the completion handlers, the wakes, the background-time holds and the
-     * push registrations are read through `played-os`, `wake`, `background-time` and `push`; each other system's fields
-     * leave as its batch types it (`docs/testing.md`, "Typed services").
+     * What the device held at a completion handler's release ([Released.atRelease]), read off the mocks' operator faces on
+     * the releasing thread. A system the launch leaves real keeps its own counsel, so its field is `null` rather than
+     * read off an idle mock.
      */
-    fun record(): String = buildJsonObject {
-        if (mocked(MockedSystem.SCREEN)) put("screenShown", device.screen.shown.value != null)
-        if (mocked(MockedSystem.DOWNLOADS)) {
-            val session = device.downloads.view()
-            putJsonObject("downloadSession") {
-                put("up", session.up)
-                put("started", session.started.size)
-                put("inFlight", session.inFlight.size)
-            }
-        }
-        if (mocked(MockedSystem.UPLOAD_SESSION)) put("uploadSessionHandbacks", device.uploadSession.view().handbacks)
-        // The device's disk: every database any process opened, and the files in the download staging directory.
-        if (mocked(MockedSystem.DATABASES)) {
-            putJsonArray("databasesOpened") { device.databases.opened.forEach { add(JsonPrimitive(it)) } }
-        }
-        // Counted over the operator's copy, never the live area: the app writes the disk from its own thread while this
-        // request runs on the server's, and iterating the live map died half-way on a concurrent stage or release.
-        if (mocked(MockedSystem.FILES)) {
-            put(
-                "stagedFiles",
-                device.disk.paths(FileArea.SHARED).count { it.startsWith("$DOWNLOAD_STAGING_DIR/") },
-            )
-            // The storage the app takes, as the device's storage page shows it — `Settled.state` carries the same.
-            put("appStorageBytes", device.disk.appStorageBytes())
-        }
-    }.toString()
+    fun atRelease(): AtRelease = AtRelease(
+        stagedFiles = device.disk.stagedFiles().takeIf { mocked(MockedSystem.FILES) },
+        uploadSessionHandbacks = device.uploadSession.view().handbacks.takeIf { mocked(MockedSystem.UPLOAD_SESSION) },
+    )
 
     private inner class Handler(private val done: () -> Unit) : Completion {
         var released = false

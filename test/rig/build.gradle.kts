@@ -75,7 +75,7 @@ kotlin {
             // plus the read-models it declares itself. An `api` edge would hand it the ports and the composition
             // (`docs/architecture.md`, "The module set withholds; packages organize").
             implementation(project(":test:contracts"))
-            // The mocks the operator levers move (`MockLevers.kt`) — every system's on the JVM host, and on the app
+            // The mocks the operator levers move (`LeverDispatch.kt`) — every system's on the JVM host, and on the app
             // host the ones its launch-time adapters mocks (`docs/testing.md`, "Launch-time adapters"). Contained with
             // this module: a production build links neither.
             implementation(project(":adapter:generic:mock"))

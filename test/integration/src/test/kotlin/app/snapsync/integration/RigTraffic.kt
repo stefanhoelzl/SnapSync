@@ -79,7 +79,7 @@ suspend fun Rig.settleDownloads() {
         val now = listOf(
             holds.toString(),
             state().download.toString(),
-            osRecord().appStorageBytes.toString(),
+            files.appStorageBytes().toString(),
             gallery().census.total.toString(),
         ).joinToString("|")
         steady = if (now == last && holds.isEmpty()) steady + 1 else 0

@@ -79,7 +79,7 @@ class ProcessMetricReportIntegrationTest {
             "its footprint known, and sent to the background",
             act = {
                 processInfo.footprint(Footprint(FOOTPRINT_BYTES, peakBytes = PEAK_BYTES))
-                os("app", "onBackground")
+                os.background()
             },
             until = { settled { true } },
         )

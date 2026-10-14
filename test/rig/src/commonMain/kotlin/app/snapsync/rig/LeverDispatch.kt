@@ -203,7 +203,7 @@ private fun MockWorld.implementationOf(
         DevControlsLevers -> ReconcilingControls(controls, reconcileUploads)
         BuildLevers -> DeclaredBuild(checkNotNull(version))
         DatabasesLevers -> device.databases.operator
-        FilesLevers -> device.disk.operator
+        FilesLevers -> DeviceFiles(device.disk)
         KeychainLevers -> Keychain(this)
         OlderInstallLevers -> OlderInstall(this)
         OsLevers -> checkNotNull(host.entries)

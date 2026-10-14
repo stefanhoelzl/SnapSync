@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  * no dispatcher or thread the loop cannot see — or the loop's "settled" would lie and a negative would pass early.
  *
  * Each rule the suite does not meet yet carries a list of the test classes still waiting (or reading) the old way. The lists may
- * only shrink — exact both ways, so a class that complies leaves its list in the same change — and phase 3g empties
+ * only shrink — exact both ways, so a class that complies leaves its list in the same change — and phase 3g-b empties
  * them.
  */
 class TestsWaitOnEventsTest {
@@ -44,6 +44,24 @@ class TestsWaitOnEventsTest {
             "an integration test waits on an event and moves time through the host's clock — never `delay`, " +
                 "`Thread.sleep`, `withTimeout`, the system clock or a dispatcher of its own. A class leaves the list once " +
                 "it complies; no class joins it.",
+        )
+    }
+
+    /**
+     * A poll is a wait no event backs: it reads until a condition holds or a bound runs out, so it passes early on a
+     * state the app is only passing through, and fails late on one it never reaches. The rules above never see one —
+     * `eventually` and `rigTest` name no clock — so a class could leave `behaviour` for polling unnoticed; this one sees
+     * it. Every call counts, the support files' own included: they are what the old tests poll through.
+     */
+    @Test
+    fun `integration sources do not poll`() {
+        val polling = integration.filter { source -> POLL.containsMatchIn(ZoneGates.stripComments(source.text)) }
+            .map { it.file.nameWithoutExtension }.toSet()
+        assertEquals(
+            STILL_POLLING.toSortedSet(),
+            polling.toSortedSet(),
+            "an integration test waits on the host's events (`behaviour { … }`) — never `rigTest`, `awaitState`, " +
+                "`neverWithin` or `eventually`, which poll. A class leaves the list once it polls no more; no class joins it.",
         )
     }
 
@@ -92,6 +110,9 @@ class TestsWaitOnEventsTest {
         val FUNCTION = Regex("""\bfun\s+(`[^`]+`|\w+)""")
         val CLASS_CLAIM = Regex("""@Verifies\([^)]*\)\s*(@\w+[^\n]*\s*)*class\s""")
 
+        /** A call of a polling wait — never its declaration (`fun rigTest`, `fun Rig.eventually`). */
+        val POLL = Regex("""(?<!fun )(?<!fun Rig\.)\b(rigTest|awaitState|neverWithin|eventually)\s*[({<]""")
+
         /** A read of the host's device log. */
         val LOG_READ = Regex("""\.logs\(""")
 
@@ -132,6 +153,29 @@ class TestsWaitOnEventsTest {
 
         /** May only shrink: classes that still read the app's log to learn what it did. */
         val STILL_READING_LOGS = setOf("HandOffIntegrationTest", "ReinstallIntegrationTest")
+
+        /**
+         * May only shrink: sources that still poll — the legacy helpers' (`Rig`, `RigEvents`, `RigOs`, `RigTraffic`,
+         * `RigUploaders`, `Shots`) among them. Phase 31 converts the tests waiting on outcomes it gives events to; phase
+         * 3g-b empties the list and deletes the polls.
+         */
+        val STILL_POLLING = setOf(
+            "AdmittedSetIntegrationTest", "AlbumIntegrationTest", "BackDatedEventIntegrationTest",
+            "BoundedStatusStalenessIntegrationTest", "BoundedTopUpIntegrationTest", "CapTruncatedPublishIntegrationTest",
+            "ColdDownloadRelaunchIntegrationTest", "CycleEntryGateIntegrationTest", "DeclaredIntentIntegrationTest",
+            "DeclaredPhotosIntegrationTest", "DeviceRefusalIntegrationTest", "DiagnosticDumpIntegrationTest",
+            "DownloadLeaveIntegrationTest", "EncryptedEventIntegrationTest", "EntryIntegrationTest",
+            "EventChecksIntegrationTest", "EventCompletionIntegrationTest", "FlexibleShareRangeIntegrationTest",
+            "FullStackIntegrationTest", "HandOffIntegrationTest", "IncrementalUnionIntegrationTest",
+            "InterruptedImportIntegrationTest", "InviteLinkHintsIntegrationTest", "JoinGateIntegrationTest",
+            "LostUploadAckIntegrationTest", "ManifestVersionIntegrationTest", "MobileDataIntegrationTest",
+            "NarrowedScopeIntegrationTest", "OsCompletionIntegrationTest", "PathFormLinkIntegrationTest",
+            "ReconfigureIntegrationTest", "ReinstallIntegrationTest", "RelaunchIntegrationTest", "RenameIntegrationTest",
+            "Rig", "RigEvents", "RigOs", "RigTraffic", "RigUploaders", "SelectionIsTheWalkIntegrationTest",
+            "SelectionPolicyIntegrationTest", "ShareSetIntegrationTest", "ShareableCountIntegrationTest", "Shots",
+            "ShotsTest", "StagedByteReclaimIntegrationTest", "TrustIntegrationTest", "UploadCycleIntegrationTest",
+            "VersionGateIntegrationTest",
+        )
 
         /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */
         val STILL_WAITING_BY_TIME = setOf(

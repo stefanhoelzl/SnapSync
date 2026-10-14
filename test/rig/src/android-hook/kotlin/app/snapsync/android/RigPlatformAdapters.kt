@@ -32,7 +32,7 @@ internal fun platformAdapters(root: SnapSyncRoot, real: AppDevicePorts): Platfor
                 context = root.application,
             )
         },
-        // Play never installed a rig build, and its links may be mocked: an invite reaches it over `/os` instead.
+        // Play never installed a rig build, and its links may be mocked: an invite reaches it through the `os` service instead.
         installReferrer = {},
     )
 }

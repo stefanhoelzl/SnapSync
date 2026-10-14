@@ -123,12 +123,12 @@ class UploadCycleIntegrationTest {
         addPhoto("A")
         permission(PhotoGrant.DENIED)
         host.relaunch(scene = false)
-        val opened = osRecord().databasesOpened.size
+        val opened = databases.opened().size
 
         assertEquals("completed", cycle())
 
         assertTrue(
-            "downloads.db" !in osRecord().databasesOpened.drop(opened),
+            "downloads.db" !in databases.opened().drop(opened),
             "admission is decided before the store is opened",
         )
     }
@@ -253,13 +253,13 @@ class UploadCycleIntegrationTest {
         createAndJoin()
         addPhoto("A")
         host.relaunch(scene = false)
-        val opened = osRecord().databasesOpened.size
+        val opened = databases.opened().size
 
         os.pushToken("0a1b2c3d")
         eventually(read = { deviceConfig()?.first }) { it == "0a1b2c3d" }
-        assertEquals(opened, osRecord().databasesOpened.size, "composing and waking the app opened a database")
+        assertEquals(opened, databases.opened().size, "composing and waking the app opened a database")
 
         cycle()
-        assertTrue("ledger.db" in osRecord().databasesOpened.drop(opened), "the first cycle is what opens the ledger")
+        assertTrue("ledger.db" in databases.opened().drop(opened), "the first cycle is what opens the ledger")
     }
 }

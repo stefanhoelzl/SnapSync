@@ -13,7 +13,7 @@ description: >-
 # snapsync-android — the Android control-channel host
 
 The Android app runs on an **emulator** on this Linux box (KVM) — the counterpart of `ios-simulator`, with no Mac —
-or on the **A40**, a real Samsung phone on USB. Either way the same control channel (`rig-channel`: the typed services, `/os`,
+or on the **A40**, a real Samsung phone on USB. Either way the same control channel (`rig-channel`: the typed services,
 `/device`) is served from inside it.
 
 | | emulator | A40 |
@@ -46,7 +46,7 @@ from the adapters file (`rig-channel`'s `adapters` service, as on the iOS app ho
   you create is a 1970 one.
 - **A file** may make real only what Android has a real adapter for — today `screen`, `lifecycle`, `clock`, `files`,
   `databases`, `preferences`, `keychain` (the Keystore-sealed secure store), `integrity` (Keystore key attestation),
-  `backend` (the real api over OkHttp), `links` (the activity's VIEW intents; `/os` link verbs then deliver through it),
+  `backend` (the real api over OkHttp), `links` (the activity's VIEW intents; the `os` service's `continue-link` then delivers through it),
   `library` (MediaStore — `DCIM` is the member's default gallery), `network` (the default-network callback), `system-ui`, `wake`, `background-time` and
   `upload-session` (WorkManager, and in-process uploads). Every other system must be named `mock`: an omitted system reads as `real`,
   and a choice leaving one real is refused. Write it while not joined; the app exits, and you start it again
@@ -176,9 +176,9 @@ $A -s $S logcat -s SnapSync:V AndroidRuntime:E                            # the 
 $A -s $S exec-out run-as app.snapsync cat files/private/debug.log > debug.log # the same log as a file (FileLogSink) — a bug report's app_log
 ```
 
-Everything past the port is `rig-channel`'s protocol; load it for the verbs, with `B=http://127.0.0.1:$H`. The app's `/os` foreground and background
-go through the REAL lifecycle adapter (`AndroidLifecycle.deliverForeground`); every other `/os` verb through its mock.
-`/os/photokit-ext/*` and the `extension-host` service are refused: Android has no upload extension. `host relaunch` is refused: force-stop and start.
+Everything past the port is `rig-channel`'s protocol; load it for the verbs, with `B=http://127.0.0.1:$H`. The `os` service's foreground and background
+go through the REAL lifecycle adapter (`AndroidLifecycle.deliverForeground`); every other delivery through its mock.
+The `extension-host` service is refused: Android has no upload extension. `host relaunch` is refused: force-stop and start.
 
 ## Opening an event link
 

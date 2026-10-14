@@ -13,7 +13,6 @@ import app.snapsync.levers.UploadJobLevers
 import app.snapsync.mock.MockedSystem
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.UploadJobState
-import kotlinx.serialization.json.Json
 
 /**
  * The simulator target: **the caller plays the OS**, so this invocation's job sets arrive in the request
@@ -51,10 +50,11 @@ internal actual fun uploadJobService(world: MockWorld, process: () -> Int): Host
     )
 }
 
-/** A cycle the string entry runs: no finished jobs, the cap off — the OS handing in an empty queue. */
-internal actual suspend fun beginStringCycle() = SimulatorUploadJobs.beginCycle(emptyList(), jobLimit = Int.MAX_VALUE)
-
-internal actual suspend fun endStringCycle(raw: Int): String = json.encodeToString(JobCycle.serializer(), cycleOf(raw)) + "\n"
+/** A cycle `extension-host.process()` runs: no finished jobs, the cap off — the OS handing in an empty queue. */
+internal actual suspend fun beginUnscriptedCycle() = SimulatorUploadJobs.beginCycle(
+    emptyList(),
+    jobLimit = Int.MAX_VALUE,
+)
 
 /**
  * The jobs this cycle created, **with their destination URL and headers verbatim**.
@@ -100,5 +100,3 @@ private fun extensionRecord(registered: Boolean?, failNextWith: Long?): Extensio
 }
 
 private const val QUEUE_MOCKED = "the upload-job queue is mocked on this launch — its typed service (`upload-queue`) plays it"
-
-private val json = Json { prettyPrint = true }

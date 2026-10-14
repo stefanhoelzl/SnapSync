@@ -9,7 +9,8 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -54,16 +55,15 @@ class EntryIntegrationTest {
         createAndJoin()
         foreignDevice(DEV_F, "FQ")
         host.relaunch(scene = false)
-        val before = osRecord()
+        val startedBefore = downloadSession.downloads().started.size
         val armed = wake.wakes().heartbeatsScheduled
-        assertFalse(before.screenShown, "precondition: a background launch builds no screen")
+        assertNull(screen.shown(), "precondition: a background launch builds no screen")
 
         foreground() // awaited: the foreground's background time is held until its tail is done
 
-        val after = osRecord()
-        assertTrue(after.screenShown, "the foreground handler assembles the host first")
+        assertNotNull(screen.shown(), "the foreground handler assembles the host first")
         assertTrue(
-            after.downloadsStarted > before.downloadsStarted,
+            downloadSession.downloads().started.size > startedBefore,
             "the foreground reconcile starts the photo's transfer",
         )
         assertTrue(wake.wakes().heartbeatsScheduled > armed, "foreground entry re-arms the heartbeat")
@@ -271,7 +271,7 @@ class EntryIntegrationTest {
 
         // The start's own baseline read discovers A and creates it: a start that never read its selection withholds.
         assertEquals(listOf(primaryKey("A")), awaitAppUploads(1).live)
-        assertFalse(osRecord().screenShown, "and the start built no screen")
+        assertNull(screen.shown(), "and the start built no screen")
     }
 
     @Test

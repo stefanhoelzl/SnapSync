@@ -16,8 +16,7 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 
 /**
- * Driving the **upload extension's** composition root from the control channel — the `/os/photokit-ext/…`
- * group.
+ * Driving the **upload extension's** composition root from the control channel — the `extension-host` service.
  *
  * On a simulator the OS never invokes the upload extension, so its root is never entered and the shipping
  * tier's cycle cannot run there at all. The channel invokes that root directly instead. Everything the
@@ -29,7 +28,7 @@ import kotlin.coroutines.CoroutineContext
  * scenario driven from this channel exercises the composition the appex actually assembles, including its
  * boot banner, its process-lifetime singletons, its `runBlocking` and its pending→`PROCESSING` requeue.
  *
- * On a **device** this same group drives the **real** OS job queue, because the substitution is a property
+ * On a **device** this same service drives the **real** OS job queue, because the substitution is a property
  * of the compilation target rather than of the caller. Forcing a cycle on demand there — instead of waiting
  * for the OS to schedule one — is a capability the phone did not previously have.
  */
@@ -46,51 +45,8 @@ import kotlin.coroutines.CoroutineContext
 @OptIn(DelicateCoroutinesApi::class, ExperimentalCoroutinesApi::class)
 private val extensionLane: CoroutineContext = newSingleThreadContext("snapsync-photokit-ext")
 
-/**
- * The `/os/photokit-ext` group: the extension root's entry points, on the extension root's lane.
- *
- * [process] and [terminate] arrive as thunks over the REAL `UploadExtensionRoot` members, so this module
- * names neither the root nor `:app:ios:extension` — the same shape every other platform verb crosses this
- * seam in.
- */
-fun extensionTriggerGroup(
-    process: () -> Int,
-    terminate: () -> Unit,
-    excluded: Map<String, String>,
-    log: Logger = Logger.withTag("rig"),
-): TriggerGroup = TriggerGroup(
-    lane = extensionLane,
-    wired = mapOf(
-        "processRawValue" to RigTrigger.Answering { _, body ->
-            invokeExtensionCycle(process, body, log)
-        },
-        // The OS is terminating a cycle. Wired rather than excluded: unlike the app root's scene
-        // observers — whose entire content is whether the PLATFORM called them — this entry records what
-        // the root knows about its own in-flight work, and invoking it here exercises the same path.
-        "onTerminate" to RigTrigger.Fire { terminate() },
-    ),
-    // Supplied by the hook, beside the app root's, so the whole exclusion inventory sits in one file — the
-    // file a reviewer reads (no guard derives it any more; the one that did was retired in `74302d2b`).
-    excluded = excluded,
-)
-
-/**
- * Run one extension cycle and answer with what it produced. The OS's job sets are the typed `upload-jobs.process`'s to
- * hand in (`uploadJobService`); a body here is refused, naming it.
- */
-private suspend fun invokeExtensionCycle(process: () -> Int, body: String?, log: Logger): String {
-    if (!body.isNullOrBlank()) {
-        return """{"refused":"job sets are handed in through the typed upload-jobs.process, not a request body"}""" + "\n"
-    }
-    beginStringCycle()
-    return endStringCycle(runExtensionCycle(process, log))
-}
-
-/** Before a string-entry cycle: on a simulator, a cycle with no finished jobs begun on the played queue. */
-internal expect suspend fun beginStringCycle()
-
-/** A string-entry cycle's answer: the raw result, and what the target can report of the queue. */
-internal expect suspend fun endStringCycle(raw: Int): String
+/** Before an unscripted cycle: on a simulator, a cycle with no finished jobs begun on the played queue. */
+internal expect suspend fun beginUnscriptedCycle()
 
 /**
  * One `process()` of the extension root, on the extension root's lane, its log lines in the extension's log.
@@ -127,8 +83,8 @@ internal suspend fun runExtensionCycle(process: () -> Int, log: Logger = Logger.
     }
 
 /**
- * The `extension-host` service: the same invocation as `processRawValue` with no job sets handed in, on the extension
- * root's lane — and its end, on the same lane. The simulator's scripted job sets are `upload-jobs.process`'s.
+ * The `extension-host` service: one `process()` with no job sets handed in, on the extension root's lane — and its end,
+ * on the same lane. The simulator's scripted job sets are `upload-jobs.process`'s.
  */
 internal fun extensionHost(
     process: () -> Int,
@@ -136,9 +92,8 @@ internal fun extensionHost(
     log: Logger = Logger.withTag("rig"),
 ): ExtensionHostLevers = object : ExtensionHostLevers {
     override suspend fun process(): ExtensionAnswer {
-        beginStringCycle()
+        beginUnscriptedCycle()
         val raw = runExtensionCycle(process, log)
-        endStringCycle(raw)
         return when (raw) {
             PROCESSING_RAW -> ExtensionAnswer.PROCESSING
             COMPLETED_RAW -> ExtensionAnswer.COMPLETED

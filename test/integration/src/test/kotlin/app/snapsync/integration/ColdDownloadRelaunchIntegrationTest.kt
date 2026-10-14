@@ -30,7 +30,7 @@ class ColdDownloadRelaunchIntegrationTest {
         createAndJoin()
         foreignDevice(DEV_F, "FQ")
         val before = libraryTotal()
-        val storage = osRecord().appStorageBytes
+        val storage = files.appStorageBytes()
         reconcile()
 
         host.relaunch()
@@ -56,7 +56,7 @@ class ColdDownloadRelaunchIntegrationTest {
 
         assertEquals(before + 1, libraryTotal(), "the staged asset was imported into the library, once")
         assertTrue(
-            osRecord().appStorageBytes <= storage,
+            files.appStorageBytes() <= storage,
             "every resource the session delivered was staged, imported and released: the app holds no more than before",
         )
     }

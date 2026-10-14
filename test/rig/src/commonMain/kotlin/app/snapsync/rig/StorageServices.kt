@@ -2,8 +2,10 @@ package app.snapsync.rig
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.KeychainLevers
+import app.snapsync.levers.LogProcess
 import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.LibraryAssets
@@ -17,11 +19,28 @@ import app.snapsync.ports.SecureSlot
 import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.secure.SecureSlots
+import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 
 // The store services the channel implements itself rather than a mock's operator (`docs/testing.md`, "Typed services"):
-// each names what it acts on in the app's own terms — a Keychain item by what it is, an older build's leftovers by what
-// that build wrote — which only code that sees the app's services can map to the stores' addresses.
+// each names what it acts on in the app's own terms — a device log by its process, the staging directory, a Keychain item
+// by what it is, an older build's leftovers by what that build wrote — which only code that sees the app's services can
+// map to the stores' addresses.
+
+/**
+ * [FilesLevers] over the mocked disk: a device log grown, and what the device's files hold, counted as the app's own
+ * services lay them out — the staging directory, and the storage the app takes with its diagnostics left out.
+ */
+internal class DeviceFiles(private val disk: FileSystemMock) : FilesLevers {
+    override suspend fun appendLog(process: LogProcess, text: String) = when (process) {
+        LogProcess.APP -> disk.append(FileArea.PRIVATE, APP_LOG_FILE_NAME, text)
+        LogProcess.EXTENSION -> disk.append(FileArea.SHARED, EXTENSION_LOG_FILE_NAME, text)
+    }
+
+    override suspend fun stagedFiles(): Int = disk.stagedFiles()
+
+    override suspend fun appStorageBytes(): Long = disk.appStorageBytes()
+}
 
 /** [KeychainLevers] over the mocked Keychain: an item named by what it is, forgotten at the address the app keeps it. */
 internal class Keychain(private val world: MockWorld) : KeychainLevers {
@@ -73,9 +92,14 @@ internal class OlderInstall(private val world: MockWorld) : OlderInstallLevers {
 /**
  * The storage the app takes on the device, as Settings' storage page shows a person — its diagnostics left out: the
  * device logs (and their rolled siblings), the memory trail and a saved report, which grow with whatever the app does
- * and would drown out what a test measures. What `Settled.state` and the OS record carry.
+ * and would drown out what a test measures. What `Settled.state` and [FilesLevers.appStorageBytes] carry.
  */
 internal fun FileSystemMock.appStorageBytes(): Long = bytes { _, path -> path in DIAGNOSTICS }
+
+/** The files in the download staging directory, counted over one snapshot of the shared area. */
+internal fun FileSystemMock.stagedFiles(): Int = paths(
+    FileArea.SHARED,
+).count { it.startsWith("$DOWNLOAD_STAGING_DIR/") }
 
 private val DIAGNOSTICS: Set<String> =
     listOf(APP_LOG_FILE_NAME, EXTENSION_LOG_FILE_NAME).flatMap { listOf(it, "$it.1") }.toSet() +

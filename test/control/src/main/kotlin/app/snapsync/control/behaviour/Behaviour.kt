@@ -2,7 +2,6 @@ package app.snapsync.control.behaviour
 
 import app.snapsync.control.Person
 import app.snapsync.control.RigClient
-import app.snapsync.control.done
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BuildLevers
 import app.snapsync.levers.DatabasesLevers
@@ -256,13 +255,6 @@ class Acts internal constructor(
     val gallery: GalleryLevers = client.levers(GalleryLevers)
 
     private val world: WorldLevers = client.levers(WorldLevers)
-
-    /** An operating-system entry point, which must be answered. */
-    suspend fun os(root: String, member: String, arg: String? = null): String = client.os(root, member, arg).done()
-
-    /** A device verb — a mocked system's lever — which must be honoured. */
-    suspend fun device(name: String, vararg params: Pair<String, String>, body: String? = null): String =
-        client.deviceVerb(name, mapOf(*params), body).done()
 
     /** The mocked clock moves [by], each timer due on the way firing at its own instant. */
     suspend fun advance(by: Duration) = world.advance(by.inWholeMilliseconds)
