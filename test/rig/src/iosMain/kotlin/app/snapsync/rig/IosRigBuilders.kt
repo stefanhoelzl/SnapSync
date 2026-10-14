@@ -36,9 +36,6 @@ import kotlinx.coroutines.Dispatchers
 
 private val log = Logger.withTag("rig")
 
-/** The `/device` verbs not yet a typed service: the levers this launch's world honours. */
-fun deviceCommands(launch: RigLaunch): Map<String, RigCommand> = launch.world.honouredLevers()
-
 /**
  * The typed services this launch serves, once its hooks exist: every declared one over its world — each refused, with
  * its reason, where the adapter choice cannot serve it — and this host's own, each method classified by this host.
@@ -175,38 +172,17 @@ fun noMembershipRefusal(host: () -> StatusContainerHost): () -> String? = {
     }
 }
 
-/**
- * The app root's `/os` group for this launch: each delivery through the system that makes it — the mock's operator face
- * where the adapter choice mocks it, the platform's own adapter ([real]) otherwise — and the played operating system's
- * expiry, which `iosRefusals` refuses unless the background-time holds are mocked.
- */
-fun appTriggerGroup(launch: RigLaunch, real: EntryDriver, excluded: Map<String, String>): TriggerGroup {
-    val world = launch.world
-    return TriggerGroup(
-        // Swift calls this root's entry points from the main thread, so the rig does too.
-        lane = kotlinx.coroutines.Dispatchers.Main,
-        wired = appTriggers(appEntries(launch, real)) +
-            ("onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") world.os.expireNextNow() else world.os.expireNow() }),
-        excluded = excluded,
-    )
-}
-
 /** Each delivery through the system that makes it: the mock's where the adapter choice mocks it, [real] otherwise. */
 private fun appEntries(launch: RigLaunch, real: EntryDriver): EntryDriver =
     ChosenEntryDriver(launch.world::isMocked, MockEntryDriver(launch.world.device, launch.world.os), real)
 
 /**
- * The services this host implements itself: the operating system's deliveries — the same chosen driver the `/os/app`
- * group delivers through, on main — and the extension root's invocations ([process] and [terminate], thunks over the
- * REAL `UploadExtensionRoot` members, as [extensionTriggerGroup] takes them).
+ * The services this host implements itself: the operating system's deliveries — each through the system that makes it,
+ * on main, as Swift calls the app root's entry points — and the extension root's invocations ([process] and [terminate],
+ * thunks over the REAL `UploadExtensionRoot` members).
  */
 fun iosHostServices(launch: RigLaunch, real: EntryDriver, process: () -> Int, terminate: () -> Unit): HostServices =
     HostServices(
-        entries = PlayedEntries(appEntries(launch, real), kotlinx.coroutines.Dispatchers.Main),
+        entries = PlayedEntries(appEntries(launch, real), Dispatchers.Main, launch.world.os::atRelease),
         extensionHost = extensionHost(process, terminate),
     )
-
-/** What the operating system recorded of the app, where this launch plays any of it — `null` where it plays none. */
-fun osRecord(
-    launch: RigLaunch,
-): (() -> String)? = launch.world.takeIf { it.mocked.isNotEmpty() }?.os?.let { os -> os::record }

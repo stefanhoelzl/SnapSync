@@ -344,7 +344,7 @@ class InterruptedImportIntegrationTest {
         assertTrue(progress.total > 0 && progress.downloaded < progress.total, "$what: $progress")
 
     /** The storage the app takes, as the device's storage page shows it. */
-    private suspend fun Rig.storage(): Long = osRecord().appStorageBytes
+    private suspend fun Rig.storage(): Long = files.appStorageBytes()
 
     /** What the joined screen counts as received. */
     private fun Layer.Joined.received() = counts?.received

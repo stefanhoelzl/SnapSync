@@ -2,7 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.control.Person
 import app.snapsync.control.RigClient
-import app.snapsync.control.done
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BackgroundTimeLevers
@@ -39,9 +38,6 @@ import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration
@@ -175,17 +171,6 @@ class Rig(val client: RigClient) : Person {
 
     suspend fun awaitState(timeout: Duration = 10.seconds, until: (RigState) -> Boolean): RigState =
         client.awaitState(timeout, until)
-
-    /** An operating-system entry point, which must be answered. */
-    suspend fun os(root: String, member: String, arg: String? = null): String = client.os(root, member, arg).done()
-
-    /** A device verb, which must be honoured. */
-    suspend fun device(name: String, vararg params: Pair<String, String>, body: String? = null): String =
-        client.deviceVerb(name, mapOf(*params), body).done()
-
-    /** A device verb's JSON answer. */
-    suspend fun deviceJson(name: String, vararg params: Pair<String, String>): JsonObject =
-        Json.parseToJsonElement(device(name, *params)).jsonObject
 
     /**
      * The photo library through the app's own candidate seam. The route lists assets only under a cutoff, so the

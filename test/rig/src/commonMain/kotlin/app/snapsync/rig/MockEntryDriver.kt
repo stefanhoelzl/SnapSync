@@ -60,7 +60,7 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
 }
 
 /**
- * The `/os` deliveries of a launch with mocked systems (`docs/testing.md`, "Launch-time adapters"): each through the system
+ * The `os` service's deliveries on a launch with mocked systems (`docs/testing.md`, "Launch-time adapters"): each through the system
  * that delivers it — its mock's operator face where [mocked] says the adapter choice mocks it, the platform's own adapter
  * ([real]) where the system is real. A delivery a mocked system would make never reaches the real adapter, whose
  * composition is not listening; and the reverse.

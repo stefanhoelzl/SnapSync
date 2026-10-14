@@ -21,14 +21,11 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.server.request.receive
-import io.ktor.server.request.receiveText
 import io.ktor.server.request.uri
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
-import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -38,7 +35,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newFixedThreadPoolContext
-import kotlinx.coroutines.withContext
 import kotlinx.rpc.krpc.ktor.server.Krpc
 import kotlinx.rpc.krpc.ktor.server.KrpcRoute
 import kotlinx.rpc.krpc.ktor.server.rpc
@@ -95,7 +91,7 @@ private val json = Json {
  * ## Its own lane
  * The server runs on a dedicated single thread — never the composition lane, never main. A blocked
  * request must not be able to eat the lane the core serializes its work on. Entry points are then invoked
- * on [RigHooks.mainLane], because that is the thread Swift calls them from.
+ * on the lane the platform calls them on (`PlayedEntries`), main for the app root, as Swift calls them.
  *
  * ## No request timeout
  * Nothing here bounds a request: a handler is held until the wake's own work is done or the operating
@@ -193,12 +189,6 @@ class RigServer(
         // The typed services (`docs/testing.md`, "Typed services"), over kRPC: one WebSocket per client, every declared
         // service registered on it — a refused one answers each call with its reason.
         install(Krpc)
-        // Namespaced by WHO is on the other side of the call: `/os` is what the platform invokes, `/user`
-        // is what a finger reaches, `/device` is the machine under test. That is not taxonomy for its own
-        // sake — it decides how each namespace can be held honest. `/os` and `/user` have populations
-        // sitting in source (`@PlatformEntry` members; the host's public command surface) that the wired
-        // lists are meant to cover — by review since the deriving guard was retired, so a hand-picked list can
-        // rot unnoticed. `/device` has no population at all.
         routing {
             rpc(RPC_PATH) {
                 rpcConfig { serialization { json() } }
@@ -210,11 +200,6 @@ class RigServer(
             // "One control protocol, served by two hosts").
             get("/device") { call.traced { call.respondAdvertisement() } }
 
-            // `/os/<root>/<member>` — the root segment names WHOSE entry point this is, because the
-            // channel reaches more than one composition root. See `RigHooks.triggerGroups`.
-            post("/os/{path...}") { call.traced { call.respondTrigger() } }
-
-            post("/device/{name...}") { call.traced { call.respondDeviceCommand() } }
             // The upload receiver the upload-job contract's jobs are pointed at (`docs/architecture.md`): the OS's
             // upload daemon PUTs each job's bytes here, over the rig build's loopback upload base, in the fixture route
             // grammar `scripts/transfer-fixture.py` serves the simulator app (`TransferFixture`). The answer is a
@@ -264,29 +249,6 @@ class RigServer(
         respondText(json.encodeToString(DeviceAdvertisement.serializer(), ad), status = status)
     }
 
-    /**
-     * `409` when this launch composed nothing (a refused choice, [RigHooks.uncomposed]) — every route that would reach the
-     * composed app — or `false` to let the route proceed.
-     */
-    private suspend fun ApplicationCall.respondIfUncomposed(): Boolean {
-        val why = hooks.uncomposed ?: return false
-        respondText(
-            "{\"refused\":${jsonString(
-                "this launch composed nothing — its adapter choice was refused: $why. Write a coherent one " +
-                    "(POST /device/adapters) or clear it (POST /device/adapters/clear); either exits the app for its next start",
-            )}}\n",
-            status = HttpStatusCode.Conflict,
-        )
-        return true
-    }
-
-    /** `409` with the host's reason when it refuses [verb], or `false` to let the route proceed. */
-    private suspend fun ApplicationCall.respondIfRefused(verb: String): Boolean {
-        val reason = hooks.refusals[verb] ?: return false
-        respondText("{\"refused\":${jsonString(reason)},\"verb\":\"$verb\"}\n", status = HttpStatusCode.Conflict)
-        return true
-    }
-
     private suspend fun ApplicationCall.respondUpload() {
         val route = request.path().removePrefix(UPLOAD_BASE_PATH)
         val answer = TransferFixture.answerOf(route)
@@ -317,138 +279,12 @@ class RigServer(
         }
     }
 
-    /**
-     * The request body, or `null` when there is none.
-     *
-     * Only [RigTrigger.Answering] reads it: an entry point the rig plays the OS for may need state the OS
-     * holds outside the process handed in per invocation, and a query string is the wrong shape for a list.
-     */
-    private suspend fun ApplicationCall.receiveTextOrNull(): String? =
-        receiveText().takeIf { it.isNotBlank() }
-
-    /**
-     * The ROUTE segment, read from the request PATH and never from `parameters`.
-     *
-     * `call.parameters` merges the path and the query, so a command carrying a query argument of the same
-     * name shadows its own route. Measured on device: `POST /user/create?name=RigCheck2` answered
-     * `404 unknown user command 'RigCheck2'` — the route had resolved to the value of the query parameter
-     * rather than the path segment, so the command could not be reached at all.
-     *
-     * Reading the path is not merely the fix for `name`; it is the shape that cannot recur. A route
-     * placeholder and a query argument live in different namespaces, and any code that reads them from one
-     * merged bag will collide again the next time a command needs an argument called after its own
-     * placeholder.
-     */
-    private fun ApplicationCall.routeName(prefix: String): String =
-        request.path().removePrefix(prefix).trim('/')
-
-    /**
-     * `POST /device/{name}?…` — run a device command to completion and answer with what it did.
-     *
-     * NOT on [RigHooks.mainLane]: these block (a photo-library change block waits on the system's own
-     * confirmation, which can sit unanswered for minutes), and the launch-time chain they replace ran on
-     * `Dispatchers.Default` for that reason. Blocking here is the point — a launch variable that failed was
-     * a log line to go and find, and a command that answers is the whole reason these moved.
-     */
-    private suspend fun ApplicationCall.respondDeviceCommand() {
-        val name = routeName("/device")
-        if (respondIfRefused("device/$name")) return
-        if (respondIfUncomposed()) return
-        val command = hooks.deviceCommands[name]
-            ?: return respondText(
-                excludedOrUnknown(name, emptyMap(), "device command"),
-                status = HttpStatusCode.NotFound,
-            )
-        val params = request.queryParameters.entries().associate { it.key to it.value.first() }
-        val result = command.run(params, receiveTextOrNull())
-        respondText(result.body, status = HttpStatusCode.fromValue(result.status))
-    }
-
-    /**
-     * `POST /os/{root}/{member}?arg=…` — invoke the real entry point of a named composition root, and
-     * answer with whatever the platform gives back.
-     *
-     * The root segment is required rather than optional. An unprefixed form would have to mean "the app",
-     * which is a convention no guard can check, and it would leave the one group that needs no prefix
-     * special-cased in both the router and the coverage derivation.
-     */
-    private suspend fun ApplicationCall.respondTrigger() {
-        val route = routeName("/os")
-        val root = route.substringBefore('/', missingDelimiterValue = "")
-        val name = route.substringAfter('/', missingDelimiterValue = "")
-        val arg = request.queryParameters["arg"]
-        if (respondIfRefused("os/$root/$name")) return
-        if (respondIfUncomposed()) return
-        val group = hooks.triggerGroups[root]
-            ?: return respondText(
-                "unknown entry-point root '$root' — expected one of " +
-                    "${hooks.triggerGroups.keys.sorted().joinToString("|")}, as `/os/<root>/<member>`\n",
-                status = HttpStatusCode.NotFound,
-            )
-        val trigger = group.wired[name]
-            ?: return respondText(
-                excludedOrUnknown(name, group.excluded, "entry point of '$root'"),
-                status = HttpStatusCode.NotFound,
-            )
-        when (trigger) {
-            is RigTrigger.Fire -> {
-                withContext(group.lane) { trigger.run(arg) }
-                respondText(
-                    "{\"trigger\":\"$root/$name\",\"accepted\":true,\"waited\":false," +
-                        "\"note\":\"the platform hands this entry no completion handler, so neither does " +
-                        "the rig — poll /state\"}\n",
-                    status = HttpStatusCode.Accepted,
-                )
-            }
-            is RigTrigger.Answering -> {
-                // The platform waits for this entry's value, so the rig does too, and answers with it
-                // verbatim. Invoked on the ROOT's lane (`TriggerGroup.lane`), never main.
-                val answer = withContext(group.lane) { trigger.run(arg, receiveTextOrNull()) }
-                respondText(answer)
-            }
-            is RigTrigger.Receipted -> {
-                val released = CompletableDeferred<String?>()
-                val mark = TimeSource.Monotonic.markNow()
-                // `complete` is safe from any thread and is idempotent, so the OS handler's
-                // exactly-once guarantee (`OsCompletions.Handover`) needs no help here — and a second
-                // call is tolerated rather than thrown, since throwing inside an OS handler lambda has
-                // no good owner. What the operating system recorded is read AT the release, on the releasing
-                // thread: "released after the wake's own work" is a statement about that instant.
-                withContext(group.lane) { trigger.run(arg) { released.complete(hooks.osRecord?.invoke()) } }
-                val atRelease = released.await()
-                val held = mark.elapsedNow().inWholeMilliseconds
-                respondText(
-                    "{\"trigger\":\"$root/$name\",\"heldMs\":$held," +
-                        (atRelease?.let { "\"osAtRelease\":$it," } ?: "") +
-                        "\"transferBinding\":\"${hooks.transferBindingFact}\"," +
-                        "\"note\":\"heldMs is a measured fact; whether the handler was released after the " +
-                        "wake's own work or on the operating system's expiry is answered by the OsCompletions " +
-                        "expiry line in /logs after this request's [rig] marker" +
-                        hooks.bindingCaveat(name) + "\"}\n",
-                )
-            }
-        }
-    }
-
-    /**
-     * The 404 body, which is the surface that replaced the inventory routes.
-     *
-     * Dropping `GET /triggers` cost nothing, because enumeration was never the part that carried
-     * information — the **reason** an excluded member is excluded was, and it is returned right here, to
-     * the caller who asked for that member. An inventory would have been a third copy of a list that the
-     * runbook already holds and a guard already pins to source, and the only copy nothing could hold.
-     */
     /** One served service on a client's kRPC session. */
     private fun KrpcRoute.register(served: ServedService) {
         @Suppress("UNCHECKED_CAST")
         val service = served.service as LeverService<Any>
         registerService(service.type) { served.wrapper }
     }
-
-    private fun excludedOrUnknown(name: String, excluded: Map<String, String>, kind: String): String =
-        excluded[name]
-            ?.let { "$kind '$name' is deliberately NOT wired: $it\n" }
-            ?: "unknown $kind '$name' — see the `rig-channel` skill for what is driveable\n"
 
     private companion object {
         /** The kRPC route the typed services are served on (`ws://<host>:<port>/rpc`). */

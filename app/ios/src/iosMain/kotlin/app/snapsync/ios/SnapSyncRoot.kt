@@ -184,7 +184,7 @@ object SnapSyncRoot {
     /**
      * The operating system's scheduled wakes — one per process, since its `listen` registers the `BGTask` launch
      * handler and a second registration raises. `internal` so the control channel can deliver a task it plays the OS
-     * for (`/os onBackgroundTask`) until the entry surface becomes event ports (11g).
+     * for (`os.backgroundTask`) until the entry surface becomes event ports (11g).
      */
     internal val wakeAdapter: IosWake by lazy { rootWake(log) }
 

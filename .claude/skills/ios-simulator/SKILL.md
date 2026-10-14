@@ -35,7 +35,7 @@ State these before writing a scenario against this host, or you will write one t
   Apple, so a synthetic token through `rig os push-token --token <hex>` is the way in.
 - **The OS never invokes the upload extension — so the CHANNEL invokes its root instead.** Under a full
   grant the extension is registrable here, exactly as on a ≥26.1 device, and its root now runs:
-  `/os/photokit-ext/processRawValue` calls the **real** `UploadExtensionRoot`, so the shared `uploadCycle`,
+  `rig extension-host process` calls the **real** `UploadExtensionRoot`, so the shared `uploadCycle`,
   the entry gate, real PhotoKit discovery, the real selection policy, the real
   App-Group ledger and a real backend are all exercised. Both uploaders run over the one
   ledger by design; to exercise one alone use `rig dev-controls pin --app false --extension true` (or the reverse).
@@ -61,8 +61,8 @@ State these before writing a scenario against this host, or you will write one t
   $R upload-jobs process --finished '[{"destination":"<created[].destination>","action":"ACKNOWLEDGE","state":"SUCCEEDED"}]'
   ```
 
-  `/os/photokit-ext/processRawValue` still runs a cycle with nothing finished (no body: job sets are the typed
-  `process`'s), answering the same cycle as JSON.
+  `rig extension-host process` runs a cycle with nothing finished (job sets are `upload-jobs process`'s), answering
+  only its result (`completed|processing|failed`).
 
   Play the sets as a device's OS does (measured, SE2 iOS 26.6): a **first** failure is presented in BOTH
   `retry` and `acknowledge` (state it twice); a retry-spent one in `acknowledge` only; a success in
@@ -367,8 +367,7 @@ SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18101 xcrun simctl launch "$DEV_A" app.snapsync
 SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18102 xcrun simctl launch "$DEV_B" app.snapsync
 ```
 
-Everything past `/health` — `/state`, `/logs`, the `os` service and `POST /os/<root>/<member>`, the
-receipted-vs-immediate split, the `foreground`-before-membership ordering trap — is in `rig-channel` and is identical here.
+Everything past `/health` — `host state`, `host logs`, the `os` service, the awaited-vs-immediate split, the `foreground`-before-membership ordering trap — is in `rig-channel` and is identical here.
 
 ## Driving an event
 

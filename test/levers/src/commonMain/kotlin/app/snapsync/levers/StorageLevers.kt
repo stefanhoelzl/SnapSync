@@ -8,8 +8,9 @@ import kotlinx.serialization.Serializable
 
 // The device's stores as typed services (`docs/testing.md`, "Typed services"): what a test may do to the disk, the
 // databases and the Keychain the app keeps its state in. Never what they hold — the app's private files and databases
-// are not observable (`docs/testing.md` §7, "The rules"); what the outside world sees of them is the storage the app
-// takes (`WorldEvent.Settled.state`).
+// are not observable (`docs/testing.md` §7, "The rules") — but what the device itself sees of them: which databases a
+// process opened, how many files sit in the staging directory, and the storage the app takes
+// (`WorldEvent.Settled.state` carries the last too).
 
 /**
  * **The device's SQLite databases' face** — the faults a real SQLite answers, which the app must survive. The databases
@@ -33,6 +34,9 @@ interface DatabasesLevers {
 
     /** What the levers above put the databases in, as it stands now. */
     suspend fun switches(): DatabaseSwitches
+
+    /** Every database any process on the device opened, by name, in order. */
+    suspend fun opened(): List<String>
 
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<DatabasesLevers>(
@@ -67,11 +71,17 @@ data class DatabaseFault(val database: String, val table: String, val kind: Writ
 @Serializable
 data class DatabaseSwitches(val locked: Boolean, val faults: List<DatabaseFault>)
 
-/** **The device's files' face** — what a test may add to them. The disk mock's operator implements it. */
+/** **The device's files' face** — what a test may add to them, and what the device counts of them. */
 @Rpc
 interface FilesLevers {
     /** [text] appended to [process]'s device log — what a diagnostic dump reads back. */
     suspend fun appendLog(process: LogProcess, text: String)
+
+    /** How many files sit in the download staging directory — received bytes not yet in the library. */
+    suspend fun stagedFiles(): Int
+
+    /** The bytes the app's files take, its diagnostics left out — what the device's storage page shows a person. */
+    suspend fun appStorageBytes(): Long
 
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<FilesLevers>(

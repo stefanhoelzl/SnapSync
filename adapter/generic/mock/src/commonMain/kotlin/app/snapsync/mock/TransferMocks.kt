@@ -351,7 +351,7 @@ class UploadSessionMock(
 
     /**
      * The operating system relaunches the app for this session's events, handing [completion] — the played OS's
-     * delivery (`/os`), never an operator's: a live completion does not cross the channel. The ends of transfers that
+     * delivery (the `os` service), never an operator's: a live completion does not cross the channel. The ends of transfers that
      * landed while no process ran were reported as they happened, so the drain report follows at once.
      */
     fun handBack(completion: Completion) {
@@ -530,7 +530,7 @@ class DownloadSessionMock(
 
     /**
      * The operating system relaunches the app for this session's events, handing [completion] — the played OS's
-     * delivery (`/os`), never an operator's: a live completion does not cross the channel.
+     * delivery (the `os` service), never an operator's: a live completion does not cross the channel.
      */
     fun handBack(completion: Completion) {
         registered().onBackgroundEvents.handle(SessionRelaunch(drains), completion)

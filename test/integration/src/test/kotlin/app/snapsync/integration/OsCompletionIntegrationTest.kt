@@ -2,7 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.control.done
 import app.snapsync.levers.Completions
 import app.snapsync.levers.WorldEvent
 import kotlinx.coroutines.async
@@ -18,8 +17,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * the heartbeat task, the transfer sessions' relaunches and the silent push, each over the control protocol, with the
  * OS's expiry delivered by `played-os`'s `expire`.
  *
- * "Released after the work" is a statement about an instant, so it is read at the release: a receipted entry answers
- * with what the operating system had recorded then (`osAtRelease`). The work a tail does here is the one unit a JVM
+ * "Released after the work" is a statement about an instant, so it is read at the release: a delivery awaited to its
+ * release answers with what the device held then (`Released.atRelease`). The work a tail does here is the one unit a JVM
  * host can see land — the import of a staged photo (its bytes leave the staging directory) — so most tests start from
  * a photo whose first import failed and whose bytes wait staged.
  *
@@ -36,7 +35,7 @@ class OsCompletionIntegrationTest {
         awaitDownloadQueued()
         library.failNextImport()
         stage()
-        assertTrue(osRecord().stagedFiles > 0, "precondition: the failed import kept its bytes for the retry")
+        assertTrue(files.stagedFiles() > 0, "precondition: the failed import kept its bytes for the retry")
         return event
     }
 
@@ -53,7 +52,7 @@ class OsCompletionIntegrationTest {
         host.relaunch(scene = false)
         val armed = wake.wakes().heartbeatsScheduled
 
-        val atRelease = osAtRelease(client.os("app", "onBackgroundTask", HEARTBEAT_TASK).done())
+        val atRelease = checkNotNull(os.backgroundTask(HEARTBEAT_TASK, awaitRelease = true)).atRelease
 
         assertEquals(0, atRelease.stagedFiles, "released after the tail — the wake's work — imported the backlog")
         eventually(read = { wake.wakes().heartbeatsScheduled }) { it == armed + 1 }
@@ -75,7 +74,7 @@ class OsCompletionIntegrationTest {
             // Released on the operating system's signal — while the import is still parked, not after the work.
             delivery.await()
         }
-        assertTrue(osRecord().stagedFiles > 0, "the unit in flight had not finished when the handler was released")
+        assertTrue(files.stagedFiles() > 0, "the unit in flight had not finished when the handler was released")
 
         library.resumeImport()
         eventually(read = { wake.wakes().heartbeatsScheduled }) { it == armed + 1 }
@@ -100,13 +99,13 @@ class OsCompletionIntegrationTest {
     fun a_wake_whose_time_was_up_before_it_ran_is_released_and_runs_no_tail() = rigTest {
         stagedBacklog()
         host.relaunch(scene = false)
-        val staged = osRecord().stagedFiles
+        val staged = files.stagedFiles()
         playedOs.expireNext()
 
         os.backgroundTask(HEARTBEAT_TASK, awaitRelease = true) // an expiry registered late runs at once
 
         settle()
-        assertEquals(staged, osRecord().stagedFiles, "no tail is requested with no time left to run in")
+        assertEquals(staged, files.stagedFiles(), "no tail is requested with no time left to run in")
     }
 
     // ---- the transfer sessions' relaunches ------------------------------------------------------------------------
@@ -121,11 +120,11 @@ class OsCompletionIntegrationTest {
         stagedBacklog()
         host.relaunch(scene = false)
 
-        val atRelease = osAtRelease(client.os("app", "onBackgroundTransfers", UPLOAD_SESSION).done())
+        val atRelease = checkNotNull(os.backgroundTransfers(UPLOAD_SESSION, awaitRelease = true)).atRelease
 
         assertEquals(1, atRelease.uploadSessionHandbacks, "the upload session is handed its events")
-        assertTrue(atRelease.stagedFiles > 0, "released at the session's drain report, before the tail")
-        awaitOs { it.stagedFiles == 0 }
+        assertTrue(checkNotNull(atRelease.stagedFiles) > 0, "released at the session's drain report, before the tail")
+        awaitStaged(0)
         awaitNoHolds()
     }
 
@@ -133,12 +132,12 @@ class OsCompletionIntegrationTest {
     fun download_session_events_bring_the_download_session_up_and_not_the_upload_one() = rigTest {
         createAndJoin()
         host.relaunch(scene = false)
-        assertFalse(osRecord().downloadSessionUp, "precondition: a background launch has no session up")
+        assertFalse(downloadSession.downloads().up, "precondition: a background launch has no session up")
 
         coroutineScope {
             val delivery = async { os.backgroundTransfers(DOWNLOAD_SESSION, awaitRelease = true) }
-            awaitOs { it.downloadSessionUp }
-            assertEquals(0, osRecord().uploadSessionHandbacks, "the app uploader's session is not handed them")
+            awaitDownloadSessionUp()
+            assertEquals(0, uploadSession.session().handbacks, "the app uploader's session is not handed them")
             playedOs.expire() // this session never reports its events drained
             delivery.await()
         }
@@ -151,7 +150,7 @@ class OsCompletionIntegrationTest {
 
         coroutineScope {
             val delivery = async { os.backgroundTransfers(DOWNLOAD_SESSION, awaitRelease = true) }
-            awaitOs { it.downloadSessionUp }
+            awaitDownloadSessionUp()
             completionsNeverWithin("no clock of the app's own releases it") { it.released > 0 }
             playedOs.expire()
             delivery.await()
@@ -175,14 +174,17 @@ class OsCompletionIntegrationTest {
         val armed = wake.wakes().heartbeatsScheduled
 
         val atRelease = coroutineScope {
-            val delivery = async { client.os("app", "onBackgroundTransfers", DOWNLOAD_SESSION).done() }
-            awaitOs { it.downloadSessionUp }
+            val delivery = async { os.backgroundTransfers(DOWNLOAD_SESSION, awaitRelease = true) }
+            awaitDownloadSessionUp()
             downloadSession.finish()
             downloadSession.reportEventsDrained()
-            osAtRelease(delivery.await())
+            checkNotNull(delivery.await()).atRelease
         }
 
-        assertTrue(atRelease.stagedFiles > 0, "the stagings the wake delivered were recorded before the release")
+        assertTrue(
+            checkNotNull(atRelease.stagedFiles) > 0,
+            "the stagings the wake delivered were recorded before the release",
+        )
         // The wake's work follows the release, under the process's background time: awaited to its end, or the test
         // could end before it ever started.
         eventually(read = { wake.wakes().heartbeatsScheduled }) { it > armed }
@@ -216,7 +218,7 @@ class OsCompletionIntegrationTest {
 
         os.silentPush(event, awaitRelease = true)
 
-        awaitOs { it.stagedFiles == 0 }
+        awaitStaged(0)
     }
 
     /** Long enough for a second release, or a tail that should not run, to happen before asserting it did not. */

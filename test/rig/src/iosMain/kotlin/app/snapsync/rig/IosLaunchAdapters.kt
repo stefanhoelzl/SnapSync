@@ -27,7 +27,6 @@ import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.put
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
@@ -136,21 +135,14 @@ internal fun adapterVerbs(launch: RigLaunch): AdapterVerbs =
     )
 
 /**
- * The app host's refusals of the shared vocabulary for this launch (`docs/testing.md`): every operator lever over a
- * system its adapter choice leaves real, the played operating system's expiry unless the background-time holds are
- * mocked, and the verbs a phone keeps outside the channel. Its own services refuse theirs themselves (`rigServices`).
+ * The app host's refusals of the shared vocabulary for this launch (`docs/testing.md`): every typed service over a system
+ * its adapter choice leaves real. Its own services refuse theirs themselves (`rigServices`).
  */
-fun iosRefusals(launch: RigLaunch, host: HostServices): Map<String, String> = buildMap {
-    val world = launch.world
-    putAll(world.leverRefusals(host))
-    world.refusalFor(MockedSystem.BACKGROUND_TIME)?.let { reason ->
-        RigVocabulary.playedOsEntries.forEach { put(it, "a real operating system's expiry is its own. $reason") }
-    }
-}
+fun iosRefusals(launch: RigLaunch, host: HostServices): Map<String, String> = launch.world.serviceRefusals(host)
 
 private const val REAL_BACKEND =
     "the backend is REAL on this launch — the shared snap-sync-dev zone, where real users' photos live — so the channel " +
-        "never reaches it and has no mock of it to move; mock `backend` (POST /device/adapters) to seed one"
+        "never reaches it and has no mock of it to move; mock `backend` (`adapters.choose`) to seed one"
 
 /**
  * Run [start] once the main thread is done with what it is doing now — the root's own initialization, which builds the

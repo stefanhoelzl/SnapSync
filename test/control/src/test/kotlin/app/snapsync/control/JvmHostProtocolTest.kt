@@ -59,13 +59,6 @@ class JvmHostProtocolTest {
         assertEquals(emptyList(), ad.unclassified, "every vocabulary entry is honoured or refused")
         assertEquals(emptyList(), ad.outsideVocabulary, "every wired verb is in the vocabulary")
         assertEquals(RigVocabulary.entries, (ad.honoured + ad.refused.keys).toSet())
-        assertEquals(
-            emptyList(),
-            RigVocabulary.worldLevers.filterNot {
-                it in ad.honoured
-            },
-            "the JVM host honours every world lever",
-        )
     }
 
     /**
@@ -173,11 +166,6 @@ class JvmHostProtocolTest {
         val run = assertFailsWith<LeverRefused> { contract.run("SecureStore") }
         assertTrue("JVM" in run.message.orEmpty(), run.message)
         assertFailsWith<LeverRefused>("the listing refuses rather than answering empty") { contract.list() }
-    }
-
-    @Test
-    fun a_verb_outside_the_vocabulary_is_unknown_not_refused() = onHost { client ->
-        assertEquals(404, assertIs<Reply.Failed>(client.deviceVerb("no/such/verb")).status)
     }
 
     @Test

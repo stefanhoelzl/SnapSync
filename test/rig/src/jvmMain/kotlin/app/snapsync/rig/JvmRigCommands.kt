@@ -10,11 +10,9 @@ import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.ui.state.Layer
 
-// The JVM host's `/device` writes, its gallery read, and what it refuses of the shared vocabulary (`docs/testing.md`,
-// "One control protocol, served by two hosts"). The operator levers and reads are the shared table (`MockLevers.kt`)
-// over this host's world — every system a mock, the backend aside when it is the real `api/`; the shared commands take
-// the same parameters and answer the same shape as on the app host. What the app does in answer is observed through the
-// screen and those same records.
+// The JVM host's world, its own services and what it refuses of the shared vocabulary (`docs/testing.md`, "One control
+// protocol, served by two hosts"). The typed services act on this host's world (`LeverDispatch.kt`) — every system a
+// mock, the backend aside when it is the real `api/`.
 
 /** The JVM host's world: every mock of its device, of which the app runs over all — the backend's unless it is `api/`. */
 internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
@@ -35,9 +33,6 @@ internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
     clockOwner = "the JVM host's loop owns the clock: `world.advanceTo` moves it, firing every timer due on the way",
     metricsRefusal = null,
 )
-
-/** The JVM host's `/device` write commands. */
-internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world.honouredLevers()
 
 /**
  * The joined event: the one the screen's host currently holds, or — where no screen was built — the one the
@@ -61,7 +56,7 @@ internal fun joinedEventId(rig: JvmRig): String? {
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */
 internal fun jvmRefusals(
     rig: JvmRig,
-): Map<String, String> = rig.world.leverRefusals(rig.host)
+): Map<String, String> = rig.world.serviceRefusals(rig.host)
 
 /**
  * The JVM host's own services (`HostServices.kt`): the app's process is this JVM's, so it relaunches and reinstalls it;

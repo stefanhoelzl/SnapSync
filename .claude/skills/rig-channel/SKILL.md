@@ -8,7 +8,7 @@ description: >-
   "join an event on device", "create an event", "seed photos", "wipe the
   gallery", "reset the device", "make the app foreground / silent-push / run the
   background task", "why did no upload cycle run", "read the extension's log", or
-  anything touching /os, /device, the typed services (`rig`) or the rig's port forward — or the SAME
+  anything touching the typed services (`rig`), GET /device or the rig's port forward — or the SAME
   protocol served by the JVM host over mocks (`:test:rig:runJvmHost`, no
   device, no lock). To install or launch a build first, load `snapsync-device`.
 ---
@@ -51,7 +51,7 @@ ch lock release SE2
 ```
 
 Which iPhone: the **SE2** runs iOS 26.6 — both uploaders, the PhotoKit extension included. The **XS** is on
-iOS 18, so it never runs the extension: only the app's uploader, and `/os/photokit-ext/*` and the extension's
+iOS 18, so it never runs the extension: only the app's uploader, and `extension-host` and the extension's
 contract recordings have nothing to reach there. Every on-device measurement this repo cites is the SE2's
 unless it says otherwise.
 
@@ -95,10 +95,10 @@ curl -sS --max-time 180 "$B/health"
 The guard requires `--udid` on the forward — `usbmux forward` ignores `PYMOBILEDEVICE3_UDID` and reaches
 whichever phone it finds first. Stop the forward before releasing the lock.
 
-⏱️ **Use a uniform, generous `--max-time` (180 s).** A receipted trigger legitimately blocks until the app
+⏱️ **Use a uniform, generous `--timeout` (180 s).** A delivery awaited with `--await-release` legitimately blocks until the app
 releases the OS completion handler — after the wake's own work, or (heartbeat) after its whole tail, or on
 the operating system's expiry. No clock of the app's own bounds it any more (`changes/own-work-per-wake`),
-so a short curl timeout makes a transport failure indistinguishable from a slow wake — the same
+so a short timeout makes a transport failure indistinguishable from a slow wake — the same
 absence-collapse this repo keeps paying for, reintroduced where nobody looks for it.
 
 🔢 **Port 18099 is a DEVICE-ONLY default** — the port the rig binds *on the phone*. One app instance runs per
@@ -116,17 +116,12 @@ port you asked for. Full simulator runbook: load **`ios-simulator`**.
 
 Most of the channel is **typed services** over kRPC (`ws://…/rpc`), which curl cannot reach: drive them with **`rig`**
 (`:test:cli`, "The control channel's typed services" below — exit codes, flags, `--timeout`). What is left on HTTP is
-liveness, the OS's entry points, and the `/device` levers not yet a service.
+liveness and the advertisement: the string verbs (`/os/<root>/<member>`, `POST /device/<verb>`) are gone (3g-a).
 
 ```
 GET  /health                            rig=up, port, boot instant — liveness ONLY
 GET  /device                            what THIS host honours and refuses (= `rig rig advertise`), each refusal with
                                         its reason; 500 names a gap
-POST /os/<root>/<entry>?arg=…           the real @PlatformEntry member, invoked as the platform invokes it
-                                        <root> is app | photokit-ext — WHOSE entry point, since the
-                                        channel reaches two composition roots. The app root's entries are
-                                        the typed `os` service now (`rig os …`, below); the string verbs stay
-                                        until the string protocol goes
 
 $R dev-controls reset                      void durable sync state
 $R dev-controls pin --app false --extension true   switch one uploader off (see below); `unpin` for both
@@ -298,22 +293,20 @@ $R contract run --name AlbumManager       # "# host: IOS_SIM_APP" then one line 
   parameter the run is **refused whole**. The simulator target binds a DEFAULT session, so these
   evidence everything but the background session's lifecycle (see `TransferSessions.kt`).
 
-## `/os/photokit-ext` — the OS-driven upload tier's own root
+## `extension-host` — the OS-driven upload tier's own root
 
-The channel reaches **two** composition roots, and the path segment says which. `/os/app/<member>` is
-`SnapSyncRoot`'s — everything the Swift app shell forwards. `/os/photokit-ext/<member>` is
-`UploadExtensionRoot`'s: the upload extension's, invoked directly rather than waiting for the OS to
-schedule an appex.
+The channel reaches **two** composition roots, and the service says which. `os` delivers to `SnapSyncRoot` —
+everything the Swift app shell forwards. `extension-host` invokes `UploadExtensionRoot`: the upload extension's,
+directly rather than waiting for the OS to schedule an appex.
 
 ```
-POST /os/photokit-ext/processRawValue   run one upload cycle; ANSWERS with the tri-state result
-                                        the OS reads, plus what the cycle created
-POST /os/photokit-ext/onTerminate       the OS killing a cycle
+$R extension-host process      run one upload cycle; ANSWERS the tri-state result the OS reads (completed|processing|failed)
+$R extension-host terminate    the OS killing a cycle
 ```
 
-`processRawValue` is the channel's only **answering** trigger: the OS invokes `process()` synchronously and
-acts on its return, so the rig receives that value rather than inferring it from a poll — the same
-reasoning that makes a receipted trigger receive its completion handler.
+`process` **answers**: the OS invokes `process()` synchronously and acts on its return, so the rig receives that
+value rather than inferring it from a poll — the same reasoning that makes an awaited delivery receive its completion
+handler.
 
 It runs on **its own serial thread, never main**. The extension process has no main lane, and running its
 `runBlocking` on the app's UI thread would freeze the app for the whole cycle.
@@ -326,7 +319,7 @@ full grant it withholds (records and acknowledges, creates nothing), exactly as 
 the OS to schedule one. **On a simulator** the queue is substituted and you play the OS through the typed
 `upload-jobs` service: `upload-jobs process --finished …` hands the finished job sets in and answers the created jobs,
 `upload-jobs perform` moves their bytes. Load `ios-simulator` for that half — the shape, the levers and the two host
-divergences are documented there. The entry here takes no body: job sets are `process`'s.
+divergences are documented there. `extension-host process` takes no job sets: they are `upload-jobs process`'s.
 
 ## Driving an event end to end
 
@@ -365,7 +358,7 @@ $R screen tap --intent '{"type":"LeaveEvent"}'
 # A tap that hands the person to the platform's own UI — {"type":"ShareInvite"}, {"type":"OpenSettings"},
 # {"type":"ChoosePhotos"}, {"type":"OpenLink","link":"PRIVACY_POLICY"}, {"type":"RequestPermission"} — is a real tap on a
 # device: the share sheet, Settings or the picker appear, and only a finger brings the person back. The JVM host's
-# platform UI is a mock, which records the hand-off (`device/os-record`).
+# platform UI is a mock, which records the hand-off (`system-ui`'s reads, and the world's events).
 ```
 
 In Kotlin, `:test:control`'s `Person` names the forms (`createEvent`, `confirmJoin(Choices(…))`, `setRange`,
@@ -489,17 +482,17 @@ $R adapters clear                         # back to all real; exits
 - **Coherence is checked** (refused with every broken rule): a mocked backend needs mocked transfers, push service and
   Secure Enclave; a mocked library needs mocked uploads; a REAL extension registration keeps every system the
   extension writes real — so mock `extension-registry` with anything shared, and drive the extension with
-  `/os/photokit-ext/processRawValue`. A choice that does not parse fails, naming the problem.
+  `extension-host process`. A choice that does not parse fails, naming the problem.
 - **Refused while joined**: leave or `rig dev-controls reset` first, so no membership is carried into another set
   of systems.
 - **An invalid adapters file composes NOTHING** (a script wrote a bad one, or a state file is unreadable): `/health`
   says `adapters=REFUSED …`, everything that would reach the app is refused naming why, the `adapters` service (and
   `host logs`, `host disk`) still work. Never a fall-back to real.
 - **Mocked means operator-driven**: nothing a mock plays happens on its own. The levers of the JVM host section below
-  are honoured here for exactly the systems the choice mocks (`GET /device` lists which); `/os` entries go through the
+  are honoured here for exactly the systems the choice mocks (`GET /device` lists which); `os` deliveries go through the
   mock where the system is mocked. With `upload-session` mocked the app's own uploader still runs, and its transfers
   wait for you: `rig --url $B upload-session session` lists them, `upload-session complete` lands them (the typed
-  transfer services, below). The extension's cycle runs with `/os/photokit-ext/processRawValue`, its jobs land with
+  transfer services, below). The extension's cycle runs with `extension-host process`, its jobs land with
   `upload-queue complete-job`. Both uploaders take the same photos,
   so to drive one alone switch the other off (`dev-controls pin`, below — the JVM host honours it too).
 - Mock state persists across relaunches (`rig/state/`, `rig/databases/` in the App Group), written by the app.
@@ -518,7 +511,7 @@ The app root's entries are the **`os` typed service** (`OsLevers`; `rig os <meth
 ```bash
 $R --url $B os foreground                 # also: background, push-token --token <hex>, push-token-failure --description …
 $R --url $B os continue-link --url <link>
-$R --url $B os silent-push --event <id> --await-release            # → {"heldMs": …}
+$R --url $B os silent-push --event <id> --await-release            # → {"heldMs": …, "atRelease": {"stagedFiles": …, "uploadSessionHandbacks": …}}
 $R --url $B os background-task --identifier app.snapsync.upload.heartbeat --await-release
 $R --url $B os background-transfers --identifier app.snapsync.upload.session --await-release
 ```
@@ -528,7 +521,9 @@ The platform hands it no completion handler, so neither does the rig. **Poll `ho
 
 The three entries the OS *does* hand a completion handler — `silent-push`, `background-task`,
 `background-transfers` — answer once delivered; with `--await-release` they block until the app releases the handler
-and answer `heldMs` (on the JVM host, a test waits on the world's `CompletionReleased` instead). A push and a transfer
+and answer `heldMs` and `atRelease` — the files staged and the upload session's handbacks as read on the releasing
+thread, each `null` where its system is real (on the JVM host, a test waits on the world's `CompletionReleased`
+instead). A push and a transfer
 wake release after their **own work** (the push's union read and enqueue; the session's staging and drain report) and
 run the rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; poll
 `host state` for its effects. The heartbeat releases after its tail. The last two take the identifier the OS would
@@ -608,10 +603,12 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   the foreground's: `os foreground`. `gallery read` is the library's answer under the person's grant.
 - **The OS is played, its expiry and its record included** (the app host only for what its adapter choice mocks —
   `played-os` needs `background-time` mocked): see "The operating system's typed services" below.
-  - `device/os-record` — the string record of the systems not yet typed: `screenShown`, the download session (`up`, `started`, `inFlight`), `uploadSessionHandbacks`, `databasesOpened`,
-    `stagedFiles`, `appStorageBytes` (the bytes the app's files take, its diagnostics — logs, memory trail, saved report —
-    left out: what the storage page shows a person). A receipted string `/os` answer carries it as read at the release
-    (`osAtRelease`).
+  - The rest of what the device holds is a read on the service that owns it: `screen shown` (null until a screen was
+    shown anything), `download-session downloads` (`up`, `started`, `inFlight`), `upload-session session` (its
+    `handbacks`), `databases opened`, `files staged-files`, `files app-storage-bytes` (the bytes the app's files take,
+    its diagnostics — logs, memory trail, saved report — left out: what the storage page shows a person). A delivery
+    awaited with `--await-release` answers `atRelease` — the files staged and the upload session's handbacks as read
+    at the release.
   - `host relaunch [--scene false]` (JVM host only) — process death and a cold launch; `--scene false` a cold
     background launch: no screen is built. Read only the OS's reads until an `os foreground`: `host state` and a tap
     read the screen and would assemble it.
@@ -627,7 +624,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     **typed services**, below.
 - The app's private files are no fact a test reads: what the outside sees of them is `appStorageBytes`.
 - `contract` is refused on this host (naming `JVM`): JVM contract bindings run under Gradle.
-- Typed client for tests: `:test:control`'s `RigClient` (a string verb's `409` is a `Reply.Refused`), and
+- Typed client for tests: `:test:control`'s `RigClient` and
   `client.levers(<Service>)` for every typed service, over kRPC (a refusal throws `LeverRefused`); `client.person()`
   taps the forms.
 - Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line
@@ -803,9 +800,11 @@ it — and refused, naming the real system, everywhere else:
   whose lock another process holds: thrown, nothing changed, the database still open — the `Databases` contract's
   `A_REFUSED_WRITE_THROWS_AND_CHANGES_NOTHING`; a database not created yet, or a table it does not hold, throws; each
   failure is told on the stream as `DatabaseFaulted`. No read fails: under iOS's write-ahead log a reader is never
-  blocked); read `switches()` (locked, the faults not yet spent).
+  blocked); read `switches()` (locked, the faults not yet spent), read `opened()` (every database any process opened,
+  by name, in order).
 - `files` (`FilesLevers`) — `appendLog(process, text)` (`LogProcess.APP|EXTENSION`: text a process's device log
-  carries, what a diagnostic dump reads back).
+  carries, what a diagnostic dump reads back); reads `stagedFiles()` (the download staging directory's files) and
+  `appStorageBytes()`.
 - `keychain` (`KeychainLevers`) — `forget(item)` (`KeychainItem.EVENT_KEY`: the joined event's key gone, the membership
   kept — a restore onto a new phone).
 - `older-install` (`OlderInstallLevers`) — `stagedBacklog(device?, asset?)` (an install upgraded from a build before
@@ -818,7 +817,8 @@ $R --url $B keychain forget --item event-key
 ```
 
 Gone with the move: `device/databases/locked`, `device/membership/undeletable`, `device/event-key/lose`,
-`device/logs/append`, `device/staging/seed-legacy-backlog`, and the `device/staging` fact.
+`device/logs/append`, `device/staging/seed-legacy-backlog`, the `device/staging` fact, and `device/os-record`'s
+`databasesOpened`, `stagedFiles` and `appStorageBytes` (3g-a).
 
 ### The operating system's typed services
 
@@ -827,13 +827,12 @@ The operating system as the app meets it (`docs/testing.md`, "Typed services") �
 - `os` (`OsLevers`) — the deliveries to the app's entry points ("Triggers return what the PLATFORM returns", above).
   Needs nothing: every host serves it.
 - `played-os` (`PlayedOsLevers`) — what only a played OS does; needs `background-time` mocked (a real OS's expiry is
-  its own): `expire()` (time is up for every held completion handler and background-time hold — hold a receipted
+  its own): `expire()` (time is up for every held completion handler and background-time hold — hold a
   delivery open with `--await-release` in a second call and expire it), `expireNext()` (the next handler arrives
   already expired), and the read `completions()` (`handed`, `released`, `releasedAgain`, `held`).
 - `extension-host` (`ExtensionHostLevers`) — `process()` (the OS invokes the extension's `process()`: answers
   `completed|processing|failed`) and `terminate()`. The JVM host and the iOS app host serve it; Android refuses it. The
-  simulator's scripted job sets are still the string verb `/os/photokit-ext/processRawValue`'s (body), see
-  `ios-simulator`.
+  simulator's scripted job sets are `upload-jobs process`'s, see `ios-simulator`.
 - Each OS system's face, needing its system mocked: `lifecycle` (`everActive()`), `links` (`startInstalled(referrer)`,
   the install referrer only a store delivers, once per installation), `push` (`kind(kind)` — `apns|fcm`, read as the
   app composes, so it takes effect at a relaunch; `refuseTokens(reason?)` — none: tokens again; the read `push()`:
@@ -842,7 +841,9 @@ The operating system as the app meets it (`docs/testing.md`, "Typed services") �
   `expireAll()`), `extension-registry` (the read `registered()`; `null` where the platform has no extension).
 
 Gone with the move: `device/os-record`'s completions, `heartbeatsScheduled`, `pendingWake`, `backgroundTimeHolds` and
-`pushRegistrations` — each is its service's read above.
+`pushRegistrations` — each is its service's read above — and, with the string protocol (3g-a), `os-record` itself
+(`screenShown`, the transfer sessions: `screen shown`, `download-session downloads`, `upload-session session`), the
+`/os/app/*` verbs (`os`), `/os/app/onExpiry` (`played-os`) and `/os/photokit-ext/*` (`extension-host`).
 
 ### The world's events — waiting without polling (JVM host only)
 

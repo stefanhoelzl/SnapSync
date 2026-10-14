@@ -31,8 +31,8 @@ import kotlin.time.Instant
  * calls) over the device as mocks ([JvmMocks]).
  *
  * A hook, not a second server. What this host adds is only what the iOS rig adds on its side: the composition lane,
- * the OS driven through the mocks' operator faces ([MockEntryDriver] for `/os`), the `/device` levers and reads —
- * each a mock's operator face, bar the few named in [JvmRigCommands] — and this host's classification of the shared
+ * the OS driven through the mocks' operator faces ([MockEntryDriver] behind the `os` service), the typed services —
+ * each a mock's operator face, bar the host's own in [JvmRigCommands] — and this host's classification of the shared
  * vocabulary.
  *
  * The app is composed on a **serial, non-UI** lane, the structure the device shell uses; its entry points are invoked
@@ -160,7 +160,6 @@ class JvmRigHost private constructor(
         }
 
         private fun jvmHooks(rig: JvmRig, publishBoundPort: (Int) -> Unit, reportBindFailure: (Throwable) -> Unit): RigHooks {
-            val mocks = rig.mocks
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
                 servicesOf = { hooks ->
@@ -173,7 +172,6 @@ class JvmRigHost private constructor(
                 uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",
-                mainLane = rig.lane,
                 world = HostWorld(servedWorld(JvmWorld(rig.threads), refusal = null), rig.threads.acts),
                 deviceLog = { process, maxBytes ->
                     when (process) {
@@ -181,43 +179,10 @@ class JvmRigHost private constructor(
                         LogTailService.Process.EXTENSION -> null
                     }
                 },
-                triggerGroups = mapOf(
-                    "app" to TriggerGroup(
-                        lane = rig.lane,
-                        wired = appTriggers(MockEntryDriver(mocks, rig.os)) + (
-                            "onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") rig.os.expireNextNow() else rig.os.expireNow() }
-                            ),
-                        excluded = emptyMap(),
-                    ),
-                    "photokit-ext" to TriggerGroup(
-                        // The extension process has no main lane: its root runs on the OS-invoked thread, which the
-                        // trigger hands it to from the act's own lane.
-                        lane = rig.threads.operator,
-                        wired = mapOf(
-                            "processRawValue" to RigTrigger.Answering { _, body ->
-                                if (body != null) {
-                                    """{"refused":"the mocked upload-job queue is the host's own; job sets cannot be handed in","queue":"mock"}""" + "\n"
-                                } else {
-                                    // On the operating system's own thread, which the answer blocks: work the loop
-                                    // waits on, while the cycle itself runs on the extension's lane.
-                                    val result = rig.threads.loop.outside("the extension's process()") {
-                                        mocks.extensionHost.process(rig.threads.osThread)
-                                    }
-                                    """{"result":"${result.toString().lowercase()}","queue":"mock",""" +
-                                        """"created":${mocks.uploadQueue.view().created.size}}""" + "\n"
-                                }
-                            },
-                            "onTerminate" to RigTrigger.Fire { mocks.extensionHost.terminate() },
-                        ),
-                        excluded = emptyMap(),
-                    ),
-                ),
-                deviceCommands = jvmDeviceCommands(rig),
                 osExtensionEnabled = { null },
                 publishBoundPort = publishBoundPort,
                 reportBindFailure = reportBindFailure,
                 refusals = jvmRefusals(rig),
-                osRecord = rig.os::record,
                 osExtensionNotApplicable =
                 "the JVM root composes an operating system without the OS-driven upload mechanism, so there is " +
                     "no extension registration to report",
@@ -262,7 +227,7 @@ internal class JvmRig(
     /** The composition lane: what the app's entry points are invoked on, as Swift invokes them on main. */
     val lane: kotlinx.coroutines.CoroutineDispatcher get() = threads.composition
 
-    /** What the operator levers act on: every mock of the device (`MockLevers.kt`). */
+    /** What the typed services act on: every mock of the device (`LeverDispatch.kt`). */
     val world: MockWorld by lazy { jvmWorld(this, os) }
 
     /**
@@ -270,7 +235,10 @@ internal class JvmRig(
      * lane, and the extension's invocations, on the operating system's own thread.
      */
     val host: HostServices by lazy {
-        HostServices(entries = PlayedEntries(MockEntryDriver(mocks, os), lane), extensionHost = JvmExtensionHost(this))
+        HostServices(
+            entries = PlayedEntries(MockEntryDriver(mocks, os), lane, os::atRelease),
+            extensionHost = JvmExtensionHost(this),
+        )
     }
 
     /**

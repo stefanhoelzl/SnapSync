@@ -3,11 +3,7 @@ package app.snapsync.mock
 import app.snapsync.levers.DatabaseFault
 import app.snapsync.levers.DatabaseSwitches
 import app.snapsync.levers.DatabasesLevers
-import app.snapsync.levers.FilesLevers
-import app.snapsync.levers.LogProcess
 import app.snapsync.levers.WriteKind
-import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -40,8 +36,6 @@ class FileSystemMock {
         mapOf(FileArea.SHARED to shared, FileArea.PRIVATE to private.takeIf { privateArea }),
         denied.keys,
     )
-
-    val operator: FileSystemOperator = FileSystemOperator(this)
 
     /** An area's files, path → bytes — live: a write here is a write to the device's disk. */
     fun area(area: FileArea): MutableMap<String, ByteArray> = held(area)
@@ -87,14 +81,6 @@ class FileSystemMock {
     /** The bytes the files in both areas take, the paths [leftOut] names excepted. */
     fun bytes(leftOut: (FileArea, String) -> Boolean = { _, _ -> false }): Long = FileArea.entries.sumOf { area ->
         held(area).snapshot().filterKeys { !leftOut(area, it) }.values.sumOf { it.size.toLong() }
-    }
-}
-
-/** What a test may add to the device's files ([FilesLevers]). */
-class FileSystemOperator internal constructor(private val disk: FileSystemMock) : FilesLevers {
-    override suspend fun appendLog(process: LogProcess, text: String) = when (process) {
-        LogProcess.APP -> disk.append(FileArea.PRIVATE, APP_LOG_FILE_NAME, text)
-        LogProcess.EXTENSION -> disk.append(FileArea.SHARED, EXTENSION_LOG_FILE_NAME, text)
     }
 }
 
@@ -156,6 +142,8 @@ class DatabasesOperator internal constructor(private val mock: DatabasesMock) : 
         mock.fail(database, table, kind, times ?: 1)
 
     override suspend fun switches(): DatabaseSwitches = DatabaseSwitches(mock.locked, mock.armed)
+
+    override suspend fun opened(): List<String> = mock.opened
 }
 
 /** The device's user defaults — read while the app writes them, so a [SnapshotMap]. */

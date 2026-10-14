@@ -29,14 +29,10 @@ import app.snapsync.model.uploadersCarried
 import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigLaunch
 import app.snapsync.rig.RigServer
-import app.snapsync.rig.appTriggerGroup
-import app.snapsync.rig.deviceCommands
-import app.snapsync.rig.extensionTriggerGroup
 import app.snapsync.rig.iosHostServices
 import app.snapsync.rig.iosRefusals
 import app.snapsync.rig.noMembershipRefusal
 import app.snapsync.rig.osExtensionEnabled
-import app.snapsync.rig.osRecord
 import app.snapsync.rig.rigCompletion
 import app.snapsync.rig.rigLaunch
 import app.snapsync.rig.rigPort
@@ -46,7 +42,6 @@ import app.snapsync.rig.startWhenReady
 import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.Dispatchers
 import platform.Foundation.NSDate
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSString
@@ -67,9 +62,9 @@ import platform.Foundation.writeToFile
  *
  * The set differs from production in the launch-time adapters (`docs/testing.md`, "Launch-time adapters"): the ports the
  * app composes over are [real] with every system the adapters file mocks swapped for its mock ([rigLaunch], which reads it),
- * and an adapter choice the process refuses composes nothing. Besides, the UI is decorated ([RigUi] — the channel's `/user` verbs
+ * and an adapter choice the process refuses composes nothing. Besides, the UI is decorated ([RigUi] — the channel's `screen.tap`
  * reach the core as the intents a tap produces, through the same handlers) and the development controls are the
- * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured, the reset). The `/os` verbs deliver
+ * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured, the reset). The `os` service delivers
  * through the platform's own adapters ([IosEntryDriver]) — or a mocked system's operator face.
  *
  * Being compiled INTO `:app:ios` is what lets this file reach the root's adapters without widening anything to
@@ -121,35 +116,9 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     // A compile-time fact, read rather than derived: the adapter that CHOSE the binding is the one that
     // reports it, so the rig cannot disagree with the transport about what this build does.
     transferBinding = transferSessionBinding,
-    // Swift calls entry points from the main thread; so does the rig. A trigger invoked on another lane
-    // would not be the call the OS makes, which is the whole reason triggers are entry points.
-    mainLane = Dispatchers.Main,
     deviceLog = LogTailService(IosFiles())::tail,
-    // Grouped by composition root: the `/os/<root>/<member>` segment names whose entry point a caller
-    // invokes. `app` is `SnapSyncRoot`'s. A second group joins it when the channel reaches a second root.
-    triggerGroups = mapOf(
-        // Swift calls this root's entry points from the main thread, so the rig does too.
-        "app" to appTriggerGroup(launch, IosEntryDriver, excludedTriggers()),
-        "photokit-ext" to extensionTriggerGroup(
-            // THUNKS, never method references. `UploadExtensionRoot` is an `object` whose `init` calls
-            // `Logger.setLogWriters(…)`, and a bound method reference FORCES that object where it is
-            // written — here, at boot. Measured 2026-08-26: with `::processRawValue` the extension's boot
-            // banner appeared at hook-construction time and `SnapSyncRoot`'s own `onLaunch` lines then
-            // landed in `ext-debug.log`, because the app's log destination had already been replaced
-            // before `SnapSyncRoot` initialised. `debug.log` was never created at all.
-            //
-            // A lambda body is not evaluated until it is called, so the root is forced by the first
-            // request that needs it — which is the same rule this file already follows for
-            // `SnapSyncRoot.app` and `.host`, and for the same reason.
-            process = { UploadExtensionRoot.processRawValue() },
-            terminate = { UploadExtensionRoot.onTerminate() },
-            excluded = excludedExtensionTriggers(),
-        ),
-    ),
-    // The `/device` verbs and the host's own services are built in `:test:rig`, not here. Same reason every
-    // default and cast already lives there: this file is compiled INTO `:app:ios` and is scanned by the
-    // shell gate, which permits no decisions — and a command map's bodies are full of them.
-    deviceCommands = deviceCommands(launch),
+    // The host's own services are built in `:test:rig`, not here. Same reason every default and cast already lives
+    // there: this file is compiled INTO `:app:ios` and is scanned by the shell gate, which permits no decisions.
     // The typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it —
     // and this host's own, each method classified by the host: the gallery, the contracts, the played upload-job queue.
     servicesOf = rigServices(
@@ -158,7 +127,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
         host = { SnapSyncRoot.host },
         photoAccess = SnapSyncRoot.permission,
         handleReport = SnapSyncRoot.process.processAccount::handle,
-        // A thunk, never a method reference: see `extensionTriggerGroup` below.
+        // A thunk, never a method reference: see `hostServices` below.
         processExtension = { UploadExtensionRoot.processRawValue() },
         osServices = hostServices(launch),
         contracts = deviceContracts() + appDeviceContracts(refusal = noMembershipRefusal { SnapSyncRoot.host }) +
@@ -185,14 +154,20 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
     refusals = iosRefusals(launch, hostServices(launch)),
     recordLanded = ::recordLanded,
-    osRecord = osRecord(launch),
     adapters = launch.description,
     uncomposed = launch.uncomposed,
 )
 
 /**
- * The typed services this host implements itself (`os`, `extension-host`): the same driver and the same extension root
- * thunks as the `/os` groups above — thunks, never method references, for the reason given there.
+ * The typed services this host implements itself (`os`, `extension-host`): the platform's own adapters, and the
+ * extension root's members.
+ *
+ * THUNKS, never method references. `UploadExtensionRoot` is an `object` whose `init` calls `Logger.setLogWriters(…)`,
+ * and a bound method reference FORCES that object where it is written — here, at boot. Measured 2026-08-26: with
+ * `::processRawValue` the extension's boot banner appeared at hook-construction time and `SnapSyncRoot`'s own `onLaunch`
+ * lines then landed in `ext-debug.log`, because the app's log destination had already been replaced before
+ * `SnapSyncRoot` initialised. A lambda body is not evaluated until it is called, so the root is forced by the first
+ * request that needs it — the same rule this file follows for `SnapSyncRoot.app` and `.host`.
  */
 private fun hostServices(launch: RigLaunch) = iosHostServices(
     launch,
@@ -214,13 +189,13 @@ private fun writeTextFile(path: String?, text: String) {
 }
 
 /**
- * WIRED entry points. No deadline is reported beside a receipted trigger: no clock of the app's own releases a
- * handler, so the measured hold is the only number there is.
- */
-/**
- * The iOS operating system, driven: each `/os` verb delivers through the same adapter method the Swift shell's
- * callback reaches, on the same (main) lane, so a rig-driven delivery is indistinguishable in `debug.log` from an
- * OS-driven one.
+ * The iOS operating system, driven: each `os` delivery goes through the same adapter method the Swift shell's callback
+ * reaches, on the same (main) lane, so a rig-driven delivery is indistinguishable in `debug.log` from an OS-driven one.
+ *
+ * Not every `@PlatformEntry` member has a delivery: the launch (`onLaunch`, which the app's own launch already ran), the
+ * cold Universal Link (`onLaunchActivity`, which no in-process call can recreate — its warm twin `continueLink` reaches
+ * the same join path), the launch-shape query `onSceneActive`, and the scene-delegate observers, which record whether the
+ * PLATFORM called them — a rig call would manufacture the very fact they exist to capture.
  */
 private object IosEntryDriver : EntryDriver {
     override fun foreground() = SnapSyncRoot.lifecycle.deliverForeground()
@@ -245,71 +220,6 @@ private object IosEntryDriver : EntryDriver {
     override fun backgroundTransfers(identifier: String, done: () -> Unit) =
         SnapSyncRoot.onBackgroundTransfers(identifier, done)
 }
-
-/**
- * EXCLUDED entry points of the upload extension's root — **none**, and the empty map is the statement.
- *
- * Both of that root's `@PlatformEntry` members are driveable: `processRawValue` runs a cycle and answers
- * with the tri-state result the OS reads, and `onTerminate` records what the root knows about its in-flight
- * work. Neither is a record of whether the PLATFORM called it, which is what makes the app root's scene
- * observers undriveable.
- *
- * The function exists rather than being omitted so every group states its exclusions in a named place: a group
- * with none would be a group whose omissions could not be read, and "nothing is excluded" and "nothing could be
- * looked at" are not the same answer. (A guard once derived these and compared them with the `@PlatformEntry`
- * population; it was retired in `74302d2b`, so the comparison is a reviewer's.)
- */
-private fun excludedExtensionTriggers(): Map<String, String> = emptyMap()
-
-/**
- * EXCLUDED entry points, each with the consequence that makes the omission safe rather than an oversight.
- * Wired + excluded is meant to equal the root's `@PlatformEntry` population, exactly — kept by review, since
- * the guard that asserted it was retired (`74302d2b`).
- */
-private fun excludedTriggers(): Map<String, String> = mapOf(
-    "onLaunch" to
-        "composes the graph, which the app's own launch already did: a second call is a no-op, so there is " +
-        "nothing for the channel to drive. Reset is a relaunch.",
-    "onLaunchActivity" to
-        "the COLD universal-link delivery, which no in-process call can recreate. Note this is a " +
-        "delivery gap, not a join gap: its warm twin onSceneContinueActivity IS wired and reaches the " +
-        "same decode -> gate -> join path, so joining is driveable and only the cold hand-off is not.",
-    "onSceneActive" to
-        "a launch-shape query, not a trigger: it returns the resolved scene mode and nothing " +
-        "downstream changes on a second call. /health reports the composition facts directly.",
-    // The six scene-delegate OBSERVERS share one consequence, stated per entry so each carries its
-    // own reason rather than pointing at a group. They record and do nothing else: firing one from
-    // here writes a log line that says the RIG called it, which is the opposite of the fact they
-    // exist to capture — whether the PLATFORM did. Their subject is UIKit's behaviour on an OS we
-    // cannot drive, so the only instrument that reads them is a device dump.
-    "onSceneWillConnect" to
-        "records the connecting scene's activity count and nothing else; a rig call would log a " +
-        "count the rig chose. What it answers — did iOS connect a scene carrying no activity — is " +
-        "only answerable by iOS.",
-    "onSceneDidFailToContinueActivity" to
-        "records a continuation UIKit tried and abandoned, with the platform's own error. A rig call " +
-        "would manufacture both the attempt and the error text, which is the entire content.",
-    "onSwiftUiOpenUrl" to
-        "SwiftUI's delivery path. Its destination is shell.onOpenUrl, which the wired " +
-        "onSceneContinueActivity trigger already reaches, so joining stays driveable — and firing it " +
-        "here would exercise the Kotlin door, never the question this path exists for, which is whether " +
-        "the PLATFORM reaches the modifier on a given OS.",
-    "onSceneWillContinueActivity" to
-        "records that UIKit is starting a continuation. Invoking it here would assert exactly the " +
-        "fact under investigation instead of observing it.",
-    "onSceneWillEnterForeground" to
-        "records that the scene DELEGATE was called, as distinct from the application-wide " +
-        "notification onForeground observes. A rig call cannot distinguish the two, which is its " +
-        "whole purpose.",
-    "onSceneDidBecomeActive" to
-        "the same delegate-liveness record as onSceneWillEnterForeground, at the active edge.",
-    "onSceneDidDisconnect" to
-        "records a scene teardown the rig cannot perform; forcing the line would misreport the " +
-        "process state a later cold delivery is read against.",
-    "onSceneOpenUrlContexts" to
-        "records URLs arriving on the retired custom-scheme path, which no shipped build declares. " +
-        "A rig call would manufacture the very arrival whose absence is the expected reading.",
-)
 
 /**
  * The `NSUserActivity` iOS delivers to `scene(_:continue:)` for a universal link.

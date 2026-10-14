@@ -2,7 +2,6 @@ package app.snapsync.rig
 
 import app.snapsync.levers.OsExtensionView
 import app.snapsync.services.logs.LogTailService
-import kotlin.coroutines.CoroutineContext
 
 /**
  * What the host shell hands the rig: launch-time **facts** as data, platform **verbs** as lambdas.
@@ -42,35 +41,8 @@ class RigHooks(
      * support.
      */
     private val transferBinding: String,
-    /**
-     * The lane platform entry points are invoked on. Swift calls them from the **main** thread, so the rig
-     * does too — a trigger that ran on a different lane would not be the same call the OS makes, which is
-     * the whole reason triggers are entry points rather than `flow/` classes.
-     */
-    val mainLane: CoroutineContext,
     /** The device logs' tail, supplied by the shell because `AppCore` does not expose its ports. */
     val deviceLog: suspend (process: LogTailService.Process, maxBytes: Int) -> String?,
-    /**
-     * The wired entry points, **grouped by composition root** — the group name is the `/os/<root>/…` path
-     * segment. Each group is meant to cover its root's `@PlatformEntry` population, wired or excluded with a
-     * reason — kept by review: the guard that once derived that population and compared it was retired
-     * (`74302d2b`), so nothing fails when a new entry is left unwired.
-     *
-     * Grouped rather than flat because the channel now reaches more than one root, and a flat map would
-     * make two roots declaring an entry point of the same name **unrepresentable in the inventory**: a set
-     * comparison deduplicates the pair and drops one, and nothing notices. Grouping removes that
-     * hazard by construction instead of asserting about it, and it lets a route leaf stay equal to the
-     * member name it invokes without either root renaming a member for disambiguation.
-     */
-    val triggerGroups: Map<String, TriggerGroup>,
-    /**
-     * The `/device` write commands, by name.
-     *
-     * Hand-listed, and unlike the two maps above that is not a compromise: there is no population to derive
-     * one from. These operations impersonate nobody — nothing in production ever seeds a photo library or
-     * voids durable sync state — so the set exists only because a test rig exists.
-     */
-    val deviceCommands: Map<String, RigCommand>,
     /**
      * The OS's view of the upload-job extension registration, or `null` where the OS has no such selector.
      *
@@ -121,19 +93,14 @@ class RigHooks(
      */
     val recordLanded: (route: String, contentType: String?) -> Unit = { _, _ -> },
     /**
-     * What the operating system recorded of the app, as JSON — `null` on a host whose operating system is real and
-     * keeps its own counsel. A receipted entry's answer carries it as read at the release (`osAtRelease`).
-     */
-    val osRecord: (() -> String)? = null,
-    /**
      * This launch's adapter choice, in one line — `/health` reports it (`docs/testing.md`, "Launch-time adapters"): `all real`
      * for an ordinary rig build, the mocked systems otherwise.
      */
     private val adapters: String = "all real",
     /**
      * Why this launch composed NOTHING — an adapter choice the process refused to compose over — or `null` for a launch that
-     * composed. When set, every route that would reach the composed app answers `409` with it, and only `/health`,
-     * `/device` and the services that read or rewrite the launch itself are served (the logs, the disk, the adapter
+     * composed. When set, the host's own services refuse with it every method that would reach the composed app, and
+     * only `/health`, `/device` and what reads or rewrites the launch itself are served (the logs, the disk, the adapter
      * choice): nothing is composed, so nothing real can be reached by a run that believed itself mocked.
      */
     val uncomposed: String? = null,
@@ -197,149 +164,6 @@ class RigHooks(
         "uploadBase" to uploadBase,
         "transferBinding" to transferBinding,
     )
-
-    /** The binding, for the trigger response — which reports it beside the numbers it qualifies. */
-    internal val transferBindingFact: String get() = transferBinding
-
-    /**
-     * What a receipted trigger's numbers mean **on this build's binding**, appended to the `note` that
-     * already says what they do not answer.
-     *
-     * Only `onBackgroundTransfers` earns a caveat, and only under `"default"` — the one binding whose session
-     * reports nothing; a host with no `URLSession` at all (the JVM host's `"world"`) earns none. That entry is the one
-     * whose OS handler is released by the session reporting its events drained — a callback a default session
-     * never sends, since the transport binding is fixed by the compilation target —
-     * so on that binding the hold always ends on the background time's expiry, which says nothing about the app. The
-     * other receipted entries answer their own handlers and are unaffected.
-     *
-     * This is a labelling obligation, not decoration. `fix-download-session-lifecycle` D5 refused a
-     * simulator hatch because a session that "runs straight through" a defect manufactures false
-     * confidence; this change takes the hatch and pays for it here, by making the result state what it
-     * did and did not exercise. A caller cannot read the numbers without reading this.
-     */
-    internal fun bindingCaveat(trigger: String): String =
-        if (trigger != "onBackgroundTransfers" || transferBinding != "default") {
-            ""
-        } else {
-            ". NOTE transferBinding=default (iosSimulatorArm64): this exercised adopt + session-identifier " +
-                "routing ONLY. The OS delivered no events and relaunched nothing, and no transfer outlived " +
-                "the process. The hold ends on the background time's expiry because this binding's session never " +
-                "reports its events drained — that is the host, not a fault. Suspension survival and OS relaunch are " +
-                "device-only and are NOT evidenced by this result"
-        }
-}
-
-/**
- * One composition root's entry points: those wired to a trigger, and those deliberately not.
- *
- * A root is a **process's** composition root in production — `SnapSyncRoot` is the app's,
- * `UploadExtensionRoot` is the upload extension's. That the channel can reach both from one process is a
- * property of this host, not of the design: the group name says whose entry point a caller is invoking,
- * so `/os/photokit-ext/onTerminate` cannot be read as the app terminating.
- */
-class TriggerGroup(
-    /**
-     * The lane this root's entry points are invoked on — a property of the **root**, not of the server,
-     * because it models the thread the platform itself calls that root from.
-     *
-     * The app's root is called from the **main** thread by Swift, so the rig calls it there too. The upload
-     * extension's root is not: *"In the extension process there is no UI and no main lane: `process()` is
-     * synchronous by the OS's contract and runs under `runBlocking` on the OS-invoked thread"* (spec
-     * `docs/architecture.md`). Invoking that root on main would run its `runBlocking` on the live app's UI
-     * thread — freezing the UI for the whole cycle, and deadlocking on anything the cycle needs from main.
-     */
-    val lane: CoroutineContext,
-    /** Wired entry points, by member name. The route leaf is this name, verbatim. */
-    val wired: Map<String, RigTrigger>,
-    /** Entry points deliberately NOT wired, each with the reason that makes the omission safe. */
-    val excluded: Map<String, String>,
-)
-
-/**
- * A wired platform entry point.
- *
- * The split is **derived from the platform contract, not chosen by us**: an entry the OS hands a
- * completion handler is one the OS waits on, and the rig — playing the OS — supplies that handler and
- * waits too. An entry the OS does not wait on is answered immediately, because waiting there would make
- * the rig-driven path differ from production in timing and interleaving, which is exactly the fidelity
- * that made entry points the right vocabulary in the first place.
- */
-sealed interface RigTrigger {
-
-    /**
-     * The platform hands this entry no completion handler. Invoked and answered `202`; the caller polls
-     * `host.state()`. `onForeground` is in this group — likely the most-used trigger, and the one whose work
-     * escapes into launched coroutines by design.
-     */
-    class Fire(val run: (arg: String?) -> Unit) : RigTrigger
-
-    /**
-     * The platform hands this entry an OS completion handler, and the app holds it in `OsCompletions` across
-     * the wake's own work. The rig supplies [run]'s `done` lambda, so it does not *detect* completion — it
-     * **receives** it, on the same channel the OS does, and reports the measured hold.
-     *
-     * There is no deadline to report beside it: no clock of the app's own releases a handler any more —
-     * time is up is learned only from the operating system. The rig classifies
-     * nothing either — the release carries no outcome, so "released after its own work" versus "released on
-     * the operating system's expiry" is not recoverable here. The authoritative answer is production's own:
-     * `OsCompletions` logs its expiry line on the expiry path and no other, readable through `/logs` after the
-     * `[rig]` marker.
-     */
-    class Receipted(val run: (arg: String?, done: () -> Unit) -> Unit) : RigTrigger
-
-    /**
-     * The platform **waits for this entry's return value and acts on it** — the third shape, and neither of
-     * the two above can carry it.
-     *
-     * `UploadExtensionRoot.processRawValue()` is the case: the OS invokes `process()` synchronously and
-     * reads a `PHBackgroundResourceUploadProcessingResult` back, which decides whether it re-invokes. The
-     * return IS the OS's channel, exactly as [Receipted]'s completion handler is — so the rig, playing the
-     * OS, receives it rather than inferring it from a poll. Answering `202` and polling would discard the
-     * tri-state result the entry point exists to produce.
-     *
-     * [body] is the request body, because an entry point the rig must play the OS for may need more state
-     * handed in than a query string carries — the upload-job sets, for instance, which the OS holds outside
-     * the process and hands in per invocation.
-     */
-    class Answering(val run: suspend (arg: String?, body: String?) -> String) : RigTrigger
-}
-
-/**
- * A `/device` **write**.
- *
- * Two properties distinguish it from a trigger, and both are forced rather than chosen. It **blocks until
- * the work is done and answers with the outcome** — that is the whole reason these moved off launch
- * variables, where a failure was a log line somebody had to go and find. And it runs on the caller's lane,
- * **never** [RigHooks.mainLane]: `performChangesAndWait` blocks, and the launch-time chain it replaces was
- * on `Dispatchers.Default` for exactly that reason.
- *
- * There is deliberately no serialization between commands. Each blocks, so a caller that awaits a response
- * before sending the next is serial by construction; a caller that deliberately fires two destructive
- * commands at its own device concurrently is not a failure mode worth machinery.
- */
-class RigCommand(val run: suspend (params: Map<String, String>, body: String?) -> CommandResult)
-
-/**
- * What a `/device` command answers with.
- *
- * Carries the status rather than only a body, because the refusals here are the point. A wipe handed an
- * unrecognized scope must refuse — the operation cannot be undone, so guessing is not available — and a
- * refusal that arrived as `200` with an `error` field would be a refusal a script could miss, which is the
- * failure the launch-variable form already had.
- */
-class CommandResult(val status: Int, val body: String) {
-    companion object {
-        fun ok(body: String) = CommandResult(status = 200, body = body)
-
-        /** A refusal the caller can act on: what was wrong, and what would have been accepted. */
-        fun badRequest(why: String) = CommandResult(status = 400, body = """{"error":"$why"}""")
-
-        /**
-         * A verb, or a form of one, that THIS host cannot honour (`docs/testing.md`, "One
-         * control protocol, served by two hosts") — `409`, with the reason, never a success that did nothing.
-         */
-        fun refused(why: String) = CommandResult(status = 409, body = """{"refused":${jsonString(why)}}""")
-    }
 }
 
 /**
@@ -372,7 +196,3 @@ fun rigPortFilePath(documentsDirectory: String?): String? =
  * its own port undiscoverable on the next run — loudly, since the reader finds nothing.
  */
 const val RIG_PORT_FILE_NAME: String = "rig.port"
-
-/** [text] as a JSON string literal. */
-internal fun jsonString(text: String): String =
-    "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""

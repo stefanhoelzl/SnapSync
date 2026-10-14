@@ -122,7 +122,7 @@ class StagedByteReclaimIntegrationTest {
     private class Seeded(val storage: Long, val bytes: Long)
 
     /** The storage the app takes, as the device's storage page shows it. */
-    private suspend fun Rig.storage(): Long = osRecord().appStorageBytes
+    private suspend fun Rig.storage(): Long = files.appStorageBytes()
 
     /**
      * The foreground's reclaim runs as one of its concurrent children, so its effect is awaited: the storage fell by at

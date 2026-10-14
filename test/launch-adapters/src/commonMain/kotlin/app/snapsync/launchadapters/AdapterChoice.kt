@@ -170,6 +170,6 @@ private val RULES: List<Rule> = listOf(
         thenMocked = false,
         why = "a real registration is invoked by the operating system in the extension's OWN process, and a mocked " +
             "system the extension writes would then be written by two processes; mock the registration too, and the " +
-            "control channel invokes the extension inside the app (/os/photokit-ext/processRawValue)",
+            "control channel invokes the extension inside the app (the `extension-host` service's process)",
     ),
 )

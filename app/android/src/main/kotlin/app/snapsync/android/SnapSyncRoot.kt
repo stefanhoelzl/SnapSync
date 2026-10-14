@@ -68,10 +68,10 @@ class SnapSyncRoot(internal val application: Application) {
 
     private val log = Logger.withTag("SnapSyncRoot")
 
-    /** The process's foreground life. `internal` so a rig build's `/os` verbs deliver through it. */
+    /** The process's foreground life. `internal` so a rig build's `os` service delivers through it. */
     internal val lifecycle: AndroidLifecycle by lazy { AndroidLifecycle() }
 
-    /** The links the activity is opened with. `internal` so the activity, and a rig build's `/os` verb, deliver them. */
+    /** The links the activity is opened with. `internal` so the activity, and a rig build's `os` service, deliver them. */
     internal val links: AndroidLinks by lazy { AndroidLinks(log) }
 
     /** The screen an activity pulls. */

@@ -51,9 +51,25 @@ interface OsLevers {
     companion object : LeverService<OsLevers>(OsLevers::class, "os", emptySet(), { serviceDescriptorOf() })
 }
 
-/** The app released a completion handler the operating system handed it, [heldMs] after it was handed over. */
+/**
+ * The app released a completion handler the operating system handed it, [heldMs] after it was handed over, with what
+ * the device held [atRelease] — read on the releasing thread, so "released after the wake's own work" is a statement
+ * about that instant.
+ */
 @Serializable
-data class Released(val heldMs: Long)
+data class Released(val heldMs: Long, val atRelease: AtRelease)
+
+/**
+ * What the device held the instant the app released a completion handler — each `null` where the system that holds it
+ * is the platform's on this launch, and keeps its own counsel.
+ */
+@Serializable
+data class AtRelease(
+    /** The files in the download staging directory ([FilesLevers.stagedFiles]). */
+    val stagedFiles: Int?,
+    /** How many times the operating system handed the upload session its events ([UploadSessionView.handbacks]). */
+    val uploadSessionHandbacks: Int?,
+)
 
 /**
  * **What only an operating system that is PLAYED can do** — its expiry — and its own record of the completion handlers
