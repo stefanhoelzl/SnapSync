@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.levers.PhotoGrant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -14,7 +15,7 @@ class HeartbeatCadenceIntegrationTest {
 
     @Test
     fun a_full_grant_sharer_keeps_looking_until_the_end_and_then_idles() = rigTest {
-        permission("GRANTED")
+        permission(PhotoGrant.GRANTED)
         device("clock/advance", "to" to DURING)
         createAndJoin("direction" to "upload", startsAt = SHORT_START, endsAt = SHORT_END)
         // A second member that never settles keeps the event open after its end, so this one stays joined.
@@ -39,14 +40,14 @@ class HeartbeatCadenceIntegrationTest {
     @Test
     fun a_sharer_whose_uploads_are_held_back_idles() = rigTest {
         createAndJoin()
-        permission("DENIED")
+        permission(PhotoGrant.DENIED)
         heartbeat()
         assertEquals(IDLE, osRecord().pendingCadence, "it uploads nothing, but still looks for others' photos")
     }
 
     @Test
     fun a_partial_grant_idles_because_a_new_camera_photo_never_joins_the_selection() = rigTest {
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         createAndJoin()
         heartbeat()
         assertEquals(IDLE, osRecord().pendingCadence)

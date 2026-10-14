@@ -180,8 +180,8 @@ fun iosRefusals(launch: RigLaunch): Map<String, String> = buildMap {
         )
         put(
             "device/gallery/add-moving",
-            "the photo library is mocked on this launch and holds no media bytes; its moving photo is " +
-                "POST /device/gallery/add?kind=live-photo",
+            "the photo library is mocked on this launch and holds no media bytes; its moving photo is the typed " +
+                "`library` service's `add` of kind `live-photo`",
         )
     }
     putAll(uploadJobRefusals())

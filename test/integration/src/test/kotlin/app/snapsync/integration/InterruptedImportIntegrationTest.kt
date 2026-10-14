@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.rig.DownloadView
 import app.snapsync.ui.state.DirectionCount
@@ -106,7 +107,7 @@ class InterruptedImportIntegrationTest {
         createAndJoin()
         foreignDevice(foreignDevice, foreignAsset)
         val before = libraryTotal()
-        device("import/fail-next")
+        library.failNextImport()
         downloadAll()
 
         // The first import fails. Whether its retry has already run is a race between the tail pass the staging
@@ -175,11 +176,11 @@ class InterruptedImportIntegrationTest {
         foreignDevice(foreignDevice, foreignAsset)
         val galleryBefore = libraryTotal()
         // Park BEFORE the commit: the library will answer *absent* about a transaction that is alive.
-        device("import/suspend-next")
+        library.suspendNextImport()
         reconcile()
         awaitDownloadQueued()
         stage(wait = false)
-        device("import/await-parked")
+        awaitImportParked()
         assertEquals(galleryBefore, libraryTotal(), "precondition: the commit has not landed")
 
         // A full cycle of triggers against the live transaction. None may block, and none may act on the
@@ -194,7 +195,7 @@ class InterruptedImportIntegrationTest {
         )
 
         // The commit finally lands and reports.
-        device("import/resume", "succeeded" to "true")
+        library.resumeImport(succeeded = true)
 
         awaitDownloadSettled() // the row settles
         assertEquals(galleryBefore + 1, libraryTotal(), "exactly one asset for this photo")
@@ -263,7 +264,7 @@ class InterruptedImportIntegrationTest {
                 "a member's photo on its way, its import to be abandoned once the library has created it",
                 act = {
                     publicBackend.foreignDevice(foreignDevice, listOf(foreignAsset))
-                    device("import/suspend-next", "afterCommit" to "true")
+                    library.suspendNextImport(afterCommit = true)
                     os("app", "onForeground")
                 },
                 until = {
@@ -275,7 +276,7 @@ class InterruptedImportIntegrationTest {
             step("its bytes staged", act = { downloadSession.finish() }, until = { settled { true } })
             step(
                 "the grant narrowed",
-                act = { device("permission", "status" to "LIMITED") },
+                act = { library.permission(PhotoGrant.LIMITED) },
                 until = { settled { true } },
             )
             // No emission yet, so the relaunched app's sweep has no snapshot to ask: one that ran anyway would read
@@ -292,7 +293,7 @@ class InterruptedImportIntegrationTest {
 
         // The observer emits, and the created asset is in the member's hand-picked selection; they look again.
         whenever {
-            device("selection/change", "assets" to "imported-$foreignDevice-$foreignAsset")
+            library.changeSelection(listOf("imported-$foreignDevice-$foreignAsset"))
             os("app", "onForeground")
         }
         then { screen<Layer.Joined> { it.received() == DirectionCount.Progress(1, 1) } }
@@ -311,12 +312,12 @@ class InterruptedImportIntegrationTest {
         if (!joined) createAndJoin()
         foreignDevice(foreignDevice, foreignAsset)
         val before = libraryTotal()
-        device("import/suspend-next", "afterCommit" to "true")
+        library.suspendNextImport(afterCommit = true)
         reconcile()
         awaitDownloadQueued()
         // The import fires from the staged-resource callback, so THAT is what parks.
         stage(wait = false)
-        device("import/await-parked")
+        awaitImportParked()
         return before
     }
 

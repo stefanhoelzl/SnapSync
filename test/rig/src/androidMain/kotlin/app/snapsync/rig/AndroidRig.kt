@@ -275,8 +275,8 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
     if (world.isMocked(MockedSystem.LIBRARY)) {
         put(
             "device/gallery/add-moving",
-            "the photo library is mocked on this launch and holds no media bytes; its moving photo is " +
-                "POST /device/gallery/add?kind=live-photo",
+            "the photo library is mocked on this launch and holds no media bytes; its moving photo is the typed " +
+                "`library` service's `add` of kind `live-photo`",
         )
     }
     put("device/uploaders", "Android composes no OS-driven upload mechanism for a switch to choose between")

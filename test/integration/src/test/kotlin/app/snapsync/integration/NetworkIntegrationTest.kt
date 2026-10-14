@@ -3,6 +3,7 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.feature.status.NetworkWatch
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -71,7 +72,7 @@ class NetworkIntegrationTest {
     fun missing_access_outranks_a_missing_network() = rigTest {
         createAndJoin()
         foreground()
-        permission("denied")
+        permission(PhotoGrant.DENIED)
         network("offline")
         delay(GRACE_PASSED)
         assertEquals(SyncHealth.NeedsAccess(canAsk = false), state().joined?.health)

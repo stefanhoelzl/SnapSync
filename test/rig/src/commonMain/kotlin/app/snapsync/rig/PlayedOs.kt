@@ -1,7 +1,6 @@
 @file:OptIn(ExperimentalAtomicApi::class)
 
 package app.snapsync.rig
-
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Running
 import app.snapsync.mock.MockDevice
@@ -114,8 +113,8 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         }
         if (mocked(MockedSystem.SCREEN)) put("screenShown", device.screen.operator.shown.value != null)
         if (mocked(MockedSystem.LIBRARY)) {
-            put("selectionObserved", device.library.operator.observing)
-            put("pickersShown", device.library.operator.pickersShown)
+            put("selectionObserved", device.library.selectionObserved)
+            put("pickersShown", device.library.pickersShown)
         }
         // What the app handed the platform's own UI: the share sheet, the URL opener, its Settings page.
         if (mocked(MockedSystem.SYSTEM_UI)) {

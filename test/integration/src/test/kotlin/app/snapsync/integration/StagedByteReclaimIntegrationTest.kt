@@ -58,11 +58,11 @@ class StagedByteReclaimIntegrationTest {
 
         // A second asset, mid-import: its bytes staged, its row unsettled — exactly what a retry will read.
         foreignDevice(DEV_F, "FR")
-        device("import/suspend-next")
+        library.suspendNextImport()
         reconcile()
         awaitDownloadQueued()
         stage(wait = false)
-        device("import/await-parked")
+        awaitImportParked()
         val partial = stagedFiles()
         assertTrue(partial.isNotEmpty(), "precondition: the unsettled asset's bytes are staged")
 
@@ -72,7 +72,7 @@ class StagedByteReclaimIntegrationTest {
         assertTrue(stagedFiles().none { it in paths }, "and the settled backlog stays gone")
 
         // Once the import lands, its own release takes the bytes — the row is settled.
-        device("import/resume", "succeeded" to "true")
+        library.resumeImport(succeeded = true)
         eventually<Set<String>>(read = { stagedFiles() }) { files -> files.none { it in partial } }
     }
 

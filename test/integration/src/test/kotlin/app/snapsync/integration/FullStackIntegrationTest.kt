@@ -2,6 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.levers.BackendCall
+import app.snapsync.levers.LibraryPhotoKind
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
@@ -84,7 +86,7 @@ class FullStackIntegrationTest {
         assertEquals(SyncCounts(progress(2, 2), progress(3, 3)), settled.joined?.counts)
 
         // Without access the numbers are unknown: only the status line, which asks for access.
-        permission("DENIED")
+        permission(PhotoGrant.DENIED)
         refresh()
         val blocked = awaitState { it.health is SyncHealth.NeedsAccess }
         assertNull(blocked.joined?.counts)
@@ -186,14 +188,14 @@ class FullStackIntegrationTest {
     fun a_limited_grant_receives_foreign_photos_and_never_reads_needs_access() = rigTest {
         // Receive-only under a LIMITED grant is a valid resting state: imports work, no upload work is created, and
         // the screen shows the ordinary health line — never NeedsAccess.
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         createAndJoin()
         addPhoto("A") // present in the library — must NOT be enumerated or uploaded
         foreignDevice(DEV_F, "FQ")
 
         // The baseline snapshot lands, and it is EMPTY — the member selected nothing. A real `.limited` device
         // always emits one when observation begins, and only that emission makes the total a counted zero.
-        device("selection/change", "assets" to "")
+        library.changeSelection(emptyList())
 
         val before = libraryTotal()
         downloadAll()
@@ -214,13 +216,13 @@ class FullStackIntegrationTest {
     fun a_selection_change_under_limited_raises_n_and_uploads_the_selected_photos() = rigTest {
         // One selection-change emission serves N and the cycle's discovery; the cycle under LIMITED reads the
         // snapshot (never the library) and uploads through the ordinary engine.
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         createAndJoin()
         addPhoto("A")
         addPhoto("B")
         addPhoto("UNSELECTED") // in the library, never selected — must not upload
 
-        device("selection/change", "assets" to "A,B")
+        library.changeSelection(listOf("A", "B"))
         // N counts the selection: two to upload. Awaiting it also sequences the cycle below.
         awaitHealth { it is SyncHealth.Syncing }
 
@@ -252,13 +254,13 @@ class FullStackIntegrationTest {
     fun the_policy_applies_unchanged_to_a_limited_selection() = rigTest {
         // Cutoff and origin exclusions filter hand-picked photos exactly as a full-library walk: picking a
         // pre-cutoff photo or a screenshot does not smuggle it past the policy.
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         createAndJoin()
         addPhoto("OK")
         addPhoto("OLD", date = "2001-01-01T00:00:00Z") // pre-cutoff
-        addPhoto("SHOT", kind = "screenshot") // origin-excluded by subtype
+        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT) // origin-excluded by subtype
 
-        device("selection/change", "assets" to "OK,OLD,SHOT")
+        library.changeSelection(listOf("OK", "OLD", "SHOT"))
         awaitHealth { it is SyncHealth.Syncing }
 
         // Under a partial grant only the app's uploader creates (the extension withholds by its own admission): its
@@ -282,9 +284,9 @@ class FullStackIntegrationTest {
         // The imported photo's library id, read under the full grant — under LIMITED the app sees only the selection.
         val imported = gallery().policy!!.assets.single().assetId
 
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         addPhoto("MINE")
-        device("selection/change", "assets" to "MINE,$imported")
+        library.changeSelection(listOf("MINE", "$imported"))
         awaitHealth { it is SyncHealth.Syncing }
 
         // Under a partial grant only the app's uploader creates (the extension withholds by its own admission): its

@@ -103,4 +103,38 @@ sealed interface WorldEvent {
     @Serializable
     @SerialName("download-started")
     data class DownloadStarted(val description: String) : Transfer
+
+    /** What the photo library recorded. */
+    @Serializable
+    sealed interface Library : WorldEvent
+
+    /** A walk of the library is parked on the operator's enumeration hold, and stays parked until it is released. */
+    @Serializable
+    @SerialName("library-enumeration-held")
+    data object LibraryEnumerationHeld : Library
+
+    /** An add to the app's album [album] is parked on the operator's hold of adds. */
+    @Serializable
+    @SerialName("library-add-held")
+    data class LibraryAddHeld(val album: String) : Library
+
+    /** An import of the photo [asset] of the member device [device] is parked, as the operator asked, until resumed. */
+    @Serializable
+    @SerialName("library-import-parked")
+    data class LibraryImportParked(val device: String, val asset: String) : Library
+
+    /** An import created the photo [asset] in the library. */
+    @Serializable
+    @SerialName("library-asset-created")
+    data class LibraryAssetCreated(val asset: String) : Library
+
+    /** The app made the album [album], titled [title]. */
+    @Serializable
+    @SerialName("library-album-created")
+    data class LibraryAlbumCreated(val album: String, val title: String) : Library
+
+    /** The photo [asset] is now in the app's album [album] — once per photo, as a person would see it arrive. */
+    @Serializable
+    @SerialName("library-joined-album")
+    data class LibraryJoinedAlbum(val album: String, val asset: String) : Library
 }

@@ -1,9 +1,6 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -89,8 +86,5 @@ class LostUploadAckIntegrationTest {
     }
 
     /** Every photo the albums this app created hold now, album by album. */
-    private suspend fun Rig.albumAssets(): List<String> =
-        deviceJson("album/contents").getValue("albums").jsonArray.flatMap { album ->
-            album.jsonObject.getValue("assets").jsonArray.map { it.jsonPrimitive.content }
-        }
+    private suspend fun Rig.albumAssets(): List<String> = library.albums().flatMap { it.photos }
 }

@@ -77,7 +77,7 @@ class MockConcurrencyTest {
             tears(
                 write = { round -> runBlocking { port.createAlbum("A$round") } },
                 read = {
-                    library.operator.created.whole()
+                    runBlocking { library.operator.albums() }
                     MockState.encode(device, MockedSystem.LIBRARY)
                 },
             ),
@@ -88,12 +88,12 @@ class MockConcurrencyTest {
     fun library_changes_from_two_threads_are_none_of_them_lost() {
         val library = PhotoLibraryMock()
         val writers = (0 until 2).map { w ->
-            thread(name = "writer-$w") { repeat(PER_WRITER) { library.operator.add(LibraryAssets.photo("W$w-$it")) } }
+            thread(name = "writer-$w") { repeat(PER_WRITER) { library.add(LibraryAssets.photo("W$w-$it")) } }
         }
         writers.forEach { it.join() }
         assertEquals(
             2 * PER_WRITER,
-            library.operator.current().size,
+            library.contents.value.size,
             "a change landed between another's read and write",
         )
     }

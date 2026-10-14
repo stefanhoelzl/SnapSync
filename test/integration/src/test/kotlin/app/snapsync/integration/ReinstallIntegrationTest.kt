@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.AlbumKind
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.Layer
@@ -36,7 +38,7 @@ class ReinstallIntegrationTest {
         downloadAll()
         val received = libraryTotal()
         val deleted = receivedAssetIds().first()
-        device("gallery/remove", "id" to deleted)
+        library.remove(deleted)
 
         device("reinstall")
         rejoin(event)
@@ -77,7 +79,7 @@ class ReinstallIntegrationTest {
     fun an_android_rejoin_recognises_the_received_photos_filed_into_the_event_album() = rigTest {
         // An Android phone's albums are folders, and its event album's folder is no sharing candidate — so the
         // library read that recognises received photos must reach into it.
-        device("album/kind", "kind" to "folder")
+        library.albumKind(AlbumKind.FOLDER)
         device("relaunch")
         val event = createAndJoin("saveToAlbum" to "true")
         awaitAlbum() // a download imports into the album only once it exists
@@ -109,7 +111,7 @@ class ReinstallIntegrationTest {
         // received photo there is kept out by its mark after a reinstall, as on iPhone — not by its folder — and a photo
         // the member put there themselves is shared.
         extensionUploadsOnly()
-        device("album/kind", "kind" to "folder")
+        library.albumKind(AlbumKind.FOLDER)
         device("relaunch")
         val event = createAndJoin("saveToAlbum" to "true")
         awaitAlbum()
@@ -119,7 +121,7 @@ class ReinstallIntegrationTest {
 
         device("reinstall")
         addPhoto("OWN")
-        device("album/place", "album" to album.id, "asset" to "OWN")
+        library.placeIn(album.id, "OWN")
         rejoin(event, "saveToAlbum" to "true")
         uploadAll()
 
@@ -225,7 +227,7 @@ class ReinstallIntegrationTest {
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join()
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         device("uploaders", "app" to "on")
         selected("OWN")
         foreground()
@@ -244,7 +246,7 @@ class ReinstallIntegrationTest {
 
     /** The member's selection becomes exactly [ids], and the app has read it. */
     private suspend fun Rig.selected(vararg ids: String) {
-        device("selection/change", "assets" to ids.joinToString(","))
+        library.changeSelection(ids.toList())
         eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == ids.toSet() }
     }
 
@@ -257,7 +259,7 @@ class ReinstallIntegrationTest {
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join()
-        permission("GRANTED")
+        permission(PhotoGrant.GRANTED)
         foreground()
         eventually(read = { UNRECOGNISED.findAll(client.logs()).count() }) { it >= 1 }
     }
@@ -284,7 +286,7 @@ class ReinstallIntegrationTest {
         // Closing the dialog makes the app active: iOS delivers the foreground right after the grant, and on the SE2
         // its import ran while the grant's adoption was still reading names (2026-10-01). Every import drain now waits
         // for the membership's adoption (`DownloadControllerTest` pins that order; here the mock's reads are instant).
-        permission("GRANTED")
+        permission(PhotoGrant.GRANTED)
         os("app", "onForeground")
         // The grant's adoption is the app's answer to it, and it runs before the uploads are armed; a cycle forced
         // here directly (as a test may) must not overtake it, as none can on a phone.

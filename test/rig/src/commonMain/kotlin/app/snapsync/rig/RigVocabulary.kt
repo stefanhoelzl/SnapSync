@@ -65,14 +65,8 @@ object RigVocabulary {
      * adapters") — refused, naming the real system, everywhere else.
      */
     val worldLevers: List<String> = listOf(
-        "device/import/fail-next",
         "device/databases/locked",
         "device/membership/undeletable",
-        "device/permission",
-        "device/album/place",
-        "device/album/hold-adds",
-        "device/album/kind",
-        "device/album/delete",
         "device/invite-link-hints",
         "device/encrypt-new-events",
         // The integration surface's observable reads of the world's simulated systems (`docs/testing.md`, "The
@@ -82,8 +76,8 @@ object RigVocabulary {
         // screen, the selection observer, the heartbeat requests, the background-time holds, the push registrations
         // and the transfer sessions.
         "device/os-record",
-        // ...and the levers that put those systems, the photo library and the operating system into the states a
-        // test starts from.
+        // ...and the levers that put those systems and the operating system into the states a test starts from. The
+        // photo library's are its typed service's (`library`, `LibraryLevers`).
         "device/clock/advance",
         "device/network",
         "device/conditions",
@@ -92,23 +86,15 @@ object RigVocabulary {
         "device/reinstall",
         "device/invite",
         "device/event-key/lose",
-        "device/selection/change",
-        "device/gallery/add",
-        "device/gallery/remove",
-        "device/gallery/fail-next-enumeration",
-        "device/gallery/hold-enumeration",
-        "device/import/suspend-next",
-        "device/import/resume",
-        "device/import/await-parked",
         "device/logs/append",
         "device/staging/seed-legacy-backlog",
     )
 
     /**
-     * Device facts — the staging directory's files, the photo library's albums — read off the mocked disk and library,
-     * so honoured like [worldLevers] wherever those are mocks.
+     * Device facts — the staging directory's files — read off the mocked disk, so honoured like [worldLevers] wherever
+     * it is a mock.
      */
-    val deviceFacts: List<String> = listOf("device/staging", "device/album/contents")
+    val deviceFacts: List<String> = listOf("device/staging")
 
     /**
      * The launch-time adapters (`docs/testing.md`, "Launch-time adapters"): read the choice this launch runs

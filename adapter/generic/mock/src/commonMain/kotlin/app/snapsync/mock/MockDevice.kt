@@ -96,8 +96,8 @@ open class MockDevice(
         disk.operator.area(FileArea.PRIVATE).clear()
         databases.operator.deleteAll()
         preferences.values.clear()
-        library.operator.access = LibraryGrant.NOT_DETERMINED
-        library.operator.requestAnswer = LibraryGrant.NOT_DETERMINED
+        library.state.access.value = LibraryGrant.NOT_DETERMINED
+        library.state.answer = LibraryGrant.NOT_DETERMINED
     }
 
     /** The marketing version the app's build declares to the backend mock — a cell an operator may change. */

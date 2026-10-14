@@ -3,6 +3,8 @@ package app.snapsync.mock
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.AttestationRefusal
+import app.snapsync.levers.LibraryPhotoKind
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.StoredDeviceConfig
 import app.snapsync.model.Availability
@@ -129,13 +131,14 @@ class MockStateTest {
     @Test
     fun the_restored_library_keeps_its_photos_grant_selection_and_albums() = runTest {
         val copy = copyOf(drive())
-        assertEquals(listOf("A1", "S1"), copy.library.operator.current().map { it.id.value })
-        assertTrue(copy.library.operator.current()[1].asset.isScreenshot)
-        assertEquals(LibraryGrant.LIMITED, copy.library.operator.access)
-        assertEquals(listOf("A1"), copy.library.operator.selection.value?.map { it.id.value })
-        assertEquals(listOf("album-0" to "Party"), copy.library.operator.created)
-        assertEquals(listOf(PlatformAssetId("A1")), copy.library.operator.assetsIn("album-0"))
-        assertEquals(listOf("D2/F1"), copy.library.operator.imports.imported)
+        assertEquals(listOf("A1", "S1"), copy.library.contents.value.map { it.id.value })
+        assertTrue(copy.library.contents.value[1].asset.isScreenshot)
+        assertEquals(LibraryGrant.LIMITED, copy.library.grant.value)
+        assertEquals(listOf("A1"), copy.library.selection.value?.map { it.id.value })
+        val album = copy.library.operator.albums().single()
+        assertEquals("album-0" to "Party", album.id to album.title)
+        assertEquals(listOf("A1"), album.asked)
+        assertEquals(listOf("D2/F1"), copy.library.operator.imports().imported)
     }
 
     @Test
@@ -190,9 +193,9 @@ class MockStateTest {
         )
         device.backend.operator.minAppVersion("0.5")
 
-        device.library.operator.add(LibraryAssets.photo("A1"))
-        device.library.operator.add(LibraryAssets.screenshot("S1"))
-        device.library.operator.access = LibraryGrant.LIMITED
+        device.library.operator.add("A1")
+        device.library.operator.add("S1", LibraryPhotoKind.SCREENSHOT)
+        device.library.operator.permission(PhotoGrant.LIMITED)
         device.library.state.selection.value = listOf(LibraryAssets.photo("A1"))
         val gallery = device.library.port()
         val album = checkNotNull(gallery.createAlbum("Party"))

@@ -23,7 +23,11 @@ internal class OperatorHold {
         gate.getAndUpdate { null }?.complete(Unit)
     }
 
-    suspend fun await() {
-        gate.value?.await()
+    /** Waits while held — first telling [parked], once, that this caller is parked on the hold. */
+    suspend fun await(parked: () -> Unit = {}) {
+        gate.value?.let { held ->
+            parked()
+            held.await()
+        }
     }
 }

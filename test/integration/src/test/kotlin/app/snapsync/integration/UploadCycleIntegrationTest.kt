@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -79,7 +80,7 @@ class UploadCycleIntegrationTest {
         uploadAll()
         assertTrue("A" in union(), "precondition: A is shared")
 
-        permission("NOT_DETERMINED")
+        permission(PhotoGrant.NOT_DETERMINED)
         addPhoto("B")
 
         assertEquals("completed", cycle(), "no usable access: the cycle is withheld, and the system rests")
@@ -99,11 +100,11 @@ class UploadCycleIntegrationTest {
     fun a_restored_grant_resumes_where_it_left_off() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
-        permission("DENIED")
+        permission(PhotoGrant.DENIED)
         addPhoto("A")
         assertEquals("completed", cycle())
 
-        permission("GRANTED")
+        permission(PhotoGrant.GRANTED)
 
         cycle()
         assertTrue(primaryJob("A") in jobs().live)
@@ -119,7 +120,7 @@ class UploadCycleIntegrationTest {
         extensionUploadsOnly()
         createAndJoin()
         addPhoto("A")
-        permission("DENIED")
+        permission(PhotoGrant.DENIED)
         device("relaunch", "scene" to "false")
         val opened = osRecord().databasesOpened.size
 
@@ -189,8 +190,8 @@ class UploadCycleIntegrationTest {
         uploadAll()
         assertEquals(setOf("A"), manifest(event)?.keys)
 
-        device("gallery/remove", "id" to "A")
-        device("gallery/fail-next-enumeration")
+        library.remove("A")
+        library.failNextEnumeration()
         cycle()
         assertEquals(setOf("A"), manifest(event)?.keys, "an empty answer that is not authoritative is no evidence")
 

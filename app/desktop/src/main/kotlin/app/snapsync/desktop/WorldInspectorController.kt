@@ -14,6 +14,7 @@ import app.snapsync.jvm.JvmLanes
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.BackendCall
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.logging.JvmThreadLabel
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
@@ -38,7 +39,6 @@ import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.LibraryGrant
-import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.gallery.GalleryAlbums
@@ -159,7 +159,9 @@ class WorldInspectorController(
 
     // ---- membership -------------------------------------------------------------------------------
 
-    fun setPermission(status: LibraryGrant) = launchMutation { mocks.library.operator.access = status }
+    fun setPermission(status: LibraryGrant) = launchMutation {
+        mocks.library.operator.permission(PhotoGrant.valueOf(status.name))
+    }
 
     /**
      * The device's network as the operating system reports it to the app. The app tells the
@@ -169,7 +171,7 @@ class WorldInspectorController(
 
     fun armNextRequest(grants: Boolean) {
         armedGrants = grants
-        mocks.library.operator.requestAnswer = if (grants) LibraryGrant.GRANTED else LibraryGrant.DENIED
+        scope.launch { mocks.library.operator.requestAnswer(if (grants) PhotoGrant.GRANTED else PhotoGrant.DENIED) }
     }
 
     /**
@@ -189,7 +191,7 @@ class WorldInspectorController(
 
     fun addAsset() = addOwn(LibraryAssets.photo("own-${ownAssetSeq++}"))
 
-    fun removeAsset(assetId: String) = launchMutation { mocks.library.operator.remove(PlatformAssetId(assetId)) }
+    fun removeAsset(assetId: String) = launchMutation { mocks.library.operator.remove(assetId) }
 
     // Selection policy: an asset the policy decides on — most it EXCLUDES, so the operator
     // can watch it land in the gallery and then *not* upload and *not* enter the union, and see that N does not inflate.
@@ -206,7 +208,7 @@ class WorldInspectorController(
 
     private fun addToLibrary(asset: GalleryAssetResources) {
         ownAssetIds += asset.id.value
-        mocks.library.operator.add(asset)
+        mocks.library.add(asset)
     }
 
     // ---- backend ---------------------------------------------------------------------------------
@@ -276,8 +278,7 @@ class WorldInspectorController(
         when {
             call != null && held -> mocks.backend.operator.hold(call)
             call != null -> mocks.backend.operator.release(call)
-            held -> mocks.library.operator.holdEnumeration()
-            else -> mocks.library.operator.releaseEnumeration()
+            else -> mocks.library.operator.holdEnumeration(held)
         }
     }
 
@@ -378,9 +379,9 @@ class WorldInspectorController(
         app.composed.host
         mocks.screen.operator.live()
         mocks.lifecycle.operator.foreground()
-        mocks.library.operator.requestAnswer = if (armedGrants) LibraryGrant.GRANTED else LibraryGrant.DENIED
         appWatchers?.cancel()
         appWatchers = scope.launch {
+            mocks.library.operator.requestAnswer(if (armedGrants) PhotoGrant.GRANTED else PhotoGrant.DENIED)
             launch {
                 mocks.systemUi.operator.shared.collect { shared ->
                     shared.lastOrNull()?.let { url ->
@@ -391,7 +392,7 @@ class WorldInspectorController(
             }
             // The snapshot follows what the app does on its own — an import landing, a screen change — as well as the
             // operator's actions, so the inspector never shows a library the app has since changed.
-            launch { mocks.library.operator.contents.collect { snapshot = snapshotNow() } }
+            launch { mocks.library.contents.collect { snapshot = snapshotNow() } }
             launch { shown.collect { snapshot = snapshotNow() } }
         }
     }
@@ -451,7 +452,6 @@ class WorldInspectorController(
     }
 
     private suspend fun snapshotNow(): InspectorSnapshot {
-        val library = mocks.library.operator
         // The membership the cycle reads — not the screen's statement of it, which carries no policy.
         val joined = app.composed.core.membership.value
         // What the selection policy would exclude — the REAL policy over the REAL
@@ -472,7 +472,7 @@ class WorldInspectorController(
         }
         val admitted = EventPhotoSet(policy) { candidates }.assets().mapTo(mutableSetOf()) { it.facts.assetId }
         val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted
-        val galleryRows = library.current().map {
+        val galleryRows = mocks.library.contents.value.map {
             GalleryRow(
                 it.id.value,
                 imported = it.id.value !in ownAssetIds,
@@ -512,7 +512,7 @@ class WorldInspectorController(
             },
             membershipUnreadable = mocks.databases.operator.locked,
             held = mocks.backend.operator.switches().held.mapTo(mutableSetOf()) { it.key } +
-                listOfNotNull(ENUMERATION.takeIf { mocks.library.operator.enumerationHeld }),
+                listOfNotNull(ENUMERATION.takeIf { mocks.library.operator.library().enumerationHeld }),
         )
     }
 

@@ -382,7 +382,7 @@ private fun OneShotLevers(controller: WorldInspectorController) {
     OutlinedButton(
         onClick = {
             controller.lever("armed: next foreign import will fail (non-terminal)") {
-                library.operator.imports.failNextImport = true
+                library.operator.failNextImport()
             }
         },
     ) { Text("Arm import failure") }

@@ -5,6 +5,7 @@ import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
@@ -159,6 +160,9 @@ class Acts internal constructor(private val client: RigClient) {
 
     /** The background download session: the transfers it finishes, and its drain report. */
     val downloadSession: DownloadSessionLevers = client.levers(DownloadSessionLevers)
+
+    /** The photo library operator's levers — the library mock's. */
+    val library: LibraryLevers = client.levers(LibraryLevers)
 
     private val world: WorldLevers = client.levers(WorldLevers)
 

@@ -21,13 +21,13 @@ class PhotoLibraryHoldTest {
     fun a_single_hold_releases_its_walk() = runTest {
         val library = PhotoLibraryMock()
         val gallery = library.port()
-        library.operator.holdEnumeration()
+        library.operator.holdEnumeration(on = true)
 
         val walk = launch { gallery.assets(everything) }
         runCurrent()
         assertTrue(walk.isActive, "the walk waits while held")
 
-        library.operator.releaseEnumeration()
+        library.operator.holdEnumeration(on = false)
         withTimeout(1.seconds) { walk.join() }
     }
 
@@ -35,14 +35,14 @@ class PhotoLibraryHoldTest {
     fun a_second_enumeration_hold_does_not_strand_a_walk_the_first_one_held() = runTest {
         val library = PhotoLibraryMock()
         val gallery = library.port()
-        library.operator.holdEnumeration()
+        library.operator.holdEnumeration(on = true)
 
         val walk = launch { gallery.assets(everything) }
         runCurrent()
         assertTrue(walk.isActive, "the walk waits while held")
 
-        library.operator.holdEnumeration()
-        library.operator.releaseEnumeration()
+        library.operator.holdEnumeration(on = true)
+        library.operator.holdEnumeration(on = false)
         withTimeout(1.seconds) { walk.join() }
     }
 
@@ -51,14 +51,14 @@ class PhotoLibraryHoldTest {
         val library = PhotoLibraryMock()
         val gallery = library.port()
         val album = gallery.createAlbum("Event")!!
-        library.operator.holdAdds()
+        library.operator.holdAdds(on = true)
 
         val add = launch { gallery.addToAlbum(album, setOf(PlatformAssetId("A"))) }
         runCurrent()
         assertTrue(add.isActive, "the add waits while held")
 
-        library.operator.holdAdds()
-        library.operator.releaseAdds()
+        library.operator.holdAdds(on = true)
+        library.operator.holdAdds(on = false)
         withTimeout(1.seconds) { add.join() }
     }
 }

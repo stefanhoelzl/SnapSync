@@ -4,6 +4,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
@@ -187,9 +188,9 @@ class EntryIntegrationTest {
         foreignDevice(DEV_F, "FQ")
         reconcile()
         awaitDownloadQueued()
-        device("import/suspend-next")
+        library.suspendNextImport()
         stage(wait = false) // the staging requests the tail, whose import parks
-        device("import/await-parked")
+        awaitImportParked()
         assertTrue(
             osRecord().backgroundTimeHolds.any { it == "OnDownloadStaged" },
             "precondition: the import holds time",
@@ -199,7 +200,7 @@ class EntryIntegrationTest {
 
         // At once — while the import is still parked: Apple's recipe, never the watchdog's.
         awaitOs { it.backgroundTimeHolds.isEmpty() }
-        device("import/resume")
+        library.resumeImport()
     }
 
     // ---- DevControls ----------------------------------------------------------------------------------------------
@@ -227,13 +228,13 @@ class EntryIntegrationTest {
     )
     @Verifies(spec = "app-experience", requirement = "Background wakes do their work without showing anything")
     fun a_background_start_reads_the_selection_and_shares_what_waits() = rigTest {
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         createAndJoin()
         addPhoto("A")
         // The member picks A while the app's uploader is held back: selected, nothing created — the work a cold start
         // inherits. (Under a partial grant the extension withholds by its own admission; only the app's uploader runs.)
         device("uploaders", "app" to "off")
-        device("selection/change", "assets" to "A")
+        library.changeSelection(listOf("A"))
         eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == setOf("A") }
         // The selection change's own tail holds background time until it ends; it must end while the uploader is off,
         // or its top-up — running after the switch below — creates what this precondition says was not created.

@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.levers.AttestationRefusal
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
@@ -117,7 +118,7 @@ class TrustIntegrationTest {
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join()
-        permission("GRANTED")
+        permission(PhotoGrant.GRANTED)
         foreground()
         addPhoto("P2")
 

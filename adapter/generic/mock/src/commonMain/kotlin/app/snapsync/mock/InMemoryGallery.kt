@@ -1,6 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAlbum
@@ -117,13 +118,17 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
             return settle(ImportOutcome.Failed(it, placeholder = createdLocalId))
         }
         val created = createdAsset(createdLocalId, request)
-        state.locked {
+        val filedInto = state.locked {
             state.library.update { it + created }
             state.ownImports += createdLocalId
             if (state.albumKind == LibraryAlbumKind.FOLDER) {
-                request.album?.value?.takeIf { it in state.created }?.let { state.folderOf[createdLocalId] = it }
+                request.album?.value?.takeIf { it in state.created }?.also { state.folderOf[createdLocalId] = it }
+            } else {
+                null
             }
         }
+        state.watcher.told(WorldEvent.LibraryAssetCreated(createdLocalId.value))
+        filedInto?.let { state.watcher.told(WorldEvent.LibraryJoinedAlbum(it, createdLocalId.value)) }
         state.answers.afterCommit(correlation)?.let {
             return settle(ImportOutcome.Failed(it, placeholder = createdLocalId))
         }
@@ -148,7 +153,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> {
-        state.enumeration.await()
+        state.enumeration.await { state.watcher.told(WorldEvent.LibraryEnumerationHeld) }
         if (state.locked { state.failNextEnumeration.also { state.failNextEnumeration = false } }) {
             // A platform walk that fails is a failure, not a successful read with no answer (`NotReadable`).
             error("the operator forced this enumeration to fail")
@@ -192,30 +197,38 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
 
     override suspend fun createAlbum(title: String): PlatformAlbumId? {
         if (state.refusesWrites) return null
-        return state.locked {
-            val id = "album-${state.albumCounter++}"
-            state.created[id] = LibraryState.Album(title)
-            state.createdLog += id to title
-            PlatformAlbumId(id)
+        val id = state.locked {
+            "album-${state.albumCounter++}".also { id ->
+                state.created[id] = LibraryState.Album(title)
+                state.createdLog += id to title
+            }
         }
+        state.watcher.told(WorldEvent.LibraryAlbumCreated(id, title))
+        return PlatformAlbumId(id)
     }
 
     override suspend fun addToAlbum(album: PlatformAlbumId, assets: Set<PlatformAssetId>): WriteOutcome {
         val albumId = album.value
-        state.adds.await()
-        return state.locked {
+        state.adds.await { state.watcher.told(WorldEvent.LibraryAddHeld(albumId)) }
+        val joined = mutableListOf<PlatformAssetId>()
+        val outcome = state.locked {
             state.addedLog += albumId to assets.toList()
             val target = state.created[albumId] ?: return@locked WriteOutcome.Failed("album $albumId does not resolve")
             val held = state.library.value.mapTo(mutableSetOf()) { it.id }
             when (state.albumKind) {
-                LibraryAlbumKind.COLLECTION -> target.members += assets.filter { it in held }
+                LibraryAlbumKind.COLLECTION -> assets.filter { it in held && target.members.add(it) }.forEach { joined += it }
                 // A move of what this library imported; anything else is skipped, as the platform refuses it.
                 LibraryAlbumKind.FOLDER -> assets.filter {
-                    it in held && it in state.ownImports
-                }.forEach { state.folderOf[it] = albumId }
+                    it in held && it in state.ownImports && state.folderOf[it] != albumId
+                }.forEach {
+                    state.folderOf[it] = albumId
+                    joined += it
+                }
             }
             WriteOutcome.Ok
         }
+        joined.forEach { state.watcher.told(WorldEvent.LibraryJoinedAlbum(albumId, it.value)) }
+        return outcome
     }
 
     override suspend fun requestAccess(): LibraryGrant {

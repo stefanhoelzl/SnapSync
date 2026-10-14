@@ -171,7 +171,7 @@ class LeverFacesTest {
         val NOT_MIGRATED = setOf(
             "WakeOperator", "BackgroundTimeOperator", "ExtensionRegistryOperator", "DeviceConditionsOperator",
             "LifecycleOperator", "LinksOperator", "PushServiceOperator", "ScreenOperator", "DevControlsOperator",
-            "ExtensionHostOperator", "PhotoLibraryOperator", "CrashReporterOperator", "ProcessInfoOperator",
+            "ExtensionHostOperator", "CrashReporterOperator", "ProcessInfoOperator",
             "ClockOperator", "SystemUiOperator", "NetworkOperator", "FileSystemOperator", "DatabasesOperator",
         )
     }

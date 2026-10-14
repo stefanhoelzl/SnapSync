@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.model.ResourceRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,7 +35,7 @@ class DeclaredIntentIntegrationTest {
     fun a_live_photo_is_declared_whole_and_stays_hidden_until_it_is_whole() = rigTest {
         extensionUploadsOnly()
         val event = createAndJoin()
-        addPhoto("LIVE", kind = "live-photo")
+        addPhoto("LIVE", kind = LibraryPhotoKind.LIVE_PHOTO)
 
         // One slot: the cycle can start exactly one of the two resources, so the asset is genuinely half-uploaded
         // when the manifest is published — the state the old projection mis-described.

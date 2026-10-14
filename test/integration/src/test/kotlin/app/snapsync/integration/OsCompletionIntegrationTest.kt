@@ -29,7 +29,7 @@ class OsCompletionIntegrationTest {
         foreignDevice(DEV_F, "FQ")
         reconcile()
         awaitDownloadQueued()
-        device("import/fail-next")
+        library.failNextImport()
         stage()
         assertTrue(osRecord().stagedFiles > 0, "precondition: the failed import kept its bytes for the retry")
         return event
@@ -61,18 +61,18 @@ class OsCompletionIntegrationTest {
         stagedBacklog()
         device("relaunch", "scene" to "false")
         val armed = osRecord().heartbeatsScheduled
-        device("import/suspend-next")
+        library.suspendNextImport()
 
         coroutineScope {
             val wake = async { os("app", "onBackgroundTask", HEARTBEAT_TASK) }
-            device("import/await-parked") // the tail's import is in flight
+            awaitImportParked() // the tail's import is in flight
             expire()
             // Released on the operating system's signal — while the import is still parked, not after the work.
             wake.await()
         }
         assertTrue(osRecord().stagedFiles > 0, "the unit in flight had not finished when the handler was released")
 
-        device("import/resume")
+        library.resumeImport()
         awaitOs { it.heartbeatsScheduled == armed + 1 }
         settle()
         assertEquals(0, osRecord().releasedAgain, "the release after the work does not release it again")
@@ -165,7 +165,7 @@ class OsCompletionIntegrationTest {
         device("relaunch", "scene" to "false")
         // A recorded staging requests its own tail at once, and that import would take the bytes out of staging before
         // the release is read. Failing it keeps them, so the count at the release reads the wake's work alone.
-        device("import/fail-next")
+        library.failNextImport()
         val armed = osRecord().heartbeatsScheduled
 
         val atRelease = coroutineScope {

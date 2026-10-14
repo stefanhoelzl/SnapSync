@@ -6,6 +6,7 @@ import app.snapsync.control.done
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
@@ -72,6 +73,9 @@ class Rig(val client: RigClient) {
 
     /** The background download session. */
     val downloadSession: DownloadSessionLevers = client.levers(DownloadSessionLevers)
+
+    /** The photo library operator's levers and reads — the library mock's. */
+    val library: LibraryLevers = client.levers(LibraryLevers)
 
     suspend fun state(): RigState = client.state()
 

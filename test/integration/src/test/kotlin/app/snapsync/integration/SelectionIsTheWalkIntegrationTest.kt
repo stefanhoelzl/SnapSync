@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,7 +30,7 @@ class SelectionIsTheWalkIntegrationTest {
         val all = listOf("A", "B", "C", "D")
         // The OS-driven cycle alone under the full grant: its four jobs are the ones the downgrade strands.
         extensionUploadsOnly()
-        permission("GRANTED")
+        permission(PhotoGrant.GRANTED)
         val event = createAndJoin()
         for (id in all) addPhoto(id)
 
@@ -42,9 +43,9 @@ class SelectionIsTheWalkIntegrationTest {
 
         // Access narrows to two of the four, and the selection is read. Under a partial grant the extension withholds,
         // so the app's uploader is the one that runs: its selection change walks the read selection.
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         device("uploaders", "app" to "on")
-        device("selection/change", "assets" to "A,B")
+        library.changeSelection(listOf("A", "B"))
         awaitSelection("A", "B")
 
         // The de-selected photos leave the manifest, in flight or not.
@@ -65,7 +66,7 @@ class SelectionIsTheWalkIntegrationTest {
         // A cold launch under a partial grant: the selection has not been read yet. Collapsed to an empty
         // selection, the enqueue resolved every waiting row against it and deleted each one as gone.
         extensionUploadsOnly() // the full-grant cycle that declares the row is the OS-driven one
-        permission("GRANTED")
+        permission(PhotoGrant.GRANTED)
         val event = createAndJoin()
         addPhoto("A")
         uploadQueue.jobLimit(0) // discovered and declared, no job: the row the old collapse deleted
@@ -74,7 +75,7 @@ class SelectionIsTheWalkIntegrationTest {
         assertEquals(0, jobs().created)
 
         // No selection read yet — and under a partial grant only the app's uploader may create.
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         device("uploaders", "app" to "on")
         foreground() // the foreground's tail runs the app's uploader, whose admission withholds on an unread selection
 
@@ -82,7 +83,7 @@ class SelectionIsTheWalkIntegrationTest {
         assertEquals(0, appUploads().created, "and nothing is created while the selection is unread")
 
         // Once the selection is read the app's uploader runs over it.
-        device("selection/change", "assets" to "A")
+        library.changeSelection(listOf("A"))
         awaitSelection("A")
         assertEquals(listOf(primaryKey("A")), awaitAppUploads(1).live)
     }
@@ -96,23 +97,23 @@ class SelectionIsTheWalkIntegrationTest {
     fun re_selecting_a_withdrawn_photo_shares_it_again() = rigTest {
         // Under a partial grant the app's uploader is the one that runs (the extension withholds), each selection
         // change's tail walking the read selection.
-        permission("LIMITED")
+        permission(PhotoGrant.LIMITED)
         val event = createAndJoin()
         addPhoto("A")
         addPhoto("B")
 
-        device("selection/change", "assets" to "A,B")
+        library.changeSelection(listOf("A", "B"))
         awaitSelection("A", "B")
         awaitAppUploads(2)
         completeAppUploads()
         assertTrue(primaryKey("B") in objects())
         assertEquals(2, appUploads().created)
 
-        device("selection/change", "assets" to "A")
+        library.changeSelection(listOf("A"))
         awaitSelection("A")
         eventually(read = { manifest(event)?.keys }) { it == setOf("A") }
 
-        device("selection/change", "assets" to "A,B")
+        library.changeSelection(listOf("A", "B"))
         awaitSelection("A", "B")
         assertEquals(listOf(primaryKey("B")), awaitAppUploads(1).live, "uploaded again")
         assertEquals(3, appUploads().created)

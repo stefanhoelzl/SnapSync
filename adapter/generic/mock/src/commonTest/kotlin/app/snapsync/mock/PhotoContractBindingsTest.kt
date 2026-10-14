@@ -207,10 +207,7 @@ class PhotoContractBindingsTest {
 
         override fun create(state: FolderAlbumState, clauseId: String, log: CallLog): Entered<FolderAlbums> {
             val library = seededLibrary(FolderAlbumContract.name, clauseId)
-            val mock = PhotoLibraryMock().apply {
-                operator.albumKind = LibraryAlbumKind.FOLDER
-                operator.set(library.value)
-            }
+            val mock = PhotoLibraryMock(albumKind = LibraryAlbumKind.FOLDER).apply { set(library.value) }
             val seeded = library.value.mapTo(linkedSetOf()) { it.id }
             // The seeded photos are this app's own saves, as the emulator binding's are: the ones it may move.
             mock.state.ownImports += seeded
