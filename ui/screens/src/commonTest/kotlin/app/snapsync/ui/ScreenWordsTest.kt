@@ -39,8 +39,6 @@ import app.snapsync.ui.resources.share_detail_counting
 import app.snapsync.ui.resources.share_outside_after
 import app.snapsync.ui.resources.share_outside_before
 import app.snapsync.ui.resources.share_outside_both
-import app.snapsync.ui.resources.store_app_store
-import app.snapsync.ui.resources.store_google_play
 import app.snapsync.ui.resources.switch_body
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.timing_ended
@@ -60,7 +58,6 @@ import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.ShareCount
-import app.snapsync.ui.state.StoreName
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.TimeLeft
 import app.snapsync.ui.state.UiState
@@ -185,12 +182,6 @@ class ScreenWordsTest {
             listOf(Res.string.create_lasts, listOf(Res.plurals.duration_days, 3, 3)),
             nextStepLine(CreateStep.Complete(CoarseDuration.Days(3))).said(),
         )
-    }
-
-    @Test
-    fun `the update notice's button names the store the build came through`() {
-        assertEquals(Res.string.store_app_store, storeButtonLabel(StoreName.APP_STORE))
-        assertEquals(Res.string.store_google_play, storeButtonLabel(StoreName.GOOGLE_PLAY))
     }
 
     // ---- the bug-report sheet -------------------------------------------------------------------------------------

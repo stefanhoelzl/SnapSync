@@ -13,7 +13,7 @@ import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -94,7 +94,7 @@ class StatusSources(
      * composition root, not a source — it is here because the ONE screen that needs it is the refusal
      * above, and pairing them is what stops a host wiring the state without the remedy.
      */
-    val store: StoreLink? = null,
+    val store: Store? = null,
     /**
      * The app's latest return to the foreground: the create screen's draft follows it.
      * Defaults to none ever, so a host that never foregrounds keeps one draft.

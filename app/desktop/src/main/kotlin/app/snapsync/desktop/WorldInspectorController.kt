@@ -20,6 +20,7 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
+import app.snapsync.mock.StorePage
 import app.snapsync.mock.id
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CandidateScope
@@ -31,8 +32,7 @@ import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SELECTION_CALIBRATION
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.model.WakeId
 import app.snapsync.model.noContribution
 import app.snapsync.model.runCatchingCancellable
@@ -350,7 +350,7 @@ class WorldInspectorController(
             uploadHost = BACKEND_BASE,
             declaredVersion = DeclaredVersion(APP_VERSION),
             dsn = DSN,
-            store = StoreLink(APP_STORE_URL, StoreKind.APP_STORE),
+            store = StorePage(Store("App Store", APP_STORE_URL)),
             pushEnvironment = "sandbox",
         )
         val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Ignored, network = null)

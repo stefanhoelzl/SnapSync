@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.presentation.message
@@ -42,6 +43,27 @@ class DeviceRefusalIntegrationTest {
             foreground()
             foreground() // the launch comes to the foreground: the wake that tries to verify the phone
             awaitState { (it.ui.layer as? Layer.CreateEvent)?.error == reason.message }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A refused phone is told why",
+        scenario = "A phone with an unlocked bootloader is told why",
+    )
+    fun a_phone_refused_as_modified_is_told_so_and_never_that_the_service_was_unreachable() = behaviour {
+        // The service answers an unlocked bootloader as a modified device, as it answers a system its maker did not ship.
+        given {
+            step("the service refuses this phone as modified", act = {
+                backend.refuseAttestation(AttestationRefusal.DEVICE_MODIFIED)
+            }, until = {})
+        }
+
+        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        then {
+            screen<Layer.CreateEvent> { it.error == ScreenMessage.DEVICE_MODIFIED }
+            neverScreen<Layer.CreateEvent> { it.error != null && it.error != ScreenMessage.DEVICE_MODIFIED }
         }
     }
 

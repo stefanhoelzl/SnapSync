@@ -77,8 +77,7 @@
     <string name="update_headline">Zeit für ein Update</string>
     <string name="update_detail_version">SnapSync %1$s oder neuer wird benötigt, um weiter Fotos zu teilen.</string>
     <string name="update_detail">Eine neuere Version von SnapSync wird benötigt, um weiter Fotos zu teilen.</string>
-    <string name="store_app_store">App Store öffnen</string>
-    <string name="store_google_play">Google Play öffnen</string>
+    <string name="store_open">%1$s öffnen</string>
 
     <string name="join_access_notice">Als Nächstes wirst du nach Zugriff auf deine Fotos gefragt</string>
     <string name="join_access_info">Was der Beitritt mit deinen Fotos macht</string>

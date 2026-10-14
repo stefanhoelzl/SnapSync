@@ -6,8 +6,7 @@ import app.snapsync.logging.appMarketingVersion
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
 import app.snapsync.model.Platform
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.ports.BuildInfo
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
@@ -36,7 +35,7 @@ class IosBuildInfo(private val bundle: NSBundle = NSBundle.mainBundle) : BuildIn
     override val appVersion: String by lazy { appMarketingVersion() }
     override val buildNumber: String by lazy { bundleValue("CFBundleVersion") }
     override val uploadHost: String by lazy { bakedUploadBase(deployment) }
-    override val store: StoreLink? by lazy { bakedAppStoreUrl(deployment)?.let { StoreLink(it, StoreKind.APP_STORE) } }
+    override val store: Store? by lazy { bakedAppStoreUrl(deployment)?.let { Store(APP_STORE, it) } }
     override val pushEnvironment: String by lazy { bakedApnsEnv(deployment) }
     override val osVersion: String by lazy { NSProcessInfo.processInfo.operatingSystemVersionString }
     override val deviceModel: String by lazy { hardwareModel() }
@@ -66,3 +65,6 @@ private fun hardwareModel(): String = memScoped {
     if (uname(info.ptr) != 0) return@memScoped "?"
     info.machine.toKString().ifBlank { "?" }
 }
+
+/** The store an iPhone build is distributed through, as the update notice names it: a brand, never translated. */
+private const val APP_STORE = "App Store"

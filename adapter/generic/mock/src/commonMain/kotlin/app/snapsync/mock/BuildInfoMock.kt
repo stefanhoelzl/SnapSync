@@ -1,14 +1,16 @@
 package app.snapsync.mock
 
 import app.snapsync.model.Platform
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.ports.BuildInfo
+import kotlin.concurrent.Volatile
 
 /**
- * What the running build IS, as a mock (`docs/testing.md`, "Mocks"): the constants a device's bundle carries. Its one
- * lever is [declaredVersion] — a cell the caller holds, so an operator plays a member updating the app in place — read
- * per use, as the backend mock reads the same cell per request. Everything else is fixed at construction: an off-device
- * build knows no device, so its facts read `unknown` unless given them.
+ * What the running build IS, as a mock (`docs/testing.md`, "Mocks"): the constants a device's bundle carries. Its
+ * levers are [declaredVersion] — a cell the caller holds, so an operator plays a member updating the app in place — read
+ * per use, as the backend mock reads the same cell per request; and [store], the build's store page, read per use too
+ * (the app takes it once, at launch), so an operator plays a build listed in another store, or in none. Everything
+ * else is fixed at construction: an off-device build knows no device, so its facts read `unknown` unless given them.
  */
 class BuildInfoMock(
     /** The backend's device-facing base, carrying exactly one version prefix. */
@@ -16,8 +18,8 @@ class BuildInfoMock(
     val declaredVersion: DeclaredVersion = DeclaredVersion("99.0"),
     /** Where the build reports, or `null` for one that reports nowhere (a dev build keeps its bug report). */
     val dsn: String? = null,
-    /** The build's store page — the update-required screen's one remedy. */
-    val store: StoreLink? = null,
+    /** The build's store page — the update-required screen's one remedy — a cell the caller holds. */
+    val store: StorePage = StorePage(null),
     /** The push environment the build's tokens belong to. */
     val pushEnvironment: String = "sandbox",
     val buildNumber: String = UNKNOWN,
@@ -35,7 +37,7 @@ class BuildInfoMock(
     internal inner class Face : BuildInfo {
         override val appVersion: String get() = declaredVersion.value.orEmpty()
         override val uploadHost: String = this@BuildInfoMock.uploadHost
-        override val store: StoreLink? = this@BuildInfoMock.store
+        override val store: Store? get() = this@BuildInfoMock.store.value
         override val buildNumber: String = this@BuildInfoMock.buildNumber
         override val pushEnvironment: String = this@BuildInfoMock.pushEnvironment
         override val osVersion: String = this@BuildInfoMock.osVersion
@@ -45,6 +47,11 @@ class BuildInfoMock(
         override val platform: Platform = this@BuildInfoMock.platform
         override val processId: String? = this@BuildInfoMock.processId
     }
+}
+
+/** A build's store page as a cell its holder changes — `null` for a build that carries none. */
+class StorePage(value: Store?) {
+    @Volatile var value: Store? = value
 }
 
 /** What an off-device build reads for a device fact it does not have. */

@@ -140,11 +140,12 @@ sealed interface Layer {
          */
         val minimumVersion: String? = null,
         /**
-         * The store whose page the button opens — the App Store on iPhone, Google Play on Android — or `null` when
-         * this build carries no store page (an Android build before the Play listing is public), which renders no
-         * button. The page itself is the build's, opened by the tap's intent; the screen only names the store.
+         * The name of the store whose page the button opens — the App Store on iPhone, Google Play on Android — or
+         * `null` when this build carries no store page (an Android build before the Play listing is public), which
+         * renders no button. The page itself is the build's, opened by the tap's intent; the screen only names the
+         * store, as the build names it.
          */
-        val store: StoreName? = null,
+        val store: String? = null,
     ) : Layer
 
     /**
@@ -756,10 +757,6 @@ enum class OutsideReach { BEFORE, AFTER, BOTH }
  */
 @Serializable
 enum class AlbumHolds { SHARED_AND_RECEIVED, RECEIVED }
-
-/** The store an update button opens. */
-@Serializable
-enum class StoreName { APP_STORE, GOOGLE_PLAY }
 
 /** Why the service refused this phone, as the status line names it. */
 @Serializable

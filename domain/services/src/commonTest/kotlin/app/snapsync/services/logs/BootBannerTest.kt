@@ -1,7 +1,7 @@
 package app.snapsync.services.logs
 
 import app.snapsync.model.Platform
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.ports.BuildInfo
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,7 +13,7 @@ class BootBannerTest {
         override val appVersion = "1.4"
         override val buildNumber = "2512"
         override val uploadHost = "https://edge.example/api/v2"
-        override val store: StoreLink? = null
+        override val store: Store? = null
         override val pushEnvironment = "production"
         override val osVersion = "Version 26.6.2 (Build 23G90)"
         override val deviceModel = "iPhone12,8"

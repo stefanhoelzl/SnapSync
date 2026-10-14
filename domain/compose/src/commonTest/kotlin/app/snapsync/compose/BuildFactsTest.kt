@@ -3,7 +3,7 @@ package app.snapsync.compose
 import app.snapsync.model.Platform
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.ExtensionRegistry
 import kotlin.test.Test
@@ -16,7 +16,7 @@ class BuildFactsTest {
         override val appVersion = "1.4"
         override val buildNumber = "2512"
         override val uploadHost = "https://edge.example/api/v2"
-        override val store: StoreLink? = null
+        override val store: Store? = null
         override val pushEnvironment = "production"
         override val osVersion = "Version 26.6.2 (Build 23G90)"
         override val deviceModel = "iPhone12,8"

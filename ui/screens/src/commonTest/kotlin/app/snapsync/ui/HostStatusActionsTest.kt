@@ -76,7 +76,7 @@ import app.snapsync.ui.resources.share_invite
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.show_qr
 import app.snapsync.ui.resources.stop_sharing_confirm
-import app.snapsync.ui.resources.store_app_store
+import app.snapsync.ui.resources.store_open
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface
@@ -160,7 +160,7 @@ class HostStatusActionsTest {
     fun `the store button opens the store link through the container`() =
         rigTest(rig(refusal = VersionRefusal("0.4"))) { rig ->
             awaitState(rig) { it.layer is Layer.UpdateRequired }
-            onNodeWithText(str(Res.string.store_app_store)).performClick()
+            onNodeWithText(str(Res.string.store_open, "App Store")).performClick()
             awaitFired(rig, "openLink:$STORE_URL")
         }
 

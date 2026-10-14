@@ -2,12 +2,10 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.AlbumContents
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RefusalCause
-import app.snapsync.ui.state.StoreName
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.take
@@ -29,7 +27,6 @@ class ScreenModelTest {
             listOf(AlbumHolds.SHARED_AND_RECEIVED, AlbumHolds.RECEIVED),
             AlbumContents.entries.map { it.shown },
         )
-        assertEquals(listOf(StoreName.APP_STORE, StoreName.GOOGLE_PLAY), StoreKind.entries.map { it.shown })
         assertEquals(
             listOf(RefusalCause.DEVICE_MODIFIED, RefusalCause.DEVICE_UNVERIFIABLE, RefusalCause.APP_NOT_GENUINE),
             DeviceRefusal.entries.map { it.cause },
@@ -47,7 +44,7 @@ class ScreenModelTest {
         val collecting = launch { screen.take(2).toList(seen) }
         yield()
         // A change of the domain half alone shows nothing new.
-        source.value = creating.copy(shown = Shown(store = StoreLink("https://apps.apple.com/app/id1", StoreKind.APP_STORE)))
+        source.value = creating.copy(shown = Shown(store = Store("App Store", "https://apps.apple.com/app/id1")))
         yield()
         source.value = ScreenModel(
             UiState(

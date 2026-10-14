@@ -19,8 +19,7 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.model.Platform
-import app.snapsync.model.StoreKind
-import app.snapsync.model.StoreLink
+import app.snapsync.model.Store
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
 import app.snapsync.ports.SystemUi
@@ -50,7 +49,7 @@ class ProcessMockContractBindingsTest {
             val mock = when (state) {
                 BuildInfoState.REPORTING_AND_LISTED -> BuildInfoMock(
                     dsn = "https://key@reporter.invalid/1",
-                    store = StoreLink("https://apps.apple.com/app/id0", StoreKind.APP_STORE),
+                    store = StorePage(Store("App Store", "https://apps.apple.com/app/id0")),
                 )
                 BuildInfoState.BUNDLED -> BuildInfoMock(
                     processId = "app.snapsync",

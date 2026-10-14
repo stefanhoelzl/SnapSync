@@ -55,7 +55,10 @@ data class DevControlsView(
     val encryptsNewEvents: Boolean,
 )
 
-/** **The build itself**, where the channel may play another: the marketing version it declares on every request. */
+/**
+ * **The build itself**, where the channel may play another: the marketing version it declares on every request, and the
+ * store page it names.
+ */
 @Rpc
 interface BuildLevers {
     /** The build declares [version] on every request from now on — an old build, or an update. */
@@ -63,6 +66,14 @@ interface BuildLevers {
 
     /** The version the build declares now. */
     suspend fun declared(): String?
+
+    /**
+     * The build names the store called [name] at [url] — a build listed in another store — or, both omitted, carries
+     * no store page at all, as an Android build does until its listing is public. A build's constant, so the app reads
+     * it at its next launch (`host.relaunch`). Honoured only where the build is a mock: a device's build is its
+     * bundle's.
+     */
+    suspend fun store(name: String? = null, url: String? = null)
 
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<BuildLevers>(

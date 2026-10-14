@@ -432,7 +432,7 @@ class StatusContainerHost(
     private fun render(membership: Membership, interaction: Interaction, local: Local, now: Timestamp): ScreenModel {
         val refused = interaction.versionRefusal
         val reduced = if (refused != null) {
-            Reduced(Layer.UpdateRequired(minimumVersion = refused.minimumVersion, store = store?.let { it.kind.shown }))
+            Reduced(Layer.UpdateRequired(minimumVersion = refused.minimumVersion, store = store?.name))
         } else {
             reduceFrom(membership, interaction, local, now, display)
         }
@@ -627,7 +627,7 @@ class StatusContainerHost(
     }
 
     /**
-     * Open the App Store page from the update-required screen.
+     * Open the build's store page from the update-required screen.
      *
      * The URL is read from the CURRENT state rather than taken from the caller, exactly as
      * [onShareInvite] reads the invite URL: the screen's contract is that a build carrying no store URL
