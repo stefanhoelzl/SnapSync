@@ -32,10 +32,10 @@
 #                   contracts (`scripts/sim-contracts`), on Android over every real adapter it has
 #                   (`scripts/android-journeys`). Scripts, not Gradle: every Gradle and Kotlin daemon
 #                   must be gone before the simulator boots on the 7 GB macOS runner, and the journeys run in a bare JVM
-#   screenshots / ios|android   the marketing raws captured afresh (screenshots.yml, called with `compare`) and
-#                   checked against the committed `screenshots/` — a change that moves a listing image fails until its
-#                   new raws are committed with it. Not on main: the merge already passed it, and a push holds a macOS
-#                   runner fewer
+#   screenshots     the marketing raws captured afresh and checked against the committed `screenshots/` — a change
+#                   that moves a listing image fails until its new raws are committed with it. iOS's are the last steps
+#                   of `ios-build`, so a push holds no third macOS runner; Android's are `screenshots (android)`. On
+#                   branch pushes only: main's merge already passed them, and a dispatch is a delivery
 #   metadata · api-test · migration-rehearsal · site-build    the Linux checks of the spec, deployment resolver, App
 #                   Store listing, backend and site
 #
@@ -51,7 +51,7 @@
 # dispatch-driven store promotion (promote.yml).
 #
 # Deployers stay in their own files: deploy.yml (api, site, listing text — main only), promote.yml,
-# nightly-cleanup.yml, ssh-runner-macos.yml. screenshots.yml is a gate here and a dispatch of its own.
+# screenshots.yml (the same capture, dispatched to refresh the raws), nightly-cleanup.yml, ssh-runner-macos.yml.
 name: ci
 
 on:
@@ -503,7 +503,8 @@ jobs:
         run: ./gradlew iosPlatformTest
       # Seed the Gradle cache main saves from this job with what only a rig simulator app compiles — the control channel,
       # the launch-time adapters, the mocks, the rig source sets of the iOS adapters, the host and both frameworks' links —
-      # against the same `prod` deployment, so `screenshots.yml`, which restores this job's cache, finds them. Nothing
+      # against the same `prod` deployment, so the screenshots — this job's own last step on a branch push, and
+      # `screenshots.yml` — find them in the cache they restore from main. Nothing
       # else ever cached them: journeys (ios) saves nothing, and its `local` deployment changes `domain:model`, so its
       # outputs would not match anyway. The library modules' keys are the same with or without the rig flag, so those
       # stay UP-TO-DATE here. Main only: no other ref saves the cache. 3.5 min from a cache 17 commits stale, after which
@@ -535,6 +536,15 @@ jobs:
           # A build intermediate for the next job of this run, in a public repo: one day, then gone.
           retention-days: 1
           if-no-files-found: error
+      # The App Store raws, captured and compared (`.github/actions/screenshots-ios`), on this runner rather than a third
+      # macOS one: the rig app builds on this job's warm daemon and DerivedData, and the simulator is the one journeys
+      # (ios) settles. Branch pushes only — main's merge already passed it, and a dispatch is a delivery. Last, because
+      # it leaves the rig flag in GRADLE_OPTS.
+      - name: Screenshots
+        if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+        uses: ./.github/actions/screenshots-ios
+        with:
+          compare: true
 
   android-build:
     runs-on: ubuntu-26.04
@@ -749,21 +759,34 @@ jobs:
 
   # ── Screenshots ──────────────────────────────────────────────────────────────────────────────────────────────────
 
-  # The captures, compared (screenshots.yml says how). Its iOS job reads the settled simulator journeys (ios) saves and the
-  # rig app ios-build seeds on main, so it ends well inside the journeys. Skipped on main, which `ci` accepts.
-  screenshots:
-    if: github.ref != 'refs/heads/main'
-    uses: ./.github/workflows/screenshots.yml
-    with:
-      compare: true
+  # Google Play's raws, captured and compared (`.github/actions/screenshots-android`; iOS's are ios-build's last step).
+  # Gradle's cache is `build`'s, read only, as journeys (android) reads it. Branch pushes only, which `ci` accepts.
+  screenshots-android:
+    name: screenshots (android)
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    env:
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+      - uses: ./.github/actions/screenshots-android
+        with:
+          compare: true
 
   # ── The aggregate ───────────────────────────────────────────────────────────────────────────────────────
 
   # `always()` so it posts whatever the gates did: a gate that failed, was cancelled or was skipped fails it (bar
-  # `screenshots` on main, skipped by design). Without `always()` a red gate would SKIP this job, and a skipped required
-  # check counts as passing.
+  # `screenshots (android)` off a branch push, skipped by design). Without `always()` a red gate would SKIP this job,
+  # and a skipped required check counts as passing.
   ci:
-    needs: [build, metadata, api-test, migration-rehearsal, site-build, ios-build, android-build, journeys, screenshots]
+    needs: [build, metadata, api-test, migration-rehearsal, site-build, ios-build, android-build, journeys, screenshots-android]
     if: always()
     runs-on: ubuntu-26.04
     steps:
@@ -773,7 +796,7 @@ jobs:
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
           echo "$NEEDS" | jq -e 'all(to_entries[]; .value.result == "success"
-            or (.key == "screenshots" and .value.result == "skipped" and env.GITHUB_REF == "refs/heads/main"))' > /dev/null || {
+            or (.key == "screenshots-android" and .value.result == "skipped"))' > /dev/null || {
             echo "::error::a gate did not succeed"
             exit 1
           }

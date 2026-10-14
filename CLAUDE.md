@@ -374,7 +374,7 @@ each state by the scenarios in `:test:integration`'s `Shots.kt` — which `Shots
 in `screenshots/android/` from the emulator (artifact `screenshots-android-raw`); eyeball and commit them the same way.
 Both the App Store listing (at release time) and the `site/` landing page (on merge) derive from these
 committed raws (Google Play's listing, also at release time, from `screenshots/android/`), so refreshing them is a **commit**; nothing regenerates automatically, and a merge to
-`main` uploads nothing to the store. **`ci.yml`'s `screenshots` gate** captures both sets on every branch push and
+`main` uploads nothing to the store. **`ci.yml` captures both sets on every branch push** (iOS in `ios-build`, Android in `screenshots (android)`) and
 fails when one differs from the committed raw (diff images in `screenshots-diff` / `screenshots-android-diff`), so a UI
 change carries its new raws: take them from that failed run's artifacts, or dispatch:
 

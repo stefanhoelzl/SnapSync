@@ -1,0 +1,71 @@
+# Google Play's six marketing raws, captured on the emulator and — under `compare` — checked against
+# `screenshots/android/` (`screenshots.yml` explains the capture, `CompareShots` the comparison). Two callers:
+# `screenshots.yml`'s dispatch and ci.yml's `screenshots (android)`. Expects the checkout, JDK 25 and Gradle set up.
+name: Android screenshots
+description: Capture the six Google Play raws from the debug rig app on the emulator, and optionally compare them.
+inputs:
+  compare:
+    description: "'true' to fail when a capture differs from the committed raw"
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    # The DEBUG rig build (`run-as` needs a debuggable app) against `prod`, for the reason the iOS capture gives: `in_sync`'s QR
+    # encodes the deployment's invite origin. Every system the shots touch is mocked, so nothing reaches prod. The
+    # capture compiles here too, and the daemons stop before the emulator boots, as in ci.yml's journeys (android).
+    - name: Build the rig app and the capture
+      shell: bash
+      run: |
+        ./gradlew :app:android:assembleDebug :test:integration:screenshotsClasses :test:integration:screenshotsClasspath \
+          -Psnapsync.rig=true -Psnapsync.deployment=prod
+        ./gradlew --stop
+    # The emulator the journeys and the `snapsync-android` skill use (`.github/actions/android-emulator`: pixel_6,
+    # 1080x2400), over the system image ci.yml's journeys (android) caches on main — restored only here. Each script line
+    # is its own shell. On a failed capture the app's log and the screen are kept, since the emulator is gone after
+    # this step.
+    - name: Capture each state, light and dark
+      uses: ./.github/actions/android-emulator
+      with:
+        script: |
+          $ANDROID_HOME/platform-tools/adb -s emulator-5554 install -r app/android/build/outputs/apk/debug/android-debug.apk
+          java -Xmx512m -cp "$(cat test/integration/build/screenshots-classpath.txt)" app.snapsync.screenshots.CaptureShotsKt android emulator-5554 18199 shots || { mkdir -p evidence; $ANDROID_HOME/platform-tools/adb -s emulator-5554 logcat -d > evidence/logcat.txt; $ANDROID_HOME/platform-tools/adb -s emulator-5554 exec-out screencap -p > evidence/screen.png; exit 1; }
+
+    - name: Upload the evidence
+      if: failure()
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: screenshots-android-evidence
+        path: |
+          evidence/
+          shots/
+        if-no-files-found: ignore
+    - name: Check the set is complete
+      shell: bash
+      run: |
+        COUNT="$(find shots -name '*.png' | wc -l | tr -d ' ')"
+        echo "captured $COUNT shot(s):"; ls -l shots
+        [ "$COUNT" -eq 6 ] || { echo "::error::expected 6 raw captures, got $COUNT"; exit 1; }
+    - name: Upload the raw captures
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: screenshots-android-raw
+        path: shots/
+        if-no-files-found: error
+    # The status bar's 120 rows are left out: its demo-mode clock moves between emulator boots (`CompareShots`).
+    - name: Compare with the committed raws
+      id: compare
+      if: inputs.compare == 'true'
+      shell: bash
+      run: |
+        java -cp "$(cat test/integration/build/screenshots-classpath.txt)" \
+          app.snapsync.screenshots.CompareShotsKt shots screenshots/android shots-diff 120 || {
+          echo "::error::the Google Play raws moved: if the change is intended, download this run's screenshots-android-raw, look at them and commit them to screenshots/android/ (the diffs: screenshots-android-diff)"
+          exit 1
+        }
+    - name: Upload the diffs
+      if: failure() && steps.compare.outcome == 'failure'
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: screenshots-android-diff
+        path: shots-diff/

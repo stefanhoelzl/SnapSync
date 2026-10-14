@@ -1,0 +1,173 @@
+# The App Store's six marketing raws, captured and — under `compare` — checked against `screenshots/ios/`
+# (`screenshots.yml` explains the capture, `CompareShots` the comparison). Two callers: `screenshots.yml`'s dispatch, and
+# ci.yml's `ios-build` on every branch push, where it shares the runner — and the warm Gradle daemon and DerivedData —
+# with the archive and the platform tests, so a push holds no third macOS runner. Expects the checkout, JDK 25, Gradle
+# and ~/.konan set up.
+name: iOS screenshots
+description: Capture the six App Store raws from the rig app on the 6.9" simulator, and optionally compare them.
+inputs:
+  compare:
+    description: "'true' to fail when a capture differs from the committed raw"
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    # Render the deployment BEFORE xcodebuild reads it. `Config.xcconfig` hard-`#include`s the
+    # GENERATED, gitignored `Deployment.xcconfig` (`docs/deployment.md`), so a build without this step fails
+    # at CONFIGURATION time — "could not find included file". This capture once failed there for a month unnoticed,
+    # while it was dispatch-only and non-gating; keep this step ahead of any xcodebuild.
+    #
+    # `prod` — and the RIG build (`snapsync.rig`, never in the repo's gradle.properties) — through GRADLE_OPTS, so the
+    # Gradle that Xcode's build phase launches builds the same, and nothing is left in ~/.gradle for a later step. The one
+    # thing the deployment puts on screen is the invite link's ORIGIN, which `in_sync`'s QR encodes — a `local` build
+    # showed `https://127.0.0.1:8080/join#…` there, which the listing must never carry. Nothing reaches `prod`'s
+    # backend: every launch that drives a shot mocks it, and the launch adapters' coherence rules keep a mocked
+    # backend's transfers, pushes and attestation mocked too, while the channel never reaches a real backend.
+    - name: Resolve the deployment
+      shell: bash
+      run: |
+        python3 scripts/resolve-deployment.py prod
+        echo "GRADLE_OPTS=-Dorg.gradle.project.snapsync.deployment=prod -Dorg.gradle.project.snapsync.rig=true" >> "$GITHUB_ENV"
+
+    # The SwiftPM checkout (sentry-cocoa) ios-build's archive restores and main saves (`.github/actions/ios-archive`
+    # says why the key is the pbxproj), read only as journeys (ios) reads it: without it every run fetched sentry-cocoa
+    # from GitHub (~45 s).
+    - name: Restore the resolved SwiftPM checkout
+      uses: actions/cache/restore@v6
+      with:
+        path: build/ios/SourcePackages
+        key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
+
+    # The RIG build of the real app for the simulator SDK, as journeys (ios) builds it. Debug so the Kotlin/Native framework link
+    # skips the LLVM optimizer. Built unsigned, then AD-HOC signed: an unsigned simulator app has no App Group,
+    # and the launch adapters' choice and the mocked systems' state live there (`scripts/sim-sign`). arm64 only, as
+    # `scripts/sim-contracts` builds it: the generic destination also builds an x86_64 slice an Apple-silicon simulator
+    # never loads.
+    - name: Build the rig app for the iOS simulator
+      shell: bash
+      run: |
+        xcodebuild \
+          -project iosApp/iosApp.xcodeproj \
+          -scheme iosApp \
+          -configuration Debug \
+          -sdk iphonesimulator \
+          -destination 'generic/platform=iOS Simulator' \
+          -derivedDataPath build/ios \
+          CODE_SIGNING_ALLOWED=NO \
+          ARCHS=arm64 \
+          build
+        APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
+        if [ -z "$APP" ]; then echo "::error::no simulator .app produced"; exit 1; fi
+        scripts/sim-sign "$APP"
+        echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+
+    # The capture compiles now, and every Gradle and Kotlin daemon stops before the simulator boots: they hold
+    # gigabytes the simulator would swap against (the reason journeys (ios) runs its journeys as a bare JVM too).
+    - name: Compile the capture
+      shell: bash
+      run: |
+        ./gradlew -q :test:integration:screenshotsClasses :test:integration:screenshotsClasspath
+        ./gradlew -q --stop
+        pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' || true
+
+    # The 6.9" iPhone journeys (ios) runs on, restored past its first boot (`.github/actions/settled-simulator`; main
+    # settles and saves it): a first boot spent 1:50-3:46 "Waiting on Data Migration", created or the image's own
+    # alike. Restored only, never settled here — on a miss (a new image, before main re-settles) the image's device
+    # boots as it shipped; a created one only if the image ever carries no iPhone 17 Pro Max.
+    # In ios-build the platform tests' simulator may still be up, holding memory and — were it this device — its directory.
+    - name: Shut down every simulator
+      shell: bash
+      run: xcrun simctl shutdown all
+    - name: Restore the settled simulator
+      id: sim
+      uses: ./.github/actions/settled-simulator
+    - name: Boot the 6.9" simulator and install
+      env:
+        DEVICE: ${{ steps.sim.outputs.udid }}
+      shell: bash
+      run: |
+        [ -n "$DEVICE" ] || DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 17 Pro Max')"
+        echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+        xcrun simctl boot "$DEVICE"
+        xcrun simctl bootstatus "$DEVICE" -b
+        xcrun simctl install "$DEVICE" "$APP_PATH"
+
+    # The clean App Store status bar: 9:41, full battery (charged), full signal. Persists per device
+    # across launches, so one override covers every capture below.
+    - name: Clean the status bar
+      shell: bash
+      run: |
+        xcrun simctl status_bar "$DEVICE" override \
+          --time "9:41" \
+          --batteryState charged --batteryLevel 100 \
+          --cellularBars 4 --wifiBars 3
+
+    # Drive the real app to each state and capture it, light and dark (`CaptureShots`). One launch per state;
+    # the appearance flips on the running app — `AppTheme` selects on `isSystemInDarkTheme()`, which
+    # Compose/iOS resolves from the UIKit trait collection that `simctl ui appearance` sets — and a settled
+    # frame is two byte-identical consecutive captures. A bare JVM on the classpath the compile step wrote.
+    - name: Capture each state, light and dark
+      shell: bash
+      run: |
+        "${JAVA_HOME:+$JAVA_HOME/bin/}java" -Xmx512m -cp "$(cat test/integration/build/screenshots-classpath.txt)" \
+          app.snapsync.screenshots.CaptureShotsKt ios "$DEVICE" 18099 shots
+
+    # Diagnostics on a failed capture: the app's own log, what the screen showed, and any crash report — so a
+    # launch that never answered or a state never reached is attributable, not guessed.
+    - name: Keep the evidence
+      if: failure()
+      shell: bash
+      run: |
+        mkdir -p evidence
+        DATA="$(xcrun simctl get_app_container "$DEVICE" app.snapsync data 2>/dev/null || true)"
+        [ -n "$DATA" ] && cp "$DATA/Documents/debug.log" evidence/ 2>/dev/null || true
+        xcrun simctl io "$DEVICE" screenshot evidence/screen.png >/dev/null 2>&1 || true
+        cp "$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE/data/Library/Logs/DiagnosticReports/"*.ips evidence/ 2>/dev/null || true
+    - name: Upload the evidence
+      if: failure()
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: screenshots-evidence
+        path: evidence/
+        if-no-files-found: ignore
+    # Whatever was captured before the failure, so a partial run is still something to look at — never to commit.
+    - name: Upload the partial captures
+      if: failure()
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: screenshots-partial
+        path: shots/
+        if-no-files-found: ignore
+
+    # Fail loudly rather than upload a short set: a missing shot means a launch or capture failed, and
+    # the operator is about to commit these as the source of truth for two surfaces.
+    - name: Check the set is complete
+      shell: bash
+      run: |
+        COUNT="$(find shots -name '*.png' | wc -l | tr -d ' ')"
+        echo "captured $COUNT shot(s):"; ls -l shots
+        [ "$COUNT" -eq 6 ] || { echo "::error::expected 6 raw captures, got $COUNT"; exit 1; }
+
+    - name: Upload the raw captures
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: screenshots-raw
+        path: shots/
+        if-no-files-found: error
+    - name: Compare with the committed raws
+      id: compare
+      if: inputs.compare == 'true'
+      shell: bash
+      run: |
+        "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp "$(cat test/integration/build/screenshots-classpath.txt)" \
+          app.snapsync.screenshots.CompareShotsKt shots screenshots/ios shots-diff 0 || {
+          echo "::error::the App Store raws moved: if the change is intended, download this run's screenshots-raw, look at them and commit them to screenshots/ios/ (the diffs: screenshots-diff)"
+          exit 1
+        }
+    - name: Upload the diffs
+      if: failure() && steps.compare.outcome == 'failure'
+      uses: actions/upload-artifact@v7.0.2
+      with:
+        name: screenshots-diff
+        path: shots-diff/
