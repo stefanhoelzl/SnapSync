@@ -10,6 +10,7 @@ import app.snapsync.contracts.inboundOf
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.DbOpen
+import java.lang.ref.Reference
 import java.nio.file.Files
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -38,9 +39,9 @@ class JdbcDatabasesCommitsTest {
     @Test
     fun `an instance that never listened is not told and the commit goes on`() {
         val dir = Files.createTempDirectory("databases-commits").toFile()
-        JdbcDatabases(dir).opened() // opened, never listened
+        val silent = JdbcDatabases(dir).apply { opened() } // opened, never listened
         val heard = LinkedBlockingQueue<String>()
-        JdbcDatabases(dir).apply {
+        val listening = JdbcDatabases(dir).apply {
             inbound(DatabaseHandlers(onChangedElsewhere = inboundOf { heard.add(it) }))
             opened()
         }
@@ -51,6 +52,10 @@ class JdbcDatabasesCommitsTest {
         // Deliveries run in order on one thread: once the second is heard, the silent instance's first ran too.
         assertEquals("t.db", heard.poll(5, TimeUnit.SECONDS))
         assertEquals("t.db", heard.poll(5, TimeUnit.SECONDS))
+        // The commits remember an open instance only weakly, so both are held until their deliveries ran: one the GC
+        // had taken would be told nothing, and the silent instance's branch would go unexercised.
+        Reference.reachabilityFence(silent)
+        Reference.reachabilityFence(listening)
         dir.deleteRecursively()
     }
 }
