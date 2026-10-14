@@ -1,10 +1,13 @@
 package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.faultOf
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.RenameOutcome
 import app.snapsync.wire.api.ChangeEventReply
+import app.snapsync.wire.api.Closed
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.Invalid
 import app.snapsync.wire.api.Routes
@@ -83,11 +86,11 @@ class BackendEventCreation(
             // An id that is no event id is a malformed reply, answered as any other the backend could not have meant.
             is CreateEventReply.Created -> EventId.parse(reply.event.eventId)
                 ?.let { CreateOutcome.Created(eventId = it, name = reply.event.name) }
-                ?: CreateOutcome.Transient
+                ?: CreateOutcome.Transient(ServiceFault.UNREACHABLE)
             CreateEventReply.InvalidWindow -> CreateOutcome.InvalidWindow
             CreateEventReply.InvalidName, is Invalid -> CreateOutcome.InvalidName
             Unauthorized -> CreateOutcome.Unverified
-            else -> CreateOutcome.Transient
+            else -> CreateOutcome.Transient(faultOf(reply) ?: ServiceFault.UNREACHABLE)
         }
     }
 }
@@ -109,6 +112,7 @@ class BackendEventRename(private val gateway: BackendGateway) : EventRename {
         when (val reply = gateway.send(Routes.ChangeEvent.request(eventId.value, EventChange(name = name)))) {
             is ChangeEventReply.Changed -> RenameOutcome.Renamed(reply.event.name)
             is Invalid -> RenameOutcome.InvalidName
-            else -> RenameOutcome.Transient
+            is Closed -> RenameOutcome.EventOver
+            else -> RenameOutcome.Transient(faultOf(reply))
         }
 }

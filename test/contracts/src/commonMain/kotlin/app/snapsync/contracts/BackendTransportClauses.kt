@@ -1,14 +1,10 @@
 package app.snapsync.contracts
 
-import app.snapsync.wire.api.JoinEventReply
-import app.snapsync.wire.api.LeaveEventReply
 import app.snapsync.wire.api.Maintenance
 import app.snapsync.wire.api.Malformed
-import app.snapsync.wire.api.PublishManifestReply
 import app.snapsync.wire.api.Reply
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.api.ServerError
-import app.snapsync.wire.api.Success
 import app.snapsync.wire.api.Unreachable
 import app.snapsync.wire.models.AppleAppAttestProof
 import app.snapsync.wire.models.DeviceConfig
@@ -39,20 +35,15 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.transportClaus
     clause(
         "UNREADABLE_SUCCESS_EVERY_READ_IS_MALFORMED",
         BackendState.UNREADABLE_SUCCESS,
-        covers = cells {
-            backend(Routes.Challenge.ID, Malformed::class)
-            backend(Routes.JoinEvent.ID, JoinEventReply.Joined::class)
-            backend(Routes.LeaveEvent.ID, LeaveEventReply.Left::class)
-            backend(Routes.PublishManifest.ID, PublishManifestReply.Published::class)
-        },
+        covers = cells { backend(Routes.Challenge.ID, Malformed::class) },
     ) { s ->
-        val bodyless = setOf(Routes.JoinEvent.ID, Routes.LeaveEvent.ID, Routes.PublishManifest.ID)
         everyOperation(s).forEach { (operation, reply) ->
-            if (operation in bodyless) {
-                assertIs<Success>(reply, "$operation: a body-less answer at its declared status is served by any body")
-            } else {
-                assertIs<Malformed>(reply, "$operation: an answer this build cannot read is never a value")
-            }
+            // A success that declares no body is the backend's only with none: a body there came from something in
+            // its place — a Wi-Fi login page, a proxy — and is never a done write (`changes/tell-service-faults`, D2).
+            assertIs<Malformed>(
+                reply,
+                "$operation: an answer this build cannot read is never a value, nor a done write",
+            )
         }
     }
 

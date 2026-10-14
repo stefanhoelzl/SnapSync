@@ -430,8 +430,8 @@ export function v2Handlers(
       const event = await gateEvent(db, eventId, "v2 manifest");
       // A manifest from a NON-MEMBER is refused rather than silently joining — the inverse of v1, where
       // publishing was enrolling.
-      // A completed event has no members left; its devices are told so, and leave (capability
-      // `manage-membership`).
+      // A completed event has no members left; its devices are told so, and show the event as over while the member
+      // stays in it — the app never leaves an event on its own (capability `event-lifetime`).
       if (event.completedAt) closedRefusal();
       const member = await tryUpstream(
         `v2 manifest: membership read failed for ${eventId}/${deviceId}`,

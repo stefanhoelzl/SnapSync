@@ -2,6 +2,7 @@ package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.domain.event.EventId
 
 /**
  * Every need-shaped backend service, over ONE [BackendGateway] — so a composition cannot give two of them different
@@ -15,12 +16,17 @@ class BackendServices(
     private val identity: DeviceIdentity,
     /** The device's zone, read at a create (the app's clock); the extension never creates, so it passes none. */
     private val zone: () -> String?,
+    /**
+     * The service answered the member's shared set that [EventId]'s photos were deleted — its positive word, which the
+     * app's membership marks; the extension has no membership to mark, so passes none.
+     */
+    private val eventOver: (suspend (EventId) -> Unit)?,
 ) {
     val directory: EventDirectory by lazy { BackendEventDirectory(gateway) }
     val creation: EventCreation by lazy { BackendEventCreation(gateway, zone) }
     val rename: EventRename by lazy { BackendEventRename(gateway) }
     val join: EventJoin by lazy { BackendEventJoin(gateway) }
-    val manifest: ManifestPublisher by lazy { BackendManifestPublisher(gateway) }
+    val manifest: ManifestPublisher by lazy { BackendManifestPublisher(gateway, eventOver) }
     val leave: LeaveNotifier by lazy { BackendLeaveNotifier(gateway, identity) }
     val received: ReceivedReporter by lazy { BackendReceivedReporter(gateway, identity) }
     val union: EventUnionSource by lazy { BackendEventUnionSource(gateway) }

@@ -18,7 +18,16 @@ import app.snapsync.ui.resources.event_closed_title
 import app.snapsync.ui.resources.event_not_found_title
 import app.snapsync.ui.resources.link_incomplete_body
 import app.snapsync.ui.resources.link_incomplete_title
+import app.snapsync.ui.resources.load_failed_body
+import app.snapsync.ui.resources.load_failed_body_updating
 import app.snapsync.ui.resources.load_failed_title
+import app.snapsync.ui.resources.message_event_over
+import app.snapsync.ui.resources.message_rename_trouble
+import app.snapsync.ui.resources.message_rename_unreachable
+import app.snapsync.ui.resources.message_rename_updating
+import app.snapsync.ui.resources.message_service_trouble
+import app.snapsync.ui.resources.message_service_unreachable
+import app.snapsync.ui.resources.message_service_updating
 import app.snapsync.ui.resources.ok
 import app.snapsync.ui.resources.report_body_developer
 import app.snapsync.ui.resources.report_body_device
@@ -48,6 +57,8 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.PendingSwitch
 import app.snapsync.ui.state.ReportTarget
+import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.StoreName
 import app.snapsync.ui.state.SyncHealth
@@ -65,6 +76,39 @@ import kotlin.test.assertNull
  * test states the sentence the screen will say, not how it renders.
  */
 class ScreenWordsTest {
+
+    // ---- a failing service ---------------------------------------------------------------------------------------
+
+    @Test
+    fun `a failing service is told in its own words, the rename dialog saying what failed`() {
+        assertEquals(Res.string.message_service_unreachable, ScreenMessage.SERVICE_UNREACHABLE.resource())
+        assertEquals(Res.string.message_service_trouble, ScreenMessage.SERVICE_TROUBLE.resource())
+        assertEquals(Res.string.message_service_updating, ScreenMessage.SERVICE_UPDATING.resource())
+        assertEquals(Res.string.message_event_over, ScreenMessage.EVENT_OVER.resource())
+        assertEquals(Res.string.message_rename_unreachable, ScreenMessage.SERVICE_UNREACHABLE.renameResource())
+        assertEquals(Res.string.message_rename_trouble, ScreenMessage.SERVICE_TROUBLE.renameResource())
+        assertEquals(Res.string.message_rename_updating, ScreenMessage.SERVICE_UPDATING.renameResource())
+        assertEquals(
+            Res.string.message_event_over,
+            ScreenMessage.EVENT_OVER.renameResource(),
+            "anything else as anywhere",
+        )
+        assertEquals(
+            listOf(
+                Res.string.message_service_unreachable,
+                Res.string.message_service_trouble,
+                Res.string.message_service_updating,
+            ),
+            ServiceNotice.entries.map { it.resource() },
+        )
+    }
+
+    @Test
+    fun `a failed load says which way the service failed, and an update that it loads by itself`() {
+        assertEquals(Res.string.load_failed_body, loadFailedBody(null))
+        assertEquals(Res.string.message_service_trouble, loadFailedBody(ServiceNotice.TROUBLE))
+        assertEquals(Res.string.load_failed_body_updating, loadFailedBody(ServiceNotice.UPDATING))
+    }
 
     // ---- durations and time left ----------------------------------------------------------------------------------
 

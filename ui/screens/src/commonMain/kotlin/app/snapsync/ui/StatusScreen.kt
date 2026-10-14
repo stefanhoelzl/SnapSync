@@ -372,7 +372,7 @@ private fun RenameSheet(
             maxLength = EVENT_NAME_MAX_LENGTH,
             busy = renameState == RenameState.InFlight,
             // The reduction names the failure; the words are this screen's, as for the create layer's twin.
-            error = (renameState as? RenameState.Failed)?.message?.text(),
+            error = (renameState as? RenameState.Failed)?.message?.renameText(),
         ),
         // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
         // rather than renaming a different event.

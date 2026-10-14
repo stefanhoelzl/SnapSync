@@ -28,7 +28,7 @@ sealed interface RenewalAnswerVerdict {
     companion object {
         fun of(answer: TokenIssuance): RenewalAnswerVerdict = when (answer) {
             is TokenIssuance.Minted -> Accept(answer.token)
-            TokenIssuance.NoAnswer, TokenIssuance.ChallengeStale -> KeepHeld
+            is TokenIssuance.NoAnswer, TokenIssuance.ChallengeStale -> KeepHeld
             TokenIssuance.NotAttested, is TokenIssuance.Refused, TokenIssuance.ProofFailed -> AttestAfresh
         }
     }
@@ -49,7 +49,7 @@ sealed interface MintAnswerVerdict {
         fun of(answer: TokenIssuance): MintAnswerVerdict = when (answer) {
             is TokenIssuance.Minted -> Accept(answer.token)
             is TokenIssuance.Refused -> Refused(answer.reason, answer.detail)
-            TokenIssuance.NoAnswer,
+            is TokenIssuance.NoAnswer,
             TokenIssuance.ChallengeStale,
             TokenIssuance.NotAttested,
             TokenIssuance.ProofFailed,

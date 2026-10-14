@@ -311,8 +311,8 @@ private fun host(
     permission: FakePermissionSource = FakePermissionSource(),
     requester: SpyRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
-    loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed },
+    loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed() },
+    commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed() },
     leave: suspend () -> Unit = {},
     verification: DeviceVerification = DeviceVerification(),
     onIntentError: (Throwable) -> Unit = {},
@@ -340,7 +340,7 @@ private fun TestScope.firstJoinGate(
     permission: GalleryAccess,
     requester: SpyRequester,
     configFake: FakeConfig = FakeConfig(null),
-    commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed },
+    commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed() },
     // Counts details fetches — a switch's post-leave derivation must re-use the load, never re-run it.
     onLoad: () -> Unit = {},
     leave: suspend () -> Unit = {},
@@ -1305,7 +1305,7 @@ class StatusContainerHostTest {
             configFake = FakeConfig(null),
             loadJoinDetails = {
                 if (attempt++ == 0) {
-                    JoinLoad.Failed
+                    JoinLoad.Failed()
                 } else {
                     JoinLoad.Found(
                         "Anna's Birthday",
@@ -1337,7 +1337,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(GalleryAccess.GRANTED),
             configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _ -> JoinCommit.Failed },
+            commitJoin = { _ -> JoinCommit.Failed() },
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT_ID))))
@@ -2144,7 +2144,7 @@ class StatusContainerHostTest {
             requester,
             commitJoin = { _ ->
                 commits++
-                JoinCommit.Failed
+                JoinCommit.Failed()
             },
         ).testWithInternalState(this) {
             runOnCreate()
@@ -2177,7 +2177,7 @@ class StatusContainerHostTest {
             requester,
             commitJoin = { _ ->
                 commits++
-                JoinCommit.Failed
+                JoinCommit.Failed()
             },
         ).testWithInternalState(this) {
             runOnCreate()
@@ -2382,7 +2382,7 @@ class StatusContainerHostJoinGateTest {
             SpyRequester(),
             commitJoin = { _ ->
                 commits++
-                JoinCommit.Failed
+                JoinCommit.Failed()
             },
         ).testWithInternalState(this) {
             runOnCreate()

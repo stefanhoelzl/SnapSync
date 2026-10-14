@@ -688,7 +688,8 @@ throws `LeverRefused`; an omitted `event` is the joined one, an omitted `device`
   (`BackendCall.EVENT|CREATE|JOIN|LEAVE`: the call waits unanswered until released — the only way to catch a screen
   the app shows while it waits), `fail(operation, fault, times?)` (the next `times` — once by default — requests to that
   `api/openapi.yaml` operationId answer `BackendFault.SERVER_ERROR|MAINTENANCE|UNREACHABLE|MALFORMED|ENDED_FOR_GOOD|CLOSED`;
-  an operation the API does not declare throws), `sweep(event?)`, `complete(event?)`, `wipeBytes(device?)`,
+  an operation the API does not declare throws), `recover(operation?)` (lifts what `fail` set — for every operation when
+  omitted: the service works again), `sweep(event?)`, `complete(event?)`, `wipeBytes(device?)`,
   `refuseNextCredential()`, `refuseAttestation(reason?, detail?)` (no reason: the phone is genuine again); reads
   `switches()` (every lever's state, the held calls), `membership(event?, device?)` (departed, publishes, the manifest),
   `eventState(event?)` (union and detail reads, union fetches and position, finished, completed),

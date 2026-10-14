@@ -4,6 +4,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.time.Timestamp
@@ -91,6 +92,8 @@ import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
 import org.orbitmvi.orbit.orbitContainer
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 class StatusContainerHost(
     // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
@@ -149,9 +152,13 @@ class StatusContainerHost(
     private val downloadSource = sources.download
     private val attested = sources.verification.attested
     private val refusal = sources.verification.refusal
+    private val attestFault = sources.verification.fault
+    private val serviceFault = sources.verification.service
 
-    // The two halves of the attestation's verdict travel as one input, so the reduction below keeps its arity.
-    private val trust: Flow<Pair<Boolean, DeviceRefusal?>> = combine(attested, refusal) { a, r -> a to r }
+    // The attestation's verdict and the service's condition travel as one input, so the reduction below keeps its arity.
+    private val trust: Flow<Trust> =
+        combine(attested, refusal, attestFault, serviceFault) { a, r, f, s -> Trust(a, r, f, s) }
+    private var maintenanceReload: Job? = null
     private val pending = sources.pending
     private val versionRefusal = sources.versionRefusal
     private val network = sources.network
@@ -283,6 +290,8 @@ class StatusContainerHost(
                     network.access.value,
                     mobileData.value,
                     refusal.value,
+                    attestFault.value,
+                    serviceFault.value,
                 ),
                 Interaction(pending.value, creationStatus.value, renameFlow.value, versionRefusal.value),
                 local.value,
@@ -317,9 +326,12 @@ class StatusContainerHost(
                     config, permission, syncSource.status, downloadSource, trust, network.access, mobileData,
                     pending, creationStatus, renameFlow, versionRefusal,
                     local, nowTick,
-                ) { config, permission, sync, download, (attested, refused), access, mobileData, pending, creation, rename, refusal, local, now ->
+                ) { config, permission, sync, download, trust, access, mobileData, pending, creation, rename, refusal, local, now ->
                     render(
-                        Membership(config, permission, sync, download, attested, access, mobileData, refused),
+                        Membership(
+                            config, permission, sync, download, trust.attested, access, mobileData,
+                            trust.refusal, trust.attestFault, trust.serviceFault,
+                        ),
                         Interaction(pending, creation, rename, refusal),
                         local,
                         now,
@@ -1065,7 +1077,8 @@ class StatusContainerHost(
     /** Retry the details fetch after a transient load failure. */
     fun onRetryLoad() = intent {
         val p = pending.value ?: return@intent
-        pending.value = p.copy(phase = JoinProgress.Loading)
+        maintenanceReload?.cancel()
+        pending.value = p.copy(phase = JoinProgress.Loading, service = null)
         loadInto(p.eventId, p.linkKey)
     }
 
@@ -1227,12 +1240,26 @@ class StatusContainerHost(
                 )
             }
             JoinLoad.NotFound -> JoinProgress.NotFound
-            JoinLoad.Failed -> JoinProgress.LoadFailed
+            is JoinLoad.Failed -> JoinProgress.LoadFailed
             JoinLoad.WrongLink -> JoinProgress.WrongLink
         }
         // Only apply if this fetch is still the active pending target (not cancelled/superseded).
         val keyId = (load as? JoinLoad.Found)?.keyId
-        pending.update { if (it?.eventId == eventId) it.copy(phase = phase, eventKeyId = keyId) else it }
+        val failed = load as? JoinLoad.Failed
+        pending.update {
+            if (it?.eventId == eventId) it.copy(phase = phase, eventKeyId = keyId, service = failed?.fault) else it
+        }
+        // The service is being updated: it says when asking again is worth it, so the details load again by themselves
+        // then — Retry stays offered meanwhile (decision record `changes/tell-service-faults`, D3).
+        // Bounded ([maintenanceWait]), and only while the screen still shows that failed load.
+        if (failed?.fault == ServiceFault.UPDATING) {
+            val shown = pending.value
+            maintenanceReload?.cancel()
+            maintenanceReload = scope.launch {
+                delay(maintenanceWait(failed.retryAfterSeconds))
+                if (pending.value === shown) onRetryLoad()
+            }
+        }
     }
 
     private suspend fun commit() {
@@ -1255,7 +1282,7 @@ class StatusContainerHost(
             range.chosenFrom, range.chosenUntil, range.direction, form.saveToAlbum,
             linkKey = p.linkKey, eventKeyId = p.eventKeyId, openUntil = event.openUntil,
         )
-        pending.value = p.copy(phase = JoinProgress.Detailed(event, JoinPhase.Detailed.Step.Committing))
+        pending.value = p.copy(phase = JoinProgress.Detailed(event, JoinPhase.Detailed.Step.Committing), service = null)
         beginMembership()
         val commit = try {
             commands.commitJoin(choice)
@@ -1286,7 +1313,7 @@ class StatusContainerHost(
             // Orbit's re-throw would cancel the intent job and take every later command with it.
             throw t
         }
-        if (commit == JoinCommit.Committed) {
+        if (commit is JoinCommit.Committed) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.value?.eventId == p.eventId) pending.value = null
         } else if (pending.value?.eventId == p.eventId) {
@@ -1294,7 +1321,10 @@ class StatusContainerHost(
             // A full event given the CommitFailed surface would offer a Retry that fails identically every time,
             // with nothing saying why.
             // A CLOSED event is final too, and carries no event facts worth keeping: its own phase, no Retry.
-            pending.value = p.copy(phase = failedPhase(commit, detailed.event, refusal.value))
+            pending.value = p.copy(
+                phase = failedPhase(commit, detailed.event, refusal.value),
+                service = failedService(commit, refusal.value, attestFault.value),
+            )
         }
     }
 
@@ -1361,8 +1391,8 @@ class StatusContainerHost(
         // The headless path has no surface to park on, so it names the reason in the log instead — the
         // one channel it has. `full` and `failed` are as different here as on the screen: a run that
         // aborts because the event is full will abort identically on every retry.
-        if (commit != JoinCommit.Committed) {
-            log("autoJoin aborted: join ${commit.name.lowercase()} for $eventId")
+        if (commit !is JoinCommit.Committed) {
+            log("autoJoin aborted: join ${commit.toString().substringBefore('(').lowercase()} for $eventId")
         }
     }
 }
@@ -1401,6 +1431,7 @@ private fun unjoinedLayer(
     permission: GalleryAccess,
     network: NetworkNotice?,
     refusal: DeviceRefusal?,
+    attestFault: ServiceFault?,
     display: Display,
 ): Reduced {
     val form = choices.form
@@ -1424,6 +1455,8 @@ private fun unjoinedLayer(
             asksAccessOnJoin = asksAccessOnJoin(null, permission),
             // Join waits for a network; the screen names why.
             network = network,
+            // A failed load or join the service caused is told in its own words.
+            service = pending.service?.notice,
         )
         return Reduced(layer, range)
     }
@@ -1442,7 +1475,7 @@ private fun unjoinedLayer(
         is CreationStatus.Failed ->
             Layer.CreateEvent(
                 form = create.form,
-                error = transient ?: creation.reason.message(refused),
+                error = transient ?: creation.reason.message(refused, creation.fault ?: attestFault.takeIf { refused == null }),
                 network = network,
             )
         CreationStatus.Idle -> Layer.CreateEvent(form = create.form, error = transient ?: refused, network = network)
@@ -1490,6 +1523,7 @@ private fun reduceFrom(
             permission,
             network,
             membership.refusal,
+            membership.attestFault,
             display,
         )
     }
@@ -1584,7 +1618,15 @@ private fun joinedHealth(
         // two attention lines would only compete. Ranked ABOVE the sync progress, because "Syncing" would
         // be a lie: nothing can upload at all.
         // A definite refusal names its cause on the same rung; no verdict names none.
+        // No proof, because SnapSync failed when asked for one: its condition is told, never that this device
+        // cannot be verified — a refusal, or a proof this phone could not give, keeps the line above.
+        !attested && membership.refusal == null && membership.attestFault != null ->
+            SyncHealth.ServiceFailing(membership.attestFault.notice)
         !attested -> SyncHealth.Unattested(membership.refusal?.cause)
+        // Photos wait and SnapSync is failing: the line says which way and that they are safe. Never over
+        // "Up to date": with nothing waiting, an outage is no one's concern.
+        membership.serviceFault != null && settled is SyncHealth.Syncing ->
+            SyncHealth.ServiceFailing(membership.serviceFault.notice)
         else -> settled
     }
 }
@@ -1754,7 +1796,7 @@ private fun RenameStatus.toRenameState(): RenameState = when (this) {
     RenameStatus.Idle -> RenameState.Idle
     RenameStatus.InFlight -> RenameState.InFlight
     RenameStatus.Succeeded -> RenameState.Succeeded
-    is RenameStatus.Failed -> RenameState.Failed(reason.message())
+    is RenameStatus.Failed -> RenameState.Failed(reason.message(fault))
 }
 
 /**
@@ -1766,20 +1808,22 @@ private fun RenameStatus.toRenameState(): RenameState = when (this) {
  * self-leave needs two; giving it copy would give it a meaning, and a meaning
  * invites acting on it. The standing foreground refresh reaches that verdict on its own terms.
  */
-private fun RenameFailureReason.message(): ScreenMessage = when (this) {
+private fun RenameFailureReason.message(fault: ServiceFault?): ScreenMessage = when (this) {
     RenameFailureReason.INVALID_NAME -> ScreenMessage.RENAME_NAME_REFUSED
-    RenameFailureReason.SERVER -> ScreenMessage.RENAME_FAILED
+    // A failing service is told as what it is; an answer from a working one — a `404` among them — generically.
+    RenameFailureReason.SERVER -> fault?.message ?: ScreenMessage.RENAME_FAILED
+    RenameFailureReason.EVENT_OVER -> ScreenMessage.EVENT_OVER
 }
 
 /**
  * A failed create in words. [refused] is the attestation's refusal, if it gave one: a create refused for this phone's
  * credential says why, and without a verdict — the attempt to verify got no answer — it is the unreachable server.
  */
-private fun CreationFailureReason.message(refused: ScreenMessage?): ScreenMessage = when (this) {
+private fun CreationFailureReason.message(refused: ScreenMessage?, fault: ServiceFault?): ScreenMessage = when (this) {
     CreationFailureReason.INVALID_NAME -> ScreenMessage.CREATE_NAME_REFUSED
     CreationFailureReason.INVALID_WINDOW -> ScreenMessage.CREATE_DATES_REFUSED
-    CreationFailureReason.UNVERIFIED -> refused ?: ScreenMessage.CREATE_FAILED
-    CreationFailureReason.SERVER -> ScreenMessage.CREATE_FAILED
+    CreationFailureReason.UNVERIFIED -> refused ?: fault?.message ?: ScreenMessage.CREATE_FAILED
+    CreationFailureReason.SERVER -> fault?.message ?: ScreenMessage.CREATE_FAILED
 }
 
 /** Whether the joined layer shows its settings, and whether the last change to them failed to save. */
@@ -1855,6 +1899,40 @@ private fun failedPhase(
     else -> JoinProgress.Detailed(event, JoinPhase.Detailed.Step.CommitFailed)
 }
 
+/**
+ * How SnapSync's service failed a commit that did not land: the join's own answer, or — for a join refused for want
+ * of a proof, with no refusal to tell — how the service failed to give one. `null` when the service was not the cause.
+ */
+private fun failedService(commit: JoinCommit, refusal: DeviceRefusal?, attestFault: ServiceFault?): ServiceFault? =
+    when (commit) {
+        is JoinCommit.Failed -> commit.fault
+        JoinCommit.Unverified if refusal == null -> attestFault
+        else -> null
+    }
+
+/**
+ * How long a details load waits before asking a service that is being updated again: what it suggested, bounded so a
+ * missing, malformed or huge hint can neither spin nor stall the screen (decision record `changes/tell-service-faults`,
+ * D3).
+ */
+internal fun maintenanceWait(retryAfterSeconds: Long?): Duration =
+    (retryAfterSeconds ?: DEFAULT_RETRY_AFTER_SECONDS).coerceIn(
+        MIN_RETRY_AFTER_SECONDS,
+        MAX_RETRY_AFTER_SECONDS,
+    ).seconds
+
+private const val DEFAULT_RETRY_AFTER_SECONDS = 30L
+private const val MIN_RETRY_AFTER_SECONDS = 5L
+private const val MAX_RETRY_AFTER_SECONDS = 300L
+
+/** The attestation's verdict and the service's condition, as one input to the reduction. */
+private data class Trust(
+    val attested: Boolean,
+    val refusal: DeviceRefusal?,
+    val attestFault: ServiceFault?,
+    val serviceFault: ServiceFault?,
+)
+
 /** The steps a confirm may be taken from: the first, and each failure a Retry may heal. */
 private val RETRYABLE_STEPS =
     setOf(JoinPhase.Detailed.Step.Ready, JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.DeviceRefused)
@@ -1872,6 +1950,10 @@ private data class Membership(
     val mobileData: Boolean,
     /** Why the service refused this phone at the latest attempt to verify it, if it did. */
     val refusal: DeviceRefusal? = null,
+    /** How SnapSync's service failed the latest attempt to verify this phone, if it did. */
+    val attestFault: ServiceFault? = null,
+    /** How SnapSync's service failed the latest request, if it is failing. */
+    val serviceFault: ServiceFault? = null,
 )
 
 /** The observed outcomes of what the member started: the join gate, a create, a rename — and a refused build. */

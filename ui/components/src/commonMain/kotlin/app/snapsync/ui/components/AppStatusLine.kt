@@ -46,6 +46,10 @@ import app.snapsync.ui.components.resources.key_lost_detail
 import app.snapsync.ui.components.resources.key_lost_title
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
+import app.snapsync.ui.components.resources.service_detail
+import app.snapsync.ui.components.resources.service_trouble_title
+import app.snapsync.ui.components.resources.service_unreachable_title
+import app.snapsync.ui.components.resources.service_updating_title
 import app.snapsync.ui.components.resources.status_allow_access
 import app.snapsync.ui.components.resources.status_allow_access_settings
 import app.snapsync.ui.components.resources.status_in_sync
@@ -60,6 +64,7 @@ import app.snapsync.ui.components.resources.status_waiting_photos
 import app.snapsync.ui.components.resources.status_waiting_wifi
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.RefusalCause
+import app.snapsync.ui.state.ServiceNotice
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -132,6 +137,13 @@ sealed interface AppSyncStatus {
      * `null` — no verdict — keeps the cause-less headline. Still never tappable.
      */
     data class CannotVerifyDevice(val cause: RefusalCause? = null) : AppSyncStatus
+
+    /**
+     * SnapSync's service is failing while photos wait: an attention line like [CannotVerifyDevice], NOT tappable — the
+     * member can do nothing about it — whose headline says which [notice] applies and whose detail that the photos are
+     * safe.
+     */
+    data class ServiceFailing(val notice: ServiceNotice) : AppSyncStatus
 
     /**
      * The device gives the app no usable network — [AppNetworkNotice] in the status-line
@@ -212,6 +224,11 @@ private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
             AttentionLine(CannotVerifyTitles.getValue(status.cause), Res.string.cannot_verify_detail)
 
         AppSyncStatus.KeyLost -> AttentionLine(Res.string.key_lost_title, Res.string.key_lost_detail)
+
+        is AppSyncStatus.ServiceFailing -> AttentionLine(
+            ServiceTitles.getValue(status.notice),
+            Res.string.service_detail,
+        )
 
         is AppSyncStatus.NoNetwork -> AppNetworkNotice(blocked = status.blocked, onOpenSettings = onAttentionClick)
     }
@@ -386,6 +403,13 @@ private fun AttentionLine(title: StringResource, detail: StringResource) {
         }
     }
 }
+
+/** The service line's headline per condition: each told in its own words. */
+private val ServiceTitles: Map<ServiceNotice, StringResource> = mapOf(
+    ServiceNotice.UNREACHABLE to Res.string.service_unreachable_title,
+    ServiceNotice.TROUBLE to Res.string.service_trouble_title,
+    ServiceNotice.UPDATING to Res.string.service_updating_title,
+)
 
 /** The cannot-verify line's headline per refusal: a definite one names its cause, no verdict names none. */
 private val CannotVerifyTitles: Map<RefusalCause?, StringResource> = mapOf(

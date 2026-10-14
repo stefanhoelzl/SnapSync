@@ -39,6 +39,8 @@ class RenameEvent(
     private val configSource: ConfigService,
     private val client: EventRename,
     private val status: MutableStateFlow<RenameStatus>,
+    /** The service's word that [EventId]'s photos were deleted: the membership is marked so ([MembershipRefresh]). */
+    private val eventOver: suspend (EventId) -> Unit,
     private val log: Logger = Logger.withTag("RenameEvent"),
 ) {
 
@@ -68,9 +70,14 @@ class RenameEvent(
                 log.i { "rename rejected: invalid name" }
                 status.value = RenameStatus.Failed(RenameFailureReason.INVALID_NAME)
             }
-            RenameOutcome.Transient -> {
-                log.i { "rename failed: transient/server error" }
-                status.value = RenameStatus.Failed(RenameFailureReason.SERVER)
+            is RenameOutcome.Transient -> {
+                log.i { "rename failed: transient/server error (${outcome.fault})" }
+                status.value = RenameStatus.Failed(RenameFailureReason.SERVER, outcome.fault)
+            }
+            RenameOutcome.EventOver -> {
+                log.i { "rename refused: the event's photos were deleted" }
+                eventOver(eventId)
+                status.value = RenameStatus.Failed(RenameFailureReason.EVENT_OVER)
             }
         }
     }

@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.LINK_ORIGIN
@@ -10,6 +11,7 @@ import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.TimeLeft
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
@@ -25,6 +27,22 @@ internal val NetworkAccess.notice: NetworkNotice?
         is NetworkAccess.Online -> null
         NetworkAccess.Offline -> NetworkNotice.OFFLINE
         NetworkAccess.Blocked -> NetworkNotice.BLOCKED
+    }
+
+/** How the member is told [this] failure of SnapSync's service. */
+val ServiceFault.notice: ServiceNotice
+    get() = when (this) {
+        ServiceFault.UNREACHABLE -> ServiceNotice.UNREACHABLE
+        ServiceFault.TROUBLE -> ServiceNotice.TROUBLE
+        ServiceFault.UPDATING -> ServiceNotice.UPDATING
+    }
+
+/** The message a surface shows for [this] failure of SnapSync's service. */
+val ServiceFault.message: ScreenMessage
+    get() = when (this) {
+        ServiceFault.UNREACHABLE -> ScreenMessage.SERVICE_UNREACHABLE
+        ServiceFault.TROUBLE -> ScreenMessage.SERVICE_TROUBLE
+        ServiceFault.UPDATING -> ScreenMessage.SERVICE_UPDATING
     }
 
 /** What the screen says for [this] refusal. */

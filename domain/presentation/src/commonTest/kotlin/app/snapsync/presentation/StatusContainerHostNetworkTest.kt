@@ -74,7 +74,7 @@ class StatusContainerHostNetworkTest {
         permission: GalleryAccess = GalleryAccess.GRANTED,
         attested: Boolean = true,
         creation: CreationStatus = CreationStatus.Idle,
-        load: suspend (String) -> JoinLoad = { JoinLoad.Failed },
+        load: suspend (String) -> JoinLoad = { JoinLoad.Failed() },
         scope: CoroutineScope = backgroundScope,
         progress: SyncProgress = SyncProgress(0, 0, 0, 0, false, null),
         mobileData: Boolean = true,
@@ -271,7 +271,7 @@ class StatusContainerHostNetworkTest {
     fun `an invite opened offline loads by itself once the network returns`() = runTest {
         val network = FakeNetwork(NetworkAccess.Offline)
         var loads = 0
-        val host = host(network, config = null, load = { if (loads++ == 0) JoinLoad.Failed else FOUND })
+        val host = host(network, config = null, load = { if (loads++ == 0) JoinLoad.Failed() else FOUND })
         driving(host) {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
             runCurrent()
@@ -294,7 +294,7 @@ class StatusContainerHostNetworkTest {
         var loads = 0
         val host = host(network, config = null, load = {
             loads++
-            JoinLoad.Failed
+            JoinLoad.Failed()
         })
         driving(host) {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))

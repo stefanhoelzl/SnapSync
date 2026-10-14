@@ -109,6 +109,9 @@ class CompositionSeamTest {
      * only through the sibling's own ports.
      */
     private val constructorPins: Map<String, String> = mapOf(
+        "RenameEvent.eventOver" to
+            "the service's word that an event's photos were deleted, answering a rename: bound to AppCore's " +
+            "MembershipRefresh.confirmedDeleted — a callback into the core's own machinery, the membership refresh",
         "App.admit" to
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
             "scope and rig pin, all in-process state. The extension's variant reads the GalleryReader PORT's grant",

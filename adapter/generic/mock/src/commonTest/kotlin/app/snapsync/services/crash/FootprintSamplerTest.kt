@@ -28,8 +28,11 @@ class FootprintSamplerTest {
         override fun memoryFootprint(): MemoryFootprint? = footprint.also { reads++ }
     }
 
-    private val backgrounded = AppForeground(fixedClock(Instant.fromEpochSeconds(0)))
-    private val foregrounded = AppForeground(fixedClock(Instant.fromEpochSeconds(0))).apply { entered() }
+    private val backgrounded = AppForeground(fixedClock(Instant.fromEpochSeconds(0)), onEntered = {})
+    private val foregrounded = AppForeground(
+        fixedClock(Instant.fromEpochSeconds(0)),
+        onEntered = {},
+    ).apply { entered() }
 
     @Test
     fun `a backgrounded app records its footprint at the moment`() {

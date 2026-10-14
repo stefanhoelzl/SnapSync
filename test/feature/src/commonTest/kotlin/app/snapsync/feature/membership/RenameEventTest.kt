@@ -6,6 +6,7 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.membership.readmodel.RenameFailureReason
@@ -67,7 +68,7 @@ class RenameEventTest {
         eventId: String = "E1",
         name: String = "Ana's 30th",
     ): RenameEvent {
-        val useCase = RenameEvent(store.service(source.config), client, status)
+        val useCase = RenameEvent(store.service(source.config), client, status, eventOver = {})
         useCase.rename(testEventId(eventId), name)
         runCurrent()
         return useCase
@@ -160,10 +161,35 @@ class RenameEventTest {
     fun `a transient failure fails with the server reason and persists nothing`() = runTest {
         val store = ConfigWrites()
         val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
-        drive(Membership(current()), store, FakeRename(RenameOutcome.Transient), status)
+        drive(Membership(current()), store, FakeRename(RenameOutcome.Transient()), status)
 
         assertEquals(RenameStatus.Failed(RenameFailureReason.SERVER), status.value)
         assertEquals(0, store.saveCount)
+    }
+
+    @Test
+    fun `a failing service's condition is carried to the status`() = runTest {
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
+        drive(Membership(current()), ConfigWrites(), FakeRename(RenameOutcome.Transient(ServiceFault.UPDATING)), status)
+
+        assertEquals(RenameStatus.Failed(RenameFailureReason.SERVER, ServiceFault.UPDATING), status.value)
+    }
+
+    @Test
+    fun `the service's word that the photos were deleted is the event over, told to the membership`() = runTest {
+        val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
+        val over = mutableListOf<EventId>()
+        val useCase = RenameEvent(
+            configSource = ConfigWrites().service(Membership(current()).config),
+            client = FakeRename(RenameOutcome.EventOver),
+            status = status,
+            eventOver = { over += it },
+        )
+        useCase.rename(testEventId("E1"), "n")
+        runCurrent()
+
+        assertEquals(RenameStatus.Failed(RenameFailureReason.EVENT_OVER), status.value)
+        assertEquals(listOf(testEventId("E1")), over)
     }
 
     @Test
@@ -171,7 +197,7 @@ class RenameEventTest {
         // The single-witness rule (capability `manage-membership`): a 404 reaches this use-case as Transient,
         // and no outcome here may clear the config. There is exactly one door to the teardown, and it is
         // MembershipRefresh's two-witness path — not this one.
-        for (outcome in listOf(RenameOutcome.InvalidName, RenameOutcome.Transient)) {
+        for (outcome in listOf(RenameOutcome.InvalidName, RenameOutcome.Transient())) {
             val store = ConfigWrites()
             drive(Membership(current()), store, FakeRename(outcome), MutableStateFlow<RenameStatus>(RenameStatus.Idle))
             assertTrue(!store.cleared, "$outcome cleared the membership config")
@@ -199,7 +225,7 @@ class RenameEventTest {
     fun `reset clears the terminal latch back to Idle`() = runTest {
         val status = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
         val useCase =
-            drive(Membership(current()), ConfigWrites(), FakeRename(RenameOutcome.Transient), status)
+            drive(Membership(current()), ConfigWrites(), FakeRename(RenameOutcome.Transient()), status)
         assertEquals(RenameStatus.Failed(RenameFailureReason.SERVER), status.value)
 
         useCase.reset()

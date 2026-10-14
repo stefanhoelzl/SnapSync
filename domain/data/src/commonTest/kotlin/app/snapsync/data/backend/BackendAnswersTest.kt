@@ -4,6 +4,7 @@ import app.snapsync.domain.trust.BackendAnswer
 import app.snapsync.wire.api.AppTooOld
 import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.JoinEventReply
+import app.snapsync.wire.api.Maintenance
 import app.snapsync.wire.api.Malformed
 import app.snapsync.wire.api.ServerError
 import app.snapsync.wire.api.Unauthorized
@@ -25,6 +26,7 @@ class BackendAnswersTest {
             BackendAnswers.of(AppTooOld(AppTooOldError(AppTooOldErrorError.APP_TOO_OLD, "0.4"))),
         )
         assertEquals(BackendAnswer.ServerIssue, BackendAnswers.of(ServerError("write failed")))
+        assertEquals(BackendAnswer.Updating, BackendAnswers.of(Maintenance("60")), "maintenance is told apart")
         assertEquals(BackendAnswer.NoAnswer, BackendAnswers.of(Unreachable("offline")))
         assertEquals(BackendAnswer.NoAnswer, BackendAnswers.of(Malformed("not JSON")), "an answer outside the contract")
     }

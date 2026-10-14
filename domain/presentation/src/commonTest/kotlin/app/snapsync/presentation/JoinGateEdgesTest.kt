@@ -220,7 +220,7 @@ class JoinGateEdgesTest {
 
     @Test
     fun `a retry re-sends the link's key with the load`() = runTest {
-        val world = World().apply { load = { JoinLoad.Failed } }
+        val world = World().apply { load = { JoinLoad.Failed() } }
         val keys = mutableListOf<String?>()
         val host = StatusContainerHost(
             StatusSources(
@@ -235,7 +235,7 @@ class JoinGateEdgesTest {
             queries = testQueries(
                 load = { _, key ->
                     keys += key
-                    JoinLoad.Failed
+                    JoinLoad.Failed()
                 },
             ),
             diagnostics = testDiagnostics(),

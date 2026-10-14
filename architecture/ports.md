@@ -12,7 +12,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Answered` | `:domain:inbound` | `:adapter:ios:ext-safe` ContractOr; `:domain:scheduling` AnsweredEntryPoint; `:test:contracts` AnsweredProxy; `:test:launch-adapters` Completed | yes |
 | `AppUploadEngine` | `:domain:feature` | `:domain:entrypoints` UploadEngine; `:test:architecture` Engine; `:test:feature` FakeEngine | yes |
 | `AttestationHealthVerdict` | `:domain:domain` | `:domain:domain` Attested, Unattested | no |
-| `BackendAnswer` | `:domain:domain` | `:domain:domain` NoAnswer, Refused, Rejected, Served, ServerIssue, TooOld | no |
+| `BackendAnswer` | `:domain:domain` | `:domain:domain` NoAnswer, Refused, Rejected, Served, ServerIssue, TooOld, Updating | no |
 | `BackendTarget` | `:domain:data` | `:domain:data` BuildTarget; `:domain:services` ScriptedTarget, Target; `:test:contracts` FixedTarget; `:test:data` Target | yes |
 | `Background` | `:domain:inbound` | `:domain:scheduling` EntryPoint; `:test:contracts` BackgroundProxy | no |
 | `BackgroundTime` | `:domain:ports` | `:adapter:android` AndroidBackgroundTime; `:adapter:generic:mock` InMemoryBackgroundTime; `:adapter:ios:app-only` IosBackgroundTime; `:domain:scheduling` FakeBackgroundTime; `:test:contracts` BackgroundTimeProxy; `:test:feature` NoTime | yes |
@@ -97,8 +97,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Inbound` | `:domain:inbound` | `:domain:host` Intents, LiveScreen; `:domain:scheduling` InlineEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
 | `Items` | `:domain:ports` | — | no |
 | `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |
+| `JoinCommit` | `:domain:model` | `:domain:model` Closed, Committed, Failed, Unverified, WrongLink | no |
 | `JoinLoad` | `:domain:model` | `:domain:model` Failed, Found, NotFound, WrongLink | no |
+| `JoinOutcome` | `:domain:feature` | `:domain:feature` AlreadyJoined, Committed, EnrollFailed, EventClosed, InvalidRange, Unverified, WrongLink | no |
 | `JoinProgress` | `:domain:presentation` | `:domain:presentation` Closed, Detailed, LoadFailed, Loading, NotFound, WrongLink | no |
+| `JoinResult` | `:domain:model` | `:domain:model` EventClosed, EventNotFound, Failed, Joined, Unverified | no |
 | `KeyIdRead` | `:domain:data` | `:domain:data` Held, None, Unavailable | no |
 | `LeaveNotifier` | `:domain:services` | `:domain:services` BackendLeaveNotifier | no |
 | `LedgerCountsSource` | `:domain:feature` | `:domain:feature` MutableLedgerCountsSource, ReadingLedgerCountsSource; `:test:feature` CountingSource | yes |
@@ -138,7 +141,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RegistrationAnswer` | `:domain:model` | `:domain:model` Answered, Unsupported | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable, Unsupported | no |
 | `RejectionVerdict` | `:domain:domain` | `:domain:domain` AlreadyReplaced, Drop | no |
-| `RenameOutcome` | `:domain:model` | `:domain:model` InvalidName, Renamed, Transient | no |
+| `RenameOutcome` | `:domain:model` | `:domain:model` EventOver, InvalidName, Renamed, Transient | no |
 | `RenameStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight, Succeeded | no |
 | `RenewalAnswerVerdict` | `:domain:domain` | `:domain:domain` Accept, AttestAfresh, KeepHeld | no |
 | `RenewalVerdict` | `:domain:domain` | `:domain:domain` Due, Fresh | no |
@@ -179,7 +182,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `UserCommands` | `:domain:model` | — | no |
 | `UserQueries` | `:domain:model` | — | no |
 | `Verdict` | `:domain:feature` | `:domain:feature` Clear, Leave, Settle | no |
-| `VersionObserver` | `:domain:data` | `:domain:data` AppVersionGate, VersionIgnored | no |
+| `VersionObserver` | `:domain:data` | `:domain:data` AppVersionGate, Observers, ServiceConditions, VersionIgnored | no |
 | `VersionVerdict` | `:domain:domain` | `:domain:domain` Clear, NoVerdict, Refuse | no |
 | `Wake` | `:domain:ports` | `:adapter:android` AndroidWake; `:adapter:generic:mock` Face, InMemoryWake; `:adapter:ios:app-only` IosWake; `:domain:services` RecordingWake; `:test:contracts` WakeProxy | yes |
 | `WakeTrigger` | `:domain:model` | `:domain:model` After, LibraryChange | no |

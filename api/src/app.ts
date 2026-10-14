@@ -231,10 +231,10 @@ export type Deps = {
 // is back — unavailability we would be inflicting ourselves, past the outage we actually chose.
 //
 // Deliberately NOT tied to `probe.ts`'s interval: they answer different questions (how fast may CI ask
-// again vs how fast may a stranger), and coupling them would be false precision. No shipped SnapSync
-// client reads this at all — the upload engine retries forever with no attempt budget, and create/join
-// map any unrecognised status to their existing transient states — so its audience is a human, a proxy,
-// or a curl.
+// again vs how fast may a stranger), and coupling them would be false precision. The app reads it in one
+// place only: a join screen whose event details met maintenance loads them again by itself after it,
+// bounded (decision record `changes/tell-service-faults`, D3). Its background work keeps its own cadence,
+// and a create, rename or join waits for the member's tap.
 const MAINTENANCE_RETRY_AFTER_SECONDS = 30;
 
 export function createApp(

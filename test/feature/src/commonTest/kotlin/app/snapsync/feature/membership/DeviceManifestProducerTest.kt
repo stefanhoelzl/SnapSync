@@ -95,7 +95,7 @@ class DeviceManifestProducerTest {
     }
 
     /** A join that records its calls and writes nothing — which is the whole contract now. */
-    private class FakeJoin(private val result: JoinResult = JoinResult.JOINED) : EventJoin {
+    private class FakeJoin(private val result: JoinResult = JoinResult.Joined) : EventJoin {
         val joins = mutableListOf<Pair<EventId, DeviceId>>()
         override suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult {
             joins += eventId to deviceId
@@ -336,9 +336,9 @@ class DeviceManifestProducerTest {
     @Test
     fun a_refused_join_does_not_enrol_and_is_distinguishable() = runTest {
         // A closed event is a refusal the user can act on; the seam must not flatten it into "something failed".
-        val closed = FakeJoin(JoinResult.EVENT_CLOSED)
+        val closed = FakeJoin(JoinResult.EventClosed)
         assertEquals(
-            JoinResult.EVENT_CLOSED,
+            JoinResult.EventClosed,
             ManifestDeviceEnroller(closed).enroll(testEventId("E"), testDeviceId("dev")),
         )
     }

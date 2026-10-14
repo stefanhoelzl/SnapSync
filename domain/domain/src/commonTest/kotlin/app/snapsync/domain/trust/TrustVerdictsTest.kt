@@ -1,5 +1,6 @@
 package app.snapsync.domain.trust
 
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -53,7 +54,11 @@ class TrustVerdictsTest {
     @Test
     fun only_a_stale_challenge_earns_a_second_one() {
         assertEquals(ChallengeVerdict.RetryOnce, ChallengeVerdict.of(TokenIssuance.ChallengeStale))
-        for (other in listOf(TokenIssuance.NoAnswer, TokenIssuance.NotAttested, TokenIssuance.ProofFailed)) {
+        for (other in listOf(
+            TokenIssuance.NoAnswer(ServiceFault.UNREACHABLE),
+            TokenIssuance.NotAttested,
+            TokenIssuance.ProofFailed,
+        )) {
             assertEquals(ChallengeVerdict.Done, ChallengeVerdict.of(other))
         }
     }
@@ -62,7 +67,10 @@ class TrustVerdictsTest {
     fun a_renewal_keeps_the_held_token_when_the_answer_says_nothing_and_attests_afresh_when_it_cannot_work() {
         val token = expiring(30)
         assertEquals(token, (RenewalAnswerVerdict.of(TokenIssuance.Minted(token)) as RenewalAnswerVerdict.Accept).token)
-        assertEquals(RenewalAnswerVerdict.KeepHeld, RenewalAnswerVerdict.of(TokenIssuance.NoAnswer))
+        assertEquals(
+            RenewalAnswerVerdict.KeepHeld,
+            RenewalAnswerVerdict.of(TokenIssuance.NoAnswer(ServiceFault.UNREACHABLE)),
+        )
         assertEquals(RenewalAnswerVerdict.KeepHeld, RenewalAnswerVerdict.of(TokenIssuance.ChallengeStale))
         for (cannot in listOf(
             TokenIssuance.NotAttested,
@@ -82,7 +90,7 @@ class TrustVerdictsTest {
             MintAnswerVerdict.of(TokenIssuance.Refused(DeviceRefusal.DEVICE_MODIFIED, "certificate")),
         )
         for (none in listOf(
-            TokenIssuance.NoAnswer,
+            TokenIssuance.NoAnswer(ServiceFault.UNREACHABLE),
             TokenIssuance.ChallengeStale,
             TokenIssuance.NotAttested,
             TokenIssuance.ProofFailed,
@@ -99,6 +107,7 @@ class TrustVerdictsTest {
             BackendAnswer.Refused,
             BackendAnswer.TooOld(null),
             BackendAnswer.ServerIssue,
+            BackendAnswer.Updating,
             BackendAnswer.NoAnswer,
         )) {
             assertEquals(CredentialVerdict.Answered, CredentialVerdict.of(other), "$other is no verdict on a token")

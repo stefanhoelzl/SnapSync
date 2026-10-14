@@ -213,4 +213,6 @@ internal fun extensionBackend(
         BackendGateway(exchange, DropOnlyCredential(attestStore)),
         identity,
         zone = { null },
+        // No membership to mark: the app's next read of the event marks it.
+        eventOver = null,
     )

@@ -260,7 +260,7 @@ abstract class StatusScreenTour {
 
                 override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) = Unit
 
-                override suspend fun commitJoin(choice: JoinChoice) = JoinCommit.Failed
+                override suspend fun commitJoin(choice: JoinChoice) = JoinCommit.Failed()
 
                 override fun share(url: String, title: String) = Unit
 
@@ -515,7 +515,7 @@ abstract class StatusScreenTour {
 
     private fun ComposeUiTest.joinGate() {
         var loads = 0
-        val rig = Rig(details = { if (++loads == 1) JoinLoad.Failed else OTHER_EVENT })
+        val rig = Rig(details = { if (++loads == 1) JoinLoad.Failed() else OTHER_EVENT })
         use(rig) { it.layer is Layer.CreateEvent }
         // A failed load, retried; then the gate cancelled.
         rig.host.onOpenUrl(linkTo(OTHER_ID))

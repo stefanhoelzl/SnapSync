@@ -1,5 +1,6 @@
 package app.snapsync.data.trust
 
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.AttestationHealthVerdict
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.ports.AttestationChain
@@ -32,6 +33,7 @@ import kotlin.jvm.JvmInline
 class AttestationStatus {
     private val attestedCell = MutableStateFlow(true)
     private val refusalCell = MutableStateFlow<DeviceRefusal?>(null)
+    private val faultCell = MutableStateFlow<ServiceFault?>(null)
     private val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private val latest = AtomicLong(0)
 
@@ -48,6 +50,13 @@ class AttestationStatus {
     val refusal: StateFlow<DeviceRefusal?> = refusalCell.asStateFlow()
 
     /**
+     * How the service failed the latest refresh — `null` when it answered, or none was asked: a member whose proof
+     * could not be renewed because SnapSync failed is told SnapSync's condition, never that this device cannot be
+     * verified (decision record `changes/tell-service-faults`).
+     */
+    val fault: StateFlow<ServiceFault?> = faultCell.asStateFlow()
+
+    /**
      * Emits whenever a NEW token is obtained — a first mint, a re-attestation and every renewal alike. What must be
      * re-sent with a new credential listens: the push registration.
      */
@@ -60,15 +69,22 @@ class AttestationStatus {
     internal fun attempting(): RefreshTicket {
         attestedCell.value = true
         refusalCell.value = null
+        faultCell.value = null
         return RefreshTicket(latest.incrementAndFetch())
     }
 
     /** The refresh holding [ticket] ended — published only when no refresh began after it. */
-    internal fun settled(ticket: RefreshTicket, health: AttestationHealthVerdict, refusal: DeviceRefusal?) =
+    internal fun settled(
+        ticket: RefreshTicket,
+        health: AttestationHealthVerdict,
+        refusal: DeviceRefusal?,
+        fault: ServiceFault?,
+    ) =
         when (latest.load() == ticket.number) {
             true -> {
                 attestedCell.value = health == AttestationHealthVerdict.Attested
                 refusalCell.value = refusal
+                faultCell.value = fault
             }
             false -> Unit
         }

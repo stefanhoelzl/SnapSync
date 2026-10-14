@@ -52,9 +52,16 @@
     <string name="message_create_name_refused">That name wasn't accepted. Try a different one.</string>
     <!-- Reached only when the backend's limit has shrunk since this build: say it is the dates, not the name. -->
     <string name="message_create_dates_refused">Those dates weren't accepted. Try a shorter range.</string>
-    <string name="message_create_failed">Couldn't connect. Check your connection and try again.</string>
+    <string name="message_create_failed">Couldn't create the event. Try again.</string>
     <string name="message_rename_name_refused">That name wasn't accepted. Try a shorter one.</string>
-    <string name="message_rename_failed">Couldn't rename the event. Check your connection and try again.</string>
+    <string name="message_rename_failed">Couldn't rename the event. Try again.</string>
+    <string name="message_service_unreachable">SnapSync can't be reached. Check your connection and try again.</string>
+    <string name="message_service_trouble">SnapSync is having trouble. Try again in a moment.</string>
+    <string name="message_service_updating">SnapSync is being updated and will be back shortly. Try again in a moment.</string>
+    <string name="message_event_over">This event is over, so it can't be renamed any more.</string>
+    <string name="message_rename_unreachable">Couldn't rename the event: SnapSync can't be reached. Check your connection and try again.</string>
+    <string name="message_rename_trouble">Couldn't rename the event: SnapSync is having trouble. Try again in a moment.</string>
+    <string name="message_rename_updating">Couldn't rename the event: SnapSync is being updated and will be back shortly.</string>
     <string name="message_device_unverifiable">This phone couldn't be verified, so it can't create or join events. This isn't something you did.</string>
     <string name="message_device_modified">SnapSync only works on phones running their maker's system. This phone's system is modified or its bootloader is unlocked.</string>
     <string name="message_app_not_genuine">This copy of SnapSync isn't the official one. Install SnapSync from your app store.</string>
@@ -222,6 +229,7 @@
     <string name="waiting_network_body">The event loads as soon as you're back online.</string>
     <string name="load_failed_title">Couldn't load the event</string>
     <string name="load_failed_body">Check your connection and try again.</string>
+    <string name="load_failed_body_updating">SnapSync is being updated and will be back shortly. The event loads by itself once it's back.</string>
     <string name="joining">Joining …</string>
 
     <!-- The event's settings, and switching events. -->

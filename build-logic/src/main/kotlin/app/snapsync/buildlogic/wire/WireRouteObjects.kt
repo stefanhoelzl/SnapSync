@@ -179,7 +179,21 @@ internal object WireRouteObjects {
         val target = if (shared != null) ClassName(PACKAGE, outcome.name) else replyName(op).nestedClass(outcome.name)
         val carried = shared ?: outcome
         val fields = fields(carried)
-        if (fields.isEmpty()) return CodeBlock.of("%T", target)
+        // A success that declares no content is the backend's only when it carries none: a body there came from
+        // something in its place — a Wi-Fi login page, a proxy — and is an answer outside the contract, never a done
+        // write (decision record `changes/tell-service-faults`, D2).
+        val bodyless = carried.payload == WirePayload.None && carried.group == "Success"
+        if (fields.isEmpty()) {
+            return when (bodyless) {
+                true -> CodeBlock.of(
+                    "if (r.body.isBlank()) %T else %T(%S)",
+                    target,
+                    MALFORMED,
+                    "${op.id}: a ${outcome.name} that carries a body",
+                )
+                false -> CodeBlock.of("%T", target)
+            }
+        }
         val code = CodeBlock.builder().add("run {\n").indent()
         val args = mutableListOf<String>()
         when (val p = carried.payload) {

@@ -263,7 +263,7 @@ class EventCompletionTest {
 
     @Test
     fun `a failed read keeps the member and still reports what it holds`() = runTest {
-        val w = World(now = "2026-07-14T00:00:00Z").apply { answer = EventLookup.Failed }
+        val w = World(now = "2026-07-14T00:00:00Z").apply { answer = EventLookup.Failed() }
         assertEquals(CompletionOutcome.REPORTED, w.completion().finish())
         assertFalse(w.config.config.value?.deleted ?: true)
     }

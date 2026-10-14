@@ -1,5 +1,6 @@
 package app.snapsync.data.backend
 
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.BackendAnswer
 import app.snapsync.domain.trust.BearerToken
 import app.snapsync.ports.HttpRequest
@@ -8,6 +9,7 @@ import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.AppTooOld
 import app.snapsync.wire.api.ClientError
 import app.snapsync.wire.api.Limits
+import app.snapsync.wire.api.Maintenance
 import app.snapsync.wire.api.NoAnswer
 import app.snapsync.wire.api.OpenRequest
 import app.snapsync.wire.api.Reply
@@ -66,6 +68,12 @@ class BackendExchange(
     }
 }
 
+/**
+ * How [reply] tells SnapSync's service failed, or `null` for an answer from a working service — the one reading every
+ * need-shaped service gives a failure, so each of the three is told in its own words.
+ */
+fun faultOf(reply: Reply): ServiceFault? = ServiceFault.of(BackendAnswers.of(reply))
+
 /** The one reading of a route's reply as the credential and the version gate need it: its category. */
 internal object BackendAnswers {
     fun of(reply: Reply): BackendAnswer = when (reply) {
@@ -73,6 +81,7 @@ internal object BackendAnswers {
         is AppTooOld -> BackendAnswer.TooOld(reply.appTooOldError.minAppVersion)
         is ClientError -> BackendAnswer.Refused
         is Success -> BackendAnswer.Served
+        is Maintenance -> BackendAnswer.Updating
         is ServerIssue -> BackendAnswer.ServerIssue
         is NoAnswer -> BackendAnswer.NoAnswer
     }
@@ -81,6 +90,11 @@ internal object BackendAnswers {
 /** What every backend answer is shown to: the app's version gate, or nobody (a process with no screen to tell). */
 interface VersionObserver {
     suspend fun observe(answer: BackendAnswer)
+}
+
+/** Every answer shown to each of [observers], in the order given. */
+class Observers(private vararg val observers: VersionObserver) : VersionObserver {
+    override suspend fun observe(answer: BackendAnswer) = observers.forEach { it.observe(answer) }
 }
 
 /** No version gate: the upload extension has no screen to show a refusal on. */

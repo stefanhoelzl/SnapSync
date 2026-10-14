@@ -29,6 +29,7 @@ sealed interface VersionVerdict {
             BackendAnswer.Refused,
             -> Clear
             BackendAnswer.ServerIssue,
+            BackendAnswer.Updating,
             BackendAnswer.NoAnswer,
             -> NoVerdict
         }

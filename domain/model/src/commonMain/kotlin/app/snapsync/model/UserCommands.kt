@@ -4,6 +4,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 
@@ -16,24 +17,27 @@ import app.snapsync.domain.sharing.CaptureCutoff
  * nobody any more, retrying fails identically, and a Retry button there is an invitation to press it
  * forever.
  */
-enum class JoinCommit {
+sealed interface JoinCommit {
     /** The membership is committed (a re-join of the same event counts — it is already committed). */
-    Committed,
+    data object Committed : JoinCommit
 
     /** The event has closed; no retry can change that. */
-    Closed,
+    data object Closed : JoinCommit
 
-    /** The commit did not land, for a reason that may not hold next time. */
-    Failed,
+    /**
+     * The commit did not land, for a reason that may not hold next time; [fault] is how the service failed, when it
+     * did — `null` for a failure on this device.
+     */
+    data class Failed(val fault: ServiceFault? = null) : JoinCommit
 
     /**
      * The service did not accept this phone's credential; the attestation's refusal says why. A Retry may heal it —
      * it tries to verify the phone again first — but it is never shown as a failure "that may not hold next time".
      */
-    Unverified,
+    data object Unverified : JoinCommit
 
     /** The invite link does not open this event — no key, or another one; only the whole invite can. */
-    WrongLink,
+    data object WrongLink : JoinCommit
 }
 
 /**

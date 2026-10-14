@@ -14,5 +14,5 @@ import app.snapsync.model.JoinLoad
 fun EventLookup.toJoinLoad(): JoinLoad = when (this) {
     is EventLookup.Found -> JoinLoad.Found(name, startsAt, endsAt, deletesAt, completion, keyId, openUntil)
     EventLookup.NotFound -> JoinLoad.NotFound
-    EventLookup.Failed -> JoinLoad.Failed
+    is EventLookup.Failed -> JoinLoad.Failed(fault, retryAfterSeconds)
 }

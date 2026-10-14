@@ -2,6 +2,8 @@ package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -38,6 +40,7 @@ import kotlin.test.assertTrue
 class BackendServicesTest {
 
     private val offline = HttpResult.Unreachable("offline")
+    private val maintenance = HttpResult.Response(503, mapOf("Retry-After" to "60"), "maintenance")
 
     private fun event(name: String = "Party") =
         """{"eventId":"${testEventId("E1").value}","name":"$name","createdAt":"2026-06-01T00:00:00Z","startsAt":"2026-07-01T00:00:00Z",""" +
@@ -94,7 +97,7 @@ class BackendServicesTest {
             details(deletesAt = "garbage"),
             json(200, """{"eventId":"${testEventId("E").value}","name":"Party"}"""),
         )) {
-            assertEquals(EventLookup.Failed, servicesAnswering(reply).directory.fetch(testEventId("E")), "$reply")
+            assertEquals(EventLookup.Failed(), servicesAnswering(reply).directory.fetch(testEventId("E")), "$reply")
         }
     }
 
@@ -146,9 +149,17 @@ class BackendServicesTest {
             EventLookup.NotFound,
             servicesAnswering(text(404, "event not found")).directory.fetch(testEventId("E")),
         )
-        assertEquals(EventLookup.Failed, servicesAnswering(text(502, "upstream")).directory.fetch(testEventId("E")))
-        assertEquals(EventLookup.Failed, servicesAnswering(json(200, "<html/>")).directory.fetch(testEventId("E")))
-        assertEquals(EventLookup.Failed, servicesAnswering(offline).directory.fetch(testEventId("E")))
+        assertEquals(
+            EventLookup.Failed(ServiceFault.TROUBLE),
+            servicesAnswering(text(502, "upstream")).directory.fetch(testEventId("E")),
+        )
+        assertEquals(
+            EventLookup.Failed(ServiceFault.UPDATING, retryAfterSeconds = 60),
+            servicesAnswering(maintenance).directory.fetch(testEventId("E")),
+            "an update says when asking again is worth it",
+        )
+        assertEquals(EventLookup.Failed(), servicesAnswering(json(200, "<html/>")).directory.fetch(testEventId("E")))
+        assertEquals(EventLookup.Failed(), servicesAnswering(offline).directory.fetch(testEventId("E")))
     }
 
     // ── create and rename ──────────────────────────────────────────────────────────────────────────
@@ -164,7 +175,7 @@ class BackendServicesTest {
     @Test
     fun a_created_event_whose_id_is_no_event_id_is_a_reply_the_backend_could_not_have_meant() = runTest {
         assertEquals(
-            CreateOutcome.Transient,
+            CreateOutcome.Transient(),
             servicesAnswering(
                 json(201, event().replace(testEventId("E1").value, "E1")),
             ).creation.create("Party", "s", null),
@@ -179,6 +190,7 @@ class BackendServicesTest {
             BackendGateway(exchangeOver(transport), ScriptedCredential(null)),
             identityOf("D", MapSecureStore()),
             zone = { zone },
+            eventOver = null,
         )
         fun lastZone() = WireJson.decodeFromString(EventCreate.serializer(), transport.requests.last().body!!).zone
         services.creation.create("Party", "s", null)
@@ -215,10 +227,33 @@ class BackendServicesTest {
     }
 
     @Test
-    fun every_other_create_answer_is_transient() = runTest {
-        for (reply in listOf(text(502, ""), json(201, "<html/>"), offline)) {
-            assertEquals(CreateOutcome.Transient, servicesAnswering(reply).creation.create("n", "s", null), "$reply")
+    fun every_other_create_answer_is_transient_with_how_the_service_failed() = runTest {
+        for ((reply, fault) in listOf(
+            text(502, "") to ServiceFault.TROUBLE,
+            maintenance to ServiceFault.UPDATING,
+            json(201, "<html/>") to ServiceFault.UNREACHABLE,
+            offline to ServiceFault.UNREACHABLE,
+        )) {
+            assertEquals(
+                CreateOutcome.Transient(fault),
+                servicesAnswering(reply).creation.create("n", "s", null),
+                "$reply",
+            )
         }
+    }
+
+    @Test
+    fun a_refusal_no_service_names_is_told_as_the_service_not_reached_never_as_its_failure() = runTest {
+        // An answer from a working service that the app has no reading of — here, this build too old — is told as the
+        // one condition whose remedy may be the member's own: never as the service failing.
+        val tooOld = json(426, """{"error":"app too old","minAppVersion":"9.9"}""")
+        val services = servicesAnswering(tooOld)
+        assertEquals(CreateOutcome.Transient(ServiceFault.UNREACHABLE), services.creation.create("n", "s", null))
+        assertEquals(EventLookup.Failed(ServiceFault.UNREACHABLE), services.directory.fetch(testEventId("E")))
+        assertEquals(
+            JoinResult.Failed(ServiceFault.UNREACHABLE),
+            services.join.join(testEventId("E"), testDeviceId("D")),
+        )
     }
 
     @Test
@@ -236,37 +271,57 @@ class BackendServicesTest {
             servicesAnswering(text(400, "invalid name")).rename.rename(testEventId("E"), " "),
         )
         assertEquals(
-            RenameOutcome.Transient,
+            RenameOutcome.Transient(fault = null),
             servicesAnswering(text(404, "event not found")).rename.rename(testEventId("E"), "n"),
+            "a 404 is an answer, told generically",
         )
         assertEquals(
-            RenameOutcome.Transient,
+            RenameOutcome.Transient(ServiceFault.UNREACHABLE),
             servicesAnswering(json(200, """{"name":"n"}""")).rename.rename(testEventId("E"), "n"),
             "an echo missing the event is malformed",
         )
-        assertEquals(RenameOutcome.Transient, servicesAnswering(offline).rename.rename(testEventId("E"), "n"))
+        assertEquals(
+            RenameOutcome.Transient(ServiceFault.UNREACHABLE),
+            servicesAnswering(offline).rename.rename(testEventId("E"), "n"),
+        )
+        assertEquals(
+            RenameOutcome.Transient(ServiceFault.TROUBLE),
+            servicesAnswering(text(502, "")).rename.rename(testEventId("E"), "n"),
+        )
+        assertEquals(
+            RenameOutcome.Transient(ServiceFault.UPDATING),
+            servicesAnswering(maintenance).rename.rename(testEventId("E"), "n"),
+        )
+    }
+
+    @Test
+    fun a_rename_the_service_answers_with_the_photos_deleted_is_the_event_over() = runTest {
+        assertEquals(
+            RenameOutcome.EventOver,
+            servicesAnswering(json(410, """{"error":"closed"}""")).rename.rename(testEventId("E"), "n"),
+        )
     }
 
     // ── membership ─────────────────────────────────────────────────────────────────────────────────
 
     @Test
     fun a_closed_event_and_a_gone_one_are_their_own_answers_and_everything_else_failed() = runTest {
-        assertEquals(JoinResult.JOINED, servicesAnswering(ok()).join.join(testEventId("E"), testDeviceId("D")))
+        assertEquals(JoinResult.Joined, servicesAnswering(ok()).join.join(testEventId("E"), testDeviceId("D")))
         assertEquals(
-            JoinResult.EVENT_NOT_FOUND,
+            JoinResult.EventNotFound,
             servicesAnswering(text(404, "event not found")).join.join(testEventId("E"), testDeviceId("D")),
         )
         assertEquals(
-            JoinResult.FAILED,
+            JoinResult.Failed(ServiceFault.TROUBLE),
             servicesAnswering(text(502, "upstream")).join.join(testEventId("E"), testDeviceId("D")),
         )
-        assertEquals(JoinResult.FAILED, servicesAnswering(offline).join.join(testEventId("E"), testDeviceId("D")))
+        assertEquals(JoinResult.Failed(), servicesAnswering(offline).join.join(testEventId("E"), testDeviceId("D")))
         assertEquals(
-            JoinResult.EVENT_CLOSED,
+            JoinResult.EventClosed,
             servicesAnswering(json(410, CLOSED)).join.join(testEventId("E"), testDeviceId("D")),
         )
         assertEquals(
-            JoinResult.UNVERIFIED,
+            JoinResult.Unverified,
             servicesAnswering(UNAUTHORIZED).join.join(testEventId("E"), testDeviceId("D")),
             "a credential refusal",
         )
@@ -325,8 +380,18 @@ class BackendServicesTest {
     @Test
     fun a_publish_refused_because_the_event_closed_is_recorded_as_done() = runTest {
         val manifest = DeviceManifest(testDeviceId("D"), emptyList(), version = 1)
-        assertTrue(servicesAnswering(json(410, CLOSED)).manifest.publish(testEventId("E"), testDeviceId("D"), manifest))
-        assertTrue(servicesAnswering(json(409, CLOSED)).manifest.publish(testEventId("E"), testDeviceId("D"), manifest))
+        val over = mutableListOf<EventId>()
+        val completed = servicesOver(ScriptedTransport { json(410, CLOSED) }, eventOver = { over += it })
+        assertTrue(completed.manifest.publish(testEventId("E"), testDeviceId("D"), manifest))
+        assertEquals(listOf(testEventId("E")), over, "the service's word that the photos were deleted is passed on")
+        over.clear()
+        val fixed = servicesOver(ScriptedTransport { json(409, CLOSED) }, eventOver = { over += it })
+        assertTrue(fixed.manifest.publish(testEventId("E"), testDeviceId("D"), manifest))
+        assertTrue(over.isEmpty(), "a set fixed before events stopped closing says nothing about deletion")
+        assertTrue(
+            servicesAnswering(json(410, CLOSED)).manifest.publish(testEventId("E"), testDeviceId("D"), manifest),
+            "a process with no membership to tell records it all the same",
+        )
     }
 
     @Test
@@ -388,12 +453,11 @@ class BackendServicesTest {
     }
 
     @Test
-    fun a_listing_that_does_not_decode_is_a_permanent_shape_failure_apart_from_a_transient_one() = runTest {
-        assertIs<DeviceListingShapeException>(
-            servicesAnswering(
-                json(200, """[{"role":"primary"}]"""),
-            ).deviceFiles.list(testEventId("E"), testDeviceId("D")).exceptionOrNull(),
-        )
+    fun a_listing_that_does_not_decode_is_no_answer_retried_never_a_permanent_shape_failure() = runTest {
+        for (body in listOf("""[{"role":"primary"}]""", "<html>log in to this Wi-Fi</html>")) {
+            val unread = servicesAnswering(json(200, body)).deviceFiles.list(testEventId("E"), testDeviceId("D"))
+            assertTrue(unread.isFailure && unread.exceptionOrNull() !is DeviceListingShapeException, body)
+        }
         val transient = servicesAnswering(
             offline,
         ).deviceFiles.list(testEventId("E"), testDeviceId("D")).exceptionOrNull()

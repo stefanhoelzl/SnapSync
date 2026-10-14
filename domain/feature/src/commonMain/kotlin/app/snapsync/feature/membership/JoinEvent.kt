@@ -2,6 +2,7 @@ package app.snapsync.feature.membership
 
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.model.EventConfig
@@ -31,7 +32,22 @@ import co.touchlab.kermit.Logger
  * - [InvalidRange]: the chosen capture range breaks the share-range rule ([CaptureRange]) — refused before anything
  *   is enrolled. No shipped entry path can produce one, so the screen shows it as a failed join.
  */
-enum class JoinOutcome { Committed, AlreadyJoined, EventClosed, Unverified, EnrollFailed, WrongLink, InvalidRange }
+sealed interface JoinOutcome {
+    data object Committed : JoinOutcome
+
+    data object AlreadyJoined : JoinOutcome
+
+    data object EventClosed : JoinOutcome
+
+    data object Unverified : JoinOutcome
+
+    /** [fault] is how the service failed the join request — `null` for a failure on this device. */
+    data class EnrollFailed(val fault: ServiceFault? = null) : JoinOutcome
+
+    data object WrongLink : JoinOutcome
+
+    data object InvalidRange : JoinOutcome
+}
 
 /**
  * What the join surface should show for this outcome.
@@ -45,7 +61,8 @@ fun JoinOutcome.toCommit(): JoinCommit = when (this) {
     JoinOutcome.Committed, JoinOutcome.AlreadyJoined -> JoinCommit.Committed
     JoinOutcome.EventClosed -> JoinCommit.Closed
     JoinOutcome.Unverified -> JoinCommit.Unverified
-    JoinOutcome.EnrollFailed, JoinOutcome.InvalidRange -> JoinCommit.Failed
+    is JoinOutcome.EnrollFailed -> JoinCommit.Failed(fault)
+    JoinOutcome.InvalidRange -> JoinCommit.Failed()
     JoinOutcome.WrongLink -> JoinCommit.WrongLink
 }
 
@@ -121,18 +138,19 @@ class JoinEvent(
         // Every entry path funnels here, the headless one included, so the key is checked here too — never only on
         // the screen: a member must not join an encrypted event it could not read, nor upload plaintext into it.
         if (!keys.opens(choice.linkKey, choice.eventKeyId)) return JoinOutcome.WrongLink
-        when (enroller.enroll(eventId, identity.requireDeviceId())) {
-            JoinResult.JOINED -> Unit
-            JoinResult.EVENT_CLOSED -> return JoinOutcome.EventClosed
-            JoinResult.UNVERIFIED -> return JoinOutcome.Unverified
-            JoinResult.EVENT_NOT_FOUND, JoinResult.FAILED -> return JoinOutcome.EnrollFailed
+        when (val enrolled = enroller.enroll(eventId, identity.requireDeviceId())) {
+            JoinResult.Joined -> Unit
+            JoinResult.EventClosed -> return JoinOutcome.EventClosed
+            JoinResult.Unverified -> return JoinOutcome.Unverified
+            JoinResult.EventNotFound -> return JoinOutcome.EnrollFailed()
+            is JoinResult.Failed -> return JoinOutcome.EnrollFailed(enrolled.fault)
         }
         // The key before the config: a config naming a key id must never exist without its key. A refused write fails
         // the join, which a retry repeats; a plain event's join removes a previous event's key.
         val kept = runCatchingCancellable { choice.linkKey?.let(keys::keep) ?: keys.forget() }
         if (kept.isFailure) {
             log.w(kept.exceptionOrNull()) { "join: the event key could not be kept — the join is retried" }
-            return JoinOutcome.EnrollFailed
+            return JoinOutcome.EnrollFailed()
         }
         provision(
             EventConfig(

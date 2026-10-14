@@ -173,6 +173,10 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
         state.locked { state.faults[operation] = fault to count }
     }
 
+    override suspend fun recover(operation: String?) {
+        state.locked { if (operation == null) state.faults.clear() else state.faults.remove(operation) }
+    }
+
     override suspend fun sweep(event: String?) {
         val id = resolved(event)
         state.locked { state.events.remove(id) }

@@ -19,7 +19,7 @@ class PortValueVocabularyTest {
                 CreateOutcome.InvalidName,
                 CreateOutcome.InvalidWindow,
                 CreateOutcome.Unverified,
-                CreateOutcome.Transient,
+                CreateOutcome.Transient(),
             ),
         ) {
             when (it) {
@@ -27,7 +27,7 @@ class PortValueVocabularyTest {
                 CreateOutcome.InvalidName -> "InvalidName"
                 CreateOutcome.InvalidWindow -> "InvalidWindow"
                 CreateOutcome.Unverified -> "Unverified"
-                CreateOutcome.Transient -> "Transient"
+                is CreateOutcome.Transient -> "Transient"
             }
         }
         assertValueEquality(

@@ -87,9 +87,9 @@ class CreateEvent(
                 log.i { "create refused: this phone holds no credential the service accepts" }
                 status.value = CreationStatus.Failed(CreationFailureReason.UNVERIFIED)
             }
-            CreateOutcome.Transient -> {
-                log.i { "create failed: transient/server error" }
-                status.value = CreationStatus.Failed(CreationFailureReason.SERVER)
+            is CreateOutcome.Transient -> {
+                log.i { "create failed: the service failed (${outcome.fault})" }
+                status.value = CreationStatus.Failed(CreationFailureReason.SERVER, outcome.fault)
             }
         }
     }

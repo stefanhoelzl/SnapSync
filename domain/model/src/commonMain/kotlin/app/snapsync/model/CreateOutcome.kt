@@ -1,6 +1,7 @@
 package app.snapsync.model
 
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.service.ServiceFault
 
 /** The outcome of a `POST /events` create call — a closed set the use-case maps to [CreationStatus]. */
 sealed interface CreateOutcome {
@@ -26,6 +27,6 @@ sealed interface CreateOutcome {
      */
     data object Unverified : CreateOutcome
 
-    /** Any other non-2xx, transport, or parse failure. */
-    data object Transient : CreateOutcome
+    /** Any other non-2xx, transport, or parse failure; [fault] is how the service failed, as the host is told it. */
+    data class Transient(val fault: ServiceFault = ServiceFault.UNREACHABLE) : CreateOutcome
 }

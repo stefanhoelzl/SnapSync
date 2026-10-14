@@ -149,6 +149,7 @@ private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
     SyncHealth.Inactive -> AppSyncStatus.Inactive
     SyncHealth.KeyLost -> AppSyncStatus.KeyLost
     is SyncHealth.Unattested -> AppSyncStatus.CannotVerifyDevice(refusal)
+    is SyncHealth.ServiceFailing -> AppSyncStatus.ServiceFailing(notice)
     SyncHealth.Loading -> AppSyncStatus.Loading
     SyncHealth.InSync -> AppSyncStatus.InSync
     // Since the step-9 Arrow/ArrowLevel unification both sides speak `model/`'s Arrow — no mapping.
