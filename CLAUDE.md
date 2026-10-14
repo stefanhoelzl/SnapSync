@@ -12,8 +12,9 @@ weeks — a day out, a party, a holiday), synced gallery-to-gallery; you never c
 look at your own gallery. No accounts and no name asked — a member stays anonymous; creating or joining takes
 seconds. Marketing copy follows `metadata/messaging.md` (principles + glossary). The host picks the
 event's **date range** at creation (at most **30 days** long), and that **end** is the capture-date ceiling —
-it bounds which photos may be uploaded and closes nothing. Each event has an **open-until date** — its end, or, for an
-event created after its end, the 1/7/14/30 days the host chose — and **nothing closes**: joining, sharing, receiving
+it bounds which photos may be uploaded and closes nothing. Each event has an **open-until date** — its end, or a later
+day the host chose at creation (the app offers 1/7/14/30 days only for an event created after its end; the api
+admits up to 30 days past the later of the end and the creation) — and **nothing closes**: joining, sharing, receiving
 and renaming keep working until the photos are deleted, so a guest who scans days late still joins and contributes
 their in-window photos. The nightly sweep deletes the photos once the open-until date has passed and every member
 still in it has shared and received everything, or 3 days after the later of the open-until date, the last join and
