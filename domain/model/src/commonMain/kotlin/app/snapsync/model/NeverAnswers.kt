@@ -17,7 +17,7 @@ annotation class NeverAnswers(vararg val claims: Never)
  * One claim of [NeverAnswers], written as the port grid writes the cell (`build/reports/port-grid/port-grid.txt`).
  *
  * - [answer] with [member]: that member never gives that answer — a sealed leaf (`"FileResult.AreaUnavailable"`), an
- *   enum entry (`"AlbumKind.COLLECTION"`), or a constant (`"true"`, `"false"`, `"null"`, `"returns"`).
+ *   enum entry (`"LibraryAlbumKind.COLLECTION"`), or a constant (`"true"`, `"false"`, `"null"`, `"returns"`).
  * - [answer] alone: no member of the class's ports gives it.
  * - [handler] alone: the class never calls that handler (`"onChangedElsewhere"`).
  *

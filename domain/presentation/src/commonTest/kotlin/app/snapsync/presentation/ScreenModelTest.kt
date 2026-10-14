@@ -1,10 +1,10 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumContents
 import app.snapsync.model.StoreKind
 import app.snapsync.model.StoreLink
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.StoreName
@@ -25,7 +25,10 @@ class ScreenModelTest {
 
     @Test
     fun `each domain value has its display twin`() {
-        assertEquals(listOf(AlbumStyle.COLLECTION, AlbumStyle.FOLDER), AlbumKind.entries.map { it.shown })
+        assertEquals(
+            listOf(AlbumHolds.SHARED_AND_RECEIVED, AlbumHolds.RECEIVED),
+            AlbumContents.entries.map { it.shown },
+        )
         assertEquals(listOf(StoreName.APP_STORE, StoreName.GOOGLE_PLAY), StoreKind.entries.map { it.shown })
         assertEquals(
             listOf(RefusalCause.DEVICE_MODIFIED, RefusalCause.DEVICE_UNVERIFIABLE, RefusalCause.APP_NOT_GENUINE),

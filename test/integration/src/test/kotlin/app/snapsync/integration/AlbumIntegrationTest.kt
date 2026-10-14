@@ -7,7 +7,7 @@ import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.AlbumKind
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -76,7 +76,7 @@ class AlbumIntegrationTest {
         androidLibrary()
         create(name = "Party")
         val gate = state().ui.layer as Layer.JoiningEvent
-        assertEquals(AlbumStyle.FOLDER, gate.range?.albumStyle)
+        assertEquals(AlbumHolds.RECEIVED, gate.range?.albumHolds)
         assertEquals(true, gate.range?.saveToAlbum, "the album is on by default, as on iPhone")
 
         join()

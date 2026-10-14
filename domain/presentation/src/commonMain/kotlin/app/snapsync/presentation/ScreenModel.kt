@@ -5,7 +5,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.EventWindow
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumContents
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReportDestination
@@ -15,7 +15,7 @@ import app.snapsync.model.StoreLink
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeBounds
 import app.snapsync.presentation.range.view
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.CreateForm
 import app.snapsync.ui.state.CreateStep
@@ -144,7 +144,7 @@ internal fun RangeForm.view(range: ResolvedRange, picking: Picking? = null): Ran
     shareOn = shareOn,
     receiveOn = receiveOn,
     saveToAlbum = saveToAlbum,
-    albumStyle = albumKind.shown,
+    albumHolds = albumContents.shown,
     preset = preset,
     from = range.from,
     until = range.until,
@@ -173,10 +173,10 @@ internal fun outsideReach(range: ResolvedRange): OutsideReach? {
     }
 }
 
-internal val AlbumKind.shown: AlbumStyle
+internal val AlbumContents.shown: AlbumHolds
     get() = when (this) {
-        AlbumKind.COLLECTION -> AlbumStyle.COLLECTION
-        AlbumKind.FOLDER -> AlbumStyle.FOLDER
+        AlbumContents.SHARED_AND_RECEIVED -> AlbumHolds.SHARED_AND_RECEIVED
+        AlbumContents.RECEIVED -> AlbumHolds.RECEIVED
     }
 
 internal val StoreKind.shown: StoreName

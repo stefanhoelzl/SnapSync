@@ -27,7 +27,7 @@ import app.snapsync.ui.resources.stop_sharing_title
 import app.snapsync.ui.resources.switch_body
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.switch_title
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
@@ -74,7 +74,7 @@ internal fun ReconfigureSheet(
                     rangeLabel = appRangeLabel(range.from, range.until),
                 ),
                 actions = participation,
-                albumNote = reconfigureAlbumNote(range.saveToAlbum, range.albumStyle),
+                albumNote = reconfigureAlbumNote(range.saveToAlbum, range.albumHolds),
             )
         }
     }
@@ -210,11 +210,11 @@ internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
  * switches, and must not name a feed the membership lacks.
  */
 @Composable
-private fun reconfigureAlbumNote(saveToAlbum: Boolean, kind: AlbumStyle): String = stringResource(
+private fun reconfigureAlbumNote(saveToAlbum: Boolean, holds: AlbumHolds): String = stringResource(
     when {
         !saveToAlbum -> Res.string.album_none
         // A folder album (Android) holds only what is received, and gathering moves the received photos into it.
-        kind == AlbumStyle.FOLDER -> Res.string.album_folder_receive_existing
+        holds == AlbumHolds.RECEIVED -> Res.string.album_folder_receive_existing
         else -> Res.string.album_existing
     },
 )

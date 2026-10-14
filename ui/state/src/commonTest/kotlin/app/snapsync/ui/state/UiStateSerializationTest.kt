@@ -192,7 +192,7 @@ class UiStateSerializationTest {
         shareOn = true,
         receiveOn = false,
         saveToAlbum = false,
-        albumStyle = AlbumStyle.FOLDER,
+        albumHolds = AlbumHolds.RECEIVED,
         preset = RangeChoice.CUSTOM,
         from = LocalDateTime(2026, 7, 7, 9, 30),
         until = LocalDateTime(2026, 7, 12, 18, 0),

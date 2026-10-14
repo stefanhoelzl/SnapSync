@@ -2,7 +2,7 @@ package app.snapsync.services.gallery
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumContents
 import app.snapsync.model.SelectionCalibration
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
@@ -21,8 +21,8 @@ class GalleryAlbums(
     private val log: Logger = Logger.withTag("albums"),
 ) {
 
-    /** How the member's library holds an album, as the app reads the platform's answer. */
-    val kind: AlbumKind get() = gallery.albumKind.albumKind()
+    /** What the event album holds on this phone, read from how the member's library holds an album. */
+    val contents: AlbumContents get() = gallery.albumKind.contents()
 
     /**
      * Create a new album titled [name] and return its id, or `null` if creation failed. **Only the app**
@@ -79,8 +79,11 @@ class GalleryAlbums(
     }
 }
 
-/** What the platform's way of holding an album means to the app: the same kind. */
-fun LibraryAlbumKind.albumKind(): AlbumKind = when (this) {
-    LibraryAlbumKind.COLLECTION -> AlbumKind.COLLECTION
-    LibraryAlbumKind.FOLDER -> AlbumKind.FOLDER
+/**
+ * What the platform's way of holding an album means for the event album: a collection takes any photo, while a folder
+ * would have to move the member's own photos out of the camera folder, so it holds only the received ones.
+ */
+fun LibraryAlbumKind.contents(): AlbumContents = when (this) {
+    LibraryAlbumKind.COLLECTION -> AlbumContents.SHARED_AND_RECEIVED
+    LibraryAlbumKind.FOLDER -> AlbumContents.RECEIVED
 }

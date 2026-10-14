@@ -23,7 +23,7 @@ import app.snapsync.ui.resources.share_outside_before
 import app.snapsync.ui.resources.share_outside_both
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.share_zero_note
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeView
 import app.snapsync.ui.state.ShareCount
@@ -149,7 +149,7 @@ class ParticipationState(
     val shareOn: Boolean get() = range.shareOn
     val receiveOn: Boolean get() = range.receiveOn
     val saveToAlbum: Boolean get() = range.saveToAlbum
-    val albumStyle: AlbumStyle get() = range.albumStyle
+    val albumHolds: AlbumHolds get() = range.albumHolds
     val choices: RangeChoices get() = RangeChoices(range.preset, range.from, range.until)
 }
 

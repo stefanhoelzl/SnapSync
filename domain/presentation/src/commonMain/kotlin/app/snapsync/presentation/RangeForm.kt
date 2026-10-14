@@ -2,7 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumContents
 import app.snapsync.model.Direction
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount
@@ -29,14 +29,14 @@ import kotlinx.datetime.LocalDateTime
  * not the gate's. The headless `autoJoin` path does NOT read these seeds and deliberately keeps its own album default
  * off; see `StatusContainerHost.autoConfirm`.
  *
- * [albumKind] is not a choice but the platform's answer: how this phone holds an event album. It decides what the album
- * note says the album collects — on an Android phone, whose album is a folder, only the photos the member receives.
+ * [albumContents] is not a choice but what the event album holds on this phone: the album note says it — on an
+ * Android phone, whose album is a folder, only the photos the member receives.
  */
 data class RangeForm(
     val shareOn: Boolean = true,
     val receiveOn: Boolean = true,
     val saveToAlbum: Boolean = true,
-    val albumKind: AlbumKind = AlbumKind.COLLECTION,
+    val albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
     val preset: RangeChoice = RangeChoice.EVENT_START,
     /** The picked start behind [RangeChoice.CUSTOM]; `null` resolves to the window's start. */
     val customFrom: LocalDateTime? = null,

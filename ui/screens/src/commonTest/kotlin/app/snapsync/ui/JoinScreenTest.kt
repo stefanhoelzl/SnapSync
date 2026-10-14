@@ -83,7 +83,7 @@ import app.snapsync.ui.resources.switch_body
 import app.snapsync.ui.resources.switch_confirm
 import app.snapsync.ui.resources.switch_title
 import app.snapsync.ui.resources.waiting_network_title
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.Layer
@@ -768,7 +768,7 @@ class JoinScreenTest {
         // Capability `event-album`: on Android the album is the folder received photos are saved into, so the note
         // never names the member's own photos, which stay in the camera folder.
         setScreen {
-            TestStatusScreen(joining(ready(), form = Choices(albumStyle = AlbumStyle.FOLDER)))
+            TestStatusScreen(joining(ready(), form = Choices(albumHolds = AlbumHolds.RECEIVED)))
         }
         onNodeWithText(str(Res.string.album_toggle)).performScrollTo().assertToggle(ToggleableState.On)
         onNodeWithText(
@@ -780,7 +780,7 @@ class JoinScreenTest {
     fun `a phone with folder albums says the album collects nothing without receiving`() = runComposeUiTest {
         setScreen {
             TestStatusScreen(
-                joining(ready(), form = Choices(receiveOn = false, albumStyle = AlbumStyle.FOLDER)),
+                joining(ready(), form = Choices(receiveOn = false, albumHolds = AlbumHolds.RECEIVED)),
             )
         }
         onNodeWithText(str(Res.string.album_folder_nothing)).performScrollTo().assertExists()

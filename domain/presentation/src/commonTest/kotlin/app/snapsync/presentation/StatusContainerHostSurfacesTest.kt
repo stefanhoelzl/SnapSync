@@ -6,7 +6,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.AlbumKind
+import app.snapsync.model.AlbumContents
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
@@ -23,7 +23,7 @@ import app.snapsync.model.TimestampText
 import app.snapsync.model.UserQueries
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.testids.testEventId
-import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
@@ -119,7 +119,7 @@ class StatusContainerHostSurfacesTest {
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-        albumKind: AlbumKind = AlbumKind.COLLECTION,
+        albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
     ) = StatusContainerHost(
         StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config),
         scope,
@@ -149,7 +149,7 @@ class StatusContainerHostSurfacesTest {
         queries = queries,
         diagnostics = testDiagnostics(),
         reportDestination = reportDestination,
-        albumKind = albumKind,
+        albumContents = albumContents,
         reduction = Dispatchers.Default,
     )
 
@@ -180,13 +180,13 @@ class StatusContainerHostSurfacesTest {
         queries: UserQueries = noQueries,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-        albumKind: AlbumKind = AlbumKind.COLLECTION,
+        albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
-                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin, reportDestination, albumKind))
+                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin, reportDestination, albumContents))
             } finally {
                 scope.cancel()
             }
@@ -634,19 +634,19 @@ class StatusContainerHostSurfacesTest {
         return onHost(
             spy,
             config = MutableStateFlow(CONFIG.copy(saveToAlbum = false)),
-            albumKind = AlbumKind.FOLDER,
+            albumContents = AlbumContents.RECEIVED,
         ) { host ->
             host.surfaces.onOpenReconfigure()
             val form = host.reconfigureForm()
-            assertEquals(AlbumStyle.FOLDER, form.albumStyle, "the settings know the album is a folder")
+            assertEquals(AlbumHolds.RECEIVED, form.albumHolds, "the settings know the album is a folder")
             assertEquals(false, form.saveToAlbum, "the stored choice is shown as it was saved")
             host.form.onSaveToAlbum(true)
             awaitReconfigures(spy, 1)
             assertEquals(true, spy.reconfigures.single().saveToAlbum)
             val after = host.stateWhere("the album on") { it.settings()?.range?.saveToAlbum == true }
             assertEquals(
-                AlbumStyle.FOLDER,
-                after.settings()?.range?.albumStyle,
+                AlbumHolds.RECEIVED,
+                after.settings()?.range?.albumHolds,
                 "the reseeded controls keep the album kind",
             )
         }
