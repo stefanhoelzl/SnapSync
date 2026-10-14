@@ -335,6 +335,57 @@ class PhotoAccessIntegrationTest {
         }
     }
 
+    // ---- the dialog is raised only by a deliberate tap --------------------------------------------------------------
+
+    @Test
+    @Verifies(
+        spec = "photo-access",
+        requirement = "The system's access dialog is raised only by a deliberate tap",
+        scenario = "Opening the app does not prompt",
+    )
+    fun opening_the_app_with_access_undecided_asks_nothing_until_the_access_line_is_tapped() = behaviour {
+        given {
+            joinedEvent()
+            step("access never decided", act = { library.permission(PhotoGrant.NOT_DETERMINED) }, until = {})
+        }
+
+        whenever { os.foreground() }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.NeedsAccess(canAsk = true) }
+            never<WorldEvent.LibraryAccessAsked>()
+        }
+
+        whenever { tap(UiIntent.RequestPermission) }
+        then { event<WorldEvent.LibraryAccessAsked>() }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-access",
+        requirement = "The system's access dialog is raised only by a deliberate tap",
+        scenario = "A refused member is taken to Settings",
+    )
+    fun a_refused_member_tapping_the_access_line_is_taken_to_settings_and_asked_nothing() = behaviour {
+        given {
+            joinedEvent()
+            step(
+                "access refused",
+                act = {
+                    library.permission(PhotoGrant.DENIED)
+                    os.foreground()
+                },
+                // The line offers Settings, not the dialog: what it sends then is the screens' own (`JoinedLayer`).
+                until = { screen<Layer.Joined> { it.health == SyncHealth.NeedsAccess(canAsk = false) } },
+            )
+        }
+
+        whenever { tap(UiIntent.OpenSettings) }
+        then {
+            event<WorldEvent.SettingsOpened>()
+            never<WorldEvent.LibraryAccessAsked>()
+        }
+    }
+
     // ---- helpers --------------------------------------------------------------------------------------------------
 
     /** The member refused photo access before joining. */

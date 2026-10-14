@@ -197,6 +197,77 @@ class AlbumIntegrationTest {
         eventually<Int>(read = { albums().single().assets.size }) { it > placed }
     }
 
+    @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "The album survives leaving and is reused on rejoin",
+        scenario = "A renamed album keeps receiving photos",
+    )
+    fun an_album_the_member_renamed_still_takes_the_photos_that_arrive() = behaviour {
+        val (_, album) = given { joinedSavingToAlbum(name = "Party") }
+
+        whenever {
+            library.renameAlbum(album, "Best party")
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+            os.foreground()
+        }
+        then { event<WorldEvent.DownloadStarted>() }
+
+        whenever { downloadSession.finish() }
+        then { event<WorldEvent.LibraryJoinedAlbum> { it.album == album && it.asset == RECEIVED } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "Album problems never affect sharing or receiving",
+        scenario = "A placement fails",
+    )
+    fun a_received_photo_whose_album_is_gone_is_still_saved() = behaviour {
+        val (_, album) = given { joinedSavingToAlbum(name = "Party") }
+
+        whenever {
+            library.deleteAlbum(album)
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+            os.foreground()
+        }
+        then { event<WorldEvent.DownloadStarted>() }
+
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED }
+            never<WorldEvent.LibraryJoinedAlbum>()
+            never<WorldEvent.LibraryAlbumCreated>() // a deleted album comes back only when the member asks
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "Album problems never affect sharing or receiving",
+        scenario = "A placement fails",
+    )
+    fun an_own_photo_whose_album_is_gone_is_still_uploaded() = behaviour {
+        val (_, album) = given { joinedSavingToAlbum(name = "Party") }
+
+        whenever {
+            library.deleteAlbum(album)
+            takePhoto("A")
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
+            never<WorldEvent.LibraryJoinedAlbum>()
+        }
+
+        // Its bytes land, and the app publishes what it shares: with the one photo in play, that photo.
+        whenever {
+            uploadSession.complete()
+            os.foreground()
+        }
+        then { event<WorldEvent.BackendReceived> { it.operation == PUBLISH } }
+    }
+
     /** This device leaves its event. */
     private suspend fun Given.left() = step("left", act = { tap(UiIntent.LeaveEvent) }, until = { settled { true } })
 
@@ -219,5 +290,8 @@ class AlbumIntegrationTest {
     private companion object {
         /** The id the photo library gives the photo [DEV_F] shared as FQ. */
         const val RECEIVED = "imported-$DEV_F-FQ"
+
+        /** The backend operation a device publishes what it shares through. */
+        const val PUBLISH = "publishManifest"
     }
 }

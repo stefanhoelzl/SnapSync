@@ -53,6 +53,12 @@ class FileSystemMock {
 
     fun read(area: FileArea, path: String): ByteArray? = held(area)[path]
 
+    /** The bytes at [location], a platform path a process's face handed out (`Files.locate`); `null` for anything else. */
+    fun located(location: String): ByteArray? = FileArea.entries.firstNotNullOfOrNull { area ->
+        val prefix = "${InMemoryFiles.MEM}${area.name.lowercase()}/"
+        if (location.startsWith(prefix)) read(area, location.removePrefix(prefix)) else null
+    }
+
     /** The paths [area] holds now: one whole snapshot of it, however the app writes meanwhile. */
     fun paths(area: FileArea): List<String> = held(area).snapshot().keys.toList()
 

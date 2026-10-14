@@ -35,8 +35,9 @@ import kotlin.time.Instant
  * selection observer is open.
  *
  * It answers as the platform does:
- * - **No grant, no read**: every read answers `NotReadable` unless the grant is full or partial. There is no
- *   selection here, so a partial grant reads the whole library — the core reads the held snapshot instead.
+ * - **No grant, no read**: every read answers `NotReadable` unless the grant is full or partial, and with no grant the
+ *   library creates no album and answers no change token either — as iOS answers a process it has not granted. There
+ *   is no selection here, so a partial grant reads the whole library — the core reads the held snapshot instead.
  * - **[assets] translates only the two REQUIRED narrowings** — the capture floor and deny-everything. The
  *   platform's predicate is an *optimization* the authoritative admission must be proven to work without,
  *   so a mock that mirrored it would hide exactly the bug that matters: an
@@ -107,7 +108,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         val createdLocalId = PlatformAssetId("imported-${correlation.replace('/', '-')}$suffix")
         handlers.onImportPlaceholder.deliver(ImportPlaceholder(correlation, createdLocalId))
         // The library takes a staged file as it ingests it, before decoding it: an undecodable one is gone either way.
-        if (state.undecodable) {
+        if (request.files.any { state.undecodable(it.path) }) {
             return settle(
                 ImportOutcome.Failed(
                     "the staged file cannot be decoded",
@@ -123,10 +124,11 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         val filedInto = state.locked {
             state.library.update { it + created }
             state.ownImports += createdLocalId
-            if (state.albumKind == LibraryAlbumKind.FOLDER) {
-                request.album?.value?.takeIf { it in state.created }?.also { state.folderOf[createdLocalId] = it }
-            } else {
-                null
+            // Filed in the commit that creates it; an album the library no longer holds files nothing and fails nothing.
+            val album = request.album?.value?.takeIf { it in state.created && it !in state.deletedAlbums }
+            when (state.albumKind) {
+                LibraryAlbumKind.FOLDER -> album?.also { state.folderOf[createdLocalId] = it }
+                LibraryAlbumKind.COLLECTION -> album?.also { state.created.getValue(it).members += createdLocalId }
             }
         }
         state.watcher.told(WorldEvent.LibraryAssetCreated(createdLocalId.value))
@@ -198,7 +200,8 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override suspend fun createAlbum(title: String): PlatformAlbumId? {
-        if (state.refusesWrites) return null
+        // A process with no grant is refused the library's writes too, as iOS refuses it (GalleryReader contract).
+        if (state.access.value !in READABLE) return null
         val id = state.locked {
             "album-${state.albumCounter++}".also { id ->
                 state.created[id] = LibraryState.Album(title)
@@ -215,7 +218,8 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         val joined = mutableListOf<PlatformAssetId>()
         val outcome = state.locked {
             state.addedLog += albumId to assets.toList()
-            val target = state.created[albumId] ?: return@locked WriteOutcome.Failed("album $albumId does not resolve")
+            val target = state.created[albumId]?.takeIf { albumId !in state.deletedAlbums }
+                ?: return@locked WriteOutcome.Failed("album $albumId does not resolve")
             val held = state.library.value.mapTo(mutableSetOf()) { it.id }
             when (state.albumKind) {
                 LibraryAlbumKind.COLLECTION -> assets.filter { it in held && target.members.add(it) }.forEach { joined += it }
@@ -249,13 +253,9 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
         return state.access.value
     }
 
-    override suspend fun changeToken(): LibraryChangeToken? = if (state.withholdsToken) {
-        null
-    } else {
-        Token(
-            state.library.value,
-        )
-    }
+    /** A process with no grant is told nothing of the library, not even its change token (the Gallery contract). */
+    override suspend fun changeToken(): LibraryChangeToken? =
+        if (state.access.value in READABLE) Token(state.library.value) else null
 
     private fun allAlbums(): List<Pair<GalleryAlbum, Set<PlatformAssetId>>> = createdAlbums() +
         state.userAlbums.value.map { (title, members) -> GalleryAlbum(PlatformAlbumId("user-album:$title"), title) to members }
@@ -267,7 +267,8 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     private fun createdAlbums(): List<Pair<GalleryAlbum, Set<PlatformAssetId>>> = state.locked { createdAlbumsLocked() }
 
     private fun createdAlbumsLocked(): List<Pair<GalleryAlbum, Set<PlatformAssetId>>> = when (state.albumKind) {
-        LibraryAlbumKind.COLLECTION -> state.created.map { (id, album) ->
+        // A collection the member deleted is gone, whatever the app still records of it.
+        LibraryAlbumKind.COLLECTION -> state.created.filterKeys { it !in state.deletedAlbums }.map { (id, album) ->
             GalleryAlbum(PlatformAlbumId(id), album.title) to album.members.toSet()
         }
         LibraryAlbumKind.FOLDER -> {

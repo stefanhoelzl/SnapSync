@@ -8,7 +8,6 @@ import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
-import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.ports.WriteOutcome
@@ -89,9 +88,6 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
     fun title(clauseId: String) = "snapsync-contract-$clauseId"
 
     /** An album identifier no library holds. */
-    private fun absentAlbumId(clauseId: String) =
-        PlatformAlbumId("00000000-0000-4000-8000-${clauseId.length.toString().padStart(12, '0')}/L0/040")
-
     override val clauses = clauses {
 
         clause(
@@ -483,6 +479,31 @@ object GalleryReaderContract : Contract<GalleryReaderState, SeededLibrary<Galler
                 seeded.port.albumMembers(album, Instant.parse(window(clauseId).start)),
                 "a repeated add changes nothing: the cycle and the album gather both place, and neither keeps a record",
             )
+        }
+
+        clause(
+            "A_RENAMED_COLLECTION_KEEPS_ITS_ID",
+            GalleryReaderState.GRANTED_SEEDED_COLLECTION_ALBUMS,
+            covers = cells {
+                on<GalleryReader> {
+                    answers(GalleryReader::createAlbum).returns()
+                    answers(GalleryReader::albumsById).withGenericLeaf(GalleryRead.Read::class)
+                    answers(GalleryReader::addToAlbum).with(WriteOutcome.Ok::class)
+                }
+            },
+        ) { seeded ->
+            val clauseId = "A_RENAMED_COLLECTION_KEEPS_ITS_ID"
+            val rename = assertNotNull(seeded.renameAlbum, "the binding renames an album as the member does")
+            val album = assertNotNull(seeded.port.createAlbum(title(clauseId)))
+            val renamed = title(clauseId) + " renamed"
+            rename(album, renamed)
+            val byId = assertIs<GalleryRead.Read<List<GalleryAlbum>>>(seeded.port.albumsById(setOf(album)))
+            assertEquals(
+                listOf(album to renamed),
+                byId.value.map { it.id to it.title },
+                "the member's rename changes the title; the album keeps its id, so the app still finds it",
+            )
+            assertEquals(WriteOutcome.Ok, seeded.port.addToAlbum(album, seeded.ids), "and it still takes photos")
         }
     }
 

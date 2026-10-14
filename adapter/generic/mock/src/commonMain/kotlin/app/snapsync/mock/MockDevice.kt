@@ -39,8 +39,10 @@ open class MockDevice(
         Instant.parse(BackendMock.DEFAULT_CREATED_AT),
         now = { clock.now },
     )
-    val library = PhotoLibraryMock()
     val disk = FileSystemMock()
+
+    /** The library ingests the file the app staged on this device's disk, as a real library reads what it is handed. */
+    val library = PhotoLibraryMock(disk = disk)
     val databases = DatabasesMock(directory = databaseDirectory)
     val preferences = PreferencesMock()
     val keychain = SecureStoreMock(mapOf(TrustSlots.DEVICE_ID to ownDeviceId))

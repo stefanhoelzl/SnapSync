@@ -7,6 +7,7 @@ import app.snapsync.levers.ImportsView
 import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.LibraryView
+import app.snapsync.levers.NOT_AN_IMAGE
 import app.snapsync.levers.ParkedImport
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
@@ -40,6 +41,8 @@ class PhotoLibraryMock(
     requestAnswer: LibraryGrant = LibraryGrant.GRANTED,
     /** How this library holds an album: an iPhone's [LibraryAlbumKind.COLLECTION] or an Android phone's. */
     albumKind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION,
+    /** The device's disk, where the app stages a file for an import; `null`: every file this library is handed decodes. */
+    disk: FileSystemMock? = null,
 ) {
     internal val state = LibraryState(
         library = MutableStateFlow(emptyList()),
@@ -47,6 +50,7 @@ class PhotoLibraryMock(
         userAlbums = MutableStateFlow(emptyMap()),
         answer = requestAnswer,
         answers = null,
+        disk = disk,
     ).also { it.albumKind = albumKind }
 
     /** One process's face of the library. */
@@ -200,7 +204,11 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     }
 
     override suspend fun renameAlbum(album: String, title: String) {
-        check(state.albumKind == LibraryAlbumKind.FOLDER) { "a collection album's title is not where its photos live" }
+        // A collection album keeps its identity: only its title changes (`A_RENAMED_COLLECTION_KEEPS_ITS_ID`).
+        if (state.albumKind == LibraryAlbumKind.COLLECTION) {
+            state.locked { checkNotNull(state.created[album]) { "no album $album to rename" }.title = title }
+            return
+        }
         state.locked {
             val renamed = "renamed-${state.albumCounter++}"
             state.created[renamed] = LibraryState.Album(title)
@@ -231,7 +239,8 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         state.createdLog.map { (id, title) ->
             AppAlbum(
                 id = id,
-                title = title,
+                // As the album is titled now — a member's rename shows — or as it was made, once it is gone.
+                title = state.created[id]?.title ?: title,
                 photos = contentsOf(id).map { it.value },
                 asked = state.addedLog.filter { it.first == id }.flatMap { it.second }.map { it.value },
             )
@@ -256,7 +265,8 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
     private fun contentsOf(albumId: String): List<PlatformAssetId> {
         val held = state.library.value.mapTo(mutableSetOf()) { it.id }
         return when (state.albumKind) {
-            LibraryAlbumKind.COLLECTION -> state.created[albumId]?.members.orEmpty().filter { it in held }
+            LibraryAlbumKind.COLLECTION ->
+                state.created[albumId]?.takeIf { albumId !in state.deletedAlbums }?.members.orEmpty().filter { it in held }
             LibraryAlbumKind.FOLDER ->
                 state.folderOf.filter { (asset, folder) -> folder == albumId && asset in held }.keys.sortedBy { it.value }
         }
@@ -275,6 +285,12 @@ internal class LibraryState(
     answer: LibraryGrant,
     /** How the library answers each change; `null` is the [imports] script's answers. */
     answers: LibraryChangeAnswers?,
+    /**
+     * The device's disk, from which an import reads the file it is handed, by the location the app's file system gave
+     * it; `null`, or a location that is not the mock's, and the file decodes. A library decides by the file, so this is
+     * what makes an import undecodable.
+     */
+    private val disk: FileSystemMock? = null,
 ) {
     private val lock = mockLock()
 
@@ -282,7 +298,7 @@ internal class LibraryState(
 
     @Volatile var answer: LibraryGrant = answer
 
-    class Album(val title: String, val members: MutableSet<PlatformAssetId> = mutableSetOf())
+    class Album(var title: String, val members: MutableSet<PlatformAssetId> = mutableSetOf())
 
     /** The process whose composition registered last, and its handlers. */
     class Listener(val face: Any, val handlers: GalleryHandlers)
@@ -312,14 +328,8 @@ internal class LibraryState(
 
     @Volatile var byIdReadable = true
 
-    /** A library that refuses the app's writes — no album can be created in it. */
-    @Volatile var refusesWrites = false
-
-    /** A library whose platform answers no change token. */
-    @Volatile var withholdsToken = false
-
-    /** Whether every staged file the app imports is one the library cannot decode. */
-    @Volatile var undecodable = false
+    /** Whether the file at [location] is one no library can decode: the bytes another member shared as no image. */
+    fun undecodable(location: String): Boolean = disk?.located(location)?.contentEquals(NOT_AN_IMAGE) == true
 
     /** What each export wrote, by the path it was written to: the files an exporting library leaves. */
     @Volatile var exported: Map<String, ByteArray> = emptyMap()

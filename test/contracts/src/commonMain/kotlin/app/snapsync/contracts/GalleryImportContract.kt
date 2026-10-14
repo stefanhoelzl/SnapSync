@@ -16,6 +16,7 @@ import app.snapsync.ports.PlatformAssetId
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -26,6 +27,12 @@ enum class GalleryImportState {
 
     /** A full grant, and one file staged under an image type that no library can decode. */
     GRANTED_INVALID_STAGED,
+
+    /** [GRANTED_VALID_STAGED], and an album this process created in a library whose albums are collections ([StagedImport.album]). */
+    GRANTED_VALID_STAGED_WITH_AN_ALBUM,
+
+    /** [GRANTED_VALID_STAGED] in a library whose albums are collections, which no longer holds the album an import names. */
+    GRANTED_VALID_STAGED_ALBUM_GONE,
 }
 
 /**
@@ -95,7 +102,12 @@ class StagedImport(
     val importer: GalleryImport,
     val stage: () -> List<ImportFile>,
     val library: ImportedLibrary,
+    /** The album the binding created for [GalleryImportState.GRANTED_VALID_STAGED_WITH_AN_ALBUM]; `null` in every other state. */
+    val album: ImportAlbum? = null,
 )
+
+/** An album a binding created as this process creates one: its [id], and whether it [holds] an asset now. */
+class ImportAlbum(val id: PlatformAlbumId, val holds: suspend (PlatformAssetId) -> Boolean)
 
 /**
  * What every [GalleryImport] promises (`docs/architecture.md` — this list IS the specification of
@@ -226,6 +238,42 @@ object GalleryImportContract : Contract<GalleryImportState, StagedImport>("Galle
                 subject.library.marker(correlation(clauseId)) != MarkerState.RECORDED,
                 "a failed import settles its marker before it returns: a recorded one would be skipped as created",
             )
+        }
+
+        clause(
+            "AN_IMPORT_INTO_AN_ALBUM_FILES_IT_THERE",
+            GalleryImportState.GRANTED_VALID_STAGED_WITH_AN_ALBUM,
+            covers = cells {
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Imported::class)
+            },
+        ) { subject ->
+            val clauseId = "AN_IMPORT_INTO_AN_ALBUM_FILES_IT_THERE"
+            val album = assertNotNull(subject.album, "the binding created the album the import names")
+            val date = PhotoLibrary.window(name, clauseId).seedDate
+            val created = assertIs<ImportOutcome.Imported>(
+                subject.importer.import(request(clauseId, subject.stage(), date, album.id)),
+                "an ordinary photo imports into an album",
+            ).created
+            assertTrue(
+                album.holds(created),
+                "the photo is in the album it was imported into: it is filed in the commit that creates it",
+            )
+        }
+
+        clause(
+            "AN_IMPORT_INTO_A_MISSING_ALBUM_STILL_SAVES_IT",
+            GalleryImportState.GRANTED_VALID_STAGED_ALBUM_GONE,
+            covers = cells {
+                on<GalleryImport>().answers(GalleryImport::import).with(ImportOutcome.Imported::class)
+            },
+        ) { subject ->
+            val clauseId = "AN_IMPORT_INTO_A_MISSING_ALBUM_STILL_SAVES_IT"
+            val date = PhotoLibrary.window(name, clauseId).seedDate
+            val created = assertIs<ImportOutcome.Imported>(
+                subject.importer.import(request(clauseId, subject.stage(), date, absentAlbumId(clauseId))),
+                "an album the library no longer holds fails nothing: the photo is saved without it",
+            ).created
+            assertEquals(date, subject.library.captureDate(created), "the photo is in the library")
         }
     }
 }

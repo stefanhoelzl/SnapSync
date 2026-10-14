@@ -127,6 +127,10 @@ class AndroidImportContractTest {
             val bytes = when (state) {
                 GalleryImportState.GRANTED_VALID_STAGED -> PhotoLibrary.jpeg
                 GalleryImportState.GRANTED_INVALID_STAGED -> PhotoLibrary.notAnImage
+                // An Android album is the folder a photo is saved into, so an import names one by being saved there:
+                // the folder library's import is the FolderAlbum contract's.
+                GalleryImportState.GRANTED_VALID_STAGED_WITH_AN_ALBUM, GalleryImportState.GRANTED_VALID_STAGED_ALBUM_GONE ->
+                    return Entered.Unreachable("Android's albums are folders, not collections an import is filed into")
             }
             var staged = 0
             val stage = {
