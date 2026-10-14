@@ -22,6 +22,7 @@ import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
+import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SystemUi
@@ -65,6 +66,8 @@ class JvmDevice(
     val secureStore: SecureStore,
     val integrity: DeviceIntegrity,
     val processInfo: ProcessInfo,
+    /** The platform's reports on the app's process — the app's: the upload extension has none, as on a phone. */
+    val processMetrics: ProcessMetrics,
     val network: NetworkMonitor,
     val deviceConditions: DeviceConditions,
     /**

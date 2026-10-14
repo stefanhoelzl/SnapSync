@@ -27,6 +27,7 @@ import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.ProcessInfoLevers
+import app.snapsync.levers.ProcessMetricsLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.PushLevers
 import app.snapsync.levers.RigLevers
@@ -196,6 +197,7 @@ private fun MockWorld.implementationOf(
         DeviceConditionsLevers -> device.deviceConditions.operator
         ClockLevers -> device.clock.operator
         ProcessInfoLevers -> device.processInfo.operator
+        ProcessMetricsLevers -> device.processMetrics.operator
         CrashReporterLevers -> device.crashReporter.operator
         SystemUiLevers -> device.systemUi.operator
         DevControlsLevers -> ReconcilingControls(controls, reconcileUploads)
@@ -228,6 +230,7 @@ private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.CLOCK_MOCKED -> Need.Mocked(MockedSystem.CLOCK)
     LeverNeed.CLOCK_UNOWNED -> Need.ClockUnowned
     LeverNeed.PROCESS_INFO_MOCKED -> Need.Mocked(MockedSystem.PROCESS_INFO)
+    LeverNeed.PROCESS_METRICS_MOCKED -> Need.MetricsPlayed
     LeverNeed.CRASH_REPORTER_MOCKED -> Need.Mocked(MockedSystem.CRASH_REPORTER)
     LeverNeed.SYSTEM_UI_MOCKED -> Need.Mocked(MockedSystem.SYSTEM_UI)
     LeverNeed.VERSION_SETTABLE -> Need.Version

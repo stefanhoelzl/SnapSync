@@ -698,6 +698,15 @@ build the same classes over caller-held cells.
 - **The transfer mocks are the transfer contracts' `Fake` bindings** (`TransferContractBindingsTest`, beside them). A
   clause the mock fails is fixed in the mock. The PhotoKit tier's one free retry, which no real host shows, stays
   uncontracted.
+- **The crash reporter's mock records what its backend received** — each dump and each automatic event, shaped by the
+  registered handler, the latest context of each name riding it — and is the `CrashReporter` contract's `Fake` binding
+  up to its `RECEIVED` state, whose clauses the real SDK passes too. `ON_THE_WIRE` stays the real SDK's: breadcrumbs
+  riding the next event, the build facts, the install id and the size an event arrives at are what the SDK and the
+  adapter decide, and a mock imitating them would be licensed only by imitating.
+- **`ProcessMetricsMock`** plays the platform's process-metric reports: a report is held until the process listens and
+  handed over once, inline on the thread that hands it. Its operator delivers real reports with their identifying
+  values randomized once (`MetricReports.kt`). Only the JVM root composes it — the app's process; the extension has
+  none, as on a phone.
 - **`LibraryAssets`** builds the photos an operator adds — an ordinary 12 MP photo by default, and the kinds the
   selection policy excludes (or must not).
 - **`MockDevice`** is the device as mocks — one of each, in common code. The JVM root's `JvmMocks` is one; a rig build
@@ -897,8 +906,13 @@ The operating system's relaunch for a session's events hands the app a live comp
 stays the played OS's (`/os`, `MockEntryDriver`), on the mock rather than its face.
 
 The device's surroundings followed (`SurroundingsLevers.kt`, `BuildLevers.kt`), each needing its system mocked:
-`network`, `device-conditions`, `process-info`, `crash-reporter` (what its backend received) and `system-ui` (what the app
-handed the share sheet, the URL opener and the Settings page, and the levers that refuse a hand-over). Three differ:
+`network`, `device-conditions`, `process-info`, `crash-reporter` (what its backend received: the dumps, and the automatic
+events with the contexts that rode them) and `system-ui` (what the app handed the share sheet, the URL opener and the
+Settings page, and the levers that refuse a hand-over). Four differ:
+
+- `process-metrics` (`ProcessMetricsLevers`) needs the app composed over the process-metric reports' mock, which only
+  the JVM host does: a device's reports are the platform's own (MetricKit's on an iPhone, none on Android). It delivers
+  one report of a kind — quiet, a run the system ended, a freeze — and the app accounts for it inline, as on a phone.
 
 - `clock` (`ClockLevers`) also needs a clock no loop owns, so the JVM host refuses it: its loop moves the clock with the
   timers due on the way (`world.advanceTo`), and a lever that set the clock alone would leave them behind — the app would
@@ -1045,7 +1059,8 @@ still start app work (the state read refreshes the counts it reports). The mocks
 they record it — the screen mock each state the app shows, the backend mock each request that reaches it and each one
 an operator's hold parks, the transfer mocks each upload job, session transfer and download the app hands them, the
 library mock each hold it parks, each photo it creates and each album change, the system UI each hand-over (`Shared`, `UrlOpened`,
-`SettingsOpened`), the crash reporter each dump its backend received (`DumpReceived`, the whole dump) — on the thread
+`SettingsOpened`), the crash reporter each dump and each automatic event its backend received (`DumpReceived`, the
+whole dump; `EventReceived`, the event with its contexts) — on the thread
 that did it, so the order is the app's.
 
 ### Launch-time adapters
@@ -1056,7 +1071,8 @@ chosen at launch** (11h): its launch adapters. The systems are the mocks of `Moc
 `process-info`, `network`, `clock`, `wake`, `background-time`, `extension-registry`, `upload-queue`, `upload-session`,
 `downloads`, `lifecycle`, `links`, `push`, `screen`, `system-ui`. Not among them: the development controls (always the
 channel's), the extension's entry port (the channel already plays its invocations through the real adapter) and
-MetricKit (`host.processMetrics` feeds the real handler). Code: `:test:launch-adapters`.
+MetricKit (`host.processMetrics` feeds the real handler; the JVM host plays reports through `process-metrics`).
+Code: `:test:launch-adapters`.
 
 - **The adapters file** is `rig/adapters` in the App Group — the adapter choice: one `system=mock|real` per line, `#`
   comments, a missing system real. `adapters.choose(choice)` takes it, checks it, writes it and **exits the
@@ -1205,7 +1221,7 @@ the photo library's: a walk, an add or an import parked on an operator's hold �
 `LibraryAddHeld`, `LibraryImportParked` — a photo an import created (`LibraryAssetCreated`), an album the app made
 (`LibraryAlbumCreated`) and a photo that joined one, once per photo as a person would see it arrive
 (`LibraryJoinedAlbum`); the system UI's `Shared`, `UrlOpened` and `SettingsOpened`; the crash reporter's
-`DumpReceived`; the databases' `DatabaseFaulted`; the operating system's `WorldEvent.Os`; each face batch adds its face's), each
+`DumpReceived` and `EventReceived`; the databases' `DatabaseFaulted`; the operating system's `WorldEvent.Os`; each face batch adds its face's), each
 `Settled(now, nextTimer, state)`, and each lane rule broken (`LaneViolation`). A settle's `state` (`SettledState`) is what
 systems outside the app record at that moment — today `appStorageBytes`, the storage the app's files take, its
 diagnostics left out — read at exactly that settle, so `settled { … }` judges it and hands it on (`given` hands a later

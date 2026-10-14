@@ -52,6 +52,7 @@ class SentryCrashReporterContractTest {
         override val reaches = setOf(
             CrashReporterState.NOT_STARTED,
             CrashReporterState.STARTED,
+            CrashReporterState.RECEIVED,
             CrashReporterState.ON_THE_WIRE,
         )
 

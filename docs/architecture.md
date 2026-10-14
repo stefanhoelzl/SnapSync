@@ -535,9 +535,7 @@ coverage {
   run writes `test/integration/build/reports/integration-coverage/summary.md`: each module's measurement, its target,
   and the gap to the goal. A measurement that moves between two runs of the same code is a flaky test to fix, never a
   margin. The glue the zero gate excuses (below) is not excused here: a percentage absorbs it.
-  The wiring modules are held at 100/100, the suite being the test written for them, and the entry points too —
-  less the one line the suite cannot yet reach, `OnMetricReport`'s body (the JVM host delivers no process-metric
-  report), so their instructions sit at an exception of 99 until it can.
+  The wiring modules are held at 100/100, the suite being the test written for them, and the entry points too.
 - **`skipped(reason, packages)`: the one way to leave something out**, its reason read in review. WHERE it stands
   decides what it skips: in the entry, the module from every measurement; inside `unit { }` or `integration { }`, only
   that measurement. With `packages`, only those packages; without, everything at its level. Today it removes generated

@@ -84,6 +84,11 @@ class MockWorld(
      * or `null` where a lever may set it.
      */
     val clockOwner: String? = null,
+    /**
+     * Why the platform's process-metric reports cannot be played here — they are the platform's own on a device — or
+     * `null` where the app is composed over their mock.
+     */
+    val metricsRefusal: String? = METRICS_ARE_THE_PLATFORMS,
 ) {
     fun isMocked(system: MockedSystem): Boolean = system in mocked
 
@@ -295,3 +300,8 @@ private fun DeviceManifest.onWire(): Manifest = Manifest(
  */
 fun heldToken(store: SecureStore, deviceId: String?): String? =
     deviceId?.let { (store.read(TrustSlots.ATTEST_TOKEN) as? SecureStoreRead.Found)?.value }
+
+/** Why a device host plays no process-metric report: its app listens to the platform's own provider, or to none. */
+const val METRICS_ARE_THE_PLATFORMS: String =
+    "process-metric reports here are the platform's own — MetricKit's on an iPhone, none on Android — so there is no " +
+        "mock of them to play; the JVM host composes one"

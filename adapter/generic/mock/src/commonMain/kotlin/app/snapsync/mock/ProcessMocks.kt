@@ -1,11 +1,15 @@
 package app.snapsync.mock
 
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.CrashReporterLevers
 import app.snapsync.levers.Footprint
+import app.snapsync.levers.MetricReportKind
 import app.snapsync.levers.ProcessInfoLevers
 import app.snapsync.levers.ProcessInfoView
+import app.snapsync.levers.ProcessMetricsLevers
 import app.snapsync.levers.ReceivedDump
+import app.snapsync.levers.ReceivedEvent
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.SystemUiRecord
 import app.snapsync.levers.WorldEvent
@@ -16,9 +20,11 @@ import app.snapsync.model.MemoryFootprint
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.MetricNode
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.ProcessMetricPayload
+import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.SystemUi
 import app.snapsync.ports.ThreadLabel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +46,7 @@ fun interface WorldWatcher {
 class CrashReporterMock {
     internal val startedCell = MutableStateFlow(false)
     internal val dumps = ReceivedDumps()
+    internal val events = ReceivedEvents()
 
     /** Whether the observed process started reporting. In-process plumbing; the channel's is the [operator]. */
     val started: StateFlow<Boolean> = startedCell.asStateFlow()
@@ -47,13 +54,22 @@ class CrashReporterMock {
     /** Every diagnostic dump the observed processes transmitted, in order, as it left. In-process plumbing. */
     val sent: StateFlow<List<CrashEvent>> = dumps.cell.asStateFlow()
 
-    /** Tells [listener] each dump as the reporter's backend receives it (`docs/testing.md`, "How a test waits"). */
-    fun watch(listener: WorldWatcher) = dumps.watch(listener)
+    /** Every automatic event the observed processes transmitted, in order, as it left. In-process plumbing. */
+    val received: StateFlow<List<CrashEvent>> = events.cell.asStateFlow()
+
+    /**
+     * Tells [listener] each dump and each automatic event as the reporter's backend receives it (`docs/testing.md`,
+     * "How a test waits").
+     */
+    fun watch(listener: WorldWatcher) {
+        dumps.watch(listener)
+        events.watch(listener)
+    }
 
     /** The observed process's face. A new process has not started reporting until its root starts it. */
     fun port(): CrashReporter {
         startedCell.value = false
-        return InMemoryCrashReporter(startedCell, dumps)
+        return InMemoryCrashReporter(startedCell, dumps, events)
     }
 
     /** A face for a process nobody observes — the upload extension's. What it sends goes nowhere a test reads. */
@@ -67,7 +83,13 @@ class CrashReporterOperator internal constructor(private val mock: CrashReporter
     override suspend fun started(): Boolean = mock.started.value
 
     override suspend fun sent(): List<ReceivedDump> = mock.sent.value.map(::received)
+
+    override suspend fun received(): List<ReceivedEvent> = mock.received.value.map(::receivedEvent)
 }
+
+/** An automatic event as the reporter's backend shows it. */
+internal fun receivedEvent(event: CrashEvent): ReceivedEvent =
+    ReceivedEvent(message = event.message.orEmpty(), tags = event.tags, contexts = event.contexts)
 
 /** A dump as the reporter's backend shows it: its sections, as the app put them in. */
 internal fun received(dump: CrashEvent): ReceivedDump {
@@ -113,6 +135,47 @@ class ProcessInfoOperator internal constructor(private val mock: ProcessInfoMock
         protectedDataAvailable = mock.protectedData == Availability.AVAILABLE,
         footprint = mock.memory?.let { Footprint(it.footprintBytes, it.peakBytes, it.headroomBytes) },
     )
+}
+
+/**
+ * The platform's reports on the app's process — MetricKit's on an iPhone: a report is held until the process listens,
+ * then handed over exactly once, inline on the thread that hands it (the provider's own, on a device), as the port's
+ * one-shot delivery promises. A new process's face listens afresh; a report already handed over is gone.
+ */
+class ProcessMetricsMock {
+    private val lock = mockLock()
+    private var handlers: MetricHandlers? = null
+    private val held = mutableListOf<ProcessMetricPayload>()
+
+    /** The observed process's face: it has not listened until its composition registers its handlers. */
+    fun port(): ProcessMetrics {
+        lock.locked { handlers = null }
+        return Face()
+    }
+
+    /** The provider hands [report] to the listening process now, or holds it for the next one that listens. */
+    fun hand(report: ProcessMetricPayload) {
+        val listening = lock.locked { handlers.also { if (it == null) held += report } }
+        listening?.onReport?.deliver(report)
+    }
+
+    internal inner class Face : ProcessMetrics {
+        @CompositionOnly
+        override fun inbound(handlers: MetricHandlers) {
+            val due = lock.locked {
+                this@ProcessMetricsMock.handlers = handlers
+                held.toList().also { held.clear() }
+            }
+            due.forEach(handlers.onReport::deliver)
+        }
+    }
+
+    val operator: ProcessMetricsOperator = ProcessMetricsOperator(this)
+}
+
+/** Plays the platform handing the app a report — a real one, its identifying values randomized ([metricReport]). */
+class ProcessMetricsOperator internal constructor(private val mock: ProcessMetricsMock) : ProcessMetricsLevers {
+    override suspend fun deliver(report: MetricReportKind) = mock.hand(metricPayloadOf(metricReport(report)))
 }
 
 /** The device's wall clock and zone — stopped wherever the operator sets it, read at every call. */

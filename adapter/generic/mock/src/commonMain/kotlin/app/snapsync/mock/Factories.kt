@@ -32,7 +32,8 @@ fun inMemoryDeviceIntegrity(
 fun inMemoryCrashReporter(
     started: MutableStateFlow<Boolean>,
     dumps: MutableStateFlow<List<CrashEvent>>,
-): CrashReporter = InMemoryCrashReporter(started, ReceivedDumps(dumps))
+    events: MutableStateFlow<List<CrashEvent>> = MutableStateFlow(emptyList()),
+): CrashReporter = InMemoryCrashReporter(started, ReceivedDumps(dumps), ReceivedEvents(events))
 
 fun inMemoryCrashReporter(): CrashReporter = InMemoryCrashReporter()
 

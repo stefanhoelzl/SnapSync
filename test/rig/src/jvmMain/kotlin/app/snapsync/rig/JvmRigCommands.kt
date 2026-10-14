@@ -33,6 +33,7 @@ internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
     joinedEventId = { joinedEventId(rig) },
     controls = rig.mocks.devControls.operator,
     clockOwner = "the JVM host's loop owns the clock: `world.advanceTo` moves it, firing every timer due on the way",
+    metricsRefusal = null,
 )
 
 /** The JVM host's `/device` write commands. */
@@ -95,7 +96,7 @@ internal fun jvmHostServices(rig: JvmRig, hooks: RigHooks): List<HostService<*>>
             "the JVM host's files are the mocked disk's, which a test reads through the app's own outcomes",
         ),
         processMetrics = refusing(
-            "process-metric reports are MetricKit's; the JVM runs no process the operating system measures",
+            "the JVM host plays process-metric reports through the typed service `process-metrics`, `deliver`",
         ),
     ),
     galleryService(

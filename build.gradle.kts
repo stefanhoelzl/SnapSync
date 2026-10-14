@@ -103,8 +103,9 @@ coverage {
     ":domain:model" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
         // 72 → 71 in phase 4.1 (trust): the trust vocabulary the suite covered left for ports and data, so what stays
-        // is the same code measured without it — no test was lost.
-        integration(instructions = 71, branches = 40)
+        // is the same code measured without it — no test was lost. 71/40 → 76/46 when the JVM host began playing
+        // process-metric reports, which run the rule that reads them (`ProcessMetricsKt`).
+        integration(instructions = 76, branches = 46)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -120,7 +121,8 @@ coverage {
         )
         // Beside the JVM adapters runs the encrypted file format's cipher, held to Tink's reference implementation.
         unit(alsoCoveredBy = listOf(":adapter:generic:app", ":adapter:generic:mock", ":test:feature"))
-        integration(instructions = 81, branches = 59)
+        // 81/59 → 82/60 when the JVM host began playing process-metric reports (`ProcessAccount`, `FootprintSampler`).
+        integration(instructions = 82, branches = 60)
     }
     ":domain:wire" {
         skipped(
@@ -170,9 +172,7 @@ coverage {
     // The process's composition registers its metric reports' entry point; the mocks' suite drives it.
     ":domain:entrypoints" {
         unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
-        // Held to 100/100 as wiring is; its one missed line is `OnMetricReport`'s body, which the suite cannot deliver
-        // until the JVM host has a process-metrics lever. The phase that adds it raises this to 100.
-        integration(instructions = 99, branches = 100)
+        integration(instructions = 100, branches = 100)
     }
     ":domain:compose" {
         unit(alsoCoveredBy = listOf(":test:integration"))
