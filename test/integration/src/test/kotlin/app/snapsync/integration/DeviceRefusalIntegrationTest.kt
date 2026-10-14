@@ -9,6 +9,7 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -37,7 +38,7 @@ class DeviceRefusalIntegrationTest {
             refuse(reason)
             tokenless()
             // The refused phone holds no token, so opening the app tries to verify it — and is refused — before any tap.
-            device("relaunch")
+            host.relaunch()
             foreground()
             foreground() // the launch comes to the foreground: the wake that tries to verify the phone
             awaitState { (it.ui.layer as? Layer.CreateEvent)?.error == reason.message }
@@ -52,7 +53,7 @@ class DeviceRefusalIntegrationTest {
     )
     fun a_refused_create_says_why_and_leaves_the_phone_in_no_event() = rigTest {
         refuse(DeviceRefusal.DEVICE_MODIFIED)
-        user("create", "name" to Rig.EVENT_NAME, "startsAt" to Rig.WINDOW_START, "endsAt" to Rig.WINDOW_END)
+        createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
         // The tap itself tried to verify the phone first, so it learns the cause from this create.
         awaitState { (it.ui.layer as? Layer.CreateEvent)?.error == ScreenMessage.DEVICE_MODIFIED }
         assertFalse(state().ready.configResolved, "the device is still in no event")
@@ -67,7 +68,7 @@ class DeviceRefusalIntegrationTest {
     fun a_refusal_the_service_stops_making_heals_on_the_next_tap() = rigTest {
         refuse(DeviceRefusal.DEVICE_UNVERIFIABLE)
         tokenless()
-        device("relaunch")
+        host.relaunch()
         foreground()
         awaitState { (it.ui.layer as? Layer.CreateEvent)?.error == ScreenMessage.DEVICE_UNVERIFIABLE }
 
@@ -84,7 +85,7 @@ class DeviceRefusalIntegrationTest {
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase?.let { p -> p is JoinPhase.Detailed } == true }
 
-        user("confirmJoin")
+        confirmJoin()
         val refused = awaitState { state ->
             ((state.ui.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.DeviceRefused
         }
@@ -93,7 +94,7 @@ class DeviceRefusalIntegrationTest {
         assertFalse(refused.ready.configResolved)
 
         backend.refuseAttestation()
-        user("retryJoin")
+        tap(UiIntent.RetryJoin)
         awaitState { it.ready.configResolved }
     }
 
@@ -132,9 +133,9 @@ class DeviceRefusalIntegrationTest {
         backend.refuseAttestation(AttestationRefusal.DEVICE_UNVERIFIABLE, "certificate")
         tokenless()
 
-        user("reportRefusal")
-        user("sendDiagnostics", "note" to "offered")
-        user("sendDiagnostics", "note" to "from the menu")
+        tap(UiIntent.ReportRefusal(ScreenMessage.DEVICE_UNVERIFIABLE))
+        tap(UiIntent.SendDiagnostics("offered", "rig"))
+        tap(UiIntent.SendDiagnostics("from the menu", "rig"))
 
         val dumps = eventually(read = { reportedStates() }) { it.size >= 2 }
         val offered = dumps.getValue("offered")
@@ -154,7 +155,7 @@ class DeviceRefusalIntegrationTest {
      * accepted does.
      */
     private suspend fun Rig.tokenless() {
-        user("create", "name" to Rig.EVENT_NAME, "startsAt" to Rig.WINDOW_START, "endsAt" to Rig.WINDOW_END)
+        createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
         awaitState { (it.ui.layer as? Layer.CreateEvent)?.error != null }
     }
 

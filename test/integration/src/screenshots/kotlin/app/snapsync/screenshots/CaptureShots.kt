@@ -1,15 +1,12 @@
 package app.snapsync.screenshots
 
 import app.snapsync.control.RigClient
-import app.snapsync.control.done
 import app.snapsync.integration.Rig
 import app.snapsync.integration.Shot
 import app.snapsync.integration.reach
+import app.snapsync.levers.AdaptersLevers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import kotlin.system.exitProcess
 import kotlin.time.Duration
@@ -101,10 +98,10 @@ private class Capture(private val host: CaptureHost, private val out: File) {
         // The first launch runs whatever choice the app's shared area holds — none, on a fresh install: on iOS all real,
         // on Android all mocked in memory. Writing the choice exits the app; every later launch composes over it.
         host.launch()
-        rig.device("adapters", body = CHOICE)
+        rig.client.levers(AdaptersLevers).choose(CHOICE)
         host.awaitGone()
         host.launch()
-        val folder = rig.deviceJson("adapters/current").getValue("folder").jsonPrimitive.content
+        val folder = checkNotNull(rig.client.levers(AdaptersLevers).current().folder) { "the app host names no folder for its adapter choice" }
         Shot.entries.forEach { shot -> capture(shot, folder) }
     }
 
@@ -133,13 +130,10 @@ private class Capture(private val host: CaptureHost, private val out: File) {
     private suspend fun Rig.relaunchOnceSaved(folder: String) {
         val clock = "$folder/state/clock.json"
         val millis = Instant.parse(Shot.NOW).toEpochMilliseconds().toString()
-        within(10.seconds, "the clock's state was never saved to $clock") { host.read(clock)?.contains(millis) == true }
-        host.terminate()
-        host.launch()
+        within(10.seconds, "the clock's state was never saved to $clock") { this@Capture.host.read(clock)?.contains(millis) == true }
+        this@Capture.host.terminate()
+        this@Capture.host.launch()
     }
-
-    private suspend fun Rig.deviceJson(name: String) =
-        Json.parseToJsonElement(client.deviceVerb(name).done()).jsonObject
 
     private companion object {
         /**

@@ -1,6 +1,6 @@
 package app.snapsync.control.behaviour
 
-import app.snapsync.control.Reply
+import app.snapsync.control.Person
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.levers.BackendLevers
@@ -11,6 +11,8 @@ import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.FilesLevers
+import app.snapsync.levers.GalleryLevers
+import app.snapsync.levers.HostLevers
 import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.LinksLevers
@@ -20,6 +22,7 @@ import app.snapsync.levers.OsLevers
 import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.PushLevers
+import app.snapsync.levers.ScreenLevers
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
@@ -27,6 +30,7 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.time.LoopTime
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,7 +91,7 @@ class Behaviour internal constructor(
     private val world: WorldLevers,
     private val seen: MutableStateFlow<List<WorldEvent>>,
 ) {
-    private val acts = Acts(client)
+    private val acts = Acts(client) { what, shown -> awaitShown(what, shown) }
     private var acted = 0
     private var current: String = "the start"
     private var from: Int = 0
@@ -136,6 +140,15 @@ class Behaviour internal constructor(
         judge.keep(events)
     }
 
+    /** Returns once the screen's latest state satisfies [shown] — an event already seen, or the next one. */
+    private suspend fun awaitShown(what: String, shown: (UiState) -> Boolean) {
+        current = "$current, waiting for the screen to show $what"
+        seen.first { list ->
+            val latest = list.lastOrNull { it is WorldEvent.UiChanged } as WorldEvent.UiChanged?
+            latest != null && shown(latest.ui)
+        }
+    }
+
     /** What a hung behaviour reports: where it was, the events since, and why the app is not settled. */
     internal suspend fun hung(): String {
         val events = seen.value
@@ -159,7 +172,15 @@ class Given internal constructor(private val behaviour: Behaviour) {
  * What an act may do — and nothing else: what a person does, what the operating system does, what the device's
  * mocked systems do, and the clock. There is no read here: a test learns the outcome from the events.
  */
-class Acts internal constructor(private val client: RigClient) {
+class Acts internal constructor(
+    private val client: RigClient,
+    private val awaitShown: suspend (String, (UiState) -> Boolean) -> Unit,
+) : Person {
+    /** The screen a person taps. */
+    override val screen: ScreenLevers = client.levers(ScreenLevers)
+
+    override suspend fun awaitScreen(what: String, shown: (UiState) -> Boolean) = awaitShown(what, shown)
+
     /** The backend operator's levers — the backend mock's. */
     val backend: BackendLevers = client.levers(BackendLevers)
 
@@ -220,16 +241,16 @@ class Acts internal constructor(private val client: RigClient) {
     /** The links only an installation's store delivers. */
     val links: LinksLevers = client.levers(LinksLevers)
 
+    /** The host's process: its relaunch and reinstall, and the invite of an event it created. */
+    val host: HostLevers = client.levers(HostLevers)
+
+    /** The device's photo library. */
+    val gallery: GalleryLevers = client.levers(GalleryLevers)
+
     private val world: WorldLevers = client.levers(WorldLevers)
 
-    /** A person's command, which must be accepted. */
-    suspend fun user(name: String, vararg params: Pair<String, String>): String = client.user(
-        name,
-        mapOf(*params),
-    ).done()
-
-    /** A person's command, answered however the host answers it. */
-    suspend fun userReply(name: String, vararg params: Pair<String, String>): Reply = client.user(name, mapOf(*params))
+    /** An operating-system entry point, which must be answered. */
+    suspend fun os(root: String, member: String, arg: String? = null): String = client.os(root, member, arg).done()
 
     /** A device verb — a mocked system's lever — which must be honoured. */
     suspend fun device(name: String, vararg params: Pair<String, String>, body: String? = null): String =

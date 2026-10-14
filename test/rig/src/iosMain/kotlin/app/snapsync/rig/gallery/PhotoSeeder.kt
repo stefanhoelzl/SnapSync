@@ -1,5 +1,7 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.levers.SeedKind
+import app.snapsync.levers.SeedOutcome
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake

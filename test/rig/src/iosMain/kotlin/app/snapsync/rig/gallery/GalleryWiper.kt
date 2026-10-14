@@ -1,5 +1,8 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.levers.WipeOutcome
+import app.snapsync.levers.WipeScope
+import app.snapsync.levers.WipeWindow
 import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -23,78 +26,6 @@ import platform.Photos.PHCollectionListSubtypeAny
 import platform.Photos.PHCollectionListTypeFolder
 import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
-
-/**
- * What a wipe may delete.
- *
- * This was a sealed `WipeRequest` in `:domain` `model/`, parsed from `SNAPSYNC_WIPE_GALLERY` and tested
- * there, because a launch variable has nowhere else to be validated. Over HTTP an unrecognized scope is a
- * **bad request**, and a `400` naming the accepted values is a louder refusal than the log line the launch
- * form could manage — so the grammar is this enum and the refusal is the status code.
- *
- * The safety property is unchanged and is the reason this is value-checked at all while its siblings are
- * presence-checked: the wipe **cannot be undone**, so a stale or mistyped scope must refuse rather than
- * delete something.
- */
-enum class WipeScope(val includesAssets: Boolean, val includesAlbums: Boolean) {
-    ALL(includesAssets = true, includesAlbums = true),
-    ASSETS(includesAssets = true, includesAlbums = false),
-    ALBUMS(includesAssets = false, includesAlbums = true),
-    ;
-
-    companion object {
-        /** `null` for anything unrecognized — the caller answers `400` and names what is accepted. */
-        fun parse(raw: String?): WipeScope? = entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
-    }
-}
-
-/**
- * A sub-range of the matched assets to delete, instead of all of them.
- *
- * **This exists to bisect a delete that never completes**, and it is worth stating why bisecting is the
- * right tool rather than a shot in the dark. Every Apple report of this symptom (see [wipeGallery]) names a
- * *specific asset* whose deletion hangs, not a library-wide state — so the question "does deleting ANY of
- * these work?" and "which ONE of these poisons the batch?" are both answerable by submitting fewer assets,
- * and by nothing else. `limit=1` answers the first; walking `offset` answers the second.
- *
- * It may also be the **fix** rather than only the probe. One `PHAssetChangeRequest.deleteAssets` over a
- * whole library is one transaction, and a transaction that never completes takes every asset in it down —
- * so if one asset is poison, chunking is what lets the other 95 through. The wipe that worked on 2026-08-08
- * pushed 9525 assets in a single transaction, so chunking has never been exercised on this device.
- *
- * Absent, the whole matched `PHFetchResult` is submitted exactly as before — the lazy handle, not a
- * materialized copy. That distinction is deliberate: it keeps the un-windowed path byte-identical to the
- * one that has been measured, so a window can never be blamed for a result it did not change.
- */
-class WipeWindow(val offset: Long, val limit: Long?)
-
-/** What a wipe did, for the command's response. */
-class WipeOutcome(
-    val scope: WipeScope,
-    val matchedAssets: Long,
-    val matchedAlbums: Long,
-    val matchedFolders: Long,
-    val grant: String,
-    /**
-     * How many matched assets the app is actually ALLOWED to delete
-     * (`canPerformEditOperation(PHAssetEditOperationDelete)`).
-     *
-     * Asked before submitting, because PhotoKit does not refuse an impossible delete — it accepts the
-     * request and never completes it. An asset synced from iTunes or shared from iCloud is read-only to
-     * an app, so a library made of those produces exactly the symptom measured here: `assetsd` receives
-     * the request and nothing further ever happens.
-     */
-    val deletable: Long,
-    /** Matched assets by `PHAssetSourceType`, so a zero [deletable] says WHICH kind blocked it. */
-    val bySource: Map<String, Long>,
-    /** How many assets this run actually submitted for deletion — see [WipeWindow]. */
-    val selected: Long,
-    /** The window that produced [selected]; `null` when the whole match was submitted. */
-    val window: WipeWindow?,
-    val committed: Boolean,
-    val errorCode: Long?,
-    val errorDescription: String?,
-)
 
 /**
  * **Empty this device's photo library.** Irreversible.

@@ -1,6 +1,6 @@
 package app.snapsync.integration
 
-import app.snapsync.control.Reply
+import app.snapsync.control.Person
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.domain.asset.AssetId
@@ -15,6 +15,9 @@ import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.FilesLevers
+import app.snapsync.levers.GalleryLevers
+import app.snapsync.levers.GalleryView
+import app.snapsync.levers.HostLevers
 import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.NetworkLevers
@@ -23,16 +26,17 @@ import app.snapsync.levers.OsLevers
 import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.PushLevers
+import app.snapsync.levers.RigState
+import app.snapsync.levers.ScreenLevers
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WorldLevers
-import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost
-import app.snapsync.rig.RigState
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -75,7 +79,7 @@ fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {
  * recorded (the backend, the photo library, the operating system's jobs and its record of the storage the app takes, the
  * reporter, the pushes sent). Never the ledger: it is the app's own bookkeeping, and the protocol no longer carries it.
  */
-class Rig(val client: RigClient) {
+class Rig(val client: RigClient) : Person {
     /** The backend operator's levers and reads — the backend mock's, refused where the backend is real. */
     val backend: BackendLevers = client.levers(BackendLevers)
 
@@ -154,19 +158,26 @@ class Rig(val client: RigClient) {
     /** The operating system's background-time holds. */
     val backgroundTime: BackgroundTimeLevers = client.levers(BackgroundTimeLevers)
 
+    /** The screen a person taps. */
+    override val screen: ScreenLevers = client.levers(ScreenLevers)
+
+    /** The host's process: its relaunch and reinstall, and the invite of an event it created. */
+    val host: HostLevers = client.levers(HostLevers)
+
+    /** The device's photo library, read through the app's own policy. */
+    val photos: GalleryLevers = client.levers(GalleryLevers)
+
+    override suspend fun awaitScreen(what: String, shown: (UiState) -> Boolean) {
+        awaitState { shown(it.ui) }
+    }
+
     suspend fun state(): RigState = client.state()
 
     suspend fun awaitState(timeout: Duration = 10.seconds, until: (RigState) -> Boolean): RigState =
         client.awaitState(timeout, until)
 
-    /** A user command, which must be accepted. */
-    suspend fun user(name: String, vararg params: Pair<String, String>): String = client.user(
-        name,
-        mapOf(*params),
-    ).done()
-
-    /** A user command, answered however the host answers it. */
-    suspend fun userReply(name: String, vararg params: Pair<String, String>): Reply = client.user(name, mapOf(*params))
+    /** An operating-system entry point, which must be answered. */
+    suspend fun os(root: String, member: String, arg: String? = null): String = client.os(root, member, arg).done()
 
     /** A device verb, which must be honoured. */
     suspend fun device(name: String, vararg params: Pair<String, String>, body: String? = null): String =
@@ -181,7 +192,7 @@ class Rig(val client: RigClient) {
      * default one admits every capture date: the whole library, each with its verdict under that cutoff.
      */
     suspend fun gallery(resources: Boolean = false, cutoff: String = WHOLE_LIBRARY): GalleryView =
-        client.gallery(cutoff = cutoff, resources = resources)
+        photos.read(cutoff = cutoff, resources = resources)
 
     /** Wait until the joined screen's health satisfies [until]. */
     suspend fun awaitHealth(timeout: Duration = 10.seconds, until: (SyncHealth) -> Boolean): SyncHealth =

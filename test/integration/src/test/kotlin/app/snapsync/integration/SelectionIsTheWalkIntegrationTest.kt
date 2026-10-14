@@ -44,7 +44,7 @@ class SelectionIsTheWalkIntegrationTest {
         // Access narrows to two of the four, and the selection is read. Under a partial grant the extension withholds,
         // so the app's uploader is the one that runs: its selection change walks the read selection.
         permission(PhotoGrant.LIMITED)
-        device("uploaders", "app" to "on")
+        devControls.pin(app = true, extension = true)
         library.changeSelection(listOf("A", "B"))
         awaitSelection("A", "B")
 
@@ -76,7 +76,7 @@ class SelectionIsTheWalkIntegrationTest {
 
         // No selection read yet — and under a partial grant only the app's uploader may create.
         permission(PhotoGrant.LIMITED)
-        device("uploaders", "app" to "on")
+        devControls.pin(app = true, extension = true)
         foreground() // the foreground's tail runs the app's uploader, whose admission withholds on an unread selection
 
         assertEquals(setOf("A"), manifest(event)?.keys, "no row is deleted: the declaration stands")

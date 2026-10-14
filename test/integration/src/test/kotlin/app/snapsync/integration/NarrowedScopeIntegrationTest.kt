@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.model.assetIdFromUploadKey
 import kotlin.test.Test
@@ -7,7 +8,7 @@ import kotlin.test.assertEquals
 
 /**
  * **A narrowing takes effect on the bytes, not only on the manifest**, over the real stack: the composed core, the real
- * `UploadCycle`, the real `ReconfigureEvent` behind `/user/reconfigure`, with only PhotoKit faked.
+ * `UploadCycle`, the real `ReconfigureEvent` behind the settings' taps (`Person.reconfigure`), with only PhotoKit faked.
  *
  * Every other selection test reasons about a policy that was already in force when a resource was discovered. This
  * one changes the policy *after* the rows exist, which is the hole the defect shipped through: a ledger row records
@@ -31,7 +32,7 @@ class NarrowedScopeIntegrationTest {
 
     /** Raise the cutoff on the joined membership through the settings surface, as a member does. */
     private suspend fun Rig.narrow() {
-        user("reconfigure", "cutoff" to narrow)
+        reconfigure(Choices(cutoff = narrow))
         awaitState { it.ready.minPhotoDate?.let { d -> d >= narrow } == true }
     }
 

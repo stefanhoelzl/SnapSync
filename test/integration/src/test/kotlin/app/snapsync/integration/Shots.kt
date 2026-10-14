@@ -1,7 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.levers.PhotoGrant
-import app.snapsync.rig.RigState
+import app.snapsync.levers.RigState
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ShareCount

@@ -14,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * `rig`, the typed services from a shell: its commands derived from the declared services, each flag's text decoded by
@@ -30,6 +31,15 @@ class RigCliTest {
             assertEquals(oneShot, commands.methods.map { it.declared })
             commands.methods.forEach { assertEquals(it, commands.method(it.name)) }
         }
+    }
+
+    /** `--timeout` bounds one call in seconds; `0` lifts the bound — what a contract run or a big seed asks for. */
+    @Test
+    fun a_timeout_of_zero_lifts_the_bound() {
+        assertEquals(null, seconds("0"))
+        assertEquals(90.seconds, seconds("90"))
+        assertFailsWith<UsageError> { seconds("-1") }
+        assertFailsWith<UsageError> { seconds("soon") }
     }
 
     @Test

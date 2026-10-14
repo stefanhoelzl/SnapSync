@@ -1,25 +1,23 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.BackendCall
+import app.snapsync.levers.RigState
 import app.snapsync.levers.WorldEvent
-import app.snapsync.rig.RigState
+import app.snapsync.model.Direction
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.step
-import kotlinx.coroutines.delay
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.fail
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.TimeSource
 
 /**
  * Seam ↔ UI-state integration for the join gate over the real
@@ -86,7 +84,7 @@ class JoinGateIntegrationTest {
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.LoadFailed }
 
         backend.offline(false)
-        user("retryLoad")
+        tap(UiIntent.RetryLoad)
         awaitReady()
     }
 
@@ -103,7 +101,7 @@ class JoinGateIntegrationTest {
         awaitReady()
 
         backend.offline(true) // enrollment PUT now fails
-        user("confirmJoin")
+        confirmJoin()
         awaitState {
             ((it.ui.layer as? Layer.JoiningEvent)?.phase)?.step == JoinPhase.Detailed.Step.CommitFailed
         }
@@ -133,10 +131,10 @@ class JoinGateIntegrationTest {
 
         // Confirm = the leave alone. E is gone and the SAME pending join is now the full-screen
         // surface for F, where the choices are made.
-        user("confirmSwitch")
+        tap(UiIntent.ConfirmSwitch)
         awaitState { it.ui.layer is Layer.JoiningEvent && !it.ready.configResolved }
 
-        user("confirmJoin", "direction" to "download", "saveToAlbum" to "true")
+        confirmJoin(Choices(direction = Direction.DownloadOnly, saveToAlbum = true))
         val membership = awaitState { it.ready.eventId == next }.joined!!.membership
 
         assertEquals(next, membership.eventId) // switched
@@ -158,12 +156,12 @@ class JoinGateIntegrationTest {
         openLink(inviteLink(next))
         awaitSwitchReady()
 
-        user("confirmSwitch")
+        tap(UiIntent.ConfirmSwitch)
         // The join surface appears even though E's DELETE is still pending: the leave's local teardown
         // never waits on the departed event's fire-and-forget backend notify.
         awaitState { it.ui.layer is Layer.JoiningEvent && !it.ready.configResolved }
 
-        user("confirmJoin")
+        confirmJoin()
         // …and the new event's join completes with E's DELETE still hanging.
         awaitState { it.ready.eventId == next }
         assertNotNull(manifest(next), "enrolled in the new event")
@@ -175,7 +173,7 @@ class JoinGateIntegrationTest {
 
     @Test
     @Verifies(spec = "invite-link", requirement = "An invite opens the app on its join screen")
-    fun the_same_link_delivered_twice_enrolls_once() = rigTest {
+    fun the_same_link_delivered_twice_enrolls_once() = behaviour {
         // The platform delivers one opened link MORE THAN ONCE: measured on
         // build 687, the scene delegate's connection and SwiftUI's `.onOpenURL` both fired for the same
         // URL — ~130 ms apart on an iOS 18.7.9 cold launch, and 8 ms apart on iOS 26.6 while running.
@@ -184,35 +182,40 @@ class JoinGateIntegrationTest {
         //
         // autoJoin is the sharpest case: it auto-confirms with no surface and no tap, so before the
         // duplicate rungs it was the one path a doubled delivery would double-PROVISION.
-        val event = registerEvent(name = "Anna's Wedding")
-        val link = inviteLink(event, autoJoin = true)
+        val link = given {
+            val event = registeredEvent(name = "Anna's Wedding")
+            val link = step("the auto-joining invite", act = { inviteLink(event, autoJoin = true) }, until = {})
+            step("joined through it", act = { openLink(link) }, until = {
+                screen<Layer.Joined>()
+                settled { true }
+            })
+            link
+        }
 
-        openLink(link)
-        awaitState { it.ready.eventId == event }
-        // A real manifest, written by a real upload cycle.
-        shareOnePhoto(event)
-
-        openLink(link) // the duplicate delivery
-        awaitState { it.ready.eventId == event }
-
-        // Joined once, to that event — and the second delivery re-enrolled nothing: a second provision
-        // republishes an EMPTY manifest, so a surviving non-empty one is the oracle.
-        manifestHolds(event, "a duplicate delivery must not re-provision")
-        assertEquals(event, state().ready.eventId)
+        whenever { openLink(link) } // the duplicate delivery
+        // Joined once: a second provision would enrol again and republish the manifest — empty.
+        then {
+            never<WorldEvent.BackendReceived> { it.operation in REPROVISION }
+            neverScreen<Layer.JoiningEvent>()
+            settled { true }
+        }
     }
 
     @Test
     @Verifies(spec = "invite-link", requirement = "Reopening the current event's invite changes nothing")
-    fun re_scanning_the_joined_event_does_not_clobber_the_manifest() = rigTest {
-        val event = createAndJoin(name = "Anna's Wedding")
-        // A real (non-empty) manifest already written by a prior upload cycle.
-        shareOnePhoto(event)
+    fun re_scanning_the_joined_event_does_not_clobber_the_manifest() = behaviour {
+        val link = given {
+            val event = joinedEvent()
+            inFront()
+            inviteFor(event)
+        }
 
-        openLink(inviteLink(event)) // same event → no-op, no enrollment PUT
-
-        // Still joined, and the real manifest was NOT clobbered to empty.
-        manifestHolds(event, "the real manifest must survive a re-scan")
-        assertEquals(event, state().ready.eventId)
+        whenever { openLink(link) } // same event → no-op, no enrolment and no manifest
+        then {
+            never<WorldEvent.BackendReceived> { it.operation in REPROVISION }
+            neverScreen<Layer.JoiningEvent>()
+            settled { true }
+        }
     }
 
     @Test
@@ -356,28 +359,11 @@ class JoinGateIntegrationTest {
     private suspend fun Rig.departed(event: String): Boolean =
         backend.membership(event).departed
 
-    /** Upload one own photo to completion, so the backend holds a NON-empty manifest for [event]. */
-    private suspend fun Rig.shareOnePhoto(event: String) {
-        addPhoto("A")
-        uploadAll()
-        eventually(read = { manifest(event) }) { it != null && "A" in it }
-    }
-
-    /**
-     * Assert the backend's manifest for [event] keeps listing the shared photo for a bounded window — the negative
-     * a re-provision would break by republishing an empty manifest, asynchronously.
-     */
-    private suspend fun Rig.manifestHolds(event: String, what: String, window: Duration = 500.milliseconds) {
-        val deadline = TimeSource.Monotonic.markNow() + window
-        while (deadline.hasNotPassedNow()) {
-            val manifest = manifest(event)
-            if (manifest == null || "A" !in manifest) fail("$what — but the manifest became $manifest")
-            delay(50.milliseconds)
-        }
-    }
-
     private companion object {
         /** Past the retention deadline of every event these tests create. */
         const val PAST_EVERY_DEADLINE = "2027-01-01T00:00:00Z"
+
+        /** What a re-provision sends (`api/openapi.yaml`'s operationIds): an enrolment, and the manifest republished. */
+        val REPROVISION = setOf("joinEvent", "publishManifest")
     }
 }

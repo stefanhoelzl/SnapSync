@@ -1,6 +1,6 @@
 package app.snapsync.rig.gallery
 
-import app.snapsync.rig.CensusView
+import app.snapsync.levers.CensusView
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSPredicate
 import platform.Photos.PHAsset

@@ -31,9 +31,7 @@ import app.snapsync.rig.RigLaunch
 import app.snapsync.rig.RigServer
 import app.snapsync.rig.appTriggerGroup
 import app.snapsync.rig.deviceCommands
-import app.snapsync.rig.excludedUserCommands
 import app.snapsync.rig.extensionTriggerGroup
-import app.snapsync.rig.galleryReader
 import app.snapsync.rig.iosHostServices
 import app.snapsync.rig.iosRefusals
 import app.snapsync.rig.noMembershipRefusal
@@ -43,9 +41,8 @@ import app.snapsync.rig.rigCompletion
 import app.snapsync.rig.rigLaunch
 import app.snapsync.rig.rigPort
 import app.snapsync.rig.rigPortFilePath
-import app.snapsync.rig.servedServices
+import app.snapsync.rig.rigServices
 import app.snapsync.rig.startWhenReady
-import app.snapsync.rig.userCommands
 import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -102,8 +99,6 @@ internal fun platformAdapters(real: AppDevicePorts): PlatformAdapters {
 internal fun rootWake(log: Logger): IosWake = contractTappableWake(log)
 
 private fun startRig(launch: RigLaunch) = RigServer(
-    core = { SnapSyncRoot.app },
-    host = { SnapSyncRoot.host },
     hooks = iosHooks(launch),
     port = rigPort(NSProcessInfo.processInfo.environment["SNAPSYNC_RIG_PORT"]),
 ).start()
@@ -151,26 +146,34 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
             excluded = excludedExtensionTriggers(),
         ),
     ),
-    // The `/user` maps and the `/device` verbs are built in `:test:rig`, not here. Same reason every
+    // The `/device` verbs and the host's own services are built in `:test:rig`, not here. Same reason every
     // default and cast already lives there: this file is compiled INTO `:app:ios` and is scanned by the
     // shell gate, which permits no decisions — and a command map's bodies are full of them.
-    userCommands = userCommands(
-        dispatch = launch.ui::dispatch,
-        state = { SnapSyncRoot.host.screen.value },
-    ),
-    excludedUserCommands = excludedUserCommands(),
-    deviceCommands = deviceCommands(
-        launch = launch,
+    deviceCommands = deviceCommands(launch),
+    // The typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it —
+    // and this host's own, each method classified by the host: the gallery, the contracts, the played upload-job queue.
+    servicesOf = rigServices(
+        launch,
         core = { SnapSyncRoot.app },
+        host = { SnapSyncRoot.host },
         photoAccess = SnapSyncRoot.permission,
-        osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
         handleReport = SnapSyncRoot.process.processAccount::handle,
-    ),
-    readGallery = galleryReader(launch, core = { SnapSyncRoot.app }),
-    // The typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it.
-    services = launch.world.servedServices(
-        hostServices(launch),
-        reconcileUploads = { SnapSyncRoot.app.uploadTransitions.onOverrideChanged() },
+        // A thunk, never a method reference: see `extensionTriggerGroup` below.
+        processExtension = { UploadExtensionRoot.processRawValue() },
+        osServices = hostServices(launch),
+        contracts = deviceContracts() + appDeviceContracts(refusal = noMembershipRefusal { SnapSyncRoot.host }) +
+            extensionContractEntries(
+                membershipRefusal = noMembershipRefusal { SnapSyncRoot.host },
+                registry = { SnapSyncRoot.extensionRegistry },
+            ) +
+            simulatorAppContracts(
+                AppPush(
+                    adapter = SnapSyncRoot.pushNotifications,
+                    composed = { SnapSyncRoot.ports.pushNotifications.value },
+                    // The rig plays the composition here: the app's own handlers, handed back to its adapter.
+                    appHandlers = { SnapSyncRoot.app.pushHandlers() },
+                ),
+            ),
     ),
     // The registration the app runs over — the adapter choice's, where it mocks it.
     osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.ports.extensionRegistry.value }),
@@ -179,19 +182,6 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     // reads it with `xcrun simctl get_app_container <dev> app.snapsync data`, and the device tooling
     // already pulls from the same place — neither needs an entitlement to get at it.
     publishBoundPort = { bound -> writeTextFile(rigPortFilePath(documentsDirectory()), bound.toString()) },
-    contracts = deviceContracts() + appDeviceContracts(refusal = noMembershipRefusal { SnapSyncRoot.host }) +
-        extensionContractEntries(
-            membershipRefusal = noMembershipRefusal { SnapSyncRoot.host },
-            registry = { SnapSyncRoot.extensionRegistry },
-        ) +
-        simulatorAppContracts(
-            AppPush(
-                adapter = SnapSyncRoot.pushNotifications,
-                composed = { SnapSyncRoot.ports.pushNotifications.value },
-                // The rig plays the composition here: the app's own handlers, handed back to its adapter.
-                appHandlers = { SnapSyncRoot.app.pushHandlers() },
-            ),
-        ),
     // What this host refuses of the shared vocabulary, built in `:test:rig` (this file may hold no decisions).
     refusals = iosRefusals(launch, hostServices(launch)),
     recordLanded = ::recordLanded,

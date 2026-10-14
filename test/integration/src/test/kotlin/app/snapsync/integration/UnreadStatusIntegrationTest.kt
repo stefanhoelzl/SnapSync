@@ -1,9 +1,11 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
+import app.snapsync.model.Direction
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
@@ -45,7 +47,7 @@ class UnreadStatusIntegrationTest {
         // The cold launch: a joined membership, photos in the library, and nothing read yet. The neutral first frame,
         // and it STAYS neutral: nothing has been counted, so there is nothing to be settled about. Before the fix the
         // projection minted a snapshot from three placeholder zeros and this read `Joined(InSync)` within a dispatch.
-        whenever { device("relaunch") }
+        whenever { host.relaunch() }
         then {
             screen<Layer.Joined> { it.health == SyncHealth.Loading }
             neverInSync()
@@ -71,8 +73,8 @@ class UnreadStatusIntegrationTest {
         // selection policy's own no-upload branch without enumerating. The fix must not turn that legitimate
         // settled state into a permanent "Syncing…" (design D3).
         given {
-            joinedEvent("direction" to "download")
-            step("cold launched", act = { device("relaunch") }, until = { settled { true } })
+            joinedEvent(Choices(direction = Direction.DownloadOnly))
+            step("cold launched", act = { host.relaunch() }, until = { settled { true } })
             aPhotoTaken() // in the library, contributes nothing — must not hold the screen open
         }
 
@@ -86,7 +88,7 @@ class UnreadStatusIntegrationTest {
         given {
             joinedEvent()
             aPhotoTaken()
-            step("cold launched", act = { device("relaunch") }, until = { settled { true } })
+            step("cold launched", act = { host.relaunch() }, until = { settled { true } })
         }
 
         // A platform walk can throw. The status refresh bounds it, because the refresh runs as one child of the

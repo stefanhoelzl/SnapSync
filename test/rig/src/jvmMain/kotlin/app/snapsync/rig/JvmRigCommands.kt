@@ -36,47 +36,7 @@ internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
 )
 
 /** The JVM host's `/device` write commands. */
-internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world.honouredLevers() + mapOf(
-    "reset" to resetCommand(reset = { rig.mocks.devControls.reset() }),
-    // The per-uploader switch, on the mocked development controls. This host composes both uploaders, as a phone does,
-    // and both run; a test about one of them switches the other off here, since both would take the same photos.
-    "uploaders" to uploadersCommand(
-        pin = { rig.mocks.devControls.pin },
-        setPin = { rig.mocks.devControls.pin = it },
-        osSupportsOsDrivenUpload = { false },
-        permission = { rig.app.composed.core.photoPermission.value },
-        reconcile = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },
-    ),
-    "gallery/seed" to seedCommand { n, kind -> rig.world.seedMockLibrary(n, kind) },
-    // Process death and a cold foreground launch: the new app's host is assembled — its subscriptions installed, the
-    // startup sweep among them — and shown, as a phone brings a scene up. `scene=false` is a cold BACKGROUND launch
-    // instead — the operating system starting the process for a wake, with no scene: nothing builds a screen, and
-    // nothing that reads the screen (`/device/state`, `/user`) may be asked before an `onForeground` brings one up.
-    "relaunch" to RigCommand { params, _ ->
-        val scene = params["scene"]?.toBoolean() ?: true
-        rig.app.relaunch()
-        if (scene) rig.showScreen()
-        CommandResult.ok("""{"relaunched":true,"scene":$scene}""")
-    },
-    // An event's whole invite, as the device that created it shares it: its key — this world recorded every key the app
-    // drew and the event each keyed create made — rides in it for an encrypted event. What a test opens to play a
-    // member who was sent the invite; a phone has no such read, its key leaves only inside the invite it shares.
-    "invite" to RigCommand { params, _ ->
-        val event = params["event"] ?: return@RigCommand CommandResult.badRequest("event is required")
-        val id = EventId.parse(event) ?: return@RigCommand CommandResult.badRequest("event is not an event id")
-        val key = rig.mocks.eventKeys.keyOf(event)?.let(::encodeEventKey)
-        CommandResult.ok("""{"invite":"${encodeEventUrl(EventLinkPayload(id, key = key))}"}""")
-    },
-    // Deleting the app and installing it again: its files, databases and user defaults are gone, the Keychain, the
-    // photo library and the backend keep theirs (what a reinstall forgets), then a cold
-    // foreground launch as `relaunch` makes one.
-    "reinstall" to RigCommand { _, _ ->
-        rig.mocks.uninstallApp()
-        rig.app.relaunch()
-        rig.showScreen()
-        CommandResult.ok("""{"reinstalled":true}""")
-    },
-)
+internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world.honouredLevers()
 
 /**
  * The joined event: the one the screen's host currently holds, or — where no screen was built — the one the
@@ -84,11 +44,11 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
  * host assembled, so asking assembles no screen a background launch never built.
  *
  * The host's state, never what the screen was last shown: the screen is handed each state by a collector the host
- * launches, so it can lag the state `/device/state` reports — and a test that has just made the databases
+ * launches, so it can lag the state `host.state()` reports — and a test that has just made the databases
  * unreadable would then find no joined event at all.
  */
 internal fun joinedEventId(rig: JvmRig): String? {
-    val screenBuilt = rig.mocks.screen.operator.shown.value != null
+    val screenBuilt = rig.mocks.screen.shown.value != null
     val shown = if (screenBuilt) rig.app.composed.host.screen.value.layer as? Layer.Joined else null
     return shown?.membership?.eventId
         ?: (
@@ -100,27 +60,69 @@ internal fun joinedEventId(rig: JvmRig): String? {
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */
 internal fun jvmRefusals(
     rig: JvmRig,
-): Map<String, String> = rig.world.leverRefusals(rig.host) + RigVocabulary.adapterRefusals + buildMap {
-    put(
-        "device/gallery/wipe",
-        "a mocked photo library is fresh for every host, so there is nothing to wipe; the wipe's answer is PhotoKit's " +
-            "source, album and folder census, which a mocked library has no counterpart for",
-    )
-    put(
-        "device/gallery/add-moving",
-        "a mocked photo library holds no media bytes for a camera's files to become; its moving photo is " +
-            "POST /device/gallery/add?kind=live-photo",
-    )
-    put(
-        "device/process-metrics",
-        "process-metric reports are MetricKit's; the JVM runs no process the operating system measures",
-    )
-    put("device/disk", "the JVM host's files are the mocked disk's (POST /device/staging lists its staging)")
-    RigVocabulary.appHostCommands.filter { it.startsWith("device/upload-") }.forEach {
-        put(it, "the mocked upload-job queue is operated by the jobs verbs, not by an operating system to play")
-    }
-    put(
-        RigVocabulary.CONTRACT,
-        "host JVM runs no contract in-process: JVM contract bindings run under Gradle in the canonical check",
-    )
-}
+): Map<String, String> = rig.world.leverRefusals(rig.host)
+
+/**
+ * The JVM host's own services (`HostServices.kt`): the app's process is this JVM's, so it relaunches and reinstalls it;
+ * its library is the mock's, its upload-job queue the mock's own operator plays, and it composes no launch-time adapters
+ * and runs no contract in-process.
+ */
+internal fun jvmHostServices(rig: JvmRig, hooks: RigHooks): List<HostService<*>> = listOf(
+    rig.world.screenService(rig.lane, ui = null, shown = { rig.mocks.screen.shown.value }),
+    hostService(
+        hooks,
+        core = { rig.app.composed.core },
+        host = { rig.app.composed.host },
+        // Process death and a cold foreground launch: the new app's host is assembled — its subscriptions installed, the
+        // startup sweep among them — and shown, as a phone brings a scene up. A cold BACKGROUND launch builds no screen.
+        relaunch = honoured { scene ->
+            rig.app.relaunch()
+            if (scene) rig.showScreen()
+        },
+        // Deleting the app and installing it again: its files, databases and user defaults are gone, the Keychain, the
+        // photo library and the backend keep theirs (what a reinstall forgets), then a cold foreground launch.
+        reinstall = honoured {
+            rig.mocks.uninstallApp()
+            rig.app.relaunch()
+            rig.showScreen()
+        },
+        // This world recorded every key the app drew and the event each keyed create made, so the invite carries it.
+        invite = honoured { event ->
+            val id = EventId.parse(event) ?: throw IllegalArgumentException("'$event' is not an event id")
+            encodeEventUrl(EventLinkPayload(id, key = rig.mocks.eventKeys.keyOf(event)?.let(::encodeEventKey)))
+        },
+        disk = refusing(
+            "the JVM host's files are the mocked disk's, which a test reads through the app's own outcomes",
+        ),
+        processMetrics = refusing(
+            "process-metric reports are MetricKit's; the JVM runs no process the operating system measures",
+        ),
+    ),
+    galleryService(
+        seed = honoured { n, kind -> rig.world.seedMockLibrary(n, kind) },
+        wipe = refusing(
+            "a mocked photo library is fresh for every host, so there is nothing to wipe; the wipe's answer is PhotoKit's " +
+                "source, album and folder census, which a mocked library has no counterpart for",
+        ),
+        addMoving = refusing(
+            "a mocked photo library holds no media bytes for a camera's files to become; add a moving photo through the " +
+                "typed `library` service's `add` of kind `live-photo`",
+        ),
+        read = honoured(rig.world.mockGalleryReader()),
+    ),
+    refusedAdaptersService(
+        "the JVM root's caller chooses real or mock per port when it composes the app (JvmApp), so there is no launch " +
+            "adapter choice to read or write; an app host's rig build reads one at every start",
+    ),
+    contractService(
+        emptyList(),
+        refusal = "host JVM runs no contract in-process: JVM contract bindings run under Gradle in the canonical check",
+    ),
+    uploadJobService(
+        process = refusing("the mocked upload-job queue is the host's own; job sets cannot be handed in"),
+        perform = refusing(
+            "the mocked upload-job queue is played by its typed service (`upload-queue`), not by an operating system",
+        ),
+        extensionRecord = refusing("the extension's registration is mocked on this host; its record is the mock's"),
+    ),
+)

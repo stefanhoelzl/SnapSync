@@ -51,7 +51,7 @@ class HeldScreenIntegrationTest {
             event
         }
 
-        whenever { user("confirmJoin") }
+        whenever { confirmJoin() }
         then {
             screen<Layer.JoiningEvent> { it.step() == JoinPhase.Detailed.Step.Committing }
             event<WorldEvent.BackendHeld> { it.call == BackendCall.JOIN }
@@ -68,12 +68,7 @@ class HeldScreenIntegrationTest {
         given { step("the create held", act = { backend.hold(BackendCall.CREATE) }, until = {}) }
 
         whenever {
-            user(
-                "create",
-                "name" to Rig.EVENT_NAME,
-                "startsAt" to Rig.WINDOW_START,
-                "endsAt" to Rig.WINDOW_END,
-            )
+            createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
         }
         then {
             screen<Layer.CreatingEvent>()
@@ -93,7 +88,7 @@ class HeldScreenIntegrationTest {
             createdEvent()
             step(
                 "joined, nothing counted",
-                act = { user("confirmJoin") },
+                act = { confirmJoin() },
                 until = { screen<Layer.Joined> { it.health == SyncHealth.Loading } },
             )
         }

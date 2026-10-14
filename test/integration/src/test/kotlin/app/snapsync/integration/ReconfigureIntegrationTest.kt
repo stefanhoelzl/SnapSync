@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.model.Direction
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -8,7 +10,7 @@ import kotlin.test.assertTrue
 
 /**
  * Seam ↔ UI-state integration for the in-place reconfigure, driven through the
- * control protocol's `/user/reconfigure` over the real core — asserting **`UiState` AND observable outcomes**:
+ * control protocol's settings taps (`Person.reconfigure`) over the real core — asserting **`UiState` AND observable outcomes**:
  * enabling share uploads, album-on gathers what is already held, and turning receive off cancels in-flight downloads.
  */
 class ReconfigureIntegrationTest {
@@ -26,7 +28,7 @@ class ReconfigureIntegrationTest {
     )
     fun enabling_share_on_a_download_only_membership_starts_uploading_in_place() = rigTest {
         extensionUploadsOnly()
-        val event = createAndJoin("direction" to "download")
+        val event = createAndJoin(Choices(direction = Direction.DownloadOnly))
         addPhoto("A")
 
         // Download-only: the cycle uploads nothing (the privacy invariant).
@@ -34,7 +36,7 @@ class ReconfigureIntegrationTest {
         assertTrue(objects().isEmpty(), "download-only uploads nothing")
 
         // Reconfigure IN PLACE to Both — no leave, same eventId.
-        user("reconfigure", "direction" to "both")
+        reconfigure(Choices(direction = Direction.Both))
         val membership = awaitState { it.joined?.membership?.let { m -> m.shares && m.receives } == true }.joined!!.membership
         assertEquals(event, membership.eventId, "same membership, never left")
 
@@ -56,7 +58,7 @@ class ReconfigureIntegrationTest {
     fun turning_the_album_on_gathers_already_synced_photos_and_places_new_ones() = rigTest {
         extensionUploadsOnly()
         // Every membership carries a name; it titles the album.
-        createAndJoin("saveToAlbum" to "false", name = "Anna's Birthday")
+        createAndJoin(Choices(saveToAlbum = false), name = "Anna's Birthday")
         addPhoto("A")
 
         // A uploads while the album is OFF — so it is a genuinely already-synced photo.
@@ -66,7 +68,7 @@ class ReconfigureIntegrationTest {
 
         // Reconfigure the album ON: the album is ensured, and the gather places the
         // already-synced A — detached, so the Save returned before it ran.
-        user("reconfigure", "saveToAlbum" to "true")
+        reconfigure(Choices(saveToAlbum = true))
         val album = eventually(read = { albums() }) { it.size == 1 && it.single().assets == listOf("A") }.single()
         assertEquals("Anna's Birthday", album.name)
 
@@ -89,7 +91,7 @@ class ReconfigureIntegrationTest {
 
         // Enqueue an in-flight download, then turn RECEIVE off before it is staged.
         reconcile()
-        user("reconfigure", "direction" to "upload")
+        reconfigure(Choices(direction = Direction.UploadOnly))
         awaitState { it.joined?.membership?.let { m -> m.shares && !m.receives } == true }
 
         // The in-flight download was cancelled, so staging imports nothing, and the now-gated reconcile enqueues
@@ -118,7 +120,7 @@ class ReconfigureIntegrationTest {
         assertEquals(setOf("A"), manifest(event)?.keys, "the shared photo is listed to the event")
 
         // Neither direction, from the settings, no Save: the member stays in the event and nothing moves.
-        user("reconfigure", "direction" to "none")
+        reconfigure(Choices(direction = Direction.Neither))
         val membership = awaitState { it.joined?.membership?.let { m -> !m.shares && !m.receives } == true }.joined!!.membership
         assertEquals(event, membership.eventId, "same membership, never left")
 

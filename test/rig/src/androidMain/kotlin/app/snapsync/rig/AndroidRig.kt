@@ -28,9 +28,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
 import java.io.File
 import kotlin.system.exitProcess
 import kotlin.time.Clock
@@ -107,15 +105,15 @@ fun androidRigLaunch(real: AppDevicePorts, uploadBase: String): AndroidRigLaunch
  * no adapter for is refused, as is one breaking a rule over a system Android does not have at all; and
  * `/device/adapters/clear` deletes the choice file alone — the app exits, and its next start is [ANDROID_DEFAULT].
  */
-private fun adapterCommands(launch: AndroidRigLaunch): Map<String, RigCommand> = launchAdapterCommands(
+private fun adapterVerbs(launch: AndroidRigLaunch): AdapterVerbs =
     AdapterVerbs(
         files = launch.files,
         world = launch.world,
         launchLine = launch.description,
         current = {
-            putJsonArray(
-                "realAdapters",
-            ) { ANDROID_REAL_ADAPTERS.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.key)) } }
+            it.copy(
+                realAdapters = ANDROID_REAL_ADAPTERS.sortedBy { system -> system.ordinal }.map { system -> system.key },
+            )
         },
         refusal = { choice ->
             val broken = choice.incoherence(ANDROID_ABSENT_SYSTEMS) +
@@ -128,14 +126,11 @@ private fun adapterCommands(launch: AndroidRigLaunch): Map<String, RigCommand> =
         clear = {
             when (val deleted = launch.files.delete(FileArea.SHARED, AdapterFiles.CHOICE)) {
                 is FileResult.Ok, FileResult.NotFound -> Cleared.Done(AdapterFiles.CHOICE)
-                else -> Cleared.Failed(
-                    CommandResult(status = 500, body = """{"error":${jsonString("not cleared: $deleted")}}"""),
-                )
+                else -> Cleared.Failed("not cleared: $deleted")
             }
         },
         exit = { exitProcess(0) },
-    ),
-)
+    )
 
 /**
  * Start the control channel over the composed app, once the main thread is done with the root's own launch — the
@@ -151,7 +146,7 @@ fun AndroidRigLaunch.start(
     context: Context,
 ) {
     CoroutineScope(Dispatchers.Main).launch {
-        RigServer(core = core, host = host, hooks = hooks(core, host, lifecycle, links, context)).start()
+        RigServer(hooks = hooks(core, host, lifecycle, links, context)).start()
     }
 }
 
@@ -177,37 +172,19 @@ private fun AndroidRigLaunch.hooks(
             excluded = emptyMap(),
         ),
     ),
-    userCommands = userCommands(dispatch = ui::dispatch, state = { host().screen.value }),
-    excludedUserCommands = excludedUserCommands(),
-    deviceCommands = world.honouredLevers() + adapterCommands(this) + mapOf(
-        "reset" to resetCommand(reset = controls::reset),
-        "gallery/seed" to seedCommand { n, kind ->
-            if (world.isMocked(MockedSystem.LIBRARY)) world.seedMockLibrary(n, kind) else seedMediaStore(context, log, n, kind)
-        },
-    ) + if (world.isMocked(MockedSystem.LIBRARY)) {
-        emptyMap()
-    } else {
-        mapOf("gallery/add-moving" to addMovingCommand { photo -> addMotionPhoto(context, log, photo) })
-    },
-    readGallery = if (world.isMocked(
-            MockedSystem.LIBRARY,
-        )
-    ) {
-        world.mockGalleryReader()
-    } else {
-        androidGalleryReader(core, context)
-    },
+    deviceCommands = world.honouredLevers(),
     osExtensionEnabled = { null },
-    services = world.servedServices(
-        androidHostServices(world, lifecycle, links),
-        reconcileUploads = { core().uploadTransitions.onOverrideChanged() },
-    ),
+    servicesOf = { hooks ->
+        world.servedServices(
+            androidHostServices(world, lifecycle, links),
+            reconcileUploads = { core().uploadTransitions.onOverrideChanged() },
+        ) + world.servedHostServices(hostServices(hooks, core, host, context))
+    },
     publishBoundPort = { bound ->
         rigPortFilePath(
             context.filesDir.path,
         )?.let { File(it).writeText(bound.toString()) }
     },
-    contracts = emptyList(),
     refusals = androidRefusals(world, androidHostServices(world, lifecycle, links)),
     osExtensionNotApplicable = "Android has no upload extension: its uploader runs in the app's own process",
     osRecord = world.os::record,
@@ -267,39 +244,74 @@ private fun androidRefusals(
     RigVocabulary.extensionEntries.forEach {
         put(it, "Android has no upload extension: its uploader runs in the app's own process, and none is composed yet")
     }
-    put(
-        "device/relaunch",
-        "process death is the app's exit followed by a launch (`adb shell am force-stop`, then start it); the channel " +
-            "cannot relaunch the process it runs in",
-    )
-    put(
-        "device/reinstall",
-        "deleting the app ends the process the channel runs in; `adb uninstall` it and install it again from outside",
-    )
-    put(
-        "device/invite",
-        "an event's key leaves the creating phone only inside its invite: read it from the joined screen's share link",
-    )
-    put(
-        "device/gallery/wipe",
-        "a mocked library is fresh for every launch, and a real one's photos are the member's: seed or remove them " +
-            "through MediaStore (`adb push` and a scan), never through the channel",
-    )
-    if (world.isMocked(MockedSystem.LIBRARY)) {
-        put(
-            "device/gallery/add-moving",
-            "the photo library is mocked on this launch and holds no media bytes; its moving photo is the typed " +
-                "`library` service's `add` of kind `live-photo`",
-        )
-    }
-    put("device/uploaders", "Android composes no OS-driven upload mechanism for a switch to choose between")
-    put("device/process-metrics", "process-metric reports are MetricKit's; no Android provider is composed")
-    put("device/disk", "the disk census is iOS's (the App Group is not pullable there); an Android app's files are read with `adb shell run-as`")
-    RigVocabulary.appHostCommands.filter { it.startsWith("device/upload-") }.forEach {
-        put(it, "the mocked upload-job queue is operated by the jobs verbs, not by an operating system to play")
-    }
-    put(RigVocabulary.CONTRACT, "Android's port-contract bindings run as device tests (androidPlatformTest), not in the app")
 }
+
+/**
+ * The Android host's own services (`HostServices.kt`): its screen, its process — which the channel cannot relaunch,
+ * running in it — its library (MediaStore's where real, the mock's otherwise), its adapter choice, and no in-app
+ * contract or upload-job queue.
+ */
+private fun AndroidRigLaunch.hostServices(
+    hooks: RigHooks,
+    core: () -> AppCore,
+    host: () -> StatusContainerHost,
+    context: Context,
+): List<HostService<*>> = listOf(
+    world.screenService(Dispatchers.Main, ui, shown = { host().screen.value }),
+    hostService(
+        hooks,
+        core,
+        host,
+        relaunch = refusing(
+            "process death is the app's exit followed by a launch (`adb shell am force-stop`, then start it); the channel " +
+                "cannot relaunch the process it runs in",
+        ),
+        reinstall = refusing(
+            "deleting the app ends the process the channel runs in; `adb uninstall` it and install it again",
+        ),
+        invite = refusing(
+            "an event's key leaves the creating phone only inside its invite: read it from the joined screen's share link",
+        ),
+        disk = refusing(
+            "the disk census is iOS's (the App Group is not pullable there); read an Android app's files with `adb shell run-as`",
+        ),
+        processMetrics = refusing("process-metric reports are MetricKit's; no Android provider is composed"),
+    ),
+    if (world.isMocked(MockedSystem.LIBRARY)) {
+        galleryService(
+            seed = honoured { n, kind -> world.seedMockLibrary(n, kind) },
+            wipe = refusing("a mocked library is fresh for every launch"),
+            addMoving = refusing(
+                "the photo library is mocked on this launch and holds no media bytes; add a moving photo through the " +
+                    "typed `library` service's `add` of kind `live-photo`",
+            ),
+            read = honoured(world.mockGalleryReader()),
+        )
+    } else {
+        galleryService(
+            seed = honoured { n, kind -> seedMediaStore(context, log, n, kind) },
+            wipe = refusing(
+                "a real library's photos are the member's: remove them through MediaStore (`adb shell` and a scan), never " +
+                    "through the channel",
+            ),
+            addMoving = honoured { photo -> addMotionPhoto(context, log, photo) },
+            read = honoured(androidGalleryReader(core, context)),
+        )
+    },
+    adaptersService(adapterVerbs(this)),
+    contractService(
+        emptyList(),
+        refusal = "Android's port-contract bindings run as device tests (androidPlatformTest), not in the app",
+    ),
+    uploadJobService(
+        process = refusing(NO_UPLOAD_EXTENSION),
+        perform = refusing(NO_UPLOAD_EXTENSION),
+        extensionRecord = refusing(NO_UPLOAD_EXTENSION),
+    ),
+)
+
+private const val NO_UPLOAD_EXTENSION =
+    "Android has no upload extension and no OS-held upload-job queue: its uploader runs in the app's own process"
 
 /** The systems Android has a real adapter for — the only ones an adapter choice may leave real. */
 private val ANDROID_REAL_ADAPTERS: Set<MockedSystem> = setOf(

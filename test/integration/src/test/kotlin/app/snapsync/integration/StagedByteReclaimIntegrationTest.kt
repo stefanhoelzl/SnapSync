@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.model.Direction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -94,7 +96,7 @@ class StagedByteReclaimIntegrationTest {
 
     @Test
     fun an_upload_only_membership_still_reclaims_its_download_backlog() = rigTest {
-        createAndJoin("direction" to "upload")
+        createAndJoin(Choices(direction = Direction.UploadOnly))
         val seeded = seedLegacyBacklog("FQ")
 
         os.foreground()

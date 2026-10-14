@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.PhotoGrant
@@ -53,11 +54,11 @@ class ShareableCountIntegrationTest {
         create()
 
         // A candidate cutoff between the two dates admits only NEW — the preview tracks the chosen cutoff.
-        user("setRange", "cutoff" to "2026-05-16T00:00:00Z")
+        setRange(Choices(cutoff = "2026-05-16T00:00:00Z"))
         awaitShareCount(ShareCount.Ready(2))
-        user("setRange", "cutoff" to "2026-06-01T00:00:00Z")
+        setRange(Choices(cutoff = "2026-06-01T00:00:00Z"))
         awaitShareCount(ShareCount.Ready(1))
-        user("setRange", "cutoff" to "2026-06-12T00:00:00Z")
+        setRange(Choices(cutoff = "2026-06-12T00:00:00Z"))
         awaitShareCount(ShareCount.Ready(0))
     }
 

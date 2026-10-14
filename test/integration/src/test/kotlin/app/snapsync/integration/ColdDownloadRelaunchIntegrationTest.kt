@@ -33,7 +33,7 @@ class ColdDownloadRelaunchIntegrationTest {
         val storage = osRecord().appStorageBytes
         reconcile()
 
-        device("relaunch")
+        host.relaunch()
 
         // The relaunched process: nothing built but what the shell's relaunch entry point touches. The OS hands
         // it the download session's events. The entry holds the OS's completion handler until the session reports

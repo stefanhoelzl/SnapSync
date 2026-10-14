@@ -53,7 +53,7 @@ class EntryIntegrationTest {
     fun foreground_builds_the_screen_reconciles_then_runs_the_tail_and_re_arms() = rigTest {
         createAndJoin()
         foreignDevice(DEV_F, "FQ")
-        device("relaunch", "scene" to "false")
+        host.relaunch(scene = false)
         val before = osRecord()
         val armed = wake.wakes().heartbeatsScheduled
         assertFalse(before.screenShown, "precondition: a background launch builds no screen")
@@ -80,7 +80,7 @@ class EntryIntegrationTest {
     @Test
     @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it")
     fun a_background_cold_start_asks_for_the_push_token() = behaviour {
-        whenever { device("relaunch", "scene" to "false") }
+        whenever { host.relaunch(scene = false) }
         then { times(1) { event<WorldEvent.PushRegistered>() } }
     }
 
@@ -231,7 +231,7 @@ class EntryIntegrationTest {
     @Test
     fun the_dev_reset_voids_the_membership() = rigTest {
         createAndJoin()
-        device("reset")
+        devControls.reset()
         awaitState { !it.ready.configResolved }
     }
 
@@ -256,18 +256,18 @@ class EntryIntegrationTest {
         addPhoto("A")
         // The member picks A while the app's uploader is held back: selected, nothing created — the work a cold start
         // inherits. (Under a partial grant the extension withholds by its own admission; only the app's uploader runs.)
-        device("uploaders", "app" to "off")
+        devControls.pin(app = false, extension = true)
         library.changeSelection(listOf("A"))
         eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == setOf("A") }
         // The selection change's own tail holds background time until it ends; it must end while the uploader is off,
         // or its top-up — running after the switch below — creates what this precondition says was not created.
         awaitNoHolds()
         // Back on, with A never discovered: under a partial grant only the selection's own read discovers.
-        device("uploaders", "app" to "on")
+        devControls.pin(app = true, extension = true)
         assertEquals(0, appUploads().created, "precondition: nothing was created")
 
-        device("relaunch", "scene" to "false")
-        assertTrue(osRecord().selectionObserved, "composition opens the observer, a background start included")
+        host.relaunch(scene = false)
+        assertTrue(library.library().observing, "composition opens the observer, a background start included")
 
         // The start's own baseline read discovers A and creates it: a start that never read its selection withholds.
         assertEquals(listOf(primaryKey("A")), awaitAppUploads(1).live)
@@ -292,7 +292,11 @@ class EntryIntegrationTest {
         given {
             joinedEvent()
             sessionFull()
-            step("the app's uploader off", act = { device("uploaders", "app" to "off") }, until = { settled { true } })
+            step(
+                "the app's uploader off",
+                act = { devControls.pin(app = false, extension = true) },
+                until = { settled { true } },
+            )
         }
 
         whenever { uploadSession.complete() }

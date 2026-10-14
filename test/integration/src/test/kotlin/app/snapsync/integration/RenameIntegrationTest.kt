@@ -3,12 +3,13 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 /**
- * Seam ↔ UI-state integration for the event rename, driven through the control protocol's `/user/rename` over the
+ * Seam ↔ UI-state integration for the event rename, driven through the control protocol's rename tap (`Person.rename`) over the
  * real core — asserting **`UiState` AND backend outcomes**: the backend's event carries the new name, the joined
  * membership carries the ECHOED name (which is the heading the status screen renders), and a failure destroys
  * nothing.
@@ -24,7 +25,7 @@ class RenameIntegrationTest {
         val event = createAndJoin(name = "Weekend")
         assertEquals("Weekend", heading(), "the heading starts at the joined name")
 
-        user("rename", "name" to "Ana's 30th")
+        rename("Ana's 30th")
         awaitRename { it == RenameState.Succeeded }
 
         // The backend outcome: the shared marker the OTHER members read is what changed.
@@ -43,7 +44,7 @@ class RenameIntegrationTest {
     fun the_backend_TRIMMED_name_is_what_lands_everywhere() = rigTest {
         val event = createAndJoin(name = "Weekend")
 
-        user("rename", "name" to "   Ana's 30th   ")
+        rename("   Ana's 30th   ")
         awaitRename { it == RenameState.Succeeded }
 
         // One value, both places, no whitespace anywhere: the echo is the single source.
@@ -61,7 +62,7 @@ class RenameIntegrationTest {
         val event = createAndJoin(name = "Weekend")
 
         // Over the backend mock's (and the real backend's) 100-character bound.
-        user("rename", "name" to "x".repeat(101))
+        rename("x".repeat(101))
         val status = awaitRename { it is RenameState.Failed }
 
         assertEquals(RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED), status)
@@ -82,7 +83,7 @@ class RenameIntegrationTest {
         // The nightly sweep deleted the event — every subsequent request 404s.
         backend.sweep(event)
 
-        user("rename", "name" to "Ana's 30th")
+        rename("Ana's 30th")
         val status = awaitRename { it is RenameState.Failed }
 
         // A 404 arrives as the GENERIC failure — it has no distinct meaning here by design.
@@ -101,13 +102,13 @@ class RenameIntegrationTest {
     fun the_reset_command_clears_the_latch_so_a_second_rename_starts_clean() = rigTest {
         val event = createAndJoin(name = "Weekend")
 
-        user("rename", "name" to "First")
+        rename("First")
         awaitRename { it == RenameState.Succeeded }
         // A user command is an intent: `/user` answers before the reset lands, so the cleared latch is awaited.
-        user("renameStatusConsumed")
+        tap(UiIntent.RenameStatusConsumed)
         awaitRename { it == RenameState.Idle }
 
-        user("rename", "name" to "Second")
+        rename("Second")
         awaitRename { it == RenameState.Succeeded }
         assertEquals("Second", backendName(event))
         awaitState { it.joined?.membership?.name == "Second" }

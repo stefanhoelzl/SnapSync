@@ -1,4 +1,4 @@
-package app.snapsync.rig
+package app.snapsync.levers
 
 import kotlinx.serialization.Serializable
 

@@ -7,9 +7,13 @@ import app.snapsync.levers.BackendFault
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BackgroundTimeLevers
 import app.snapsync.levers.ClockLevers
+import app.snapsync.levers.ContractLevers
+import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.ExtensionAnswer
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.ExtensionRegistryLevers
+import app.snapsync.levers.GalleryLevers
+import app.snapsync.levers.HostLevers
 import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.LifecycleLevers
 import app.snapsync.levers.LinksLevers
@@ -19,12 +23,16 @@ import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.PushLevers
 import app.snapsync.levers.RigLevers
+import app.snapsync.levers.ScreenLevers
+import app.snapsync.levers.SeedKind
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.WakeLevers
+import app.snapsync.levers.WipeScope
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -68,10 +76,7 @@ class JvmHostProtocolTest {
     fun a_refused_build_reaches_the_update_required_screen() = onHost { client ->
         client.levers(BackendLevers).minAppVersion("100.0")
         // Any backend call carries the version; a create is the first a person makes.
-        client.user(
-            "create",
-            mapOf("name" to "Old", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"),
-        )
+        client.person().createEvent("Old", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
         val refused = client.awaitState { it.ui.layer is Layer.UpdateRequired }
         assertEquals("100.0", (refused.ui.layer as Layer.UpdateRequired).minimumVersion)
     }
@@ -132,27 +137,42 @@ class JvmHostProtocolTest {
         assertFailsWith<LeverRefused> { client.levers(ClockLevers).set("2026-01-01T00:00:00Z") }
     }
 
+    /**
+     * A person's one verb is a tap (`ScreenLevers`): any intent reaches the app as the screen hands it over, and what the
+     * screen shows is read back as the host's state reports it. The JVM host's screen is the mock's, so it plays the
+     * live screen too.
+     */
     @Test
-    fun a_user_command_the_build_cannot_honour_is_refused_not_accepted() = onHost { client ->
-        // The host's build reports, so the send is honoured here; the refusal path is exercised by the
-        // rename that names no event while nothing is joined.
-        val rename = assertIs<Reply.Refused>(client.user("rename", mapOf("name" to "x")))
-        assertTrue("no joined event" in rename.reason, rename.reason)
+    fun a_tap_reaches_the_app_and_the_screen_shows_what_it_did() = onHost { client ->
+        val ad = client.device()
+        assertTrue(
+            listOf("screen.tap", "screen.shown", "screen.live").all { it in ad.honoured },
+            ad.honoured.toString(),
+        )
+        val screen = client.levers(ScreenLevers)
+        screen.tap(UiIntent.CreateName("Tapped"))
+        val shown = client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.form?.name == "Tapped" }
+        assertEquals(shown.ui.layer, screen.shown()?.layer, "the screen shows what the host's state reports")
     }
 
+    /**
+     * A host's own service is classified method by method (`LeverNeed.HOST`): a method this host refuses throws its
+     * advertised reason, and is never invoked — the JVM host's library is a mock, which no PhotoKit wipe reaches.
+     */
     @Test
-    fun a_refused_verb_answers_409_with_the_advertised_reason() = onHost { client ->
+    fun a_refused_host_verb_answers_the_advertised_reason() = onHost { client ->
         val advertised = client.device().refused
-        val wipe = assertIs<Reply.Refused>(client.deviceVerb("gallery/wipe", mapOf("scope" to "all")))
-        assertEquals(advertised.getValue("device/gallery/wipe"), wipe.reason)
+        val wipe = assertFailsWith<LeverRefused> { client.levers(GalleryLevers).wipe(WipeScope.ALL) }
+        assertTrue(advertised.getValue("gallery.wipe") in wipe.message.orEmpty(), wipe.message)
+        assertTrue("gallery.seed" in client.device().honoured, "the same service honours what the host can do")
     }
 
     @Test
-    fun the_contract_verb_refuses_naming_the_JVM_host() = onHost { client ->
-        val run = assertIs<Reply.Refused>(client.contract("SecureStore"))
-        assertTrue("JVM" in run.reason, run.reason)
-        assertTrue(run.body.startsWith("refused: "), "the contract verb's refusal carries its marker")
-        assertIs<Reply.Refused>(client.contracts(), "the listing refuses rather than answering empty")
+    fun the_contracts_are_refused_naming_the_JVM_host() = onHost { client ->
+        val contract = client.levers(ContractLevers)
+        val run = assertFailsWith<LeverRefused> { contract.run("SecureStore") }
+        assertTrue("JVM" in run.message.orEmpty(), run.message)
+        assertFailsWith<LeverRefused>("the listing refuses rather than answering empty") { contract.list() }
     }
 
     @Test
@@ -256,10 +276,10 @@ class JvmHostProtocolTest {
         assertTrue("createEvent" in unknown.message.orEmpty(), unknown.message)
 
         backend.fail("createEvent", BackendFault.MAINTENANCE)
-        val create = mapOf("name" to "Faulty", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00")
-        client.user("create", create).done()
+        val person = client.person()
+        person.createEvent("Faulty", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
         client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.error != null }
-        client.user("create", create).done()
+        person.createEvent("Faulty", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
         client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
     }
 
@@ -269,19 +289,16 @@ class JvmHostProtocolTest {
      */
     @Test
     fun the_mobile_data_choice_is_the_devices_and_driven_from_the_menu() = onHost { client ->
-        client.user("mobileData", mapOf("on" to "false")).done()
+        client.person().tap(UiIntent.MobileData(false))
         client.awaitState { !it.ui.mobileData.on }
 
-        client.user(
-            "create",
-            mapOf("name" to "Data", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"),
-        ).done()
+        client.person().createEvent("Data", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
         client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
-        client.user("confirmJoin").done()
+        client.person().confirmJoin()
         val joined = client.awaitState { it.ready.configResolved }
         assertEquals(false, joined.ui.mobileData.on, "the joined event follows the device's choice")
 
-        client.user("mobileData", mapOf("on" to "true")).done()
+        client.person().tap(UiIntent.MobileData(true))
         client.awaitState { it.ui.mobileData.on }
     }
 
@@ -290,18 +307,15 @@ class JvmHostProtocolTest {
      * photo, run the extension's cycle, let the "OS" finish the transfer, and see the object on the backend.
      */
     private fun roundTrip(backend: String) = onHost(backend) { client ->
-        client.user(
-            "create",
-            mapOf("name" to "Rig Trip", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"),
-        ).done()
+        client.person().createEvent("Rig Trip", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
         client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
-        client.user("confirmJoin").done()
+        client.person().confirmJoin()
         val joined = client.awaitState { it.ready.configResolved }
         assertIs<Layer.Joined>(joined.ui.layer)
 
         // The extension's cycle alone: the app's uploader, running beside it as on a phone, would take the same photo.
-        client.deviceVerb("uploaders", mapOf("app" to "off")).done()
-        client.deviceVerb("gallery/seed", mapOf("n" to "1", "kind" to "policy")).done()
+        client.levers(DevControlsLevers).pin(app = false, extension = true)
+        client.levers(GalleryLevers).seed(1, SeedKind.POLICY)
         val extension = client.levers(ExtensionHostLevers)
         assertEquals(ExtensionAnswer.PROCESSING, extension.process(), "the cycle waits on the upload it started")
         assertEquals(1, client.levers(UploadQueueLevers).queue().created.size, "the cycle created the photo's job")
@@ -324,22 +338,23 @@ class JvmHostProtocolTest {
      */
     @Test
     fun a_relaunch_keeps_what_the_device_keeps() = onHost { client ->
-        client.user(
-            "create",
-            mapOf("name" to "Relaunch", "startsAt" to "2026-05-25T00:00:00", "endsAt" to "2026-06-20T00:00:00"),
-        ).done()
+        client.person().createEvent("Relaunch", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
         client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
-        client.user("confirmJoin").done()
+        client.person().confirmJoin()
         val event = client.awaitState { it.ready.configResolved }.ready.eventId
         // The extension's cycle alone: the app's uploader, running beside it as on a phone, would take the same photo.
-        client.deviceVerb("uploaders", mapOf("app" to "off")).done()
-        client.deviceVerb("gallery/seed", mapOf("n" to "1", "kind" to "policy")).done()
+        client.levers(DevControlsLevers).pin(app = false, extension = true)
+        client.levers(GalleryLevers).seed(1, SeedKind.POLICY)
         client.levers(ExtensionHostLevers).process()
 
-        client.deviceVerb("relaunch").done()
+        client.levers(HostLevers).relaunch()
 
         assertEquals(event, client.awaitState { it.ready.configResolved }.ready.eventId, "the membership survives")
-        assertEquals(1L, client.gallery(cutoff = "1970-01-01T00:00:00Z").census.total, "the library survives")
+        assertEquals(
+            1L,
+            client.levers(GalleryLevers).read(cutoff = "1970-01-01T00:00:00Z").census.total,
+            "the library survives",
+        )
         assertEquals(1, client.levers(UploadQueueLevers).queue().created.size, "the OS's upload job survives")
     }
 

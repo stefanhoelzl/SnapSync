@@ -1,10 +1,12 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.levers.AlbumKind
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
+import app.snapsync.model.Direction
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.Layer
@@ -42,7 +44,7 @@ class ReinstallIntegrationTest {
         val deleted = receivedAssetIds().first()
         library.remove(deleted)
 
-        device("reinstall")
+        host.reinstall()
         rejoin(event)
         downloadAll()
 
@@ -64,8 +66,8 @@ class ReinstallIntegrationTest {
         foreignDevice(OTHER, "FA", "FB")
         downloadAll()
 
-        device("reinstall")
-        rejoin(event, "direction" to "upload")
+        host.reinstall()
+        rejoin(event, Choices(direction = Direction.UploadOnly))
 
         cycle()
         assertEquals(0, jobs().created, "a share-only member shares none of the photos it received")
@@ -82,16 +84,16 @@ class ReinstallIntegrationTest {
         // An Android phone's albums are folders, and its event album's folder is no sharing candidate — so the
         // library read that recognises received photos must reach into it.
         library.albumKind(AlbumKind.FOLDER)
-        device("relaunch")
-        val event = createAndJoin("saveToAlbum" to "true")
+        host.relaunch()
+        val event = createAndJoin(Choices(saveToAlbum = true))
         awaitAlbum() // a download imports into the album only once it exists
         foreignDevice(OTHER, "FA", "FB")
         downloadAll()
         eventually(read = { albums().singleOrNull()?.assets?.size }) { it == 2 }
         val received = libraryTotal()
 
-        device("reinstall")
-        rejoin(event, "saveToAlbum" to "true")
+        host.reinstall()
+        rejoin(event, Choices(saveToAlbum = true))
         downloadAll()
 
         assertEquals(received, libraryTotal(), "the album's received photos are recognised, not received again")
@@ -114,17 +116,17 @@ class ReinstallIntegrationTest {
         // the member put there themselves is shared.
         extensionUploadsOnly()
         library.albumKind(AlbumKind.FOLDER)
-        device("relaunch")
-        val event = createAndJoin("saveToAlbum" to "true")
+        host.relaunch()
+        val event = createAndJoin(Choices(saveToAlbum = true))
         awaitAlbum()
         foreignDevice(OTHER, "FA", "FB")
         downloadAll()
         val album = eventually(read = { albums().singleOrNull() }) { it?.assets?.size == 2 }!!
 
-        device("reinstall")
+        host.reinstall()
         addPhoto("OWN")
         library.placeIn(album.id, "OWN")
-        rejoin(event, "saveToAlbum" to "true")
+        rejoin(event, Choices(saveToAlbum = true))
         uploadAll()
 
         assertEquals(setOf("OWN"), objects().mapTo(mutableSetOf()) { assetIdFromUploadKey(it).value })
@@ -142,7 +144,7 @@ class ReinstallIntegrationTest {
         foreignDevice(OTHER, "FA", "FB")
         downloadAll()
 
-        device("reinstall")
+        host.reinstall()
         addPhoto("OWN")
         backend.failUnion(true)
         rejoinUnrecognised(event)
@@ -175,7 +177,7 @@ class ReinstallIntegrationTest {
         foreignDevice(OTHER, "FA")
         downloadAll()
 
-        device("reinstall")
+        host.reinstall()
         backend.failUnion(true)
         rejoinUnrecognised(event)
         os.background()
@@ -198,7 +200,7 @@ class ReinstallIntegrationTest {
         foreignDevice(OTHER, "FA")
         downloadAll()
 
-        device("reinstall")
+        host.reinstall()
         backend.failUnion(true)
         rejoinUnrecognised(event)
         network.set(NetworkState.OFFLINE)
@@ -225,13 +227,13 @@ class ReinstallIntegrationTest {
         val received = receivedAssetIds()
 
         // Reinstalled, and rejoined under a partial grant that selects only the member's own photo.
-        device("reinstall")
+        host.reinstall()
         addPhoto("OWN")
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
         join()
         permission(PhotoGrant.LIMITED)
-        device("uploaders", "app" to "on")
+        devControls.pin(app = true, extension = true)
         selected("OWN")
         foreground()
         awaitAppUploads(1)
@@ -264,7 +266,7 @@ class ReinstallIntegrationTest {
         join()
         permission(PhotoGrant.GRANTED)
         foreground()
-        eventually(read = { UNRECOGNISED.findAll(client.logs()).count() }) { it >= 1 }
+        eventually(read = { UNRECOGNISED.findAll(host.logs()).count() }) { it >= 1 }
     }
 
     /** Run [trigger], then wait until a recognition pass has read the event and recorded what it found. */
@@ -279,10 +281,10 @@ class ReinstallIntegrationTest {
      * confirm raises the photo-access dialog (the reinstall reset the grant), the join goes ahead without waiting for
      * it, and the member answers it only afterwards — the order measured on the SE2.
      */
-    private suspend fun Rig.rejoin(event: String, vararg choices: Pair<String, String>) {
+    private suspend fun Rig.rejoin(event: String, choices: Choices = Choices()) {
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
-        join(*choices)
+        join(choices)
         // The downloads the rejoin planned finish while the dialog is still open, as they did on the phone.
         downloadSession.finish()
         val before = adoptions()
@@ -297,7 +299,7 @@ class ReinstallIntegrationTest {
     }
 
     /** How many adoption passes the app has logged — each join's, and each usable grant's. */
-    private suspend fun Rig.adoptions(): Int = ADOPTION.findAll(client.logs()).count()
+    private suspend fun Rig.adoptions(): Int = ADOPTION.findAll(host.logs()).count()
 
     /** The library's photos whose names carry the SnapSync mark — every received photo, by asset id. */
     private suspend fun Rig.receivedAssetIds(): List<String> =

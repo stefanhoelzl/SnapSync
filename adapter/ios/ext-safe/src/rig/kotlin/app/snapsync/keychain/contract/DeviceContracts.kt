@@ -97,7 +97,7 @@ internal class DeviceOfflineIntegrityBinding(
 }
 
 /**
- * The contracts the rig can run on a device, by name — `POST /contract/<name>` (`docs/architecture.md`,
+ * The contracts the rig can run on a device, by name — `contract.run(<name>)` (`docs/architecture.md`,
  * "The device run is reached through the rig and contained at compile time").
  *
  * Each answers with the recording to commit verbatim at `test/contracts/recordings/<name>@IOS_DEVICE_APP.rec`:

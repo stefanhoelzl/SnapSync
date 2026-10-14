@@ -1,9 +1,12 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
+import app.snapsync.model.Direction
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
@@ -28,7 +31,7 @@ class HeartbeatCadenceIntegrationTest {
     fun a_full_grant_sharer_keeps_looking_during_the_event() = behaviour(startAt = DURING) {
         given {
             photoAccess(PhotoGrant.GRANTED)
-            joinedEvent("direction" to "upload", startsAt = SHORT_START, endsAt = SHORT_END)
+            joinedEvent(Choices(direction = Direction.UploadOnly), startsAt = SHORT_START, endsAt = SHORT_END)
             // A second member that never settles keeps the event open after its end, so this one stays joined.
             fellowMember(DEV_F, "FQ")
         }
@@ -48,7 +51,7 @@ class HeartbeatCadenceIntegrationTest {
     fun a_full_grant_sharer_looks_in_hourly_after_the_end() = behaviour(startAt = DURING) {
         given {
             photoAccess(PhotoGrant.GRANTED)
-            joinedEvent("direction" to "upload", startsAt = SHORT_START, endsAt = SHORT_END)
+            joinedEvent(Choices(direction = Direction.UploadOnly), startsAt = SHORT_START, endsAt = SHORT_END)
             fellowMember(DEV_F, "FQ")
             step("past the end", act = { advance(UNTIL_AFTER_THE_END) }, until = { settled { true } })
         }
@@ -67,7 +70,7 @@ class HeartbeatCadenceIntegrationTest {
         scenario = "No wake arrives",
     )
     fun a_member_who_only_receives_idles_instead_of_keeping_no_wake() = behaviour {
-        given { joinedEvent("direction" to "download") }
+        given { joinedEvent(Choices(direction = Direction.DownloadOnly)) }
         whenever { heartbeat() }
         then {
             event<WorldEvent.WakeScheduled> { it.wake.cadence == IDLE }
@@ -119,7 +122,7 @@ class HeartbeatCadenceIntegrationTest {
             joinedEvent()
             step("a heartbeat run", act = { heartbeat() }, until = { settled { true } })
         }
-        whenever { user("leave") }
+        whenever { tap(UiIntent.LeaveEvent) }
         then {
             event<WorldEvent.WakeCancelled> { it.wake == HEARTBEAT }
             never<WorldEvent.WakeScheduled> { it.wake.wake == HEARTBEAT }

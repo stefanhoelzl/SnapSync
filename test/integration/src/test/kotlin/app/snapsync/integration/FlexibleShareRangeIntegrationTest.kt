@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.model.Direction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -27,7 +29,7 @@ class FlexibleShareRangeIntegrationTest {
         advanceTo(BEFORE_THE_START)
         create(startsAt = START, endsAt = END)
         // The member shares from the evening before the event, and took a photo then.
-        join("cutoff" to EVENING_BEFORE)
+        join(Choices(cutoff = EVENING_BEFORE))
         addPhoto("EVE", date = TAKEN_THE_EVENING_BEFORE)
 
         uploadAll()
@@ -47,7 +49,7 @@ class FlexibleShareRangeIntegrationTest {
     fun a_range_ending_after_the_event_is_settled_at_its_own_end() = rigTest {
         extensionUploadsOnly()
         advanceTo(DURING)
-        val event = createAndJoin("until" to TWO_DAYS_AFTER, startsAt = START, endsAt = END)
+        val event = createAndJoin(Choices(until = TWO_DAYS_AFTER), startsAt = START, endsAt = END)
 
         advanceTo(AFTER_THE_EVENT)
         cycle()
@@ -63,7 +65,8 @@ class FlexibleShareRangeIntegrationTest {
     fun a_range_ending_before_the_event_is_settled_before_the_event_ends() = rigTest {
         extensionUploadsOnly()
         advanceTo(DURING)
-        val event = createAndJoin("direction" to "upload", "until" to EARLY_END, startsAt = START, endsAt = END)
+        val event =
+            createAndJoin(Choices(direction = Direction.UploadOnly, until = EARLY_END), startsAt = START, endsAt = END)
 
         advanceTo(AFTER_THE_EARLY_END)
         cycle()

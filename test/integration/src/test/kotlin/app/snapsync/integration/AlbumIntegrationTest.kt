@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
@@ -9,6 +10,7 @@ import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.AlbumStyle
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -102,13 +104,13 @@ class AlbumIntegrationTest {
     )
     fun on_android_a_photo_received_with_the_album_off_is_gathered_when_it_is_turned_on() = rigTest {
         androidLibrary()
-        createAndJoin("saveToAlbum" to "false")
+        createAndJoin(Choices(saveToAlbum = false))
         addPhoto("A")
         foreignDevice(DEV_F, "FQ")
         downloadAll()
         assertTrue(albums().isEmpty(), "no album while it is off: the photo is in the camera folder")
 
-        user("reconfigure", "saveToAlbum" to "true")
+        reconfigure(Choices(saveToAlbum = true))
         awaitState { it.joined?.membership?.savesToAlbum == true }
 
         eventually<List<String>?>(read = { albums().singleOrNull()?.assets }) { it == listOf(RECEIVED) }
@@ -118,7 +120,7 @@ class AlbumIntegrationTest {
     @Verifies(spec = "event-album", requirement = "A deleted album is recreated only when the member asks")
     fun on_android_a_deleted_album_stays_deleted_until_the_member_turns_it_on_again() = rigTest {
         androidLibrary()
-        createAndJoin("saveToAlbum" to "true", name = "Party")
+        createAndJoin(Choices(saveToAlbum = true), name = "Party")
         awaitAlbum()
         foreignDevice(DEV_F, "FQ")
         downloadAll()
@@ -131,9 +133,9 @@ class AlbumIntegrationTest {
         assertEquals(listOf(first.id), albums().map { it.id }, "no album was brought back")
         assertTrue(albums().single().assets.isEmpty(), "the later photo arrived in the camera folder")
 
-        user("reconfigure", "saveToAlbum" to "false")
+        reconfigure(Choices(saveToAlbum = false))
         awaitState { it.joined?.membership?.savesToAlbum == false }
-        user("reconfigure", "saveToAlbum" to "true")
+        reconfigure(Choices(saveToAlbum = true))
         awaitState { it.joined?.membership?.savesToAlbum == true }
 
         eventually<List<String>?>(read = {
@@ -154,7 +156,7 @@ class AlbumIntegrationTest {
             gateOpenOn(event)
         }
 
-        whenever { user("confirmJoin", "saveToAlbum" to "true") }
+        whenever { confirmJoin(Choices(saveToAlbum = true)) }
         then {
             screen<Layer.Joined>()
             never<WorldEvent.LibraryAlbumCreated>() // the stored album is reused, never duplicated
@@ -165,20 +167,20 @@ class AlbumIntegrationTest {
     @Verifies(spec = "event-album", requirement = "Turning the album on gathers what is already there")
     fun neither_a_save_nor_a_join_waits_for_the_gather_it_starts() = rigTest {
         extensionUploadsOnly()
-        val event = createAndJoin("saveToAlbum" to "false")
+        val event = createAndJoin(Choices(saveToAlbum = false))
         addPhoto("A")
         uploadAll()
         library.holdAdds(on = true)
 
         // If the Save awaited the gather, it would never land: every add is held.
-        user("reconfigure", "saveToAlbum" to "true")
+        reconfigure(Choices(saveToAlbum = true))
         awaitState { it.joined?.membership?.savesToAlbum == true }
         assertTrue(awaitAlbum().single().assets.isEmpty(), "the Save landed with its gather still held")
         library.holdAdds(on = false)
         eventually(read = { albums().single().assets }) { it == listOf("A") }
 
         // A join's gather: a photo received in this event, whose import is permanent across a leave.
-        user("reconfigure", "saveToAlbum" to "false")
+        reconfigure(Choices(saveToAlbum = false))
         awaitState { it.joined?.membership?.savesToAlbum == false }
         foreignDevice(DEV_F, "FQ")
         downloadAll()
@@ -188,7 +190,7 @@ class AlbumIntegrationTest {
 
         openLink(inviteLink(event))
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
-        join("saveToAlbum" to "true") // returns once joined
+        join(Choices(saveToAlbum = true)) // returns once joined
 
         assertEquals(placed, albums().single().assets.size, "the join landed with its gather still held")
         library.holdAdds(on = false)
@@ -196,7 +198,7 @@ class AlbumIntegrationTest {
     }
 
     /** This device leaves its event. */
-    private suspend fun Given.left() = step("left", act = { user("leave") }, until = { settled { true } })
+    private suspend fun Given.left() = step("left", act = { tap(UiIntent.LeaveEvent) }, until = { settled { true } })
 
     /** The join gate open on [event], through its invite, ready to join. */
     private suspend fun Given.gateOpenOn(event: String) {
@@ -211,7 +213,7 @@ class AlbumIntegrationTest {
     /** The photo library plays an Android phone's, whose albums are folders — read once at host assembly. */
     private suspend fun Rig.androidLibrary() {
         library.albumKind(AlbumKind.FOLDER)
-        device("relaunch")
+        host.relaunch()
     }
 
     private companion object {

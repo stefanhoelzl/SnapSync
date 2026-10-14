@@ -8,6 +8,7 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.presentation.url
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -30,12 +31,12 @@ class HandOffIntegrationTest {
         lateinit var joined: Seen<Layer.Joined>
         given {
             createdEvent()
-            step("joined", act = { user("confirmJoin") }, until = {
+            step("joined", act = { confirmJoin() }, until = {
                 joined = screen<Layer.Joined> { it.inviteUrl?.contains("#k=") == true }
             })
         }
 
-        whenever { user("shareInvite") }
+        whenever { tap(UiIntent.ShareInvite) }
         then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl } }
     }
 
@@ -46,14 +47,14 @@ class HandOffIntegrationTest {
         scenario = "Reading the Privacy Policy",
     )
     fun a_menu_link_opens_its_page_outside_the_app() = behaviour {
-        whenever { user("openLink", "link" to AppLink.PRIVACY_POLICY.name) }
+        whenever { tap(UiIntent.OpenLink(AppLink.PRIVACY_POLICY)) }
         then { event<WorldEvent.UrlOpened> { it.url == AppLink.PRIVACY_POLICY.url } }
     }
 
     @Test
     @Verifies(spec = "photo-access", requirement = "The system's access dialog is raised only by a deliberate tap")
     fun opening_settings_opens_the_app_s_settings_page_once() = behaviour {
-        whenever { user("openSettings") }
+        whenever { tap(UiIntent.OpenSettings) }
         then { times(1) { event<WorldEvent.SettingsOpened>() } }
     }
 
@@ -61,15 +62,15 @@ class HandOffIntegrationTest {
     fun choosing_more_photos_presents_the_platform_s_picker() = rigTest {
         permission(PhotoGrant.LIMITED)
 
-        user("choosePhotos")
+        tap(UiIntent.ChoosePhotos)
 
-        assertEquals(1, awaitOs { it.pickersShown > 0 }.pickersShown)
+        assertEquals(1, eventually(read = { library.library().pickersShown }) { it > 0 })
     }
 
     @Test
     fun the_operating_system_ending_an_extension_invocation_is_recorded_as_an_ordinary_end() = rigTest {
         extensionHost.terminate()
 
-        eventually(read = { client.logs() }) { logs: String -> "the OS ended this invocation" in logs }
+        eventually(read = { host.logs() }) { logs: String -> "the OS ended this invocation" in logs }
     }
 }

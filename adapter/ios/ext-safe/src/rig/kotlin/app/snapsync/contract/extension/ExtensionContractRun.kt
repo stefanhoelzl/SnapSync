@@ -27,7 +27,7 @@ private val PER_CALL: Duration = 6.minutes
 
 /**
  * The app-side entries of the contracts that record inside the upload extension, on [Host.IOS_DEVICE_PHOTOKIT_EXT].
- * `POST /contract/<name>?host=IOS_DEVICE_PHOTOKIT_EXT` selects one.
+ * `contract.run(name, host = "IOS_DEVICE_PHOTOKIT_EXT")` selects one.
  *
  * [membershipRefusal] is the rig's no-membership precondition; [registry] is the app's registration port, which answers
  * `Unsupported` on an OS below the one that carries the extension.

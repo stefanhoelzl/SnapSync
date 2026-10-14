@@ -7,6 +7,10 @@ import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterParse
 import app.snapsync.launchadapters.LaunchAdapters
+import app.snapsync.levers.AdaptersLevers
+import app.snapsync.levers.AdaptersWritten
+import app.snapsync.levers.CurrentAdapters
+import app.snapsync.levers.LeverRefused
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.ConfigRead
@@ -23,11 +27,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonObjectBuilder
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonArray
 import kotlin.time.Duration.Companion.milliseconds
 
 /*
@@ -108,8 +107,8 @@ internal sealed interface Cleared {
     /** Cleared: [what] is the path or name that is gone. */
     class Done(val what: String) : Cleared
 
-    /** Not cleared: the [answer] says why. */
-    class Failed(val answer: CommandResult) : Cleared
+    /** Not cleared: [why] says why — [refused] when this host cannot, rather than failed to. */
+    class Failed(val why: String, val refused: Boolean = false) : Cleared
 }
 
 /** Where one app host's adapter choice verbs differ from the other's. */
@@ -117,10 +116,10 @@ internal class AdapterVerbs(
     /** The real files adapter the adapter choice lives on. */
     val files: Files,
     val world: MockWorld,
-    /** `/device/adapters/current`'s `launch`: this launch's choice, in one line. */
+    /** [CurrentAdapters.launch]: this launch's choice, in one line. */
     val launchLine: String,
-    /** This host's own fields of `/device/adapters/current`, written after `mocked`. */
-    val current: JsonObjectBuilder.() -> Unit,
+    /** This host's own facts of [CurrentAdapters]: the iOS host's refusal reasons, the Android host's real adapters. */
+    val current: (CurrentAdapters) -> CurrentAdapters,
     /** Why this host cannot compose [AdapterChoice], as its refusal reads — or `null` when it can. */
     val refusal: (AdapterChoice) -> String?,
     /** Write the mocked systems' changed state now, before an exit. */
@@ -134,77 +133,55 @@ internal class AdapterVerbs(
 )
 
 /**
- * The adapter choice verbs (`docs/testing.md`, "Launch-time adapters"):
+ * The adapter choice verbs (`docs/testing.md`, "Launch-time adapters"), as the typed `adapters` service:
  *
- * - `POST /device/adapters/current` — the choice this launch runs, the file behind it and the folder it lives in, and
- *   the host's own facts ([AdapterVerbs.current]).
- * - `POST /device/adapters` — the body is the next choice, as the adapters file holds it. One that does not parse
- *   answers `400`; one this host cannot compose ([AdapterVerbs.refusal]), or one written while the device is a member
- *   of an event, `409` — a membership would be carried from one set of systems into another, a real event's into a
- *   mocked backend or the reverse. Written, the state saved, the app EXITS; the next start reads it.
- * - `POST /device/adapters/clear` — [AdapterVerbs.clear], and the app exits.
+ * - `current` — the choice this launch runs, the file behind it and the folder it lives in, and the host's own facts
+ *   ([AdapterVerbs.current]).
+ * - `choose` — the next choice, as the adapters file holds it. One that does not parse is a bad argument; one this host
+ *   cannot compose ([AdapterVerbs.refusal]), or one written while the device is a member of an event, is refused — a
+ *   membership would be carried from one set of systems into another, a real event's into a mocked backend or the
+ *   reverse. Written, the state saved, the app EXITS once the answer has left; the next start reads it.
+ * - `clear` — [AdapterVerbs.clear], and the app exits.
  */
-internal fun launchAdapterCommands(verbs: AdapterVerbs): Map<String, RigCommand> = mapOf(
-    "adapters/current" to RigCommand { _, _ -> CommandResult.ok(currentAdapters(verbs)) },
-    "adapters" to RigCommand { _, body ->
-        val text = body?.takeIf { it.isNotBlank() }
-            ?: return@RigCommand CommandResult.badRequest("the body is the choice: one `system=mock|real` per line")
-        when (val parsed = AdapterChoice.parse(text)) {
-            is AdapterParse.Invalid -> CommandResult.badRequest(parsed.problems.joinToString("; "))
-            is AdapterParse.Parsed -> {
-                val refusal = verbs.refusal(parsed.choice)
-                val joined = verbs.world.joinedEventId()
-                when {
-                    refusal != null -> CommandResult.refused(refusal)
-                    joined != null -> CommandResult.refused(
-                        "this device is a member of event $joined; an adapter choice change would carry the membership into another " +
-                            "set of systems. Leave, or reset (POST /device/reset), first",
-                    )
-                    else -> writeAndExit(verbs, parsed.choice)
-                }
+internal fun adaptersService(verbs: AdapterVerbs): HostService<AdaptersLevers> = HostService(
+    AdaptersLevers,
+    object : AdaptersLevers {
+        override suspend fun current(): CurrentAdapters = verbs.current(
+            CurrentAdapters(
+                launch = verbs.launchLine,
+                mocked = verbs.world.mocked.sortedBy { it.ordinal }.map { it.key },
+                file = verbs.files.read(FileArea.SHARED, AdapterFiles.CHOICE).let { it as? FileResult.Ok }?.value
+                    ?.decodeToString(),
+                folder = (verbs.files.locate(FileArea.SHARED, AdapterFiles.FOLDER) as? FileResult.Ok)?.value,
+                systems = MockedSystem.entries.map { "${it.key}: ${it.what}" },
+            ),
+        )
+
+        override suspend fun choose(choice: String): AdaptersWritten {
+            val parsed = when (val read = AdapterChoice.parse(choice)) {
+                is AdapterParse.Invalid -> throw IllegalArgumentException(read.problems.joinToString("; "))
+                is AdapterParse.Parsed -> read.choice
             }
+            verbs.refusal(parsed)?.let { throw LeverRefused(it) }
+            verbs.world.joinedEventId()?.let { joined ->
+                throw LeverRefused(
+                    "this device is a member of event $joined; an adapter choice change would carry the membership into " +
+                        "another set of systems. Leave, or reset, first",
+                )
+            }
+            verbs.save()
+            val written = verbs.files.write(FileArea.SHARED, AdapterFiles.CHOICE, parsed.render().encodeToByteArray())
+            check(written is FileResult.Ok) { "not written: $written" }
+            exitSoon(verbs.exit)
+            return AdaptersWritten(written = parsed.toString(), next = verbs.next)
         }
-    },
-    "adapters/clear" to RigCommand { _, _ ->
-        when (val cleared = verbs.clear()) {
-            is Cleared.Failed -> cleared.answer
-            is Cleared.Done -> {
-                exitSoon(verbs.exit)
-                CommandResult.ok("""{"cleared":${jsonString(cleared.what)},"exiting":true}""")
-            }
+
+        override suspend fun clear(): String = when (val cleared = verbs.clear()) {
+            is Cleared.Failed -> if (cleared.refused) throw LeverRefused(cleared.why) else error(cleared.why)
+            is Cleared.Done -> cleared.what.also { exitSoon(verbs.exit) }
         }
     },
 )
-
-private fun writeAndExit(verbs: AdapterVerbs, choice: AdapterChoice): CommandResult {
-    verbs.save()
-    val written = verbs.files.write(FileArea.SHARED, AdapterFiles.CHOICE, choice.render().encodeToByteArray())
-    if (written !is FileResult.Ok) {
-        return CommandResult(
-            status = 500,
-            body = """{"error":${jsonString("not written: $written")}}""",
-        )
-    }
-    exitSoon(verbs.exit)
-    return CommandResult.ok(
-        buildJsonObject {
-            put("written", choice.toString())
-            put("exiting", true)
-            put("next", verbs.next)
-        }.toString(),
-    )
-}
-
-private fun currentAdapters(verbs: AdapterVerbs): String = buildJsonObject {
-    put("launch", verbs.launchLine)
-    putJsonArray("mocked") { verbs.world.mocked.sortedBy { it.ordinal }.forEach { add(JsonPrimitive(it.key)) } }
-    verbs.current(this)
-    put("file", (verbs.files.read(FileArea.SHARED, AdapterFiles.CHOICE) as? FileResult.Ok)?.value?.decodeToString())
-    // Where the adapter choice lives, as a platform path: `simctl` does not list an ad-hoc-signed app's App Group, so
-    // this is how a simulator script finds the folder to write an adapter choice into before a launch.
-    put("folder", (verbs.files.locate(FileArea.SHARED, AdapterFiles.FOLDER) as? FileResult.Ok)?.value)
-    putJsonArray("systems") { MockedSystem.entries.forEach { add(JsonPrimitive("${it.key}: ${it.what}")) } }
-}.toString()
 
 /** How often a launch read from an adapters file saves its mocked systems' state. */
 private val SAVE_INTERVAL = 500.milliseconds

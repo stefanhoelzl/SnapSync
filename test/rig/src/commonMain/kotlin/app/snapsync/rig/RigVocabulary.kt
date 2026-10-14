@@ -4,8 +4,8 @@ import app.snapsync.levers.DeviceAdvertisement
 
 /**
  * The control protocol's **closed vocabulary** (`docs/testing.md`, "One control protocol, served by
- * two hosts"): every `/device` verb, `/os` entry point and the contract verb either host may serve, as the route
- * without its leading slash. `/user` is not listed: both hosts invoke the one shared table, so it cannot differ.
+ * two hosts"): every typed service's method (`<service>.<method>`, derived from its interface), and every `/device`
+ * verb and `/os` entry point not yet a typed service, as the route without its leading slash.
  *
  * Each host classifies every entry: **honoured** (it wires it) or **refused, with a reason** ([RigHooks.refusals]).
  * A refused entry answers `409` with its reason; `GET /device` answers the classification; an entry a host leaves
@@ -42,22 +42,6 @@ object RigVocabulary {
     /** The upload extension root's entry points. */
     val extensionEntries: List<String> = listOf("processRawValue", "onTerminate").map { "os/photokit-ext/$it" }
 
-    /** The device reads. */
-    val reads: List<String> = listOf("device/state", "device/logs", "device/gallery")
-
-    /** Device writes whose subject both hosts have: durable sync state and a photo library. */
-    val sharedCommands: List<String> =
-        listOf("device/reset", "device/gallery/seed", "device/gallery/wipe", "device/gallery/add-moving")
-
-    /** Device writes that name an operating-system facility only the app host has. */
-    val appHostCommands: List<String> = listOf(
-        "device/uploaders",
-        "device/process-metrics",
-        "device/upload-jobs/perform",
-        "device/upload-extension/record",
-        "device/disk",
-    )
-
     /**
      * The operator levers over the mocked systems (`docs/testing.md`'s inspector set) — what only a host whose
      * backend, OS and other members are mocked can pull. Named for what they do, not for the host, so a test that pulls
@@ -68,29 +52,10 @@ object RigVocabulary {
     val worldLevers: List<String> = listOf(
         // The integration surface's observable reads of the world's simulated systems (`docs/testing.md`, "The
         // seam-to-UI-state integration surface"): what the operating system recorded of the app, for the systems not yet
-        // typed services — the screen, the selection observer, the transfer sessions, the databases and the staged
-        // files. The backend's, the crash reporter's, the system UI's and the operating system's own are their services'.
+        // typed services — the screen, the transfer sessions, the databases and the staged files. The backend's, the
+        // crash reporter's, the system UI's, the photo library's and the operating system's own are their services'.
         "device/os-record",
-        // ...and the levers that put those systems and the operating system into the states a test starts from. The
-        // photo library's are its typed service's (`library`, `LibraryLevers`), the device's surroundings theirs.
-        "device/relaunch",
-        "device/reinstall",
-        "device/invite",
     )
-
-    /**
-     * The launch-time adapters (`docs/testing.md`, "Launch-time adapters"): read the choice this launch runs
-     * (`device/adapters/current`), write the next one and exit (`device/adapters`), or delete it with every mocked system's state
-     * and exit (`device/adapters/clear`). The app host's alone: the JVM root's caller chooses real or mock per port as it
-     * composes.
-     */
-    val adapterCommands: List<String> = listOf("device/adapters", "device/adapters/current", "device/adapters/clear")
-
-    /** Why the JVM host refuses every [adapterCommands] entry. */
-    val adapterRefusals: Map<String, String> = adapterCommands.associateWith {
-        "the JVM root's caller chooses real or mock per port when it composes the app (JvmApp), so there is no launch " +
-            "adapter choice to read or write; the app host's rig build reads one at every start"
-    }
 
     /**
      * The typed services' methods (`LeverDispatch.kt`), each `<service>.<method>`, served over kRPC — derived from the
@@ -98,29 +63,24 @@ object RigVocabulary {
      */
     val serviceVerbs: List<String> = SERVICE_ENTRIES
 
-    /** The port-contract verb (`GET /contract`, `POST /contract/<name>`). */
-    const val CONTRACT: String = "contract"
-
     val entries: Set<String> =
         (
-            appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers +
-                serviceVerbs + adapterCommands + CONTRACT
+            appEntries + playedOsEntries + extensionEntries + worldLevers + serviceVerbs
             )
             .toSet()
 }
 
 /** Classify this host's hooks against [RigVocabulary]. */
-internal fun RigHooks.advertise(host: String, readsHonoured: Boolean = true): DeviceAdvertisement {
-    // The world's events are the host's own service: refused, each of its methods says why.
-    val worldRefused = world.service.refusal?.let { why -> world.service.service.entries.associateWith { why } }
-    val refused = refusals + worldRefused.orEmpty()
+internal fun RigHooks.advertise(host: String): DeviceAdvertisement {
+    // Every typed service this host serves says, method by method, what it refuses: a service whose need is unmet
+    // refuses all of it; a host's own service, the methods the host refuses. The world's events are the host's own.
+    val served = services + world.service
+    val refused = refusals + served.flatMap { it.refused.entries }.associate { it.key to it.value }
     val wired = buildSet {
         triggerGroups.forEach { (root, group) -> group.wired.keys.forEach { add("os/$root/$it") } }
         deviceCommands.keys.forEach { add("device/$it") }
-        if (readsHonoured) addAll(RigVocabulary.reads)
-        if (RigVocabulary.CONTRACT !in refused) add(RigVocabulary.CONTRACT)
-        // Every typed service is registered on every host — a refused one answers each call with its reason.
-        addAll(RigVocabulary.serviceVerbs)
+        // Only the services this host serves: a host's own service it serves no implementation of stays unclassified.
+        served.forEach { addAll(it.service.entries) }
     }
     val honoured = wired.intersect(RigVocabulary.entries).minus(refused.keys)
     return DeviceAdvertisement(

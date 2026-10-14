@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.contracts.InAppContract
+import app.snapsync.levers.OsExtensionView
 import app.snapsync.services.logs.LogTailService
 import kotlin.coroutines.CoroutineContext
 
@@ -64,14 +64,6 @@ class RigHooks(
      */
     val triggerGroups: Map<String, TriggerGroup>,
     /**
-     * Wired user commands, by name — the members of `StatusContainerHost`'s public command surface.
-     * Meant to cover that population, as [triggerGroups] covers the entry points — and, like it, kept by review
-     * since the deriving guard was retired: a new command left unwired fails nothing.
-     */
-    val userCommands: Map<String, RigUserCommand>,
-    /** User commands deliberately NOT wired, each with the reason that makes the omission safe. */
-    val excludedUserCommands: Map<String, String>,
-    /**
      * The `/device` write commands, by name.
      *
      * Hand-listed, and unlike the two maps above that is not a compromise: there is no population to derive
@@ -79,12 +71,6 @@ class RigHooks(
      * voids durable sync state — so the set exists only because a test rig exists.
      */
     val deviceCommands: Map<String, RigCommand>,
-    /**
-     * The gallery read. Answers the raw subtype census, and — given a cutoff — the selection policy's
-     * verdict per asset. Separate from [deviceCommands] because it is a read, and separate from
-     * `/device/state` because it can be expensive and, under a partial grant, can surface a system alert.
-     */
-    val readGallery: suspend (cutoff: String?, resources: Boolean, includesUpload: Boolean) -> String,
     /**
      * The OS's view of the upload-job extension registration, or `null` where the OS has no such selector.
      *
@@ -114,13 +100,6 @@ class RigHooks(
      * device host has the `Error` line.
      */
     val reportBindFailure: (Throwable) -> Unit = {},
-    /**
-     * The port contracts this build can run in-app — `POST /contract/<name>`, and `GET /contract` for the ones
-     * registered for the host this process is (`docs/architecture.md`). A device entry records what the
-     * real implementation asked the operating system and returns the recording to commit verbatim; a
-     * simulator-app entry runs live and returns its outcome table, which the `journeys (ios)` job judges.
-     */
-    val contracts: List<InAppContract>,
     /**
      * The shared vocabulary entries ([RigVocabulary]) this host REFUSES, each with its reason. Everything this
      * host wires is honoured; everything it refuses is listed here; `GET /device` answers both, and names any
@@ -154,18 +133,20 @@ class RigHooks(
     /**
      * Why this launch composed NOTHING — an adapter choice the process refused to compose over — or `null` for a launch that
      * composed. When set, every route that would reach the composed app answers `409` with it, and only `/health`,
-     * `/device`, the logs and the adapter verbs are served: nothing is composed, so nothing real can be reached by a run
-     * that believed itself mocked.
+     * `/device` and the services that read or rewrite the launch itself are served (the logs, the disk, the adapter
+     * choice): nothing is composed, so nothing real can be reached by a run that believed itself mocked.
      */
     val uncomposed: String? = null,
     /**
      * The typed services (`LeverDispatch.kt`) — every declared one, each with the wrapper the kRPC route registers and its
-     * refusal on this host, if it has one. Empty only where nothing is composed.
+     * refusals on this host — built from these hooks once they exist: a host's own services read the app through them.
      */
-    val services: List<ServedService> = emptyList(),
+    private val servicesOf: (RigHooks) -> List<ServedService> = { emptyList() },
     /** The world this host serves its callers' acts in (`docs/testing.md`, "How a test waits"). */
     val world: HostWorld = HostWorld.ON_A_DEVICE,
 ) {
+    /** Every typed service this host serves ([servicesOf]). */
+    val services: List<ServedService> by lazy { servicesOf(this) }
 
     /**
      * `/health`'s body.
@@ -204,7 +185,7 @@ class RigHooks(
     }
 
     /**
-     * The build facts, reported by `/device/state` rather than `/health`.
+     * The build facts, reported by `host.state()` rather than `/health`.
      *
      * They moved because they answer different questions to different readers. `/health` answers "is the
      * channel up" and must be answerable before anything else is known to work; these answer "what is this
@@ -287,7 +268,7 @@ sealed interface RigTrigger {
 
     /**
      * The platform hands this entry no completion handler. Invoked and answered `202`; the caller polls
-     * `/device/state`. `onForeground` is in this group — likely the most-used trigger, and the one whose work
+     * `host.state()`. `onForeground` is in this group — likely the most-used trigger, and the one whose work
      * escapes into launched coroutines by design.
      */
     class Fire(val run: (arg: String?) -> Unit) : RigTrigger
@@ -322,23 +303,6 @@ sealed interface RigTrigger {
      */
     class Answering(val run: suspend (arg: String?, body: String?) -> String) : RigTrigger
 }
-
-/**
- * A wired **user command** — a member of the host's public command surface, the thing a finger reaches.
- *
- * Invoked on the main lane, like a trigger, because that is the lane a tap arrives on. Answered `202`
- * without waiting: these are Orbit intents, which return a `Job`, and the work they start is observed
- * through `/device/state` exactly as the screen observes it. Waiting here would mean inventing a
- * completion signal the UI itself does not have.
- */
-class RigUserCommand(val run: suspend (params: Map<String, String>) -> Unit)
-
-/**
- * Thrown by a user command that THIS build cannot honour — a command the composed core leaves absent, such as the
- * diagnostics send on a build with no reporter. Answered `409` with [reason], never a `202` for a tap that could
- * not have happened (`docs/testing.md`, "One control protocol, served by two hosts").
- */
-class UserCommandRefused(val reason: String) : RuntimeException(reason)
 
 /**
  * A `/device` **write**.

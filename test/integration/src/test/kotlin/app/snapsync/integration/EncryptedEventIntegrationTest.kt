@@ -6,6 +6,7 @@ import app.snapsync.model.LINK_ORIGIN
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -52,7 +53,7 @@ class EncryptedEventIntegrationTest {
 
         openLink("$LINK_ORIGIN/join/$event")
         awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.WrongLink }
-        user("cancelJoin")
+        tap(UiIntent.CancelJoin)
         awaitState { it.ui.layer is Layer.CreateEvent }
 
         // The whole invite still opens it.

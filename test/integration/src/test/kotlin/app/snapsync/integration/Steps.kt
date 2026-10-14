@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
@@ -13,9 +14,7 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import app.snapsync.ui.state.UiIntent
 
 // The shared named steps a behaviour starts from (`docs/testing.md`, "How a test waits"): each one acts and awaits its
 // own outcome, so a behaviour's `given` reads as the state it starts in, and no test copies how to get there.
@@ -29,7 +28,7 @@ suspend fun Given.createdEvent(
     lateinit var gate: app.snapsync.control.behaviour.Seen<Layer.JoiningEvent>
     step(
         "an event created",
-        act = { user("create", "name" to name, "startsAt" to startsAt, "endsAt" to endsAt) },
+        act = { createEvent(name, startsAt, endsAt) },
         until = { gate = screen<Layer.JoiningEvent> { it.phase is JoinPhase.Detailed } },
     )
     return gate.value.eventId
@@ -38,21 +37,21 @@ suspend fun Given.createdEvent(
 /** An event that exists on the backend and that this device has not joined: created, then the gate abandoned. */
 suspend fun Given.registeredEvent(name: String = Rig.EVENT_NAME): String {
     val event = createdEvent(name)
-    step("its join gate abandoned", act = { user("cancelJoin") }, until = { screen<Layer.CreateEvent>() })
+    step("its join gate abandoned", act = { tap(UiIntent.CancelJoin) }, until = { screen<Layer.CreateEvent>() })
     return event
 }
 
 /**
- * An event running [startsAt]..[endsAt] created and joined with [choices] (`direction`, `saveToAlbum`, …), on its joined
- * screen, and whatever the join started done. Answers its id.
+ * An event running [startsAt]..[endsAt] created and joined with [choices], on its joined screen, and whatever the join
+ * started done. Answers its id.
  */
 suspend fun Given.joinedEvent(
-    vararg choices: Pair<String, String>,
+    choices: Choices = Choices(),
     startsAt: String = Rig.WINDOW_START,
     endsAt: String = Rig.WINDOW_END,
 ): String {
     val event = createdEvent(startsAt = startsAt, endsAt = endsAt)
-    step("joined", act = { user("confirmJoin", *choices) }, until = {
+    step("joined", act = { confirmJoin(choices) }, until = {
         screen<Layer.Joined>()
         settled { true }
     })
@@ -68,7 +67,7 @@ suspend fun Given.joinedSavingToAlbum(name: String = Rig.EVENT_NAME): Pair<Strin
     lateinit var album: Seen<WorldEvent.LibraryAlbumCreated>
     step(
         "joined, saving to its album",
-        act = { user("confirmJoin", "saveToAlbum" to "true") },
+        act = { confirmJoin(Choices(saveToAlbum = true)) },
         until = {
             screen<Layer.Joined>()
             album = event<WorldEvent.LibraryAlbumCreated>()
@@ -85,7 +84,7 @@ suspend fun Given.inFront() = step("in front", act = { os.foreground() }, until 
  * builds no screen.
  */
 suspend fun Given.backgroundLaunch() =
-    step("a background launch", act = { device("relaunch", "scene" to "false") }, until = { settled { true } })
+    step("a background launch", act = { host.relaunch(scene = false) }, until = { settled { true } })
 
 /** A fellow member, [device], with complete photos [assets] in the joined event, and whatever they caused done. */
 suspend fun Given.fellowMember(device: String, vararg assets: String) = step(
@@ -111,11 +110,9 @@ suspend fun Acts.heartbeat() {
 suspend fun Given.inviteFor(eventId: String): String =
     step("the invite for $eventId", act = { inviteLink(eventId) }, until = {})
 
-/** [eventId]'s invite, as the device that created it shares it — joining at once when [autoJoin]. */
+/** [eventId]'s invite, as the device that created it shares it — with the `autoJoin` hint, where [autoJoin]. */
 suspend fun Acts.inviteLink(eventId: String, autoJoin: Boolean = false): String {
-    val invite = Json.parseToJsonElement(
-        device("invite", "event" to eventId),
-    ).jsonObject["invite"]!!.jsonPrimitive.content
+    val invite = host.invite(eventId)
     val key = (decodeEventUrl(invite) as ConfigDecodeResult.Success).payload.key
     return encodeEventUrl(EventLinkPayload(testEventId(eventId), autoJoin = autoJoin, minPhotoDate = null, key = key))
 }
@@ -139,7 +136,7 @@ suspend fun Acts.network(access: NetworkState, backendReachable: Boolean = acces
  * a behaviour about the OS-driven cycle states that it drives that cycle alone.
  */
 suspend fun Given.extensionUploadsOnly() =
-    step("only the extension uploads", act = { device("uploaders", "app" to "off") }, until = {})
+    step("only the extension uploads", act = { devControls.pin(app = false, extension = true) }, until = {})
 
 /** Own photos taken on the event's day, in the library, and whatever the app does about them done. */
 suspend fun Given.photos(vararg ids: String) = step(

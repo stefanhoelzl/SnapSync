@@ -6,7 +6,7 @@ import kotlinx.datetime.LocalTime
 import kotlin.test.Test
 
 /**
- * What a `/device/state` document (the control channel's [UiState], `docs/testing.md`) may leave out, type by type
+ * What a `host.state()` document (the control channel's [UiState], `docs/testing.md`) may leave out, type by type
  * through the tree: a field with a default may be absent and reads as that default, every other field is required.
  * [UiStateSerializationTest] pins that every layer round-trips; this pins the shape each one is read with.
  */

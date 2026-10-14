@@ -111,13 +111,13 @@ class EntryDispatchTest {
             ),
         )
 
-        screen.operator.live()
-        screen.operator.tap(UiIntent.LeaveEvent)
+        screen.live()
+        screen.tap(UiIntent.LeaveEvent)
 
         assertEquals(listOf("live", "intent ${UiIntent.LeaveEvent}"), ran)
         assertEquals(
             UiState(Layer.CreatingEvent),
-            screen.operator.shown.value,
+            screen.shown.value,
             "the live screen renders what the app answered",
         )
     }

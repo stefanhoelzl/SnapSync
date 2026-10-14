@@ -1,18 +1,18 @@
 package app.snapsync.rig.gallery
 
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.levers.AssetView
+import app.snapsync.levers.CalibrationView
+import app.snapsync.levers.CensusView
+import app.snapsync.levers.GalleryView
+import app.snapsync.levers.PolicyView
+import app.snapsync.levers.ResourceView
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.TimestampText
 import app.snapsync.model.selectionPolicyFor
-import app.snapsync.rig.AssetView
-import app.snapsync.rig.CalibrationView
-import app.snapsync.rig.CensusView
-import app.snapsync.rig.GalleryView
-import app.snapsync.rig.PolicyView
-import app.snapsync.rig.ResourceView
 import app.snapsync.services.gallery.CandidateSource
 import kotlin.time.TimeSource
 
@@ -44,7 +44,7 @@ import kotlin.time.TimeSource
  * grant is reported beside it so `total: 12` on a 9525-photo phone reads as a small selection rather than a
  * small library. Note also that a fetch under `.limited` can surface iOS's own limited-access alert if the
  * library changed outside the selection since the app last looked — which is why this is its own route and
- * not a field of `/device/state`.
+ * not a field of `host.state()`.
  */
 class GalleryReport(
     private val candidates: CandidateSource,

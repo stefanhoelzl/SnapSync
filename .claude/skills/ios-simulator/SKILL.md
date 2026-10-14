@@ -38,27 +38,31 @@ State these before writing a scenario against this host, or you will write one t
   `/os/photokit-ext/processRawValue` calls the **real** `UploadExtensionRoot`, so the shared `uploadCycle`,
   the entry gate, real PhotoKit discovery, the real selection policy, the real
   App-Group ledger and a real backend are all exercised. Both uploaders run over the one
-  ledger by design; to exercise one alone use `POST /device/uploaders?app=off` or `?extension=off`.
+  ledger by design; to exercise one alone use `rig dev-controls pin --app false --extension true` (or the reverse).
 
   What this target substitutes, and nothing else, is the **OS upload-job subsystem**: the registration
   record and the job queue. You play the OS for both.
 
+  The played queue is the typed `upload-jobs` service (`rig-channel`, "The control channel's typed services"); drive
+  it with `rig` (`:test:cli`):
+
   ```bash
+  R="test/cli/build/install/rig/bin/rig --url http://127.0.0.1:$PORT"
   # one cycle: hand in what the OS "finished", get back what the cycle created
-  curl -sS -X POST "http://127.0.0.1:$PORT/os/photokit-ext/processRawValue" \
-       -d '{"finished":[],"jobLimit":100}'
-  # → {"processRawValue":1,"result":"processing","queue":"simulated","created":[{
+  $R upload-jobs process --finished '[]' --job-limit 100
+  # → {"raw":1,"result":"processing","jobLimit":100,"created":[{
   #    "destination":"http://127.0.0.1:8080/api/v2/files/devices/<dev>/<assetId>/<role>?filename=…","headers":{…}}]}
 
-  # move one job's bytes for real (or ?fail=network to forge a failure and drive the retry chain) — a job is
+  # move one job's bytes for real (or --fail network to forge a failure and drive the retry chain) — a job is
   # known by its destination, the one fact the OS keeps; perform sends the resource this cycle's job holds
-  curl -sS -X POST "http://127.0.0.1:$PORT/device/upload-jobs/perform" \
-       -d '{"destination":"…","headers":{…}}'
+  $R upload-jobs perform --job '<one created[] entry, as its JSON>'
 
   # present it back as finished, and the next cycle records it
-  curl -sS -X POST "http://127.0.0.1:$PORT/os/photokit-ext/processRawValue" \
-       -d '{"finished":[{"destination":"<created[].destination>","action":"acknowledge","state":"succeeded"}]}'
+  $R upload-jobs process --finished '[{"destination":"<created[].destination>","action":"ACKNOWLEDGE","state":"SUCCEEDED"}]'
   ```
+
+  `/os/photokit-ext/processRawValue` still runs a cycle with nothing finished (no body: job sets are the typed
+  `process`'s), answering the same cycle as JSON.
 
   Play the sets as a device's OS does (measured, SE2 iOS 26.6): a **first** failure is presented in BOTH
   `retry` and `acknowledge` (state it twice); a retry-spent one in `acknowledge` only; a success in
@@ -68,9 +72,9 @@ State these before writing a scenario against this host, or you will write one t
   queue genuinely survives. Kill the app mid-transfer and the job is simply lost, where a device would
   have finished it. That is the host, not a fault.
 
-  ⚠️ **The registration record is the rig's, not the OS's.** `POST /device/upload-extension/record?registered=true`
-  plants a stale record (so the ritual's leading disable has something to remove) and `&failNextWith=3202`
-  arms the next change to fail. It does **not** survive an app restart, where the real record survives
+  ⚠️ **The registration record is the rig's, not the OS's.** `$R upload-jobs extension-record --registered`
+  plants a stale record (so the ritual's leading disable has something to remove) and `--fail-next-with 3202`
+  arms the next change to fail (`0` disarms it). It does **not** survive an app restart, where the real record survives
   reinstall and reboot.
 
   🚫 **What this host still cannot do**: OS scheduling of `process()`, the appex Swift shell and its
@@ -85,14 +89,14 @@ State these before writing a scenario against this host, or you will write one t
   a device binary contains no route to the substitute, and this one contains no route to the real calls.
   Full record: `openspec/changes/…/exercise-os-driven-upload-on-simulator/PROBE-FINDINGS.md`.
 
-  ⚠️ **Do not assert success on `/device/state`'s `download` view.** It is a *progress* read-model and
+  ⚠️ **Do not assert success on the state read's `download` view** (`host state`). It is a *progress* read-model and
   returns to `{downloaded:0,total:0}` the moment the queue drains — transfers finish about a second after
   the trigger, so a poll 25 s later reads 0/0 and looks exactly like a failure. Assert on the device log's
   `transfer finished: status=… expected=… received=…` and `imported foreign asset … as …` lines. The
   gallery census is not clean proof either: a simulator ships with stock photos, so a device that imported
   3 reads `total: 9`.
 
-  **The app's uploader runs here too** (both uploaders run by default); `POST /device/uploaders?extension=off`
+  **The app's uploader runs here too** (both uploaders run by default); `rig dev-controls pin --app true --extension false`
   makes it run alone. Two members of one event, both directions, were
   measured that way on 2026-08-26: A uploaded three photos and B — joined `DownloadOnly` off A's invite
   link — downloaded and imported all three.
@@ -118,7 +122,7 @@ State these before writing a scenario against this host, or you will write one t
     `changes/archive/2026-07-12-fix-download-session-lifecycle` D5. Measured: after the daemon rejects the
     connection the session does not even report `didBecomeInvalidWithError`.
 
-  Read the binding rather than guessing: `GET /device/state` → `build.transferBinding`
+  Read the binding rather than guessing: `rig host state` → `build.transferBinding`
   (`"default"` here, `"background"` on a device).
 
   **The underlying platform fact is unchanged** — a *background* session still transfers nothing here, so
@@ -230,7 +234,7 @@ The simulator app is the host (`IOS_SIM_APP`) where the photo-library contracts 
 full grant, and CI runs them on every push (`journeys (ios)`). `scripts/sim-contracts` is that job, start to
 finish: a rig build, `sim-sign`, a fresh simulator, the `applesimutils` grant, the loopback transfer fixture
 (`scripts/transfer-fixture.py`, for the two `URLSession` contracts), launch, then every entry of
-`GET /contract`. It fails on any `Failed(…)` or `NotWithin(…)`, a refusal, or an empty registry. Run it on a Mac session to
+`contract list`. It fails on any `Failed(…)` or `NotWithin(…)`, a refusal, or an empty registry. Run it on a Mac session to
 reproduce a red job. The contracts **seed photos and never delete them**, because deleting raises a
 confirmation that needs a finger. See `rig-channel` for the verb.
 
@@ -293,7 +297,7 @@ Use the simulator's own path:
 xcrun simctl addmedia "$DEVICE" shot1.jpg shot2.jpg shot3.jpg
 ```
 
-The channel's `POST /device/gallery/seed` exists and may well work here, but it is **unmeasured on a
+The channel's `gallery seed` exists and may well work here, but it is **unmeasured on a
 simulator** — say so rather than assuming. What *was* measured (2026-08-09) is that the retired
 `SNAPSYNC_SEED_POLICY` launch trigger never finished: it logged `seeding N POLICY-PROBE asset(s)` and
 stopped, because the app suspends ~4 s after launch and the async `PHPhotoLibrary.performChanges` never
@@ -373,9 +377,22 @@ There is no launch variable for this any more. Create and join through the chann
 
 ```
 P=$(cat "$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)/Documents/rig.port")
-curl -X POST "localhost:$P/user/create?name=SimRig&startsAt=2026-08-24T00:00&endsAt=2026-08-30T00:00"
-curl -s "localhost:$P/device/state" | jq '.ui'          # wait for JoiningEvent(eventId, Ready)
-curl -X POST "localhost:$P/user/confirmJoin?cutoff=2026-08-24T00:00:00Z&until=2026-08-30T00:00:00Z&direction=upload&saveToAlbum=false"
+R="test/cli/build/install/rig/bin/rig --url http://127.0.0.1:$P"
+# CREATE: the form's taps, as a person fills it — then Create, and a week for others to join should it be over
+$R run - <<'EOF'
+screen tap --intent '{"type":"CreateName","name":"SimRig"}'
+screen tap --intent '{"type":"RangeSweep","anchor":"2026-08-24","day":"2026-08-30"}'
+screen tap --intent '{"type":"ConfirmCreate"}'
+screen tap --intent '{"type":"KeepOpenFor","days":7}'
+EOF
+$R --json host state | jq '.ui.layer'                   # wait for JoiningEvent(eventId, Detailed)
+# JOIN: share only, no album, over the event's own dates
+$R run - <<'EOF'
+screen tap --intent '{"type":"ShareOn","on":true}'
+screen tap --intent '{"type":"ReceiveOn","on":false}'
+screen tap --intent '{"type":"SaveToAlbum","on":false}'
+screen tap --intent '{"type":"ConfirmJoin"}'
+EOF
 ```
 
 To put a SECOND instance on the same event, drive its channel through the warm universal-link entry —
@@ -404,11 +421,11 @@ first launch instead of going through the verb (which writes and exits the app):
 ```
 # `simctl get_app_container … groups` lists NOTHING for this ad-hoc-signed app (measured 2026-09-28), so ask the
 # app once where its adapter choice folder is — any launch will do:
-F=$(curl -s -X POST "localhost:$PORT/device/adapters/current" | python3 -c 'import json,sys; print(json.load(sys.stdin)["folder"])')
+F=$(test/cli/build/install/rig/bin/rig --url "http://127.0.0.1:$PORT" --json adapters current | python3 -c 'import json,sys; print(json.load(sys.stdin)["folder"])')
 xcrun simctl terminate "$DEVICE" app.snapsync
 mkdir -p "$F" && printf 'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n' > "$F/adapters"
 SIMCTL_CHILD_SNAPSYNC_RIG_PORT=$PORT xcrun simctl launch "$DEVICE" app.snapsync   # /health: adapters=mocked: …
-rm -rf "$F"                                            # back to all real (or POST /device/adapters/clear)
+rm -rf "$F"                                            # back to all real (or `rig adapters clear`)
 ```
 
 Measured 2026-09-28 (iOS 26 simulator): real photos + a mocked backend — create, join, a cycle through the mocked

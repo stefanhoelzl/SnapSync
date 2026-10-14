@@ -8,7 +8,7 @@ description: >-
   "join an event on device", "create an event", "seed photos", "wipe the
   gallery", "reset the device", "make the app foreground / silent-push / run the
   background task", "why did no upload cycle run", "read the extension's log", or
-  anything touching /os, /user, /device or the rig's port forward — or the SAME
+  anything touching /os, /device, the typed services (`rig`) or the rig's port forward — or the SAME
   protocol served by the JVM host over mocks (`:test:rig:runJvmHost`, no
   device, no lock). To install or launch a build first, load `snapsync-device`.
 ---
@@ -88,6 +88,7 @@ Then, in **every** call that talks to the channel (shell state does not persist 
 
 ```
 B=http://127.0.0.1:18101        # the SE2's host port; the XS's is 18102
+R="test/cli/build/install/rig/bin/rig --url $B"   # the typed services' command line: ./gradlew :test:cli:installDist -q
 curl -sS --max-time 180 "$B/health"
 ```
 
@@ -113,63 +114,59 @@ port you asked for. Full simulator runbook: load **`ios-simulator`**.
 
 ## The endpoints
 
-Namespaced by **who is on the other side of the call**. That is not decoration: `/os` and `/user` have
-populations sitting in source, so a guard derives them and an unwired member is a red build; `/device` has
-no population to derive from, so it is hand-listed and small.
+Most of the channel is **typed services** over kRPC (`ws://…/rpc`), which curl cannot reach: drive them with **`rig`**
+(`:test:cli`, "The control channel's typed services" below — exit codes, flags, `--timeout`). What is left on HTTP is
+liveness, the OS's entry points, and the `/device` levers not yet a service.
 
 ```
 GET  /health                            rig=up, port, boot instant — liveness ONLY
-GET  /device                            what THIS host honours and refuses of the shared vocabulary
-                                        (RigVocabulary), each refusal with its reason; 500 names a gap
-
+GET  /device                            what THIS host honours and refuses (= `rig rig advertise`), each refusal with
+                                        its reason; 500 names a gap
 POST /os/<root>/<entry>?arg=…           the real @PlatformEntry member, invoked as the platform invokes it
                                         <root> is app | photokit-ext — WHOSE entry point, since the
                                         channel reaches two composition roots. The app root's entries are
                                         the typed `os` service now (`rig os …`, below); the string verbs stay
                                         until the string protocol goes
-POST /user/<command>?…                  the real StatusContainerHost command, as a tap invokes it
 
-GET  /device/state                      the real UiState + readiness + download progress + build facts
-GET  /device/logs?process=app|extension pass-through to DeviceLogSource.tail, BOTH processes
-GET  /device/gallery[?cutoff=…][&resources=true]   the library, through the app's own policy
-POST /device/reset                      void durable sync state
-POST /device/gallery/seed?n=&kind=bulk|policy
-POST /device/gallery/add-moving         body = {date, files: [{name, data(base64)}]}: ONE photo from a camera's own
-                                        files — iPhone: a still (+ its movie → a Live Photo); Android: one
-                                        motion-photo file. Real library only; `census.moving` counts what moves
-POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
-POST /device/uploaders?app=&extension= switch one uploader off/on (see below)
-POST /device/disk[?depth=2&largest=20]  what the app's files take on the REAL disk, per container: `shared` (the App
-                                        Group — iOS's "Documents & Data", not USB-pullable) and `app` (the sandbox);
-                                        bytes + file counts per directory, and the largest files. iOS only
-POST /device/adapters                        body = the next adapter choice; checks it, writes it, EXITS the app
-POST /device/adapters/current                the adapter choice this launch runs (and why it was refused, if it was)
-POST /device/adapters/clear                  delete the adapter choice and every mocked system's state; EXITS the app
-
-GET  /contract                          the contracts registered for THIS host, one name per line
-POST /contract/<name>                   run a port contract in-app; answers its RECORDING (device) or its
-                                        OUTCOME TABLE (simulator app) — see below
+$R dev-controls reset                      void durable sync state
+$R dev-controls pin --app false --extension true   switch one uploader off (see below); `unpin` for both
+$R screen tap --intent '<UiIntent JSON>'   what a finger does — the ONE person verb, e.g. '{"type":"LeaveEvent"}'
+$R screen shown                            what the screen shows now
+$R host state                              the real UiState + readiness + download progress + build facts
+$R host logs [--process extension] [--bytes N]   a process's device log, BOTH processes (agents only — never a test)
+$R host disk [--depth 2] [--largest 20]    what the app's files take on the REAL disk, per container: `shared` (the App
+                                           Group — iOS's "Documents & Data", not USB-pullable) and `app`. iOS only
+$R host process-metrics --fields '{"k":"v"}'   a synthetic MetricKit report through the app's own handler. iOS only
+$R gallery read [--cutoff …] [--resources]      the library, through the app's own policy
+$R gallery seed --n N --kind bulk|policy|noise
+$R gallery add-moving --photo '{"date":…,"files":[{"name":…,"data":<base64>}]}'   ONE photo from a camera's own files —
+                                           iPhone: a still (+ its movie → a Live Photo); Android: one motion-photo file
+$R --timeout 0 gallery wipe --scope all|assets|albums [--limit N] [--offset N]
+$R adapters current | choose --choice "$(cat file)" | clear   the launch-time adapter choice (choose/clear EXIT the app)
+$R contract list [--grant G] [--precondition P]    the contracts registered for THIS host
+$R --timeout 0 contract run --name <name> [--host H] [--grant G] [--params '{"k":"v"}']
+                                           run a port contract in-app; prints its RECORDING (device) or its OUTCOME TABLE
+                                           (simulator app) — see below
 ```
 
-There is **no inventory route** for excluded members: asking for one returns **the reason it is excluded**.
-What `GET /device` lists is different — the shared vocabulary both hosts speak — and a verb in it that this
-host cannot honour answers **`409` with the reason**, never `404` and never a success that did nothing. On
-this host an operator lever is honoured only for a system the adapter choice mocks (below) and refused, naming the
-real system, otherwise; on a device, the simulator-only upload-job verbs are refused too.
+A host classifies everything it is asked: a `/device` verb it cannot honour answers **`409` with the reason**; a typed
+method it cannot honour is **refused** (`rig` exit `3`, `refused: <service>.<method> is refused here: <reason>`) — never
+a success that did nothing. On this host an operator lever is honoured only for a system the adapter choice mocks
+(below) and refused, naming the real system, otherwise; on a device, the simulator-only upload-job verbs are refused too.
 
-**`/device/state` is the reduced state, not a mirror of it** — `UiState` is `@Serializable` where it is
+**`host state` is the reduced state, not a mirror of it** — `UiState` is `@Serializable` where it is
 declared, so the encoder is compiler-generated. Beside it: download progress, **readiness** (derived from
 `ui`), the build facts (which backend this build points at), and the OS's own view of the extension
 registration. It carries **no ledger counts** any more (dropped in 11g2 with `permission`, `inviteUrl`,
 `eventName` and `transientError`, the last four being inside `ui`): whether bytes landed is the backend's to say —
 on a device, read it from the backend (`snapsync-device`, "did the upload land"), not from the app's bookkeeping.
 
-📄 **`/device/logs?process=extension` needs no relaunch, no copy step and no `apps pull`.** An unreadable
-or absent log is a `404` with a stated reason, never an empty `200`. It reads the **current** file only —
-a rolled `.1` sibling is not reachable this way.
+📄 **`host logs --process extension` needs no relaunch, no copy step and no `apps pull`.** An unreadable or absent log
+fails with a stated reason, never an empty answer. It reads the **current** file only — a rolled `.1` sibling is not
+reachable this way.
 
 
-## `/contract/<name>` — recording a port contract on the device
+## `contract run` — recording a port contract on the device
 
 Capability `docs/architecture.md`. A contract whose clauses need the **entitled** Keychain (`SecureStore`: the
 legacy-protection upgrade, a real write read back) cannot run in CI — a simulator test executable is
@@ -177,7 +174,7 @@ refused every Keychain call. So it runs here, in-app, and every `SecItem*` call 
 recorded with iOS's answer; CI then **replays** that recording against the current adapter on every build.
 
 ```bash
-curl -s -X POST $B/contract/SecureStore > test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec
+$R --timeout 0 contract run --name SecureStore > test/contracts/recordings/SecureStore@IOS_DEVICE_APP.rec
 git diff test/contracts/recordings/        # review it like code, then commit it UNEDITED
 ```
 
@@ -191,10 +188,11 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   truth; the replay will then fail CI until the code or the clause is fixed, which is the point.
 - Two runs in a row should differ only in the header. If a block moves between runs, a volatile key is
   unmasked — add it to `VOLATILE_KEYS` in `adapter/ios/ext-safe/src/rig/kotlin/…/KeychainTape.kt`.
-- `404` means this build has no such contract — check the build carries `-Psnapsync.rig=true`.
-- **`BackgroundScheduler`** records the same way (`…/contract/BackgroundScheduler > test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`),
+- `failed: no contract '<name>' is registered here` means this build has no such contract — check the build carries
+  `-Psnapsync.rig=true`; a refusal (exit `3`) names the precondition that failed.
+- **`BackgroundScheduler`** records the same way (`$R --timeout 0 contract run --name BackgroundScheduler > test/contracts/recordings/BackgroundScheduler@IOS_DEVICE_APP.rec`),
   with **Background App Refresh ON**: with it off, iOS accepts every request and keeps none (measured, SE2 / 26.6.2),
-  so every clause expecting a pending wake would fail — the verb refuses (`409`) and says so. Its delivering clauses take over
+  so every clause expecting a pending wake would fail — the run is refused and says so. Its delivering clauses take over
   the app's own launch registration for the clause (a rig build's root wake is tappable — `rootWake`) and ask iOS to launch and
   expire the task through `BGTaskScheduler`'s debugging calls, which work from inside the app (measured, SE2 / 26.6.2,
   2026-10-13); the launch and the expiry are recorded as event lines. It runs against the production heartbeat
@@ -202,47 +200,47 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   heartbeat CANCELLED** — the app's next trigger (a foreground, a completed cycle) re-arms it. Its volatile key
   (`begin`, the absolute earliest-begin date) is masked in `adapter/ios/app-only/src/rig/kotlin/…/SchedulerContracts.kt`.
 - **`UploadExtensionRegistry`** records once per photo grant, into a file named for it. With **full** access:
-  `…/contract/UploadExtensionRegistry > …/UploadExtensionRegistry@IOS_DEVICE_APP.GRANTED.rec`; then switch the
+  `$R --timeout 0 contract run --name UploadExtensionRegistry > …/UploadExtensionRegistry@IOS_DEVICE_APP.GRANTED.rec`; then switch the
   app to **Limited** access in Settings, relaunch, and record `…LIMITED.rec`; then switch back. The body's
   `# file:` header names the file each run belongs in. The full-grant run disables and re-enables the extension
-  (wiping in-flight upload jobs), so it answers `409` while the device is a member of an event — reset first
-  (`POST /device/reset`), deliberately.
+  (wiping in-flight upload jobs), so it is refused while the device is a member of an event — reset first
+  (`rig dev-controls reset`), deliberately.
   On the **XS** (below iOS 26.1) the same verb records `…UploadExtensionRegistry@IOS_DEVICE_APP.BELOW_IOS_26_1.rec`
   whatever the grant: there is no mechanism, so it asks iOS nothing but whether the OS carries it — which every
   grant's recording now holds as its first call too.
 - **`NetworkMonitor`** records once per network condition, which YOU state — the run never reads it from the adapter
-  under test. Wi-Fi joined: `…/contract/NetworkMonitor?network=online > …/NetworkMonitor@IOS_DEVICE_APP.ONLINE.rec`;
+  under test. Wi-Fi joined: `$R --timeout 0 contract run --name NetworkMonitor --params '{"network":"online"}' > …/NetworkMonitor@IOS_DEVICE_APP.ONLINE.rec`;
   then airplane mode on **and Wi-Fi off** (iOS keeps Wi-Fi on in airplane mode once you have re-enabled it there):
-  `…?network=offline > …/NetworkMonitor@IOS_DEVICE_APP.OFFLINE.rec`; then back online. **Blocked** needs mobile
+  `… --params '{"network":"offline"}' > …/NetworkMonitor@IOS_DEVICE_APP.OFFLINE.rec`; then back online. **Blocked** needs mobile
   data, so the XS (the SE2 has no SIM): Wi-Fi off, mobile data on, Settings → Mobile Data → SnapSync off:
-  `…?network=blocked > …/NetworkMonitor@IOS_DEVICE_APP.BLOCKED.rec`; then switch both back. The control channel rides
+  `… --params '{"network":"blocked"}' > …/NetworkMonitor@IOS_DEVICE_APP.BLOCKED.rec`; then switch both back. The control channel rides
   USB, so it keeps answering offline. A `# live …: Failed` line means the phone was not in the stated condition — do
   not commit that run.
 
 - **`AppSettings`**: start the run (background), and when Settings shows SnapSync's page, tap back into the app — the run
   records iOS's answer to the `openURL` and the app leaving the front, and ends once the app is in front again.
 - **Runs that wait for the phone to leave your hands.** Each holds background time and waits, reading the app's own
-  state, for the person to put the phone there — so START the run first (in the background, no `--max-time`), confirm
-  `→ /contract/<name>` in `/device/logs`, and only then ask for the step. Every run also keeps its recording in the
+  state, for the person to put the phone there — so START the run first (in the background, `--timeout 0`), confirm
+  `→ contract.run` in `host logs`, and only then ask for the step. Every run also keeps its recording in the
   app's `Documents/contracts/<file>.rec`: when the connection drops (it does on a lock), pull it with `apps pull`.
   - **`ProcessInfo`** (`…LOCKED.rec`): lock the phone. Needs a passcode with **Require Passcode: Immediately** — with a
     delay iOS keeps the data readable past the ~30 s of background time and the run never sees it sealed (measured).
   - **`BackgroundTime`**: go to the home screen; iOS's expiry comes ~30 s later and is recorded as an event line.
-  - **`TransferSession` (device app) + `SharePresenter`** — the relaunch, two steps: `?step=arm` prepares a transfer to
+  - **`TransferSession` (device app) + `SharePresenter`** — the relaunch, two steps: `--params '{"step":"arm"}'` prepares a transfer to
     `https://snapsync.stho.net/contract-relaunch` (a 404 path of our own domain — a transfer whose connection fails is
     retried and never relaunches anything, measured) and EXITS the app; iOS relaunches it in the background (35 s–2 min)
     and that process records both. Pull `TransferSession@IOS_DEVICE_APP.rec` and `SharePresenter@IOS_DEVICE_APP.rec` from
-    `Documents/contracts/` (the relaunched app is suspended, so `?step=collect` answers only once it is opened).
-  - **`Download` (device app)** — the same two steps for the download session: `?step=arm` prepares a fetch of
+    `Documents/contracts/` (the relaunched app is suspended, so `{"step":"collect"}` answers only once it is opened).
+  - **`Download` (device app)** — the same two steps for the download session: `{"step":"arm"}` prepares a fetch of
     `https://snapsync.stho.net/contract-relaunch-download` in a session of its own and EXITS the app; pull
     `Download@IOS_DEVICE_APP.rec` from `Documents/contracts/` once iOS has relaunched it (~30 s).
-  - **`ProcessMetrics`**: `?step=arm` subscribes and waits, across launches, for MetricKit's next delivery (a queued
-    report arrives within seconds; otherwise about a day); `?step=collect` or pull the kept file.
+  - **`ProcessMetrics`**: `{"step":"arm"}` subscribes and waits, across launches, for MetricKit's next delivery (a
+    queued report arrives within seconds; otherwise about a day); `{"step":"collect"}` or pull the kept file.
 - ⚠️ **The upload extension does not run below ~20 % battery**, even plugged in: `dasd` answers its runner
   `Battery Level Policy … Decision: MNP` (measured 2026-10-08 at 19–20 %), so the extension run below times out with no
   sign on the phone. Charge first; read `syslog live` for `assetresourceuploadextensionrunner` to tell.
 
-### Recording INSIDE the upload extension — `?host=IOS_DEVICE_PHOTOKIT_EXT`
+### Recording INSIDE the upload extension — `--host IOS_DEVICE_PHOTOKIT_EXT`
 
 The upload-job contract (`OsUploadQueue`) records in the upload extension, the process production calls
 PhotoKit's job API from. The rig cannot reach that process, so the app requests the run through the App Group and
@@ -250,20 +248,20 @@ re-registers the extension, which makes the OS invoke it; the extension runs the
 cycle and writes the recording back, and the verb answers it:
 
 ```bash
-curl -s --max-time 120 -X POST "$B/contract/OsUploadQueue?host=IOS_DEVICE_PHOTOKIT_EXT" \
+$R --timeout 0 contract run --name OsUploadQueue --host IOS_DEVICE_PHOTOKIT_EXT \
   > test/contracts/recordings/OsUploadQueue@IOS_DEVICE_PHOTOKIT_EXT.rec
 ```
 
 - **The build must be baked to the loopback upload base** — `snapsync.deployment=local` with
   `deployments/local.json`'s domain at `127.0.0.1:18099` (the rig's port): the jobs upload to the rig's own
   receiver, which answers each fixture route (`TransferFixture`) with the status in its path. Any other base is
-  refused (`409`). Revert `deployments/local.json` before committing.
-- Preconditions: full photo grant, no membership (`409` names the fix), and at least one photo in the library (a
+  refused. Revert `deployments/local.json` before committing.
+- Preconditions: full photo grant, no membership (the refusal names the fix), and at least one photo in the library (a
   usable resource is the newest photo; the run seeds none).
 - It records every clause of the states one call can hold — the presented ones, prepared across calls, a transfer held
   until the call returns, and the queue at its cap (the run creates `PHAssetResourceUploadJob.jobLimit` jobs first: 200 on
   the SE2, 2026-10-13) — one OS invocation each, about twenty minutes in all.
-- `504` means no result within 90 s. Its body says which half failed: the OS never invoked the extension — it
+- A failure `timeout: …` means no result within 90 s. It says which half failed: the OS never invoked the extension — it
   **backs off 6–11 min after a call it killed**, and ignores triggers meanwhile — or the run was taken and killed
   at the ~60 s budget. Wait out a backoff; do not hammer it.
 - The run leaves the extension registered under the loopback base; a normal build's join re-registers it.
@@ -272,31 +270,32 @@ curl -s --max-time 120 -X POST "$B/contract/OsUploadQueue?host=IOS_DEVICE_PHOTOK
   Those jobs upload after the call returns and are left presented; the next real upload cycle acknowledges them as
   routes no row maps to.
 
-## `/contract` on the simulator app — the PhotoKit contracts, live
+## `contract` on the simulator app — the PhotoKit contracts, live
 
 On a **simulator** the same verb runs the photo-library contracts against real PhotoKit under a real full
 grant. The app bundle is the only simulator process `applesimutils` can grant photo access to. Nothing is
-recorded: the answer is the outcome table, and the `journeys (ios)` CI job runs exactly what `GET /contract`
-lists, on every push. `scripts/sim-contracts` is that job, and running it on a Mac session reproduces it.
+recorded: the answer is the outcome table, and the `journeys (ios)` CI job runs exactly what `contract list`
+names, on every push. `scripts/sim-contracts` is that job, and running it on a Mac session reproduces it.
 
 ```bash
-curl -s localhost:$PORT/contract                          # CandidateSource, UploadDiscovery, … (this host's)
-curl -s -X POST localhost:$PORT/contract/AlbumManager     # "# host: IOS_SIM_APP" then one line per clause
+R="test/cli/build/install/rig/bin/rig --url http://127.0.0.1:$PORT"
+$R contract list                          # CandidateSource, UploadDiscovery, … (this host's)
+$R contract run --name AlbumManager       # "# host: IOS_SIM_APP" then one line per clause
 ```
 
-- **`409` + `refused: …`** means the precondition failed and **no clause ran**: the process is not the
+- **A refusal (exit `3`)** means the precondition failed and **no clause ran**: the process is not the
   simulator app, or it does not hold `GRANTED`. Grant with `applesimutils … --setPermissions "photos=YES"`
   **before** launch; `simctl privacy grant photos` writes a TCC row PhotoKit never consults.
 - The contracts **seed photos and never delete them** (a delete raises a confirmation someone must tap).
   Each clause owns a one-day capture window in 1980–1999, so repeat runs only add assets. Use a fresh
   simulator when the library's size matters.
 - `SecureStore` and `BackgroundScheduler` are **not** in the simulator's list: they record only on an
-  entitled device, and asking for either here answers `409`.
+  entitled device, and asking for either here is refused.
 - **The transfer contracts** (`TransferSession`, `Download`) run both `URLSession` transports
-  against a loopback peer, `scripts/transfer-fixture.py`, whose address the verb takes as `?fixture=`:
+  against a loopback peer, `scripts/transfer-fixture.py`, whose address the run takes as its `fixture` parameter:
   `python3 scripts/transfer-fixture.py --port 8123 --log /tmp/fx.log &` then
-  `curl -s -X POST "localhost:$PORT/contract/Download?fixture=http://127.0.0.1:8123"`. Without the
-  parameter the run is **refused whole** (`409`). The simulator target binds a DEFAULT session, so these
+  `$R contract run --name Download --params '{"fixture":"http://127.0.0.1:8123"}'`. Without the
+  parameter the run is **refused whole**. The simulator target binds a DEFAULT session, so these
   evidence everything but the background session's lifecycle (see `TransferSessions.kt`).
 
 ## `/os/photokit-ext` — the OS-driven upload tier's own root
@@ -324,10 +323,10 @@ just another cycle over it; the extension root's own admission decides what it m
 full grant it withholds (records and acknowledges, creates nothing), exactly as when the OS invokes it.
 
 **On a device** this drives the **real** OS job queue — forcing a cycle on demand instead of waiting for
-the OS to schedule one. Send no body there; the OS holds the queue and a body is refused rather than
-ignored. **On a simulator** the queue is substituted and you play the OS: hand the finished job sets in,
-get the created jobs back, and move their bytes with `POST /device/upload-jobs/perform`. Load
-`ios-simulator` for that half — the shape, the levers and the two host divergences are documented there.
+the OS to schedule one. **On a simulator** the queue is substituted and you play the OS through the typed
+`upload-jobs` service: `upload-jobs process --finished …` hands the finished job sets in and answers the created jobs,
+`upload-jobs perform` moves their bytes. Load `ios-simulator` for that half — the shape, the levers and the two host
+divergences are documented there. The entry here takes no body: job sets are `process`'s.
 
 ## Driving an event end to end
 
@@ -338,25 +337,39 @@ defined in the same call (see "Building and connecting").
 # JOIN — the warm universal-link path, same decode -> gate -> join a scanned QR takes
 $R --url $B os continue-link --url "https://snapsync.stho.net/join#v=3&d=<payload>"   # R: `rig`, below
 
-# CREATE — exactly as a user creates one: mint, then confirm the gate it opens
-curl -X POST "$B/user/create?name=Trip&startsAt=2026-08-23T00:00&endsAt=2026-08-30T00:00"
-curl -s $B/device/state | jq '.ui'      # wait for JoiningEvent(eventId, Ready)
-curl -X POST "$B/user/confirmJoin?cutoff=2026-08-23T00:00:00Z&until=2026-08-30T00:00:00Z&direction=upload&saveToAlbum=false"
+# CREATE — exactly as a user creates one: the form's taps, then Create, then the gate it opens
+$R run - <<'EOF'
+screen tap --intent '{"type":"CreateName","name":"Trip"}'
+screen tap --intent '{"type":"RangeSweep","anchor":"2026-08-23","day":"2026-08-30"}'
+screen tap --intent '{"type":"ConfirmCreate"}'
+screen tap --intent '{"type":"KeepOpenFor","days":7}'
+EOF
+$R --json host state | jq '.ui.layer'      # wait for JoiningEvent(eventId, Detailed)
+$R run - <<'EOF'
+screen tap --intent '{"type":"ShareOn","on":true}'
+screen tap --intent '{"type":"ReceiveOn","on":false}'
+screen tap --intent '{"type":"SaveToAlbum","on":false}'
+screen tap --intent '{"type":"ConfirmJoin"}'
+EOF
 
 # MINT ONLY — create, read the id, then abandon the gate
-curl -X POST "$B/user/cancelJoin"
+$R screen tap --intent '{"type":"CancelJoin"}'
 
 # LEAVE
-curl -X POST $B/user/leave
+$R screen tap --intent '{"type":"LeaveEvent"}'
 
-# THE REST OF /user (both hosts): rename[?event=]&name=, renameStatusConsumed, confirmSwitch, retryLoad, retryJoin,
-# setRange?[range=eventStart|fromNow][&cutoff=…Z][&until=…Z]  (sets the form, commits nothing; cutoff/until = a custom range),
-# mobileData?on=true|false  (the device's choice, as the menu's switch flips it — with or without an event; UiState.mobileData reads it),
-# sendDiagnostics?note=&screen=  (a rig build of the app carries no DSN: it SAVES the report to Documents/diagnostic-report.json, sends nothing)
-# JVM HOST ONLY — the hand-offs a device host excludes (only a finger brings the person back), recorded by the mocked
-# platform UI and read back in /device/os-record (systemUi.shared/opened/settingsOpened, pickersShown):
-# shareInvite, openLink?link=WEBSITE|PRIVACY_POLICY, openSettings, choosePhotos
+# ANY OTHER TAP: its UiIntent (ui/state's UiIntent.kt; each case's serial name is its type), e.g.
+# {"type":"RenameEvent","eventId":"…","name":"…"}, {"type":"ConfirmSwitch"}, {"type":"RetryLoad"}, {"type":"RetryJoin"},
+# {"type":"MobileData","on":false}  (the device's choice, as the menu's switch flips it; UiState.mobileData reads it),
+# {"type":"SendDiagnostics","note":"…","screen":"rig"}  (a rig build carries no DSN: it SAVES Documents/diagnostic-report.json).
+# A tap that hands the person to the platform's own UI — {"type":"ShareInvite"}, {"type":"OpenSettings"},
+# {"type":"ChoosePhotos"}, {"type":"OpenLink","link":"PRIVACY_POLICY"}, {"type":"RequestPermission"} — is a real tap on a
+# device: the share sheet, Settings or the picker appear, and only a finger brings the person back. The JVM host's
+# platform UI is a mock, which records the hand-off (`device/os-record`).
 ```
+
+In Kotlin, `:test:control`'s `Person` names the forms (`createEvent`, `confirmJoin(Choices(…))`, `setRange`,
+`reconfigure`, `rename`) as these taps: `client.person().createEvent("Trip", "2026-08-23T00:00", "2026-08-30T00:00")`.
 
 ⚠️ **`create` is non-idempotent** — every call mints a **new** backend event. There is no launch variable
 to forget to unset any more, but there is also nothing stopping a loop from minting a hundred.
@@ -367,22 +380,22 @@ this device's library and registers this device on someone's real membership.
 ## The photo library
 
 ```
-curl -s "$B/device/gallery" | jq                      # raw census: total, screenshots, recordings
-curl -s "$B/device/gallery?cutoff=2026-07-01T00:00:00Z" | jq   # + per-asset policy verdict
-curl -s "$B/device/gallery?cutoff=…&resources=true" | jq       # + each asset's resources
+$R gallery read                                       # raw census: total, screenshots, recordings
+$R gallery read --cutoff 2026-07-01T00:00:00Z         # + per-asset policy verdict
+$R gallery read --cutoff … --resources                # + each asset's resources
 
-curl -X POST "$B/device/gallery/seed?n=4000&kind=bulk"    # walk-cost: tiny 2001-dated assets
-curl -X POST "$B/device/gallery/seed?n=20&kind=policy"    # policy probe: +1h, straddling 3 MP
+$R --timeout 0 gallery seed --n 4000 --kind bulk      # walk-cost: tiny 2001-dated assets
+$R gallery seed --n 20 --kind policy                  # policy probe: +1h, straddling 3 MP
 ```
 
-`kind=policy` seeds assets dated an hour ahead — past any cutoff an event created today can carry — and
+`--kind policy` seeds assets dated an hour ahead — past any cutoff an event created today can carry — and
 **alternating** above/below the 3 MP image floor, so the resolution rule is the only thing that can separate
 them. Expect exactly the even-indexed half admitted.
 
 The read reports **which rule refused** each excluded asset, in the rule's own vocabulary, so
 `refusedBy: "MinImageArea(3000000)"` sits in the same row as the `pixelArea` that triggered it.
 
-⚠️ **`resources=true` is ~110 ms per asset** (one PhotoKit round-trip each) — about 17 minutes across a
+⚠️ **`--resources` is ~110 ms per asset** (one PhotoKit round-trip each) — about 17 minutes across a
 9525-asset library. The response reports what it paid. Ask for it when you need a filename, which IS the
 upload/ledger key; otherwise don't.
 
@@ -392,14 +405,14 @@ the response for that reason. A fetch under `.limited` can also surface iOS's ow
 ## Emptying the library
 
 ```
-ch bg curl -sS -X POST "$B/device/gallery/wipe?scope=all"   # all|assets|albums; NO --max-time
-ch bg curl -sS -X POST "…/wipe?scope=assets&limit=1"           # one asset — the smallest thing that prompts
-      curl -sS --max-time 30 -X POST "…/wipe?scope=assets&limit=0"   # selects nothing — the probe, below
+ch bg $R --timeout 0 gallery wipe --scope all        # all|assets|albums; NO bound
+ch bg $R --timeout 0 gallery wipe --scope assets --limit 1   # one asset — the smallest thing that prompts
+      $R gallery wipe --scope assets --limit 0               # selects nothing — the probe, below
 ```
 
-`limit`/`offset` are optional; **omit them entirely** rather than passing an empty value. `&limit=` is the
-empty string, not "unset", and it is refused with a `400` on purpose — a mistyped bound must never fall
-back to "no window" and delete the whole library.
+`--limit`/`--offset` are optional; omit them for the whole match. A scope `rig` cannot read is a usage error naming
+what is accepted (`all|assets|albums`) before anything reaches the phone — a mistyped bound must never fall back to
+"no window" and delete the whole library.
 
 🏃 **Run it under `ch bg`, backgrounded, and end your turn.** This is the one call in this channel where
 that is right, and it is not the usual `ch bg` rule (CLAUDE.md: don't wrap work the workspace is genuinely
@@ -409,7 +422,7 @@ needed, instead of reading busy while nothing happens and nobody is told. Foregr
 anyway: **the request has no deadline** and the harness clamps a foreground Bash call at 10 min, so waiting
 inline gets you `Exit code 143` and no result.
 
-⏳ **Do not put a `--max-time` on it either** (except on the `limit=0` probe, which answers in ~50 ms). The
+⏳ **Do not bound it either — `--timeout 0`** (except on the `--limit 0` probe, which answers in ~50 ms). The
 wait is unbounded on purpose: a bound never distinguished "not tapped yet" from "never presented" — it only
 picked a moment to stop listening, and it expired twice on an alert that was on screen and correct because
 nobody was standing at the phone. Let it wait; the operator's tap ends it.
@@ -427,23 +440,23 @@ match goes in one transaction, exactly as before.
 combination of scope, count, lane, launch style and ordering, and a `diagnostics restart` fixed it with
 nothing else changed. It is transient state in the OS photo-library daemon (Apple threads 840122 / 806349 /
 732820 — it survives app kills and reinstalls, and clears on a restart), not the command. Before rebooting,
-spend one call telling the two failures apart: **wipe with a window that selects nothing** (`&limit=0`, or
-`scope=albums` with no albums). That submits an empty change block, needs no confirmation, and answers in
+spend one call telling the two failures apart: **wipe with a window that selects nothing** (`--limit 0`, or
+`--scope albums` with no albums). That submits an empty change block, needs no confirmation, and answers in
 ~50 ms. If THAT hangs too, the whole change pipeline is down and a restart is not the answer.
 
 ⚠️ **If YOU give up, the alert does not.** Killing the request, timing out, even killing the app leaves the
 confirmation on screen — a later tap still deletes, with nothing listening. Only a tap or `Don't Allow` ends
-it, and `GET /device/gallery` is the only truth about what happened. (There is no `answered` field any more:
+it, and `gallery read` is the only truth about what happened. (There is no `answered` field any more:
 the response arrives when the platform answers, so `committed` plus `errorCode` say everything. A tapped
 Cancel is `committed:false` + `errorCode:3072`.)
 
-An unrecognized `scope` is a `400` that names what is accepted — the only value-checked command here,
-because this is the only one that cannot be undone.
+The scope is typed (`WipeScope`): an unrecognized one never leaves your shell — the only command here where that
+matters this much, because it is the only one that cannot be undone.
 
 ## Resetting durable state
 
 ```
-curl -X POST $B/device/reset
+$R dev-controls reset
 ```
 
 Voids the ledger, the discovery cursor, the membership config (**locally** — no backend is notified), and
@@ -465,37 +478,37 @@ one real.
 
 ```bash
 # REAL photos, a MOCKED backend (the shared zone is never touched) — the smallest coherent such choice:
-curl -s -X POST $B/device/adapters --data-binary $'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n'
-# → 200 {"written":…,"exiting":true}  — the app EXITS. Launch it again (simulator: `xcrun simctl launch`;
+$R adapters choose --choice $'backend=mock\nupload-queue=mock\nupload-session=mock\ndownloads=mock\npush=mock\nintegrity=mock\nextension-registry=mock\n'
+# → {"written":…,"next":…}  — the app EXITS. Launch it again (simulator: `xcrun simctl launch`;
 #   phone: the `snapsync-device` launch step). Every start of any process reads the choice from then on.
 curl -s $B/health                        # adapters=mocked: backend,…   (or adapters=REFUSED …)
-curl -s -X POST $B/device/adapters/current
-curl -s -X POST $B/device/adapters/clear  # back to all real; exits
+$R adapters current
+$R adapters clear                         # back to all real; exits
 ```
 
-- **Coherence is checked** (`409` with every broken rule): a mocked backend needs mocked transfers, push service and
+- **Coherence is checked** (refused with every broken rule): a mocked backend needs mocked transfers, push service and
   Secure Enclave; a mocked library needs mocked uploads; a REAL extension registration keeps every system the
   extension writes real — so mock `extension-registry` with anything shared, and drive the extension with
-  `/os/photokit-ext/processRawValue`. A choice that does not parse is a `400`.
-- **Refused while joined** (`409`): leave or `POST /device/reset` first, so no membership is carried into another set
+  `/os/photokit-ext/processRawValue`. A choice that does not parse fails, naming the problem.
+- **Refused while joined**: leave or `rig dev-controls reset` first, so no membership is carried into another set
   of systems.
 - **An invalid adapters file composes NOTHING** (a script wrote a bad one, or a state file is unreadable): `/health`
-  says `adapters=REFUSED …`, every other route answers `409` naming why, the adapter verbs still work. Never a
-  fall-back to real.
+  says `adapters=REFUSED …`, everything that would reach the app is refused naming why, the `adapters` service (and
+  `host logs`, `host disk`) still work. Never a fall-back to real.
 - **Mocked means operator-driven**: nothing a mock plays happens on its own. The levers of the JVM host section below
   are honoured here for exactly the systems the choice mocks (`GET /device` lists which); `/os` entries go through the
   mock where the system is mocked. With `upload-session` mocked the app's own uploader still runs, and its transfers
   wait for you: `rig --url $B upload-session session` lists them, `upload-session complete` lands them (the typed
   transfer services, below). The extension's cycle runs with `/os/photokit-ext/processRawValue`, its jobs land with
   `upload-queue complete-job`. Both uploaders take the same photos,
-  so to drive one alone switch the other off (`device/uploaders`, below — the JVM host honours it too).
+  so to drive one alone switch the other off (`dev-controls pin`, below — the JVM host honours it too).
 - Mock state persists across relaunches (`rig/state/`, `rig/databases/` in the App Group), written by the app.
 - Measured 2026-09-28 on the SE2 (iOS 26.6.2): the choice above over the phone's REAL library — 55 resources (Live
   Photo motion included) through the mocked queue into the mocked backend, all still there after a SIGKILL and
   relaunch; `adapters/clear` returned the app to all real. A choice that mocks the extension registration never
   touches the real one.
 - On the phone only the verb can write the choice (the App Group is not USB-reachable); on a simulator a script may
-  write it before a launch into the `folder` that `POST /device/adapters/current` names (`ios-simulator`).
+  write it before a launch into the `folder` that `adapters current` names (`ios-simulator`).
 
 ## Triggers return what the PLATFORM returns
 
@@ -511,14 +524,14 @@ $R --url $B os background-transfers --identifier app.snapsync.upload.session --a
 ```
 
 ⚠️ **`foreground` answers at once and does NOT wait** — and it is the delivery you will reach for most.
-The platform hands it no completion handler, so neither does the rig. **Poll `/device/state`.**
+The platform hands it no completion handler, so neither does the rig. **Poll `host state`.**
 
 The three entries the OS *does* hand a completion handler — `silent-push`, `background-task`,
 `background-transfers` — answer once delivered; with `--await-release` they block until the app releases the handler
 and answer `heldMs` (on the JVM host, a test waits on the world's `CompletionReleased` instead). A push and a transfer
 wake release after their **own work** (the push's union read and enqueue; the session's staging and drain report) and
 run the rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; poll
-`/device/state` for its effects. The heartbeat releases after its tail. The last two take the identifier the OS would
+`host state` for its effects. The heartbeat releases after its tail. The last two take the identifier the OS would
 deliver: `app.snapsync.upload.heartbeat` (the busy heartbeat) or `app.snapsync.heartbeat.idle` (the idle heartbeat, an
 app refresh) — the same wake to the core; the download backstop is deleted — and `app.snapsync.upload.session` for the
 app uploader's session (any other channel routes to the downloads). An unknown task identifier is completed at once
@@ -527,21 +540,21 @@ and logged.
 🧭 **The rig classifies nothing.** A release carries no outcome, so "released after the own work" vs
 "released on the operating system's expiry" is **not** derivable from `heldMs`. The authoritative answer is
 the runtime's expiry line `operating system expiry: cancelling trigger=…`, which it writes on the expiry path
-and no other — read it via `/device/logs` after the call's `[rig] → os.<method>` marker. Every
+and no other — read it via `host logs` after the call's `[rig] → os.<method>` marker. Every
 call writes that marker, so it doubles as the log cursor.
 
 Excluded members answer with **the reason they are excluded**, not a bare 404 — `onLaunch` re-registers
 `NSNotificationCenter` observers documented as never removed, so re-invoking it corrupts the process under
 test (reset is a relaunch), and `onRequestPermission` raises a system alert only a finger can answer.
 
-⚠️ **`/user` commands are intents and return `202`, exactly as a tap does.** They start work and do not wait
-for it, because the UI itself has no completion signal to expose. Poll `/device/state`.
+⚠️ **A tap answers once it is handed over, exactly as a screen's does.** It starts work and does not wait for it,
+because the UI itself has no completion signal to expose. Poll `host state`.
 
 ## Ordering trap
 
 `onForeground` fires **before** the membership config resolves — measured at 17:53:25.23 against
 17:53:27.45. A caller that triggers and then asserts reads a membership-less state and concludes
-nothing happened. Poll `/device/state`'s `ready.configResolved` instead of sleeping.
+nothing happened. Poll `host state`'s `ready.configResolved` instead of sleeping.
 
 ## If it does not answer
 
@@ -556,23 +569,19 @@ Both uploaders run where both exist (the app's on every OS, the extension beside
 grant). To exercise one alone there is a development switch per uploader, with no production writer:
 
 ```
-POST /device/uploaders?app=on|off&extension=on|off
-POST /device/uploaders?reset
+$R dev-controls pin --app true|false --extension true|false
+$R dev-controls unpin                     # both run, as a shipped build
+$R dev-controls controls                  # the switch as it stands
 ```
 
-`app=off` makes the app's uploader withhold (it records completions, creates nothing). `extension=off` makes
-the extension unregistrable, and the reconcile the command triggers **deregisters it now** — the extension cannot
-read app memory, so off must be a deregistration (which wipes its in-flight OS jobs: the test's intent). The
-answer reports the switch and the registration fact it produces:
+`--app false` makes the app's uploader withhold (it records completions, creates nothing). `--extension false` makes
+the extension unregistrable, and the reconcile the pin triggers **deregisters it now** — the extension cannot
+read app memory, so off must be a deregistration (which wipes its in-flight OS jobs: the test's intent).
 
-```json
-{"app":true,"extension":false,"extensionRegistrable":false,"permission":"GRANTED","osSupportsOsDriven":true}
-```
-
-To drive the app's uploader alone on a ≥26.1 device: `extension=off`, then fire
+To drive the app's uploader alone on a ≥26.1 device: `--app true --extension false`, then fire
 `rig os background-task --identifier app.snapsync.upload.heartbeat` (the app uploader's heartbeat). The switch dies with the process.
 
-Note `/device/state`'s `build.uploadTier` is a **build fact** — which uploaders this OS carries
+Note `host state`'s `build.uploadTier` is a **build fact** — which uploaders this OS carries
 (`app` or `app+extension`) — and does not move with the switch.
 
 ## The JVM host — the same protocol with no device
@@ -590,47 +599,47 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
 - `mock` (the default) is the in-memory backend mock; `deno` starts the real `api/` (`serve.ts --ephemeral`,
   loopback-only). On `deno`, a lever only the backend mock's operator can pull (`backend.offline`, …) is refused
   "unavailable on this backend".
-- Same `os`, `/user`, `/device/state` shapes as the app. `os` drives the mocks' deliveries (the OS played);
+- Same `os` shapes and typed services as the app. `os` drives the mocks' deliveries (the OS played);
   `os continue-link` reaches the `Links` port's handler, `extension-host process` invokes the extension's entry port,
   whose cycle creates jobs on the upload-queue mock.
 - Every lever and read below is a mock's operator face — what the OS, the photo library or the backend does or
   recorded, never the composed app. A lever answers at once; what the app makes of it is **observed, not awaited**
-  (poll `/device/state`, the backend, the library, the OS's reads). The download reconcile and the status read are
-  the foreground's: `os foreground`. `/device/gallery` is the library's answer under the person's grant.
+  (poll `host state`, the backend, the library, the OS's reads). The download reconcile and the status read are
+  the foreground's: `os foreground`. `gallery read` is the library's answer under the person's grant.
 - **The OS is played, its expiry and its record included** (the app host only for what its adapter choice mocks —
   `played-os` needs `background-time` mocked): see "The operating system's typed services" below.
-  - `device/os-record` — the string record of the systems not yet typed: `screenShown`, `selectionObserved`,
-    `pickersShown`, the download session (`up`, `started`, `inFlight`), `uploadSessionHandbacks`, `databasesOpened`,
+  - `device/os-record` — the string record of the systems not yet typed: `screenShown`, the download session (`up`, `started`, `inFlight`), `uploadSessionHandbacks`, `databasesOpened`,
     `stagedFiles`, `appStorageBytes` (the bytes the app's files take, its diagnostics — logs, memory trail, saved report —
     left out: what the storage page shows a person). A receipted string `/os` answer carries it as read at the release
     (`osAtRelease`).
-  - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only the OS's reads
-    until an `os foreground`: `/device/state` and `/user` read the screen and would assemble it.
-  - `device/reinstall` (JVM host only) — delete the app and launch it again: files, databases and user defaults gone;
+  - `host relaunch [--scene false]` (JVM host only) — process death and a cold launch; `--scene false` a cold
+    background launch: no screen is built. Read only the OS's reads until an `os foreground`: `host state` and a tap
+    read the screen and would assemble it.
+  - `host reinstall` (JVM host only) — delete the app and launch it again: files, databases and user defaults gone;
     Keychain, photo library and backend kept.
 - The **operator levers** (on the app host, only for the systems its adapter choice mocks): the transfers' — the
   upload-job queue, the app's upload session and the download session — are typed services (below, "The transfers'
   typed services"), and so are the photo library's and the device's stores' (below);
-  `device/invite?event=` (JVM host only: the event's whole invite, key included, as its creating device shares it).
+  `host invite [--event …]` (JVM host only: the event's whole invite, key included, as its creating device shares it).
 - The **integration surface's** levers and reads (the same rule on the app host):
   - the backend, the photo library, the crash reporter, the system UI, the network, the clock, the device's
     conditions, the process information, the build and its development controls, and the device's stores:
-    **typed services**, below;
-  - OS: `relaunch[?scene=false]`.
+    **typed services**, below.
 - The app's private files are no fact a test reads: what the outside sees of them is `appStorageBytes`.
-- `/contract` refuses on this host (`409`, naming `JVM`): JVM contract bindings run under Gradle.
-- Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception), and
-  `client.levers(BackendLevers)` / `client.levers(PublicBackendLevers)` / `client.levers(LibraryLevers)` for the typed
-  services, over kRPC (a refusal
-  throws `LeverRefused`).
+- `contract` is refused on this host (naming `JVM`): JVM contract bindings run under Gradle.
+- Typed client for tests: `:test:control`'s `RigClient` (a string verb's `409` is a `Reply.Refused`), and
+  `client.levers(<Service>)` for every typed service, over kRPC (a refusal throws `LeverRefused`); `client.person()`
+  taps the forms.
 - Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line
   contains that string: it matches itself.
 
-### The backend's typed services
+### The control channel's typed services
 
-The backend's levers and reads are **typed services** (`docs/testing.md`, "Typed services"), served over **kRPC** on
-`ws://<host>:<port>/rpc` — not as `/device` verbs, so **curl cannot reach them**. From a shell, drive them with
-**`rig`** (`:test:cli`), whose commands are generated from the interfaces in `:test:levers`:
+A person's taps, the host's own verbs (`screen`, `host`, `gallery`, `adapters`, `contract`, `upload-jobs` — each
+classified by the host method by method) and the backend's levers and reads are **typed services** (`docs/testing.md`,
+"Typed services"), served over **kRPC** on `ws://<host>:<port>/rpc` — not as `/device` verbs, so **curl cannot reach
+them**. From a shell, drive them with **`rig`** (`:test:cli`), whose commands are generated from the interfaces in
+`:test:levers`:
 
 ```bash
 ./gradlew :test:cli:installDist -q        # once per checkout, and after a :test:levers change
@@ -647,12 +656,15 @@ $R --url $B run steps.txt                 # one command per line ('#' comments; 
 ```
 
 - **`--url` is required** — there is no default host and no environment variable.
+- **`--timeout <seconds>`** bounds one call (default 60; `0`: as long as it takes — a contract run, a large seed, a
+  wipe the phone's owner must confirm).
 - **Exit codes:** `0` answered · `1` failed (the host's message as it arrived — from an iOS host, kRPC's stand-in
   exception's) · `2` usage (an unknown service, method or flag, or a value its type cannot take; the message names
   what there is) · `3` refused by this host (`refused: <service>.<method> is refused here: <reason>`).
 - **Flags:** a method or flag by its command spelling (`fail-listing`) or its Kotlin name (`failListing`); an enum
   value in any case (`maintenance`, `server-error`, `MOTION_PHOTO`); a list by a repeated flag or comma-separated
-  (`--assets A1,A2`); a bare `Boolean` flag is `true` (`--on`; `--on false` to switch it off).
+  (`--assets A1,A2`); a bare `Boolean` flag is `true` (`--on`; `--on false` to switch it off); a structure as its
+  JSON (`--intent '{"type":"LeaveEvent"}'`; a list of structures one flag each, or as a JSON array).
 - **A foreign `device` must be a canonical UUID.** Each call starts a JVM: about 0.6 s; a `run` file pays it once.
 
 From Kotlin, `:test:control`'s typed client calls the same interfaces:

@@ -14,7 +14,7 @@ import kotlin.test.Test
 
 /**
  * A rig build's developer controls — [RigDevControls], the one implementation that switches anything — against the
- * contract, its controls set as the channel's verbs set them and its reset delivered as `/device/reset` delivers it.
+ * contract, its controls set as the channel's verbs set them and its reset delivered as `dev-controls.reset()` delivers it.
  */
 class RigDevControlsContractTest {
 

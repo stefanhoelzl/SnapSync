@@ -4,9 +4,8 @@ import android.content.ContentUris
 import android.content.Context
 import android.provider.MediaStore
 import app.snapsync.compose.AppCore
-import app.snapsync.rig.CensusView
-import app.snapsync.rig.GalleryView
-import kotlinx.serialization.json.Json
+import app.snapsync.levers.CensusView
+import app.snapsync.levers.GalleryView
 
 /**
  * `GET /device/gallery` where the photo library is REAL on Android — the counterpart of the iOS app host's PhotoKit
@@ -14,14 +13,14 @@ import kotlinx.serialization.json.Json
  * straight off MediaStore with no policy at all, as the iOS census fetches with no predicate — so an exclusion the
  * policy makes is visible as the difference.
  */
-fun androidGalleryReader(core: () -> AppCore, context: Context): suspend (String?, Boolean, Boolean) -> String =
+fun androidGalleryReader(core: () -> AppCore, context: Context): suspend (String?, Boolean, Boolean) -> GalleryView =
     { cutoff, resources, includesUpload ->
         val report = GalleryReport(
             candidates = core().candidates,
             grant = { core().photoPermission.value.name },
             census = { mediaStoreCensus(context) },
         )
-        json.encodeToString(GalleryView.serializer(), report.read(cutoff, resources, includesUpload))
+        report.read(cutoff, resources, includesUpload)
     }
 
 /**
@@ -55,9 +54,4 @@ private fun mediaStoreCensus(context: Context): CensusView {
         screenRecordings = paths.count { "Screen record" in it || "ScreenRecord" in it }.toLong(),
         moving = moving.toLong(),
     )
-}
-
-private val json = Json {
-    encodeDefaults = true
-    prettyPrint = true
 }

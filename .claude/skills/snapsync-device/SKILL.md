@@ -74,7 +74,7 @@ One variable survives, and it is not read by shipped code:
 
 It lives in build-property-gated source, so a production build contains neither the file nor the read.
 
-**Exercising one uploader alone is a channel call:** `POST /device/uploaders?app=on|off&extension=on|off`
+**Exercising one uploader alone is a channel call:** `rig dev-controls pin --app true|false --extension true|false`
 (load `rig-channel`). Both uploaders run by default on ≥26.1 under a full grant; `extension=off` deregisters
 the extension so the app's uploader runs alone.
 
@@ -90,7 +90,7 @@ timeout 15 $P apps pull app.snapsync Documents/debug.log ./debug.log --udid $U  
 ```
 
 The extension writes `ext-debug.log` into the shared App Group, which is **not** pullable over USB. On a
-rig build, read it through the channel instead — `GET /device/logs?process=extension` (see
+rig build, read it through the channel instead — `rig host logs --process extension` (see
 `rig-channel`). The channel reads the **current** file only, so a rolled `.1` sibling is not reachable
 that way. ⚠️ `apps pull app.snapsync.BackgroundUpload Documents/debug.log` is **dead**: the extension
 deletes that stale file on first launch, so the pull fails honestly instead of returning months-old
@@ -169,7 +169,7 @@ default ATS, no `NSAllowsLocalNetworking` exception, on any host.
 To test a **backend change** without deploying it, point the device at a local rig instead — load
 `local-backend`; there the oracle is `find api/.localstore -type f`.
 
-A signed build's identity is checked on the running app, not in the IPA: `GET /device/state` (rig
+A signed build's identity is checked on the running app, not in the IPA: `rig host state` (rig
 channel) reporting a device id proves both bundles claim the same `<TEAM>.app.snapsync.shared` keychain
 group. A wrong group reads as **no device id**, and the id is written once and never rewritten.
 

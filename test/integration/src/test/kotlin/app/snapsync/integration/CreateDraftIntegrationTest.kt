@@ -4,6 +4,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -24,7 +25,7 @@ class CreateDraftIntegrationTest {
         lateinit var first: Seen<Layer.CreateEvent>
         given {
             inFront()
-            step("a name typed", act = { user("createName", "name" to "Party") }, until = {
+            step("a name typed", act = { tap(UiIntent.CreateName("Party")) }, until = {
                 first = screen<Layer.CreateEvent> { it.form.name == "Party" }
             })
             step("away", act = { os.background() }, until = { settled { true } })

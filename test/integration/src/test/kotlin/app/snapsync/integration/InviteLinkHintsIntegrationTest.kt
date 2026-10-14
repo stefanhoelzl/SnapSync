@@ -41,7 +41,7 @@ class InviteLinkHintsIntegrationTest {
 
     private suspend fun Rig.shippedBuild() {
         devControls.inviteLinkHints(false)
-        device("relaunch")
+        host.relaunch()
     }
 
     @Test

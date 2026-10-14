@@ -9,11 +9,11 @@ import kotlin.test.Test
 class ShotsTest {
 
     @Test
-    fun the_create_shot_is_reached() = rigTest { reach(Shot.CREATE) { device("relaunch") } }
+    fun the_create_shot_is_reached() = rigTest { reach(Shot.CREATE) { host.relaunch() } }
 
     @Test
-    fun the_joining_shot_is_reached() = rigTest { reach(Shot.JOINING) { device("relaunch") } }
+    fun the_joining_shot_is_reached() = rigTest { reach(Shot.JOINING) { host.relaunch() } }
 
     @Test
-    fun the_in_sync_shot_is_reached() = rigTest { reach(Shot.IN_SYNC) { device("relaunch") } }
+    fun the_in_sync_shot_is_reached() = rigTest { reach(Shot.IN_SYNC) { host.relaunch() } }
 }
