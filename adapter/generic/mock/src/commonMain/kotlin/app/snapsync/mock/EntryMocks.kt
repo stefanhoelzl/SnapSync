@@ -4,6 +4,12 @@ import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DevControlsView
+import app.snapsync.levers.ExtensionHostLevers
+import app.snapsync.levers.LifecycleLevers
+import app.snapsync.levers.LinksLevers
+import app.snapsync.levers.PushLevers
+import app.snapsync.levers.PushView
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.InviteLinkHints
@@ -37,8 +43,15 @@ import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 
 // The entry ports' mocks (`docs/testing.md`, "Mocks"): the platform side of each event port. What survives a relaunch
-// is the platform itself; the handlers are those of the process whose composition registered last, and the operator
-// delivers through them — nothing fires on its own.
+// is the platform itself; the handlers are those of the process whose composition registered last, and whoever plays
+// the operating system delivers through them — nothing fires on its own. A delivery is plumbing on the mock, not a
+// lever on its operator face: the control channel's played OS calls it (`MockEntryDriver`), and a typed service names it
+// (`OsLevers`), because a delivery may hand the app a live completion handler, which crosses no wire.
+
+/** Told what the operating system records of the app, on the app's thread, as it records it. */
+fun interface OsWatcher {
+    fun told(event: WorldEvent.Os)
+}
 
 /** The app's foreground life. */
 class LifecycleMock {
@@ -56,21 +69,20 @@ class LifecycleMock {
         }
     }
 
-    val operator: LifecycleOperator = LifecycleOperator(this)
-}
-
-class LifecycleOperator internal constructor(private val mock: LifecycleMock) {
-    /** Whether the app has ever become active. */
-    val everActive: Boolean get() = mock.everActive
-
     /** The app became active. */
     fun foreground() {
-        mock.everActive = true
-        mock.handlers.require("foreground").onForeground.handle(Unit, Completion.None)
+        everActive = true
+        handlers.require("foreground").onForeground.handle(Unit, Completion.None)
     }
 
     /** The app is leaving the active state. */
-    fun background() = mock.handlers.require("background").onBackground.deliver(Unit)
+    fun background() = handlers.require("background").onBackground.deliver(Unit)
+
+    val operator: LifecycleOperator = LifecycleOperator(this)
+}
+
+class LifecycleOperator internal constructor(private val mock: LifecycleMock) : LifecycleLevers {
+    override suspend fun everActive(): Boolean = mock.everActive
 }
 
 /** The links the platform opens the app with. */
@@ -90,22 +102,24 @@ class LinksMock {
         }
     }
 
-    val operator: LinksOperator = LinksOperator(this)
-}
-
-class LinksOperator internal constructor(private val mock: LinksMock) {
     /** [url] was opened as a Universal Link, through [hook]'s path. */
     fun open(url: String, hook: String = "onSceneContinueActivity") = deliver(LinkDelivery.Link(hook, url))
 
     /** The platform delivered [delivery]. */
-    fun deliver(delivery: LinkDelivery) = mock.handlers.require("a link").onLink.deliver(delivery)
+    fun deliver(delivery: LinkDelivery) = handlers.require("a link").onLink.deliver(delivery)
 
     /** A start of the installation, whose store answers [referrer]: delivered on the first start only. */
-    fun startInstalled(referrer: String) {
-        if (mock.referrerDelivered) return
-        mock.referrerDelivered = true
+    internal fun startInstalled(referrer: String) {
+        if (referrerDelivered) return
+        referrerDelivered = true
         deliver(LinkDelivery.InstallReferrer("installReferrer", referrer))
     }
+
+    val operator: LinksOperator = LinksOperator(this)
+}
+
+class LinksOperator internal constructor(private val mock: LinksMock) : LinksLevers {
+    override suspend fun startInstalled(referrer: String) = mock.startInstalled(referrer)
 }
 
 /**
@@ -128,6 +142,14 @@ class PushServiceMock {
 
     @Volatile internal var toldTo: PushHandlers? = null
 
+    /** Who is told each registration — the control channel's event stream, or no one. */
+    @Volatile private var watcher: OsWatcher = OsWatcher {}
+
+    /** Tells [listener] each time the app asks for its token (`docs/testing.md`, "How a test waits"). */
+    fun watch(listener: OsWatcher) {
+        watcher = listener
+    }
+
     fun port(): PushNotifications = Face()
 
     /** The port face a process is handed. */
@@ -141,6 +163,7 @@ class PushServiceMock {
 
         override fun register() {
             registrations++
+            watcher.told(WorldEvent.PushRegistered)
             refusal?.let { why ->
                 handlers.orNull("a registration", BeforeListen.Dropped)?.onTokenFailure?.deliver(PlatformError(why))
                 return
@@ -154,45 +177,35 @@ class PushServiceMock {
         }
     }
 
-    val operator: PushServiceOperator = PushServiceOperator(this)
-}
-
-class PushServiceOperator internal constructor(private val mock: PushServiceMock) {
-    /** How many times the app asked the push service for its token. */
-    val registrations: Int get() = mock.registrations
-
-    /** The push service this device speaks — APNs unless a test plays an Android device. Set before composing. */
-    var kind: String
-        get() = mock.kind
-        set(value) {
-            mock.kind = value
-        }
-
     /** The push service issued this device [token] — kept, and re-delivered to a relaunched process's request. */
     fun deliverToken(token: String) {
-        val handlers = mock.handlers.require("a token")
-        mock.issued = token
-        mock.toldTo = handlers
-        handlers.onToken.deliver(PushToken(token))
+        val current = handlers.require("a token")
+        issued = token
+        toldTo = current
+        current.onToken.deliver(PushToken(token))
     }
-
-    /**
-     * The push service issues this device no token, for [description] — what a build naming no push project meets: every
-     * ask is answered with this failure. `null` lifts it.
-     */
-    var refusesTokens: String?
-        get() = mock.refusal
-        set(value) {
-            mock.refusal = value
-        }
 
     /** The push service could not issue a token. */
     fun deliverTokenFailure(description: String) =
-        mock.handlers.require("a token failure").onTokenFailure.deliver(PlatformError(description))
+        handlers.require("a token failure").onTokenFailure.deliver(PlatformError(description))
 
     /** A silent push carrying [payload] arrived, handing [completion]. */
     fun deliverMessage(payload: Map<Any?, *>, completion: Completion) =
-        mock.handlers.require("a push").onMessage.handle(PushMessage(payload), completion)
+        handlers.require("a push").onMessage.handle(PushMessage(payload), completion)
+
+    val operator: PushServiceOperator = PushServiceOperator(this)
+}
+
+class PushServiceOperator internal constructor(private val mock: PushServiceMock) : PushLevers {
+    override suspend fun kind(kind: String) {
+        mock.kind = kind
+    }
+
+    override suspend fun refuseTokens(reason: String?) {
+        mock.refusal = reason
+    }
+
+    override suspend fun push(): PushView = PushView(mock.registrations, mock.kind, mock.refusal)
 }
 
 /**
@@ -349,19 +362,18 @@ class ExtensionHostMock {
         }
     }
 
-    val operator: ExtensionHostOperator = ExtensionHostOperator(this)
-}
-
-class ExtensionHostOperator internal constructor(private val mock: ExtensionHostMock) {
     /**
      * The operating system invokes the extension's `process()` — synchronously, on [thread], a thread of its own that
      * the answer blocks until the cycle has run. The caller names it: a mock starts no thread of its own.
+     *
+     * Plumbing, with no operator face: whoever plays the operating system names the thread, which crosses no wire — the
+     * host's `extension-host` service ([ExtensionHostLevers]) is how a test invokes it.
      */
     suspend fun process(thread: CoroutineContext): ProcessingAnswer =
-        withContext(thread) { mock.handlers.require("process()").onProcess.answer(Unit) }
+        withContext(thread) { handlers.require("process()").onProcess.answer(Unit) }
 
     /** The operating system ends the invocation. */
-    fun terminate() = mock.handlers.require("notifyTermination()").onTerminate.deliver(Unit)
+    fun terminate() = handlers.require("notifyTermination()").onTerminate.deliver(Unit)
 }
 
 /** A completion a mocked platform waits on: [ended] completes once the core answers it. */

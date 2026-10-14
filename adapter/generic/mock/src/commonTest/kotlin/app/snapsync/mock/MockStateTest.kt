@@ -150,11 +150,11 @@ class MockStateTest {
         assertEquals(TimeZone.of("Europe/Berlin"), copy.clock.port().timeZone())
         assertEquals(
             mapOf(WakeId.Heartbeat to WakeTrigger.After(1.hours, network = WakeNetwork.ANY)),
-            copy.wakes.operator.pendingWakes,
+            copy.wakes.pending.value,
         )
         assertEquals(listOf("A1/primary"), copy.uploadQueue.view().live)
         assertEquals(1, copy.uploadQueue.view().created.size)
-        assertEquals(true, copy.extensionRegistry.operator.registered)
+        assertEquals(true, copy.extensionRegistry.record?.value)
         assertEquals(Availability.UNAVAILABLE, copy.processInfo.protectedData)
         assertEquals(NetworkAccess.Blocked, copy.connectivity.access)
         assertEquals(CONDITIONS, copy.deviceConditions.reading)

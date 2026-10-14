@@ -17,15 +17,15 @@ import kotlinx.serialization.Serializable
 @Rpc
 interface PublicBackendLevers {
     /** The event's union: every member's complete assets, with the roles each is served with. */
-    @StandsInFor("unionOf")
+    @StandsInFor("BackendOperator.unionOf")
     suspend fun union(@JoinedEvent event: String? = null): List<UnionEntry>
 
     /** What the backend serves for [event] — whether it holds it at all, its name, and the `closedAt` it still serves. */
-    @StandsInFor("isRegistered", "eventNameOf")
+    @StandsInFor("BackendOperator.isRegistered", "BackendOperator.eventNameOf")
     suspend fun event(@JoinedEvent event: String? = null): EventRecord
 
     /** The object keys the backend lists for [device] in [event], sorted. */
-    @StandsInFor("objectsOf")
+    @StandsInFor("BackendOperator.objectsOf")
     suspend fun objects(@ThisDevice device: String? = null, @JoinedEvent event: String? = null): List<String>
 
     /**
@@ -36,7 +36,7 @@ interface PublicBackendLevers {
      * (a subset of [assets]) are declared but their bytes not sent — still on that member's phone; a later call without
      * them lands them.
      */
-    @StandsInFor("seedMember", "deposit")
+    @StandsInFor("BackendOperator.seedMember", "BackendOperator.deposit")
     suspend fun foreignDevice(
         device: String,
         assets: List<String>,

@@ -327,6 +327,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         val deviceId = call.param("deviceId")
         config.pushToken?.let { state.deviceConfigs[deviceId] = PushEndpoint(it.kind, it.token, it.env) }
         state.deviceConfigWrites[deviceId] = (state.deviceConfigWrites[deviceId] ?: 0) + 1
+        state.watcher.told(WorldEvent.DeviceRegistered(deviceId, config.pushToken?.token))
         return empty(CREATED)
     }
 

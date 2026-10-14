@@ -98,7 +98,7 @@ class HeldScreenIntegrationTest {
             )
         }
 
-        whenever { os("app", "onForeground") }
+        whenever { os.foreground() }
         then {
             event<WorldEvent.LibraryEnumerationHeld>()
             neverScreen<Layer.Joined> { it.health != SyncHealth.Loading }
@@ -106,7 +106,7 @@ class HeldScreenIntegrationTest {
 
         whenever {
             library.holdEnumeration(on = false)
-            os("app", "onForeground")
+            os.foreground()
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }

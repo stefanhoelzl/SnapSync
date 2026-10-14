@@ -1,7 +1,10 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.BackendCall
+import app.snapsync.levers.WorldEvent
 import app.snapsync.rig.RigState
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -293,22 +296,20 @@ class JoinGateIntegrationTest {
 
     @Test
     @Verifies(spec = "event-lifetime", requirement = "Deletion is never announced and never touches anyone's library")
-    fun a_swept_event_keeps_the_device_in_it_on_the_next_foreground() = rigTest {
-        val event = registerEvent(name = "Anna's Wedding")
-        openLink(inviteLink(event))
-        awaitReady()
-        join()
-        assertEquals(event, state().ready.eventId)
-
-        // The nightly sweep deletes the event out from under a still-active member, and time moves
-        // past the deadline the membership persisted at join. BOTH witnesses now hold.
-        backend.sweep(event)
-        advanceTo(PAST_EVERY_DEADLINE)
-
-        os("app", "onForeground")
+    fun a_swept_event_keeps_the_device_in_it_on_the_next_foreground() = behaviour {
+        given {
+            val event = joinedEvent()
+            // The nightly sweep deletes the event out from under a still-active member, and time moves past the
+            // deadline the membership persisted at join. BOTH witnesses now hold.
+            step("the event swept", act = { backend.sweep(event) }, until = {})
+            pastEveryDeadline()
+        }
         // The app never leaves an event on its own: the member stays, and is shown the event is over.
-        neverWithin(what = "a deleted event is never left on its own") { !it.ready.configResolved }
-        assertEquals(event, state().ready.eventId)
+        whenever { os.foreground() }
+        then {
+            settled { true }
+            never<WorldEvent.UiChanged> { it.ui.layer !is Layer.Joined }
+        }
     }
 
     @Test
@@ -317,24 +318,28 @@ class JoinGateIntegrationTest {
         requirement = "The app never leaves an event on its own",
         scenario = "A server error never ends a membership",
     )
-    fun a_transient_details_failure_never_tears_the_membership_down() = rigTest {
-        val event = registerEvent(name = "Anna's Wedding")
-        openLink(inviteLink(event))
-        awaitReady()
-        join()
-        val joined = state().joined!!.membership
-
-        // The event is very much alive; the backend just cannot be reached. Past the deadline too, so
-        // ONLY the confirmed-absence witness is missing — exactly the systemic-fault shape.
-        backend.offline(true)
-        advanceTo(PAST_EVERY_DEADLINE)
-
-        os("app", "onForeground")
-        // A NEGATIVE assertion, so it needs a bounded wait rather than an await-until: give the flow's escaping
-        // launch real time to do the wrong thing, and assert it never does.
-        neverWithin(what = "a fetch that could not tell is never destructive") { !it.ready.configResolved }
-        assertEquals(joined, state().joined?.membership, "the membership is untouched")
+    fun a_transient_details_failure_never_tears_the_membership_down() = behaviour {
+        given {
+            joinedEvent()
+            // The event is very much alive; the backend just cannot be reached. Past the deadline too, so ONLY the
+            // confirmed-absence witness is missing — exactly the systemic-fault shape.
+            step("the backend unreachable", act = { backend.offline(true) }, until = {})
+            pastEveryDeadline()
+        }
+        // A fetch that could not tell is never destructive: the membership is untouched.
+        whenever { os.foreground() }
+        then {
+            settled { true }
+            never<WorldEvent.UiChanged> { it.ui.layer !is Layer.Joined }
+        }
     }
+
+    /** The clock past the retention deadline of every event these tests create. */
+    private suspend fun Given.pastEveryDeadline() = step(
+        "past every deadline",
+        act = { advanceTo(PAST_EVERY_DEADLINE) },
+        until = { settled { true } },
+    )
 
     // ---- helpers --------------------------------------------------------------------------------
 

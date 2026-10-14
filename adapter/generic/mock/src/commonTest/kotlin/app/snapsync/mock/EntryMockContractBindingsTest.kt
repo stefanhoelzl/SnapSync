@@ -57,8 +57,8 @@ class EntryMockContractBindingsTest {
             return Entered.Ready(
                 LifecycleUnderTest(
                     mock.port().recorded(log),
-                    becomeActive = { mock.operator.foreground() },
-                    resignActive = { mock.operator.background() },
+                    becomeActive = { mock.foreground() },
+                    resignActive = { mock.background() },
                 ),
             )
         }
@@ -79,12 +79,12 @@ class EntryMockContractBindingsTest {
             return Entered.Ready(
                 LinksUnderTest(
                     mock.port().recorded(log),
-                    open = { url -> mock.operator.open(url) },
+                    open = { url -> mock.open(url) },
                     openNotALink = {
-                        mock.operator.deliver(LinkDelivery.NotALink("onNewIntent", "android.intent.action.MAIN"))
+                        mock.deliver(LinkDelivery.NotALink("onNewIntent", "android.intent.action.MAIN"))
                     },
-                    openWithoutUrl = { mock.operator.deliver(LinkDelivery.NoUrl("onNewIntent")) },
-                    startInstalled = { referrer -> mock.operator.startInstalled(referrer) },
+                    openWithoutUrl = { mock.deliver(LinkDelivery.NoUrl("onNewIntent")) },
+                    startInstalled = { referrer -> mock.startInstalled(referrer) },
                 ),
             )
         }
@@ -97,12 +97,12 @@ class EntryMockContractBindingsTest {
         override val reaches = setOf(PushState.NO_PUSH_PROJECT, PushState.DELIVERING)
         override fun create(state: PushState, clauseId: String, log: CallLog): Entered<PushUnderTest> {
             val mock = PushServiceMock()
-            if (state == PushState.NO_PUSH_PROJECT) mock.operator.refusesTokens = "no push project is configured"
+            if (state == PushState.NO_PUSH_PROJECT) mock.refusal = "no push project is configured"
             val os = PushOs(
-                issueToken = { mock.operator.deliverToken(it) },
+                issueToken = { mock.deliverToken(it) },
                 deliver = { data ->
                     var released = false
-                    mock.operator.deliverMessage(
+                    mock.deliverMessage(
                         HashMap<Any?, Any?>(data),
                         object : Completion {
                             override fun complete() {
@@ -151,10 +151,10 @@ class EntryMockContractBindingsTest {
                     mock.port().recorded(log),
                     invoke = {
                         var answered: ProcessingAnswer? = null
-                        runEntry { answered = mock.operator.process(Dispatchers.Default) }
+                        runEntry { answered = mock.process(Dispatchers.Default) }
                         checkNotNull(answered).ordinal
                     },
-                    end = { mock.operator.terminate() },
+                    end = { mock.terminate() },
                     resultOf = { it.ordinal },
                 ),
             )

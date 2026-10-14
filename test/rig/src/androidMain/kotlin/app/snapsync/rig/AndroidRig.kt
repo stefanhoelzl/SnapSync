@@ -172,8 +172,8 @@ private fun AndroidRigLaunch.hooks(
     triggerGroups = mapOf(
         "app" to TriggerGroup(
             lane = Dispatchers.Main,
-            wired = appTriggers(ChosenEntryDriver(world::isMocked, MockEntryDriver(world.device, world.os), AndroidEntryDriver(lifecycle, links))) +
-                ("onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") world.os.expireNext() else world.os.expire() }),
+            wired = appTriggers(androidEntries(world, lifecycle, links)) +
+                ("onExpiry" to RigTrigger.Fire { arg -> if (arg == "next") world.os.expireNextNow() else world.os.expireNow() }),
             excluded = emptyMap(),
         ),
     ),
@@ -198,14 +198,17 @@ private fun AndroidRigLaunch.hooks(
         androidGalleryReader(core, context)
     },
     osExtensionEnabled = { null },
-    services = world.servedServices(reconcileUploads = { core().uploadTransitions.onOverrideChanged() }),
+    services = world.servedServices(
+        androidHostServices(world, lifecycle, links),
+        reconcileUploads = { core().uploadTransitions.onOverrideChanged() },
+    ),
     publishBoundPort = { bound ->
         rigPortFilePath(
             context.filesDir.path,
         )?.let { File(it).writeText(bound.toString()) }
     },
     contracts = emptyList(),
-    refusals = androidRefusals(world),
+    refusals = androidRefusals(world, androidHostServices(world, lifecycle, links)),
     osExtensionNotApplicable = "Android has no upload extension: its uploader runs in the app's own process",
     osRecord = world.os::record,
     adapters = description,
@@ -245,8 +248,22 @@ private class AndroidEntryDriver(
         )
 }
 
+/** Each delivery through the system that makes it: the mock's where the launch mocks it, the platform's adapter otherwise. */
+private fun androidEntries(world: MockWorld, lifecycle: AndroidLifecycle, links: AndroidLinks): EntryDriver =
+    ChosenEntryDriver(world::isMocked, MockEntryDriver(world.device, world.os), AndroidEntryDriver(lifecycle, links))
+
+/** The services this host implements itself: the deliveries, on the main thread the platform delivers on. No extension. */
+private fun androidHostServices(world: MockWorld, lifecycle: AndroidLifecycle, links: AndroidLinks) = HostServices(
+    entries = PlayedEntries(androidEntries(world, lifecycle, links), Dispatchers.Main),
+    extensionHost = null,
+    noExtensionHost = "Android has no upload extension: its uploader runs in the app's own process",
+)
+
 /** What the Android host refuses of the shared vocabulary, each with its reason. */
-private fun androidRefusals(world: MockWorld): Map<String, String> = world.leverRefusals() + buildMap {
+private fun androidRefusals(
+    world: MockWorld,
+    host: HostServices,
+): Map<String, String> = world.leverRefusals(host) + buildMap {
     RigVocabulary.extensionEntries.forEach {
         put(it, "Android has no upload extension: its uploader runs in the app's own process, and none is composed yet")
     }

@@ -68,13 +68,16 @@ internal fun MockWorld.refusalFor(needs: List<Need>, name: String): String? = ne
 fun MockWorld.honouredLevers(): Map<String, RigCommand> =
     levers().filter { (name, lever) -> refusalOf(name, lever) == null }.mapValues { it.value.command }
 
-/** The levers this world refuses, by vocabulary entry (`device/<name>`), each with its reason. */
-fun MockWorld.leverRefusals(): Map<String, String> =
+/**
+ * The levers this world refuses, by vocabulary entry (`device/<name>`), each with its reason — and the typed services'
+ * methods it refuses, [host]'s own among them.
+ */
+fun MockWorld.leverRefusals(host: HostServices): Map<String, String> =
     levers().mapNotNull { (name, lever) ->
         refusalOf(name, lever)?.let {
             "device/$name" to it
         }
-    }.toMap() + serviceRefusals()
+    }.toMap() + serviceRefusals(host)
 
 /** The whole table, bound to this world. */
 internal fun MockWorld.levers(): Map<String, Lever> {

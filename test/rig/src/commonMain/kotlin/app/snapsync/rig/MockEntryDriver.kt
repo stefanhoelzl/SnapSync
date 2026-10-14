@@ -21,13 +21,13 @@ const val UPLOAD_TRANSFER_CHANNEL: String = "app.snapsync.upload.session"
  * through the download session — the iOS adapter's routing.
  */
 class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) : EntryDriver {
-    override fun foreground() = device.lifecycle.operator.foreground()
+    override fun foreground() = device.lifecycle.foreground()
 
-    override fun background() = device.lifecycle.operator.background()
+    override fun background() = device.lifecycle.background()
 
-    override fun pushToken(hex: String) = device.pushService.operator.deliverToken(hex)
+    override fun pushToken(hex: String) = device.pushService.deliverToken(hex)
 
-    override fun pushTokenFailure(description: String) = device.pushService.operator.deliverTokenFailure(description)
+    override fun pushTokenFailure(description: String) = device.pushService.deliverTokenFailure(description)
 
     /**
      * The push the backend sent for [eventId], as APNs delivers it: the event, and the union position the backend's last
@@ -40,14 +40,14 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
             put("eventId", eventId)
             seq?.let { put("seq", it) }
         }
-        os.deliver(done) { device.pushService.operator.deliverMessage(payload, it) }
+        os.deliver(done) { device.pushService.deliverMessage(payload, it) }
     }
 
-    override fun continueLink(url: String) = device.links.operator.open(url)
+    override fun continueLink(url: String) = device.links.open(url)
 
     override fun backgroundTask(identifier: String, done: () -> Unit) {
         val heartbeat = identifier == UPLOAD_HEARTBEAT_TASK || identifier == IDLE_HEARTBEAT_TASK
-        if (heartbeat) os.grant(done) { device.wakes.operator.fire(WakeId.Heartbeat, it) } else done()
+        if (heartbeat) os.grant(done) { device.wakes.fire(WakeId.Heartbeat, it) } else done()
     }
 
     override fun backgroundTransfers(identifier: String, done: () -> Unit) {

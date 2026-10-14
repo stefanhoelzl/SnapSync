@@ -254,7 +254,7 @@ class UploadCycleIntegrationTest {
         device("relaunch", "scene" to "false")
         val opened = osRecord().databasesOpened.size
 
-        os("app", "onPushToken", "0a1b2c3d")
+        os.pushToken("0a1b2c3d")
         eventually(read = { deviceConfig()?.first }) { it == "0a1b2c3d" }
         assertEquals(opened, osRecord().databasesOpened.size, "composing and waking the app opened a database")
 

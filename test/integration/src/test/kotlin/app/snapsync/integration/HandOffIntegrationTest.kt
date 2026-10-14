@@ -68,7 +68,7 @@ class HandOffIntegrationTest {
 
     @Test
     fun the_operating_system_ending_an_extension_invocation_is_recorded_as_an_ordinary_end() = rigTest {
-        os("photokit-ext", "onTerminate")
+        extensionHost.terminate()
 
         eventually(read = { client.logs() }) { logs: String -> "the OS ended this invocation" in logs }
     }

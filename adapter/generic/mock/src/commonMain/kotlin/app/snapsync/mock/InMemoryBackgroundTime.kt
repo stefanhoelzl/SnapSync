@@ -3,6 +3,7 @@
 package app.snapsync.mock
 
 import app.snapsync.inbound.Running
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,10 +32,15 @@ class HeldBackgroundTime internal constructor(val label: String, private val exp
  * operating system by calling an entry's [HeldBackgroundTime.expire] — the lever lives with whoever owns the cell,
  * never on this double (`docs/architecture.md`, `BackgroundTimeContract`).
  */
-internal class InMemoryBackgroundTime(private val held: MutableStateFlow<List<HeldBackgroundTime>>) : BackgroundTime {
+internal class InMemoryBackgroundTime(
+    private val held: MutableStateFlow<List<HeldBackgroundTime>>,
+    /** Told each hold begun and ended, as the system's table records it. */
+    private val watcher: OsWatcher = OsWatcher {},
+) : BackgroundTime {
     override fun begin(label: String, expiry: Running): BackgroundTimeHold {
         val entry = HeldBackgroundTime(label, expiry)
         held.update { it + entry }
+        watcher.told(WorldEvent.HoldBegun(label))
         return Hold(entry)
     }
 
@@ -48,6 +54,7 @@ internal class InMemoryBackgroundTime(private val held: MutableStateFlow<List<He
                 )
             ) {
                 held.update { table -> table.filterNot { it === entry } }
+                watcher.told(WorldEvent.HoldEnded(entry.label))
             }
         }
     }

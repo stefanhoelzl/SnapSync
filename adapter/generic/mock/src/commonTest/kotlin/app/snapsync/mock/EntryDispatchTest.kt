@@ -57,8 +57,8 @@ class EntryDispatchTest {
             ),
         )
 
-        lifecycle.operator.foreground()
-        lifecycle.operator.background()
+        lifecycle.foreground()
+        lifecycle.background()
 
         assertEquals(listOf("foreground", "background"), ran)
     }
@@ -69,7 +69,7 @@ class EntryDispatchTest {
         val delivered = mutableListOf<LinkDelivery>()
         links.port().inbound(LinkHandlers(onLink = inboundOf { delivered += it }))
 
-        links.operator.open("https://snapsync.app/e/1#k", hook = "onOpenURL")
+        links.open("https://snapsync.app/e/1#k", hook = "onOpenURL")
 
         assertEquals(LinkDelivery.Link("onOpenURL", "https://snapsync.app/e/1#k"), delivered.single())
     }
@@ -89,9 +89,9 @@ class EntryDispatchTest {
             ),
         )
 
-        push.operator.deliverToken("T1")
-        push.operator.deliverTokenFailure("no network")
-        push.operator.deliverMessage(mapOf("eventId" to "E"), completion)
+        push.deliverToken("T1")
+        push.deliverTokenFailure("no network")
+        push.deliverMessage(mapOf("eventId" to "E"), completion)
 
         assertEquals(listOf("token T1", "failure no network", "message"), ran)
         assertEquals(mapOf<Any?, Any?>("eventId" to "E"), messages.single().first)
@@ -152,8 +152,8 @@ class EntryDispatchTest {
             ),
         )
 
-        assertEquals(ProcessingAnswer.FAILED, host.operator.process(Dispatchers.Default))
-        host.operator.terminate()
+        assertEquals(ProcessingAnswer.FAILED, host.process(Dispatchers.Default))
+        host.terminate()
 
         assertEquals(listOf("process", "terminate"), ran)
     }

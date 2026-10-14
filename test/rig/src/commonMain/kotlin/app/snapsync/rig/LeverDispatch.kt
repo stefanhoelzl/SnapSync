@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.BackgroundTimeLevers
 import app.snapsync.levers.BuildLevers
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.CrashReporterLevers
@@ -9,6 +10,8 @@ import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.ExtensionHostLevers
+import app.snapsync.levers.ExtensionRegistryLevers
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.JoinedEvent
 import app.snapsync.levers.KeychainLevers
@@ -17,15 +20,21 @@ import app.snapsync.levers.LeverNeed
 import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.LeverService
 import app.snapsync.levers.LibraryLevers
+import app.snapsync.levers.LifecycleLevers
+import app.snapsync.levers.LinksLevers
 import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.OlderInstallLevers
+import app.snapsync.levers.OsLevers
+import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.ProcessInfoLevers
 import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.PushLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.ThisDevice
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
+import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WorldLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockedSystem
@@ -51,16 +60,36 @@ class ServedService internal constructor(val service: LeverService<*>, internal 
 private val CHANNEL_SERVICES: Set<LeverService<*>> = setOf(RigLevers, WorldLevers)
 
 /**
- * Every declared service but the channel's own, each call run as one of [acts]. [reconcileUploads] brings the app's
- * uploads in line with a pin the development controls just took — the composed app's, which this world cannot reach.
+ * The services a host implements itself rather than over the mocks: the operating system's deliveries to the app
+ * ([entries], over the host's own entry driver, real or mocked per system) and its invocations of the upload extension
+ * ([extensionHost]) — each `null` where the host has none, refused then with the reason given.
+ */
+class HostServices(
+    val entries: OsLevers?,
+    val extensionHost: ExtensionHostLevers?,
+    val noExtensionHost: String = "this host has no upload extension to invoke",
+)
+
+/**
+ * Every declared service but the channel's own, each call run as one of [acts]; [host]'s own among them.
+ * [reconcileUploads] brings the app's uploads in line with a pin the development controls just took — the composed
+ * app's, which this world cannot reach.
  */
 fun MockWorld.servedServices(
+    host: HostServices,
     acts: RigActs = RigActs.Direct,
     reconcileUploads: suspend () -> Unit = {},
 ): List<ServedService> = LEVER_SERVICES.filter { it !in CHANNEL_SERVICES }.map { service ->
-    val refusal = refusalFor(service.needs.map(::needOf), service.name)
-    val implementation = if (refusal == null) implementationOf(service, reconcileUploads) else null
+    val refusal = refusalFor(service.needs.map(::needOf), service.name) ?: host.refusalOf(service)
+    val implementation = if (refusal == null) implementationOf(service, host, reconcileUploads) else null
     served(service, implementation, refusal, acts, resolving(this))
+}
+
+/** Why [host] does not serve [service] itself, where it is one a host implements. */
+private fun HostServices.refusalOf(service: LeverService<*>): String? = when (service) {
+    OsLevers -> "this host delivers no operating-system entry point".takeIf { entries == null }
+    ExtensionHostLevers -> noExtensionHost.takeIf { extensionHost == null }
+    else -> null
 }
 
 /** The channel's own service: what this host advertises. */
@@ -95,11 +124,17 @@ const val WORLD_REFUSED_ON_A_DEVICE: String =
 internal val SERVICE_ENTRIES: List<String> = LEVER_SERVICES.filter { it !== RigLevers }.flatMap { it.entries }
 
 /** The refusal of each method of every service this world refuses, by advertisement entry. */
-internal fun MockWorld.serviceRefusals(): Map<String, String> = servedServices().flatMap { served ->
+internal fun MockWorld.serviceRefusals(
+    host: HostServices,
+): Map<String, String> = servedServices(host).flatMap { served ->
     served.refusal?.let { why -> served.service.entries.map { it to why } }.orEmpty()
 }.toMap()
 
-private fun MockWorld.implementationOf(service: LeverService<*>, reconcileUploads: suspend () -> Unit): Any =
+private fun MockWorld.implementationOf(
+    service: LeverService<*>,
+    host: HostServices,
+    reconcileUploads: suspend () -> Unit,
+): Any =
     when (service) {
         BackendLevers -> device.backend.operator.also { check(isMocked(MockedSystem.BACKEND)) }
         PublicBackendLevers -> PublicBackend(this, checkNotNull(reach))
@@ -119,6 +154,15 @@ private fun MockWorld.implementationOf(service: LeverService<*>, reconcileUpload
         FilesLevers -> device.disk.operator
         KeychainLevers -> Keychain(this)
         OlderInstallLevers -> OlderInstall(this)
+        OsLevers -> checkNotNull(host.entries)
+        PlayedOsLevers -> os
+        ExtensionHostLevers -> checkNotNull(host.extensionHost)
+        LifecycleLevers -> device.lifecycle.operator
+        LinksLevers -> device.links.operator
+        PushLevers -> device.pushService.operator
+        WakeLevers -> device.wakes.operator
+        BackgroundTimeLevers -> device.backgroundTime.operator
+        ExtensionRegistryLevers -> device.extensionRegistry.operator
         else -> error("$service has no implementation in this world")
     }
 
@@ -140,6 +184,12 @@ private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.FILES_MOCKED -> Need.Mocked(MockedSystem.FILES)
     LeverNeed.DATABASES_MOCKED -> Need.Mocked(MockedSystem.DATABASES)
     LeverNeed.KEYCHAIN_MOCKED -> Need.Mocked(MockedSystem.KEYCHAIN)
+    LeverNeed.LIFECYCLE_MOCKED -> Need.Mocked(MockedSystem.LIFECYCLE)
+    LeverNeed.LINKS_MOCKED -> Need.Mocked(MockedSystem.LINKS)
+    LeverNeed.PUSH_MOCKED -> Need.Mocked(MockedSystem.PUSH)
+    LeverNeed.WAKE_MOCKED -> Need.Mocked(MockedSystem.WAKE)
+    LeverNeed.BACKGROUND_TIME_MOCKED -> Need.Mocked(MockedSystem.BACKGROUND_TIME)
+    LeverNeed.EXTENSION_REGISTRY_MOCKED -> Need.Mocked(MockedSystem.EXTENSION_REGISTRY)
 }
 
 /** The build's development controls, a pin reconciled with the app's uploads as it lands. */

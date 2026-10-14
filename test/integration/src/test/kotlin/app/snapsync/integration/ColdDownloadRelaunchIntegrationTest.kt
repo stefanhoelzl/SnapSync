@@ -41,7 +41,7 @@ class ColdDownloadRelaunchIntegrationTest {
         // the relaunched app once the entry has realized its transport (until then a delivery finds no session
         // to deliver into, and is simply repeated).
         coroutineScope {
-            val wake = async { os("app", "onBackgroundTransfers", DOWNLOAD_SESSION) }
+            val wake = async { os.backgroundTransfers(DOWNLOAD_SESSION, awaitRelease = true) }
             eventually(
                 read = {
                     stage(wait = false)

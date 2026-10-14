@@ -56,7 +56,7 @@ class UnreadStatusIntegrationTest {
         then { neverInSync() }
 
         // Once the counts are read the truth arrives — and it is "still working", not "settled".
-        whenever { os("app", "onForeground") }
+        whenever { os.foreground() }
         then { screen<Layer.Joined> { it.health is SyncHealth.Syncing } }
     }
 
@@ -76,7 +76,7 @@ class UnreadStatusIntegrationTest {
             aPhotoTaken() // in the library, contributes nothing — must not hold the screen open
         }
 
-        whenever { os("app", "onForeground") }
+        whenever { os.foreground() }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
 
@@ -98,12 +98,12 @@ class UnreadStatusIntegrationTest {
         // line. It is deliberately not collapsed to `0`, which would read "In sync".
         whenever {
             library.failNextEnumeration()
-            os("app", "onForeground")
+            os.foreground()
         }
         then { neverInSync() }
 
         // And the next refresh recovers: the lever is one-shot, like a transient platform failure.
-        whenever { os("app", "onForeground") }
+        whenever { os.foreground() }
         then { screen<Layer.Joined> { it.health is SyncHealth.Syncing } }
     }
 
@@ -121,7 +121,7 @@ class UnreadStatusIntegrationTest {
         // "We hold no selection" is not "the selection is empty". Collapsing them counts a zero, and a counted
         // zero SETTLES — on a member who has photos selected and simply has not been told which yet (the
         // `SNAPSYNC-14` / `SNAPSYNC-16` shape, one grant over from where it was fixed).
-        whenever { os("app", "onForeground") }
+        whenever { os.foreground() }
         then { neverInSync() }
     }
 
@@ -152,7 +152,7 @@ class UnreadStatusIntegrationTest {
         // member's screen into a permanent "Syncing…".
         whenever {
             library.changeSelection(emptyList())
-            os("app", "onForeground")
+            os.foreground()
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }

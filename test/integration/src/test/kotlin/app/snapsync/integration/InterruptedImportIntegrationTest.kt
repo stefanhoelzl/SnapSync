@@ -49,7 +49,7 @@ class InterruptedImportIntegrationTest {
         // The next pass — a relaunch, then a foreground and a download wake. It must adjudicate the row,
         // not import it again.
         relaunchAndAssemble()
-        os("app", "onForeground")
+        os.foreground()
         downloadAll()
 
         awaitDownloadSettled() // the row settles against the asset that exists
@@ -91,7 +91,7 @@ class InterruptedImportIntegrationTest {
         assertTrue(staged > base, "the transfer staged bytes")
         // A full trigger cycle against the unconfirmed row leaves them where they are.
         reconcile()
-        os("app", "onBackgroundTask", HEARTBEAT)
+        os.backgroundTask(HEARTBEAT, awaitRelease = true)
         assertTrue(storage() >= staged, "unconfirmed → the bytes stay; the retry needs them")
 
         relaunchAndAssemble() // the startup sweep adjudicates → present → settles the row
@@ -114,7 +114,7 @@ class InterruptedImportIntegrationTest {
         // after the failure is not asserted here. What the bytes are for is: every retry — here the next wake's tail,
         // whose first unit is the import drain — imports off those same bytes, and would fail had the failure taken
         // them (DownloadControllerTest pins the failure keeping them, step by step).
-        os("app", "onBackgroundTask", HEARTBEAT)
+        os.backgroundTask(HEARTBEAT, awaitRelease = true)
         eventually(read = { libraryTotal() }) { it == before + 1 } // the photo still arrives
         awaitDownloadSettled()
     }
@@ -186,7 +186,7 @@ class InterruptedImportIntegrationTest {
         // A full cycle of triggers against the live transaction. None may block, and none may act on the
         // library's honest "absent" about it.
         reconcile()
-        os("app", "onBackgroundTask", HEARTBEAT)
+        os.backgroundTask(HEARTBEAT, awaitRelease = true)
 
         assertEquals(
             galleryBefore,
@@ -224,7 +224,7 @@ class InterruptedImportIntegrationTest {
         // Exactly what a killed process leaves: an asset in the library, a row that does not know it. No
         // trigger will settle this — that is the point.
         reconcile()
-        os("app", "onBackgroundTask", HEARTBEAT)
+        os.backgroundTask(HEARTBEAT, awaitRelease = true)
         assertUnsettled(
             downloadProgress(),
             "a full trigger cycle leaves it alone — triggers do not adjudicate any more",
@@ -265,7 +265,7 @@ class InterruptedImportIntegrationTest {
                 act = {
                     publicBackend.foreignDevice(foreignDevice, listOf(foreignAsset))
                     library.suspendNextImport(afterCommit = true)
-                    os("app", "onForeground")
+                    os.foreground()
                 },
                 until = {
                     event<WorldEvent.DownloadStarted>()
@@ -285,7 +285,7 @@ class InterruptedImportIntegrationTest {
                 "the app relaunched and opened",
                 act = {
                     device("relaunch")
-                    os("app", "onForeground")
+                    os.foreground()
                 },
                 until = { settled { true } },
             )
@@ -294,7 +294,7 @@ class InterruptedImportIntegrationTest {
         // The observer emits, and the created asset is in the member's hand-picked selection; they look again.
         whenever {
             library.changeSelection(listOf("imported-$foreignDevice-$foreignAsset"))
-            os("app", "onForeground")
+            os.foreground()
         }
         then { screen<Layer.Joined> { it.received() == DirectionCount.Progress(1, 1) } }
     }

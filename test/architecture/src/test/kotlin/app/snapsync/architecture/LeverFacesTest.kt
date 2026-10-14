@@ -23,7 +23,8 @@ import kotlin.test.assertTrue
  * A face is the `operator` of one of [MockDevice]'s mocks — derived here, never listed. A face that has MIGRATED
  * implements a declared service's interface (`LEVER_SERVICES`), and then every public member it has is either a method
  * of that interface — so the channel serves it, and a test reaches it — or is named by a public-route method's
- * [StandsInFor], which reaches the same state through the backend's public surface. Nothing else excuses a member: a
+ * [StandsInFor] as `<Face>.<member>`, which reaches the same state through a surface every host serves — the backend's
+ * public routes, or the operating system's deliveries. Nothing else excuses a member: a
  * lever the face grows without a method is a state no test can enter.
  *
  * The faces not yet migrated sit in [NOT_MIGRATED], which may only shrink: an entry for a face that has migrated, or
@@ -47,7 +48,7 @@ class LeverFacesTest {
     private val serviceInterfaces: Map<String, KClass<*>> =
         LEVER_SERVICES.associate { it.descriptor.fqName to Class.forName(it.descriptor.fqName).kotlin }
 
-    /** The face members a public-route method stands in for, by member name. */
+    /** The face members a public-route method stands in for, each as `<Face>.<member>`. */
     private val standIns: Map<String, String> = serviceInterfaces.values.flatMap { service ->
         service.memberFunctions.flatMap { method ->
             method.annotations.filterIsInstance<StandsInFor>().flatMap {
@@ -74,7 +75,7 @@ class LeverFacesTest {
                 .filter { it.visibility == KVisibility.PUBLIC && it.name !in ANY_MEMBERS }
                 .map { it.name }
                 .distinct()
-                .filter { it !in methods && it !in standIns }
+                .filter { it !in methods && "${face.simpleName}.$it" !in standIns }
                 .map {
                     "${face.simpleName}.$it is neither a method of ${migratedTo(
                         face,
@@ -94,7 +95,7 @@ class LeverFacesTest {
     fun `every stand-in names a member of a migrated face`() {
         val members = faces.values.filter {
             migratedTo(it).isNotEmpty()
-        }.flatMap { face -> face.members.map { it.name } }.toSet()
+        }.flatMap { face -> face.members.map { "${face.simpleName}.${it.name}" } }.toSet()
         assertEquals(
             emptyList(),
             standIns.keys.filter {
@@ -169,14 +170,7 @@ class LeverFacesTest {
 
         /** The faces that are not typed services yet (phases 3a–3f): the list only shrinks. */
         val NOT_MIGRATED = setOf(
-            "WakeOperator",
-            "BackgroundTimeOperator",
-            "ExtensionRegistryOperator",
-            "LifecycleOperator",
-            "LinksOperator",
-            "PushServiceOperator",
             "ScreenOperator",
-            "ExtensionHostOperator",
         )
     }
 }

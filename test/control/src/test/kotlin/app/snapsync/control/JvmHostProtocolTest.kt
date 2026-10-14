@@ -5,12 +5,22 @@ import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.BackgroundTimeLevers
 import app.snapsync.levers.ClockLevers
+import app.snapsync.levers.ExtensionAnswer
+import app.snapsync.levers.ExtensionHostLevers
+import app.snapsync.levers.ExtensionRegistryLevers
 import app.snapsync.levers.LeverRefused
+import app.snapsync.levers.LifecycleLevers
+import app.snapsync.levers.LinksLevers
 import app.snapsync.levers.NetworkState
+import app.snapsync.levers.OsLevers
+import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.PushLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.UploadQueueLevers
+import app.snapsync.levers.WakeLevers
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import app.snapsync.ui.state.Layer
@@ -66,10 +76,24 @@ class JvmHostProtocolTest {
         assertEquals("100.0", (refused.ui.layer as Layer.UpdateRequired).minimumVersion)
     }
 
+    /**
+     * The JVM host plays the whole operating system: it delivers every entry point, expires what it handed over, invokes
+     * the extension, and serves every OS system's face — no method of them is refused here.
+     */
+    @Test
+    fun the_operating_systems_services_are_all_honoured_here() = onHost { client ->
+        val advertised = client.levers(RigLevers).advertise()
+        val os = listOf(
+            OsLevers, PlayedOsLevers, ExtensionHostLevers, LifecycleLevers, LinksLevers, PushLevers, WakeLevers,
+            BackgroundTimeLevers, ExtensionRegistryLevers,
+        ).flatMap { it.entries }
+        assertEquals(emptyList(), os - advertised.honoured.toSet(), "refused: ${advertised.refused}")
+    }
+
     /** ...and it registers for pushes, which the JVM host once never did. */
     @Test
     fun a_delivered_push_token_is_registered_on_the_backend() = onHost { client ->
-        client.os("app", "onPushToken", arg = "DEADBEEF").done()
+        client.levers(OsLevers).pushToken("DEADBEEF")
         val deadline = kotlin.time.TimeSource.Monotonic.markNow() + kotlin.time.Duration.parse("10s")
         while (client.levers(BackendLevers).deviceConfig().token != "DEADBEEF") {
             check(deadline.hasNotPassedNow()) { "the delivered token never reached the backend" }
@@ -84,7 +108,7 @@ class JvmHostProtocolTest {
      */
     @Test
     fun the_network_service_reaches_the_screen_in_every_value() = behaviour {
-        given { step("in front", act = { os("app", "onForeground") }, until = { settled { true } }) }
+        given { step("in front", act = { os.foreground() }, until = { settled { true } }) }
         whenever {
             network.set(NetworkState.OFFLINE)
             advance(5.seconds)
@@ -278,11 +302,12 @@ class JvmHostProtocolTest {
         // The extension's cycle alone: the app's uploader, running beside it as on a phone, would take the same photo.
         client.deviceVerb("uploaders", mapOf("app" to "off")).done()
         client.deviceVerb("gallery/seed", mapOf("n" to "1", "kind" to "policy")).done()
-        val cycle = client.os("photokit-ext", "processRawValue").done()
-        assertTrue("\"created\":1" in cycle, cycle)
+        val extension = client.levers(ExtensionHostLevers)
+        assertEquals(ExtensionAnswer.PROCESSING, extension.process(), "the cycle waits on the upload it started")
+        assertEquals(1, client.levers(UploadQueueLevers).queue().created.size, "the cycle created the photo's job")
 
         client.levers(UploadQueueLevers).completeJob()
-        client.os("photokit-ext", "processRawValue").done()
+        extension.process()
         val backend = client.levers(PublicBackendLevers)
         val objects = backend.objects()
         assertTrue(objects.any { "-primary" in it }, "the backend lists the transferred object: $objects")
@@ -309,7 +334,7 @@ class JvmHostProtocolTest {
         // The extension's cycle alone: the app's uploader, running beside it as on a phone, would take the same photo.
         client.deviceVerb("uploaders", mapOf("app" to "off")).done()
         client.deviceVerb("gallery/seed", mapOf("n" to "1", "kind" to "policy")).done()
-        client.os("photokit-ext", "processRawValue").done()
+        client.levers(ExtensionHostLevers).process()
 
         client.deviceVerb("relaunch").done()
 

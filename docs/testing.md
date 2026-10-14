@@ -776,7 +776,9 @@ root the adapter choice's ports too, and decorates its `ExtensionHost` so a requ
 Verbs:
 - `/os` for OS entry points — each an `EntryDriver` delivery (`:test:contracts`) under the name the iOS shell's
   callback has always carried; the app host drives the iOS adapters' own `deliver…` methods, the JVM host the entry
-  mocks' operator faces (`MockEntryDriver`), so one table maps the names for both,
+  mocks' deliveries (`MockEntryDriver`), so one table maps the names for both. The same deliveries are the typed `os`
+  service (below), which every caller uses; the string verbs stay until the string protocol goes (phase 3g), and the
+  simulator's `processRawValue` with job sets in its body is only a string verb,
 - `/user` for user commands at intent level — each the `UiIntent`s a tap produces, handed to the UI port's
   `onIntent` handler (through `RigUi` on a device, the screen mock on the JVM host),
 - `/device` for state, levers and reads,
@@ -798,16 +800,23 @@ under a full grant, the person's selection under a partial one. Over the real ba
 backend mock's operator has answers `409` with the reason.
 
 **The JVM host plays the operating system, its expiry and its record included:**
-- `os/app/onExpiry` is the OS saying time is up: every wake it granted is withdrawn (the `Running` each delivery
-  answered is expired) and every background-time hold expires; `?arg=next` hands the next wake over already
-  withdrawn. The app host honours it only when its adapter choice mocks
-  the background-time holds — a real OS's expiry is its own.
-- `device/os-record` is what the OS recorded of the app (what the platform's own UI was handed is the `system-ui`
-  service's): the completion handlers handed over, released and released a second time; whether a screen was shown; whether the selection observer is open; the heartbeat requests and the
-  heartbeat pending now (`pendingWake`: its cadence and delay, or `null`); the
-  background-time holds, by the name each was begun under (the trigger's: `OnForeground`, or the trigger a detached run was started by); the push registrations; the transfer sessions; the
-  databases opened and the files staged. A receipted entry's answer carries it **as read at the release**
-  (`osAtRelease`), because "released after the wake's own work" is a statement about that instant.
+- `played-os.expire` is the OS saying time is up: every wake it granted is withdrawn (the `Running` each delivery
+  answered is expired) and every background-time hold expires; `played-os.expireNext` hands the next wake over already
+  withdrawn. `played-os` needs the background-time holds mocked, so the app host honours it only when its adapter
+  choice mocks them — a real OS's expiry is its own.
+- What the OS recorded of the app is each system's own read: `played-os.completions` (the completion handlers handed
+  over, released, released a second time, still held), `wake.wakes` (the heartbeat requests accepted and every request
+  pending now, with its cadence and delay), `background-time.holds` (by the name each was begun under, verbatim — the
+  name `beginBackgroundTask(withName:)` gives the system, which is the trigger's: `OnForeground`, or the trigger a
+  detached run was started by), `push.push` (the registrations, the service's kind and its refusal) and
+  `extension-registry.registered`. The same changes reach the world stream as they happen (`WorldEvent.Os`:
+  `WakeScheduled`, `WakeCancelled`, `HoldBegun`, `HoldEnded`, `CompletionReleased`, `PushRegistered`,
+  `ExtensionRegistered`), so "released after the wake's own work" is an order of events.
+- `device/os-record` is the string record of the systems not yet typed services: whether a screen was shown, whether
+  the selection observer is open, the transfer sessions, the databases opened, the files staged and the storage the
+  app's files take (`appStorageBytes`). A receipted string
+  entry's answer carries it **as read at the release** (`osAtRelease`). Each field leaves it as its system becomes a
+  typed service.
 - `device/relaunch?scene=false` is a cold **background** launch: the process starts with no scene, so nothing builds
   a screen. A test about what a wake must not build starts there and reads only the OS record — `/device/state` and
   `/user` read the screen, and asking would assemble it.
@@ -856,7 +865,7 @@ two services, and the photo library next:
 - `public-backend` (`PublicBackendLevers`) — the backend's public surface as another member or the operator's seeding
   reaches it: the union, the event, a device's objects, a fellow member joining, leaving, reporting what it received.
   It needs only the backend reachable, so it holds against the real `api/` too. Each method names the operator members
-  it stands in for (`@StandsInFor`).
+  it stands in for (`@StandsInFor`, each as `<Face>.<member>`).
 - `library` (`LibraryLevers`) — what the person holding the phone does to their library (a photo taken or deleted, the
   grant, the partial selection, another app's album, the app's album deleted or renamed) and how the library answers
   the app (a walk held or failed, an import refused or parked, an add held, how it holds an album), with three reads:
@@ -916,6 +925,28 @@ too):
 read, write and list, the databases' opens and their deletion — is a member of the mock class, which the face gate
 (`LeverFacesTest`) does not look at, as `BackendMock.watch` is. A face is only what a test may pull.
 
+The operating system as the app meets it followed (phase 3d):
+
+- `os` (`OsLevers`) — the deliveries to the app's entry points: foreground, background, a push token or its failure, a
+  Universal Link, a silent push, a background task, a transfer session's relaunch. A host implements it itself, over
+  its entry driver (`PlayedEntries`), so it needs nothing: every host serves it, each delivery through the system's mock
+  where the host mocks it and the platform's adapter where it is real (`ChosenEntryDriver`), on the lane the platform
+  delivers on. A delivery the OS hands a completion handler answers once delivered — its release is the world's
+  `CompletionReleased` — or, with `awaitRelease` `true` for a host with no event stream, once released, with how long
+  the app held it.
+- `played-os` (`PlayedOsLevers`) — the expiry and the completion record, implemented by `PlayedOs`; it needs the
+  background-time holds mocked.
+- `extension-host` (`ExtensionHostLevers`) — the OS invoking the upload extension's `process()`, and ending it. A host
+  implements it itself: the JVM host on the OS thread it owns, the iOS app host over the real extension root; Android,
+  which has no extension, refuses it.
+- One service per OS system's face, each needing its system mocked: `lifecycle`, `links` (the install referrer only a
+  store delivers), `push` (its kind — read as the app composes, so it takes effect at a relaunch — and whether it issues
+  tokens), `wake`, `background-time`, `extension-registry`.
+
+A delivery hands the app a live completion handler, a thread or a run to expire, none of which crosses a wire, so the
+deliveries are plumbing on the mocks (`LifecycleMock.foreground`, `WakeMock.fire`, `ExtensionHostMock.process`, …),
+called by the played OS and the desktop harness, never members of a face; the extension host's mock has no face at all.
+
 **They are served over kRPC**, kotlinx-rpc's protocol, on a WebSocket at `ws://<host>:<port>/rpc` beside the rig's
 HTTP routes. The plugin generates the client a test calls (`client.levers(BackendLevers).offline(true)`,
 `:test:control`) and the stub the rig registers the implementation under, so no message format, route or dispatch is
@@ -955,8 +986,9 @@ about 0.6 s, measured on the JVM host (2026-10-13), most of it the JVM's start.
 
 **The gate** (`LeverFacesTest`, `:test:architecture`) derives the faces from `MockDevice`'s mocks — each one's
 `operator` — and holds every face that implements a declared service to it: each public member is a method of its
-interface or is named by a public-route method's `@StandsInFor`. Nothing else excuses a member; plumbing between mocks
-(the byte route an OS upload lands on, the pushes the played OS delivers) lives on the mock, not its face. The faces
+interface or is named, as `<Face>.<member>`, by the `@StandsInFor` of a method on a surface every host serves.
+Nothing else excuses a member; plumbing between mocks (the byte route an OS upload lands on, the deliveries the played
+OS makes) lives on the mock, not its face. The faces
 not yet migrated sit in a list that may only shrink. The same test holds the null rule (an omittable parameter is
 nullable) and that every `@Rpc` interface is declared in `LEVER_SERVICES`.
 
@@ -1140,12 +1172,12 @@ until it answers.
 
 The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
 (`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (the backend's
-`BackendReceived` and `BackendHeld`; the transfers' `UploadJobCreated`, `SessionTransferCreated` and `DownloadStarted`;
+`BackendReceived`, `BackendHeld`, `DeviceRegistered` and `PushSent`; the transfers' `UploadJobCreated`, `SessionTransferCreated` and `DownloadStarted`;
 the photo library's: a walk, an add or an import parked on an operator's hold — `LibraryEnumerationHeld`,
 `LibraryAddHeld`, `LibraryImportParked` — a photo an import created (`LibraryAssetCreated`), an album the app made
 (`LibraryAlbumCreated`) and a photo that joined one, once per photo as a person would see it arrive
 (`LibraryJoinedAlbum`); the system UI's `Shared`, `UrlOpened` and `SettingsOpened`; the crash reporter's
-`DumpReceived`; the databases' `DatabaseFaulted`; each face batch adds its face's), each
+`DumpReceived`; the databases' `DatabaseFaulted`; the operating system's `WorldEvent.Os`; each face batch adds its face's), each
 `Settled(now, nextTimer, state)`, and each lane rule broken (`LaneViolation`). A settle's `state` (`SettledState`) is what
 systems outside the app record at that moment — today `appStorageBytes`, the storage the app's files take, its
 diagnostics left out — read at exactly that settle, so `settled { … }` judges it and hands it on (`given` hands a later

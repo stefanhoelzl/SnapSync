@@ -9,12 +9,17 @@ import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LibraryLevers
+import app.snapsync.levers.LinksLevers
 import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.OlderInstallLevers
+import app.snapsync.levers.OsLevers
+import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.PushLevers
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
@@ -200,6 +205,21 @@ class Acts internal constructor(private val client: RigClient) {
     /** What an older build left on the device. */
     val olderInstall: OlderInstallLevers = client.levers(OlderInstallLevers)
 
+    /** The operating system's deliveries to the app's entry points. */
+    val os: OsLevers = client.levers(OsLevers)
+
+    /** What only a played operating system does: its expiry. */
+    val playedOs: PlayedOsLevers = client.levers(PlayedOsLevers)
+
+    /** The operating system's invocations of the upload extension. */
+    val extensionHost: ExtensionHostLevers = client.levers(ExtensionHostLevers)
+
+    /** The push service: what it is, and whether it issues tokens. */
+    val push: PushLevers = client.levers(PushLevers)
+
+    /** The links only an installation's store delivers. */
+    val links: LinksLevers = client.levers(LinksLevers)
+
     private val world: WorldLevers = client.levers(WorldLevers)
 
     /** A person's command, which must be accepted. */
@@ -210,9 +230,6 @@ class Acts internal constructor(private val client: RigClient) {
 
     /** A person's command, answered however the host answers it. */
     suspend fun userReply(name: String, vararg params: Pair<String, String>): Reply = client.user(name, mapOf(*params))
-
-    /** An operating-system entry point, which must be answered. */
-    suspend fun os(root: String, member: String, arg: String? = null): String = client.os(root, member, arg).done()
 
     /** A device verb — a mocked system's lever — which must be honoured. */
     suspend fun device(name: String, vararg params: Pair<String, String>, body: String? = null): String =

@@ -177,7 +177,7 @@ $A -s $S exec-out run-as app.snapsync cat files/private/debug.log > debug.log # 
 
 Everything past the port is `rig-channel`'s protocol; load it for the verbs, with `B=http://127.0.0.1:$H`. The app's `/os` foreground and background
 go through the REAL lifecycle adapter (`AndroidLifecycle.deliverForeground`); every other `/os` verb through its mock.
-`/os/photokit-ext/*` is refused: Android has no upload extension. `device/relaunch` is refused: force-stop and start.
+`/os/photokit-ext/*` and the `extension-host` service are refused: Android has no upload extension. `device/relaunch` is refused: force-stop and start.
 
 ## Opening an event link
 

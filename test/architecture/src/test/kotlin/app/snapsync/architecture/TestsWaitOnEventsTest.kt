@@ -106,18 +106,15 @@ class TestsWaitOnEventsTest {
         val UNCLAIMED = setOf(
             "EntryIntegrationTest",
             "EventChecksIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest",
-            "HeartbeatCadenceIntegrationTest", "IncrementalUnionIntegrationTest", "JoinGateIntegrationTest",
-            "ManifestVersionIntegrationTest", "OsCompletionIntegrationTest", "PushIntegrationTest",
-            "PushRegistrationIntegrationTest", "RelaunchIntegrationTest", "RenameIntegrationTest",
-            "UnreadStatusIntegrationTest", "VersionGateIntegrationTest",
+            "IncrementalUnionIntegrationTest", "JoinGateIntegrationTest", "ManifestVersionIntegrationTest",
+            "OsCompletionIntegrationTest", "RelaunchIntegrationTest", "RenameIntegrationTest", "UnreadStatusIntegrationTest",
+            "VersionGateIntegrationTest",
         )
 
         /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */
         val STILL_WAITING_BY_TIME = setOf(
-            "EntryIntegrationTest",
             "JoinGateIntegrationTest",
             "OsCompletionIntegrationTest",
-            "PushIntegrationTest",
             "Rig",
         )
     }

@@ -9,22 +9,16 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 
-// The protocol calls that play the operating system — its entry points, its expiry — and read back what it recorded
-// of the app: the completion handlers it handed over and got back, the screen, the selection observer, the heartbeat
-// requests, the background-time holds, the push registrations and the transfer sessions.
+// The calls that play the operating system — its entry points, its expiry, through the typed `os` and `played-os`
+// services — and the string record of what it recorded of the app for the systems not yet typed services: the screen,
+// the selection observer and the transfer sessions. The completion handlers, the wakes, the background-time holds and
+// the push registrations are the `played-os`, `wake`, `background-time` and `push` services' reads.
 
-/** What the operating system recorded of the app (`/device/os-record`). */
+/** What the operating system recorded of the app (`/device/os-record`), for the systems not yet typed services. */
 class OsRecord(private val json: JsonObject) {
     // Each field is read when asked: a host reports only the systems it plays (the app host, only its mocked ones),
     // so a missing key fails the reader that needs it, not every reader of the record.
-    private val completions get() = json.getValue("completions").jsonObject
     private val downloads get() = json.getValue("downloadSession").jsonObject
-
-    /** Completion handlers the OS handed the app, released by it, released a second time, and still held. */
-    val handed: Int get() = completions.int("handed")
-    val released: Int get() = completions.int("released")
-    val releasedAgain: Int get() = completions.int("releasedAgain")
-    val held: Int get() = completions.int("held")
 
     /** Whether the app has shown the platform's screen anything — a screen exists only once the host is assembled. */
     val screenShown: Boolean get() = json.getValue("screenShown").jsonPrimitive.boolean
@@ -45,21 +39,6 @@ class OsRecord(private val json: JsonObject) {
 
     /** How many times the app opened its Settings page. */
     val settingsOpened: Int get() = systemUi.int("settingsOpened")
-    val heartbeatsScheduled: Int get() = json.int("heartbeatsScheduled")
-
-    /** The heartbeat the operating system holds now, as `"busy"`/`"idle"` — `null` when none is pending. */
-    val pendingCadence: String?
-        get() = (json["pendingWake"] as? JsonObject)?.getValue("cadence")?.jsonPrimitive?.content
-
-    /** The pending heartbeat's earliest delay in seconds — `null` when none is pending. */
-    val pendingEarliestSeconds: Long?
-        get() = (json["pendingWake"] as? JsonObject)?.getValue("earliestSeconds")?.jsonPrimitive?.content?.toLong()
-
-    /** The background-time holds outstanding, by the name the app began each under. */
-    val backgroundTimeHolds: List<String> get() = json.getValue(
-        "backgroundTimeHolds",
-    ).jsonArray.map { it.jsonPrimitive.content }
-    val pushRegistrations: Int get() = json.int("pushRegistrations")
     val downloadSessionUp: Boolean get() = downloads.getValue("up").jsonPrimitive.boolean
     val downloadsStarted: Int get() = downloads.int("started")
     val downloadsInFlight: Int get() = downloads.int("inFlight")
@@ -87,7 +66,11 @@ class OsRecord(private val json: JsonObject) {
 
 suspend fun Rig.osRecord(): OsRecord = OsRecord(deviceJson("os-record"))
 
-/** A receipted entry's answer: what the operating system had recorded at the instant the app released its handler. */
+/**
+ * A receipted string entry's answer: what the operating system had recorded, of the systems not yet typed services, at
+ * the instant the app released its handler — until those systems' events reach the world stream, where a behaviour
+ * reads the same instant as an order of events.
+ */
 fun osAtRelease(answer: String): OsRecord = OsRecord(
     Json.parseToJsonElement(answer).jsonObject.getValue("osAtRelease").jsonObject,
 )
@@ -101,22 +84,20 @@ fun osAtRelease(answer: String): OsRecord = OsRecord(
  * delivered.
  */
 suspend fun Rig.foreground(awaited: Boolean = true) {
-    os("app", "onForeground")
-    if (awaited) awaitOs { r -> FOREGROUND_HOLD !in r.backgroundTimeHolds }
+    os.foreground()
+    if (awaited) eventually(read = { backgroundTime.holds() }) { FOREGROUND_HOLD !in it }
 }
 
-/** The operating system says time is up — for every handler it holds and every background-time hold. */
-suspend fun Rig.expire() {
-    os("app", "onExpiry")
+/** Wait until the app holds no background time. */
+suspend fun Rig.awaitNoHolds() {
+    eventually(read = { backgroundTime.holds() }) { it.isEmpty() }
 }
 
-/** The next completion handler the operating system hands over arrives with its time already up. */
-suspend fun Rig.expireNext() {
-    os("app", "onExpiry", "next")
-}
+/** The name the foreground entry begins its background time under (its entry point, `OnForeground`). */
+const val FOREGROUND_HOLD = "OnForeground"
 
-/** The label the foreground entry begins its background time under (its entry point, `OnForeground`). */
-private const val FOREGROUND_HOLD = "OnForeground"
+/** The name a silent push's delivery begins its background time under. */
+const val SILENT_PUSH_HOLD = "OnSilentPush"
 
 /** The heartbeat's task identifier, as the operating system hands it to `onBackgroundTask`. */
 const val HEARTBEAT_TASK = "app.snapsync.upload.heartbeat"

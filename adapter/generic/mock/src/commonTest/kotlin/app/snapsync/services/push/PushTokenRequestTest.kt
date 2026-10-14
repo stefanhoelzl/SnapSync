@@ -13,6 +13,6 @@ class PushTokenRequestTest {
         val request = PushTokenRequest(service.port())
         request.request()
         request.request()
-        assertEquals(2, service.operator.registrations)
+        assertEquals(2, service.registrations)
     }
 }

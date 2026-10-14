@@ -10,9 +10,7 @@ import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The app's entry points, as the operating system delivers them (`docs/architecture.md`, "Events arrive through
@@ -39,20 +37,25 @@ class EntryIntegrationTest {
 
     @Test
     @Verifies(spec = "invite-link", requirement = "A damaged invite is reported and changes nothing")
-    fun a_link_that_decodes_to_nothing_shows_the_error_and_opens_no_gate() = rigTest {
-        openLink("https://example.invalid/not-an-invite")
-        val shown = awaitState { (it.ui.layer as? Layer.CreateEvent)?.error != null }
-        assertFalse(shown.ui.layer is Layer.JoiningEvent, "a link that decodes to nothing opens no gate")
+    fun a_link_that_decodes_to_nothing_shows_the_error_and_opens_no_gate() = behaviour {
+        whenever { openLink("https://example.invalid/not-an-invite") }
+        then {
+            screen<Layer.CreateEvent> { it.error != null }
+            neverScreen<Layer.JoiningEvent>()
+        }
     }
 
     // ---- Lifecycle ------------------------------------------------------------------------------------------------
 
+    // Waits on the download the reconcile starts, which only the transfer sessions' read sees until their events reach
+    // the world stream.
     @Test
     fun foreground_builds_the_screen_reconciles_then_runs_the_tail_and_re_arms() = rigTest {
         createAndJoin()
         foreignDevice(DEV_F, "FQ")
         device("relaunch", "scene" to "false")
         val before = osRecord()
+        val armed = wake.wakes().heartbeatsScheduled
         assertFalse(before.screenShown, "precondition: a background launch builds no screen")
 
         foreground() // awaited: the foreground's background time is held until its tail is done
@@ -63,125 +66,148 @@ class EntryIntegrationTest {
             after.downloadsStarted > before.downloadsStarted,
             "the foreground reconcile starts the photo's transfer",
         )
-        assertTrue(after.heartbeatsScheduled > before.heartbeatsScheduled, "foreground entry re-arms the heartbeat")
+        assertTrue(wake.wakes().heartbeatsScheduled > armed, "foreground entry re-arms the heartbeat")
     }
 
     @Test
-    fun the_push_token_is_asked_for_at_every_launch_and_every_foreground() = rigTest {
-        val launched = osRecord().pushRegistrations
-        assertTrue(launched >= 1, "composing the app asks once")
-
-        foreground()
-        foreground()
-        assertEquals(
-            launched + 2,
-            osRecord().pushRegistrations,
-            "every activation asks again, to learn a rotated token",
-        )
-
-        device("relaunch", "scene" to "false")
-        assertEquals(launched + 3, osRecord().pushRegistrations, "a cold start asks, a background one included")
+    @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it")
+    fun every_foreground_asks_for_the_push_token_again() = behaviour {
+        // Every activation asks again, to learn a rotated token.
+        whenever { os.foreground() }
+        then { times(1) { event<WorldEvent.PushRegistered>() } }
     }
 
     @Test
-    fun background_arms_nothing_and_builds_no_screen() = rigTest {
-        createAndJoin()
-        foreignDevice(DEV_F, "FQ")
-        device("relaunch", "scene" to "false")
-        val armed = osRecord().heartbeatsScheduled
+    @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it")
+    fun a_background_cold_start_asks_for_the_push_token() = behaviour {
+        whenever { device("relaunch", "scene" to "false") }
+        then { times(1) { event<WorldEvent.PushRegistered>() } }
+    }
 
-        os("app", "onBackground")
-
-        osNeverWithin("leaving the foreground queued a background task or built a screen") {
-            it.heartbeatsScheduled != armed || it.screenShown
+    @Test
+    fun background_arms_nothing_and_builds_no_screen() = behaviour {
+        given {
+            joinedEvent()
+            fellowMember(DEV_F, "FQ")
+            backgroundLaunch()
+        }
+        // Leaving the foreground queues no background task and builds no screen.
+        whenever { os.background() }
+        then {
+            never<WorldEvent.WakeScheduled>()
+            never<WorldEvent.UiChanged>()
         }
     }
 
     // ---- Wake ------------------------------------------------------------------------------------------------------
 
     @Test
-    fun both_heartbeat_tasks_wake_the_app_and_an_unknown_task_does_not() = rigTest {
-        createAndJoin()
-        device("relaunch", "scene" to "false")
-        val before = osRecord().handed
-
-        os("app", "onBackgroundTask", HEARTBEAT_TASK)
-        os("app", "onBackgroundTask", IDLE_HEARTBEAT_TASK)
-        os("app", "onBackgroundTask", "app.example.not-registered")
-
-        val after = osRecord()
-        assertEquals(before + 2, after.handed, "each heartbeat task hands the app its completion; an unknown one none")
-        assertEquals(after.handed, after.released, "and every handed completion is released")
+    @Verifies(spec = "app-experience", requirement = "Background wakes do their work without showing anything")
+    fun both_heartbeat_tasks_wake_the_app_and_an_unknown_task_does_not() = behaviour {
+        given {
+            joinedEvent()
+            backgroundLaunch()
+        }
+        // Each heartbeat task hands the app its completion, which it releases once; an unknown one hands it none.
+        whenever {
+            heartbeat()
+            os.backgroundTask(IDLE_HEARTBEAT_TASK)
+            os.backgroundTask("app.example.not-registered")
+        }
+        then {
+            times(2) { event<WorldEvent.CompletionReleased> { !it.again } }
+            never<WorldEvent.CompletionReleased> { it.again }
+            never<WorldEvent.UiChanged>()
+        }
     }
 
     // ---- PushNotifications ----------------------------------------------------------------------------------------
 
     @Test
-    fun a_push_token_in_a_background_wake_is_registered_and_builds_no_screen() = rigTest {
-        createAndJoin()
-        device("relaunch", "scene" to "false")
-
-        os("app", "onPushToken", TOKEN)
-
-        eventually(read = { deviceConfig()?.first }) { it == TOKEN }
-        assertFalse(osRecord().screenShown, "a token delivered in a background wake builds no screen")
+    @Verifies(spec = "app-experience", requirement = "Background wakes do their work without showing anything")
+    fun a_push_token_in_a_background_wake_is_registered_and_builds_no_screen() = behaviour {
+        given {
+            joinedEvent()
+            backgroundLaunch()
+        }
+        whenever { os.pushToken(TOKEN) }
+        then {
+            event<WorldEvent.DeviceRegistered> { it.token == TOKEN }
+            never<WorldEvent.UiChanged>()
+        }
     }
 
     @Test
-    fun a_token_failure_is_logged_and_registers_nothing() = rigTest {
-        createAndJoin()
-        os("app", "onPushTokenFailure", "no network")
-
-        eventually(read = { client.logs() }) { "no network" in it }
-        assertNull(deviceConfig(), "nothing is registered")
+    @Verifies(
+        spec = "delivery",
+        requirement = "Only new photos are announced by a silent wake, and never only by it",
+        scenario = "No wake arrives",
+    )
+    fun a_token_failure_registers_nothing() = behaviour {
+        given { joinedEvent() }
+        whenever { os.pushTokenFailure("no network") }
+        then { never<WorldEvent.DeviceRegistered>() }
     }
 
     @Test
     @Verifies(spec = "app-experience", requirement = "Background wakes do their work without showing anything")
-    fun a_silent_push_releases_after_its_own_work_then_runs_the_tail_and_builds_no_screen() = rigTest {
-        val event = createAndJoin()
-        foreignDevice(DEV_F, "FQ")
-        device("relaunch", "scene" to "false")
-
-        val atRelease = osAtRelease(os("app", "onSilentPush", event))
-
-        assertTrue(atRelease.downloadsStarted > 0, "released after its own work: the union read and the enqueue")
-        awaitOs { r -> r.backgroundTimeHolds.none { it == "OnSilentPush" } }
-        val after = osRecord()
-        assertEquals(0, after.releasedAgain, "the completion is released exactly once")
-        assertFalse(after.screenShown, "a silent push builds no screen")
+    fun a_silent_push_releases_after_its_own_work_then_runs_the_tail_and_builds_no_screen() = behaviour {
+        val event = given {
+            joinedEvent().also {
+                fellowMember(DEV_F, "FQ")
+                backgroundLaunch()
+            }
+        }
+        whenever { os.silentPush(event) }
+        then {
+            // Released after its own work — the union read — and then the tail, under the push's own background time.
+            inOrder {
+                event<WorldEvent.BackendReceived> { it.operation == UNION }
+                event<WorldEvent.CompletionReleased>()
+                event<WorldEvent.HoldEnded> { it.name == SILENT_PUSH_HOLD }
+            }
+            never<WorldEvent.CompletionReleased> { it.again }
+            never<WorldEvent.UiChanged>()
+        }
     }
 
     @Test
-    fun a_silent_push_for_another_event_reaches_no_arm_and_joins_no_tail() = rigTest {
-        createAndJoin()
-        // A cold background launch first, so the join's own reconcile — still running in the process it ends — cannot
-        // start the foreign photo's transfer; the push below is the only thing the new process is asked to do.
-        device("relaunch", "scene" to "false")
-        foreignDevice(DEV_F, "FQ")
-        val armed = osRecord().heartbeatsScheduled
-
-        val atRelease = osAtRelease(os("app", "onSilentPush", OTHER_EVENT))
-
-        assertEquals(0, atRelease.downloadsStarted, "the download arm's guard refuses it")
-        awaitOs { r -> r.backgroundTimeHolds.none { it == "OnSilentPush" } }
-        assertEquals(armed, osRecord().heartbeatsScheduled, "and no tail runs for it, so nothing re-arms")
+    @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it")
+    fun a_silent_push_for_another_event_reaches_no_arm_and_joins_no_tail() = behaviour {
+        given {
+            joinedEvent()
+            // A cold background launch first, so the join's own reconcile — still running in the process it ends —
+            // cannot read the union; the push below is the only thing the new process is asked to do.
+            backgroundLaunch()
+            fellowMember(DEV_F, "FQ")
+        }
+        whenever { os.silentPush(OTHER_EVENT) }
+        then {
+            event<WorldEvent.CompletionReleased>()
+            // The download arm's guard refuses it, and no tail runs for it, so nothing re-arms.
+            never<WorldEvent.BackendReceived> { it.operation == UNION }
+            never<WorldEvent.WakeScheduled>()
+        }
     }
 
     @Test
-    fun a_silent_push_naming_no_event_still_releases() = rigTest {
-        createAndJoin()
-        // A cold background launch first, so the join's own reconcile — still running in the process it ends — cannot
-        // start the foreign photo's transfer; the push below is the only thing the new process is asked to do.
-        device("relaunch", "scene" to "false")
-        foreignDevice(DEV_F, "FQ")
-
-        val atRelease = osAtRelease(os("app", "onSilentPush"))
-
-        assertEquals(0, atRelease.downloadsStarted, "a push naming no event reaches no arm")
-        assertEquals(0, osRecord().releasedAgain)
+    fun a_silent_push_naming_no_event_still_releases() = behaviour {
+        given {
+            joinedEvent()
+            backgroundLaunch()
+            fellowMember(DEV_F, "FQ")
+        }
+        whenever { os.silentPush() }
+        then {
+            event<WorldEvent.CompletionReleased> { !it.again }
+            // It reaches no arm.
+            never<WorldEvent.BackendReceived> { it.operation == UNION }
+            never<WorldEvent.CompletionReleased> { it.again }
+        }
     }
 
+    // Parks a staged photo's import, which only the photo library's own reads see until its events reach the world
+    // stream.
     @Test
     fun the_operating_systems_expiry_ends_every_hold_at_once_without_awaiting_the_work_in_flight() = rigTest {
         createAndJoin()
@@ -191,15 +217,12 @@ class EntryIntegrationTest {
         library.suspendNextImport()
         stage(wait = false) // the staging requests the tail, whose import parks
         awaitImportParked()
-        assertTrue(
-            osRecord().backgroundTimeHolds.any { it == "OnDownloadStaged" },
-            "precondition: the import holds time",
-        )
+        assertTrue(backgroundTime.holds().any { it == "OnDownloadStaged" }, "precondition: the import holds time")
 
-        expire()
+        playedOs.expire()
 
         // At once — while the import is still parked: Apple's recipe, never the watchdog's.
-        awaitOs { it.backgroundTimeHolds.isEmpty() }
+        awaitNoHolds()
         library.resumeImport()
     }
 
@@ -238,7 +261,7 @@ class EntryIntegrationTest {
         eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == setOf("A") }
         // The selection change's own tail holds background time until it ends; it must end while the uploader is off,
         // or its top-up — running after the switch below — creates what this precondition says was not created.
-        awaitOs { it.backgroundTimeHolds.isEmpty() }
+        awaitNoHolds()
         // Back on, with A never discovered: under a partial grant only the selection's own read discovers.
         device("uploaders", "app" to "on")
         assertEquals(0, appUploads().created, "precondition: nothing was created")
@@ -287,7 +310,7 @@ class EntryIntegrationTest {
             "the session full, two photos waiting",
             act = {
                 repeat(SESSION_CAP + 2) { takePhoto("P$it") }
-                os("app", "onForeground")
+                os.foreground()
             },
             until = {
                 first = event<WorldEvent.SessionTransferCreated>()
@@ -302,23 +325,8 @@ class EntryIntegrationTest {
         const val SESSION_CAP = 4
         const val TOKEN = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
         const val OTHER_EVENT = "33333333-3333-4333-8333-333333333333"
-    }
-}
 
-/**
- * Assert [condition] never holds of the operating system's record for [window] — the only way to observe that
- * something does NOT happen. The record, not `/device/state`: reading the screen would assemble the host a background
- * launch never built.
- */
-suspend fun Rig.osNeverWithin(
-    what: String,
-    window: kotlin.time.Duration = 500.milliseconds,
-    condition: (OsRecord) -> Boolean,
-) {
-    val deadline = kotlin.time.TimeSource.Monotonic.markNow() + window
-    while (deadline.hasNotPassedNow()) {
-        val r = osRecord()
-        assertFalse(condition(r), "$what: $r")
-        kotlinx.coroutines.delay(50.milliseconds)
+        /** The union read: the device API's `eventFiles`. */
+        const val UNION = "eventFiles"
     }
 }

@@ -27,13 +27,13 @@ class CreateDraftIntegrationTest {
             step("a name typed", act = { user("createName", "name" to "Party") }, until = {
                 first = screen<Layer.CreateEvent> { it.form.name == "Party" }
             })
-            step("away", act = { os("app", "onBackground") }, until = { settled { true } })
+            step("away", act = { os.background() }, until = { settled { true } })
         }
 
         // Back within 15 minutes: the same draft, the name kept, the untouched start moved to now.
         whenever {
             advanceTo(T0_PLUS_14_MIN)
-            os("app", "onForeground")
+            os.foreground()
         }
         then {
             screen<Layer.CreateEvent> {
@@ -44,9 +44,9 @@ class CreateDraftIntegrationTest {
 
         // Back after 15 minutes or more: a fresh draft, at now.
         whenever {
-            os("app", "onBackground")
+            os.background()
             advanceTo(T0_PLUS_29_MIN)
-            os("app", "onForeground")
+            os.foreground()
         }
         then {
             screen<Layer.CreateEvent> {

@@ -146,16 +146,16 @@ class WorldInspectorController(
      */
     fun invokeExtension() = launchMutation {
         // On a thread of its own, as the operating system invokes it: the answer blocks that thread until the cycle ran.
-        val result = mocks.extensionHost.operator.process(Dispatchers.Default)
+        val result = mocks.extensionHost.process(Dispatchers.Default)
         appendConsole("invoke: upload cycle → $result")
         joinedEventId()?.let { event ->
-            mocks.pushService.operator.deliverMessage(mapOf("eventId" to event), Completion.None)
+            mocks.pushService.deliverMessage(mapOf("eventId" to event), Completion.None)
             appendConsole("silent push → $event")
         }
     }
 
     /** The operating system wakes the app for its heartbeat. */
-    fun fireHeartbeat() = launchMutation { mocks.wakes.operator.fire(WakeId.Heartbeat, Completion.None) }
+    fun fireHeartbeat() = launchMutation { mocks.wakes.fire(WakeId.Heartbeat, Completion.None) }
 
     // ---- membership -------------------------------------------------------------------------------
 
@@ -378,7 +378,7 @@ class WorldInspectorController(
     private fun start() {
         app.composed.host
         mocks.screen.operator.live()
-        mocks.lifecycle.operator.foreground()
+        mocks.lifecycle.foreground()
         appWatchers?.cancel()
         appWatchers = scope.launch {
             mocks.library.operator.requestAnswer(if (armedGrants) PhotoGrant.GRANTED else PhotoGrant.DENIED)
@@ -447,7 +447,7 @@ class WorldInspectorController(
 
     /** The operating system's foreground entry — the phone's own status refresh — then the inspector's snapshot. */
     private suspend fun afterMutation() {
-        mocks.lifecycle.operator.foreground()
+        mocks.lifecycle.foreground()
         snapshot = snapshotNow()
     }
 

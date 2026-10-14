@@ -31,7 +31,7 @@ class StagedByteReclaimIntegrationTest {
         val seeded = seedLegacyBacklog("FQ")
 
         // The trigger, not the method. This is the whole test.
-        os("app", "onForeground")
+        os.foreground()
 
         awaitReclaimed(seeded, "foreground entry freed the redundant bytes")
     }
@@ -50,7 +50,7 @@ class StagedByteReclaimIntegrationTest {
     fun the_reclaim_extinguishes_itself_and_never_reaches_an_unsettled_row() = rigTest {
         createAndJoin()
         val seeded = seedLegacyBacklog("FQ")
-        os("app", "onForeground")
+        os.foreground()
         val drained = awaitReclaimed(seeded, "the first pass drained it")
 
         // A second asset, mid-import: its bytes staged, its row unsettled — exactly what a retry will read.
@@ -63,7 +63,7 @@ class StagedByteReclaimIntegrationTest {
         val partial = storage()
         assertTrue(partial > drained, "precondition: the unsettled asset's bytes are staged")
 
-        os("app", "onForeground")
+        os.foreground()
 
         holdsWithin(what = "an unsettled row keeps its bytes — releasing them loses the photo", read = { storage() }) {
             it >= partial
@@ -87,7 +87,7 @@ class StagedByteReclaimIntegrationTest {
         // Deliberately never joined.
         val seeded = seedLegacyBacklog("FQ")
 
-        os("app", "onForeground")
+        os.foreground()
 
         awaitReclaimed(seeded, "no membership is needed to free the disk")
     }
@@ -97,7 +97,7 @@ class StagedByteReclaimIntegrationTest {
         createAndJoin("direction" to "upload")
         val seeded = seedLegacyBacklog("FQ")
 
-        os("app", "onForeground")
+        os.foreground()
 
         awaitReclaimed(seeded, "the direction gate stops the reconcile — it must not stop the reclaim")
     }

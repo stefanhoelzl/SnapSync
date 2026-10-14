@@ -69,7 +69,7 @@ suspend fun Rig.registerEvent(
 
 /** Open an event link, as the operating system delivers a scanned one. */
 suspend fun Rig.openLink(url: String) {
-    os("app", "onSceneContinueActivity", url)
+    os.continueLink(url)
 }
 
 /**

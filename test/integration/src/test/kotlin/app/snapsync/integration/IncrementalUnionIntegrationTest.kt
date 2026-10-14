@@ -13,16 +13,16 @@ class IncrementalUnionIntegrationTest {
     @Test
     fun a_burst_of_pushes_for_what_was_already_read_reads_the_union_once() = rigTest {
         val event = createAndJoin()
-        os("app", "onPushToken", "DEADBEEF") // a registered member is woken
+        os.pushToken("DEADBEEF") // a registered member is woken
         eventually(read = { registrations() }) { it == 1 }
         settleDownloads()
         foreignDevice(DEV_F, "FA", event = event) // the backend wakes this member, naming the new position
         val before = unionReads(event)
 
-        os("app", "onSilentPush", event)
+        os.silentPush(event, awaitRelease = true)
         eventually(read = { unionReads(event) }) { it == before + 1 }
-        os("app", "onSilentPush", event)
-        os("app", "onSilentPush", event)
+        os.silentPush(event, awaitRelease = true)
+        os.silentPush(event, awaitRelease = true)
         settleDownloads()
 
         assertEquals(before + 1, unionReads(event), "the pushes after the first announce nothing it has not read")
