@@ -155,16 +155,23 @@ runs:
         name: screenshots-raw
         path: shots/
         if-no-files-found: error
+    # One re-capture before failing: a system notification can cover a shot — "Ready for Apple Intelligence" covered
+    # `in_sync-light` on a device on its first boot (run 38532357231) — and it fires once, so the second set is clean.
+    # A UI that really moved differs twice.
     - name: Compare with the committed raws
       id: compare
       if: inputs.compare == 'true'
       shell: bash
       run: |
-        "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp "$(cat test/integration/build/screenshots-classpath.txt)" \
-          app.snapsync.screenshots.CompareShotsKt shots screenshots/ios shots-diff 0 || {
-          echo "::error::the App Store raws moved: if the change is intended, download this run's screenshots-raw, look at them and commit them to screenshots/ios/ (the diffs: screenshots-diff)"
-          exit 1
-        }
+        CP="$(cat test/integration/build/screenshots-classpath.txt)"
+        java="${JAVA_HOME:+$JAVA_HOME/bin/}java"
+        compare() { rm -rf shots-diff; "$java" -cp "$CP" app.snapsync.screenshots.CompareShotsKt "$1" screenshots/ios shots-diff 0; }
+        compare shots && exit 0
+        echo "::warning::a capture differs from the committed raw; capturing the set once more, in case a notification covered it"
+        "$java" -Xmx512m -cp "$CP" app.snapsync.screenshots.CaptureShotsKt ios "$DEVICE" 18099 shots-again
+        compare shots-again && exit 0
+        echo "::error::the App Store raws moved: if the change is intended, download this run's screenshots-raw, look at them and commit them to screenshots/ios/ (the diffs: screenshots-diff)"
+        exit 1
     - name: Upload the diffs
       if: failure() && steps.compare.outcome == 'failure'
       uses: actions/upload-artifact@v7.0.2
