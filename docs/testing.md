@@ -846,9 +846,9 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
 
 A mock's operator face becomes a **typed service**: a Kotlin interface in `:test:levers`, annotated `@Rpc`, whose
 companion object names the service once — its name and what a host must offer before any of its methods is
-honoured (`LeverNeed`: the backend mocked, the backend reachable). The mock's operator implements the interface; a test
-calls the same interface. A method's return type is its reply: `Unit` for a lever, the value for a read. Nothing is
-echoed back. The backend is the first face to move, as two services:
+honoured (`LeverNeed`: the backend mocked, the backend reachable, the photo library mocked). The mock's operator
+implements the interface; a test calls the same interface. A method's return type is its reply: `Unit` for a lever, the
+value for a read. Nothing is echoed back. The backend moved first, as two services, and the photo library next:
 
 - `backend` (`BackendLevers`) — the backend operator's levers and reads, implemented by `BackendOperator`. It needs the
   backend mocked, so over the real `api/` every method is refused, with the reason.
@@ -856,6 +856,16 @@ echoed back. The backend is the first face to move, as two services:
   reaches it: the union, the event, a device's objects, a fellow member joining, leaving, reporting what it received.
   It needs only the backend reachable, so it holds against the real `api/` too. Each method names the operator members
   it stands in for (`@StandsInFor`).
+- `library` (`LibraryLevers`) — what the person holding the phone does to their library (a photo taken or deleted, the
+  grant, the partial selection, another app's album, the app's album deleted or renamed) and how the library answers
+  the app (a walk held or failed, an import refused or parked, an add held, how it holds an album), with three reads:
+  the library, the app's albums, the imports. Implemented by `PhotoLibraryOperator`; it needs the library mocked, so a
+  host whose library is real refuses it — a real library has no switch for how it answers. A photo is described by
+  the kinds the selection policy decides on (`LibraryPhotoKind`), never in the platform's vocabulary; the library in
+  that vocabulary is plumbing on `PhotoLibraryMock` (`contents`, `add`, `set`), for the rig's seed, the desktop
+  inspector and the contract bindings. How it holds an album (`albumKind`) is read as the app starts, so it takes
+  effect at the next relaunch, as on a device. The real library's own verbs — `device/gallery/seed`, `wipe`,
+  `add-moving` and the `device/gallery` read — are still string verbs.
 
 The operating system's background transfers follow, each needing its system mocked (`LeverNeed.*_MOCKED`), so a device
 host honours one only where its adapter choice mocks that system:
@@ -936,8 +946,9 @@ cannot see. The journeys keep condition waits until they convert (a later phase)
 are **acts**, announced (`Acted`) before they do anything; a `GET` is a read, run there unannounced, because a read can
 still start app work (the state read refreshes the counts it reports). The mocks tell the stream what they record as
 they record it — the screen mock each state the app shows, the backend mock each request that reaches it and each one
-an operator's hold parks, the transfer mocks each upload job, session transfer and download the app hands them — on
-the thread that did it, so the order is the app's.
+an operator's hold parks, the transfer mocks each upload job, session transfer and download the app hands them, the
+library mock each hold it parks, each photo it creates and each album change — on the thread that did it, so the order
+is the app's.
 
 ### Launch-time adapters
 
@@ -1090,9 +1101,12 @@ backend's request, or the extension's `process()` on the operating system's own 
 until it answers.
 
 The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
-(`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (today the backend's
-`BackendReceived` and `BackendHeld`, and the transfers' `UploadJobCreated`, `SessionTransferCreated` and
-`DownloadStarted`; each face batch adds its face's), each `Settled(now, nextTimer)`, and each lane rule
+(`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (the backend's
+`BackendReceived` and `BackendHeld`; the transfers' `UploadJobCreated`, `SessionTransferCreated` and `DownloadStarted`;
+and the photo library's: a walk, an add or an import parked on an operator's hold — `LibraryEnumerationHeld`,
+`LibraryAddHeld`, `LibraryImportParked` — a photo an import created (`LibraryAssetCreated`), an album the app made
+(`LibraryAlbumCreated`) and a photo that joined one, once per photo as a person would see it arrive
+(`LibraryJoinedAlbum`); each face batch adds its face's), each `Settled(now, nextTimer)`, and each lane rule
 broken (`LaneViolation`). Every request a caller makes runs as a task of the loop — an act announced first, a read
 not — so everything after an act's announcement is the act's or later.
 
@@ -1210,8 +1224,8 @@ tests.
 deleted in 12: it could show a frame the app never reached. Every state is reached here through the mocks' levers,
 including the screens the app shows only while it waits. The mocks answer at once, so those exist for a moment no
 reviewer can catch; the inspector's **Hold** switches keep the backend's event-details load, create, join or leave —
-or the library's enumeration — unanswered until released (the same levers are `/device/backend/hold` and
-`/device/gallery/hold-enumeration` over the rig, `HeldScreenIntegrationTest`).
+or the library's enumeration — unanswered until released (the same levers are the typed `backend.hold` and
+`library.holdEnumeration` over the rig, `HeldScreenIntegrationTest`).
 
 **World.** The app is the one the JVM root composes (section 5) over a fresh set of mocks. The phone pane
 (`ScreenPane`) renders exactly what the app showed on its `Ui` port and hands every tap back as its `UiIntent`: the
