@@ -31,7 +31,7 @@ class ForegroundWatchesTest {
 
         watches.start()
         runCurrent()
-        network.operator.access = NetworkAccess.Offline
+        network.access = NetworkAccess.Offline
         advanceTimeBy(NetworkWatch.DEFAULT_GRACE + 1.seconds)
         assertEquals(NetworkAccess.Offline, watch.access.value, "the watch runs at the default grace")
         assertEquals(2, polls, "the poll runs beside it")

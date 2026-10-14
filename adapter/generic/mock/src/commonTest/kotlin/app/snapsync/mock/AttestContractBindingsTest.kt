@@ -73,7 +73,7 @@ class AttestContractBindingsTest {
             val mock = ProcessInfoMock(
                 if (state == ProcessInfoState.LOCKED) Availability.UNAVAILABLE else Availability.AVAILABLE,
             )
-            if (state == ProcessInfoState.MEMORY_NOT_ACCOUNTED) mock.operator.footprint = null
+            if (state == ProcessInfoState.MEMORY_NOT_ACCOUNTED) mock.memory = null
             return Entered.Ready(mock.port().recorded(log))
         }
     }

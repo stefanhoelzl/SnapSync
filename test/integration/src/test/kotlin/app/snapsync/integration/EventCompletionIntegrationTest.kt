@@ -20,9 +20,9 @@ class EventCompletionIntegrationTest {
     @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after their own range has ended")
     fun the_only_member_settles_its_share_and_stays_in_the_finished_event() = rigTest {
         extensionUploadsOnly()
-        device("clock/advance", "to" to DURING)
+        advanceTo(DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
-        device("clock/advance", "to" to AFTER_THE_END)
+        advanceTo(AFTER_THE_END)
         // The first upload cycle after the end settles the share — on this host the operator plays the uploader.
         cycle()
         val published = checkNotNull(backend.membership(event).manifest)
@@ -37,12 +37,12 @@ class EventCompletionIntegrationTest {
     @Test
     @Verifies(spec = "event-lifetime", requirement = "The date range closes nothing")
     fun a_member_still_settling_keeps_this_member_in_the_event() = rigTest {
-        device("clock/advance", "to" to DURING)
+        advanceTo(DURING)
         createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         // Another member who has not settled its share (a manifest without the flag).
         foreignDevice(DEV_F, "FQ")
         downloadAll()
-        device("clock/advance", "to" to AFTER_THE_END)
+        advanceTo(AFTER_THE_END)
 
         os("app", "onForeground")
 
@@ -52,10 +52,10 @@ class EventCompletionIntegrationTest {
     @Test
     @Verifies(spec = "event-lifetime", requirement = "Deletion is never announced and never touches anyone's library")
     fun a_completed_event_is_kept_as_deleted_from_a_background_wake() = rigTest {
-        device("clock/advance", "to" to DURING)
+        advanceTo(DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         foreignDevice(DEV_F, "FQ")
-        device("clock/advance", "to" to AFTER_THE_END)
+        advanceTo(AFTER_THE_END)
         // The clock ran out while this member was away: the sweep completed the event.
         backend.complete(event)
 

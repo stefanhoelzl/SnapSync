@@ -28,7 +28,6 @@ class RigDevControlsContractTest {
             val controls = RigDevControls().apply {
                 pin = DevControlsContract.PINNED
                 encrypts = true
-                networkGraceMillis = DevControlsContract.SHORT_GRACE_MILLIS
             }
             return Entered.Ready(DevControlsUnderTest(controls.recorded(log), resetFromChannel = controls::reset))
         }

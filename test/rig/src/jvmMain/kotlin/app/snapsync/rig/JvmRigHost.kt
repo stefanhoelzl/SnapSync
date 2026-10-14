@@ -118,9 +118,6 @@ class JvmRigHost private constructor(
 
         private fun compose(scope: CoroutineScope, backend: RigBackend, threads: HostThreads): JvmRig {
             val mocks = threads.mocks
-            // A missing network is told after a short grace under real time, not the phone's five seconds: a test that
-            // still waits by polling need not wait it out. Under mocked time the phone's grace stands, and costs nothing.
-            if (threads.time == LoopTime.REAL) mocks.devControls.operator.networkGraceMillis = NETWORK_GRACE_MILLIS
             val version = DeclaredVersion(SERVED_VERSION)
             val log = RecordedLog()
             val build = BuildInfoMock(
@@ -166,7 +163,10 @@ class JvmRigHost private constructor(
             val mocks = rig.mocks
             return RigHooks(
                 bootedAt = Clock.System.now().toString(),
-                services = rig.world.servedServices(rig.threads.acts),
+                services = rig.world.servedServices(
+                    rig.threads.acts,
+                    reconcileUploads = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },
+                ),
                 uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",
@@ -242,7 +242,6 @@ class JvmRigHost private constructor(
          * How long a missing network must last before this host's app tells the member — the network tests in
          * `:test:integration` and `:test:control` wait a few multiples of it.
          */
-        private const val NETWORK_GRACE_MILLIS = 200L
     }
 }
 

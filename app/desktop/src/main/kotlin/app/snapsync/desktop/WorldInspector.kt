@@ -312,7 +312,7 @@ private fun TwoUp(left: @Composable () -> Unit, right: @Composable () -> Unit) {
 private fun LifeLevers(controller: WorldInspectorController, joinedEventId: String?) {
     OutlinedButton(enabled = joinedEventId != null, onClick = { controller.leaveEvent() }) { Text("Leave") }
     OutlinedButton(onClick = {
-        controller.lever("clock → $AFTER_PAST_END") { clock.operator.now = Instant.parse(AFTER_PAST_END) }
+        controller.lever("clock → $AFTER_PAST_END") { clock.now = Instant.parse(AFTER_PAST_END) }
     }) { Text("Clock: after the range") }
     OutlinedButton(enabled = joinedEventId != null, onClick = {
         controller.lever(

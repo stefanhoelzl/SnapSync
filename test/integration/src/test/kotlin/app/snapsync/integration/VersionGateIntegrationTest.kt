@@ -37,7 +37,7 @@ class VersionGateIntegrationTest {
     fun a_refused_build_reaches_the_update_screen_carrying_the_minimum_and_the_remedy() = rigTest {
         createAndJoin()
         backend.minAppVersion("0.4")
-        device("app-version", "version" to "0.3") // a build that predates v2
+        build.declare("0.3") // a build that predates v2
 
         // Any backend call at all — the gate precedes every route, which is the whole reason a refused build cannot
         // do anything and the screen may say so unconditionally.
@@ -54,12 +54,12 @@ class VersionGateIntegrationTest {
     fun updating_clears_the_refusal_and_the_screen_goes_away() = rigTest {
         createAndJoin()
         backend.minAppVersion("0.4")
-        device("app-version", "version" to "0.3")
+        build.declare("0.3")
         anyBackendCall()
         awaitState { it.ui.layer is Layer.UpdateRequired }
 
         // The member updates. Nothing else changes — no restart, no reset, no re-join.
-        device("app-version", "version" to "0.4")
+        build.declare("0.4")
         anyBackendCall()
 
         val layer = awaitState { it.ui.layer !is Layer.UpdateRequired }.ui.layer
@@ -73,12 +73,12 @@ class VersionGateIntegrationTest {
         // 404 for an event the nightly sweep deleted — and that answer, too, says this build is no longer refused.
         val event = createAndJoin()
         backend.minAppVersion("0.4")
-        device("app-version", "version" to "0.3")
+        build.declare("0.3")
         anyBackendCall()
         awaitState { it.ui.layer is Layer.UpdateRequired }
 
         backend.sweep(event)
-        device("app-version", "version" to "0.4")
+        build.declare("0.4")
         anyBackendCall()
 
         awaitState { it.ui.layer !is Layer.UpdateRequired } // the 404 cleared the update notice
@@ -90,7 +90,7 @@ class VersionGateIntegrationTest {
         // every member on an update screen, and the two tests above would still pass.
         createAndJoin()
         backend.minAppVersion("0.4")
-        device("app-version", "version" to "0.9")
+        build.declare("0.9")
 
         anyBackendCall()
 

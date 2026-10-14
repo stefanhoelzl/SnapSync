@@ -116,14 +116,6 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
             put("selectionObserved", device.library.selectionObserved)
             put("pickersShown", device.library.pickersShown)
         }
-        // What the app handed the platform's own UI: the share sheet, the URL opener, its Settings page.
-        if (mocked(MockedSystem.SYSTEM_UI)) {
-            putJsonObject("systemUi") {
-                putJsonArray("shared") { device.systemUi.operator.shared.value.forEach { add(JsonPrimitive(it)) } }
-                putJsonArray("opened") { device.systemUi.operator.opened.value.forEach { add(JsonPrimitive(it)) } }
-                put("settingsOpened", device.systemUi.operator.settingsOpened.value)
-            }
-        }
         if (mocked(MockedSystem.WAKE)) {
             put("heartbeatsScheduled", device.wakes.operator.heartbeatsScheduled)
             // The heartbeat the operating system holds now — the state reached, not a count: its cadence and delay.

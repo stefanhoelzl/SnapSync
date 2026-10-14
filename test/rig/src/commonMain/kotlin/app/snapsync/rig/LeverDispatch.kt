@@ -1,7 +1,12 @@
 package app.snapsync.rig
 
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.BuildLevers
+import app.snapsync.levers.ClockLevers
+import app.snapsync.levers.CrashReporterLevers
+import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceAdvertisement
+import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.JoinedEvent
 import app.snapsync.levers.LEVER_SERVICES
@@ -9,12 +14,16 @@ import app.snapsync.levers.LeverNeed
 import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.LeverService
 import app.snapsync.levers.LibraryLevers
+import app.snapsync.levers.NetworkLevers
+import app.snapsync.levers.ProcessInfoLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.RigLevers
+import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.ThisDevice
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.WorldLevers
+import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockedSystem
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
@@ -37,12 +46,18 @@ class ServedService internal constructor(val service: LeverService<*>, internal 
 /** The services the channel serves itself rather than over the mocks: what it advertises, and the world's events. */
 private val CHANNEL_SERVICES: Set<LeverService<*>> = setOf(RigLevers, WorldLevers)
 
-/** Every declared service but the channel's own, each call run as one of [acts]. */
-fun MockWorld.servedServices(acts: RigActs = RigActs.Direct): List<ServedService> =
-    LEVER_SERVICES.filter { it !in CHANNEL_SERVICES }.map { service ->
-        val refusal = refusalFor(service.needs.map(::needOf), service.name)
-        served(service, if (refusal == null) implementationOf(service) else null, refusal, acts, resolving(this))
-    }
+/**
+ * Every declared service but the channel's own, each call run as one of [acts]. [reconcileUploads] brings the app's
+ * uploads in line with a pin the development controls just took — the composed app's, which this world cannot reach.
+ */
+fun MockWorld.servedServices(
+    acts: RigActs = RigActs.Direct,
+    reconcileUploads: suspend () -> Unit = {},
+): List<ServedService> = LEVER_SERVICES.filter { it !in CHANNEL_SERVICES }.map { service ->
+    val refusal = refusalFor(service.needs.map(::needOf), service.name)
+    val implementation = if (refusal == null) implementationOf(service, reconcileUploads) else null
+    served(service, implementation, refusal, acts, resolving(this))
+}
 
 /** The channel's own service: what this host advertises. */
 internal fun servedRig(advertise: () -> DeviceAdvertisement): ServedService =
@@ -80,15 +95,24 @@ internal fun MockWorld.serviceRefusals(): Map<String, String> = servedServices()
     served.refusal?.let { why -> served.service.entries.map { it to why } }.orEmpty()
 }.toMap()
 
-private fun MockWorld.implementationOf(service: LeverService<*>): Any = when (service) {
-    BackendLevers -> device.backend.operator.also { check(isMocked(MockedSystem.BACKEND)) }
-    PublicBackendLevers -> PublicBackend(this, checkNotNull(reach))
-    UploadQueueLevers -> device.uploadQueue.operator
-    UploadSessionLevers -> device.uploadSession.operator
-    DownloadSessionLevers -> device.downloads.operator
-    LibraryLevers -> device.library.operator.also { check(isMocked(MockedSystem.LIBRARY)) }
-    else -> error("$service has no implementation in this world")
-}
+private fun MockWorld.implementationOf(service: LeverService<*>, reconcileUploads: suspend () -> Unit): Any =
+    when (service) {
+        BackendLevers -> device.backend.operator.also { check(isMocked(MockedSystem.BACKEND)) }
+        PublicBackendLevers -> PublicBackend(this, checkNotNull(reach))
+        UploadQueueLevers -> device.uploadQueue.operator
+        UploadSessionLevers -> device.uploadSession.operator
+        DownloadSessionLevers -> device.downloads.operator
+        LibraryLevers -> device.library.operator.also { check(isMocked(MockedSystem.LIBRARY)) }
+        NetworkLevers -> device.connectivity.operator
+        DeviceConditionsLevers -> device.deviceConditions.operator
+        ClockLevers -> device.clock.operator
+        ProcessInfoLevers -> device.processInfo.operator
+        CrashReporterLevers -> device.crashReporter.operator
+        SystemUiLevers -> device.systemUi.operator
+        DevControlsLevers -> ReconcilingControls(controls, reconcileUploads)
+        BuildLevers -> DeclaredBuild(checkNotNull(version))
+        else -> error("$service has no implementation in this world")
+    }
 
 private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.BACKEND_MOCKED -> Need.Operator
@@ -97,6 +121,39 @@ private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.UPLOAD_SESSION_MOCKED -> Need.Mocked(MockedSystem.UPLOAD_SESSION)
     LeverNeed.DOWNLOADS_MOCKED -> Need.Mocked(MockedSystem.DOWNLOADS)
     LeverNeed.LIBRARY_MOCKED -> Need.Mocked(MockedSystem.LIBRARY)
+    LeverNeed.NETWORK_MOCKED -> Need.Mocked(MockedSystem.NETWORK)
+    LeverNeed.DEVICE_CONDITIONS_MOCKED -> Need.Mocked(MockedSystem.DEVICE_CONDITIONS)
+    LeverNeed.CLOCK_MOCKED -> Need.Mocked(MockedSystem.CLOCK)
+    LeverNeed.CLOCK_UNOWNED -> Need.ClockUnowned
+    LeverNeed.PROCESS_INFO_MOCKED -> Need.Mocked(MockedSystem.PROCESS_INFO)
+    LeverNeed.CRASH_REPORTER_MOCKED -> Need.Mocked(MockedSystem.CRASH_REPORTER)
+    LeverNeed.SYSTEM_UI_MOCKED -> Need.Mocked(MockedSystem.SYSTEM_UI)
+    LeverNeed.VERSION_SETTABLE -> Need.Version
+}
+
+/** The build's development controls, a pin reconciled with the app's uploads as it lands. */
+private class ReconcilingControls(
+    private val controls: DevControlsLevers,
+    private val reconcile: suspend () -> Unit,
+) : DevControlsLevers by controls {
+    override suspend fun pin(app: Boolean, extension: Boolean) {
+        controls.pin(app, extension)
+        reconcile()
+    }
+
+    override suspend fun unpin() {
+        controls.unpin()
+        reconcile()
+    }
+}
+
+/** The build's declared version, as a cell the channel changes. */
+private class DeclaredBuild(private val version: DeclaredVersion) : BuildLevers {
+    override suspend fun declare(version: String) {
+        this.version.value = version
+    }
+
+    override suspend fun declared(): String? = version.value
 }
 
 /** How an omitted `@JoinedEvent` / `@ThisDevice` argument is named: by this world's joined event and device. */

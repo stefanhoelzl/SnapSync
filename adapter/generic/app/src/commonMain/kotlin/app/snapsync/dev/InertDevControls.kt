@@ -24,7 +24,6 @@ import app.snapsync.ports.DevHandlers
     Never(member = "createsPlainEvents", answer = "false"),
     Never(member = "inviteLinkHints", answer = "InviteLinkHints.Honoured"),
     Never(member = "uploaderPin", answer = "returns"),
-    Never(member = "networkGraceMillis", answer = "returns"),
     Never(handler = "onReset"),
 )
 object InertDevControls : DevControls {
@@ -37,6 +36,4 @@ object InertDevControls : DevControls {
     override fun inviteLinkHints(): InviteLinkHints = InviteLinkHints.Ignored
 
     override fun createsPlainEvents(): Boolean = true
-
-    override fun networkGraceMillis(): Long? = null
 }

@@ -12,13 +12,13 @@ import kotlin.test.assertTrue
 
 /**
  * An encrypted event, as a member meets it (the encrypted file format, `docs/architecture.md`) — every event a rig
- * build creates unless it asks for a plain one by `device/encrypt-new-events?on=false` (a shipped build creates plain
+ * build creates unless it asks for a plain one by `dev-controls.encryptNewEvents(false)` (a shipped build creates plain
  * events until encrypted creation is re-enabled, `PENDING_CLEANUPS.md`). Its invite carries its key;
  * an invite without it — a link cut short in sharing — opens the incomplete-invite wall and joins nothing.
  */
 class EncryptedEventIntegrationTest {
 
-    private suspend fun Rig.creatingPlain() = device("encrypt-new-events", "on" to "false")
+    private suspend fun Rig.creatingPlain() = devControls.encryptNewEvents(false)
 
     @Test
     @Verifies(

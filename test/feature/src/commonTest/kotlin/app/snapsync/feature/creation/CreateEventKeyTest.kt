@@ -67,7 +67,7 @@ class CreateEventKeyTest {
 
     @Test
     fun `a build that creates plain events mints no key and sends no key id`() = runTest {
-        val w = World().apply { controls.operator.encryptsNewEvents = false }
+        val w = World().apply { controls.encrypts = false }
 
         w.create(eventId).create("Party", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z", openUntil = null)
 

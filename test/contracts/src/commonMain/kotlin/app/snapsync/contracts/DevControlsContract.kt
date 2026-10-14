@@ -21,7 +21,7 @@ enum class DevControlsState {
     /**
      * A rig build whose controls the channel switched away from a shipped build's: the app's uploader pinned off, invite
      * hints honoured, new events created encrypted (a shipped build creates plain ones until encrypted creation is
-     * re-enabled, `PENDING_CLEANUPS.md`), the network grace shortened — and a reset the channel can deliver ([DevControlsUnderTest.resetFromChannel]).
+     * re-enabled, `PENDING_CLEANUPS.md`) — and a reset the channel can deliver ([DevControlsUnderTest.resetFromChannel]).
      */
     SWITCHED,
 }
@@ -33,15 +33,11 @@ class DevControlsUnderTest(val controls: DevControls, val resetFromChannel: (sus
  * What the build's developer controls promise the composition (`docs/architecture.md`): a shipped build answers every
  * control as shipped — no pin, hints ignored, events plain — and a rig build answers what its channel set, and
  * delivers the channel's reset to the composition that listened.
- * A switched build may also shorten the network watch's grace, which a shipped build never does.
  */
 object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("DevControls") {
 
     /** The pin [DevControlsState.SWITCHED] carries: the app's uploader off, the extension on. */
     val PINNED = UploaderPin(app = false, extension = true)
-
-    /** The network grace [DevControlsState.SWITCHED] carries, in milliseconds: a test host's short one. */
-    const val SHORT_GRACE_MILLIS = 200L
 
     override val clauses = clauses {
 
@@ -54,7 +50,6 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
                     answers(DevControls::uploaderPin).with(null)
                     answers(DevControls::inviteLinkHints).with(InviteLinkHints.Ignored)
                     answers(DevControls::createsPlainEvents).with(true)
-                    answers(DevControls::networkGraceMillis).with(null)
                 }
             },
         ) { subject ->
@@ -64,7 +59,6 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
             assertNull(subject.controls.uploaderPin(), "both uploaders, as a shipped build runs them")
             assertEquals(InviteLinkHints.Ignored, subject.controls.inviteLinkHints(), "a link is an ordinary invite")
             assertTrue(subject.controls.createsPlainEvents(), "every event is created plain")
-            assertNull(subject.controls.networkGraceMillis(), "a missing network waits the app's own grace")
         }
 
         clause(
@@ -76,7 +70,6 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
                     answers(DevControls::uploaderPin).returns()
                     answers(DevControls::inviteLinkHints).with(InviteLinkHints.Honoured)
                     answers(DevControls::createsPlainEvents).with(false)
-                    answers(DevControls::networkGraceMillis).returns()
                     calls(DevHandlers::onReset, Completion::class)
                     handle<Completion>().answers(Completion::complete).returns()
                 }
@@ -95,7 +88,6 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
             assertEquals(PINNED, subject.controls.uploaderPin(), "the pin the channel set")
             assertEquals(InviteLinkHints.Honoured, subject.controls.inviteLinkHints(), "a rig joins headlessly")
             assertFalse(subject.controls.createsPlainEvents(), "the channel switched encryption on")
-            assertEquals(SHORT_GRACE_MILLIS, subject.controls.networkGraceMillis(), "the grace the host shortened")
             reset()
             assertEquals(1, resets, "the channel's reset reaches the composition that listened")
         }

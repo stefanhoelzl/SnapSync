@@ -125,14 +125,13 @@ class EntryMockContractBindingsTest {
         override fun create(state: DevControlsState, clauseId: String, log: CallLog): Entered<DevControlsUnderTest> {
             val mock = DevControlsMock()
             if (state == DevControlsState.SHIPPED) {
-                mock.operator.encryptsNewEvents = false
+                mock.encrypts = false
                 return Entered.Ready(DevControlsUnderTest(mock.port().recorded(log)))
             }
-            mock.operator.pin = DevControlsContract.PINNED
-            mock.operator.inviteLinkHints = InviteLinkHints.Honoured
-            mock.operator.encryptsNewEvents = true
-            mock.operator.networkGraceMillis = DevControlsContract.SHORT_GRACE_MILLIS
-            return Entered.Ready(DevControlsUnderTest(mock.port().recorded(log)) { mock.operator.reset() })
+            mock.pin = DevControlsContract.PINNED
+            mock.hints = InviteLinkHints.Honoured
+            mock.encrypts = true
+            return Entered.Ready(DevControlsUnderTest(mock.port().recorded(log)) { mock.reset() })
         }
     }
 

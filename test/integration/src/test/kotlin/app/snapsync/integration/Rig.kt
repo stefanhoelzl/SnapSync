@@ -5,11 +5,19 @@ import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.BuildLevers
+import app.snapsync.levers.ClockLevers
+import app.snapsync.levers.CrashReporterLevers
+import app.snapsync.levers.DevControlsLevers
+import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.LibraryLevers
+import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
+import app.snapsync.levers.WorldLevers
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigState
@@ -25,6 +33,7 @@ import kotlin.test.fail
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /**
  * One integration test's host: a fresh control-channel JVM host, in-process, over the backend mock — closed when the
@@ -32,13 +41,11 @@ import kotlin.time.Duration.Companion.seconds
  * seam-to-UI-state integration surface"), so a test body names no mock, port or composition type.
  */
 fun rigTest(body: suspend Rig.() -> Unit): Unit = runBlocking {
-    val host = JvmRigHost.start("mock")
+    // The app reads the clock mock, never the wall clock: every test starts inside the default event window, and one
+    // that needs another moment moves the clock itself (`world.advanceTo`).
+    val host = JvmRigHost.start("mock", startAt = Instant.parse(Rig.NOW))
     try {
-        RigClient("http://127.0.0.1:${host.port}").use { client ->
-            // Mocked time only, never the wall clock: every test starts inside the default event window, and one
-            // that needs another moment moves the clock itself.
-            Rig(client).apply { device("clock/advance", "to" to Rig.NOW) }.body()
-        }
+        RigClient("http://127.0.0.1:${host.port}").use { client -> Rig(client).body() }
         // The host's loop saw every task, or the test's waits could not be trusted (`docs/testing.md`, "How a test waits").
         assertTrue(
             host.violations.isEmpty(),
@@ -76,6 +83,36 @@ class Rig(val client: RigClient) {
 
     /** The photo library operator's levers and reads — the library mock's. */
     val library: LibraryLevers = client.levers(LibraryLevers)
+
+    /** The device's network, as the operating system reports it to the app. */
+    val network: NetworkLevers = client.levers(NetworkLevers)
+
+    /** The device's power, battery, thermal state and background allowance, as the operating system reports them. */
+    val deviceConditions: DeviceConditionsLevers = client.levers(DeviceConditionsLevers)
+
+    /** What the crash reporter's backend received. */
+    val crashReporter: CrashReporterLevers = client.levers(CrashReporterLevers)
+
+    /** What the app handed the platform's own UI. */
+    val systemUi: SystemUiLevers = client.levers(SystemUiLevers)
+
+    /** The build's development controls. */
+    val devControls: DevControlsLevers = client.levers(DevControlsLevers)
+
+    /** The build itself: the version it declares. */
+    val build: BuildLevers = client.levers(BuildLevers)
+
+    private val world: WorldLevers = client.levers(WorldLevers)
+
+    private val clock: ClockLevers = client.levers(ClockLevers)
+
+    /**
+     * The clock moves to [at], an ISO instant: what the app reads from then on. The JVM host's world moves it, with the
+     * timers due on the way; a device host, which serves no world, sets its mocked clock (`docs/testing.md`, "How a
+     * test waits").
+     */
+    suspend fun advanceTo(at: String) =
+        if (WORLD_ADVANCE in client.device().honoured) world.advanceTo(at) else clock.set(at)
 
     suspend fun state(): RigState = client.state()
 
@@ -145,6 +182,9 @@ class Rig(val client: RigClient) {
     }
 
     companion object {
+        /** The world's clock, as a host advertises it: the JVM host's, never a device's. */
+        private const val WORLD_ADVANCE = "world.advanceTo"
+
         const val EVENT_NAME = "Anna's Birthday"
 
         /** The capture date every added photo carries by default — inside the default event window. */

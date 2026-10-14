@@ -169,10 +169,9 @@ class LeverFacesTest {
 
         /** The faces that are not typed services yet (phases 3a–3f): the list only shrinks. */
         val NOT_MIGRATED = setOf(
-            "WakeOperator", "BackgroundTimeOperator", "ExtensionRegistryOperator", "DeviceConditionsOperator",
-            "LifecycleOperator", "LinksOperator", "PushServiceOperator", "ScreenOperator", "DevControlsOperator",
-            "ExtensionHostOperator", "CrashReporterOperator", "ProcessInfoOperator",
-            "ClockOperator", "SystemUiOperator", "NetworkOperator", "FileSystemOperator", "DatabasesOperator",
+            "WakeOperator", "BackgroundTimeOperator", "ExtensionRegistryOperator", "LifecycleOperator",
+            "LinksOperator", "PushServiceOperator", "ScreenOperator", "ExtensionHostOperator", "FileSystemOperator",
+            "DatabasesOperator",
         )
     }
 }

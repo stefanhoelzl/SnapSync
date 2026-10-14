@@ -2,6 +2,8 @@ package app.snapsync.mock
 
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.levers.DevControlsLevers
+import app.snapsync.levers.DevControlsView
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.InviteLinkHints
@@ -258,14 +260,26 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) {
  * The build's development controls: the invite-link hints are fixed per build ([hints]) — a shipped build ignores
  * them, and an operator playing another build sets them — and the per-uploader pin is the channel's to set.
  */
-class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Ignored) {
+class DevControlsMock(hints: InviteLinkHints = InviteLinkHints.Ignored) {
     internal val handlers = HandlerSlot<DevHandlers>("DevControls", BeforeListen.Thrown)
 
-    @Volatile internal var pin: UploaderPin? = null
+    // In-process plumbing — the hosts' own; the channel's is the [operator].
 
-    @Volatile internal var encrypts: Boolean = true
+    /** How the build answers an invite link's hints — fixed per build; an operator plays another build with it. */
+    @Volatile var hints: InviteLinkHints = hints
 
-    @Volatile internal var networkGraceMillis: Long? = null
+    /** The per-uploader switch; `null`, as on every shipped build, unless the channel pins one. */
+    @Volatile var pin: UploaderPin? = null
+
+    /** Whether an event this device creates is encrypted — `true`, as on every shipped build; `false` creates a plain one. */
+    @Volatile var encrypts: Boolean = true
+
+    /** The channel's reset; returns once the device's state is void. */
+    suspend fun reset() {
+        val done = Answered()
+        handlers.require("a reset").onReset.handle(Unit, done)
+        done.ended.await()
+    }
 
     fun port(): DevControls = Face()
 
@@ -281,44 +295,45 @@ class DevControlsMock(internal var hints: InviteLinkHints = InviteLinkHints.Igno
         override fun inviteLinkHints(): InviteLinkHints = hints
 
         override fun createsPlainEvents(): Boolean = !encrypts
-
-        override fun networkGraceMillis(): Long? = this@DevControlsMock.networkGraceMillis
     }
 
     val operator: DevControlsOperator = DevControlsOperator(this)
 }
 
-class DevControlsOperator internal constructor(private val mock: DevControlsMock) {
-    /** The per-uploader switch; `null`, as on every shipped build, unless the channel pins one. */
-    var pin: UploaderPin?
-        get() = mock.pin
-        set(value) { mock.pin = value }
-
-    /** How the build answers an invite link's hints — fixed per build; an operator plays another build with it. */
-    var inviteLinkHints: InviteLinkHints
-        get() = mock.hints
-        set(value) { mock.hints = value }
-
-    /** Whether an event this device creates is encrypted — `true`, as on every shipped build; `false` creates a plain one. */
-    var encryptsNewEvents: Boolean
-        get() = mock.encrypts
-        set(value) { mock.encrypts = value }
-
-    /**
-     * How long a missing network must last before the member is told, in milliseconds — `null`, the app's own grace as
-     * on every shipped build, unless a test host shortens it. Read as the app composes its network watch.
-     */
-    var networkGraceMillis: Long?
-        get() = mock.networkGraceMillis
-        set(value) { mock.networkGraceMillis = value }
-
-    /** The channel's reset; returns once the device's state is void. */
-    suspend fun reset() {
-        val done = Answered()
-        mock.handlers.require("a reset").onReset.handle(Unit, done)
-        done.ended.await()
+/**
+ * The development controls as the channel sets them. A pin here only sets the switch: the host that serves the face
+ * reconciles the uploads with it, which a mock cannot reach.
+ */
+class DevControlsOperator internal constructor(private val mock: DevControlsMock) : DevControlsLevers {
+    override suspend fun pin(app: Boolean, extension: Boolean) {
+        mock.pin = UploaderPin(app, extension)
     }
+
+    override suspend fun unpin() {
+        mock.pin = null
+    }
+
+    override suspend fun inviteLinkHints(honoured: Boolean) {
+        mock.hints = if (honoured) InviteLinkHints.Honoured else InviteLinkHints.Ignored
+    }
+
+    override suspend fun encryptNewEvents(on: Boolean) {
+        mock.encrypts = on
+    }
+
+    override suspend fun reset() = mock.reset()
+
+    override suspend fun controls(): DevControlsView = devControlsView(mock.pin, mock.hints, mock.encrypts)
 }
+
+/** The development controls as the channel reads them. */
+fun devControlsView(pin: UploaderPin?, hints: InviteLinkHints, encrypts: Boolean): DevControlsView = DevControlsView(
+    appUploads = pin?.app ?: true,
+    extensionUploads = pin?.extension ?: true,
+    pinned = pin != null,
+    inviteLinkHintsHonoured = hints == InviteLinkHints.Honoured,
+    encryptsNewEvents = encrypts,
+)
 
 /** The operating system's invocations of the upload extension — a separate process's entry port. */
 class ExtensionHostMock {

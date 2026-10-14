@@ -802,8 +802,8 @@ backend mock's operator has answers `409` with the reason.
   answered is expired) and every background-time hold expires; `?arg=next` hands the next wake over already
   withdrawn. The app host honours it only when its adapter choice mocks
   the background-time holds — a real OS's expiry is its own.
-- `device/os-record` is what the OS recorded of the app: the completion handlers handed over, released and released
-  a second time; whether a screen was shown; whether the selection observer is open; the heartbeat requests and the
+- `device/os-record` is what the OS recorded of the app (what the platform's own UI was handed is the `system-ui`
+  service's): the completion handlers handed over, released and released a second time; whether a screen was shown; whether the selection observer is open; the heartbeat requests and the
   heartbeat pending now (`pendingWake`: its cadence and delay, or `null`); the
   background-time holds, by the name each was begun under (the trigger's: `OnForeground`, or the trigger a detached run was started by); the push registrations; the transfer sessions; the
   databases opened and the files staged. A receipted entry's answer carries it **as read at the release**
@@ -846,9 +846,10 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
 
 A mock's operator face becomes a **typed service**: a Kotlin interface in `:test:levers`, annotated `@Rpc`, whose
 companion object names the service once — its name and what a host must offer before any of its methods is
-honoured (`LeverNeed`: the backend mocked, the backend reachable, the photo library mocked). The mock's operator
-implements the interface; a test calls the same interface. A method's return type is its reply: `Unit` for a lever, the
-value for a read. Nothing is echoed back. The backend moved first, as two services, and the photo library next:
+honoured (`LeverNeed`: a system mocked, the backend reachable, the build's version a cell the channel may change, the
+clock owned by no loop). The mock's operator implements the interface; a test calls the same interface. A method's
+return type is its reply: `Unit` for a lever, the value for a read. Nothing is echoed back. The backend moved first, as
+two services, and the photo library next:
 
 - `backend` (`BackendLevers`) — the backend operator's levers and reads, implemented by `BackendOperator`. It needs the
   backend mocked, so over the real `api/` every method is refused, with the reason.
@@ -879,6 +880,22 @@ host honours one only where its adapter choice mocks that system:
 
 The operating system's relaunch for a session's events hands the app a live completion, which does not cross a wire: it
 stays the played OS's (`/os`, `MockEntryDriver`), on the mock rather than its face.
+
+The device's surroundings followed (`SurroundingsLevers.kt`, `BuildLevers.kt`), each needing its system mocked:
+`network`, `device-conditions`, `process-info`, `crash-reporter` (what its backend received) and `system-ui` (what the app
+handed the share sheet, the URL opener and the Settings page, and the levers that refuse a hand-over). Three differ:
+
+- `clock` (`ClockLevers`) also needs a clock no loop owns, so the JVM host refuses it: its loop moves the clock with the
+  timers due on the way (`world.advanceTo`), and a lever that set the clock alone would leave them behind — the app would
+  read one time while its timers ran on another. A device host whose adapter choice mocks the clock serves it.
+- `dev-controls` (`DevControlsLevers`) is the build's own, served on every host over the mocked controls or the rig's
+  `RigDevControls`: the uploader pin (reconciled with the app's uploads as it lands — the host's work, which no mock can
+  reach), the invite-link hints, encrypted creation and the reset.
+- `build` (`BuildLevers`) declares another marketing version, where the backend is the mock that reads it.
+
+A face's typed values are its own (`NetworkState`, `Footprint`, `ReceivedDump`, …): `:test:levers` sees only the
+screen's vocabulary, so a domain type crosses as the service's word for it. The typed accessors a host or an in-process
+test needs (the network's `NetworkAccess`, the clock's `Instant`) are plumbing on the mock, not on its face.
 
 **They are served over kRPC**, kotlinx-rpc's protocol, on a WebSocket at `ws://<host>:<port>/rpc` beside the rig's
 HTTP routes. The plugin generates the client a test calls (`client.levers(BackendLevers).offline(true)`,
@@ -937,7 +954,8 @@ start (`Unable to find a service descriptor of the class jv`: R8 had renamed the
 
 The **`world` service** (`WorldLevers`) is the channel's own, beside the advertisement: the host's event stream
 (`events()`, a `Flow` over kRPC, served from the host's start so a late subscriber misses nothing), the acts' tags
-(`tagActs`, `actsTagged`: a caller finds where its own acts begin and end), the clock (`advance`, itself an act) and
+(`tagActs`, `actsTagged`: a caller finds where its own acts begin and end), the clock (`advance` by a duration and
+`advanceTo` an instant, each an act; under the legacy real-time loop `advanceTo` moves only the clock the app reads) and
 `whyNotSettled()`. Only a host that can say when its app is settled serves it — the JVM host, whose loop runs every
 task (section 7, "How a test waits"). A device host refuses every method: its operating system runs work the channel
 cannot see. The journeys keep condition waits until they convert (a later phase).
@@ -947,8 +965,9 @@ are **acts**, announced (`Acted`) before they do anything; a `GET` is a read, ru
 still start app work (the state read refreshes the counts it reports). The mocks tell the stream what they record as
 they record it — the screen mock each state the app shows, the backend mock each request that reaches it and each one
 an operator's hold parks, the transfer mocks each upload job, session transfer and download the app hands them, the
-library mock each hold it parks, each photo it creates and each album change — on the thread that did it, so the order
-is the app's.
+library mock each hold it parks, each photo it creates and each album change, the system UI each hand-over (`Shared`, `UrlOpened`,
+`SettingsOpened`), the crash reporter each dump its backend received (`DumpReceived`, the whole dump) — on the thread
+that did it, so the order is the app's.
 
 ### Launch-time adapters
 
@@ -1106,12 +1125,14 @@ The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, 
 and the photo library's: a walk, an add or an import parked on an operator's hold — `LibraryEnumerationHeld`,
 `LibraryAddHeld`, `LibraryImportParked` — a photo an import created (`LibraryAssetCreated`), an album the app made
 (`LibraryAlbumCreated`) and a photo that joined one, once per photo as a person would see it arrive
-(`LibraryJoinedAlbum`); each face batch adds its face's), each `Settled(now, nextTimer)`, and each lane rule
+(`LibraryJoinedAlbum`); the system UI's `Shared`, `UrlOpened` and `SettingsOpened`; the crash reporter's
+`DumpReceived`; each face batch adds its face's), each `Settled(now, nextTimer)`, and each lane rule
 broken (`LaneViolation`). Every request a caller makes runs as a task of the loop — an act announced first, a read
 not — so everything after an act's announcement is the act's or later.
 
-Under mocked time the clock moves only when a test moves it: `advance(d)` fires each timer due on the way at its own
-instant, settling between them, and reports one `Settled` at the end. A five-second grace costs nothing; a timer is a
+Under mocked time the clock moves only when a test moves it: `advance(d)` — or `advanceTo(instant)`, which may also move
+it back and then fires nothing — fires each timer due on the way at its own instant, settling between them, and reports
+one `Settled` at the end. A five-second grace costs nothing; a timer is a
 method of the mocked world, never a wait.
 
 **The interleaving is a switch** (`-Psnapsync.lanes=…`): `turns`, the default, runs one task at a time in the order

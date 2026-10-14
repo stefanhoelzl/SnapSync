@@ -1431,7 +1431,7 @@ segments  AES-256-GCM, 64 KiB ciphertext each (the first shorter by the     │ 
 
 - **The key** is minted by the creating device (`EventKeys.mint`, unless `DevControls.createsPlainEvents` — inert
   `true` in production until encrypted creation is re-enabled; a rig build answers `true` only after
-  `device/encrypt-new-events?on=false`), sent as its id alone (`POST /events {keyId}`), and
+  `dev-controls.encryptNewEvents(false)`), sent as its id alone (`POST /events {keyId}`), and
   kept on every member's device in the secure store's shared slot `SecureSlots.EVENT_KEY` — written by the join,
   removed by a leave, a reset or a plain join. `EventConfig` holds only `keyId`.
 - **The link decides, never the backend** (`JoinEvent`): a link whose `#k=` does not name the event's `key_id`, or

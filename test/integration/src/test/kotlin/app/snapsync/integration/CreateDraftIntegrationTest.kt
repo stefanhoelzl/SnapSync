@@ -1,13 +1,13 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.ui.state.CreateForm
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.ui.state.Layer
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.time.Instant
 
 /**
@@ -20,27 +20,40 @@ import kotlin.time.Instant
 class CreateDraftIntegrationTest {
 
     @Test
-    fun a_return_within_15_minutes_keeps_the_draft_and_a_later_one_starts_afresh() = rigTest {
-        device("clock/advance", "to" to T0)
-        os("app", "onForeground")
-        user("createName", "name" to "Party")
-        val first = awaitForm { it.name == "Party" }
+    fun a_return_within_15_minutes_keeps_the_draft_and_a_later_one_starts_afresh() = behaviour(startAt = T0) {
+        lateinit var first: Seen<Layer.CreateEvent>
+        given {
+            inFront()
+            step("a name typed", act = { user("createName", "name" to "Party") }, until = {
+                first = screen<Layer.CreateEvent> { it.form.name == "Party" }
+            })
+            step("away", act = { os("app", "onBackground") }, until = { settled { true } })
+        }
 
-        os("app", "onBackground")
-        device("clock/advance", "to" to T0_PLUS_14_MIN)
-        os("app", "onForeground")
-        val kept = awaitForm { it.picker.from == local(T0_PLUS_14_MIN) }
-        assertEquals(first.draft to "Party", kept.draft to kept.name, "the same draft, the name kept")
+        // Back within 15 minutes: the same draft, the name kept, the untouched start moved to now.
+        whenever {
+            advanceTo(T0_PLUS_14_MIN)
+            os("app", "onForeground")
+        }
+        then {
+            screen<Layer.CreateEvent> {
+                it.form.picker.from == local(T0_PLUS_14_MIN) && it.form.draft == first.value.form.draft &&
+                    it.form.name == "Party"
+            }
+        }
 
-        os("app", "onBackground")
-        device("clock/advance", "to" to T0_PLUS_29_MIN)
-        os("app", "onForeground")
-        val fresh = awaitForm { it.draft > first.draft }
-        assertEquals("" to local(T0_PLUS_29_MIN), fresh.name to fresh.picker.from, "a fresh draft, at now")
+        // Back after 15 minutes or more: a fresh draft, at now.
+        whenever {
+            os("app", "onBackground")
+            advanceTo(T0_PLUS_29_MIN)
+            os("app", "onForeground")
+        }
+        then {
+            screen<Layer.CreateEvent> {
+                it.form.draft > first.value.form.draft && it.form.name == "" && it.form.picker.from == local(T0_PLUS_29_MIN)
+            }
+        }
     }
-
-    private suspend fun Rig.awaitForm(until: (CreateForm) -> Boolean): CreateForm =
-        (awaitState { s -> (s.ui.layer as? Layer.CreateEvent)?.form?.let(until) == true }.ui.layer as Layer.CreateEvent).form
 
     /** [iso] as the device's wall clock states it — the mocked clock's zone, UTC. */
     private fun local(iso: String): LocalDateTime = Instant.parse(iso).toLocalDateTime(TimeZone.UTC)

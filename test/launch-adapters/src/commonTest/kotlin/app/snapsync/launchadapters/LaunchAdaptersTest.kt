@@ -150,12 +150,12 @@ class LaunchAdaptersTest {
                 },
             ),
         )
-        chosen.device.clock.operator.now = Instant.parse("2026-01-01T00:00:00Z")
+        chosen.device.clock.now = Instant.parse("2026-01-01T00:00:00Z")
         assertEquals(Instant.parse("2026-01-01T00:00:00Z"), ports.clock.value.now())
         assertTrue(ports.ui.value.toString().isNotEmpty())
         ports.systemUi.value.openSettings()
         assertEquals(listOf("systemUi"), built, "a mocked system's real adapter is never built")
-        assertEquals(1, real.systemUi.operator.settingsOpened.value, "a real system reaches the real adapter")
+        assertEquals(1, real.systemUi.settingsOpened.value, "a real system reaches the real adapter")
         assertEquals("9.9", chosen.device.declaredVersion.value, "the backend mock hears the build's own version")
         assertEquals(FRESH, chosen.device.ownDeviceId)
     }
@@ -164,9 +164,9 @@ class LaunchAdaptersTest {
     fun the_network_is_the_mock_s_when_mocked_and_the_real_adapter_s_otherwise() = runTest {
         write(AdapterFiles.CHOICE, "network=mock\n")
         val mocked = assertIs<LaunchAdapters.Chosen>(launch())
-        val real = MockDevice().also { it.connectivity.operator.access = NetworkAccess.Online(restricted = false) }
+        val real = MockDevice().also { it.connectivity.access = NetworkAccess.Online(restricted = false) }
         val ports = mocked.ports(appDevice(network = lazy { real.connectivity.port() }))
-        mocked.device.connectivity.operator.access = NetworkAccess.Blocked
+        mocked.device.connectivity.access = NetworkAccess.Blocked
         assertEquals(
             NetworkAccess.Blocked,
             ports.network.value.watch().first(),
@@ -175,7 +175,7 @@ class LaunchAdaptersTest {
         assertEquals(listOf(MockedSystem.NETWORK), mocked.save(), "the lever's value is kept for the next launch")
         assertEquals(
             NetworkAccess.Blocked,
-            assertIs<LaunchAdapters.Chosen>(launch()).device.connectivity.operator.access,
+            assertIs<LaunchAdapters.Chosen>(launch()).device.connectivity.access,
         )
 
         write(AdapterFiles.CHOICE, "clock=mock\n")
@@ -192,7 +192,7 @@ class LaunchAdaptersTest {
     fun what_the_app_saves_the_next_launch_restores_and_an_unchanged_system_is_not_rewritten() = runTest {
         write(AdapterFiles.CHOICE, "clock=mock\nsystem-ui=mock\n")
         val first = assertIs<LaunchAdapters.Chosen>(launch())
-        first.device.clock.operator.now = Instant.parse("2026-03-04T05:06:07Z")
+        first.device.clock.now = Instant.parse("2026-03-04T05:06:07Z")
         first.device.systemUi.port().share("hi", "Party")
         assertEquals(setOf(MockedSystem.CLOCK, MockedSystem.SYSTEM_UI), first.save().toSet())
         assertEquals(emptyList(), first.save(), "nothing changed, nothing written")
@@ -200,9 +200,9 @@ class LaunchAdaptersTest {
         assertEquals(listOf(MockedSystem.SYSTEM_UI), first.save())
 
         val second = assertIs<LaunchAdapters.Chosen>(launch())
-        assertEquals(Instant.parse("2026-03-04T05:06:07Z"), second.device.clock.operator.now)
-        assertEquals(listOf("hi"), second.device.systemUi.operator.shared.value)
-        assertEquals(1, second.device.systemUi.operator.settingsOpened.value)
+        assertEquals(Instant.parse("2026-03-04T05:06:07Z"), second.device.clock.now)
+        assertEquals(listOf("hi"), second.device.systemUi.shared.value)
+        assertEquals(1, second.device.systemUi.settingsOpened.value)
     }
 
     @Test

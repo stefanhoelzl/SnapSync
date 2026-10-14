@@ -115,9 +115,9 @@ internal class HostThreads private constructor(
             // Invite-link hints honoured, as the rig's development controls answer them on a device: this host IS the
             // control channel, whose callers join headlessly with `autoJoin`.
             val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Honoured, network = network)
-            startAt?.let { mocks.clock.operator.now = it }
+            startAt?.let { mocks.clock.now = it }
             val clock = object : LoopClock {
-                override var now: Instant by mocks.clock.operator::now
+                override var now: Instant by mocks.clock::now
             }
             val violations = CopyOnWriteArrayList<String>()
             val loop = LaneLoop(
@@ -136,6 +136,8 @@ internal class HostThreads private constructor(
             mocks.uploadQueue.watch { events.tell(it) }
             mocks.uploadSession.watch { events.tell(it) }
             mocks.downloads.watch { events.tell(it) }
+            mocks.systemUi.watch { events.tell(it) }
+            mocks.crashReporter.watch { events.tell(it) }
             return HostThreads(
                 time,
                 mocks,
@@ -177,6 +179,14 @@ internal class JvmWorld(private val threads: HostThreads) : WorldLevers {
             )
         }
         threads.acts.act("world.advance") { threads.loop.advance(millis.milliseconds) }
+    }
+
+    override suspend fun advanceTo(at: String) {
+        val to = Instant.parse(at)
+        threads.acts.act("world.advanceTo") {
+            // Under real time the app's timers keep the wall clock, so only the clock it reads moves: nothing is due.
+            if (threads.time == LoopTime.MOCKED) threads.loop.advanceTo(to) else threads.mocks.clock.now = to
+        }
     }
 
     override suspend fun whyNotSettled(): String = threads.loop.report()

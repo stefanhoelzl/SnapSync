@@ -1,5 +1,7 @@
 package app.snapsync.mock
 
+import app.snapsync.levers.DeviceConditionsLevers
+import app.snapsync.levers.DeviceConditionsView
 import app.snapsync.model.BackgroundRefresh
 import app.snapsync.model.Charging
 import app.snapsync.model.DeviceConditionsReading
@@ -22,6 +24,12 @@ class DeviceConditionsMock(reading: DeviceConditionsReading = TYPICAL) {
     /** While set, a read never answers — the platform call that stalls. A process's own, so not persisted. */
     internal val holding = MutableStateFlow(false)
 
+    /** What the operating system reports — any field may be set unsupported or failed. In-process plumbing. */
+    var reading: DeviceConditionsReading by cell::value
+
+    /** Leave every read unanswered until released — what a bug report's timeout is for. In-process plumbing. */
+    var held: Boolean by holding::value
+
     fun port(): DeviceConditions = InMemoryDeviceConditions(cell, holding)
 
     val operator: DeviceConditionsOperator = DeviceConditionsOperator(this)
@@ -39,12 +47,19 @@ class DeviceConditionsMock(reading: DeviceConditionsReading = TYPICAL) {
     }
 }
 
-class DeviceConditionsOperator internal constructor(private val mock: DeviceConditionsMock) {
-    /** What the operating system reports — any field may be set unsupported or failed. */
-    var reading: DeviceConditionsReading by mock.cell::value
+class DeviceConditionsOperator internal constructor(private val mock: DeviceConditionsMock) : DeviceConditionsLevers {
+    override suspend fun set(fields: Map<String, String>) {
+        val unknown = fields.keys - DeviceConditionsText.keys
+        require(unknown.isEmpty()) { "unknown fields $unknown; known: ${DeviceConditionsText.keys}" }
+        mock.reading = DeviceConditionsText.apply(mock.reading, fields)
+    }
 
-    /** Leave every read unanswered until released — what a bug report's timeout is for. */
-    var holding: Boolean by mock.holding::value
+    override suspend fun hold(on: Boolean) {
+        mock.held = on
+    }
+
+    override suspend fun reading(): DeviceConditionsView =
+        DeviceConditionsView(DeviceConditionsText.encode(mock.reading), mock.held)
 }
 
 internal class InMemoryDeviceConditions(
@@ -59,7 +74,7 @@ internal class InMemoryDeviceConditions(
 
 /**
  * A [DeviceConditionsReading] as named texts, keyed by the bug report's own keys — what the mock's persisted state and
- * the rig's `device/conditions` lever both speak. A value is the field's label (`true`, `rare`, `42`, `serious`, …),
+ * the `device-conditions` service both speak. A value is the field's label (`true`, `rare`, `42`, `serious`, …),
  * `unsupported`, or `failed:<reason>`.
  */
 object DeviceConditionsText {
