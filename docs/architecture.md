@@ -531,7 +531,10 @@ coverage {
   decides what it skips: in the entry, the module from every measurement; inside `unit { }` or `integration { }`, only
   that measurement. With `packages`, only those packages; without, everything at its level. Today it removes generated
   code (SQLDelight's, the wire's, Compose Resources' `Res` accessors), the integration measurement of the adapters and
-  of the Compose modules, and the test equipment.
+  of the Compose modules, and the test equipment — and, until phase 3g, the integration measurement of
+  `:domain:scheduling` and `:domain:inbound`, which the polling tests reach only in a process death's race window, so
+  it moves with the machine's timing (`pollingRace` in the root build file). A module whose measurement swings is
+  skipped, never held at a lowest-seen floor.
 - **The block is complete.** `coverageEntries` (on `check`) fails when a module with a JVM target outside `:test:*` and
   `:tools:*` has no entry, or an entry names a module Kover cannot measure; an entry that leaves a measurement
   unsettled, or contradicts itself, fails configuration. So no module is measured — or left out — by nobody's decision.
