@@ -1,9 +1,11 @@
 package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.faultOf
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.JoinResult
 import app.snapsync.model.runCatchingCancellable
@@ -80,14 +82,14 @@ fun interface ReceivedReporter {
 class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
 
     override suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult =
-        when (gateway.sendObtainingFirst(Routes.JoinEvent.request(eventId.value, deviceId.value))) {
-            JoinEventReply.Joined -> JoinResult.JOINED
+        when (val reply = gateway.sendObtainingFirst(Routes.JoinEvent.request(eventId.value, deviceId.value))) {
+            JoinEventReply.Joined -> JoinResult.Joined
             // A completed event — or one closed before events stopped closing — admits nobody.
-            is Closed -> JoinResult.EVENT_CLOSED
-            EventNotFound -> JoinResult.EVENT_NOT_FOUND
+            is Closed -> JoinResult.EventClosed
+            EventNotFound -> JoinResult.EventNotFound
             // Still refused after the recovery: no credential the service accepts (the attestation says why).
-            Unauthorized -> JoinResult.UNVERIFIED
-            else -> JoinResult.FAILED
+            Unauthorized -> JoinResult.Unverified
+            else -> JoinResult.Failed(faultOf(reply) ?: ServiceFault.UNREACHABLE)
         }
 }
 
@@ -96,16 +98,22 @@ class BackendEventJoin(private val gateway: BackendGateway) : EventJoin {
  * good because the event completed (or closed before events stopped closing). A publish from a device holding no membership is refused
  * ([PublishManifestReply.NotAMember]) rather than silently creating one.
  */
-class BackendManifestPublisher(private val gateway: BackendGateway) : ManifestPublisher {
+class BackendManifestPublisher(
+    private val gateway: BackendGateway,
+    /** Told when the service answers that the event's photos were deleted — none in a process with no membership. */
+    private val eventOver: (suspend (EventId) -> Unit)?,
+) : ManifestPublisher {
 
     override suspend fun publish(eventId: EventId, deviceId: DeviceId, manifest: DeviceManifest): Boolean {
         val body = manifest.onWire() ?: return false
         return when (gateway.send(Routes.PublishManifest.request(eventId.value, deviceId.value, body))) {
             PublishManifestReply.Published -> true
-            // A legacy CLOSED event's asset sets are fixed and a COMPLETED one holds none: the
-            // refusal is final, so it is recorded like a publish — re-sending the same snapshot every cycle could
-            // never change the answer.
-            is Closed, is PublishManifestReply.SetFixed -> true
+            // A COMPLETED event holds none: the refusal is final, so it is recorded like a publish — re-sending the
+            // same snapshot every cycle could never change the answer — and it is the service's word that the photos
+            // were deleted, which the membership is told.
+            is Closed -> true.also { eventOver?.invoke(eventId) }
+            // A legacy CLOSED event's asset sets are fixed: final too.
+            is PublishManifestReply.SetFixed -> true
             else -> false
         }
     }

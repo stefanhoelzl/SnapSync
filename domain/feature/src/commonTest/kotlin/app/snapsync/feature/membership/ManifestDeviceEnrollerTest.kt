@@ -22,7 +22,7 @@ import kotlin.test.assertEquals
  */
 class ManifestDeviceEnrollerTest {
 
-    private class CapturingJoin(private val result: JoinResult = JoinResult.JOINED) : EventJoin {
+    private class CapturingJoin(private val result: JoinResult = JoinResult.Joined) : EventJoin {
         val calls = mutableListOf<Pair<EventId, DeviceId>>()
         override suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult {
             calls += eventId to deviceId
@@ -34,7 +34,7 @@ class ManifestDeviceEnrollerTest {
     fun enrolling_issues_one_join_for_the_event_and_device() = runTest {
         val join = CapturingJoin()
 
-        assertEquals(JoinResult.JOINED, ManifestDeviceEnroller(join).enroll(testEventId("E"), testDeviceId("dev")))
+        assertEquals(JoinResult.Joined, ManifestDeviceEnroller(join).enroll(testEventId("E"), testDeviceId("dev")))
 
         assertEquals(listOf(testEventId("E") to testDeviceId("dev")), join.calls)
     }
@@ -44,9 +44,9 @@ class ManifestDeviceEnrollerTest {
         // Passed through rather than flattened, so the join surface can say WHY: a closed event is a refusal
         // the user can act on, and a transport failure is not (capability `join-event`).
         assertEquals(
-            JoinResult.EVENT_CLOSED,
+            JoinResult.EventClosed,
             ManifestDeviceEnroller(
-                CapturingJoin(JoinResult.EVENT_CLOSED),
+                CapturingJoin(JoinResult.EventClosed),
             ).enroll(testEventId("E"), testDeviceId("dev")),
         )
     }
@@ -54,9 +54,9 @@ class ManifestDeviceEnrollerTest {
     @Test
     fun an_absent_event_does_not_enrol() = runTest {
         assertEquals(
-            JoinResult.EVENT_NOT_FOUND,
+            JoinResult.EventNotFound,
             ManifestDeviceEnroller(
-                CapturingJoin(JoinResult.EVENT_NOT_FOUND),
+                CapturingJoin(JoinResult.EventNotFound),
             ).enroll(testEventId("E"), testDeviceId("dev")),
         )
     }
@@ -65,8 +65,8 @@ class ManifestDeviceEnrollerTest {
     fun a_transport_failure_does_not_enrol() = runTest {
         // No config is saved and no producer enabled on a failed join — there is no half-joined state.
         assertEquals(
-            JoinResult.FAILED,
-            ManifestDeviceEnroller(CapturingJoin(JoinResult.FAILED)).enroll(testEventId("E"), testDeviceId("dev")),
+            JoinResult.Failed(),
+            ManifestDeviceEnroller(CapturingJoin(JoinResult.Failed())).enroll(testEventId("E"), testDeviceId("dev")),
         )
     }
 }

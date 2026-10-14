@@ -14,9 +14,13 @@ import app.snapsync.ui.resources.message_create_failed
 import app.snapsync.ui.resources.message_create_name_refused
 import app.snapsync.ui.resources.message_device_modified
 import app.snapsync.ui.resources.message_device_unverifiable
+import app.snapsync.ui.resources.message_event_over
 import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_rename_failed
 import app.snapsync.ui.resources.message_rename_name_refused
+import app.snapsync.ui.resources.message_service_trouble
+import app.snapsync.ui.resources.message_service_unreachable
+import app.snapsync.ui.resources.message_service_updating
 import app.snapsync.ui.resources.report_body_developer
 import app.snapsync.ui.resources.report_body_device
 import app.snapsync.ui.resources.report_seed_device_unverifiable
@@ -36,19 +40,24 @@ import org.jetbrains.compose.resources.stringResource
 
 /** A [ScreenMessage] as the screen says it. */
 @Composable
-internal fun ScreenMessage.text(): String = stringResource(
-    when (this) {
-        ScreenMessage.INVALID_LINK -> Res.string.message_invalid_link
-        ScreenMessage.CREATE_NAME_REFUSED -> Res.string.message_create_name_refused
-        ScreenMessage.CREATE_DATES_REFUSED -> Res.string.message_create_dates_refused
-        ScreenMessage.CREATE_FAILED -> Res.string.message_create_failed
-        ScreenMessage.RENAME_NAME_REFUSED -> Res.string.message_rename_name_refused
-        ScreenMessage.RENAME_FAILED -> Res.string.message_rename_failed
-        ScreenMessage.DEVICE_MODIFIED -> Res.string.message_device_modified
-        ScreenMessage.DEVICE_UNVERIFIABLE -> Res.string.message_device_unverifiable
-        ScreenMessage.APP_NOT_GENUINE -> Res.string.message_app_not_genuine
-    },
-)
+internal fun ScreenMessage.text(): String = stringResource(resource())
+
+/** The sentence a [ScreenMessage] is — chosen without Compose, so it is checked where it is chosen. */
+internal fun ScreenMessage.resource(): StringResource = when (this) {
+    ScreenMessage.INVALID_LINK -> Res.string.message_invalid_link
+    ScreenMessage.CREATE_NAME_REFUSED -> Res.string.message_create_name_refused
+    ScreenMessage.CREATE_DATES_REFUSED -> Res.string.message_create_dates_refused
+    ScreenMessage.CREATE_FAILED -> Res.string.message_create_failed
+    ScreenMessage.RENAME_NAME_REFUSED -> Res.string.message_rename_name_refused
+    ScreenMessage.RENAME_FAILED -> Res.string.message_rename_failed
+    ScreenMessage.DEVICE_MODIFIED -> Res.string.message_device_modified
+    ScreenMessage.DEVICE_UNVERIFIABLE -> Res.string.message_device_unverifiable
+    ScreenMessage.APP_NOT_GENUINE -> Res.string.message_app_not_genuine
+    ScreenMessage.SERVICE_UNREACHABLE -> Res.string.message_service_unreachable
+    ScreenMessage.SERVICE_TROUBLE -> Res.string.message_service_trouble
+    ScreenMessage.SERVICE_UPDATING -> Res.string.message_service_updating
+    ScreenMessage.EVENT_OVER -> Res.string.message_event_over
+}
 
 /** The description a report the app offered for [this] opens with, or `null` where it offers none. */
 @Composable

@@ -7,6 +7,7 @@ import app.snapsync.data.backend.Credential
 import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.trust.TokenText
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.trust.BearerToken
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
@@ -85,9 +86,14 @@ internal fun servicesAnswering(reply: HttpResult, store: SecureStore = MapSecure
     servicesOver(ScriptedTransport { reply }, store)
 
 /** Services over a gateway on [transport], holding no token. */
-internal fun servicesOver(transport: HttpTransport, store: SecureStore = MapSecureStore()): BackendServices =
+internal fun servicesOver(
+    transport: HttpTransport,
+    store: SecureStore = MapSecureStore(),
+    eventOver: (suspend (EventId) -> Unit)? = null,
+): BackendServices =
     BackendServices(
         BackendGateway(exchangeOver(transport), ScriptedCredential(null)),
         identityOf("D", store),
         zone = { null },
+        eventOver = eventOver,
     )

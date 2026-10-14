@@ -44,7 +44,7 @@ class ForegroundWatchesTest {
     @Test
     fun `a wake refreshes the counts only while the app is in front`() = runTest {
         var reads = 0
-        val foreground = AppForeground(ClockMock().port())
+        val foreground = AppForeground(ClockMock().port(), onEntered = {})
         val counts = ForegroundCounts(
             foreground,
             ReadingLedgerCountsSource {

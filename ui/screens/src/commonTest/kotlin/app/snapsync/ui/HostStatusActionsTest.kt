@@ -391,7 +391,7 @@ class HostStatusActionsTest {
     @Test
     fun `Retry after a failed load loads again`() {
         var loads = 0
-        rigTest(rig(details = { if (++loads == 1) JoinLoad.Failed else OTHER_EVENT })) { rig ->
+        rigTest(rig(details = { if (++loads == 1) JoinLoad.Failed() else OTHER_EVENT })) { rig ->
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig) { it.joining?.phase == JoinPhase.LoadFailed }
             onNodeWithText(str(Res.string.retry)).performClick()

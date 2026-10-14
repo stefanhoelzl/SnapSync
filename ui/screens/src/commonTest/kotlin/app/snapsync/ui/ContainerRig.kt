@@ -135,7 +135,7 @@ internal class ContainerRig(
 
             override suspend fun commitJoin(choice: JoinChoice): JoinCommit {
                 record("commitJoin:${choice.eventId}:${choice.direction}:${choice.saveToAlbum}")
-                return JoinCommit.Failed
+                return JoinCommit.Failed()
             }
 
             override fun share(url: String, title: String) = record("share:$url")

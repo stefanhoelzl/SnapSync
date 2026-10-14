@@ -61,9 +61,12 @@ fun interface EventUnionSource {
  * service cannot invent a key the client would not have composed. The recomposition is exact even when the capture
  * name is unavailable or is itself a storage key, because only its extension is consumed.
  *
- * A listing that does not decode ([Malformed]) is a [DeviceListingShapeException], distinguishable from a transport
- * failure. Decoding is STRICT for exactly this reason (`StoredResource`'s every field is required, its role a closed
- * vocabulary): see [DeviceListingShapeException].
+ * A listing that decodes but names what this build cannot read is a [DeviceListingShapeException], distinguishable
+ * from a transport failure. Decoding is STRICT for exactly this reason (`StoredResource`'s every field is required,
+ * its role a closed vocabulary): see [DeviceListingShapeException]. An answer that does not decode at all
+ * ([Malformed]) is no answer — most often a page a Wi-Fi network or a proxy put in the backend's place — and fails
+ * like an unreachable one, retried, never reported as a permanent fault (decision record
+ * `changes/tell-service-faults`, D2).
  */
 class BackendDeviceFilesSource(private val gateway: BackendGateway) : DeviceFilesSource {
 
@@ -83,8 +86,8 @@ class BackendDeviceFilesSource(private val gateway: BackendGateway) : DeviceFile
                 )
             }
             is Malformed -> Result.failure(
-                DeviceListingShapeException(
-                    "the per-device listing did not decode into {assetId, role, filename}: ${reply.detail}",
+                IllegalStateException(
+                    "list device $deviceId in $eventId: an answer this build cannot read (${reply.detail})",
                 ),
             )
             else -> Result.failure(IllegalStateException("list device $deviceId in $eventId: $reply"))

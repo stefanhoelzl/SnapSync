@@ -17,6 +17,9 @@ sealed interface BackendAnswer {
     /** The server failed, or something before it did. */
     data object ServerIssue : BackendAnswer
 
+    /** `503`: the service is briefly unavailable for an update — a server issue the member is told apart. */
+    data object Updating : BackendAnswer
+
     /** No answer reached the app, or one outside the contract. */
     data object NoAnswer : BackendAnswer
 }

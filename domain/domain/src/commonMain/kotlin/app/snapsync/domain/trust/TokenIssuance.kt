@@ -1,5 +1,7 @@
 package app.snapsync.domain.trust
 
+import app.snapsync.domain.service.ServiceFault
+
 /**
  * What one attempt to obtain a token came to — a mint over a fresh attestation, or a renewal over an assertion.
  * Each case needs a different answer: a stale challenge wants one fresh challenge, not a new key; no answer wants the
@@ -24,6 +26,9 @@ sealed interface TokenIssuance {
     /** The proof could not be produced on this device, so no request was sent and there is no verdict to tell. */
     data object ProofFailed : TokenIssuance
 
-    /** No answer: no connection, a server's failure, or a body that names no token. */
-    data object NoAnswer : TokenIssuance
+    /**
+     * No answer: no connection, a server's failure, or a body that names no token — [fault] says which, as the member
+     * is told it (decision record `changes/tell-service-faults`).
+     */
+    data class NoAnswer(val fault: ServiceFault) : TokenIssuance
 }

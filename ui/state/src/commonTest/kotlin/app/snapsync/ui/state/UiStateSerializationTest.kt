@@ -103,6 +103,17 @@ class UiStateSerializationTest {
                 ),
             ),
         )
+        for (service in ServiceNotice.entries) {
+            roundTrip(
+                UiState(
+                    Layer.JoiningEvent(
+                        eventId = "E",
+                        stage = JoinStage.Unloaded(JoinPhase.LoadFailed),
+                        service = service,
+                    ),
+                ),
+            )
+        }
         for (phase in listOf(JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed)) {
             roundTrip(UiState(Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(phase))))
         }
@@ -232,6 +243,7 @@ class UiStateSerializationTest {
             SyncHealth.NotStarted,
             SyncHealth.Unattested(),
             SyncHealth.Unattested(RefusalCause.DEVICE_MODIFIED),
+            SyncHealth.ServiceFailing(ServiceNotice.TROUBLE),
             SyncHealth.Loading,
             SyncHealth.Syncing(upload = Arrow.HIDDEN, download = Arrow.PULSING),
         )

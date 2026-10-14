@@ -5,6 +5,7 @@ import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.AttestationHealthVerdict
 import app.snapsync.domain.trust.BearerToken
@@ -77,7 +78,12 @@ class AttestingCredential @AppProcessOnly constructor(
         val ticket = status.attempting()
         val attempt = refreshing.withLock { refreshLocked() }
         val usable = UsabilityVerdict.of(store.token().held(), now())
-        status.settled(ticket, AttestationHealthVerdict.of(attempt.obtained(), usable), attempt.refusal())
+        status.settled(
+            ticket,
+            AttestationHealthVerdict.of(attempt.obtained(), usable),
+            attempt.refusal(),
+            attempt.fault(),
+        )
         return attempt
     }
 
@@ -132,20 +138,23 @@ internal class TokenObtainer(
     private suspend fun afterRenewal(device: DeviceId, answer: TokenIssuance): RefreshRead =
         when (val verdict = RenewalAnswerVerdict.of(answer)) {
             is RenewalAnswerVerdict.Accept -> accepted(verdict.token, "token renewed")
-            RenewalAnswerVerdict.KeepHeld -> nothing("renewal got no answer — keeping the token for the next wake")
+            RenewalAnswerVerdict.KeepHeld -> nothing(
+                "renewal got no answer — keeping the token for the next wake",
+                faultOf(answer),
+            )
             RenewalAnswerVerdict.AttestAfresh -> minted(device)
         }
 
     private suspend fun minted(device: DeviceId): RefreshRead = when (val minting = issuer.mint(device)) {
         is Minting.Proved -> afterMint(minting)
-        is Minting.Unproved -> nothing("attestation did not yield a token")
+        is Minting.Unproved -> nothing("attestation did not yield a token", faultOf(minting.issuance))
     }
 
     private suspend fun afterMint(minting: Minting.Proved): RefreshRead =
         when (val verdict = MintAnswerVerdict.of(minting.issuance)) {
             is MintAnswerVerdict.Accept -> keyKept(minting.key, verdict.token)
             is MintAnswerVerdict.Refused -> refused(verdict, minting.key)
-            MintAnswerVerdict.NoVerdict -> nothing("attestation did not yield a token")
+            MintAnswerVerdict.NoVerdict -> nothing("attestation did not yield a token", faultOf(minting.issuance))
         }
 
     /**
@@ -171,7 +180,11 @@ internal class TokenObtainer(
         is WriteOutcome.Failed -> nothing("the new token could not be kept")
     }
 
-    private suspend fun nothing(why: String): RefreshRead = RefreshRead.NotObtained(refusal = null).also { log.w(why) }
+    /** How the service failed an attempt, or `null` when it answered — or none was asked. */
+    private fun faultOf(issuance: TokenIssuance): ServiceFault? = (issuance as? TokenIssuance.NoAnswer)?.fault
+
+    private suspend fun nothing(why: String, fault: ServiceFault? = null): RefreshRead =
+        RefreshRead.NotObtained(refusal = null, fault = fault).also { log.w(why) }
 }
 
 /** What one refresh came to. */
@@ -182,12 +195,18 @@ sealed class RefreshRead {
     /** A new token was obtained and kept. */
     data object Obtained : RefreshRead()
 
-    /** No new token; [refusal] when the service refused this phone — told — and `null` when there was no verdict. */
-    data class NotObtained(val refusal: DeviceRefusal?) : RefreshRead()
+    /**
+     * No new token; [refusal] when the service refused this phone — told — and `null` when there was no verdict;
+     * [fault] how the service failed to give one, when it did — `null` when it answered, or none was asked.
+     */
+    data class NotObtained(val refusal: DeviceRefusal?, val fault: ServiceFault? = null) : RefreshRead()
 
     /** Whether a usable token was obtained or already held fresh. */
     fun obtained(): Boolean = this !is NotObtained
 
     /** The service's refusal, if this refresh got one. */
     fun refusal(): DeviceRefusal? = (this as? NotObtained)?.refusal
+
+    /** How the service failed this refresh, if it did. */
+    fun fault(): ServiceFault? = (this as? NotObtained)?.fault
 }

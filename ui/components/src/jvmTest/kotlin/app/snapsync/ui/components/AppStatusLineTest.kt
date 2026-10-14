@@ -4,11 +4,17 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import app.snapsync.ui.components.resources.Res
+import app.snapsync.ui.components.resources.service_detail
+import app.snapsync.ui.components.resources.service_trouble_title
+import app.snapsync.ui.components.resources.service_unreachable_title
+import app.snapsync.ui.components.resources.service_updating_title
 import app.snapsync.ui.components.resources.status_sync_ongoing
 import app.snapsync.ui.components.resources.status_sync_pending
 import app.snapsync.ui.components.resources.status_waiting_photos
 import app.snapsync.ui.components.resources.status_waiting_wifi
 import app.snapsync.ui.state.Arrow
+import app.snapsync.ui.state.ServiceNotice
+import org.jetbrains.compose.resources.StringResource
 import org.junit.Rule
 import kotlin.test.Test
 
@@ -62,6 +68,24 @@ class AppStatusLineTest {
             ),
         )
         rule.onNodeWithText(str(Res.string.status_waiting_wifi)).assertExists()
+    }
+
+    @Test
+    fun `a service that cannot be reached is told so, with the photos safe`() =
+        failing(ServiceNotice.UNREACHABLE, Res.string.service_unreachable_title)
+
+    @Test
+    fun `a service in trouble is told so, with the photos safe`() =
+        failing(ServiceNotice.TROUBLE, Res.string.service_trouble_title)
+
+    @Test
+    fun `a service being updated is told back shortly, with the photos safe`() =
+        failing(ServiceNotice.UPDATING, Res.string.service_updating_title)
+
+    private fun failing(notice: ServiceNotice, title: StringResource) {
+        setLine(AppSyncStatus.ServiceFailing(notice))
+        rule.onNodeWithText(str(title)).assertExists()
+        rule.onNodeWithText(str(Res.string.service_detail)).assertExists()
     }
 
     private fun setLine(status: AppSyncStatus) {

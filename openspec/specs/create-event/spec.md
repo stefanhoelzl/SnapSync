@@ -222,10 +222,12 @@ leave the host in no event; the unused event is removed with its lifetime (capab
 When an event cannot be created, the create screen SHALL return and SHALL show the failure as a message
 directly below the Create action, in place of the hint about scanning a QR code (never by marking the name
 field as wrong, and without pushing the date range out of view), keeping that message until the next
-attempt. It SHALL tell a rejected name apart from the server being unreachable, and both apart from the service refusing
-this phone as not genuine, which it SHALL show as that refusal (capability `privacy-security`, "A refused phone is
-told why"). The name and date range the
-host entered SHALL still be there, so a retry is one tap. A failed create SHALL NOT join the device to
+attempt. It SHALL tell a rejected name apart from a failing service, which it SHALL tell as the condition that
+applies (capability `app-experience`, "A failing service is told as what it is"), and both apart from the service
+refusing this phone as not genuine, which it SHALL show as that refusal (capability `privacy-security`, "A refused
+phone is told why"). The name and date range the
+host entered SHALL still be there, so a retry is one tap. Create SHALL stay available, and the app SHALL NOT try
+again until the host taps it. A failed create SHALL NOT join the device to
 anything.
 
 #### Scenario: Offline create reports the server as unreachable
@@ -235,6 +237,16 @@ anything.
 #### Scenario: An unreachable server is reported as such
 - **WHEN** the host taps Create while the device has a network and the server cannot be reached
 - **THEN** a message below Create says the server could not be reached, the name field is not marked as wrong, and the device is still in no event
+
+#### Scenario: A service in trouble is reported as such
+- **WHEN** the host taps Create and the service answers that it failed
+- **THEN** a message below Create says SnapSync is having trouble, without asking the host to check their
+  connection, and the device is still in no event
+
+#### Scenario: An update in progress is reported as brief
+- **WHEN** the host taps Create while the service is being updated
+- **THEN** a message below Create says SnapSync is being updated and is back shortly, Create can still be tapped,
+  nothing is created until the host taps it again, and the device is still in no event
 
 #### Scenario: A rejected name is reported as such
 - **WHEN** the server refuses the event's name

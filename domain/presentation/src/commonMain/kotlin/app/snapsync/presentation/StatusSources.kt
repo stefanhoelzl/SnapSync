@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
@@ -164,4 +165,15 @@ private object AlwaysOnline : NetworkStatusSource {
 class DeviceVerification(
     val attested: StateFlow<Boolean> = MutableStateFlow(true),
     val refusal: StateFlow<DeviceRefusal?> = MutableStateFlow(null),
+    /**
+     * How SnapSync's service failed the latest attempt to verify this phone — the same bracket as [attested]: a proof
+     * the service could not renew is told as the service's condition, never as this device being unverifiable.
+     */
+    val fault: StateFlow<ServiceFault?> = MutableStateFlow(null),
+    /**
+     * How SnapSync's service failed the latest request of any kind, or `null` while it answers — what the joined
+     * screen's service line tells while photos wait. Forgotten at each opening, so an older failure is never the
+     * opening's first word.
+     */
+    val service: StateFlow<ServiceFault?> = MutableStateFlow(null),
 )

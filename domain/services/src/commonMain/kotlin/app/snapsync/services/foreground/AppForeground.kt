@@ -18,8 +18,11 @@ import kotlin.time.Instant
  * work worth doing only while a person can see it (the counts a wake's steps refresh, the memory readings a bug report
  * carries) — and each return, counted with how long the app was away, which the status host reads so the create
  * screen's draft can follow it. The lifecycle's entry points are its only writers.
+ *
+ * [onEntered] runs at each return, before anything the return triggers: what a person sees must not start from an
+ * outcome of before the return (the service's condition, decision record `changes/tell-service-faults`, D4).
  */
-class AppForeground(private val clock: Clock) {
+class AppForeground(private val clock: Clock, private val onEntered: () -> Unit) {
     private val now = AtomicBoolean(false)
     private val latest = MutableStateFlow(ForegroundReturn.NONE)
     private val leftAt = MutableStateFlow<Instant?>(null)
@@ -32,6 +35,7 @@ class AppForeground(private val clock: Clock) {
 
     /** The app came back: one more return, and how long it was away (none on a cold launch). */
     fun entered() {
+        onEntered()
         now.store(true)
         val away = awayFor(leftAt.getAndUpdate { null }, clock.now())
         latest.update { ForegroundReturn(it.count + 1, away) }

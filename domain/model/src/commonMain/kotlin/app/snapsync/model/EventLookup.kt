@@ -4,6 +4,7 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.service.ServiceFault
 
 /**
  * The outcome of fetching an event's details — the app's ONE `GET /events/:id` client, serving both the join gate and
@@ -48,5 +49,11 @@ sealed interface EventLookup {
         val openUntil: OpenUntil? = null,
     ) : EventLookup
     data object NotFound : EventLookup
-    data object Failed : EventLookup
+
+    /** The details could not be read; [fault] is how the service failed, as the member is told it. */
+    data class Failed(
+        val fault: ServiceFault = ServiceFault.UNREACHABLE,
+        /** When the service is being updated, how many seconds it suggests waiting before asking again; else `null`. */
+        val retryAfterSeconds: Long? = null,
+    ) : EventLookup
 }

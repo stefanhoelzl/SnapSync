@@ -136,8 +136,9 @@ class UiStateFieldContractTest {
                 notice = ScreenMessage.INVALID_LINK,
                 asksAccessOnJoin = true,
                 network = NetworkNotice.BLOCKED,
+                service = ServiceNotice.UPDATING,
             ),
-            optional = setOf("notice", "asksAccessOnJoin", "network"),
+            optional = setOf("notice", "asksAccessOnJoin", "network", "service"),
         )
         assertFieldContract(
             Layer.Joined.serializer(),
@@ -202,6 +203,7 @@ class UiStateFieldContractTest {
     fun `a health case requires what it reports`() {
         assertFieldContract(SyncHealth.NeedsAccess.serializer(), SyncHealth.NeedsAccess(canAsk = false))
         assertFieldContract(SyncHealth.NoNetwork.serializer(), SyncHealth.NoNetwork(NetworkNotice.OFFLINE))
+        assertFieldContract(SyncHealth.ServiceFailing.serializer(), SyncHealth.ServiceFailing(ServiceNotice.UPDATING))
         assertFieldContract(
             SyncHealth.Unattested.serializer(),
             SyncHealth.Unattested(RefusalCause.APP_NOT_GENUINE),

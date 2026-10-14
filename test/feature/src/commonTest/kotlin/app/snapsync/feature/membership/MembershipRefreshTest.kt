@@ -125,7 +125,7 @@ class MembershipRefreshTest {
         // "Could not tell" — offline, transport, non-404 status, unparseable body — all arrive as Failed
         // and must change nothing at all.
         val config = Membership(joined)
-        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(config).refresh(testEventId("E"), JoinLoad.Failed))
+        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(config).refresh(testEventId("E"), JoinLoad.Failed()))
         assertNull(config.saved)
     }
 
@@ -156,6 +156,24 @@ class MembershipRefreshTest {
     }
 
     @Test
+    fun `the service's word on a write that the photos were deleted marks the event at once - keeping the membership`() =
+        runTest {
+            val config = Membership(joined)
+            assertEquals(RefreshOutcome.COMPLETED, refresh(config).confirmedDeleted(testEventId("E")))
+            assertEquals(joined.copy(deleted = true), config.config.value, "the app never leaves an event on its own")
+            assertEquals(1, stopped, "every transfer for the event stops")
+        }
+
+    @Test
+    fun `a deletion word for another event, or with no membership, marks nothing`() = runTest {
+        val other = Membership(joined)
+        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(other).confirmedDeleted(testEventId("F")))
+        assertEquals(joined, other.config.value)
+        assertEquals(RefreshOutcome.INCONCLUSIVE, refresh(Membership(null)).confirmedDeleted(testEventId("E")))
+        assertEquals(0, stopped)
+    }
+
+    @Test
     fun `NotFound BEFORE the deadline is disbelieved`() = runTest {
         // The backend says the event is gone but our own clock says it cannot be. This is the case that
         // contains a systemic 404 fault, so it must resolve to "could not tell", never to a teardown.
@@ -174,7 +192,7 @@ class MembershipRefreshTest {
         val config = Membership(joined)
         assertEquals(
             RefreshOutcome.INCONCLUSIVE,
-            refresh(config, now = AFTER_DEADLINE).refresh(testEventId("E"), JoinLoad.Failed),
+            refresh(config, now = AFTER_DEADLINE).refresh(testEventId("E"), JoinLoad.Failed()),
         )
     }
 

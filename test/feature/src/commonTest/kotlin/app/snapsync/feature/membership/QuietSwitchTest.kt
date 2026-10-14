@@ -90,7 +90,7 @@ class QuietSwitchTest {
     fun `no answer from the server keeps the question`() = runTest {
         val counted = EventCompletionState(false, MemberCounts(3, 3, waiting = null)) // a server that counts no waiting
         val unserved = found(waiting = 0).copy(completion = counted)
-        for (answer in listOf(EventLookup.Failed, EventLookup.NotFound, found(waiting = null), unserved)) {
+        for (answer in listOf(EventLookup.Failed(), EventLookup.NotFound, found(waiting = null), unserved)) {
             val world = World().apply { this.answer = answer }
             assertFalse(world.rule.losesNothing(), "$answer")
         }

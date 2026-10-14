@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership.readmodel
 
+import app.snapsync.domain.service.ServiceFault
+
 /**
  * The rename-event lifecycle, kept as its own tiny seam like the create and
  * join twins so the presentation reduction folds it in without depending on the rename orchestration
@@ -26,7 +28,8 @@ sealed interface RenameStatus {
 
     data object Succeeded : RenameStatus
 
-    data class Failed(val reason: RenameFailureReason) : RenameStatus
+    /** [fault] is how the service failed, on [RenameFailureReason.SERVER]; `null` when it answered. */
+    data class Failed(val reason: RenameFailureReason, val fault: ServiceFault? = null) : RenameStatus
 }
 
 /**
@@ -44,4 +47,7 @@ enum class RenameFailureReason {
 
     /** A transient/server failure (non-2xx other than `400` — including `404` — transport, or parse). */
     SERVER,
+
+    /** The service answered that the event's photos were deleted: the event is over. */
+    EVENT_OVER,
 }

@@ -3,10 +3,13 @@ package app.snapsync.compose
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
+import app.snapsync.data.backend.Observers
+import app.snapsync.data.service.ServiceConditions
 import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
 import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
@@ -286,13 +289,24 @@ class AppCore internal constructor(
      * goes, the version it declares, and the reply it reads — reporting a refused build to [versionGate]. The
      * credential sends the token issuers through it; every other request goes through [backend]'s gateway.
      */
-    val exchange: BackendExchange by lazy { BackendExchange(ports.http, BuildTarget(process.build), versionGate) }
+    val exchange: BackendExchange by lazy {
+        BackendExchange(ports.http, BuildTarget(process.build), Observers(versionGate, serviceConditions))
+    }
+
+    /**
+     * Whether SnapSync's service is failing, as the latest answer told — the joined screen's service line. NOT lazy,
+     * for [versionGate]'s reason; an opening forgets it ([foreground]).
+     */
+    val serviceConditions: ServiceConditions = ServiceConditions()
+
+    /** [serviceConditions]' cell, for readers outside the core (the status host), which see no service type. */
+    val serviceFault: StateFlow<ServiceFault?> get() = serviceConditions.fault
 
     /**
      * The app's foreground life: whether it is in front now, and its returns as the create screen's draft follows
      * them — stamped by the lifecycle's entry points over the process clock.
      */
-    internal val foreground: AppForeground = AppForeground(process.clock)
+    internal val foreground: AppForeground = AppForeground(process.clock, onEntered = { serviceConditions.opening() })
 
     /** [foreground]'s returns, for readers outside the core (the status host), which see no service type. */
     val foregroundReturns: StateFlow<ForegroundReturn> get() = foreground.returns
@@ -315,13 +329,18 @@ class AppCore internal constructor(
     /** Why the service refused this phone at the latest attempt to verify it. */
     val refusal: StateFlow<DeviceRefusal?> get() = attestationStatus.refusal
 
+    /** How SnapSync's service failed the latest attempt to verify this phone, if it did. */
+    val attestationFault: StateFlow<ServiceFault?> get() = attestationStatus.fault
+
     /**
      * Every need-shaped backend service, over one gateway whose credential is [attestation] (a rejected
      * token is dropped, a new one obtained, and the request retried once) and whose
      * verdicts reach [versionGate] through [exchange]. Public for the app root's uploader, which publishes its manifest
      * through [BackendServices.manifest] like every other caller.
      */
-    val backend: BackendServices by lazy { backendServicesFor(services, attestation, exchange) }
+    val backend: BackendServices by lazy {
+        backendServicesFor(services, attestation, exchange, eventOver = { membershipRefresh.confirmedDeleted(it) })
+    }
 
     /**
      * What makes the app's file uploads resume where a failed attempt stopped (`docs/architecture.md`, "Resumable
@@ -644,6 +663,7 @@ class AppCore internal constructor(
             configSource = services.config,
             client = backend.rename,
             status = renameStatus,
+            eventOver = { membershipRefresh.confirmedDeleted(it) },
         )
     }
 

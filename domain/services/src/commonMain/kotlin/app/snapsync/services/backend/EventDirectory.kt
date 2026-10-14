@@ -1,11 +1,13 @@
 package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.faultOf
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.model.EventCompletionState
 import app.snapsync.model.EventLookup
@@ -13,6 +15,7 @@ import app.snapsync.model.MemberCounts
 import app.snapsync.model.TimestampText
 import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.GetEventReply
+import app.snapsync.wire.api.Maintenance
 import app.snapsync.wire.api.Routes
 
 /**
@@ -72,11 +75,13 @@ class BackendEventDirectory(private val gateway: BackendGateway) : EventDirector
                     openUntil = canonicalOrNull(meta.openUntil)?.let(::OpenUntil),
                 )
             } else {
-                EventLookup.Failed
+                // A served event missing what it always carries is an answer the app does not understand.
+                EventLookup.Failed(ServiceFault.UNREACHABLE)
             }
         }
         EventNotFound -> EventLookup.NotFound
-        else -> EventLookup.Failed
+        is Maintenance -> EventLookup.Failed(ServiceFault.UPDATING, reply.retryAfter.trim().toLongOrNull())
+        else -> EventLookup.Failed(faultOf(reply) ?: ServiceFault.UNREACHABLE)
     }
 
     /**

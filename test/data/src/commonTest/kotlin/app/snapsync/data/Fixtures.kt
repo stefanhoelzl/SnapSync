@@ -167,7 +167,7 @@ internal class FakeClient(
             text(401, "attestation rejected: ${outcome.reason.wireName}" + (outcome.detail?.let { " ($it)" } ?: ""))
         }
         TokenIssuance.ProofFailed -> error("a local proof failure is the device's, never the backend's answer")
-        TokenIssuance.NoAnswer -> HttpResult.Unreachable("offline")
+        is TokenIssuance.NoAnswer -> HttpResult.Unreachable("offline")
     }
 
     private fun json(status: Int, body: String) = HttpResult.Response(

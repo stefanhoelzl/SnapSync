@@ -147,14 +147,21 @@ Google account SHALL be required.
 
 Once a photo is shareable it SHALL eventually reach the event unless the member withdraws it (capability
 `photo-sharing`): a failed attempt SHALL be retried without limit, and a crash, the app or iOS killing the
-process, a reboot, a network loss, an expired credential or an upload finishing while the app is not
-running SHALL only delay it. A finished upload SHALL NOT be uploaded again because the app was killed
+process, a reboot, a network loss, a failing service, an expired credential or an upload finishing while the app
+is not running SHALL only delay it. A finished upload SHALL NOT be uploaded again because the app was killed
 right after it finished. The worst case SHALL be that the same photo is uploaded twice, which no other
-member ever sees as a second copy.
+member ever sees as a second copy. A photo the other members already receive SHALL NOT be withdrawn from them
+because the service failed while the member's phone was telling it what the member shares.
 
 #### Scenario: A failed upload is retried
 - **WHEN** an upload fails because the server or network is unavailable
 - **THEN** it is retried later until it succeeds
+
+#### Scenario: Photos shared while the service fails reach the others later
+- **WHEN** a member's phone tells the service which photos it shares while the service is failing, or gets an
+  answer it does not understand
+- **THEN** once the service works again the other members receive those photos without the member doing
+  anything, and none they already received is withdrawn meanwhile
 
 #### Scenario: The app is killed mid-upload
 - **WHEN** the app is killed while photos are uploading and later runs again
@@ -293,8 +300,8 @@ wakes for one event MAY be combined into one. Wakes are best effort: without
 one, new photos SHALL still arrive in the background, in a timely manner as the phone's system allows, and at
 the latest the next time the member opens the app. A force-quit — on Android, a force-stop from the phone's
 Settings — SHALL stop receiving until the member next opens the app; every photo shared meanwhile SHALL then
-arrive. A wake for an event this device has left SHALL fetch nothing. Failing to set up wakes SHALL never
-prevent joining, sharing or receiving.
+arrive. A wake for an event this device has left SHALL fetch nothing. Failing to set up wakes — on the phone or
+because the service failed to take it — SHALL never prevent joining, sharing or receiving.
 
 #### Scenario: A wake brings new photos in the background
 - **WHEN** another member's photo becomes available while this member's phone is in their pocket
@@ -304,6 +311,11 @@ prevent joining, sharing or receiving.
 - **WHEN** the phone's system drops or delays the wake for a new photo, or the phone cannot receive wakes at
   all, and the member does not open the app
 - **THEN** the photo still arrives in their library in the background, without the app being opened
+
+#### Scenario: The service could not set up wakes
+- **WHEN** the service fails each time the member's phone sets up its wakes, and another member shares a photo
+- **THEN** the member still joins, shares and receives, and the photo arrives in their library in the
+  background or at the latest the next time they open the app
 
 #### Scenario: A large event wakes some members per photo
 - **WHEN** a photo becomes available in an event with many members, and this member's phone is not among
@@ -332,3 +344,4 @@ prevent joining, sharing or receiving.
 - **WHEN** an event's range has ended and the last member still sharing finishes, after all of its photos have
   already arrived everywhere
 - **THEN** no member is woken for it, and every member stays in the event
+

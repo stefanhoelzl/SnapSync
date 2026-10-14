@@ -33,7 +33,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 ## `feature/membership`
 
 - files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `EventCompletion.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `JoinUnion.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `QuietSwitch.kt`, `ReceivedPhotoAdoption.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `Steps.kt`, `SwitchDecision.kt`
-- top-level types: `CompletionOutcome (class)`, `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventCompletion (class)`, `JoinEvent (class)`, `JoinOutcome (class)`, `JoinUnion (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `QuietSwitch (class)`, `ReceivedPhotoAdoption (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `ResetDeviceState (class)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
+- top-level types: `CompletionOutcome (class)`, `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventCompletion (class)`, `JoinEvent (class)`, `JoinOutcome (interface)`, `JoinUnion (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `QuietSwitch (class)`, `ReceivedPhotoAdoption (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `ResetDeviceState (class)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
 
 ## `feature/push`
 

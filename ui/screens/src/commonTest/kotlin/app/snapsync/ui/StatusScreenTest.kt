@@ -54,6 +54,8 @@ import app.snapsync.ui.components.resources.key_lost_title
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
 import app.snapsync.ui.components.resources.range_starts
+import app.snapsync.ui.components.resources.service_detail
+import app.snapsync.ui.components.resources.service_updating_title
 import app.snapsync.ui.components.resources.share_range_custom
 import app.snapsync.ui.components.resources.share_range_event_start
 import app.snapsync.ui.components.resources.status_allow_access
@@ -159,6 +161,7 @@ import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.SharingNote
 import app.snapsync.ui.state.StoreName
 import app.snapsync.ui.state.SyncCounts
@@ -362,6 +365,13 @@ class StatusScreenTest {
             onNodeWithText(str(title)).assertExists().assertHasNoClickAction()
             onNodeWithText(str(ComponentRes.string.cannot_verify_detail)).assertExists()
         }
+    }
+
+    @Test
+    fun `a failing service is told on the status line with the photos safe - never tappable`() = runComposeUiTest {
+        setContent { TestStatusScreen(joined(SyncHealth.ServiceFailing(ServiceNotice.UPDATING))) }
+        onNodeWithText(str(ComponentRes.string.service_updating_title)).assertExists().assertHasNoClickAction()
+        onNodeWithText(str(ComponentRes.string.service_detail)).assertExists()
     }
 
     @Test

@@ -1,9 +1,11 @@
 package app.snapsync.data.trust
 
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.trust.TokenIssuance
 import app.snapsync.wire.api.AppTooOld
 import app.snapsync.wire.api.Invalid
+import app.snapsync.wire.api.Maintenance
 import app.snapsync.wire.api.Malformed
 import app.snapsync.wire.api.MintTokenReply
 import app.snapsync.wire.api.RenewTokenReply
@@ -55,11 +57,12 @@ class IssuerRepliesTest {
             unverifiable,
             IssuerReplies.minted(AppTooOld(AppTooOldError(AppTooOldErrorError.APP_TOO_OLD, "9.0"))),
         )
-        assertEquals(TokenIssuance.NoAnswer, IssuerReplies.minted(ServerError("write failed")))
-        assertEquals(TokenIssuance.NoAnswer, IssuerReplies.renewed(Unreachable("offline")))
-        assertEquals(TokenIssuance.NoAnswer, IssuerReplies.renewed(ServerError("write failed")))
+        assertEquals(TokenIssuance.NoAnswer(ServiceFault.TROUBLE), IssuerReplies.minted(ServerError("write failed")))
+        assertEquals(TokenIssuance.NoAnswer(ServiceFault.UNREACHABLE), IssuerReplies.renewed(Unreachable("offline")))
+        assertEquals(TokenIssuance.NoAnswer(ServiceFault.TROUBLE), IssuerReplies.renewed(ServerError("write failed")))
+        assertEquals(TokenIssuance.NoAnswer(ServiceFault.UPDATING), IssuerReplies.renewed(Maintenance("60")))
         assertEquals(
-            TokenIssuance.NoAnswer,
+            TokenIssuance.NoAnswer(ServiceFault.UNREACHABLE),
             IssuerReplies.minted(Malformed("not JSON")),
             "an unreadable answer is no verdict",
         )

@@ -7,6 +7,7 @@ import app.snapsync.data.trust.PresentedChain
 import app.snapsync.data.trust.RefreshRead
 import app.snapsync.data.trust.RefusalFacts
 import app.snapsync.data.version.AppVersionGate
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.trust.TokenIssuance
 import app.snapsync.domain.version.VersionRefusal
@@ -29,6 +30,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The app's credential: obtaining, keeping alive and recovering the bearer token every gated request carries. */
+private const val APP_TOO_OLD = """{"error":"app too old","minAppVersion":"9.9"}"""
+
 class AttestingCredentialTest {
 
     // ---- attested: the SyncHealth.Unattested rule ----
@@ -72,6 +75,42 @@ class AttestingCredentialTest {
         c.client.challenge = null
         c.credential.refresh()
         assertFalse(c.status.attested.value)
+        assertEquals(ServiceFault.UNREACHABLE, c.status.fault.value, "the service could not be reached")
+    }
+
+    @Test
+    fun `every way a challenge goes unanswered is the service's condition - renewing or attesting`() = runTest {
+        val answers = listOf(
+            HttpResult.Response(502, emptyMap(), "upstream") to ServiceFault.TROUBLE,
+            HttpResult.Response(503, mapOf("Retry-After" to "60"), "maintenance") to ServiceFault.UPDATING,
+            HttpResult.Response(200, mapOf("Content-Type" to "text/html"), "<html>log in</html>") to ServiceFault.UNREACHABLE,
+            HttpResult.Response(426, mapOf("Content-Type" to "application/json"), APP_TOO_OLD) to ServiceFault.UNREACHABLE,
+            HttpResult.Unreachable("offline") to ServiceFault.UNREACHABLE,
+        )
+        for ((answer, fault) in answers) {
+            for (held in listOf(Held(token(-1), "k"), Held())) {
+                val c = Subject(held = held)
+                c.client.challengeAnswer = answer
+                c.credential.refresh()
+                assertEquals(
+                    fault,
+                    c.status.fault.value,
+                    "$answer, ${if (held.keyId() != null) "renewing" else "attesting"}",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a refresh the service failed records how - and the next refresh forgets it`() = runTest {
+        val c = Subject(held = Held(token(-1), "k"))
+        c.client.challengeAnswer = HttpResult.Response(503, mapOf("Retry-After" to "60"), "maintenance")
+        c.credential.refresh()
+        assertEquals(ServiceFault.UPDATING, c.status.fault.value)
+
+        c.client.challengeAnswer = null
+        c.credential.refresh()
+        assertNull(c.status.fault.value, "a refresh that obtained a token tells of no failure")
     }
 
     @Test
@@ -126,7 +165,7 @@ class AttestingCredentialTest {
         c.credential.refresh()
         assertNull(c.status.refusal.value)
         c.client.challenge = "chal"
-        c.client.mintAnswers += TokenIssuance.NoAnswer
+        c.client.mintAnswers += TokenIssuance.NoAnswer(ServiceFault.UNREACHABLE)
         c.credential.refresh()
         assertNull(c.status.refusal.value, "a 5xx or a dropped connection is no verdict either")
     }
@@ -319,7 +358,7 @@ class AttestingCredentialTest {
     fun `a renewal that stays stale or gets no answer keeps the token and attests nothing`() = runTest {
         for (answers in listOf(
             listOf(TokenIssuance.ChallengeStale, TokenIssuance.ChallengeStale),
-            listOf(TokenIssuance.NoAnswer),
+            listOf(TokenIssuance.NoAnswer(ServiceFault.UNREACHABLE)),
         )) {
             val c = Subject(held = Held(token = token(1), keyId = "k"))
             c.client.renewAnswers += answers

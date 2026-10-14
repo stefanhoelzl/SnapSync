@@ -110,7 +110,7 @@ coverage {
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
     ":domain:ports" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        integration(instructions = 87, branches = 85) // no branches: any branch target is met
+        integration(instructions = 88, branches = 85) // no branches: any branch target is met
     }
     ":domain:services" {
         skipped(
@@ -120,7 +120,7 @@ coverage {
         )
         // Beside the JVM adapters runs the encrypted file format's cipher, held to Tink's reference implementation.
         unit(alsoCoveredBy = listOf(":adapter:generic:app", ":adapter:generic:mock", ":test:feature"))
-        integration(instructions = 80, branches = 58)
+        integration(instructions = 81, branches = 59)
     }
     ":domain:wire" {
         skipped(
@@ -129,11 +129,11 @@ coverage {
             packages = listOf("app.snapsync.wire.api", "app.snapsync.wire.models"),
         )
         unit()
-        integration(instructions = 77, branches = 71)
+        integration(instructions = 82, branches = 71)
     }
     ":domain:feature" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        integration(instructions = 90, branches = 72)
+        integration(instructions = 90, branches = 73)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.
@@ -141,7 +141,7 @@ coverage {
         unit(alsoCoveredBy = listOf(":test:data"))
         // The protocol's every reply and every store failure are the data suites'; the suite reaches the paths a
         // member's day takes.
-        integration(instructions = 76, branches = 49)
+        integration(instructions = 79, branches = 53)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -151,7 +151,7 @@ coverage {
         unit()
         // Branches 64 → 62 in phase 4.1 (trust): the trust verdicts arrived, and their rare answers — a stale
         // challenge, each refusal reason — are their unit suites', not the integration surface's.
-        integration(instructions = 83, branches = 62)
+        integration(instructions = 87, branches = 75)
     }
     // Integration-skipped until phase 3g: what the polling tests reach of these two moves with the machine's timing.
     // Their SingleFlight yield/withdraw and expiry paths run only when a process dies in the few dispatches between a
@@ -184,7 +184,7 @@ coverage {
     }
     ":domain:presentation" {
         unit(alsoCoveredBy = listOf(":ui:screens"))
-        integration(instructions = 86, branches = 75)
+        integration(instructions = 86, branches = 76)
     }
     ":app:jvm" {
         unit(alsoCoveredBy = listOf(":test:integration"))
@@ -192,7 +192,7 @@ coverage {
     }
     ":ui:state" {
         unit()
-        integration(instructions = 87, branches = 42)
+        integration(instructions = 90, branches = 62)
     }
     // `:ui:screens`' Compose tests render the real screens, and with them these components.
     ":ui:components" {

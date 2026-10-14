@@ -202,6 +202,12 @@ sealed interface Layer {
          * [JoinPhase.LoadFailed] offers no Retry — the details load by themselves once the network returns.
          */
         val network: NetworkNotice? = null,
+        /**
+         * How SnapSync's service failed the details load ([JoinPhase.LoadFailed]) or the join
+         * ([JoinPhase.Detailed.Step.CommitFailed]) — told in its own words; `null` for any other failure, and on every
+         * other phase.
+         */
+        val service: ServiceNotice? = null,
     ) : Layer {
         val phase: JoinPhase get() = stage.phase
 
@@ -535,6 +541,15 @@ sealed interface SyncHealth {
     @Serializable
     data class Unattested(val refusal: RefusalCause? = null) : SyncHealth
 
+    /**
+     * SnapSync's service is failing while photos wait to be shared or received — or while this device's proof cannot
+     * be renewed because of it: the line says which [notice] applies and that the photos are safe. Below [Unattested]
+     * — a refusal, or a proof the phone cannot give, is never masked — and above the progress it explains. Not
+     * tappable; carries no counts.
+     */
+    @Serializable
+    data class ServiceFailing(val notice: ServiceNotice) : SyncHealth
+
     /** Joined, permission granted, but persisted state has not been read yet — a neutral first frame. */
     @Serializable
     data object Loading : SyncHealth
@@ -594,6 +609,22 @@ enum class NetworkNotice {
 }
 
 /**
+ * How SnapSync's service failed, as the member is told it — each in its own words, and only the first asking them to
+ * check their connection.
+ */
+@Serializable
+enum class ServiceNotice {
+    /** No answer came back, or one the app does not understand. */
+    UNREACHABLE,
+
+    /** The service answered that it failed. */
+    TROUBLE,
+
+    /** The service is being updated, and is back shortly. */
+    UPDATING,
+}
+
+/**
  * A message the screen shows, as a FACT: `ui/` alone turns it into words, so no sentence is written in the
  * domain and every one can be translated (`docs/architecture.md`, "Localization").
  */
@@ -616,6 +647,18 @@ enum class ScreenMessage {
 
     /** The rename failed for any other reason. */
     RENAME_FAILED,
+
+    /** SnapSync's service cannot be reached: no answer, or one the app does not understand. */
+    SERVICE_UNREACHABLE,
+
+    /** SnapSync's service answered that it failed. */
+    SERVICE_TROUBLE,
+
+    /** SnapSync's service is being updated, and is back shortly. */
+    SERVICE_UPDATING,
+
+    /** The event is over: its photos were deleted, so it changes no more. */
+    EVENT_OVER,
 
     /** The service refused this phone: its system is modified. */
     DEVICE_MODIFIED,

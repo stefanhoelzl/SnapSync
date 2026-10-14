@@ -40,9 +40,16 @@
     <string name="message_invalid_link">Dieser QR-Code gehört zu keinem SnapSync-Event.</string>
     <string name="message_create_name_refused">Dieser Name wurde nicht akzeptiert. Versuch einen anderen.</string>
     <string name="message_create_dates_refused">Diese Daten wurden nicht akzeptiert. Versuch einen kürzeren Zeitraum.</string>
-    <string name="message_create_failed">Keine Verbindung. Prüf deine Verbindung und versuch es noch einmal.</string>
+    <string name="message_create_failed">Das Event konnte nicht erstellt werden. Versuch es noch einmal.</string>
     <string name="message_rename_name_refused">Dieser Name wurde nicht akzeptiert. Versuch einen kürzeren.</string>
-    <string name="message_rename_failed">Das Event konnte nicht umbenannt werden. Prüf deine Verbindung und versuch es noch einmal.</string>
+    <string name="message_rename_failed">Das Event konnte nicht umbenannt werden. Versuch es noch einmal.</string>
+    <string name="message_service_unreachable">SnapSync ist nicht erreichbar. Prüf deine Verbindung und versuch es noch einmal.</string>
+    <string name="message_service_trouble">SnapSync hat gerade Probleme. Versuch es gleich noch einmal.</string>
+    <string name="message_service_updating">SnapSync wird gerade aktualisiert und ist gleich wieder da. Versuch es gleich noch einmal.</string>
+    <string name="message_event_over">Dieses Event ist vorbei und kann nicht mehr umbenannt werden.</string>
+    <string name="message_rename_unreachable">Das Event konnte nicht umbenannt werden: SnapSync ist nicht erreichbar. Prüf deine Verbindung und versuch es noch einmal.</string>
+    <string name="message_rename_trouble">Das Event konnte nicht umbenannt werden: SnapSync hat gerade Probleme. Versuch es gleich noch einmal.</string>
+    <string name="message_rename_updating">Das Event konnte nicht umbenannt werden: SnapSync wird gerade aktualisiert und ist gleich wieder da.</string>
     <string name="message_device_unverifiable">Dieses Gerät konnte nicht verifiziert werden, daher kann es keine Events erstellen oder ihnen beitreten. Das liegt nicht an dir.</string>
     <string name="message_device_modified">SnapSync funktioniert nur auf Geräten mit dem System ihres Herstellers. Das System dieses Geräts ist verändert oder sein Bootloader entsperrt.</string>
     <string name="message_app_not_genuine">Diese Kopie von SnapSync ist nicht die offizielle. Installier SnapSync aus deinem App-Store.</string>
@@ -183,6 +190,7 @@
     <string name="waiting_network_body">Das Event lädt, sobald du wieder online bist.</string>
     <string name="load_failed_title">Event konnte nicht geladen werden</string>
     <string name="load_failed_body">Prüf deine Verbindung und versuch es noch einmal.</string>
+    <string name="load_failed_body_updating">SnapSync wird gerade aktualisiert und ist gleich wieder da. Das Event lädt dann von selbst.</string>
     <string name="joining">Beitreten …</string>
 
     <string name="settings_save_failed">Die Änderung konnte nicht gespeichert werden, es hat sich also nichts geändert. Versuch es noch einmal.</string>

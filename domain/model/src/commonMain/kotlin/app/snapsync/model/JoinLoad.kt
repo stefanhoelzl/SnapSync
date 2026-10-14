@@ -4,6 +4,7 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.service.ServiceFault
 
 /**
  * The outcome of fetching an event's details for the join gate — the gate-facing mirror of the
@@ -43,7 +44,13 @@ sealed interface JoinLoad {
         val openUntil: OpenUntil? = null,
     ) : JoinLoad
     data object NotFound : JoinLoad
-    data object Failed : JoinLoad
+
+    /** The details could not be read; [fault] is how the service failed, as the guest is told it. */
+    data class Failed(
+        val fault: ServiceFault = ServiceFault.UNREACHABLE,
+        /** When the service is being updated, how many seconds it suggests waiting before asking again; else `null`. */
+        val retryAfterSeconds: Long? = null,
+    ) : JoinLoad
 
     /**
      * The link does not open this event (the encrypted file format, `docs/architecture.md`): the event is encrypted

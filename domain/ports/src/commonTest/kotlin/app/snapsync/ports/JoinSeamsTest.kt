@@ -16,10 +16,25 @@ class JoinSeamsTest {
 
     @Test
     fun a_join_has_exactly_five_answers() {
+        // Unverified is the join refused for this phone's credential — its own screen, the refused step (`join-event`).
+        val answers: List<JoinResult> = listOf(
+            JoinResult.Joined,
+            JoinResult.EventClosed,
+            JoinResult.EventNotFound,
+            JoinResult.Unverified,
+            JoinResult.Failed(),
+        )
         assertEquals(
-            // UNVERIFIED is the join refused for this phone's credential — its own screen, the refused step (`join-event`).
-            listOf("JOINED", "EVENT_CLOSED", "EVENT_NOT_FOUND", "UNVERIFIED", "FAILED"),
-            JoinResult.entries.map { it.name },
+            listOf("Joined", "EventClosed", "EventNotFound", "Unverified", "Failed"),
+            answers.map {
+                when (it) {
+                    JoinResult.Joined -> "Joined"
+                    JoinResult.EventClosed -> "EventClosed"
+                    JoinResult.EventNotFound -> "EventNotFound"
+                    JoinResult.Unverified -> "Unverified"
+                    is JoinResult.Failed -> "Failed"
+                }
+            },
             "the join surface renders one screen per answer; adding one silently leaves it unrendered",
         )
     }

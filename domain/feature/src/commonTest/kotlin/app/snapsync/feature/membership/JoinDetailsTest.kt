@@ -49,6 +49,6 @@ class JoinDetailsTest {
     fun `a definitive absence and a failed read stay different answers`() {
         // The teardown fires on the first and must not fire on the second.
         assertEquals(JoinLoad.NotFound, EventLookup.NotFound.toJoinLoad())
-        assertEquals(JoinLoad.Failed, EventLookup.Failed.toJoinLoad())
+        assertEquals(JoinLoad.Failed(), EventLookup.Failed().toJoinLoad())
     }
 }

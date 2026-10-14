@@ -102,7 +102,10 @@ nobody ever joined lives until then. That latest moment SHALL be fixed at creati
 anything afterwards, including a rename, a join or a photo arriving. From deletion on the event SHALL admit no
 one, and its invite SHALL lead to no photos. Deleting SHALL remove every photo shared to the event from the
 server, except a photo another still-existing event also holds. A member's leave SHALL count toward this even
-if it was made offline, once the device is online again.
+if it was made offline or while the service was failing, once the service takes it, without the member doing
+anything more. A member SHALL count as done only once the service has learned it from their phone: while their
+phone cannot tell it, the photos SHALL NOT be deleted on account of that member before the 3-day and 30-day limits
+above, and SHALL be deleted as for any finished event once it has.
 
 #### Scenario: Everyone has everything
 - **WHEN** an event's range ended on Sunday evening and by Monday morning every member has shared and
@@ -127,6 +130,16 @@ if it was made offline, once the device is online again.
 - **WHEN** the last member leaves while offline and is online again the next day
 - **THEN** the event's photos are deleted within about a day after that, without the member doing
   anything more
+
+#### Scenario: A leave the service failed to take still counts
+- **WHEN** the last member leaves while the service is failing, and the service works again the next day
+- **THEN** the event's photos are deleted within about a day after that, without the member doing anything more
+
+#### Scenario: A member who cannot say they are done holds deletion back
+- **WHEN** after the range ended one member has received every photo, but the service fails each time their phone
+  tells it so, while every other member is done
+- **THEN** the photos are not deleted on that member's account before the 3-day limit, and are deleted within
+  about a day once their phone has told the service
 
 #### Scenario: A back-dated event
 - **WHEN** a host creates on 1 June an event for a weekend in May, chooses 7 days, and is done at once
@@ -196,10 +209,12 @@ open-until date. The open-until date SHALL NOT change which photos are shared; t
 The app SHALL NOT end a membership on its own — not when the event's range ends, not when the member is done,
 not when the event is finished and not when its photos are deleted. A membership SHALL end only when the
 member leaves, or when they open another event's invite and switch (capability `invite-link`). Once the
-server confirms an event's photos were deleted, the app SHALL keep the member on it and say it is over
-(capability `sync-status`). It SHALL NOT treat the event as deleted on any other evidence: not while offline,
-not on a server error, and not when the server merely fails to find the event before the latest day its
-photos may live. Every doubt SHALL resolve toward the event still running.
+server confirms an event's photos were deleted — whether it is asked about the event, or answers so when the
+member's phone shares photos or renames the event — the app SHALL keep the member on it, say it is over
+(capability `sync-status`), and share nothing more to it. It SHALL NOT treat the event as deleted on any other
+evidence: not while offline, not on a server error, not on an answer it does not understand, and not when the
+server merely fails to find the event before the latest day its photos may live. Every doubt SHALL resolve toward
+the event still running.
 
 #### Scenario: A finished event stays on screen
 - **WHEN** an event becomes finished while the member's phone is in their pocket
@@ -209,6 +224,12 @@ photos may live. Every doubt SHALL resolve toward the event still running.
 - **WHEN** a member opens SnapSync after the event's photos were deleted
 - **THEN** they are still in the event, the app says it is over, and the photos they received are in their
   library
+
+#### Scenario: Sharing into a deleted event marks it over
+- **WHEN** the member's phone shares photos in the background and the service answers that the event's photos
+  were deleted
+- **THEN** the next time the member sees the joined screen it says the event is over, they are still in the
+  event, and nothing more is shared to it
 
 #### Scenario: A server error never ends a membership
 - **WHEN** the member opens the app while the server is failing or the phone is offline

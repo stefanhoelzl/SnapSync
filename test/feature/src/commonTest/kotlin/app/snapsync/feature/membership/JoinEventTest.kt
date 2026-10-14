@@ -6,6 +6,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.configService
@@ -56,7 +57,7 @@ private val OPEN_UNTIL = OpenUntil(TimestampText.parse("2026-07-15T09:00:00Z"))
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
 private val FIXTURE_CEILING = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z"))
 
-private class FakeEnroller(private val result: JoinResult = JoinResult.JOINED) : DeviceEnroller {
+private class FakeEnroller(private val result: JoinResult = JoinResult.Joined) : DeviceEnroller {
     val calls = mutableListOf<Pair<EventId, DeviceId>>()
     override suspend fun enroll(eventId: EventId, deviceId: DeviceId): JoinResult {
         calls += eventId to deviceId
@@ -70,7 +71,7 @@ private class FakeDetails(private val result: EventLookup) : EventDirectory {
 
 private fun joinEvent(
     config: EventConfig?,
-    enrollResult: JoinResult = JoinResult.JOINED,
+    enrollResult: JoinResult = JoinResult.Joined,
     details: EventLookup = EventLookup.Found("Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT),
     provisioned: MutableList<EventConfig> = mutableListOf(),
     enroller: FakeEnroller = FakeEnroller(enrollResult),
@@ -96,14 +97,14 @@ class JoinEventTest {
         assertEquals(JoinCommit.Committed, JoinOutcome.AlreadyJoined.toCommit())
         // A closed event is a wall no retry moves (capability `event-lifetime`).
         assertEquals(JoinCommit.Closed, JoinOutcome.EventClosed.toCommit())
-        assertEquals(JoinCommit.Failed, JoinOutcome.EnrollFailed.toCommit())
+        assertEquals(JoinCommit.Failed(), JoinOutcome.EnrollFailed().toCommit())
         assertEquals(JoinCommit.Unverified, JoinOutcome.Unverified.toCommit(), "never the generic failure")
     }
 
     @Test
     fun `join enrolls then provisions on success`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val enroller = FakeEnroller(result = JoinResult.JOINED)
+        val enroller = FakeEnroller(result = JoinResult.Joined)
         val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
             .join(
                 JoinChoice(
@@ -129,7 +130,7 @@ class JoinEventTest {
         // Kept at the commit, not first at the next refresh: the joined screen says until when others can join
         // as soon as it shows (capability `sync-status`).
         val provisioned = mutableListOf<EventConfig>()
-        joinEvent(config = null, enrollResult = JoinResult.JOINED, provisioned = provisioned)
+        joinEvent(config = null, enrollResult = JoinResult.Joined, provisioned = provisioned)
             .join(
                 JoinChoice(
                     testEventId(
@@ -146,7 +147,7 @@ class JoinEventTest {
     @Test
     fun `a failed enrollment commits nothing`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val outcome = joinEvent(config = null, enrollResult = JoinResult.FAILED, provisioned = provisioned)
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.Failed(), provisioned = provisioned)
             .join(
                 JoinChoice(
                     testEventId(
@@ -156,14 +157,14 @@ class JoinEventTest {
                 ),
             )
 
-        assertEquals(JoinOutcome.EnrollFailed, outcome)
+        assertEquals(JoinOutcome.EnrollFailed(ServiceFault.UNREACHABLE), outcome)
         assertTrue(provisioned.isEmpty(), "no config should be provisioned on a failed enrollment")
     }
 
     @Test
     fun `an event gone by the enrollment is a failed join and commits nothing`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_NOT_FOUND, provisioned = provisioned)
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.EventNotFound, provisioned = provisioned)
             .join(
                 JoinChoice(
                     testEventId(
@@ -173,14 +174,14 @@ class JoinEventTest {
                 ),
             )
 
-        assertEquals(JoinOutcome.EnrollFailed, outcome)
+        assertEquals(JoinOutcome.EnrollFailed(), outcome)
         assertTrue(provisioned.isEmpty())
     }
 
     @Test
     fun `an enrollment refused for this phone's credential is unverified and commits nothing`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val outcome = joinEvent(config = null, enrollResult = JoinResult.UNVERIFIED, provisioned = provisioned)
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.Unverified, provisioned = provisioned)
             .join(
                 JoinChoice(
                     testEventId(
@@ -197,7 +198,7 @@ class JoinEventTest {
     @Test
     fun `re-joining the current event is a no-op that skips enrollment`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val enroller = FakeEnroller(result = JoinResult.JOINED)
+        val enroller = FakeEnroller(result = JoinResult.Joined)
         val outcome = joinEvent(
             config = EventConfig(
                 testEventId(EVENT_A),
@@ -226,7 +227,7 @@ class JoinEventTest {
 
     @Test
     fun `switching to a different event enrolls`() = runTest {
-        val enroller = FakeEnroller(result = JoinResult.JOINED)
+        val enroller = FakeEnroller(result = JoinResult.Joined)
         val outcome = joinEvent(
             config = EventConfig(
                 testEventId(EVENT_A),
@@ -265,8 +266,8 @@ class JoinEventTest {
             joinEvent(config = null, details = EventLookup.NotFound).loadDetails(testEventId(EVENT_A)),
         )
         assertEquals(
-            EventLookup.Failed,
-            joinEvent(config = null, details = EventLookup.Failed).loadDetails(testEventId(EVENT_A)),
+            EventLookup.Failed(),
+            joinEvent(config = null, details = EventLookup.Failed()).loadDetails(testEventId(EVENT_A)),
         )
     }
 
@@ -290,7 +291,7 @@ class JoinEventTest {
     @Test
     fun `a closed event is reported apart from a full one and provisions nothing`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val outcome = joinEvent(config = null, enrollResult = JoinResult.EVENT_CLOSED, provisioned = provisioned)
+        val outcome = joinEvent(config = null, enrollResult = JoinResult.EventClosed, provisioned = provisioned)
             .join(
                 JoinChoice(
                     testEventId(
@@ -423,7 +424,7 @@ class JoinEventTest {
             )
 
         assertEquals(JoinOutcome.InvalidRange, outcome)
-        assertEquals(JoinCommit.Failed, outcome.toCommit())
+        assertEquals(JoinCommit.Failed(), outcome.toCommit())
         assertTrue(enroller.calls.isEmpty(), "nothing is enrolled")
         assertTrue(provisioned.isEmpty(), "nothing is joined")
     }
@@ -464,7 +465,7 @@ class JoinEventTest {
     @Test
     fun `a download-only join still enrolls the device`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        val enroller = FakeEnroller(result = JoinResult.JOINED)
+        val enroller = FakeEnroller(result = JoinResult.Joined)
         val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
             .join(
                 JoinChoice(
@@ -535,7 +536,7 @@ class JoinEventTest {
         val minted = EventKeys(fakeCrypto(), inMemorySecureStore()).mint()
         val provisioned = mutableListOf<EventConfig>()
         assertEquals(
-            JoinOutcome.EnrollFailed,
+            JoinOutcome.EnrollFailed(),
             joinEvent(null, provisioned = provisioned, keys = keys).join(choice(minted.linkKey, minted.keyId)),
         )
         assertTrue(provisioned.isEmpty())

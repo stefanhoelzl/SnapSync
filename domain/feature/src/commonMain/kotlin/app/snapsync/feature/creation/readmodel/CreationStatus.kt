@@ -1,5 +1,7 @@
 package app.snapsync.feature.creation.readmodel
 
+import app.snapsync.domain.service.ServiceFault
+
 /**
  * The create-event lifecycle, kept as its own tiny seam (the join-status twin) so the presentation
  * reduction folds it in without depending on the create orchestration (which pulls ktor). It has
@@ -15,7 +17,8 @@ sealed interface CreationStatus {
 
     data object InFlight : CreationStatus
 
-    data class Failed(val reason: CreationFailureReason) : CreationStatus
+    /** [fault] is how the service failed, on [CreationFailureReason.SERVER]; `null` for every other reason. */
+    data class Failed(val reason: CreationFailureReason, val fault: ServiceFault? = null) : CreationStatus
 }
 
 /**

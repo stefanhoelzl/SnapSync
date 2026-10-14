@@ -1,5 +1,7 @@
 package app.snapsync.data.trust
 
+import app.snapsync.data.backend.faultOf
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.trust.TokenIssuance
 import app.snapsync.ports.Proof
@@ -8,6 +10,7 @@ import app.snapsync.wire.api.ClientError
 import app.snapsync.wire.api.MintTokenReply
 import app.snapsync.wire.api.NoAnswer
 import app.snapsync.wire.api.RenewTokenReply
+import app.snapsync.wire.api.Reply
 import app.snapsync.wire.api.ServerIssue
 import app.snapsync.wire.api.StaleChallenge
 import app.snapsync.wire.models.AndroidKeyProof
@@ -25,7 +28,7 @@ internal object IssuerReplies {
         is MintTokenReply.Rejected -> RefusalText.parse(reply.text)
         StaleChallenge -> TokenIssuance.ChallengeStale
         is ClientError -> REFUSED
-        is ServerIssue, is NoAnswer -> TokenIssuance.NoAnswer
+        is ServerIssue, is NoAnswer -> noAnswer(reply)
     }
 
     /** An `/attest/renew` answer: [RenewTokenReply.NotAttested] is "no record on file — attest afresh". */
@@ -34,8 +37,13 @@ internal object IssuerReplies {
         RenewTokenReply.NotAttested -> TokenIssuance.NotAttested
         StaleChallenge -> TokenIssuance.ChallengeStale
         is ClientError -> REFUSED
-        is ServerIssue, is NoAnswer -> TokenIssuance.NoAnswer
+        is ServerIssue, is NoAnswer -> noAnswer(reply)
     }
+
+    /** No verdict, and how the service failed to give one. */
+    fun noAnswer(
+        reply: Reply,
+    ): TokenIssuance.NoAnswer = TokenIssuance.NoAnswer(faultOf(reply) ?: ServiceFault.UNREACHABLE)
 
     /**
      * Beside each route's own answers: a stale challenge — one fresh challenge is the remedy; any other refusal — a

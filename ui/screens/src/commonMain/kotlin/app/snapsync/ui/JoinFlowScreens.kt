@@ -28,7 +28,6 @@ import app.snapsync.ui.resources.cancel
 import app.snapsync.ui.resources.join_failed_body
 import app.snapsync.ui.resources.join_failed_title
 import app.snapsync.ui.resources.joining
-import app.snapsync.ui.resources.load_failed_body
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.loading_event
 import app.snapsync.ui.resources.message_report_this
@@ -40,6 +39,7 @@ import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ServiceNotice
 import org.jetbrains.compose.resources.stringResource
 
 // The join gate: the full-screen surface a scanned link opens, and the
@@ -89,7 +89,7 @@ internal fun JoiningEventScreen(
                     }
                     // Without a network the details load by themselves once it returns, so there is nothing to retry.
                     JoinPhase.LoadFailed -> if (online) {
-                        LoadFailedPhase(onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
+                        LoadFailedPhase(layer.service, onRetry = actions.onRetryLoad, onCancel = actions.onCancel)
                     } else {
                         WaitingForNetworkPhase(actions.onCancel)
                     }
@@ -108,7 +108,7 @@ internal fun JoiningEventScreen(
                     JoinPhase.Detailed.Step.Committing -> CommittingPhase(name = stage.phase.eventName)
                     // Every way a commit can end badly, on ONE surface — see [BlockedStep].
                     JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.DeviceRefused,
-                    -> BlockedStep(stage.phase, actions, online)
+                    -> BlockedStep(stage.phase, layer.service, actions, online)
                 }
             }
         }
@@ -129,11 +129,12 @@ internal fun JoiningEventScreen(
  * Cancel is the way out of every one.
  */
 @Composable
-private fun BlockedStep(phase: JoinPhase.Detailed, actions: JoinActions, online: Boolean) {
+private fun BlockedStep(phase: JoinPhase.Detailed, service: ServiceNotice?, actions: JoinActions, online: Boolean) {
     val refused = phase.step == JoinPhase.Detailed.Step.DeviceRefused
     val refusal = (phase.refusal ?: ScreenMessage.DEVICE_UNVERIFIABLE).takeIf { refused }
     val title = stringResource(Res.string.join_failed_title)
-    val body = refusal?.text() ?: stringResource(Res.string.join_failed_body)
+    // A refusal says why; a failing service says which way it failed; anything else is the generic failure.
+    val body = refusal?.text() ?: service?.text() ?: stringResource(Res.string.join_failed_body)
     val onRetry = actions.onRetryJoin.takeIf { online }
     val onReport = refusal?.takeIf { it.offersReport }?.let { reportable ->
         {
@@ -233,13 +234,13 @@ private fun WaitingForNetworkPhase(onCancel: () -> Unit) = PhaseScaffold(
  * it carries no event, so it shows a neutral notice rather than an invitation.
  */
 @Composable
-private fun LoadFailedPhase(onRetry: () -> Unit, onCancel: () -> Unit) = PhaseScaffold(
+private fun LoadFailedPhase(service: ServiceNotice?, onRetry: () -> Unit, onCancel: () -> Unit) = PhaseScaffold(
     body = {
         CenteredBody {
             AppNoticeCard(
                 icon = JoinNoticeOffline,
                 title = stringResource(Res.string.load_failed_title),
-                body = stringResource(Res.string.load_failed_body),
+                body = stringResource(loadFailedBody(service)),
             )
         }
     },

@@ -2,6 +2,7 @@ package app.snapsync.feature.creation
 
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.CreateOutcome
@@ -151,7 +152,7 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: EventId? = null
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.Transient),
+            FakeClient(CreateOutcome.Transient()),
             status,
             onMinted = { eventId, _ -> provisioned = eventId },
             minting = null,
@@ -159,7 +160,7 @@ class CreateEventTest {
 
         useCase.create("x", startsAt, endsAt, openUntil = null)
 
-        assertEquals(CreationStatus.Failed(CreationFailureReason.SERVER), status.value)
+        assertEquals(CreationStatus.Failed(CreationFailureReason.SERVER, ServiceFault.UNREACHABLE), status.value)
         assertNull(provisioned)
     }
 

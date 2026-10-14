@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /** A query bundle whose reads are [load] and [count]; by default every details load fails and no count is available. */
 internal fun testQueries(
-    load: suspend (eventId: String, linkKey: String?) -> JoinLoad = { _, _ -> JoinLoad.Failed },
+    load: suspend (eventId: String, linkKey: String?) -> JoinLoad = { _, _ -> JoinLoad.Failed() },
     count: suspend (CaptureCutoff, CaptureCeiling?) -> Int? = { _, _ -> null },
     losesNothing: suspend () -> Boolean = { false },
 ): UserQueries = object : UserQueries {
@@ -42,13 +42,13 @@ internal fun joinDetails(load: suspend (String) -> JoinLoad): UserQueries =
 
 /** A query bundle whose shareable count is [count]; every details load fails. */
 internal fun counting(count: suspend (CaptureCutoff, CaptureCeiling?) -> Int?): UserQueries =
-    testQueries({ _, _ -> JoinLoad.Failed }, count)
+    testQueries({ _, _ -> JoinLoad.Failed() }, count)
 
 /** The user-command bundle with the inert defaults the production implementation does not carry. */
 internal fun testCommands(
     leave: suspend () -> Unit = {},
     create: (name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) -> Unit = { _, _, _, _ -> },
-    commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed },
+    commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed() },
     share: (url: String, title: String) -> Unit = { _, _ -> },
     requestAccess: () -> Unit = {},
     openSettings: () -> Unit = {},

@@ -57,6 +57,7 @@ import app.snapsync.ui.resources.join_failed_body
 import app.snapsync.ui.resources.join_failed_title
 import app.snapsync.ui.resources.link_incomplete_body
 import app.snapsync.ui.resources.link_incomplete_title
+import app.snapsync.ui.resources.load_failed_body_updating
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.loading_event
 import app.snapsync.ui.resources.members_count
@@ -64,6 +65,7 @@ import app.snapsync.ui.resources.message_device_modified
 import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.message_invalid_link
 import app.snapsync.ui.resources.message_report_this
+import app.snapsync.ui.resources.message_service_trouble
 import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.ok
 import app.snapsync.ui.resources.receive_toggle
@@ -89,6 +91,7 @@ import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.PendingSwitch
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
@@ -234,6 +237,32 @@ class JoinScreenTest {
         onNodeWithText(str(Res.string.retry)).assertExists()
         onNodeWithText(str(Res.string.retry)).performClick()
         assertEquals(1, retried)
+    }
+
+    @Test
+    fun `a load or a join the service failed says which way, keeping Retry`() = runComposeUiTest {
+        setScreen {
+            TestStatusScreen(
+                joining(JoinPhase.LoadFailed).let {
+                    it.copy(layer = (it.layer as Layer.JoiningEvent).copy(service = ServiceNotice.UPDATING))
+                },
+            )
+        }
+        onNodeWithText(str(Res.string.load_failed_body_updating)).assertExists()
+        onNodeWithText(str(Res.string.retry)).assertExists()
+    }
+
+    @Test
+    fun `a join the service failed says which way`() = runComposeUiTest {
+        setScreen {
+            TestStatusScreen(
+                joining(JoinPhase.Detailed("Anna's Wedding", JoinPhase.Detailed.Step.CommitFailed)).let {
+                    it.copy(layer = (it.layer as Layer.JoiningEvent).copy(service = ServiceNotice.TROUBLE))
+                },
+            )
+        }
+        onNodeWithText(str(Res.string.message_service_trouble)).assertExists()
+        onNodeWithText(str(Res.string.retry)).assertExists()
     }
 
     // ---- without a network (capability `join-event`, "Without a network, the join screen waits for one") ----

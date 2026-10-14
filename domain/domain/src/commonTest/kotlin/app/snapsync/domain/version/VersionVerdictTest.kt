@@ -21,7 +21,7 @@ class VersionVerdictTest {
 
     @Test
     fun a_server_issue_or_no_answer_says_nothing() {
-        for (other in listOf(BackendAnswer.ServerIssue, BackendAnswer.NoAnswer)) {
+        for (other in listOf(BackendAnswer.ServerIssue, BackendAnswer.Updating, BackendAnswer.NoAnswer)) {
             assertEquals(VersionVerdict.NoVerdict, VersionVerdict.of(other), "$other")
         }
     }

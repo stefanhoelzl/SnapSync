@@ -9,8 +9,13 @@ import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.ProveResult
+import app.snapsync.wire.api.AppTooOld
 import app.snapsync.wire.api.ChallengeReply
+import app.snapsync.wire.api.Maintenance
+import app.snapsync.wire.api.Malformed
 import app.snapsync.wire.api.Routes
+import app.snapsync.wire.api.ServerError
+import app.snapsync.wire.api.Unreachable
 import app.snapsync.wire.models.MintRequest
 import app.snapsync.wire.models.RenewRequest
 import kotlin.io.encoding.Base64
@@ -51,17 +56,21 @@ class AttestationIssuer(private val integrity: DeviceIntegrity, private val exch
     }
 
     private suspend fun renewOnce(device: DeviceId, key: AttestKeyId): TokenIssuance {
-        val challenge = challenge() ?: return TokenIssuance.NoAnswer
-        return renewOver(device, key, challenge)
+        return when (val reply = challenge()) {
+            is ChallengeReply.Issued -> renewOver(device, key, reply.challenge.challenge)
+            is AppTooOld, is ServerError, is Maintenance, is Unreachable, is Malformed -> IssuerReplies.noAnswer(reply)
+        }
     }
 
     private suspend fun mintOnce(device: DeviceId): Minting {
-        val challenge = challenge() ?: return Minting.Unproved(TokenIssuance.NoAnswer)
-        return mintOver(device, challenge)
+        return when (val reply = challenge()) {
+            is ChallengeReply.Issued -> mintOver(device, reply.challenge.challenge)
+            is AppTooOld, is ServerError, is Maintenance, is Unreachable, is Malformed ->
+                Minting.Unproved(IssuerReplies.noAnswer(reply))
+        }
     }
 
-    private suspend fun challenge(): String? =
-        (exchange.send(Routes.Challenge.request()) as? ChallengeReply.Issued)?.let { it.challenge.challenge }
+    private suspend fun challenge(): ChallengeReply = exchange.send(Routes.Challenge.request())
 
     /** A failure to produce the assertion is LOCAL — no request was sent — and logged with the platform's own words. */
     private suspend fun renewOver(device: DeviceId, key: AttestKeyId, challenge: String): TokenIssuance =

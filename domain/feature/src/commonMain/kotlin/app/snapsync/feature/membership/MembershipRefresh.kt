@@ -78,7 +78,7 @@ class MembershipRefresh(
         if (current.eventId != eventId) return RefreshOutcome.INCONCLUSIVE
         return when (fetched) {
             // A refresh reads the details without a link, so it never asks whether a key opens the event.
-            JoinLoad.Failed, JoinLoad.WrongLink -> RefreshOutcome.INCONCLUSIVE
+            is JoinLoad.Failed, JoinLoad.WrongLink -> RefreshOutcome.INCONCLUSIVE
             JoinLoad.NotFound ->
                 // Witness two: this membership's OWN deadline. Absent it — or before it — the backend is
                 // disbelieved. Both readings mean "I could not tell", never "destroy it".
@@ -98,6 +98,18 @@ class MembershipRefresh(
                 converge(current, fetched)
             }
         }
+    }
+
+    /**
+     * The service answered a write for [eventId] — a rename, the shared set — that the event's photos were deleted: its
+     * positive word, as a completed event read is, so the membership is marked at once and stays, shown as over: the
+     * app never leaves an event on its own.
+     */
+    suspend fun confirmedDeleted(eventId: EventId): RefreshOutcome {
+        val current = configSource.config.value ?: return RefreshOutcome.INCONCLUSIVE
+        if (current.eventId != eventId) return RefreshOutcome.INCONCLUSIVE
+        markDeleted(current)
+        return RefreshOutcome.COMPLETED
     }
 
     /** Fold a found, not-completed event's details into [current] — saved only when something changed. */

@@ -50,6 +50,12 @@ interface BackendLevers {
      */
     suspend fun fail(operation: String, fault: BackendFault, times: Int? = null)
 
+    /**
+     * The faults [fail] set for [operation] — for every operation when omitted — are lifted before they ran out: the
+     * service works again.
+     */
+    suspend fun recover(operation: String? = null)
+
     /** The nightly sweep deleting [event]: every later read of it is `404`. */
     suspend fun sweep(@JoinedEvent event: String? = null)
 

@@ -1042,8 +1042,16 @@ nested in its reply (`CreateEventReply.InvalidName`), one defined once under `co
 that references it implements (`EventNotFound`, `Unauthorized`, `AppTooOld`, …). Each outcome belongs to one group by
 its status — `Success` (2xx–3xx), `ClientError` (4xx — a refused build is the client's), `ServerIssue` (5xx) — and
 every reply also answers `NoAnswer`: `Unreachable` (nothing came back) or `Malformed` (an answer outside the
-description: an undeclared status, a media type or text it does not name, a body that does not decode). One status
-may name several outcomes, by media type or by the body's text (an annotated enumeration, `oneOf` + `const`).
+description: an undeclared status, a media type or text it does not name, a body that does not decode — and a body on
+a success that declares none: the backend sends those empty, so a body there came from something in its place, a Wi-Fi
+login page or a proxy, and is never a done write). One status may name several outcomes, by media type or by the body's
+text (an annotated enumeration, `oneOf` + `const`).
+
+**What a member is told of a failing service** is one reading of the reply, made once (`faultOf`, over
+`domain.service.ServiceFault`): `NoAnswer` — no answer, or one the app cannot read — is *cannot be reached*, a
+`ServerIssue` is *having trouble*, and `Maintenance` is *being updated*; every other answer is a working service.
+Each need-shaped service carries it in its outcome, and every answer also reaches `ServiceConditions`, the cell the
+joined screen's service line reads (decision record `changes/tell-service-faults`).
 
 **The layers, app side:**
 
@@ -1051,7 +1059,7 @@ may name several outcomes, by media type or by the body's text (an annotated enu
 |---|---|---|
 | `HttpTransport` (port) | send one request, answer what came back — never throws | `ports/`; `KtorHttpTransport` in `:adapter:generic:app` |
 | `:domain:wire` (generated) | routes, request shapes, replies — the description, in Kotlin | `domain/wire`, from `api/openapi.yaml` |
-| `BackendExchange` / `BackendGateway` | the protocol: the build's base and version header on every request (`BackendTarget`), the bearer on a `GatedRequest` only, `Unauthorized` → recover → retry once, `AppTooOld`/`Success` → the version gate | `data/backend/` |
+| `BackendExchange` / `BackendGateway` | the protocol: the build's base and version header on every request (`BackendTarget`), the bearer on a `GatedRequest` only, `Unauthorized` → recover → retry once, `AppTooOld`/`Success` → the version gate, every answer → the service's condition (`data/service/ServiceConditions`) | `data/backend/` |
 | need-shaped services | what a reply MEANS to the app (`EventNotFound` is "gone" to the directory, "nothing to leave" to the leave) | `services/backend/` |
 
 **Two kinds of route.** An operation whose `security` admits no token is `OpenRequest` (the `/attest/…` issuers);

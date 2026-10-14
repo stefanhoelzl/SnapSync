@@ -5,6 +5,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.ScreenMessage
 
@@ -25,6 +26,11 @@ data class PendingJoin(
     val linkKey: String? = null,
     /** The loaded event's key id, once its details loaded — what [linkKey] was checked against. */
     val eventKeyId: String? = null,
+    /**
+     * How SnapSync's service failed the load or the commit [phase] shows the failure of — told in its own words —
+     * `null` on every other phase, and for a failure that was not the service's.
+     */
+    val service: ServiceFault? = null,
 ) {
     /** Never the key: a pending join reaches logs and test failures. */
     override fun toString(): String = "PendingJoin(eventId=$eventId, phase=$phase, linkKey=${linkKey?.let { "present" }})"
