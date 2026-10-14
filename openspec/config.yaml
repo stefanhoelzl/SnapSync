@@ -108,8 +108,10 @@ context: |
   seconds. Each has a host-declared date range (creator-chosen start AND end, at
   most 30 days apart). The end is the
   capture-date ceiling: it bounds which photos may be uploaded and closes
-  nothing. Each event has an OPEN-UNTIL date — its end, or, for an event created
-  after its end, the 1/7/14/30 days the host chose at creation — and nothing ever
+  nothing. Each event has an OPEN-UNTIL date — its end, or a later day the host
+  chose at creation, at most 30 days past the later of the end and the creation
+  (the app offers 1/7/14/30 days only for an event created after its end;
+  decision record: changes/host-chosen-open-until) — and nothing ever
   closes: joining, sharing, receiving and renaming keep working until the photos
   are deleted, so a guest who scans days late still joins and contributes their
   in-window photos. The nightly sweep deletes the photos once the open-until date

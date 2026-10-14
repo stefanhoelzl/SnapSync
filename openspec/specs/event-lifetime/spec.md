@@ -4,7 +4,7 @@
 
 Serves hosts and guests of a short-lived event with plain promises about how its life runs, from creation to the
 deletion of its photos. The date range bounds only which photos may be shared; an event has an open-until date — its
-end, or, for an event created after its end, the date the host chose — and nothing closes: joining, sharing,
+end, or a later date its host chose at creation — and nothing closes: joining, sharing,
 receiving and renaming keep working until the photos are deleted, so a guest who scans late still joins and
 contributes. The photos are deleted soon after everyone still in the event has shared and received everything once
 the open-until date has passed, a few days after the last activity at the latest, and never later than 30 days after
@@ -20,8 +20,8 @@ The end of an event's date range SHALL bound only which photos may be shared (ca
 `photo-sharing`); reaching it SHALL close nothing. Until the event's photos are deleted (see "An event's
 photos are deleted once it is finished, and after 30 days at the latest"), joining, rejoining, sharing
 in-range photos, withdrawing them, receiving, renaming and changing settings SHALL all keep working after the
-range has ended, including after the event's open-until date (see "An event created after its end stays open
-as long as the host chose").
+range has ended, including after the event's open-until date (see "An event stays open until the date its host
+chose").
 
 #### Scenario: A late guest still joins
 - **WHEN** a guest scans the invite a week after the event's range ended, while its photos have not been
@@ -161,13 +161,14 @@ library SHALL stay there when the event or its photos are deleted.
 - **THEN** no notification was ever shown, the app says the event is over, and the photos they had received
   are still in their library
 
-### Requirement: An event created after its end stays open as long as the host chose
+### Requirement: An event stays open until the date its host chose
 
-Every event SHALL have an **open-until date**, fixed at creation: the end of its range for an event created
-before its end, and for an event created after its end, the date the host chose when creating it (capability
-`create-event`). The event SHALL NOT be finished — and its photos SHALL NOT be deleted for being finished or
-idle — before its open-until date. The open-until date SHALL NOT change which photos are shared; that remains
-the range's alone.
+Every event SHALL have an **open-until date**, fixed at creation: the day its host chose when creating it, or the
+end of its range when the host chose none. A chosen day SHALL NOT be before the end of the range, and SHALL NOT be
+more than about 30 days after the later of that end and the moment the event was created; an event asked for with
+a day outside that bound SHALL NOT be created. When the app asks the host for a day is capability `create-event`.
+The event SHALL NOT be finished — and its photos SHALL NOT be deleted for being finished or idle — before its
+open-until date. The open-until date SHALL NOT change which photos are shared; that remains the range's alone.
 
 #### Scenario: Guests join a party that is over
 - **WHEN** a host creates on Monday an event for Saturday's party, choosing 7 days, and shares the invite
@@ -181,6 +182,14 @@ the range's alone.
 #### Scenario: The range still bounds the photos
 - **WHEN** a guest of a back-dated event took photos the day after the party, before the chosen date
 - **THEN** those photos are not shared
+
+#### Scenario: No choice keeps the end
+- **WHEN** a host creates an event that ends on Sunday evening without choosing a day
+- **THEN** the event may be finished, and its photos deleted, from Sunday evening on
+
+#### Scenario: A chosen day is bounded
+- **WHEN** a host creating an event that ends on 10 June, on 1 June, asks to keep it open until 15 July
+- **THEN** the event is not created, and no event of theirs is kept open past 10 July
 
 ### Requirement: The app never leaves an event on its own
 
