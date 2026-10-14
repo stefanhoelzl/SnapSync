@@ -497,7 +497,12 @@ and saves it after its simulator tests, so it holds the device and the simulator
 `.github/actions/konan-restore` and `konan-save`. The primary key carries the run id so it never hits and every save
 writes fresh; only `main` saves, and each save deletes the family's superseded entries (the repo's 10 GB budget is
 full). The Gradle caches are shared the same way: `android-build` and `journeys (android)` read `build`'s, `journeys
-(ios)` reads `ios-build`'s (`GRADLE_BUILD_ACTION_CACHE_KEY_JOB`), and only the build jobs write.
+(ios)` reads `ios-build`'s (`GRADLE_BUILD_ACTION_CACHE_KEY_JOB`), and only the build jobs write. The one exception is
+what `ios-build`'s cache cannot hold: the rig app `journeys (ios)` builds compiles differently from `ios-build`'s
+(the `local` deployment's domain is generated into `:domain:model`, so every module above it differs, and the rig
+adds its own), so that cell keeps the rig app's Gradle build-cache entries and its two frameworks' Kotlin/Native
+incremental-link caches (`kotlin.incremental.native`, `gradle.properties`) as one `journeys-ios-build-` entry of
+~150 MB, restored over `ios-build`'s, saved by `main` only on success, superseded entries reclaimed.
 
 **Archive verification** (delivering runs): read the bundle id, `uploadBase`, APNs environment,
 crash-reporting environment and DSN back out of **both** the app and the nested `.appex`, and compare
