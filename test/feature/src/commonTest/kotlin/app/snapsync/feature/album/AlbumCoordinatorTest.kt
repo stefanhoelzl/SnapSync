@@ -114,6 +114,20 @@ class AlbumCoordinatorTest {
     }
 
     @Test
+    fun `a launch's grant replay does not recreate a deleted album`() = runTest {
+        // The member deleted the album; the replay is no opt-in, so it stays deleted.
+        val manager = FakeAlbumManager(createResult = "album-NEW", existingIds = mutableSetOf())
+        val store = albumMap().apply { put(testEventId(event.value), "album-OLD") }
+        val id = AlbumCoordinator(
+            GalleryAlbums(manager),
+            store,
+        ).ensureAlbum(testEventId(event.value), "Birthday", saveToAlbum = true, optIn = false)
+        assertNull(id)
+        assertEquals("album-OLD", store.get(testEventId(event.value))) // the map is untouched
+        assertEquals(0, manager.createCount)
+    }
+
+    @Test
     fun `ensureAlbum returns null on a creation failure and stores nothing`() = runTest {
         val manager = FakeAlbumManager(createResult = null)
         val store = albumMap()
