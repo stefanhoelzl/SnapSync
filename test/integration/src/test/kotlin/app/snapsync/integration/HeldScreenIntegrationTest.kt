@@ -8,7 +8,6 @@ import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
-import kotlin.test.assertEquals
 
 /**
  * The screens the app shows only while it waits (`docs/testing.md`, "Every reviewed state is reachable"): each is
@@ -39,56 +38,78 @@ class HeldScreenIntegrationTest {
 
     @Test
     @Verifies(spec = "join-event", requirement = "Joining happens only on confirmation and needs a connection")
-    fun a_held_enrolment_keeps_the_join_gate_committing_until_released() = rigTest {
-        val event = registerEvent()
-        openLink(inviteLink(event))
-        awaitState { it.step() == JoinPhase.Detailed.Step.Ready }
-        hold("join")
+    fun a_held_enrolment_keeps_the_join_gate_committing_until_released() = behaviour {
+        val event = given {
+            val event = registeredEvent()
+            val link = inviteFor(event)
+            step(
+                "its join gate open, ready to join",
+                act = { openLink(link) },
+                until = { screen<Layer.JoiningEvent> { it.step() == JoinPhase.Detailed.Step.Ready } },
+            )
+            step("the enrolment held", act = { backend.hold(BackendCall.JOIN) }, until = {})
+            event
+        }
 
-        user("confirmJoin")
-        awaitState { it.step() == JoinPhase.Detailed.Step.Committing }
-        neverWithin(what = "the join committed while the enrolment was held") { it.ready.configResolved }
+        whenever { user("confirmJoin") }
+        then {
+            screen<Layer.JoiningEvent> { it.step() == JoinPhase.Detailed.Step.Committing }
+            event<WorldEvent.BackendHeld> { it.call == BackendCall.JOIN }
+            neverScreen<Layer.Joined>()
+        }
 
-        release("join")
-        assertEquals(event, awaitState { it.ready.configResolved }.ready.eventId)
+        whenever { backend.release(BackendCall.JOIN) }
+        then { screen<Layer.Joined> { it.membership.eventId == event } }
     }
 
     @Test
     @Verifies(spec = "create-event", requirement = "The creator joins through the same join screen as every guest")
-    fun a_held_create_keeps_the_create_in_flight_until_released() = rigTest {
-        hold("create")
+    fun a_held_create_keeps_the_create_in_flight_until_released() = behaviour {
+        given { step("the create held", act = { backend.hold(BackendCall.CREATE) }, until = {}) }
 
-        user("create", "name" to Rig.EVENT_NAME, "startsAt" to Rig.WINDOW_START, "endsAt" to Rig.WINDOW_END)
-        awaitState { it.ui.layer == Layer.CreatingEvent }
-        neverWithin(what = "the create resolved while it was held") { it.ui.layer != Layer.CreatingEvent }
+        whenever {
+            user(
+                "create",
+                "name" to Rig.EVENT_NAME,
+                "startsAt" to Rig.WINDOW_START,
+                "endsAt" to Rig.WINDOW_END,
+            )
+        }
+        then {
+            screen<Layer.CreatingEvent>()
+            event<WorldEvent.BackendHeld> { it.call == BackendCall.CREATE }
+            neverScreen<Layer.JoiningEvent>()
+        }
 
-        release("create")
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
+        whenever { backend.release(BackendCall.CREATE) }
+        then { screen<Layer.JoiningEvent> { it.phase is JoinPhase.Detailed } }
     }
 
     @Test
     @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
-    fun a_held_enumeration_keeps_the_joined_screen_loading_until_released() = rigTest {
-        library.holdEnumeration(on = true)
+    fun a_held_enumeration_keeps_the_joined_screen_loading_until_released() = behaviour {
+        given {
+            step("the library's walks held", act = { library.holdEnumeration(on = true) }, until = {})
+            createdEvent()
+            step(
+                "joined, nothing counted",
+                act = { user("confirmJoin") },
+                until = { screen<Layer.Joined> { it.health == SyncHealth.Loading } },
+            )
+        }
 
-        createAndJoin()
-        awaitHealth { it == SyncHealth.Loading }
-        foreground(awaited = false)
-        neverWithin(what = "the status counted a library whose walk was held") { it.health != SyncHealth.Loading }
+        whenever { os("app", "onForeground") }
+        then {
+            event<WorldEvent.LibraryEnumerationHeld>()
+            neverScreen<Layer.Joined> { it.health != SyncHealth.Loading }
+        }
 
-        library.holdEnumeration(on = false)
-        foreground()
-        awaitInSync()
+        whenever {
+            library.holdEnumeration(on = false)
+            os("app", "onForeground")
+        }
+        then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
 
-    private suspend fun Rig.hold(call: String) {
-        backend.hold(checkNotNull(BackendCall.ofKey(call)))
-    }
-
-    private suspend fun Rig.release(call: String) {
-        backend.release(checkNotNull(BackendCall.ofKey(call)))
-    }
-
-    private fun app.snapsync.rig.RigState.step(): JoinPhase.Detailed.Step? =
-        ((ui.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.step
+    private fun Layer.JoiningEvent.step(): JoinPhase.Detailed.Step? = (phase as? JoinPhase.Detailed)?.step
 }

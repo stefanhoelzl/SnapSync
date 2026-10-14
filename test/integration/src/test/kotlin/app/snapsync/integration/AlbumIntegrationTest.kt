@@ -1,9 +1,13 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.AlbumKind
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.AlbumStyle
+import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,20 +25,35 @@ class AlbumIntegrationTest {
 
     @Test
     @Verifies(spec = "event-album", requirement = "The album holds the event as this device holds it")
-    fun enqueued_uploads_are_placed_in_the_album_before_they_finish_and_only_once() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin("saveToAlbum" to "true", name = "Party")
-        awaitAlbum() // a cycle places only into an album that exists
-        addPhoto("A")
-        addPhoto("B")
+    fun enqueued_uploads_are_placed_in_the_album_before_they_finish_and_only_once() = behaviour {
+        val (_, album) = given {
+            extensionUploadsOnly()
+            val joined = joinedSavingToAlbum(name = "Party") // a cycle places only into an album that exists
+            step(
+                "two photos taken",
+                act = {
+                    library.add("A")
+                    library.add("B")
+                },
+                until = { settled { true } },
+            )
+            joined
+        }
 
-        cycle() // placed, then the jobs are created
+        // Placed, then the jobs are created — and no job has landed.
+        whenever { cycle() }
+        then {
+            event<WorldEvent.LibraryJoinedAlbum> { it.album == album && it.asset == "A" }
+            event<WorldEvent.LibraryJoinedAlbum> { it.album == album && it.asset == "B" }
+            settled { true }
+        }
 
-        assertEquals(listOf("A", "B"), albums().single().assets.sorted(), "placed before either upload finished")
-
-        completeJobs()
-        cycle() // acknowledged: nothing is placed again
-        assertEquals(2, albums().single().assets.size, "a completion places nothing a second time")
+        // Acknowledged: a completion places nothing a second time.
+        whenever {
+            uploadQueue.completeJob(null)
+            cycle()
+        }
+        then { never<WorldEvent.LibraryJoinedAlbum>() }
     }
 
     @Test
@@ -128,16 +147,18 @@ class AlbumIntegrationTest {
         requirement = "The album survives leaving and is reused on rejoin",
         scenario = "Rejoin reuses the album",
     )
-    fun rejoining_the_event_reuses_its_album() = rigTest {
-        val event = createAndJoin("saveToAlbum" to "true", name = "Party")
-        assertEquals(1, awaitAlbum().size)
-        leave()
+    fun rejoining_the_event_reuses_its_album() = behaviour {
+        given {
+            val (event, _) = joinedSavingToAlbum(name = "Party")
+            left()
+            gateOpenOn(event)
+        }
 
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
-        join("saveToAlbum" to "true")
-
-        assertEquals(1, albums().size, "the stored album is reused, never duplicated")
+        whenever { user("confirmJoin", "saveToAlbum" to "true") }
+        then {
+            screen<Layer.Joined>()
+            never<WorldEvent.LibraryAlbumCreated>() // the stored album is reused, never duplicated
+        }
     }
 
     @Test
@@ -172,6 +193,19 @@ class AlbumIntegrationTest {
         assertEquals(placed, albums().single().assets.size, "the join landed with its gather still held")
         library.holdAdds(on = false)
         eventually<Int>(read = { albums().single().assets.size }) { it > placed }
+    }
+
+    /** This device leaves its event. */
+    private suspend fun Given.left() = step("left", act = { user("leave") }, until = { settled { true } })
+
+    /** The join gate open on [event], through its invite, ready to join. */
+    private suspend fun Given.gateOpenOn(event: String) {
+        val link = inviteFor(event)
+        step(
+            "its join gate open",
+            act = { openLink(link) },
+            until = { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } },
+        )
     }
 
     /** The photo library plays an Android phone's, whose albums are folders — read once at host assembly. */

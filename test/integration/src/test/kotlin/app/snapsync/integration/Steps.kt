@@ -2,6 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.decodeEventUrl
@@ -43,6 +45,24 @@ suspend fun Given.joinedEvent(vararg choices: Pair<String, String>): String {
     val event = createdEvent()
     step("joined", act = { user("confirmJoin", *choices) }, until = { screen<Layer.Joined>() })
     return event
+}
+
+/**
+ * An event created and joined saving to its album, and the album made in the library. Answers the event's id and the
+ * album's, as the library gave it.
+ */
+suspend fun Given.joinedSavingToAlbum(name: String = Rig.EVENT_NAME): Pair<String, String> {
+    val event = createdEvent(name)
+    lateinit var album: Seen<WorldEvent.LibraryAlbumCreated>
+    step(
+        "joined, saving to its album",
+        act = { user("confirmJoin", "saveToAlbum" to "true") },
+        until = {
+            screen<Layer.Joined>()
+            album = event<WorldEvent.LibraryAlbumCreated>()
+        },
+    )
+    return event to album.value.album
 }
 
 /** The app comes to the front, and does what it does there until it is settled. */
@@ -91,7 +111,7 @@ suspend fun Given.photos(vararg ids: String) = step(
 
 /** An own photo [id] taken on the event's day lands in the library. */
 suspend fun Acts.takePhoto(id: String) {
-    device("gallery/add", "id" to id, "date" to Rig.PHOTO_DATE, "kind" to "photo")
+    library.add(id, date = Rig.PHOTO_DATE)
 }
 
 /** One upload cycle, as the OS-driven extension runs it. Answers what it tells the system (`completed`, `processing`). */
