@@ -80,7 +80,7 @@
     <string name="store_app_store">App Store öffnen</string>
     <string name="store_google_play">Google Play öffnen</string>
 
-    <string name="join_access_notice">Als Nächstes fragt iOS nach Zugriff auf deine Fotos</string>
+    <string name="join_access_notice">Als Nächstes wirst du nach Zugriff auf deine Fotos gefragt</string>
     <string name="join_access_info">Was der Beitritt mit deinen Fotos macht</string>
     <string name="join_access_sheet_title">Was der Beitritt bewirkt</string>
     <string name="join_access_dismiss">Verstanden</string>
