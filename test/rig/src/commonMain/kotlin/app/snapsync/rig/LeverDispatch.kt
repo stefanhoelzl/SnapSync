@@ -238,6 +238,7 @@ private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.FILES_MOCKED -> Need.Mocked(MockedSystem.FILES)
     LeverNeed.DATABASES_MOCKED -> Need.Mocked(MockedSystem.DATABASES)
     LeverNeed.KEYCHAIN_MOCKED -> Need.Mocked(MockedSystem.KEYCHAIN)
+    LeverNeed.PREFERENCES_MOCKED -> Need.Mocked(MockedSystem.PREFERENCES)
     LeverNeed.LIFECYCLE_MOCKED -> Need.Mocked(MockedSystem.LIFECYCLE)
     LeverNeed.LINKS_MOCKED -> Need.Mocked(MockedSystem.LINKS)
     LeverNeed.PUSH_MOCKED -> Need.Mocked(MockedSystem.PUSH)

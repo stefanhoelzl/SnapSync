@@ -133,8 +133,8 @@ enum class KeychainItem {
 
 /**
  * **An install upgraded from an older build** — the state an older build left on the device that no path in the
- * current app produces, written over the device's own databases and disk. The first lever of the older-install service
- * a later change designs.
+ * current app produces, written over the device's own databases, disk and Preferences, each in the format the build that
+ * kept it wrote (`docs/testing.md`, "Typed services").
  */
 @Rpc
 interface OlderInstallLevers {
@@ -145,11 +145,47 @@ interface OlderInstallLevers {
      */
     suspend fun stagedBacklog(device: String? = null, asset: String? = null): Long
 
+    /**
+     * **What the device holds now, as an install whose databases are older left it** — the moment before an update:
+     * `ledger.db` [ledgerBehind] versions behind this build's and `downloads.db` [downloadsBehind] behind (omitted: at
+     * this build's, as they are). Each older database is built by this build's own migrations from the oldest version
+     * the chain still builds, the rows each version's build wrote added as its version is passed — so a migration added
+     * later adds a case by itself. What lived outside a database at that version is put back where it lived: the shared
+     * records in their legacy files and keys, a transfer an earlier build started on the address it gave it. The app's
+     * processes keep what they hold until they die: an update is a relaunch after this.
+     *
+     * Refused for a version older than the chain builds. Answers the versions left, and what the older formats hold.
+     */
+    suspend fun installedAt(ledgerBehind: Int? = null, downloadsBehind: Int? = null): SeededInstall
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<OlderInstallLevers>(
         OlderInstallLevers::class,
         "older-install",
-        setOf(LeverNeed.FILES_MOCKED, LeverNeed.DATABASES_MOCKED),
+        setOf(
+            LeverNeed.FILES_MOCKED,
+            LeverNeed.DATABASES_MOCKED,
+            LeverNeed.PREFERENCES_MOCKED,
+            LeverNeed.UPLOAD_SESSION_MOCKED,
+            LeverNeed.DOWNLOADS_MOCKED,
+        ),
         { serviceDescriptorOf() },
     )
 }
+
+/** What [OlderInstallLevers.installedAt] left: each database's version, and what the older formats hold. */
+@Serializable
+data class SeededInstall(
+    /** `ledger.db`'s version now, and how many older ones the migration chain still builds below it. */
+    val ledger: Int,
+    val olderLedgers: Int,
+    /** `downloads.db`'s version now, and how many older ones the migration chain still builds below it. */
+    val downloads: Int,
+    val olderDownloads: Int,
+    /** Whether the shared records — membership, manifest record, pending leaves, albums, checks — are in their legacy homes. */
+    val legacyRecords: Boolean,
+    /** The own uploads left in flight to the byte route that names no event, by upload key. */
+    val uploadsWithNoEvent: List<String>,
+    /** The downloads left in flight under a description that names no event, by source asset. */
+    val downloadsWithNoEvent: List<String>,
+)

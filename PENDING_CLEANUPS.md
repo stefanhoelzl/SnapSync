@@ -4,6 +4,17 @@ Backwards-compatibility and legacy shims that are still here, and what lets each
 by the condition that unlocks them. Any PR that adds a shim adds its entry here (`CLAUDE.md`, "Workflow"). The
 PR that removes a shim deletes its entry. Anchors name files and symbols rather than line numbers.
 
+**An app shim that reads what an older build left on the device is unlocked by the nightly sweep, not by the floor
+alone.** A phone the version gate refuses keeps its event, and it updates later ("Photos wait for the update",
+capability `app-update-required`), so its old state must stay readable for as long as an event of that era can live.
+The sweep's version table (`api/src/scripts/sweep.ts`, `versionTable`) showing no kept device below the version is
+what proves no such phone remains.
+
+**An app shim's entry names what covers it**: `AppUpdateIntegrationTest` updates a device from every version the
+migration chain still builds, over the state `older-install.installedAt` writes (`test/rig/.../OlderInstalls.kt`,
+one layer per thing an older build wrote). Removing a shim removes its layer, and squashes the chain past the versions
+whose devices needed it, or those versions' cases fail — which is the point.
+
 ## Once `MIN_APP_VERSION` ≥ 0.5
 
 **Unlock condition:**
@@ -89,6 +100,8 @@ middle of an event.
     `encrypted-upload`, `union-log`, `dev/fallback`, …).
   - In the app:
     - `BackendMock`'s and `BackendRouter`'s event-less routes.
+    - `OlderInstalls.kt`'s `startedByZeroFour`, the 0.4 upload in flight the update test's ledger.db v12 case lands
+      there (with the ledger chain squashed to a v13 baseline, as the parked rows above need).
     - `test/rig/.../MockWorld.kt`.
     - The `LedgerStoreContract` clause "a row keeps the destination its own request carried across a route
       change".
@@ -106,25 +119,38 @@ middle of an event.
 - **Record:** `openspec/changes/archive/2026-10-06-server-rendered-event-page` (design: phase 2).
 
 ### Leftovers from events joined under ≤0.4 (app)
-A 0.4 phone that updates straight to a newer build in the middle of an event still needs these. Once the floor
-is 0.5, no such membership is live.
+A 0.4 phone that updates straight to a newer build in the middle of an event still needs these — including one the
+version gate refused, which updates later. Once the sweep shows no kept device below 0.5 (this section's unlock), no
+such membership is live.
+
+**Covered by** `AppUpdateIntegrationTest`'s cases at ledger.db v12 and downloads.db v5–v6, over `OlderInstalls.kt`'s
+`LEDGER_BASELINE` and `DOWNLOADS_BASELINE` layers.
 
 - **Parked ledger rows.**
   - **What:** 12.sqm moved every row under the empty event `''`; the membership's legacy copy adopts them into the
     event it copies, or drops them when there is none (`LegacyRecords.copyMembership`, `Ledger.sq` `adoptParked` /
     `dropParked`).
-  - **Remove:** both queries, their calls in `LegacyRecords`, and `LedgerMigrationTest`'s parked-row cases.
+  - **Remove:** both queries, their calls in `LegacyRecords`, and `LedgerMigrationTest`'s parked-row cases. Squash
+    the ledger chain to a v13 baseline in the same PR: a v12 device's rows would stay parked, and the update test's v12
+    case re-uploads them.
   - **Keep:** 12.sqm itself, until the migration chain is squashed again.
 - **3-field download task tags.**
   - **What:** `domain/services/.../downloads/DownloadJobs.kt` (`LEGACY_TAG_FIELDS`) reads tags written by a
     transfer that ≤0.4 started.
-  - **Remove:** it and its cases in `DownloadJobsTest`.
+  - **Covered by:** the update test's downloads.db v5–v6 cases, whose received photo in flight finishes under 0.4's tag
+    (`OlderInstalls.kt`, `startedWithNoEvent`).
+  - **Remove:** it and its cases in `DownloadJobsTest`, and `startedWithNoEvent`. Squash the downloads chain to a v7
+    baseline in the same PR, or the v5–v6 cases lose that photo.
 - **Download rows with an empty event.**
   - **What:** rows planned before 6.sqm, handled in:
     - `DownloadJobs.stagingPath`, which stages them in the root
     - `domain/model/.../DownloadRecords.kt`
     - `domain/services/.../crypto/DownloadOpening.kt` (`eventId.isNotEmpty()`)
     - the `download-staging/` row of `docs/architecture.md`
+  - **Covered only in part:** the update test stages a 0.4 transfer with no event (`DownloadJobs.stagingPath`'s root),
+    but seeds no row planned with no event: 0.4 tagged every row it planned
+    (`v0.4:domain/services/src/commonMain/sqldelight/download/app/snapsync/services/downloads/db/DownloadStore.sq:49`),
+    so only an install older than 0.4 left one.
   - **Remove:** add a downloads migration that deletes the `eventId = ''` rows, then drop the tolerance.
 
 ### Leave without `?received` (api, optional)
@@ -189,6 +215,10 @@ is 0.5, no such membership is live.
 **Unlock condition:** as for 0.5 above — 0.6 live in both stores, and the sweep's version table shows no kept
 device below it.
 
+0.6 is also the first release that carries the shared database's records (`13.sqm`), the first that stopped events
+closing (`back-dated-events`: open-until dates; the app never leaves an event on its own), and the first built from
+`remove-event-device-cap` (`Event.capacity` optional), so every entry below unlocks here.
+
 ### Header-less download redirects (api)
 - **What:** the version gate lets the download redirect through with no `x-snapsync-app-version` header.
   - `api/src/app.ts`, the version gate: `isDownloadRedirect` (`api/src/route-security.ts`).
@@ -196,6 +226,78 @@ device below it.
   sends it on every request, downloads included (`api/openapi.yaml`, `downloadResource`).
 - **Remove:** drop the `isDownloadRedirect` exemption from the version gate, and `isDownloadRedirect` with it.
   `api/test/union-read.test.ts` (the download redirect) gains the header on its redirect requests.
+
+### Legacy homes of the shared records (app)
+- **What:** an updated device holds the records the app and the extension share in their pre-database homes. The app
+  copies each into `ledger.db` once, at its first open, and deletes it; the extension pauses until it has.
+  - `domain/services/.../databases/LegacyRecords.kt`: the copy — `eventconfig.json`,
+    `device-manifest/last-uploaded.json`, `membership/pending-leaves.txt`, the Preferences keys
+    `app.snapsync.album.map` / `.filled` and `app.snapsync.check.*`.
+  - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
+    membership read's "still in its legacy file" answer (`ConfigService.read`).
+  - `PauseReason.LEGACY_RECORDS` and its check at the head of `CycleGateRead.read`.
+  - `PushRegistrationRecord.fromLegacyFile` (`push-registration/last-registered.txt` into the Preferences key) and
+    its `files` parameter.
+  - `model/ConfigFile.kt` (the envelope codec), read only by the copy.
+- **Why:** a device that updated mid-event must keep its membership, its pending leaves and its albums — one the version
+  gate refused too, which updates later.
+- **Covered by:** `AppUpdateIntegrationTest`'s cases at ledger.db v12–v13: the extension waits
+  (`PauseReason.LEGACY_RECORDS`) until the app's first open copies every record, then shares; nothing is shared twice,
+  the album is kept, the pending leave reaches the backend. Their state is `OlderInstalls.kt`'s `writeLegacyRecords`
+  (0.4's formats, each citing its source) and `forgetLegacyRecords` (what 0.6's copy left).
+- **Remove:** `LegacyRecords` and `LegacyRecordsTest`; `SharedDatabase`'s `legacy` parameter, `imported` and
+  `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
+  copy and its two tests; `ConfigFile.kt`; `writeLegacyRecords`, `forgetLegacyRecords` and the `RECORDS_MOVED` layer
+  in `OlderInstalls.kt`. Squash the ledger chain to a v14 baseline, or the update test's v12–v13 cases lose their
+  membership. Add a migration that drops `legacyImport`. Then the `Files` adapter's
+  not-found classification is no longer load-bearing for the leave decision (`FileAbsence.kt`, `CLAUDE.md`).
+- **Record:** this file's PR (phase 2b, "ports: sql + shared records").
+
+### Derived `closedAt` for builds that predate open-until dates (api)
+- **What:** events no longer close, but the event read still serves `closedAt`, because a build before 0.6 treats a
+  non-null value as "closed" and leaves once it holds everything.
+  - `api/src/routes/support.ts`: `closedForOldBuilds` — the stored stamp, else the open-until date once it has
+    passed and everyone still in the event has shared everything.
+  - `api/src/db.ts`: `sharedByEveryone`, read only by it; `memberCounts`' `final`, read only by those builds' waiting
+    line.
+  - `api/openapi.yaml`: `Event.closedAt` and `MemberCounts.final`.
+- **Unlocks with the floor itself:** a build the gate refuses never reads `closedAt`, and every build that can still
+  talk to the backend from 0.6 on reads `openUntil` and `members.waiting`, reports what it received, and ignores
+  `closedAt`.
+- **Why:** without it such a build would never leave a finished event, and its membership would hold the fast
+  deletion back until the 3-day clock.
+- **Remove:** `closedForOldBuilds` (serve the stored stamp, or drop the field with a `/api/v3`), `sharedByEveryone`,
+  `MemberCounts.final`, and their tests in `api/test/completion.test.ts`.
+- **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D5).
+
+### The event's `capacity` on the wire (api + app)
+- **What:** every event body still carries `capacity`, as `CAPACITY_PLACEHOLDER` (`api/src/config.ts`). It
+  carries no meaning, because an event admits any number of devices.
+  - `api/openapi.yaml`, `Event`: `capacity` in `properties` (already not `required`).
+  - `api/src/routes/support.ts`, `publicEvent`: overrides the row's value with the placeholder.
+  - `adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/BackendRouter.kt`, `onWire`:
+    `BackendMock.CAPACITY_PLACEHOLDER`.
+- **Why:** builds before 0.6 generate `Event.capacity` as a non-null property, so a body without it fails to decode
+  on create and lookup. From 0.6 on it is nullable and nothing reads it. A build the gate refuses decodes no event,
+  so this unlocks with the floor itself. Record:
+  `openspec/changes/archive/2026-10-12-remove-event-device-cap` (design D4).
+- **Remove:** drop `capacity` from `Event`'s `properties` in `openapi.yaml` and its override from `publicEvent`,
+  and drop the mock's `CAPACITY_PLACEHOLDER` and its `onWire` field. `api/test/shared-routes.test.ts`
+  re-expresses its key list and its two placeholder assertions. Then ship the column's removal below.
+
+### The `events.capacity` column (api, its own deploy)
+- **What:** `events.capacity` (`NOT NULL`) is still written on create, with `CAPACITY_PLACEHOLDER`, and read by
+  nothing.
+  - `api/src/db.ts`: `EventRow.capacity`, `readEvent`, `insertEvent`.
+- **Why:** a failed deploy republishes the previous bundle, and that bundle's join reads the column and its
+  create writes it. The large placeholder keeps that bundle's capacity gate admitting on events created
+  since. Dropping the column in the same deploy that stopped reading it would break join and create on a
+  rollback.
+- **Unlock:** the wire entry above has shipped, so no rollback candidate reads the column.
+- **Remove:** a migration dropping `events.capacity` (one migration per deploy; `docs/deployment.md`, "Schema
+  migrations"). Remove `capacity` and `CAPACITY_PLACEHOLDER` from `db.ts`, `config.ts` and `shared.ts`. Drop
+  `capacity` from the test fixtures that stamp it (`api/test/support/harness.ts` `EVENT`, and every
+  `INSERT INTO events` naming it). Regenerate `schema.sql`. Update `docs/architecture.md`'s events table.
 
 ## Once `MIN_APP_VERSION` ≥ the release that re-enables encrypted creation, and no plain event is open
 
@@ -223,51 +325,6 @@ device below it.
 - **Keep forever:** the fragment-form decoder (a printed QR opens forever) — a plain invite then opens the
   incomplete-invite screen.
 - **Record:** `openspec/changes/encrypt-events-by-default` (proposal, design Non-Goals).
-
-## Once `MIN_APP_VERSION` ≥ the release that moved the shared records
-
-**Unlock condition:** the floor is at or above the first store release that carries the shared database's records
-(`13.sqm`; the next release after 0.5 at the time of writing). Every device that can still talk to the backend has
-then run an app that copied its legacy records, so no legacy file or key is left to read.
-
-### Legacy homes of the shared records (app)
-- **What:** an updated device holds the records the app and the extension share in their pre-database homes. The app
-  copies each into `ledger.db` once, at its first open, and deletes it; the extension pauses until it has.
-  - `domain/services/.../databases/LegacyRecords.kt`: the copy — `eventconfig.json`,
-    `device-manifest/last-uploaded.json`, `membership/pending-leaves.txt`, the Preferences keys
-    `app.snapsync.album.map` / `.filled` and `app.snapsync.check.*`.
-  - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
-    membership read's "still in its legacy file" answer (`ConfigService.read`).
-  - `PauseReason.LEGACY_RECORDS` and its check at the head of `CycleGateRead.read`.
-  - `PushRegistrationRecord.fromLegacyFile` (`push-registration/last-registered.txt` into the Preferences key) and
-    its `files` parameter.
-  - `model/ConfigFile.kt` (the envelope codec), read only by the copy.
-- **Why:** a device that updated mid-event must keep its membership, its pending leaves and its albums.
-- **Remove:** `LegacyRecords` and `LegacyRecordsTest`; `SharedDatabase`'s `legacy` parameter, `imported` and
-  `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
-  copy and its two tests; `ConfigFile.kt`. Add a migration that drops `legacyImport`. Then the `Files` adapter's
-  not-found classification is no longer load-bearing for the leave decision (`FileAbsence.kt`, `CLAUDE.md`).
-- **Record:** this file's PR (phase 2b, "ports: sql + shared records").
-
-## Once `MIN_APP_VERSION` ≥ the release that stopped events closing
-
-**Unlock condition:** the floor is at or above the first store release built with `back-dated-events` (open-until
-dates; the app never leaves an event on its own). Every device that can still talk to the backend then reads
-`openUntil` and `members.waiting`, reports what it received, and ignores `closedAt`.
-
-### Derived `closedAt` for builds that predate open-until dates (api)
-- **What:** events no longer close, but the event read still serves `closedAt`, because a build before this release
-  treats a non-null value as "closed" and leaves once it holds everything.
-  - `api/src/routes/support.ts`: `closedForOldBuilds` — the stored stamp, else the open-until date once it has
-    passed and everyone still in the event has shared everything.
-  - `api/src/db.ts`: `sharedByEveryone`, read only by it; `memberCounts`' `final`, read only by those builds' waiting
-    line.
-  - `api/openapi.yaml`: `Event.closedAt` and `MemberCounts.final`.
-- **Why:** without it such a build would never leave a finished event, and its membership would hold the fast
-  deletion back until the 3-day clock.
-- **Remove:** `closedForOldBuilds` (serve the stored stamp, or drop the field with a `/api/v3`), `sharedByEveryone`,
-  `MemberCounts.final`, and their tests in `api/test/completion.test.ts`.
-- **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D5).
 
 ## Once every event closed before open-until dates is gone
 
@@ -300,39 +357,6 @@ also carries the stamp, and keeps it).
 - **Remove:** the field and its readers (a migration drops the column), the mock's branches and the fixture state, with
   the api entry above.
 - **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
-
-## Once `MIN_APP_VERSION` ≥ the first release built from `remove-event-device-cap`
-
-**Unlock condition:** that release is live in both stores, and the sweep's version table shows no kept device
-below it. Older builds decode `Event.capacity` as a required field; that release and later ones generate it optional.
-
-### The event's `capacity` on the wire (api + app)
-- **What:** every event body still carries `capacity`, as `CAPACITY_PLACEHOLDER` (`api/src/config.ts`). It
-  carries no meaning, because an event admits any number of devices.
-  - `api/openapi.yaml`, `Event`: `capacity` in `properties` (already not `required`).
-  - `api/src/routes/support.ts`, `publicEvent`: overrides the row's value with the placeholder.
-  - `adapter/generic/mock/src/commonMain/kotlin/app/snapsync/mock/BackendRouter.kt`, `onWire`:
-    `BackendMock.CAPACITY_PLACEHOLDER`.
-- **Why:** builds before that release generate `Event.capacity` as a non-null property, so a body without it
-  fails to decode on create and lookup. From that release on it is nullable and nothing reads it. Record:
-  `openspec/changes/archive/2026-10-12-remove-event-device-cap` (design D4).
-- **Remove:** drop `capacity` from `Event`'s `properties` in `openapi.yaml` and its override from `publicEvent`,
-  and drop the mock's `CAPACITY_PLACEHOLDER` and its `onWire` field. `api/test/shared-routes.test.ts`
-  re-expresses its key list and its two placeholder assertions. Then ship the column's removal below.
-
-### The `events.capacity` column (api, its own deploy)
-- **What:** `events.capacity` (`NOT NULL`) is still written on create, with `CAPACITY_PLACEHOLDER`, and read by
-  nothing.
-  - `api/src/db.ts`: `EventRow.capacity`, `readEvent`, `insertEvent`.
-- **Why:** a failed deploy republishes the previous bundle, and that bundle's join reads the column and its
-  create writes it. The large placeholder keeps that bundle's capacity gate admitting on events created
-  since. Dropping the column in the same deploy that stopped reading it would break join and create on a
-  rollback.
-- **Unlock:** the wire entry above has shipped, so no rollback candidate reads the column.
-- **Remove:** a migration dropping `events.capacity` (one migration per deploy; `docs/deployment.md`, "Schema
-  migrations"). Remove `capacity` and `CAPACITY_PLACEHOLDER` from `db.ts`, `config.ts` and `shared.ts`. Drop
-  `capacity` from the test fixtures that stamp it (`api/test/support/harness.ts` `EVENT`, and every
-  `INSERT INTO events` naming it). Regenerate `schema.sql`. Update `docs/architecture.md`'s events table.
 
 ## As the core's concepts move into its layers (phase 4)
 

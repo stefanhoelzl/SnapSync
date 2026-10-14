@@ -947,6 +947,15 @@ too):
   diagnostics to theirs (`files`: text a process's device log carries, and the reads `stagedFiles()` and
   `appStorageBytes()`), a Keychain item, named by what it is, to its address, and writes what an older build left over
   the device's own stores.
+  - `older-install.installedAt(ledgerBehind?, downloadsBehind?)` rewrites what the device holds now as an install
+    whose database is that many versions older held it — the moment before an update; the relaunch after it is the
+    update (`AppUpdateIntegrationTest`, one case per version). The older database is **built by this build's own
+    migrations** from the oldest version the chain still builds, never written as SQL by a test, and as each version is
+    passed the rows its build wrote are added — that version's *layer* (`OlderInstalls.kt`). So a new migration is a
+    new case by itself, and only one that brings a new kind of record adds a layer. What lived outside a database is a
+    layer too: the shared records' legacy files and keys, a transfer an earlier build started on the address it gave
+    it. Every format cites the release source it copies (`v0.4:<path>:<line>`); each layer is deleted with the shim
+    that reads it, and squashing a chain folds the layers below its new baseline into the baseline's.
 
 **Plumbing stays on the mock, never the face**: what the channel and the other mocks need of a system — the disk's
 read, write and list, the databases' opens and their deletion — is a member of the mock class, which the face gate
