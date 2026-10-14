@@ -81,6 +81,12 @@ enum class LeverNeed(val what: String) {
     /** What the operating system says of the app's process is the mock's. */
     PROCESS_INFO_MOCKED("the process information's mock"),
 
+    /**
+     * The platform's process-metric reports are the mock's, whose operator the service is: only where the app is
+     * composed over it (the JVM host) — a device's reports are the platform's own.
+     */
+    PROCESS_METRICS_MOCKED("the process-metric reports' mock"),
+
     /** The crash reporter's channel is the mock, whose backend the service reads. */
     CRASH_REPORTER_MOCKED("the crash reporter's mock"),
 
@@ -161,6 +167,7 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     DeviceConditionsLevers,
     ClockLevers,
     ProcessInfoLevers,
+    ProcessMetricsLevers,
     CrashReporterLevers,
     SystemUiLevers,
     DevControlsLevers,

@@ -43,6 +43,9 @@ internal sealed interface Need {
 
     /** Nothing but a lever may move the clock: no loop owns it. */
     data object ClockUnowned : Need
+
+    /** The app must be composed over the process-metric reports' mock. */
+    data object MetricsPlayed : Need
 }
 
 /** A lever: what it [needs], and what it does. */
@@ -62,6 +65,7 @@ internal fun MockWorld.refusalFor(needs: List<Need>, name: String): String? = ne
                 "backend is the mock, which reads it"
             ).takeIf { version == null }
         Need.ClockUnowned -> clockOwner
+        Need.MetricsPlayed -> metricsRefusal
     }
 }
 

@@ -20,6 +20,8 @@ import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.PlayedOsLevers
+import app.snapsync.levers.ProcessInfoLevers
+import app.snapsync.levers.ProcessMetricsLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.PushLevers
 import app.snapsync.levers.ScreenLevers
@@ -204,6 +206,12 @@ class Acts internal constructor(
 
     /** The device's power, battery, thermal state and background allowance, as the operating system reports them. */
     val deviceConditions: DeviceConditionsLevers = client.levers(DeviceConditionsLevers)
+
+    /** What the operating system says of the app's process: its protected data and its memory footprint. */
+    val processInfo: ProcessInfoLevers = client.levers(ProcessInfoLevers)
+
+    /** The platform's reports on the app's process, which it hands the app as they come — the JVM host's mock. */
+    val processMetrics: ProcessMetricsLevers = client.levers(ProcessMetricsLevers)
 
     /** The platform's own UI: what refuses a hand-over, and the member leaving the Settings page. */
     val systemUi: SystemUiLevers = client.levers(SystemUiLevers)

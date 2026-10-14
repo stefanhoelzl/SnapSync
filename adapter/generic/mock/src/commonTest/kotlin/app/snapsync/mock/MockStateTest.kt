@@ -161,6 +161,7 @@ class MockStateTest {
         assertEquals(listOf("hello"), copy.systemUi.shared.value)
         assertEquals(listOf("Party"), copy.systemUi.sharedTitles.value)
         assertEquals("dump", copy.crashReporter.sent.value.single().message)
+        assertEquals(mapOf("k" to "v"), copy.crashReporter.received.value.single().contexts["standing"])
         assertEquals(1, copy.enclave.keys.snapshot().second.size)
         assertEquals("v", (copy.keychain.items[SLOT])?.value)
     }
@@ -218,6 +219,8 @@ class MockStateTest {
                     contexts = mapOf("note" to mapOf("text" to "t")),
                 ),
             )
+            setContext("standing", mapOf("k" to "v"))
+            capture(CrashEvent(message = "event"))
         }
         device.processInfo.protectedData = Availability.UNAVAILABLE
         device.connectivity.access = NetworkAccess.Blocked

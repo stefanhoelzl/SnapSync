@@ -226,6 +226,11 @@ sealed interface WorldEvent {
     @Serializable
     @SerialName("extension-registered")
     data class ExtensionRegistered(val on: Boolean) : Os
+
+    /** The crash reporter's backend received an automatic [event]: a failure the app reported on its own. */
+    @Serializable
+    @SerialName("event-received")
+    data class EventReceived(val event: ReceivedEvent) : WorldEvent
 }
 
 /**

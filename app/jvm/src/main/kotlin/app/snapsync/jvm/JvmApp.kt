@@ -13,6 +13,7 @@ import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Files
 import app.snapsync.ports.LogSink
+import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.ThreadLabel
 import app.snapsync.presentation.CutoffFormatter
 import kotlinx.coroutines.CoroutineDispatcher
@@ -131,7 +132,14 @@ class JvmApp<D>(
             lanes.composition,
             lanes.reduction,
             app.appPorts(
-                processPorts(app.crashReporter, app.files, app.clock, app.crypto, ports.device.logSinks),
+                processPorts(
+                    app.crashReporter,
+                    ports.device.processMetrics,
+                    app.files,
+                    app.clock,
+                    app.crypto,
+                    ports.device.logSinks,
+                ),
                 ports.entries.devControls,
                 app.ui.value,
             ),
@@ -145,6 +153,7 @@ class JvmApp<D>(
                     // The extension's own log is not read back on this host; it touches no global writer list.
                     processPorts(
                         extensionDevice.crashReporter,
+                        NoProcessMetrics,
                         extensionDevice.files,
                         extensionDevice.clock,
                         extensionDevice.crypto,
@@ -159,13 +168,14 @@ class JvmApp<D>(
 
         private fun processPorts(
             crashReporter: Lazy<CrashReporter>,
+            processMetrics: ProcessMetrics,
             files: Lazy<Files>,
             clock: Lazy<app.snapsync.ports.Clock>,
             crypto: Lazy<Crypto>,
             logSinks: List<LogSink>,
         ) = ProcessPorts(
             crashReporter = crashReporter.value,
-            processMetrics = NoProcessMetrics,
+            processMetrics = processMetrics,
             logSinks = logSinks,
             files = files.value,
             clock = clock.value,

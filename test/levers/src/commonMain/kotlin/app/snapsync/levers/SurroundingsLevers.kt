@@ -125,6 +125,37 @@ data class Footprint(val bytes: Long, val peakBytes: Long? = null, val headroomB
 @Serializable
 data class ProcessInfoView(val protectedDataAvailable: Boolean, val footprint: Footprint?)
 
+/**
+ * **The platform's reports on the app's own process**: how its earlier runs ended and how long it froze — MetricKit's
+ * daily report on an iPhone. The platform hands a report to the app once, when it listens; this plays one.
+ */
+@Rpc
+interface ProcessMetricsLevers {
+    /** The platform hands the app one report of [report]'s kind — a real one, its identifying values randomized. */
+    suspend fun deliver(report: MetricReportKind)
+
+    @OptIn(ExperimentalRpcApi::class)
+    companion object : LeverService<ProcessMetricsLevers>(
+        ProcessMetricsLevers::class,
+        "process-metrics",
+        setOf(LeverNeed.PROCESS_METRICS_MOCKED),
+        { serviceDescriptorOf() },
+    )
+}
+
+/** What a played process-metric report says of the app's earlier runs. */
+@Serializable
+enum class MetricReportKind {
+    /** Nothing that counts: every run ended normally, and every freeze stayed under a second. */
+    QUIET,
+
+    /** The system ended a run: the app exceeded its memory limit in the foreground. */
+    ENDED_ABNORMALLY,
+
+    /** No run ended abnormally, and the app froze for over a second once. */
+    FROZE,
+}
+
 /** **The crash reporter's backend**: whether the app started reporting, and what reached it. */
 @Rpc
 interface CrashReporterLevers {
@@ -134,6 +165,9 @@ interface CrashReporterLevers {
     /** Every diagnostic dump the reporter's backend received, in order. */
     suspend fun sent(): List<ReceivedDump>
 
+    /** Every automatic event — a failure the app reported on its own — the reporter's backend received, in order. */
+    suspend fun received(): List<ReceivedEvent>
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<CrashReporterLevers>(
         CrashReporterLevers::class,
@@ -142,6 +176,17 @@ interface CrashReporterLevers {
         { serviceDescriptorOf() },
     )
 }
+
+/**
+ * One automatic event as the reporter's backend received it: its [message], its [tags], and the [contexts] that rode
+ * it — each by name, the latest the app set before it was sent.
+ */
+@Serializable
+data class ReceivedEvent(
+    val message: String,
+    val tags: Map<String, String>,
+    val contexts: Map<String, Map<String, String>>,
+)
 
 /**
  * One diagnostic dump as the reporter's backend received it: the member's [note], the app's [state] and [ledger]

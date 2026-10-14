@@ -37,10 +37,19 @@ enum class CrashReporterState {
     STARTED,
 
     /**
-     * The same system as [STARTED]; clauses read what actually **left the process**. Only a binding that drives the
-     * real channel reaches it: breadcrumbs riding the next event, the handlers applied on the way out and the SDK's
-     * own install id are the SDK's and the adapter's, and a double that imitated them would be licensed only by
-     * imitating.
+     * The same system as [STARTED]; clauses read what the reporter's backend **received** of the port's calls — one
+     * event per capture, its message, tags and exception, the latest context of each name riding it, nothing for a
+     * dropped one, a dump as the handler shaped it. A binding reaches it by reproducing those observables, so a double
+     * that records what the port was handed, in order, is licensed here by the same clauses the real channel passes;
+     * what only the SDK and the adapter do on the way out is [ON_THE_WIRE]'s.
+     */
+    RECEIVED,
+
+    /**
+     * The same system as [STARTED]; clauses read what actually **left the process** that only the reporting SDK and
+     * the adapter decide. Only a binding that drives the real channel reaches it: breadcrumbs riding the next event,
+     * the handlers applied on the way out, the build facts, the SDK's own install id and the size an event arrives at
+     * are the SDK's and the adapter's, and a double that imitated them would be licensed only by imitating.
      */
     ON_THE_WIRE,
 
@@ -291,22 +300,22 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
         }
 
-        // ---- ON_THE_WIRE: what actually left the process -------------------------------------------------------
+        // ---- RECEIVED and ON_THE_WIRE: what actually left the process --------------------------------------------
 
         clause(
-            "WIRE_CAPTURE_IS_ONE_EVENT",
-            CrashReporterState.ON_THE_WIRE,
+            "RECEIVED_CAPTURE_IS_ONE_EVENT",
+            CrashReporterState.RECEIVED,
             covers = cells {
                 on<CrashReporter>().answers(CrashReporter::capture).returns()
             },
         ) { s ->
-            val line = "WIRE_CAPTURE_IS_ONE_EVENT failed"
+            val line = "RECEIVED_CAPTURE_IS_ONE_EVENT failed"
             s.startListening()
             s.reporter.start(s.options)
             s.reporter.capture(CrashEvent(message = line))
             assertEquals(
                 1,
-                s.deliveredBefore(sentinel("WIRE_CAPTURE_IS_ONE_EVENT")).count { it.message == line },
+                s.deliveredBefore(sentinel("RECEIVED_CAPTURE_IS_ONE_EVENT")).count { it.message == line },
                 "one capture is one event — a second start must not double anything",
             )
         }
@@ -380,8 +389,8 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         }
 
         clause(
-            "WIRE_A_DROPPED_EVENT_LEAVES_NOTHING",
-            CrashReporterState.ON_THE_WIRE,
+            "RECEIVED_A_DROPPED_EVENT_LEAVES_NOTHING",
+            CrashReporterState.RECEIVED,
             covers = cells {
                 on<CrashReporter> {
                     answers(CrashReporter::listen).returns()
@@ -389,7 +398,7 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 }
             },
         ) { s ->
-            val dropped = "WIRE_A_DROPPED_EVENT_LEAVES_NOTHING drop me"
+            val dropped = "RECEIVED_A_DROPPED_EVENT_LEAVES_NOTHING drop me"
             s.startListening(
                 CrashHandlers(
                     onEvent = { e -> e.takeIf { (it.formatted ?: it.message) != dropped } },
@@ -398,14 +407,14 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             )
             s.reporter.capture(CrashEvent(message = dropped))
             assertTrue(
-                s.deliveredBefore(sentinel("WIRE_A_DROPPED_EVENT_LEAVES_NOTHING")).none { it.message == dropped },
+                s.deliveredBefore(sentinel("RECEIVED_A_DROPPED_EVENT_LEAVES_NOTHING")).none { it.message == dropped },
                 "a handler's null leaves nothing",
             )
         }
 
         clause(
-            "WIRE_TAGS_AND_EXCEPTION_RIDE_THE_EVENT",
-            CrashReporterState.ON_THE_WIRE,
+            "RECEIVED_TAGS_AND_EXCEPTION_RIDE_THE_EVENT",
+            CrashReporterState.RECEIVED,
             covers = cells {
                 on<CrashReporter>().answers(CrashReporter::capture).returns()
             },
@@ -413,12 +422,16 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             s.startListening()
             s.reporter.capture(
                 CrashEvent(
-                    throwable = IllegalStateException("WIRE_TAGS_AND_EXCEPTION_RIDE_THE_EVENT"),
-                    tags = mapOf("entry_point" to "WIRE_TAGS_AND_EXCEPTION_RIDE_THE_EVENT"),
+                    throwable = IllegalStateException("RECEIVED_TAGS_AND_EXCEPTION_RIDE_THE_EVENT"),
+                    tags = mapOf("entry_point" to "RECEIVED_TAGS_AND_EXCEPTION_RIDE_THE_EVENT"),
                 ),
             )
             val event = s.observe.delivered { e -> e.any { it.hasException } }.first { it.hasException }
-            assertEquals("WIRE_TAGS_AND_EXCEPTION_RIDE_THE_EVENT", event.tags["entry_point"], "the tag rides the event")
+            assertEquals(
+                "RECEIVED_TAGS_AND_EXCEPTION_RIDE_THE_EVENT",
+                event.tags["entry_point"],
+                "the tag rides the event",
+            )
         }
 
         clause(
@@ -492,8 +505,8 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         }
 
         clause(
-            "WIRE_LATEST_CONTEXT_RIDES_LATER_EVENTS",
-            CrashReporterState.ON_THE_WIRE,
+            "RECEIVED_LATEST_CONTEXT_RIDES_LATER_EVENTS",
+            CrashReporterState.RECEIVED,
             covers = cells {
                 on<CrashReporter>().answers(CrashReporter::setContext).returns()
             },
@@ -503,7 +516,7 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             s.reporter.setContext("process_metrics", mapOf("generation" to "second", "only-in-second" to "1"))
             assertEquals(
                 mapOf("generation" to "second", "only-in-second" to "1"),
-                s.sentinelEvent(sentinel("WIRE_LATEST_CONTEXT_RIDES_LATER_EVENTS")).contexts["process_metrics"],
+                s.sentinelEvent(sentinel("RECEIVED_LATEST_CONTEXT_RIDES_LATER_EVENTS")).contexts["process_metrics"],
                 "the latest context rides the event, and nothing of the one it superseded",
             )
         }
@@ -532,13 +545,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         }
 
         clause(
-            "WIRE_DUMP_IS_DELIVERED_VERBATIM",
-            CrashReporterState.ON_THE_WIRE,
+            "RECEIVED_DUMP_IS_DELIVERED_VERBATIM",
+            CrashReporterState.RECEIVED,
             covers = cells {
                 on<CrashReporter>().answers(CrashReporter::sendDump).with(DumpResult.Queued::class)
             },
         ) { s ->
-            val dump = dumpFor("WIRE_DUMP_IS_DELIVERED_VERBATIM")
+            val dump = dumpFor("RECEIVED_DUMP_IS_DELIVERED_VERBATIM")
             s.startListening(PRODUCTION)
             s.reporter.sendDump(diagnosticDumpEvent(dump))
             val delivered = s.observe.delivered { e -> e.any { it.contexts.containsKey("note") } }

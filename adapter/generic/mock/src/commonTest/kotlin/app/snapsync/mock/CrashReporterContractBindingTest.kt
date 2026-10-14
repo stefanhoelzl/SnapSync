@@ -19,9 +19,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
 /**
- * The honest [app.snapsync.ports.CrashReporter], held to the contract the real reporting adapter satisfies — up to
- * `STARTED`. It observes through the same cells the world reads (`diagnosticsStarted`, `diagnosticsSent`), which is
- * exactly what the contract licenses it for.
+ * The honest [app.snapsync.ports.CrashReporter], held to the contract the real reporting adapter satisfies — through
+ * `RECEIVED`: what the world reads of what the reporter's backend received is exactly what those clauses license. It
+ * observes through the cells the world reads; dumps and automatic events share one here, so the clauses' sentinels see
+ * them in the order they left.
  */
 class CrashReporterContractBindingTest {
 
@@ -29,15 +30,21 @@ class CrashReporterContractBindingTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val adapter = InMemoryCrashReporter::class
-        override val reaches = setOf(CrashReporterState.NOT_STARTED, CrashReporterState.STARTED)
+        override val reaches = setOf(
+            CrashReporterState.NOT_STARTED,
+            CrashReporterState.STARTED,
+            CrashReporterState.RECEIVED,
+        )
 
         override fun create(state: CrashReporterState, clauseId: String, log: CallLog): Entered<CrashReporterSubject> {
             if (state == CrashReporterState.ON_THE_WIRE || state == CrashReporterState.ACROSS_A_RESTART) {
                 return Entered.Unreachable(
-                    "the fake transmits nothing: what leaves a device is the SDK's serialization and the adapter's hooks",
+                    "the fake does not model the SDK: breadcrumbs riding the next event, the install id, the build " +
+                        "facts, the size caps and a relaunch's cache are its serialization and the adapter's hooks",
                 )
             }
             val started = MutableStateFlow(false)
+            // One record for dumps and automatic events alike: what left, in the order it left.
             val dumps = MutableStateFlow<List<CrashEvent>>(emptyList())
             val observe = object : CrashObservation {
                 override fun channelRunning() = started.value
@@ -51,7 +58,9 @@ class CrashReporterContractBindingTest {
                             installId = null,
                             tags = dump.tags,
                             contexts = dump.contexts,
-                            hasException = false,
+                            hasException = dump.throwable != null,
+                            release = dump.release,
+                            dist = dump.dist,
                         )
                     }
                     if (!until(events)) throw WaitExpired(0)
@@ -60,7 +69,7 @@ class CrashReporterContractBindingTest {
             }
             return Entered.Ready(
                 CrashReporterSubject(
-                    inMemoryCrashReporter(started, dumps).recorded(log),
+                    inMemoryCrashReporter(started, dumps, events = dumps).recorded(log),
                     CrashOptions("in-memory"),
                     observe,
                 ),

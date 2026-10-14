@@ -114,8 +114,16 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
     ),
     MockedSystem.CRASH_REPORTER to codec(
         CrashDumpsDto.serializer(),
-        { CrashDumpsDto(it.crashReporter.dumps.cell.value.map(CrashDto::of)) },
-        { device, dto -> device.crashReporter.dumps.cell.value = dto.dumps.map { it.event() } },
+        {
+            CrashDumpsDto(
+                it.crashReporter.dumps.cell.value.map(CrashDto::of),
+                it.crashReporter.events.cell.value.map(CrashDto::of),
+            )
+        },
+        { device, dto ->
+            device.crashReporter.dumps.cell.value = dto.dumps.map { it.event() }
+            device.crashReporter.events.cell.value = dto.events.map { it.event() }
+        },
     ),
     MockedSystem.PROCESS_INFO to scalars(
         { mapOf(PROTECTED to it.processInfo.cell.value.name) },
@@ -386,7 +394,7 @@ private class CrashDto(
 }
 
 @Serializable
-private class CrashDumpsDto(val dumps: List<CrashDto>)
+private class CrashDumpsDto(val dumps: List<CrashDto>, val events: List<CrashDto> = emptyList())
 
 @Serializable
 private class JobDto(

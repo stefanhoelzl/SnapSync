@@ -45,6 +45,7 @@ class JvmMocks(
                 secureStore = keychain.port(),
                 integrity = integrity,
                 processInfo = processInfo.port(),
+                processMetrics = processMetrics.port(),
                 network = connectivity.port(),
                 deviceConditions = deviceConditions.port(),
                 logSinks = logSinks,
