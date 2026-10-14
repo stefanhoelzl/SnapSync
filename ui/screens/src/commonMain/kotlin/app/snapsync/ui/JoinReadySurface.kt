@@ -118,7 +118,7 @@ internal fun ReadyLayout(state: ReadyState, actions: ReadyActions) {
     }
 }
 
-/** What the guest should know before tapping Join: that iOS asks next, and why Join is unavailable. */
+/** What the guest should know before tapping Join: that photo access is asked next, and why Join is unavailable. */
 @Composable
 private fun ReadyNotices(state: ReadyState) {
     val bothOff = !state.range.commitEnabled

@@ -101,7 +101,7 @@
     <string name="store_google_play">Open Google Play</string>
 
     <!-- The join surface. -->
-    <string name="join_access_notice">iOS asks for access to your photos next</string>
+    <string name="join_access_notice">You'll be asked for access to your photos next</string>
     <string name="join_access_info">What joining does with your photos</string>
     <string name="join_access_sheet_title">What joining does</string>
     <string name="join_access_dismiss">Got it</string>
