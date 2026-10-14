@@ -233,7 +233,7 @@ a *different* build's dSYMs — that produces subtly-wrong frames.
 
 The store build is R8-obfuscated, so its Java frames arrive as `gg3.a(SourceFile:12)`. Bugsink takes no
 mapping and Play is not given one: each delivered build's mapping ships as GitHub artifact
-**`r8-mapping-<build>`** where `<build> = data.dist` (90-day retention, `ci.yml`'s `android-deliver`).
+**`r8-mapping-<build>`** where `<build> = data.dist` (90-day retention, `ci.yml`'s `deliver`).
 `retrace.py` rebuilds the event's exception (or, with none, each thread's stack) as a Java trace and runs
 R8's own `retrace` from the R8 that wrote the mapping (its `# compiler_version:` header; the jar is fetched
 once from Google's Maven into `~/.cache/snapsync-r8`). Needs `java` on PATH.

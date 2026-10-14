@@ -74,7 +74,7 @@ steps:
   # The run id guarantees the primary key MISSES, so the restore falls through to the NEWEST entry —
   # a hit would pin the session to a possibly ancient one. Prefer the DEVICE family: this loop's
   # dominant cost is `xcodebuild -configuration Debug -destination 'generic/platform=iOS'`, which
-  # links iosArm64 against exactly the `ios_arm64-gSTATIC-*` caches ios-build warms.
+  # links iosArm64 against exactly the `ios_arm64-gSTATIC-*` caches `ios-release` warms.
   # `iosSimulatorArm64Test` in a session still falls through to the shared prefix below.
   - name: Restore Kotlin/Native (~/.konan)
     uses: actions/cache/restore@v6

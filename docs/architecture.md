@@ -117,8 +117,8 @@ The `android` target is its own plugin, `snapsync.android` (AGP's `com.android.k
 `jvm`/iOS list (`:adapter:generic:*`, and the rig's `:test:rig`, `:test:launch-adapters`, `:test:contracts`). It
 reads the SDK levels from `libs.versions.toml` (minSdk 30 — scoped storage enforced, one code path, and the level the device tests run at too) and **lowers the bytecode
 to `android-jvmTarget` (17)** while the toolchain stays JDK 25: D8/R8 dexes what the Android compilations emit, and
-R8 over the whole graph is built on every push (`ci.yml`'s `android-build`, the plain release) and run by every
-Android journey (`journeys (android)`, the rig release). It declares no host tests —
+R8 over the whole graph is built on every push (`ci.yml`'s `build`, the plain release) and run by every
+Android journey (`android`, the rig release). It declares no host tests —
 `commonTest` runs on the JVM — and device tests only where a module has `src/androidDeviceTest` (the adapters'
 contract bindings), run on a Gradle-managed emulator by `androidPlatformTest`. The Android app itself is ONE process with ONE composition
 (`:app:android`'s `SnapSyncRoot`, built in `Application.onCreate`) and ONE adapter module (`:adapter:android`):
@@ -499,7 +499,7 @@ Decision record: `changes/archive/2026-08-27-add-repo-wide-complexity-gates`.
   equivalent of Google Play's release recommendations, which have no API — it does not reproduce them
   (Play's SDK Index judges transitive dependencies; lint only the declared ones).
 - Xcode treats warnings as errors in both iOS targets (`Config.xcconfig`), enforced where Xcode builds:
-  CI's `ios-build`.
+  CI's `ios` / `ios-release`.
 
 ### Coverage
 
@@ -1019,7 +1019,7 @@ kept log (`docs/deployment.md` §3).
 ### The backend boundary
 
 **`api/openapi.yaml` is the ONE source of the wire format** (OpenAPI 3.1.2, hand-written, linted by Redocly in
-`api-test`'s `OpenAPI lint`). Everything else is generated from it at build time and never committed, on both sides:
+`build`'s `OpenAPI lint`). Everything else is generated from it at build time and never committed, on both sides:
 
 - **The backend's half** — `api/src/gen/wire.ts` (`deno task gen`, `src/scripts/generate-wire.ts`): every device
   operation mounted at the description's own method and path, its input validated by zod schemas generated from the

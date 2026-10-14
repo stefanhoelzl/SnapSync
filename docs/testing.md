@@ -34,17 +34,17 @@ Main decision record: `changes/archive/2026-08-27-establish-testing-architecture
 
 The shared `commonTest` runs **once, on the JVM**, under `build`. A platform runtime runs only what only it can answer:
 the adapters and their contract bindings over the platform's own APIs (Keychain, PhotoKit, the native SQLite driver;
-Keystore, MediaStore, WorkManager, DownloadManager). Each platform has the same three CI gates (`ci.yml`): its
-**build** followed on the same runner by its **platform tests** (`ios-build`: the signed archive, then
-`iosPlatformTest`; `android-build`: R8 over the plain release on a delivering run, then every module's
-`connectedAndroidDeviceTest` on one emulator), and its **journeys**
-(`journeys (ios)`, `journeys (android)`, section "Journeys").
+Keystore, MediaStore, WorkManager, DownloadManager). Each platform has ONE CI gate (`ci.yml`), the
+same shape on both, on one runner and one simulator or emulator: its **build**, then its **platform tests**, then its
+**journeys** (section "Journeys") — `ios`: the signed Debug archive, `iosPlatformTest`, then `scripts/sim-contracts`
+(the simulator app's contracts and the journeys); `android`: the device tests' and rig app's builds, every module's
+`connectedAndroidDeviceTest`, then `scripts/android-journeys`. `main` re-runs none of them (`docs/deployment.md` §4).
 
 The shared tests used to run on Kotlin/Native and on ART as well. In their history that caught only test NAMES those
 compilers reject (a comma for Kotlin/Native, an apostrophe or a space below DEX 040), never shared logic behaving
 differently at runtime; every real platform bug came from an adapter or a driver, through its contract binding. So a
 difference between runtimes in shared code is what the journeys catch — they run the composed app on each runtime.
-The Kotlin/Native compile of every shared source set is still checked by `ios-build` and the journeys' app builds.
+The Kotlin/Native compile of every shared source set is still checked by `ios`'s archive and the journeys' app build.
 
 **Deno is a hard prerequisite of `build`.** `:adapter:generic:app:jvmTest` runs the `Backend`
 contract against the real `api/`, started as `src/dev/serve.ts --ephemeral` (loopback only, filesystem
@@ -578,10 +578,10 @@ item is never read as absent).
 ### How each host is run
 
 - **JVM:** ordinary test tasks in `build`.
-- **`IOS_SIM_KEXE`:** `iosPlatformTest`, in the `ios-build` job.
-- **`ANDROID_EMU`:** every module's `connectedAndroidDeviceTest` on one emulator in the `android-build` job
+- **`IOS_SIM_KEXE`:** `iosPlatformTest`, in the `ios` job.
+- **`ANDROID_EMU`:** every module's `connectedAndroidDeviceTest` on one emulator in the `android` job
   (`androidPlatformTest`, a Gradle-managed emulator per module, locally).
-- **`IOS_SIM_APP`: live on every push.** The `journeys (ios)` job builds the app under
+- **`IOS_SIM_APP`: live on every push.** The `ios` job builds the app under
   `-Psnapsync.rig=true`, applies the declared grant, launches it, and `scripts/sim-contracts` runs every
   entry of the host's in-app registry (`contract.list`) through the rig's typed `contract` service. It fails on any
   run-failing outcome, any refusal, or an empty registry. Each run starts from a fresh simulator. A host CI
@@ -1041,7 +1041,7 @@ uses its descriptors (`@ExperimentalRpcApi`) and kRPC's Ktor modules, which are 
 descriptor is found by NAME — `<interface>$$rpcServiceStub`, read through kotlin-reflect — so `:test:levers` publishes
 R8 rules that keep the stubs and the names of their interfaces. Without the second, the Android rig release crashed at
 start (`Unable to find a service descriptor of the class jv`: R8 had renamed the interface, measured 2026-10-13); the
-`journeys (android)` job runs that release, so a rule that stops holding fails there.
+`android` job runs that release, so a rule that stops holding fails there.
 
 ### The world's events
 
@@ -1129,7 +1129,7 @@ composed. And **a choice may leave real only the systems Android has an adapter 
 another `real`, or omitting it, refuses the launch, which then composes nothing). A file-chosen launch saves its mocks'
 state beside the file, as on iOS, because a real store then outlives the process. It refuses `host.relaunch`, `host.reinstall` and the
 upload extension's `/os` verbs (Android has none), and is contract host `ANDROID_EMU` in `GET /device` — the host the
-device tests run on too. The `journeys (android)` CI job drives it over every real adapter Android has
+device tests run on too. The `android` CI job drives it over every real adapter Android has
 (`scripts/android-journeys`). A build without the property composes every real adapter and starts; its crash reporter
 starts only on a distributed build, which carries a DSN.
 
@@ -1316,8 +1316,8 @@ fresh simulator's first-boot work swamped the hosted runner (it tripled the job 
 
 - Source set `journeys` in `:test:integration`, task `:test:integration:journeys`. It is **outside
   `build`**.
-- They run in the `journeys (ios)` CI job (`scripts/sim-contracts` boots the simulator and the backend, after the
-  simulator app's contracts) and the `journeys (android)` one (`scripts/android-journeys`, on an emulator the job
+- They run in the `ios` CI job (`scripts/sim-contracts` boots the simulator and the backend, after the
+  simulator app's contracts) and the `android` one (`scripts/android-journeys`, on the emulator the job
   boots, over every real adapter Android has — only the crash reporter is mocked, and the iOS-only upload-job queue
   and extension registration). There they run on a bare JVM, `java … org.junit.runner.JUnitCore app.snapsync.journeys.Journeys`
   over the classpath `:test:integration:journeysClasspath` writes at compile time, with

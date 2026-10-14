@@ -395,7 +395,7 @@ subprojects {
 // ---- iOS test compiles off a Mac -----------------------------------------------------------------------------------
 //
 // Off macOS no simulator runs an iOS test, yet `build` compiled every module's test klibs for both iOS targets (37
-// Kotlin/Native compiles on Linux, linked and run never). `ios-build`'s `iosPlatformTest` compiles and runs the iOS
+// Kotlin/Native compiles on Linux, linked and run never). `ios`'s `iosPlatformTest` compiles and runs the iOS
 // tests on a Mac, so on any other host their compiles are switched off; the main iOS compiles stay, so iOS-only
 // breakage in production code still fails `build` (the Linux-runnable proxy, CLAUDE.md).
 if (!System.getProperty("os.name").startsWith("Mac")) {

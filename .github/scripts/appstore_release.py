@@ -5,7 +5,7 @@
 # ///
 """Promote an existing App Store Connect build to its App Store version record.
 
-`promote.yml` PROMOTES a build that `ios-deliver` already uploaded (it builds nothing). The
+`promote.yml` PROMOTES a build that `deliver` already uploaded (it builds nothing). The
 build is chosen by its build NUMBER (CFBundleVersion); the store version is DERIVED from the build's own
 marketing version (`preReleaseVersion.version`), so the version record and the build always match — there
 is no `version` input and no mismatch to guard.

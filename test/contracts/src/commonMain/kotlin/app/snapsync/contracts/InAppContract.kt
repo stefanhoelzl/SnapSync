@@ -5,7 +5,7 @@ import app.snapsync.ports.LibraryGrant
 /**
  * A contract an app build can run in-app, on the [host] it is registered for (`docs/architecture.md`). The
  * rig serves every registered entry at `contract.run(<name>)`, and lists the current host's at `contract.list()`,
- * which is what the `journeys (ios)` job runs. [run] answers the body the rig returns: a recording, an outcome
+ * which is what the `ios` job runs. [run] answers the body the rig returns: a recording, an outcome
  * table, or a [CONTRACT_REFUSED] refusal. [run] receives the verb's query parameters — the values only the run can
  * supply, such as where the transfer fixture listens ([RunParameters]).
  *
@@ -23,7 +23,7 @@ class InAppContract(
 
 /**
  * A binding that needs a value only the run can supply — the loopback transfer fixture's address, which the
- * `journeys (ios)` job picks per run (`docs/architecture.md`, "An adapter bound per compilation target is
+ * `ios` job picks per run (`docs/architecture.md`, "An adapter bound per compilation target is
  * real for the clauses it runs there"). [accept] answers `null` when the parameters suffice, or the reason the
  * run must be refused, so a run missing its fixture is refused whole rather than failing clause by clause.
  */

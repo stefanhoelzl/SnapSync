@@ -1,9 +1,9 @@
-# Shared "archive a signed iOS device app" steps, used by ci.yml → ios-build (a merge gate). The
-# archive it produces is what ios-deliver uploads and what the App Store release later PROMOTES
+# Shared "archive a signed iOS device app" steps, used by ci.yml's `ios` (the merge gate, Debug) and `ios-release`
+# (Release). The archive `ios-release` produces is what `deliver` uploads and what the App Store release later PROMOTES
 # (promote.yml builds nothing — it promotes an existing build).
 #
 # WHY a COMPOSITE action and not a reusable (workflow_call) workflow: a reusable workflow renames the
-# caller's status-check context to "<job> / <inner-job>", which would rename `ios-build` wherever it is
+# caller's status-check context to "<job> / <inner-job>", which would rename `ios` wherever it is
 # read. A composite action is STEP-level, so the calling job keeps its name (= its status-check context)
 # unchanged.
 #
@@ -12,10 +12,10 @@
 # an ephemeral signing keychain, and BOTH persistent certs (Distribution + Development — importing both
 # is deliberate: an empty keychain makes automatic signing mint a NEW cert each run, and
 # `xcodebuild archive` provisions a development identity in addition to the distribution one; see
-# ci.yml's ios-deliver and the ios-testflight-delivery spec).
+# ci.yml's `ios-release`, which exports the IPA, and the ios-testflight-delivery spec).
 #
 # Version / APNs / host are INJECTED on the xcodebuild line (never read from a committed bump):
-#   * marketing-version  — empty = the Config.xcconfig floor (0.1); ci.yml's ios-build passes the computed
+#   * marketing-version  — empty = the Config.xcconfig floor (0.1); ci.yml's `ios-release` passes the computed
 #     max(floor, latest tag + minor 1) for a Release build.
 #   * There is deliberately NO aps-environment / apns-env / sentry-dsn input any more: those are
 #     DERIVED into the generated Deployment.xcconfig from one `channel` value (capability
@@ -68,7 +68,7 @@ outputs:
     description: >-
       The ~/.konan primary key this run restored under (it never hits). The CALLER saves it — with
       .github/actions/konan-save, family `device`, on main only — after its own later steps, so the one
-      `-device-` entry also carries what those steps compiled (ios-build's simulator platform tests).
+      `-device-` entry also carries what those steps compiled (`ios-release`'s simulator warm-up).
     value: ${{ steps.konan.outputs.cache-primary-key }}
 runs:
   using: composite
@@ -300,12 +300,11 @@ runs:
     # phases run on a branch. `compileKotlinIosArm64` is configuration-independent and the Release
     # archive above already ran it, so this is the two links and nothing else. Its own output is
     # discarded — the cache entries it leaves in ~/.konan are the entire point — and it writes to
-    # `app/ios/build/bin/`, not the archive `ios-deliver` re-signs, so it cannot disturb delivery.
+    # `app/ios/build/bin/`, not the archive `ios-release` exports, so it cannot disturb delivery.
     #
     # COST, and why it is not on anyone's critical path: the first main run after this lands pays the
     # full cold build (~9 min); every merge after restores the family it saved and pays roughly the
-    # warm link. `ios-build` on main gates `ci` but no merge waits on a main run, and
-    # `ios-deliver` needs this job only for its archive artifact, which is already uploaded above.
+    # warm link. No merge waits on a main run; it delays `deliver` by the warm link.
     #
     # `continue-on-error` because a cache warm-up must NEVER fail a merge that delivers to TestFlight.
     # Absence is not silent, though: the step below reports what actually landed and warns when the

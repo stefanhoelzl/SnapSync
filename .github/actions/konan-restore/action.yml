@@ -1,7 +1,7 @@
-# Restore ~/.konan for ONE cache family (`docs/deployment.md`, "CI"). There is one: `-device-`, which ios-build restores
-# inside ios-archive and saves after its simulator tests, so it holds both the device and the simulator library caches.
-# journeys (ios) restores it too and saves nothing: a family of its own was a second ~0.9 GB copy of nearly the same
-# caches, in a 10 GB budget whose evictions cost more than the few library caches only the rig build adds.
+# Restore ~/.konan for ONE cache family (`docs/deployment.md`, "CI"). There is one: `-device-`, which ci.yml's `ios` and
+# `ios-release` restore inside ios-archive, and `ios-release` saves on main after its simulator warm-up, so it holds both
+# the device and the simulator library caches. A second family would be a second ~0.9 GB copy of nearly the same caches,
+# in a 10 GB budget whose evictions cost more than the few library caches only the rig build adds.
 #
 # ~/.konan holds the Kotlin/Native toolchain AND the per-dependency library caches the compiler builds on first use
 # (Compose, Skiko, coroutines, …). Measured on macos-26: without them the simulator tests paid ~3 min more.

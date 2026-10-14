@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The delivered build's tester note, printed on stdout: what `ios-deliver` attaches as TestFlight's "What to Test" and
-# `android-deliver` as the Play internal release's notes — ONE note for the run's one build number, in both stores.
+# The delivered build's tester note, printed on stdout: what ci.yml's `deliver` attaches as TestFlight's "What to
+# Test" and as the Play internal release's notes — ONE note for the run's one build number, in both stores.
 #
 #   `<PR title> (#<num>, <short sha>)`. The repo is rebase-merge-only, so the commits→pulls association names the PR;
 #   the head subject is only the no-PR fallback, and an API flake folds into it (a degraded note must never fail the

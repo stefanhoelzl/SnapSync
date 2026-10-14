@@ -5,8 +5,8 @@
 # ///
 """Deliver an Android App Bundle to Google Play over the Play Developer API (v3).
 
-`ci.yml`'s `android-deliver` uploads every push to main's signed bundle to the INTERNAL testing track, as
-`ios-deliver` uploads to internal TestFlight, and a branch dispatch's through INTERNAL APP SHARING (`share`), which
+`ci.yml`'s `deliver` uploads every push to main's signed bundle to the INTERNAL testing track, as
+`deliver` uploads to internal TestFlight, and a branch dispatch's through INTERNAL APP SHARING (`share`), which
 touches no track; `promote.yml` releases an ALREADY-UPLOADED bundle to a further track, and brings the store listing
 in line with the repo in the same edit.
 Every track or listing change happens inside ONE EDIT, committed once at the end or deleted on any failure, so a run either
@@ -36,7 +36,7 @@ lands whole or changes nothing. Later steps (the diff-gated listing update) are 
              half-done promote skips what landed: the listing landed in that release's edit.
 
 WHY PREFLIGHT AND COMMIT ARE TWO EDITS: a workflow's steps are separate processes, and every merge's
-`android-deliver` commits an edit of its own in between, which leaves an edit opened earlier uncommittable. So the
+`deliver` commits an edit of its own in between, which leaves an edit opened earlier uncommittable. So the
 preflight's edit is thrown away, and the commit opens a fresh one; a merge landing in the gap fails the commit, and
 the rerun completes it.
 

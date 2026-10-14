@@ -1,7 +1,7 @@
 {
   "_comment": [
     "Per-locale headline copy baked onto the store screenshots — the App Store's by the release (promote.yml),",
-    "Google Play's by ci.yml's android-deliver — keyed by the marketing state (test/integration's Shots.kt) each raw in",
+    "Google Play's by ci.yml's `deliver` — keyed by the marketing state (test/integration's Shots.kt) each raw in",
     "screenshots/ and screenshots/android/ shows. Version-controlled next to the",
     "rest of the listing, so the copy is reviewable in a PR rather than living only in a CI script.",
     "",

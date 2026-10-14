@@ -1,6 +1,6 @@
 // THE REHEARSAL COPY'S PROMISES (`docs/deployment.md`, "Gates"): what a migration may rely on survives the
 // pseudonymisation, and what is secret does not. No network — the store-to-store copy is exercised by the
-// `migration-rehearsal` job itself; this pins the rewrite, the allowlist and the two safety guards.
+// migration rehearsal (ci.yml's `build`) itself; this pins the rewrite, the allowlist and the two safety guards.
 
 import { assert, assertEquals, assertMatch, assertNotEquals } from "@std/assert";
 import {

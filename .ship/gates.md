@@ -5,23 +5,22 @@ cover the gates of `ci.yml` (each a required check, beside `check-label`) that a
 actually run:
 
 - `build` → `./gradlew build`, which also carries the diagrams freshness half
-  (`:tools:diagrams:test`), the detekt complexity tiers, and the `:test:architecture` guards
-- `metadata` → its spec validation (`openspec validate --specs --strict`)
-- `api-test` → the deno set below
+  (`:tools:diagrams:test`), the detekt complexity tiers, and the `:test:architecture` guards; and of
+  the checks with no Gradle `build` also runs, the spec validation (`openspec validate --specs
+  --strict`) and the api/ set below
 
 The rest stay CI-only BY DECISION, not by oversight:
 
-- `ios-build` / `journeys (ios)` — macOS-only; no Linux machine can run them
-- `android-build` / `journeys (android)` — minutes of emulator and R8 per ship; CI runs them
+- `ios` — macOS-only; no Linux machine can run it
+- `android` — minutes of emulator and R8 per ship; CI runs it
   (`./gradlew androidPlatformTest`, `scripts/android-journeys`)
 - `check-label` — `/ship` applies the label as it opens the PR
-- `metadata`'s other steps — `scripts/resolve_deployment_test.py`,
-  `scripts/await_photo_migration_test.py`, and the listing validation, which needs the pinned `asc`
-  binary fetched over the network
-- `migration-rehearsal`, `site-build`
+- `build`'s other checks — `scripts/resolve_deployment_test.py`,
+  `scripts/await_photo_migration_test.py`, the listing validation (which needs the pinned `asc`
+  binary fetched over the network), the site checks and the migration rehearsal
 
 Order is cheapest-first, so a failure arrives as early as it can. The openspec CLI is pinned to the
-version CI runs (`.github/workflows/ci.yml`, `metadata`); there is no global `openspec` binary and
+version CI runs (`.github/workflows/ci.yml`, `build`); there is no global `openspec` binary and
 there should not be one.
 
 ## No un-archived openspec changes

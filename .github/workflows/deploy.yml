@@ -21,8 +21,8 @@ name: deploy
 # admits no bypass actor), so the CONTENT on `main` has passed every required check before it arrived. A
 # deployer that re-checked it would be a second copy of a gate that has already fired.
 #
-# TESTFLIGHT IS DELIBERATELY NOT HERE. `ios-deliver` lives in ci.yml because it is bound to that run three
-# ways: it consumes the Release archive `ios-build` just produced (artifacts would have to cross runs, or
+# TESTFLIGHT IS DELIBERATELY NOT HERE. `deliver` lives in ci.yml because it is bound to that run three
+# ways: it consumes the Release archive `ios-release` just produced (artifacts would have to cross runs, or
 # the 5-10 min archive be repeated), its CFBundleVersion IS ci.yml's `run_number` plus its `BUILD_NUMBER_OFFSET`
 # (promote.yml resolves a build number back to that run), and it also delivers a dispatched
 # BRANCH — which "main only"
@@ -125,7 +125,7 @@ jobs:
   # the Edge Script. Runs only when `changes` finds the api changed since the live commit.
   # Capabilities: backend-deployment, deployment-configuration.
   #
-  # THE CHECK SET IS NOT HERE, AND ITS ABSENCE IS THE POINT. ci.yml's `api-test` job runs
+  # THE CHECK SET IS NOT HERE, AND ITS ABSENCE IS THE POINT. ci.yml's `build` job runs the api/ check set
   # fmt/lint/type-check/tests on every ref and gates the REQUIRED `ci` check on `main`'s branch ruleset,
   # so a commit CANNOT reach `main` unless they passed on the PR that carried it. Re-running them here
   # would be a second copy of a gate that has already fired.
@@ -138,7 +138,7 @@ jobs:
   # check that never posts on a PR freezes every merge.
   #
   # What this leaves uncovered, stated rather than implied: merges are rebase-only, so the commit on
-  # `main` is not the commit `api-test` ran against, and nothing re-checks it here. The ruleset admits
+  # `main` is not the commit `build` ran against, and nothing re-checks it here. The ruleset admits
   # no bypass actor, so the CONTENT was checked before it was admitted; the boot probe below is what
   # witnesses that what actually shipped boots and serves.
   #
@@ -474,7 +474,7 @@ jobs:
           }
 
       # --- Deploy. Idempotent: re-deploys overwrite the same script_id. (A bundling failure surfaces
-      #     on the branch through ci.yml's `api-test` gate, which bundles and checks the stamp.)
+      #     on the branch through ci.yml's `build` gate (its api/ steps), which bundles and checks the stamp.)
       #
       #     This is the ONE publish of the real bundle, on both paths: without a pending migration it
       #     ships the artifact built above, and with one it ships the re-bundle that lifts the window. ---
@@ -513,7 +513,7 @@ jobs:
       # NOT IN THE STORAGE ZONE, for two independent reasons. `BUNNY_STORAGE_ACCESS_KEY` is not this
       # job's to hold (above), and a rollback has to work when bunny is the thing misbehaving — an
       # artifact here is a separate failure domain from the platform being deployed to. Precedent:
-      # `ios-deliver` parks each build's dSYMs the same way.
+      # `ios-release` parks each build's dSYMs the same way.
       #
       # KEYED BY COMMIT, NOT A SINGLE `bundle-latest`, and the name is the CHECK rather than a label. The
       # capture step asserts that the archive for the LIVE commit exists — an identity claim. A single
@@ -616,7 +616,7 @@ jobs:
   #
   # EVERY PUSH, NO GATE. The mirror is idempotent (upload, then delete stale keys) and the build is ~25 s, so
   # running it on a push that could not affect it costs less than any mechanism deciding whether it could.
-  # It does not repeat `npm run check`: no commit reaches `main` without ci.yml's `site-build` gate
+  # It does not repeat `npm run check`: no commit reaches `main` without ci.yml's `build` gate (its site steps)
   # having passed. It still builds, because the deploy mirrors the build output.
   #
   # TWO RUNTIMES, deliberately: the site BUILD runs under NODE (astro:assets/rolldown fail under Deno's
@@ -683,7 +683,7 @@ jobs:
     permissions:
       contents: read
     env:
-      # The same Admin key ios-build / ios-deliver use — asc reads its OWN var names.
+      # The same Admin key `ios-release` / `deliver` use — asc reads its OWN var names.
       # No new secret is introduced. (Design open question: a scoped key would be safer than Admin.)
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}

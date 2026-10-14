@@ -32,7 +32,7 @@ import kotlin.time.TimeSource
 
 /**
  * The simulator app's photo-library bindings under the grants short of full: one launch holds one grant, so the
- * `journeys (ios)` job relaunches the app under each — a partial selection, a refusal, and never asked — and runs the
+ * `ios` job relaunches the app under each — a partial selection, a refusal, and never asked — and runs the
  * entries listed for it (`contract.list(grant = <GRANT>)`). Each entry refuses its whole run under any other grant.
  *
  * Under every grant the app has a screen. So the states a clause enters "with no screen to ask on" are the ones whose

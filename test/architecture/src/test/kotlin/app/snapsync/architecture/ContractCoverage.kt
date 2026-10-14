@@ -19,7 +19,7 @@ import java.io.File
  * A clause is REAL when a `Live` binding on a host CI runs declares its state reachable, or a `Replay` binding's
  * recording holds its id. A host some `Replay` binding names is a RECORDED host — CI never runs it — so a `Live`
  * binding there (the device's own binding, which records) is not coverage: only its recording is. A host CI runs
- * **in-app** — the simulator app — counts a `Live` binding only when the in-app registry the `journeys (ios)` job runs
+ * **in-app** — the simulator app — counts a `Live` binding only when the in-app registry the `ios` job runs
  * names it: a `simulatorAppContract(<Contract>, <BindingClass>(), …)` call.
  *
  * Scope is derived, never listed ("Gates fail closed on novelty"), with ONE stated exclusion: the mechanism's own
@@ -72,7 +72,7 @@ internal object ContractCoverage {
         }
     }
 
-    /** The binding classes the simulator app's registry names — what the `journeys (ios)` job actually runs. */
+    /** The binding classes the simulator app's registry names — what the `ios` job actually runs. */
     val registered: Set<String> by lazy {
         sources.flatMap { src -> REGISTERED.findAll(src.text).map { it.groupValues[1] }.toList() }.toSet()
     }

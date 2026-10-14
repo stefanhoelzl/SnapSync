@@ -1,5 +1,5 @@
 # Boot the Android emulator the device tests, the journeys and the marketing captures run on, and run `script` on it —
-# the setup ci.yml's `android-build` and `journeys (android)` and screenshots.yml's `android` job share. A COMPOSITE
+# the setup ci.yml's `android` and screenshots.yml's `android` job share. A COMPOSITE
 # action (step-level), not a reusable workflow, for the reason ios-archive gives: the calling job keeps its name, which
 # is its status-check context.
 #

@@ -27,7 +27,7 @@ enum class Host {
     /**
      * The rig build of the app bundle on a simulator, ad-hoc signed with the App Group only. Its bundle
      * identifier is what lets `applesimutils` grant it photo access, which no test executable can hold, so it
-     * is where PhotoKit runs under a real full grant. It is run live on every push by the `journeys (ios)`
+     * is where PhotoKit runs under a real full grant. It is run live on every push by the `ios`
      * job (`docs/architecture.md`, "In-app hosts CI can reach are run live over the rig"). Its Keychain
      * answers `-34018` to an explicit-group query, so it reaches none of `IOS_DEVICE_APP`'s Keychain states.
      */
@@ -47,7 +47,7 @@ enum class Host {
     IOS_DEVICE_PHOTOKIT_EXT,
 
     /**
-     * A device-test APK on the Android emulator (`androidPlatformTest`, run by the `android-build` job) — and the Android
+     * A device-test APK on the Android emulator (`androidPlatformTest`, run by the `android` job) — and the Android
      * rig build of the app there, which answers the same host. The Android adapters' own bindings run here
      * (`:adapter:android`'s device tests); the fakes' shared ones run on the JVM only. The emulator's Keystore is
      * software-backed, so nothing here proves hardware attestation.

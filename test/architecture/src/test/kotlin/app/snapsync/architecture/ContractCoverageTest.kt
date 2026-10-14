@@ -58,7 +58,7 @@ class ContractCoverageTest {
             .map { "${it.name ?: "<anonymous object>"} (${it.host}) — ${it.file}" }
         if (unregistered.isNotEmpty()) {
             fail(
-                "these bindings name a host the `journeys (ios)` job runs in-app, but no `simulatorAppContract(<Contract>, " +
+                "these bindings name a host the `ios` job runs in-app, but no `simulatorAppContract(<Contract>, " +
                     "<BindingClass>(), …)` registers them, so nothing ever runs them. Register each as a named class:\n  " +
                     unregistered.joinToString("\n  "),
             )

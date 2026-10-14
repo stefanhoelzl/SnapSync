@@ -23,7 +23,7 @@ for r in ios:
 #   before apsd is asked. Stopping it cut that CPU to 67–104 s (run 36188792139, three attempts).
 # - mediaanalysisd (+ its .service) and photoanalysisd, the Photos library's on-device analysis, which the scheduler
 #   starts minutes after boot, once the contracts have imported photos: ~2.3 of the runner's 3 cores. In every
-#   `journeys (ios)` failure of 2026-10-05/06 (runs 37380983503, 37473734850, 37491092872, 37492840735) it was running
+#   `ios` failure of 2026-10-05/06 (runs 37380983503, 37473734850, 37491092872, 37492840735) it was running
 #   during the journey's create, which stalled the app AND the local api until the app's 5 s timeout fired (the api
 #   answered 201 after 10–17 s); in none of 11 passing runs was it. The app reads and writes the library, never its
 #   analysis. Stopped, it cannot be restarted (`kickstart` finds no service) and `addmedia` still lands at once.

@@ -5,7 +5,7 @@
 
 The floor is `iosApp/Configuration/Config.xcconfig`'s; the minor bump is INTEGER (v0.9 → 0.10), and max() compares
 (major, minor) TUPLES so a floor of 1.0 beats a derived 0.10. A promoted build's store version is DERIVED from this
-value. `ios-build` and `android-build` each run it on a delivering run, so the one rule yields one version for the
+value. `ios-release` and `android-release` each run it on a delivering run, so the one rule yields one version for the
 same commit on both platforms without a job hand-off between the gates. Needs the release tags fetched.
 """
 

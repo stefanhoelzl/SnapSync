@@ -95,7 +95,7 @@ import platform.Photos.PHPhotoLibrary
 
 /**
  * The simulator app's live bindings of the photo-library contracts (`docs/architecture.md`), and the
- * registry the `journeys (ios)` job runs on every push — which also runs the hand-off contracts, whose bindings
+ * registry the `ios` job runs on every push — which also runs the hand-off contracts, whose bindings
  * live in `HandoffContracts.kt` and need no photo grant.
  *
  * This is where PhotoKit runs under a real full grant: the app bundle is the only simulator process

@@ -1,6 +1,6 @@
 # Dispatch-driven store release (`docs/deployment.md`). This PROMOTES ONE build number to the selected stores — the
-# App Store and/or Google Play — and BUILDS NOTHING: `ios-deliver` already uploaded build N to App Store Connect and
-# `android-deliver` the bundle whose `versionCode` is N to Play. `gh workflow run promote.yml -f build_number=N`
+# App Store and/or Google Play — and BUILDS NOTHING: ci.yml's `deliver` already uploaded build N to App Store Connect
+# and the bundle whose `versionCode` is N to Play. `gh workflow run promote.yml -f build_number=N`
 # DERIVES the store version from the build's own marketing version, prepares each selected store, PREFLIGHTS each,
 # SUBMITS each, and — last — creates the `vX.Y` tag. There is no submit flag: a promote always submits, and the
 # preflights are the gate. `-f dry_run=true` stops after the preflights (no Play commit, no submit, no tag).
@@ -33,7 +33,7 @@
 # compiling a never-run copy. It is a SINGLE ubuntu job — no Xcode, no Gradle, no signing.
 #
 # VERSION IS DERIVED, NOT INPUT. The store version = the build's own `preReleaseVersion.version` (which
-# ci.yml's ios-build computed as max(floor, lastTag+1) at build time). So the version record and the build always
+# ci.yml's `ios-release` computed as max(floor, lastTag+1) at build time). So the version record and the build always
 # match by construction — the "attach a mismatched build" hazard cannot arise. There is no `version` input.
 #
 # PROVENANCE IS AN UPLOAD-TIME GUARANTEE. Both deliver jobs run only when every merge gate passes, so every

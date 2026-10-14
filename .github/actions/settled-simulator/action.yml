@@ -1,0 +1,74 @@
+# The simulator, already past its first boot: the image's iPhone 17 (`scripts/lib/sim.sh`), its device directory
+# cached as `scripts/sim-settle` leaves it — booted, the unneeded daemons disabled, Photos' library created, shut down
+# clean, no app and no photo. A first boot on the runner otherwise spent ~4.5 min at a load of 100-480 booting and
+# installing (run 38393803729); restored, boot and install took 2.7 min and the library's migration 4 s (run
+# 38402060923). Keyed on the image version, the device and the settle scripts.
+#
+# On a miss the image's own directory is put back, and with `settle: true` (main's `ios-release`) the device is settled
+# (~12 min) and saved, and the entries it supersedes are reclaimed (one is ~0.9 GB of a 10 GB budget). Shared by ci.yml's
+# `ios` (restores) and `ios-release` (settles on a miss), so the key cannot drift between the writer and the reader.
+#
+# Run it AFTER anything else on the job has booted a simulator, and before `scripts/sim-contracts`: it replaces the
+# device's directory, and a restored device is as fresh as the image's.
+name: Settled simulator
+description: Restore the image's iPhone 17 as scripts/sim-settle leaves it, or settle and save it on a miss.
+
+inputs:
+  settle:
+    description: "'true' settles and saves the device when the key misses (main only)."
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Find the image's simulator
+      id: sim
+      shell: bash
+      run: |
+        . scripts/lib/sim.sh
+        UDID="$(image_iphone)"
+        echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+        echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+        [ -z "$UDID" ] || mv "$HOME/Library/Developer/CoreSimulator/Devices/$UDID" "$HOME/Library/Developer/CoreSimulator/Devices/$UDID.image"
+    - name: Restore the settled simulator
+      id: restore
+      if: steps.sim.outputs.udid != ''
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
+        key: sim-settled-${{ steps.sim.outputs.image }}-${{ steps.sim.outputs.udid }}-${{ hashFiles('scripts/sim-settle', 'scripts/lib/sim.sh') }}
+    - name: Settle the simulator
+      id: settle
+      if: steps.sim.outputs.udid != ''
+      shell: bash
+      env:
+        UDID: ${{ steps.sim.outputs.udid }}
+        HIT: ${{ steps.restore.outputs.cache-hit }}
+        SETTLE: ${{ inputs.settle }}
+      run: |
+        D="$HOME/Library/Developer/CoreSimulator/Devices/$UDID"
+        if [ "$HIT" = true ]; then
+          rm -rf "$D.image"; echo "restored the settled simulator ($(du -sh "$D" | cut -f1))"
+        else
+          rm -rf "$D"; mv "$D.image" "$D"
+          if [ "$SETTLE" = true ]; then scripts/sim-settle "$UDID" && echo "save=true" >> "$GITHUB_OUTPUT"; fi
+        fi
+        # CoreSimulatorService read the device set before its directory moved; the next simctl starts it afresh.
+        killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+    - name: Save the settled simulator
+      if: steps.settle.outputs.save == 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+    - name: Reclaim superseded simulator entries
+      if: steps.settle.outputs.save == 'true'
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        KEEP: ${{ steps.restore.outputs.cache-primary-key }}
+      run: |
+        gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=sim-settled-" \
+          --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
+          while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done

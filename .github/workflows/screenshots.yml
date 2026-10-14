@@ -65,7 +65,7 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
-      # The Kotlin/Native cache ci.yml's `journeys (ios)` warms — it builds this same rig simulator app — so a warm run
+      # The Kotlin/Native cache ci.yml's `ios` warms — it builds this same rig simulator app — so a warm run
       # skips the toolchain download and klib recompile. RESTORE-ONLY: main owns that entry, and this dispatch-only
       # workflow is a pure consumer. That is also what it already did, just accidentally: with a key
       # rotating only on libs.versions.toml the primary key always HIT, so actions/cache's post-step
@@ -94,7 +94,7 @@ jobs:
           echo "GRADLE_OPTS=-Dorg.gradle.project.snapsync.deployment=prod" >> "$GITHUB_ENV"
 
       # The RIG build of the real app for the simulator SDK (`-Psnapsync.rig=true`, in ~/.gradle and never in the
-      # repo's gradle.properties — exactly as journeys (ios) builds it). Debug so the Kotlin/Native framework link
+      # repo's gradle.properties — exactly as `ios` builds it). Debug so the Kotlin/Native framework link
       # skips the LLVM optimizer. Built unsigned, then AD-HOC signed: an unsigned simulator app has no App Group,
       # and the launch adapters' choice and the mocked systems' state live there (`scripts/sim-sign`).
       - name: Build the rig app for the iOS simulator
@@ -115,7 +115,7 @@ jobs:
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
 
       # The capture compiles now, and every Gradle and Kotlin daemon stops before the simulator boots: they hold
-      # gigabytes the simulator would swap against (the reason journeys (ios) runs its journeys as a bare JVM too).
+      # gigabytes the simulator would swap against (the reason `ios` runs its journeys as a bare JVM too).
       - name: Compile the capture
         run: |
           ./gradlew -q :test:integration:screenshotsClasses :test:integration:screenshotsClasspath
@@ -213,14 +213,14 @@ jobs:
 
       # The DEBUG rig build (`run-as` needs a debuggable app) against `prod`, for the same reason as above: `in_sync`'s QR
       # encodes the deployment's invite origin. Every system the shots touch is mocked, so nothing reaches prod. The
-      # capture compiles here too, and the daemons stop before the emulator boots, as in ci.yml's journeys (android).
+      # capture compiles here too, and the daemons stop before the emulator boots, as in ci.yml's `android`.
       - name: Build the rig app and the capture
         run: |
           ./gradlew :app:android:assembleDebug :test:integration:screenshotsClasses :test:integration:screenshotsClasspath \
             -Psnapsync.rig=true -Psnapsync.deployment=prod
           ./gradlew --stop
       # The emulator the journeys and the `snapsync-android` skill use (`.github/actions/android-emulator`: pixel_6,
-      # 1080x2400), over the system image ci.yml's journeys (android) caches on main — restored only here. Each script line
+      # 1080x2400), over the system image ci.yml's `android` caches on main — restored only here. Each script line
       # is its own shell. On a failed capture the app's log and the screen are kept, since the emulator is gone after
       # this step.
       - name: Capture each state, light and dark

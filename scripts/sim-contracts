@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run the simulator app's port contracts, end to end — the `journeys (ios)` CI job, and its reproduction on a
+# Run the simulator app's port contracts, end to end — the `ios` CI job, and its reproduction on a
 # Mac session (`docs/architecture.md`, "In-app hosts CI can reach are run live over the rig").
 #
 #   scripts/sim-contracts            # on macOS, from the repo root, with snapsync.rig=true in ~/.gradle
@@ -74,10 +74,14 @@ trap 'kill "$SAMPLER_PID" 2>/dev/null' EXIT
 grep -q '^snapsync.rig=true' "$HOME/.gradle/gradle.properties" 2>/dev/null \
     || fail "snapsync.rig=true is not in ~/.gradle/gradle.properties (never put it in the repo's)"
 
+# SIM_CONTRACTS_BUILD_ONLY=1 builds what a run would (the rig app, the journeys' classpath) and stops there: main's
+# `ios-release` runs it so the caches a PR's `ios` job restores hold this build. No simulator, no backend.
+BUILD_ONLY="${SIM_CONTRACTS_BUILD_ONLY:-}"
+
 # applesimutils, pinned to a tap commit: the formula, and the bottle it pours, come from that commit, and auto-update is off
 # so a newer formula cannot arrive mid-run.
 APPLESIMUTILS_TAP_COMMIT=8f636f84541e08e850f455d7cffdfbd7ba305d3f   # applesimutils 0.9.12 (2025-06-18)
-if ! command -v applesimutils >/dev/null; then
+if [ -z "$BUILD_ONLY" ] && ! command -v applesimutils >/dev/null; then
     export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
     # Cloned into the taps directory rather than `brew tap`ped: the tap also carries casks we never install,
     # and `brew tap` reads them all — its detox-instruments cask uses a deprecated `depends_on macos:` form,
@@ -97,6 +101,28 @@ python3 scripts/resolve-deployment.py local >/dev/null || fail "could not render
 # GRADLE_OPTS reaches the Gradle that Xcode's build phase launches (an `ORG_GRADLE_PROJECT_` variable does not: its
 # name cannot carry the dot, measured), and touches no gradle.properties on the machine. Everything below inherits it.
 export GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.project.snapsync.deployment=local"
+
+# The rig app for the simulator and the journeys' classpath — everything this script builds.
+build_app() {
+    stage "xcodebuild: starting"
+    # arm64 only: the generic simulator destination also builds an x86_64 slice (the Swift sources and the SwiftPM packages
+    # twice) that an Apple-silicon simulator never loads; the Kotlin framework is iosSimulatorArm64 alone either way.
+    xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
+        -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO ARCHS=arm64 build \
+        > "$OUT/xcodebuild.log" 2>&1 || { tail -40 "$OUT/xcodebuild.log"; fail "xcodebuild"; }
+    stage "xcodebuild: done"
+    # The journeys compile now, on the daemon the xcodebuild's Gradle left running, so their run at the end compiles
+    # nothing. Then every Gradle and Kotlin daemon goes: they hold gigabytes the simulator would otherwise swap against.
+    ./gradlew -q :test:integration:journeysClasses :test:integration:journeysClasspath :test:cli:installDist \
+        > "$OUT/journeys-compile.log" 2>&1 || { cat "$OUT/journeys-compile.log"; fail "the journeys did not compile"; }
+    ./gradlew -q --stop >/dev/null 2>&1
+    pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' 2>/dev/null
+    stage "journeys compiled, daemons stopped"
+}
+if [ -n "$BUILD_ONLY" ]; then
+    build_app
+    exit 0
+fi
 
 # The real backend, on the loopback address the `local` deployment bakes into the build. `dev:local` rather than
 # `serve.ts --ephemeral`, which exits when its stdin closes and so cannot be backgrounded from a script. Its store is
@@ -144,20 +170,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-stage "xcodebuild: starting"
-# arm64 only: the generic simulator destination also builds an x86_64 slice (the Swift sources and the SwiftPM packages
-# twice) that an Apple-silicon simulator never loads; the Kotlin framework is iosSimulatorArm64 alone either way.
-xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
-    -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO ARCHS=arm64 build \
-    > "$OUT/xcodebuild.log" 2>&1 || { tail -40 "$OUT/xcodebuild.log"; fail "xcodebuild"; }
-stage "xcodebuild: done"
-# The journeys compile now, on the daemon the xcodebuild's Gradle left running, so their run at the end compiles
-# nothing. Then every Gradle and Kotlin daemon goes: they hold gigabytes the simulator would otherwise swap against.
-./gradlew -q :test:integration:journeysClasses :test:integration:journeysClasspath :test:cli:installDist \
-    > "$OUT/journeys-compile.log" 2>&1 || { cat "$OUT/journeys-compile.log"; fail "the journeys did not compile"; }
-./gradlew -q --stop >/dev/null 2>&1
-pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' 2>/dev/null
-stage "journeys compiled, daemons stopped"
+build_app
 APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
 [ -n "$APP" ] || fail "no simulator .app was built"
 scripts/sim-sign "$APP" || fail "sim-sign"

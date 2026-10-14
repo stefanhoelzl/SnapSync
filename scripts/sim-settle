@@ -1,5 +1,5 @@
 #!/bin/sh
-# Settle a simulator once, so a cache can hand it to later runs already past its first-boot work — the `journeys (ios)`
+# Settle a simulator once, so a cache can hand it to later runs already past its first-boot work — the `ios`
 # CI job's simulator cache (ci.yml), on a miss.
 #
 #   scripts/sim-settle <udid>

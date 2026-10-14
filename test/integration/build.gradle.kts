@@ -56,7 +56,7 @@ dependencies {
 // A few end-to-end runs with EVERY system real: the rig build of the app on ONE simulator or emulator, the real
 // backend served locally, the real photo library. The second member is played by the journey itself, over the backend's
 // public HTTP surface with real JPEG bytes (`Member`), so to the app it is a foreign member like any device.
-// Written against the same typed client as the tests above, and run ONLY by the `journeys (ios|android)` CI jobs
+// Written against the same typed client as the tests above, and run ONLY by the `ios` / `android` CI jobs
 // (`scripts/sim-contracts`, `scripts/android-journeys`), which boot the device and the backend and pass their
 // addresses. Outside `build` by construction: this task is never a dependency of `check`. It FAILS — never skips —
 // when an address is missing, so a job that forgot to pass one cannot pass with nothing run.

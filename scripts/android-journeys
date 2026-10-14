@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The all-real journeys on the Android emulator — the `journeys (android)` CI job, and its reproduction on this Linux
+# The all-real journeys on the Android emulator — the `android` CI job, and its reproduction on this Linux
 # box (the `snapsync-android` skill boots the emulator first). The Android half of what `scripts/sim-contracts` does on
 # the iOS simulator (`docs/testing.md`, "All-real journeys are the contracts' safety net").
 #

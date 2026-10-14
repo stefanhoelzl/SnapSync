@@ -274,7 +274,7 @@ $R --timeout 0 contract run --name OsUploadQueue --host IOS_DEVICE_PHOTOKIT_EXT 
 
 On a **simulator** the same verb runs the photo-library contracts against real PhotoKit under a real full
 grant. The app bundle is the only simulator process `applesimutils` can grant photo access to. Nothing is
-recorded: the answer is the outcome table, and the `journeys (ios)` CI job runs exactly what `contract list`
+recorded: the answer is the outcome table, and the `ios` CI job runs exactly what `contract list`
 names, on every push. `scripts/sim-contracts` is that job, and running it on a Mac session reproduces it.
 
 ```bash

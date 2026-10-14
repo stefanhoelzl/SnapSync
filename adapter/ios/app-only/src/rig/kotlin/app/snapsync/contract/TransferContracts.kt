@@ -72,7 +72,7 @@ import platform.posix.memcpy
  * evidence everything after that lookup (the delegate, staging, the outcome read, the live-task cap, the guarded
  * terminal write) and nothing of the background session's lifecycle, which stays documented in `TransferSessions.kt`.
  *
- * Both exchange bytes with the loopback fixture `scripts/transfer-fixture.py`, whose address the `journeys (ios)` job
+ * Both exchange bytes with the loopback fixture `scripts/transfer-fixture.py`, whose address the `ios` job
  * passes as the contract verb's `fixture` parameter ([RunParameters]); a run without it is refused whole.
  */
 private class FixtureAddress : RunParameters {

@@ -126,7 +126,7 @@ async function handler(request: Request): Promise<Response> {
 }
 
 // No logger here: the api writes its own line per request (`request-log.ts`), in this rig exactly as on the
-// edge — the evidence `journeys (ios)` keeps. Ephemeral mode logs too: the test JVM that launched it drains
+// edge — the evidence `ios` keeps. Ephemeral mode logs too: the test JVM that launched it drains
 // its stdout to the end (`LiveEdge.kt`), so the lines fill no pipe.
 serveRequest = handler;
 

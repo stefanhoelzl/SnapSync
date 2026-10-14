@@ -95,14 +95,14 @@ android {
     }
     buildTypes {
         release {
-            // R8 and resource shrinking on EVERY release, the store build's own: CI's `android-build` builds the plain
-            // release, and `journeys (android)` RUNS the rig release — so every journey exercises R8 output, where a
+            // R8 and resource shrinking on EVERY release, the store build's own: CI's `build` builds the plain
+            // release, and `android` RUNS the rig release — so every journey exercises R8 output, where a
             // class reached only by name (the manifest, a service loader, reflection) breaks with a green build.
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // A rig release is test equipment, never a store build: the debug key signs it so it installs on an
-            // emulator. The plain release stays unsigned here — `ci.yml`'s `android-deliver` signs the bundle with
+            // emulator. The plain release stays unsigned here — `ci.yml`'s `deliver` signs the bundle with
             // the store's upload key, so no build of this file ever needs it.
             if (rigEnabled) signingConfig = signingConfigs.getByName("debug")
         }

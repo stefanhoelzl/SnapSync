@@ -1,61 +1,57 @@
-# CI — EVERY merge gate, in one workflow (`docs/deployment.md`, "CI"; `docs/testing.md`, "Where each test runs").
+# CI — every merge gate and every delivery, in one workflow (`docs/deployment.md`, "CI"; `docs/testing.md`, "Where each
+# test runs").
+#
+# TWO SETS OF JOBS, by event, and no job runs in both:
+#
+#   a push to a BRANCH (the PR gate)    build · ios · android → ci
+#   a push to MAIN, or a dispatch       ios-release · android-release → deliver, and on main build-cache
+#
+# MAIN RE-TESTS NOTHING. Merges are rebases onto an up-to-date main (`/ship`, the ruleset's strict policy), so the tree a
+# push to main carries is the tree its PR's run already passed. Main builds what it delivers, delivers it, and builds
+# the caches the next PRs restore (GitHub saves caches only from the default branch). Its warm-up steps fail nothing.
+#
+# ONE macOS RUNNER PER RUN. The account gets about three, and a main run that held two or three of them for 30+ min
+# queued the PRs behind it. So each platform is ONE job on either side — `ios` / `android` on a PR, `ios-release` /
+# `android-release` on main — and the two platforms have the same shape.
 #
 # REQUIRED CHECKS. `/ship` owns `main`'s branch ruleset (there is no committed copy) and requires every check that ran
-# on a PR, so each gate below is a required context of its own, beside `check-label` (pull-request-triggered, its own
-# file). `ci` needs every gate and fails unless each one succeeded; it is what `ios-deliver` waits on. A new gate joins
-# the ruleset on the next ship by having run; a RENAMED or REMOVED gate must be dropped from the ruleset in that ship
-# (`--drop-context`), because a required context that is never posted again freezes every merge.
+# on a PR: `build`, `ios`, `android` and `ci`, beside `check-label` (its own file). `ci` needs every gate and fails
+# unless each one succeeded. A RENAMED or REMOVED gate must be dropped from the ruleset in its ship (`--drop-context`),
+# because a required context that is never posted again freezes every merge.
 #
 # NO PATH FILTER, deliberately, on the workflow or any gate: GitHub treats a required check that is never posted as
-# permanently PENDING, so a path-filtered gate would freeze every PR whose diff fell outside it. A gate that has
-# nothing to do on a diff decides that in a STEP (migration-rehearsal) and still posts.
+# permanently PENDING, so a path-filtered gate would freeze every PR whose diff fell outside it. A step that has nothing
+# to do on a diff decides that itself and its job still posts (the migration rehearsal).
 #
-# WHAT RUNS WHERE. The shared `commonTest` runs ONCE, on the JVM, in `build`. A platform runtime runs only what only it
-# can answer, and both platforms have the same two gates:
+# WHAT RUNS WHERE ON A PR. The shared `commonTest` runs ONCE, on the JVM, in `build`. A platform runtime runs only what
+# only it can answer:
 #
-#   build           Linux: `./gradlew build` (every target compiled, every JVM test, every architecture gate) and the
-#                   diagrams freshness check
-#   ios-build       the SIGNED device archive — the shipping iosArm64 compile, and the delivery source on main — then
-#                   the platform-bound tests, `./gradlew iosPlatformTest` on the simulator (the iOS adapters and their
-#                   contract bindings on the test executable, the native SQLite drivers)
-#   android-build   the plain RELEASE build, the store's — R8 and resource shrinking over its whole graph, its R8 mapping
-#                   in app/android/build/outputs/mapping/release/, and on a delivering run the BUNDLE Play receives
-#                   (the delivery source, as ios-build's archive is; on a PR `build` already builds it, so only a
-#                   delivering run does) — then the platform-bound tests, every module's `connectedAndroidDeviceTest`
-#                   on one emulator (the Android adapters' contract bindings)
+#   build     Linux: `./gradlew build` (every target compiled, every JVM test, every architecture gate), the diagrams
+#             freshness check, and the checks with no Gradle — specs, deployment resolver, listings, api/, site/, the
+#             migration rehearsal — each step `if: !cancelled()`, so one red check hides no other's result
+#   ios       the SIGNED Debug device archive (the shipping iosArm64 compile, Swift, entitlements, signing), then on the
+#             simulator: `./gradlew iosPlatformTest` (the adapters' contract bindings on the test executable), then
+#             `scripts/sim-contracts` — the simulator app's in-app port contracts and the all-real journeys
+#   android   on ONE emulator: every module's device tests (the adapters' contract bindings), then
+#             `scripts/android-journeys` — the all-real journeys over the rig release build (R8 output)
 #
-#                   Build and tests share a runner because together they stay under the journeys (measured: ~8 min
-#                   on iOS against ~10): the critical path does not move, and a push holds one macOS runner fewer —
-#                   the account gets about three. The journeys stay a job of their own; folding them in too doubled
-#                   the iOS wall clock (a one-job-per-platform spike: ~21 min against ~10).
-#   journeys (ios|android)   the all-real journeys against a local api/ — on iOS after the simulator app's in-app port
-#                   contracts (`scripts/sim-contracts`), on Android over every real adapter it has
-#                   (`scripts/android-journeys`). Scripts, not Gradle: every Gradle and Kotlin daemon
-#                   must be gone before the simulator boots on the 7 GB macOS runner, and the journeys run in a bare JVM
-#   metadata · api-test · migration-rehearsal · site-build    the Linux checks of the spec, deployment resolver, App
-#                   Store listing, backend and site
+# Delivery. `ios-release` archives RELEASE and exports the signed IPA; `android-release` builds the store bundle; each
+# reads its DSN back out of what it built. `deliver` (Linux) uploads both, so one build number (`BUILD_NUMBER_OFFSET`)
+# lands in both stores or neither, barring an upload failure. None of them posts a required check, so each is free to
+# fail red without blocking anything. They reach only internal testers — TestFlight's `development` group; on Play, a
+# push to main reaches the internal testing track and a dispatch an internal-app-sharing link. Real users get builds
+# only through the dispatch-driven store promotion (promote.yml).
 #
-# NO HAND-OFFS BETWEEN GATES: each compiles what it needs, so no gate waits on another and a red one skips nothing.
-# The only artifact edges are ios-build → ios-deliver and android-build → android-deliver.
-#
-# DELIVERY. `ios-deliver` and `android-deliver` run on a push to main or a `workflow_dispatch` of a branch, and each
-# `needs: ci`: a red gate — any gate, either platform — stops BOTH uploads, so one build number (`BUILD_NUMBER_OFFSET`)
-# lands in both stores or neither, barring an upload failure. Neither posts a required check (neither runs on a PR
-# push, so requiring one would freeze merges), so each is free to fail red without blocking anything. A dispatch runs
-# every gate too. They reach only internal testers — TestFlight's `development` group; on Play, a push to main reaches
-# the internal testing track and a dispatch an internal-app-sharing link. Real users get builds only through the
-# dispatch-driven store promotion (promote.yml).
-#
-# Deployers stay in their own files: deploy.yml (api, site, listing text — main only), promote.yml,
-# screenshots.yml, nightly-cleanup.yml, ssh-runner-macos.yml.
+# Deployers stay in their own files: deploy.yml (api, site, listing text — main only), promote.yml, screenshots.yml,
+# nightly-cleanup.yml, ssh-runner-macos.yml.
 name: ci
 
 on:
   push:
     # BRANCHES only. A `vX.Y` tag is a release RECEIPT created by promote.yml; it triggers nothing.
     branches: ["**"]
-  # A DELIBERATE BRANCH DELIVERY (`docs/deployment.md`): dispatch this workflow on any ref and it runs every gate,
-  # archives RELEASE and DELIVERS to internal TestFlight, exactly as a push to main does — the one route to a tester's
+  # A DELIBERATE BRANCH DELIVERY (`docs/deployment.md`): dispatch this workflow on any ref and it archives RELEASE and
+  # DELIVERS to internal TestFlight, exactly as a push to main does (no gate: the branch's push ran them) — the one route to a tester's
   # phone reachable only through the stores. On Play it goes out as an INTERNAL APP SHARING link in the run's summary,
   # never to the internal track: that track serves only its latest release, so a branch build there replaced main's
   # for every internal tester until the next merge. It must be marked distributed (`SNAPSYNC_CHANNEL: release`): the xcconfig
@@ -80,8 +76,8 @@ env:
   # run (build − offset) and one at or below it to ios.yml's. Never lower it; never change it once a build used it.
   BUILD_NUMBER_OFFSET: 2000
 
-# A newer push to a BRANCH cancels its own in-progress run. On main it never does: a cancelled gate fails `ci`, so every
-# merge landing inside the previous one's run left a red commit on main. Main's runs queue instead, one at a time, so
+# A newer push to a BRANCH cancels its own in-progress run. On main it never does: a cancelled delivery leaves a build
+# number in neither store, and a cancelled warm-up a cache one merge behind. Main's runs queue instead, one at a time, so
 # deliveries also land in build-number order. (GitHub keeps one PENDING run per group: a third merge while one runs and
 # one waits still displaces the waiting one — the newest commit's run covers it.) The event is part of the group so a
 # push and a dispatch on the SAME ref never cancel each other: a probe build killed by an unrelated push to its branch
@@ -90,13 +86,18 @@ concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+
 jobs:
-  # ── Linux ────────────────────────────────────────────────────────────────────────────────────────────────────────
+  # ═══ The PR gate: a push to any branch but main ══════════════════════════════════════════════════════════════════
 
   build:
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
     runs-on: ubuntu-26.04
     steps:
+      # Full history: the migration rehearsal diffs against the merge base with main.
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -104,10 +105,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
       # `./gradlew build` launches the REAL backend: `:adapter:generic:app`'s jvmTest runs the backend port contracts'
       # live bindings against `api/src/dev/serve.ts --ephemeral` (loopback only, filesystem store). Without Deno they
-      # FAIL naming it; they never skip. Same pin as api-test, so both run the backend under one Deno.
+      # FAIL naming it; they never skip. The api/ checks below run under the same Deno.
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
       # Compose Desktop UI tests render offscreen under -Djava.awt.headless=true, so no X server is needed.
       - run: ./gradlew build
       # A red test's whole record: the log prints each failure's message and stack (FULL, set in the root build), the
@@ -122,13 +126,14 @@ jobs:
             **/build/test-results/
             **/build/reports/tests/
           if-no-files-found: ignore
-
       # The diagrams freshness check (`docs/architecture.md`). `:tools:diagrams:test` under `build` is its local half;
       # this half regenerates on a clean checkout and asks git, which also catches untracked new files and the
-      # sidecar's self-staleness. A semantically-stale merge shows up as this gate red on main, fixed by a regen PR.
+      # sidecar's self-staleness.
       - name: Regenerate diagrams
+        if: ${{ !cancelled() }}
         run: ./gradlew architectureDiagrams
       - name: Fail if committed diagrams are stale
+        if: ${{ !cancelled() }}
         run: |
           if [ -n "$(git status --porcelain architecture/)" ]; then
             echo "::error::architecture/ is stale — run ./gradlew architectureDiagrams and commit the result"
@@ -137,117 +142,124 @@ jobs:
             exit 1
           fi
           echo "architecture/ is fresh"
-
-  # The small checks with no Gradle: each runs in seconds, so one runner carries all three.
-  metadata:
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
+      # Every rendering is generated and none is committed, so the listings, api/ and site/ below would read a missing
+      # file without this.
+      - name: Resolve the deployment
+        if: ${{ !cancelled() }}
+        run: python3 scripts/resolve-deployment.py prod
+      # ── The checks with no Gradle (once four jobs of their own; each ran in seconds, under its runner's setup) ──
+      # The spec, the deployment resolver, the listings.
       # Keep openspec/specs the contract of record: every spec must parse and carry a normative (SHALL/MUST)
       # requirement and a scenario. Pinned, so an upstream rule change cannot turn CI red without a deliberate bump.
       # Structure, not truth: green means well-formed.
       - name: Validate the specs
+        if: ${{ !cancelled() }}
         run: npx --yes @fission-ai/openspec@1.13.2 validate --specs --strict
       # The deployment resolver's own suite (`docs/deployment.md`), and the only place it runs. It once ran only in the
       # api deploy, on main, where it could only fail after a merge — and did: two required inventory keys broke 20 of
       # its tests, the PR merged clean, and production kept serving the previous bundle.
       - name: Test the deployment resolver
+        if: ${{ !cancelled() }}
         run: python3 scripts/resolve_deployment_test.py
-      # The photo-library migration gate `journeys (ios)` waits on (scripts/await-photo-migration.py): its reading of
+      # The photo-library migration gate `ios` waits on (scripts/await-photo-migration.py): its reading of
       # `assetsd`'s log, tested here because the macOS job only ever exercises the one path the runner takes.
       - name: Test the photo-library migration gate
+        if: ${{ !cancelled() }}
         run: python3 scripts/await_photo_migration_test.py
       # The use-case graphic (metadata/graphic/): its renders are committed, not built here, so this catches a tagline
       # changed in metadata/screenshots/en-US.json without re-running metadata/graphic/render.py.
       - name: Check the graphic renders carry the current tagline
+        if: ${{ !cancelled() }}
         run: python3 metadata/graphic/check.py
       # The App Store listing (`docs/deployment.md`), validated OFFLINE: schema, character limits, URL format. It
       # validates what will be APPLIED — the files the resolver renders from the one listing source
       # (metadata/listing/), placeholders filled — not the committed source. The apply half is deploy.yml's `appstore-metadata-apply` (main only). `asc` is a pinned,
       # checksum-verified binary (asc_fetch.sh).
-      - name: Resolve the deployment
-        run: python3 scripts/resolve-deployment.py prod
       - name: Fetch pinned asc
+        if: ${{ !cancelled() }}
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
       - name: Validate the App Store listing
+        if: ${{ !cancelled() }}
         run: '"$RUNNER_TEMP/asc" metadata validate --dir build/metadata'
       # The Play half of the same rendered listing (one source, metadata/listing/): Play has no offline validator, so
       # its character limits are ours. The apply half is promote.yml's diff-gated listing update.
       - name: Validate the Google Play listing
+        if: ${{ !cancelled() }}
         run: python3 scripts/validate_play_listing.py build/metadata/play
-
-  # The backend's check set (`docs/deployment.md`). The deploy (deploy.yml's `api` job) deliberately does not repeat
-  # it: no commit reaches main without this having passed. It once lived in the deploy only, where a PR that broke the
-  # backend merged, and the deploy then failed on main with production silently serving the previous bundle.
-  api-test:
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-      # Every rendering is generated and none is committed, so the checks below would hit a missing module without
-      # this. A SEPARATE invocation, so it cannot widen the permissions the suite runs under.
-      - name: Resolve the deployment
-        run: python3 scripts/resolve-deployment.py prod
+      # The backend's check set (`docs/deployment.md`). The deploy (deploy.yml's `api` job) deliberately does not repeat
+      # it: no commit reaches main without this having passed.
       - name: Format check
+        if: ${{ !cancelled() }}
         working-directory: api
         run: deno fmt --check
       - name: Lint
+        if: ${{ !cancelled() }}
         working-directory: api
         run: deno lint
       # The wire format's one source (`api/openapi.yaml`): Redocly's recommended rules plus ours (`api/redocly.yaml`).
       - name: OpenAPI lint
+        if: ${{ !cancelled() }}
         working-directory: api
         run: deno task lint:openapi
       # All source, explicitly: `deno test` checks only test-reachable code. The task (deno.json) is the one place the
       # type-checked directories are listed.
       - name: Type check
+        if: ${{ !cancelled() }}
         working-directory: api
         run: deno task check
       # --allow-net stays ABSENT from the task: that absence is what guarantees no test can reach the real bunny zone.
       - name: Test
+        if: ${{ !cancelled() }}
         working-directory: api
         run: deno task test
       # The committed schema snapshot must be exactly what replaying `api/migrations/*.sql` produces: a reviewer reads
       # its diff, and the deploy asserts the live store against it. Freshness, not correctness.
       - name: Schema snapshot is current
+        if: ${{ !cancelled() }}
         working-directory: api
         run: deno task schema:check
       # An import that does not resolve, or a bundle past the Edge Scripting 10 MB limit, fails here, not on main.
       - name: Bundle
+        if: ${{ !cancelled() }}
         working-directory: api
         run: deno task bundle
       # The stamp is what the deploy's post-publish boot probe matches, so a resolver that stopped stamping fails here
       # rather than after a bad script is live.
       - name: Verify the bundle carries this commit
+        if: ${{ !cancelled() }}
         working-directory: api
         run: |
           grep -q "${{ github.sha }}" dist/main.js || {
             echo "::error::dist/main.js does not carry ${{ github.sha }} — the resolver did not stamp it"
             exit 1
           }
-
-  # Rehearse a migration change against a pseudonymised copy of the deployed store (`docs/deployment.md`, "Gates").
-  # The deploy is otherwise the first place a migration meets the real store — after merge, where a failure rolls back
-  # and nothing gates (c19b6c4b's comment edits to applied migrations failed three deploys in a row). So a branch that
-  # changes anything under `api/migrations/` (against the MERGE BASE) runs the SAME `bunny db migrations apply` the
-  # deploy runs, against a local libSQL server holding a copy of the store, then the same shape assertion. A
-  # conditional STEP, not a path filter: the job must post on every branch.
-  #
-  # The copy is pseudonymised in memory and never written down (`rehearsal-copy.ts`); the credential is the READ-ONLY
-  # database token — a push-triggered job on every branch must never hold the deploy's. The CLI refuses unencrypted
-  # URLs, so the local `sqld` sits behind a loopback TLS proxy with a throwaway CA (`tls-proxy.ts`).
-  migration-rehearsal:
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
+      # The site (capability web-site): type-check, formatting, self-containment. The deploy (deploy.yml's `site` job)
+      # builds again for its output but does not repeat the checks.
+      - name: Install
+        if: ${{ !cancelled() }}
+        working-directory: site
+        run: npm ci
+      # Fails if astro:assets cannot process the screenshots, so a broken capture or import is caught before main.
+      - name: Build
+        if: ${{ !cancelled() }}
+        working-directory: site
+        run: npm run build
+      #   check:types        — astro check (TS type-checking of the .astro pages + island)
+      #   check:fmt          — prettier --check
+      #   check:selfcontained — Deno: fail on any off-origin subresource (load-bearing for /join privacy),
+      #                         and on an event page whose %%TOKEN%%s disagree with the api's (check-event-template.ts)
+      - name: Check
+        if: ${{ !cancelled() }}
+        working-directory: site
+        run: npm run check
+      # Rehearse a migration change against a pseudonymised copy of the deployed store (`docs/deployment.md`, "Gates"):
+      # a branch that changes anything under `api/migrations/` (against the MERGE BASE) runs the SAME `bunny db
+      # migrations apply` the deploy runs, against a local libSQL server holding a copy of the store, then the same shape
+      # assertion. The copy is pseudonymised in memory and never written down (`rehearsal-copy.ts`); the credential is the
+      # READ-ONLY database token. Last, because its libSQL server takes 127.0.0.1:8080. A conditional STEP, not a path
+      # filter: the job must post on every branch.
       - name: Did this branch change a migration?
+        if: ${{ !cancelled() }}
         id: diff
         run: |
           if git diff --quiet origin/main...HEAD -- api/migrations/; then
@@ -258,16 +270,16 @@ jobs:
             git diff --stat origin/main...HEAD -- api/migrations/
           fi
       - uses: denoland/setup-deno@v2
-        if: steps.diff.outputs.changed == 'true'
+        if: ${{ !cancelled() && steps.diff.outputs.changed == 'true' }}
         with:
           deno-version: v2.x
       # Unpinned, as in deploy.yml: the rehearsal must run the CLI the deploy will run.
       - name: Install the bunny CLI
-        if: steps.diff.outputs.changed == 'true'
+        if: ${{ !cancelled() && steps.diff.outputs.changed == 'true' }}
         run: npm install -g @bunny.net/cli
       # sqld 0.24.33, pinned by digest: the stand-in for the deployed store must not move under a rehearsal.
       - name: Start a local libSQL server behind TLS
-        if: steps.diff.outputs.changed == 'true'
+        if: ${{ !cancelled() && steps.diff.outputs.changed == 'true' }}
         run: |
           docker run -d --name sqld -p 127.0.0.1:8080:8080 \
             ghcr.io/tursodatabase/libsql-server@sha256:134f3a465ade779e417b258d8e4fbfa8ca0a3212a2dbe83457b2fa104b75d54a
@@ -292,7 +304,7 @@ jobs:
           }
           echo "NODE_EXTRA_CA_CERTS=$tls/ca.pem" >> "$GITHUB_ENV"
       - name: Copy the deployed store, pseudonymised
-        if: steps.diff.outputs.changed == 'true'
+        if: ${{ !cancelled() && steps.diff.outputs.changed == 'true' }}
         working-directory: api
         env:
           BUNNY_DATABASE_URL: ${{ secrets.BUNNY_DATABASE_URL }}
@@ -300,122 +312,279 @@ jobs:
           REHEARSAL_DATABASE_URL: http://127.0.0.1:8080
         run: deno run --allow-net --allow-env --allow-read src/scripts/rehearsal-copy.ts
       - name: Apply the migrations, as the deploy will
-        if: steps.diff.outputs.changed == 'true'
+        if: ${{ !cancelled() && steps.diff.outputs.changed == 'true' }}
         working-directory: api
         run: bunny db migrations apply --dir migrations --url libsql://localhost:8443 --token rehearsal --force
       - name: The migrated copy has the schema the migrations build
-        if: steps.diff.outputs.changed == 'true'
+        if: ${{ !cancelled() && steps.diff.outputs.changed == 'true' }}
         working-directory: api
         env:
           BUNNY_DATABASE_URL: http://127.0.0.1:8080
           BUNNY_DATABASE_AUTH_TOKEN: rehearsal
         run: deno run --allow-net --allow-env --allow-read src/scripts/assert-schema.ts
 
-  # The site (capability web-site): type-check, formatting, self-containment. The deploy (deploy.yml's `site` job)
-  # builds again for its output but does not repeat the checks.
-  site-build:
-    runs-on: ubuntu-26.04
+  # The iOS gate, ONE macOS job: the device archive, then everything that runs on the simulator. Signing on every push
+  # is deliberate: a signing or entitlement break must fail before merge, not on main's delivery. DEBUG, the identical
+  # compile surface minus the LLVM optimization pass that dominates the Release link, on an archive that is discarded;
+  # a Release-only failure surfaces on main, where it stops the delivery (the pre-merge escape is a dispatch).
+  #
+  # Signing: TWO persistent certs — Apple Distribution (SIGNING_CERT_*) and Apple Development (SIGNING_DEV_CERT_*) —
+  # imported into one keychain, and `-allowProvisioningUpdates` manages the profiles through the App Store Connect API
+  # key. Both, because an empty keychain makes automatic signing mint a NEW cert every run, exhausting Apple's
+  # per-account cap. The scaffolding lives in .github/actions/ios-archive, shared with `ios-release`.
+  ios:
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: macos-26
+    env:
+      # `channel` is the single discriminator the xcconfig renderer derives APS_ENVIRONMENT / APNS_ENV /
+      # SENTRY_ENVIRONMENT from, and it gates the DSN: none is rendered off a distributed channel.
+      SNAPSYNC_CHANNEL: dev
+      # Gradle's cache: `ios-release`'s, read only (a branch never writes one).
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: ios
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-node@v7
+      # Render the deployment BEFORE anything reads it: `Config.xcconfig` hard-`#include`s the generated fragment.
+      - name: Resolve the deployment
+        run: python3 scripts/resolve-deployment.py prod
+      - name: Compute the build number
+        run: echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
+      - name: Archive signed device app
+        uses: ./.github/actions/ios-archive
         with:
-          node-version: "24"
-      # `check:selfcontained` runs under Deno.
+          build-config: Debug
+          current-project-version: ${{ env.BUILD_NUMBER }}
+          archive-path: ${{ runner.temp }}/SnapSync.xcarchive
+          asc-key-id: ${{ secrets.ASC_KEY_ID }}
+          asc-issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          asc-api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          signing-cert-p12-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
+          signing-cert-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          signing-dev-cert-p12-base64: ${{ secrets.SIGNING_DEV_CERT_P12_BASE64 }}
+          signing-dev-cert-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
+      # Assert the built BUNDLES carry the resolved deployment — read back out of the archive, not checked on the
+      # generator's output. A renderer test proves the intended bytes were emitted and cannot see a grammar that
+      # reinterprets them (the DSN was once truncated at its `//` to `https:` and shipped four mute TestFlight builds
+      # with every unit test green) nor a resource that never reached a bundle.
+      #
+      # BOTH bundles, because each process reads its OWN `Deployment.plist`; a copy missing from one fails all four
+      # values in that process at once, silently. The FIFTH value, `BackgroundUploadURLBase`, lives in each bundle's
+      # Info.plist because `assetsd` reads it there to validate the upload registration (absent, the OS never launches
+      # the extension); it must EQUAL `Deployment.plist`'s `uploadBase`. The two reach the bundle by different routes
+      # (a Python-rendered plist; an xcconfig, which truncates at `//`), so their equality is a differential test of
+      # the grammar — a prefix test would pass on an empty or truncated value.
+      - name: Verify the archive baked the resolved deployment
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/SnapSync.xcarchive/Products/Applications/SnapSync.app"
+          APPEX="$APP/Extensions/BackgroundUploadExtension.appex"   # iOS 26 uses Extensions/, not PlugIns/
+          prop() { sed -n "s/^$1=//p" build/deployment.properties; }
+          pb() { /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null || true; }
+
+          DOMAIN="$(prop domain)"
+          [ -n "$DOMAIN" ] || { echo "::error::the resolver produced no domain"; exit 1; }
+          if [ "$SNAPSYNC_CHANNEL" = "release" ]; then EXPECT_APNS=production; EXPECT_ENV=production
+          else EXPECT_APNS=sandbox; EXPECT_ENV=development; fi
+
+          for BUNDLE_DIR in "$APP" "$APPEX"; do
+            NAME="$(basename "$BUNDLE_DIR")"
+            DEP="$BUNDLE_DIR/Deployment.plist"
+            [ -f "$DEP" ] || { echo "::error::$NAME carries no Deployment.plist — the resource did not reach this bundle"; exit 1; }
+
+            BASE="$(pb "$DEP" uploadBase)"
+            APNS="$(pb "$DEP" apnsEnv)"
+            SENV="$(pb "$DEP" sentryEnvironment)"
+            ID="$(pb "$BUNDLE_DIR/Info.plist" CFBundleIdentifier)"
+            INFOBASE="$(pb "$BUNDLE_DIR/Info.plist" BackgroundUploadURLBase)"
+            echo "$NAME: base=$BASE infoBase=$INFOBASE apns=$APNS sentryEnv=$SENV id=$ID"
+
+            [ "$BASE" = "https://$DOMAIN/api/v2" ] || { echo "::error::$NAME upload base '$BASE' is not https://$DOMAIN/api/v2"; exit 1; }
+            [ -n "$INFOBASE" ] || { echo "::error::$NAME Info.plist carries no BackgroundUploadURLBase — assetsd validates the registration insert against this key and refuses with a bare PHPhotosErrorDomain -1 without it"; exit 1; }
+            [ "$INFOBASE" = "$BASE" ] || { echo "::error::$NAME Info.plist BackgroundUploadURLBase '$INFOBASE' does not equal Deployment.plist uploadBase '$BASE'"; exit 1; }
+            [ "$APNS" = "$EXPECT_APNS" ] || { echo "::error::$NAME apnsEnv is '$APNS', expected '$EXPECT_APNS'"; exit 1; }
+            [ "$SENV" = "$EXPECT_ENV" ] || { echo "::error::$NAME sentryEnvironment is '$SENV', expected '$EXPECT_ENV'"; exit 1; }
+            [ -n "$ID" ] || { echo "::error::$NAME CFBundleIdentifier is empty — the fragment did not resolve"; exit 1; }
+
+            # The DSN is COMPARED, never echoed. Absence is the off-switch, so an undistributed build must carry none.
+            DSN="$(pb "$DEP" sentryDsn)"
+            if [ "$SNAPSYNC_CHANNEL" = "release" ]; then
+              if [ -z "$DSN" ] || [ "$DSN" != "$SENTRY_DSN" ]; then
+                echo "::error::$NAME sentryDsn does not match the resolved DSN (present=$([ -n "$DSN" ] && echo yes || echo no))"; exit 1
+              fi
+              echo "$NAME: sentryDsn matches the resolved value"
+            else
+              [ -z "$DSN" ] || { echo "::error::$NAME carries a DSN on an undistributed build"; exit 1; }
+              echo "$NAME: no sentryDsn, as expected off a distributed channel"
+            fi
+          done
+      # Kotlin/Native imports every Objective-C class STRONGLY — it has no notion of availability — so a class newer
+      # than a bundle's minimum OS kills that process in dyld on an older iOS, before any of our code runs (a rig build
+      # on the iOS 18 XS, 2026-10-03: `Symbol not found: _OBJC_CLASS_$_PHAssetResourceUploadJob`). Clang, asked per
+      # class at the bundle's own MinimumOSVersion, is the authority on which ones must be weak.
+      - name: Verify no bundle strongly imports a class newer than its minimum OS
+        run: |
+          APP="$RUNNER_TEMP/SnapSync.xcarchive/Products/Applications/SnapSync.app"
+          python3 scripts/check-weak-links.py "$APP" "$APP/Extensions/BackgroundUploadExtension.appex"
+      # The platform-bound tests (`docs/testing.md`, "Where each test runs"): every module's `iosTest` on a booted
+      # simulator — the iOS adapters and their contract bindings on the unentitled test executable (IOS_SIM_KEXE), and
+      # the native SQLite drivers behind the storage contracts. Then every daemon and simulator goes: the 7 GB runner
+      # holds one simulator at a time (`changes/archive/2026-09-25-one-simulator-journeys`).
+      - name: Platform tests on the simulator
+        run: |
+          ./gradlew iosPlatformTest
+          ./gradlew -q --stop
+          xcrun simctl shutdown all
+      - uses: ./.github/actions/settled-simulator
+      # The rig app's Kotlin/Native incremental-link caches (`kotlin.incremental.native`, gradle.properties), which the
+      # Gradle cache does not hold: `ios-release` saves them after building the same rig app. ~60-90 MB.
+      - name: Restore the rig app's link caches
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            app/ios/build/kotlin-native-ic-cache
+            app/ios/extension/build/kotlin-native-ic-cache
+          key: ios-rig-ic-${{ github.run_id }}
+          restore-keys: ios-rig-ic-
+      # The real backend the journeys run against, served locally on the address the `local` deployment bakes in.
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      # The site reads the resolved deployment for its canonical URLs; renderings are generated, never committed.
-      - name: Resolve the deployment
-        run: python3 scripts/resolve-deployment.py prod
-      - name: Install
-        working-directory: site
-        run: npm ci
-      # Fails if astro:assets cannot process the screenshots, so a broken capture or import is caught before main.
-      - name: Build
-        working-directory: site
-        run: npm run build
-      #   check:types        — astro check (TS type-checking of the .astro pages + island)
-      #   check:fmt          — prettier --check
-      #   check:selfcontained — Deno: fail on any off-origin subresource (load-bearing for /join privacy),
-      #                         and on an event page whose %%TOKEN%%s disagree with the api's (check-event-template.ts)
-      - name: Check
-        working-directory: site
-        run: npm run check
+      # First the port contracts whose bindings live in the APP — the simulator app is the only simulator process
+      # `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real full grant (IOS_SIM_APP) —
+      # then the all-real journeys on the same app. The rig property goes into the RUNNER's ~/.gradle, never a tracked
+      # file: a committed `snapsync.rig=true` would link the control channel into every shipped build. Spotlight
+      # indexes build outputs as they are written on this 3-vCPU runner; the runner is discarded, so it is switched off.
+      - name: Run the simulator app's port contracts and the journeys
+        run: |
+          mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
+          sudo mdutil -a -i off >/dev/null || true
+          scripts/sim-contracts
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          # One artifact per attempt: a re-run's evidence would otherwise replace the attempt it re-runs.
+          name: ios-evidence-${{ github.run_attempt }}
+          path: build/sim-contracts/
+          if-no-files-found: ignore
 
-  # ── The platforms: build · test · journeys ───────────────────────────────────────────────────────────────────────
+  # The Android gate, the same shape on Linux: ONE emulator (`.github/actions/android-emulator`: Pixel 6 / API 36) for
+  # the device tests and then the journeys. Everything is built BEFORE it boots and the daemons stopped, so the build and
+  # the emulator never compete for the runner. No store build here: `build` already runs the same R8
+  # `:app:android:assembleRelease`, so only a delivering run builds the bundle.
+  android:
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    # Gradle's cache: `build-cache`'s entries, read only. It builds every Android library, the device tests and the rig
+    # release app, so this job's compiles come from it; a second writer would only store a duplicate.
+    env:
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+      # The real backend the journeys run against, served locally on the address the `local` deployment bakes in.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # The device tests' APKs, then the rig RELEASE build (R8 as the store build runs it, so every journey exercises R8
+      # output) baked for the local backend, the journeys' classpath and the `rig` CLI the script drives the app with.
+      # Two invocations: the device tests build under the repo's own deployment, the journeys under `local`.
+      - name: Build the device tests, the rig app and the journeys
+        run: |
+          ./gradlew assembleAndroidDeviceTest
+          ./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
+            :test:cli:installDist -Psnapsync.rig=true -Psnapsync.deployment=local
+          ./gradlew --stop
+      # The device tests first, with the system animations ON as on the managed device (the Ui contract's tour drags
+      # wheels that settle by a snap animation, run 38439772784), the upload contract's transfer fixture served on the
+      # host by the build. The modules that test a grant short of full run first, on the clean device, before
+      # `:adapter:android`'s seed the library; each APK holds only the runtime permissions it declares. Then the Gradle
+      # daemon goes, the animations are switched off as the journeys expect, and the journeys run on the same device —
+      # as on iOS, after the contracts' seeds, which sit outside every journey's capture window.
+      - name: Device tests and journeys on the emulator
+        uses: ./.github/actions/android-emulator
+        with:
+          disable-animations: "false"
+          script: |
+            ./gradlew :test:no-grant:connectedAndroidDeviceTest :test:partial-grant:connectedAndroidDeviceTest
+            ./gradlew :adapter:android:connectedAndroidDeviceTest :adapter:generic:sentry:connectedAndroidDeviceTest
+            ./gradlew --stop
+            adb shell settings put global window_animation_scale 0 && adb shell settings put global transition_animation_scale 0 && adb shell settings put global animator_duration_scale 0
+            scripts/android-journeys
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: android-evidence-${{ github.run_attempt }}
+          path: |
+            **/build/reports/androidTests/
+            **/build/outputs/androidTest-results/
+            build/transfer-fixture.log
+            build/android-journeys/
+          if-no-files-found: ignore
 
-  # The signed device archive (macos-26, GM Xcode). It compiles the shipping iosArm64 framework, Swift, entitlements and
-  # signing, so it IS the device gate — and on a delivering run it is the delivery source. Signing on every push is
-  # deliberate: a signing or entitlement break must fail before merge, not on main's delivery.
-  #
-  # Configuration is keyed on whether the run DELIVERS: a push to main or a dispatch archives RELEASE; every other push
-  # archives DEBUG, the identical compile surface minus the LLVM optimization pass that dominates the Release link
-  # (~5-9.5 min) on an archive that is discarded. Trade-off (accepted): a Release-only failure surfaces on main, where
-  # it stops the delivery; the pre-merge escape is a dispatch, which takes the Release path in full.
-  #
-  # Signing: TWO persistent certs — Apple Distribution (SIGNING_CERT_*) and Apple Development (SIGNING_DEV_CERT_*) —
-  # are imported into one keychain, and `-allowProvisioningUpdates` manages the profiles through the App Store Connect
-  # API key. Both, because an empty keychain makes automatic signing mint a NEW cert every run, exhausting Apple's
-  # per-account cap, and `xcodebuild archive` provisions a development identity beside the distribution one. The
-  # scaffolding lives in .github/actions/ios-archive (a composite action keeps this job's name; a reusable workflow
-  # would prefix it).
-  ios-build:
-    # `actions: write`: the `-device-` ~/.konan save reclaims the entries it supersedes.
+  # `always()` so it posts whatever the gates did: a gate that failed, was cancelled or was skipped fails it. Without
+  # `always()` a red gate would SKIP this job, and a skipped required check counts as passing. Branch pushes only, as
+  # the gates are.
+  ci:
+    needs: [build, ios, android]
+    if: always() && github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Every gate succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null || {
+            echo "::error::a gate did not succeed"
+            exit 1
+          }
+
+  # ═══ Delivery: a push to main, or a dispatch ═════════════════════════════════════════════════════════════════════
+
+  # The RELEASE archive TestFlight receives, ONE macOS job: archive, read the deployment back out of it, export the
+  # signed IPA for `deliver`. Then, on main only, the warm-up: what the next PRs' `ios` job restores is built here —
+  # the simulator test executables, the rig app and the settled simulator — without running anything. The warm-up's
+  # steps are `continue-on-error`: a cache one merge behind must never stop a delivery.
+  ios-release:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    # `actions: write`: the ~/.konan, rig-cache and simulator saves reclaim the entries they supersede.
     permissions:
       contents: read
       actions: write
-    # Build-scope values, read by EVERY resolver invocation in this job — the explicit step below and the one
-    # `:domain` performs at Gradle configuration time — which is what makes re-resolving idempotent. `channel` is the
-    # single discriminator the xcconfig renderer derives APS_ENVIRONMENT / APNS_ENV / SENTRY_ENVIRONMENT from, and it
-    # gates the DSN: the renderer emits none unless the channel names a distributed build, so a stray secret cannot
-    # arm crash reporting on a branch-gate archive.
     env:
-      SNAPSYNC_CHANNEL: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && 'release' || 'dev' }}
-      SENTRY_DSN: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
-    runs-on: macos-26
+      SNAPSYNC_CHANNEL: release
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: ios
     steps:
       # fetch-tags so the marketing-version computation below can see the release tags (vX.Y).
       - uses: actions/checkout@v7.0.1
         with:
           fetch-tags: true
-      # The upload host is NEVER overridden: every ref bakes the resolved deployment's. A dev build aimed at another
-      # backend is built on the dev build loop (`ssh-mac-build`) instead.
-      - name: Select build configuration
-        env:
-          DELIVERING: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-        run: |
-          if [ "$DELIVERING" = "true" ]; then
-            echo "BUILD_CONFIG=Release" >> "$GITHUB_ENV"
-          else
-            echo "BUILD_CONFIG=Debug" >> "$GITHUB_ENV"
-          fi
-      # Render the deployment BEFORE anything reads it: `Config.xcconfig` hard-`#include`s the generated fragment.
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod
-      # MARKETING_VERSION = max(floor, latest vX.Y tag with its minor + 1) — `scripts/marketing-version.py`, the ONE rule
-      # `android-build` runs too, so both stores receive the same version for the same commit. A promoted build's store
-      # version is DERIVED from this value. A Debug archive leaves it empty (the floor): it never reaches App Store
-      # Connect.
-      - name: Compute marketing version
+      # MARKETING_VERSION = max(floor, latest vX.Y tag with its minor + 1) — `scripts/marketing-version.py`, the ONE
+      # rule `android-release` runs too, so both stores receive the same version for the same commit.
+      - name: Compute the version and build number
         run: |
-          if [ "$BUILD_CONFIG" != "Release" ]; then
-            echo "MARKETING_VERSION_OUT=" >> "$GITHUB_ENV"
-            echo "dev/Debug build — marketing version left to the Config.xcconfig floor"
-            exit 0
-          fi
+          echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
           VERSION="$(python3 scripts/marketing-version.py)"
           echo "MARKETING_VERSION_OUT=$VERSION" >> "$GITHUB_ENV"
           echo "computed marketing version: $VERSION"
-      - name: Compute the build number
-        run: echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
-      # Build number = the run number + the offset (see `BUILD_NUMBER_OFFSET`). APNs environment and the DSN are NOT
-      # passed: they are derived into the deployment fragment from `channel`, and an xcodebuild override would let
-      # them disagree.
+      # APNs environment and the DSN are NOT passed: they are derived into the deployment fragment from `channel`, and
+      # an xcodebuild override would let them disagree.
       - name: Archive signed device app
         id: archive
         uses: ./.github/actions/ios-archive
         with:
-          build-config: ${{ env.BUILD_CONFIG }}
+          build-config: Release
           marketing-version: ${{ env.MARKETING_VERSION_OUT }}
           current-project-version: ${{ env.BUILD_NUMBER }}
           archive-path: ${{ runner.temp }}/SnapSync.xcarchive
@@ -489,403 +658,6 @@ jobs:
         run: |
           APP="$RUNNER_TEMP/SnapSync.xcarchive/Products/Applications/SnapSync.app"
           python3 scripts/check-weak-links.py "$APP" "$APP/Extensions/BackgroundUploadExtension.appex"
-      # The platform-bound tests, on this same runner after the archive (`docs/testing.md`, "Where each test runs"):
-      # every module's `iosTest` on a booted simulator (iOS 26 runtime on macos-26) — the iOS adapters and their
-      # contract bindings on the unentitled test executable (IOS_SIM_KEXE), and the native SQLite drivers behind the
-      # storage contracts. Here rather than in a job of their own: together with the archive they take ~8 min, under
-      # `journeys (ios)`, so the critical path does not move and a push holds one macOS runner fewer (the account gets
-      # about three).
-      - name: Platform tests on the simulator
-        run: ./gradlew iosPlatformTest
-      # One `-device-` entry for this job: the archive action restored it, and it is saved only here, after the tests,
-      # so it carries the simulator caches they built as well as the device ones.
-      - name: Save Kotlin/Native (~/.konan)
-        if: github.ref == 'refs/heads/main'
-        uses: ./.github/actions/konan-save
-        with:
-          family: device
-          key: ${{ steps.archive.outputs.konan-key }}
-      # Hand the archive to ios-deliver on a delivering run. TAR first: upload-artifact zips its payload and drops
-      # executable bits and symlinks, which would corrupt the signed bundle and break `-exportArchive`.
-      - name: Pack the signed archive for delivery
-        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-        run: tar -czf "$RUNNER_TEMP/SnapSync.xcarchive.tar.gz" -C "$RUNNER_TEMP" SnapSync.xcarchive
-      - name: Upload the signed archive for delivery
-        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: ios-archive
-          path: ${{ runner.temp }}/SnapSync.xcarchive.tar.gz
-          # A build intermediate for the next job of this run, in a public repo: one day, then gone.
-          retention-days: 1
-          if-no-files-found: error
-
-  android-build:
-    runs-on: ubuntu-26.04
-    # Gradle's cache: `build`'s entries, read only. The two jobs resolve nearly the same dependencies on the same OS, and
-    # `build` already compiles every Android library and the release app, so its build cache serves this job's compiles
-    # too. A second writer would only store a duplicate (~0.55 GB of the 10 GB budget).
-    env:
-      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
-    steps:
-      # fetch-tags so the marketing-version computation below can see the release tags (vX.Y).
-      - uses: actions/checkout@v7.0.1
-        with:
-          fetch-tags: true
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v5
-        with:
-          cache-read-only: true
-      # The version and build number BOTH stores receive for this run (`docs/deployment.md`): the build number is
-      # ios-build's `CFBundleVersion`, and `scripts/marketing-version.py` is the rule ios-build runs. Off a delivering
-      # run the version stays the Config.xcconfig floor, as on iOS.
-      - name: Compute the version and build number
-        env:
-          DELIVERING: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-        run: |
-          echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
-          echo "DELIVERING=$DELIVERING" >> "$GITHUB_ENV"
-          if [ "$DELIVERING" = "true" ]; then
-            VERSION="$(python3 scripts/marketing-version.py)"
-            echo "VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
-            echo "VERSION_ARG=-Psnapsync.versionName=$VERSION" >> "$GITHUB_ENV"
-            echo "computed marketing version: $VERSION"
-          else
-            echo "VERSION_ARG=" >> "$GITHUB_ENV"
-          fi
-      # The store build: R8 BUILDS over it here; that R8 output RUNS is the journeys' (they run the rig release). A
-      # delivering run also builds the BUNDLE Play receives — from this same R8 run, so the mapping kept for it is the
-      # bundle's — marked distributed so the resolver bakes the crash-reporting DSN (`docs/deployment.md`). The channel
-      # and the DSN are this STEP's only, so the platform tests below resolve the ordinary dev channel.
-      # Delivering runs only: on a PR this is the same `:app:android:assembleRelease` (dev channel, version floor, R8,
-      # lint) that `build` runs, so it would gate nothing `build` does not.
-      - name: Build the store release
-        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-        env:
-          SNAPSYNC_CHANNEL: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && 'release' || 'dev' }}
-          SENTRY_DSN: ${{ (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && secrets.SENTRY_DSN || '' }}
-        run: |
-          TASKS=":app:android:assembleRelease"
-          if [ "$DELIVERING" = "true" ]; then TASKS="$TASKS :app:android:bundleRelease"; fi
-          # $VERSION_ARG is unquoted on purpose: empty, it must be no argument at all.
-          ./gradlew $TASKS -Psnapsync.versionCode="$BUILD_NUMBER" $VERSION_ARG
-      # Assert the BUNDLE carries the DSN — read out of its dex, not off the generator: the DSN once reached a grammar
-      # that truncated it and shipped mute builds with every test green. COMPARED, never echoed.
-      - name: Verify the bundle baked the DSN
-        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-        env:
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: |
-          [ -n "$SENTRY_DSN" ] || { echo "::error::the SENTRY_DSN secret is empty"; exit 1; }
-          if unzip -p app/android/build/outputs/bundle/release/android-release.aab 'base/dex/*.dex' | grep -q -a -F "$SENTRY_DSN"; then
-            echo "the bundle carries the resolved DSN"
-          else
-            echo "::error::the bundle's dex does not carry the resolved DSN"; exit 1
-          fi
-      # Hand the UNSIGNED bundle, its R8 mapping and the version it was built with to android-deliver, which signs,
-      # keeps the mapping and uploads. The version travels with the bundle so the release's name cannot disagree.
-      - name: Record the bundle's version
-        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-        run: echo "$VERSION_NAME" > app/android/build/outputs/version.txt
-      - name: Upload the bundle for delivery
-        if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: android-bundle
-          path: |
-            app/android/build/outputs/bundle/release/android-release.aab
-            app/android/build/outputs/mapping/release/mapping.txt
-            app/android/build/outputs/version.txt
-          # A build intermediate for the next job of this run: one day, then gone.
-          retention-days: 1
-          if-no-files-found: error
-      # The platform-bound tests, on this same runner after the build: every module's device tests on ONE emulator
-      # (`.github/actions/android-emulator`: Pixel 6 / API 36, animations ON as on the managed device: the Ui contract's
-      # tour drags wheels that settle by a snap animation, run 38439772784), with the upload
-      # contract's transfer fixture served on the host by the build. One boot for all four APKs, not a Gradle-managed
-      # device per module: each managed run booted its own (~1 min apiece, for 1-43 s of tests in three of them). The
-      # APKs are built before the emulator boots, so the two never compete for the runner. The modules that test a
-      # grant short of full run first, on the clean device, before `:adapter:android`'s seed the library; each APK
-      # still holds only the runtime permissions it declares, granted at its install.
-      - name: Build the device tests
-        run: ./gradlew assembleAndroidDeviceTest
-      - name: Platform tests on the emulator
-        uses: ./.github/actions/android-emulator
-        with:
-          disable-animations: "false"
-          script: |
-            ./gradlew :test:no-grant:connectedAndroidDeviceTest :test:partial-grant:connectedAndroidDeviceTest
-            ./gradlew :adapter:android:connectedAndroidDeviceTest :adapter:generic:sentry:connectedAndroidDeviceTest
-      - name: Keep the reports
-        if: always()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: android-build-reports-${{ github.run_attempt }}
-          path: |
-            **/build/reports/androidTests/
-            **/build/outputs/androidTest-results/
-            build/transfer-fixture.log
-          if-no-files-found: ignore
-
-  # The all-real journeys against a local api/ (`docs/testing.md`, "All-real journeys are the contracts' safety net"),
-  # the second member played by the journey itself over the backend's public HTTP surface. ONE simulator or emulator,
-  # built before it boots: a second fresh simulator's first-boot work swamped the 3-vCPU runner
-  # (`changes/archive/2026-09-25-one-simulator-journeys`).
-  journeys:
-    name: journeys (${{ matrix.platform }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: ios
-            runs-on: macos-26
-          - platform: android
-            runs-on: ubuntu-26.04
-    runs-on: ${{ matrix.runs-on }}
-    # `actions: write`: on main the iOS cell reclaims its superseded settled-simulator and rig-app cache entries.
-    permissions:
-      contents: read
-      actions: write
-    # Gradle's cache: the build job's of the same OS — `ios-build`'s on macOS, `build`'s on Linux — read only. Each cell
-    # resolves nearly the same dependencies and transforms as that job, and a writer of its own would only store a
-    # second copy (~1.4 GB per cell of the repository's 10 GB, whose eviction then took the settled simulator). The
-    # iOS cell keeps only what that cache cannot hold, the rig app's build caches (below, ~150 MB).
-    env:
-      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: ${{ matrix.platform == 'ios' && 'ios-build' || 'build' }}
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v5
-        with:
-          cache-read-only: true
-      # The real backend the journeys run against, served locally on the address the `local` deployment bakes in.
-      - uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      # iOS: first the port contracts whose bindings live in the APP — the simulator app is the only simulator process
-      # `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real full grant
-      # (IOS_SIM_APP) — then the journeys, on the same app (`scripts/sim-contracts`, which builds, boots and runs).
-      # ios-build's family, read only: its simulator tests build the iosSimulatorArm64 library caches this build links
-      # against, so a family of its own would be a second ~0.9 GB copy.
-      - name: Restore Kotlin/Native (~/.konan)
-        if: matrix.platform == 'ios'
-        uses: ./.github/actions/konan-restore
-        with:
-          family: device
-      # The simulator, already past its first boot: the image's iPhone 17 (`scripts/lib/sim.sh`), its device directory
-      # cached as `scripts/sim-settle` leaves it — booted, the unneeded daemons disabled, Photos' library created, shut
-      # down clean, no app and no photo. A first boot on the runner otherwise spent ~4.5 min at a load of 100-480
-      # booting and installing (run 38393803729); restored, boot and install took 2.7 min and the library's migration 4 s
-      # (run 38402060923). Keyed on the image version, the device and the settle scripts. On a miss the device is
-      # settled (~12 min) and saved on main only; anywhere else the image's own directory is put back.
-      - name: Find the image's simulator
-        id: sim
-        if: matrix.platform == 'ios'
-        run: |
-          . scripts/lib/sim.sh
-          UDID="$(image_iphone)"
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-          echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
-          [ -z "$UDID" ] || mv "$HOME/Library/Developer/CoreSimulator/Devices/$UDID" "$HOME/Library/Developer/CoreSimulator/Devices/$UDID.image"
-      - name: Restore the settled simulator
-        id: sim-restore
-        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
-          key: sim-settled-${{ steps.sim.outputs.image }}-${{ steps.sim.outputs.udid }}-${{ hashFiles('scripts/sim-settle', 'scripts/lib/sim.sh') }}
-      - name: Settle the simulator
-        id: sim-settle
-        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
-        env:
-          UDID: ${{ steps.sim.outputs.udid }}
-          HIT: ${{ steps.sim-restore.outputs.cache-hit }}
-          SETTLE: ${{ github.ref == 'refs/heads/main' }}
-        run: |
-          D="$HOME/Library/Developer/CoreSimulator/Devices/$UDID"
-          if [ "$HIT" = true ]; then
-            rm -rf "$D.image"; echo "restored the settled simulator ($(du -sh "$D" | cut -f1))"
-          else
-            rm -rf "$D"; mv "$D.image" "$D"
-            if [ "$SETTLE" = true ]; then scripts/sim-settle "$UDID" && echo "save=true" >> "$GITHUB_OUTPUT"; fi
-          fi
-          # CoreSimulatorService read the device set before its directory moved; the next simctl starts it afresh.
-          killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
-      - name: Save the settled simulator
-        if: steps.sim-settle.outputs.save == 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
-          key: ${{ steps.sim-restore.outputs.cache-primary-key }}
-      # One entry is ~0.9 GB of a full 10 GB budget: drop the ones a new image or a changed settle superseded.
-      - name: Reclaim superseded simulator entries
-        if: steps.sim-settle.outputs.save == 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          KEEP: ${{ steps.sim-restore.outputs.cache-primary-key }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=sim-settled-" \
-            --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
-            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
-      # The SwiftPM checkout (sentry-cocoa) ios-build's archive restores and main saves (`.github/actions/ios-archive`
-      # says why the key is the pbxproj): the same directory under the same derived-data path, read only here.
-      - name: Restore the resolved SwiftPM checkout
-        if: matrix.platform == 'ios'
-        uses: actions/cache/restore@v6
-        with:
-          path: build/ios/SourcePackages
-          key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
-      # The rig app's own build caches, which ios-build's Gradle cache cannot hold: the Gradle build cache entries of
-      # the compiles the rig and the `local` deployment change (the deployment's domain is generated into
-      # `:domain:model`, so every module above it compiles differently here) and of the journeys' compile, and the two
-      # frameworks' Kotlin/Native incremental-link caches (`kotlin.incremental.native`, gradle.properties). Restored
-      # OVER ios-build's Gradle cache: build-cache entries are content-addressed files, so the two merge. ~150 MB, saved
-      # by main only, success only (a half-written link cache must never be published); a branch reads main's.
-      # Measured on a PR changing one mid-graph module: links 4.8 → 2.2 min, every untouched compile from cache.
-      - name: Restore the rig app's build caches
-        if: matrix.platform == 'ios'
-        id: rig-caches
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            ~/.gradle/caches/build-cache-1
-            app/ios/build/kotlin-native-ic-cache
-            app/ios/extension/build/kotlin-native-ic-cache
-          key: journeys-ios-build-${{ github.run_id }}
-          restore-keys: journeys-ios-build-
-      - name: Run the simulator app's port contracts and the journeys
-        if: matrix.platform == 'ios'
-        # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed `snapsync.rig=true`
-        # would link the control channel into every shipped build. Spotlight indexes build outputs as they are written
-        # on this 3-vCPU runner (~26 s of CPU in the build, ~45 s while the simulator settled, run 36177197880); the
-        # runner is discarded, so switching it off costs nothing. Here, not in the script, which also runs on Macs.
-        run: |
-          mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
-          sudo mdutil -a -i off >/dev/null || true
-          scripts/sim-contracts
-      - name: Save the rig app's build caches
-        if: matrix.platform == 'ios' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            ~/.gradle/caches/build-cache-1
-            app/ios/build/kotlin-native-ic-cache
-            app/ios/extension/build/kotlin-native-ic-cache
-          key: ${{ steps.rig-caches.outputs.cache-primary-key }}
-      - name: Reclaim superseded rig-app cache entries
-        if: matrix.platform == 'ios' && github.ref == 'refs/heads/main'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          KEEP: ${{ steps.rig-caches.outputs.cache-primary-key }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=journeys-ios-build-" \
-            --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
-            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
-
-      # Android: the rig RELEASE build (R8 as the store build runs it, so every journey exercises R8 output) baked for
-      # the local backend, the journeys' classpath and the `rig` CLI the script drives the app with, built BEFORE the emulator boots and with the daemons stopped
-      # after, so the two never hold memory at once; then the emulator and `scripts/android-journeys`.
-      - name: Build the rig app and the journeys
-        if: matrix.platform == 'android'
-        run: |
-          ./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
-            :test:cli:installDist -Psnapsync.rig=true -Psnapsync.deployment=local
-          ./gradlew --stop
-      # The emulator (`.github/actions/android-emulator`): KVM, the system image, and the journeys run on it.
-      - name: Run the journeys on the emulator
-        if: matrix.platform == 'android'
-        uses: ./.github/actions/android-emulator
-        with:
-          script: scripts/android-journeys
-
-      - name: Keep the evidence
-        if: always()
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          # One artifact per attempt: a re-run's evidence would otherwise replace the attempt it re-runs.
-          name: journeys-${{ matrix.platform }}-evidence-${{ github.run_attempt }}
-          path: |
-            build/sim-contracts/
-            build/android-journeys/
-          if-no-files-found: ignore
-
-  # ── The aggregate ───────────────────────────────────────────────────────────────────────────────────────
-
-  # `always()` so it posts whatever the gates did: a gate that failed, was cancelled or was skipped fails it. Without
-  # `always()` a red gate would SKIP this job, and a skipped required check counts as passing.
-  ci:
-    needs: [build, metadata, api-test, migration-rehearsal, site-build, ios-build, android-build, journeys]
-    if: always()
-    runs-on: ubuntu-26.04
-    steps:
-      - name: Every gate succeeded
-        env:
-          NEEDS: ${{ toJSON(needs) }}
-        run: |
-          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null || {
-            echo "::error::a gate did not succeed"
-            exit 1
-          }
-
-  # ── Delivery ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-  # TestFlight delivery — a push to main, or a dispatch — once EVERY gate is green (`needs: ci`). It compiles nothing:
-  # it re-signs and packages the archive ios-build produced, so the build number it delivers is this run's.
-  ios-deliver:
-    needs: ci
-    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
-    runs-on: macos-26
-    steps:
-      # Needed for iosApp/ExportOptions.plist (the export method + signing style).
-      - uses: actions/checkout@v7.0.1
-      # The number ios-build baked into the archive (see `BUILD_NUMBER_OFFSET`).
-      - name: Compute the build number
-        run: echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
-      - name: Prepare App Store Connect API key
-        env:
-          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/asc"
-          printf '%s' "$ASC_API_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
-          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
-      - name: Generate ephemeral keychain password
-        run: |
-          PW="$(openssl rand -base64 24)"
-          echo "::add-mask::$PW"
-          echo "KEYCHAIN_PW=$PW" >> "$GITHUB_ENV"
-      # BOTH certs here too, for the cert-cap reason on ios-build: the export runs `-allowProvisioningUpdates`.
-      - name: Import Distribution signing certificate
-        uses: apple-actions/import-codesign-certs@v7.0.0
-        with:
-          p12-file-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
-          p12-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
-          keychain: snapsync-signing
-          keychain-password: ${{ env.KEYCHAIN_PW }}
-      - name: Import Development signing certificate
-        uses: apple-actions/import-codesign-certs@v7.0.0
-        with:
-          p12-file-base64: ${{ secrets.SIGNING_DEV_CERT_P12_BASE64 }}
-          p12-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
-          keychain: snapsync-signing
-          create-keychain: false
-          keychain-password: ${{ env.KEYCHAIN_PW }}
-      - name: Download the signed archive
-        uses: actions/download-artifact@v8.0.2
-        with:
-          name: ios-archive
-          path: ${{ runner.temp }}
-      - name: Unpack the signed archive
-        run: tar -xzf "$RUNNER_TEMP/SnapSync.xcarchive.tar.gz" -C "$RUNNER_TEMP"
       # Crash-report symbolication (capability `privacy-security`): Bugsink ingests no dSYMs, so each delivered build's
       # symbols stay fetchable BY BUILD NUMBER (the `/bugsink` skill reads them). 90 days is the platform's maximum.
       - name: Publish dSYMs for crash symbolication
@@ -895,6 +667,8 @@ jobs:
           path: ${{ runner.temp }}/SnapSync.xcarchive/dSYMs
           retention-days: 90
           if-no-files-found: error
+      # The IPA, exported here where the archive's keychain still is, so `deliver` uploads it from Linux.
+      # `ASC_KEY_PATH` and the signing keychain are the archive action's.
       - name: Export signed IPA
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -908,38 +682,139 @@ jobs:
             -authenticationKeyPath "$ASC_KEY_PATH" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-      # The "What to Test" note (`.github/scripts/delivery_note.sh`, the same note android-deliver gives Play). It
-      # reaches the publish step ONLY through $GITHUB_ENV.
-      - name: Compose the release note
+      - name: Upload the IPA for delivery
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ios-ipa
+          path: ${{ runner.temp }}/export/SnapSync.ipa
+          # A build intermediate for the next job of this run, in a public repo: one day, then gone.
+          retention-days: 1
+          if-no-files-found: error
+
+      # ── The warm-up (main only) ──
+      # The simulator test executables `ios`'s `iosPlatformTest` links, built and not run, so the ~/.konan entry
+      # below carries the simulator caches beside the device ones.
+      # Every warm-up build resolves the `dev` channel, as `ios` does: the job's `release` channel and DSN would bake a
+      # DSN into the rig app and key every compile differently from the PR's, which then could not use them.
+      - name: Warm the simulator test executables
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          SNAPSYNC_CHANNEL: dev
+          SENTRY_DSN: ""
+        run: ./gradlew linkDebugTestIosSimulatorArm64
+      - name: Save Kotlin/Native (~/.konan)
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: ./.github/actions/konan-save
+        with:
+          family: device
+          key: ${{ steps.archive.outputs.konan-key }}
+      # The rig app and the journeys' classpath, as `scripts/sim-contracts` builds them, so their Gradle build-cache
+      # entries reach the Gradle cache this job saves, and their link caches the entry below.
+      - name: Warm the rig app
+        id: rig
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        env:
+          SNAPSYNC_CHANNEL: dev
+          SENTRY_DSN: ""
+        run: |
+          mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
+          sudo mdutil -a -i off >/dev/null || true
+          SIM_CONTRACTS_BUILD_ONLY=1 scripts/sim-contracts
+      # Success only: a half-written link cache must never be published.
+      - name: Save the rig app's link caches
+        if: github.ref == 'refs/heads/main' && steps.rig.outcome == 'success'
+        continue-on-error: true
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            app/ios/build/kotlin-native-ic-cache
+            app/ios/extension/build/kotlin-native-ic-cache
+          key: ios-rig-ic-${{ github.run_id }}
+      - name: Reclaim superseded rig-app cache entries
+        if: github.ref == 'refs/heads/main' && steps.rig.outcome == 'success'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          WHAT_TO_TEST: ${{ inputs.what_to_test }}
+          KEEP: ios-rig-ic-${{ github.run_id }}
         run: |
-          NOTE="$(bash .github/scripts/delivery_note.sh)"
-          echo "note: $NOTE"
-          echo "WHATS_NEW=$NOTE" >> "$GITHUB_ENV"
-      # Upload + note are ONE atomic publish: codemagic's `publish` uploads, waits for the build to become
-      # discoverable, and attaches the beta test info. No --testflight / submit flag: no beta-review submission and no
-      # group assignment. macos-26's python3 is PEP-668 externally-managed, so `pipx run` gives it its own venv.
-      - name: Upload to TestFlight with the release note
-        env:
-          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
-        run: |
-          pipx run --spec codemagic-cli-tools app-store-connect publish \
-            --path "$RUNNER_TEMP/export/SnapSync.ipa" \
-            --whats-new "$WHATS_NEW"
+          for prefix in ios-rig-ic- journeys-ios-build-; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=$prefix" \
+              --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
+              while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
+          done
+      # The settled simulator, settled and saved only when its key misses (a new image or a changed settle script).
+      - name: Settle the simulator
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: ./.github/actions/settled-simulator
+        with:
+          settle: "true"
 
-  # Play delivery — the same runs and the same gate as ios-deliver (`needs: ci`), so a build number lands in both
-  # stores or neither, barring an upload failure. It compiles nothing: it signs the bundle android-build built with the
-  # UPLOAD key and, on a push to main, uploads it to the INTERNAL testing track (Play re-signs it with the app signing
-  # key). A dispatch uploads it through INTERNAL APP SHARING instead and leaves the track alone, since the track serves
-  # only its latest release; Play re-signs a sharing build with a separate key of its own. Prod's attestation pins
-  # both certificates. Like ios-deliver it posts no required check and may fail red without blocking anything.
-  android-deliver:
-    needs: ci
-    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+  # The store bundle Play receives, marked distributed so the resolver bakes the crash-reporting DSN
+  # (`docs/deployment.md`), and the R8 mapping kept for it — from one R8 run, so the mapping is the bundle's.
+  android-release:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-26.04
+    # Gradle's cache: `build-cache`'s entries, read only.
+    env:
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
+      SNAPSYNC_CHANNEL: release
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+    steps:
+      # fetch-tags so the marketing-version computation below can see the release tags (vX.Y).
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-tags: true
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+      # The version and build number BOTH stores receive for this run: the rule `ios-release` runs.
+      - name: Compute the version and build number
+        run: |
+          echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
+          VERSION="$(python3 scripts/marketing-version.py)"
+          echo "VERSION_NAME=$VERSION" >> "$GITHUB_ENV"
+          echo "computed marketing version: $VERSION"
+      - name: Build the store bundle
+        run: ./gradlew :app:android:bundleRelease -Psnapsync.versionCode="$BUILD_NUMBER" -Psnapsync.versionName="$VERSION_NAME"
+      # Assert the BUNDLE carries the DSN — read out of its dex, not off the generator: the DSN once reached a grammar
+      # that truncated it and shipped mute builds with every test green. COMPARED, never echoed.
+      - name: Verify the bundle baked the DSN
+        run: |
+          [ -n "$SENTRY_DSN" ] || { echo "::error::the SENTRY_DSN secret is empty"; exit 1; }
+          if unzip -p app/android/build/outputs/bundle/release/android-release.aab 'base/dex/*.dex' | grep -q -a -F "$SENTRY_DSN"; then
+            echo "the bundle carries the resolved DSN"
+          else
+            echo "::error::the bundle's dex does not carry the resolved DSN"; exit 1
+          fi
+      # Hand the UNSIGNED bundle, its R8 mapping and the version it was built with to `deliver`, which signs, keeps the
+      # mapping and uploads. The version travels with the bundle so the release's name cannot disagree.
+      - name: Record the bundle's version
+        run: echo "$VERSION_NAME" > app/android/build/outputs/version.txt
+      - name: Upload the bundle for delivery
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: android-bundle
+          path: |
+            app/android/build/outputs/bundle/release/android-release.aab
+            app/android/build/outputs/mapping/release/mapping.txt
+            app/android/build/outputs/version.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  # BOTH stores, from Linux. It compiles nothing: it uploads the IPA `ios-release` exported and signs the bundle
+  # `android-release` built with the UPLOAD key. Play first, then TestFlight with `if: !cancelled()`, so one store's
+  # failure does not keep the build from the other.
+  deliver:
+    needs: [ios-release, android-release]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-26.04
     steps:
       # For the release note's fallback, the package name and the Play script.
@@ -952,6 +827,15 @@ jobs:
         run: |
           echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + BUILD_NUMBER_OFFSET))" >> "$GITHUB_ENV"
           echo "PACKAGE=$(jq -r .androidPackageName deployments/components/android.json)" >> "$GITHUB_ENV"
+      # The "What to Test" note (`.github/scripts/delivery_note.sh`), the same for both stores.
+      - name: Compose the release note
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WHAT_TO_TEST: ${{ inputs.what_to_test }}
+        run: |
+          NOTE="$(bash .github/scripts/delivery_note.sh)"
+          echo "note: $NOTE"
+          echo "RELEASE_NOTE=$NOTE" >> "$GITHUB_ENV"
       - name: Download the bundle
         uses: actions/download-artifact@v8.0.2
         with:
@@ -983,14 +867,6 @@ jobs:
           rm -f "$KEYSTORE"
           # `-verify` exits 0 on an UNSIGNED jar too, so its verdict is read, not its status.
           jarsigner -verify "$AAB" | grep -q '^jar verified\.' || { echo "::error::the bundle is not signed"; exit 1; }
-      - name: Compose the release note
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WHAT_TO_TEST: ${{ inputs.what_to_test }}
-        run: |
-          NOTE="$(bash .github/scripts/delivery_note.sh)"
-          echo "note: $NOTE"
-          echo "RELEASE_NOTE=$NOTE" >> "$GITHUB_ENV"
       # play_release.py's dependencies are declared inline (PEP 723) and resolved by `uv run`.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.2.0
@@ -1043,3 +919,76 @@ jobs:
             echo "the Store's \"Internal app sharing\" toggle on. Over the Play-installed app, Play offers to uninstall it first"
             echo "(another signing key): that wipes its local state, and the link build enrols as a new device."
           } >> "$GITHUB_STEP_SUMMARY"
+      # ── TestFlight ──
+      - name: Download the IPA
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: ios-ipa
+          path: ${{ runner.temp }}/ios
+      # Upload + note: the pinned `asc` (asc_fetch.sh, the metadata check's) uploads through the App Store Connect API —
+      # no Xcode, so no Mac — waits for the build to process and attaches the "What to Test" note. No group assignment
+      # and no beta-review submission: internal testers get every build.
+      - name: Upload to TestFlight with the release note
+        if: ${{ !cancelled() }}
+        env:
+          ASC_APP_ID: "6781692480"
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          ASC_BYPASS_KEYCHAIN: "1"
+        run: |
+          bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
+          "$RUNNER_TEMP/asc" builds upload --ipa "$RUNNER_TEMP/ios/SnapSync.ipa" \
+            --test-notes "$RELEASE_NOTE" --locale en-US --wait
+
+  # ═══ The cache warm-up on main (no gate, delays no delivery) ═════════════════════════════════════════════════════
+
+  # The Linux Gradle cache every Linux job restores: `./gradlew build`, so a PR's JVM tests of modules it did not touch
+  # come from the cache, and the Android device tests and rig release app `android` builds. Nothing needs this job;
+  # a red one is a cache one merge behind. Last, the Gradle entries every writer of this run superseded are reclaimed.
+  build-cache:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    env:
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: ./gradlew build
+      - name: Build the device tests and the rig app
+        if: ${{ !cancelled() }}
+        run: |
+          ./gradlew assembleAndroidDeviceTest
+          ./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
+            :test:cli:installDist -Psnapsync.rig=true -Psnapsync.deployment=local
+
+  # setup-gradle saves a new set of `gradle-*` entries per main commit and never deletes the old ones (~4.7 GB of
+  # superseded entries measured 2026-10-14, beside a ~6 GB live set, over the 10 GB budget). After this run's writers
+  # saved theirs, every `gradle-*` entry nothing in this run created or restored is superseded: delete it.
+  reclaim-gradle-caches:
+    needs: [build-cache, ios-release]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: write
+    steps:
+      - name: Delete the Gradle entries this run neither created nor restored
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STARTED="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)"
+          echo "reclaiming gradle-* entries last used before $STARTED"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&ref=refs/heads/main" \
+            --jq ".actions_caches[] | select(.key | startswith(\"gradle-\")) | select(.last_accessed_at < \"$STARTED\") | [.id, .key, .size_in_bytes] | @tsv" |
+            while IFS=$'\t' read -r id key size; do
+              echo "reclaiming $key ($((size / 1000000)) MB)"
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent || echo "::warning::could not delete $key"
+            done

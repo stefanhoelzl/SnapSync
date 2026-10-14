@@ -8,7 +8,7 @@
 // (whose version is computed off the last release tag) keep working perfectly. That asymmetry is the
 // whole hazard: nothing goes red, and it is invisible until someone tries to work.
 //
-// It lives here, in the api suite, because ci.yml's `api-test` runs on EVERY ref with no path filter and
+// It lives here, in the api suite, because ci.yml's `build` runs the api suite on EVERY ref with no path filter and
 // gates the required `ci` check — so this fails in review whichever of the two files moved. The deploy (deploy.yml's `api` job) would have
 // been the wrong home twice over: it is gated on the api's paths (an xcconfig change would never trigger
 // it) and it runs after merge.
