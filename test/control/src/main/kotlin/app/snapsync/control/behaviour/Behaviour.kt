@@ -5,11 +5,15 @@ import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BuildLevers
+import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.FilesLevers
+import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LibraryLevers
 import app.snapsync.levers.NetworkLevers
+import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
@@ -183,6 +187,18 @@ class Acts internal constructor(private val client: RigClient) {
 
     /** The build itself: the version it declares. */
     val build: BuildLevers = client.levers(BuildLevers)
+
+    /** The device's databases' faults. */
+    val databases: DatabasesLevers = client.levers(DatabasesLevers)
+
+    /** What a test may add to the device's files. */
+    val files: FilesLevers = client.levers(FilesLevers)
+
+    /** The device's Keychain. */
+    val keychain: KeychainLevers = client.levers(KeychainLevers)
+
+    /** What an older build left on the device. */
+    val olderInstall: OlderInstallLevers = client.levers(OlderInstallLevers)
 
     private val world: WorldLevers = client.levers(WorldLevers)
 

@@ -591,24 +591,22 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   - `device/os-record` — handlers handed/released/`releasedAgain`/held, `screenShown`, `selectionObserved`,
     `heartbeatsScheduled`, `pendingWake` (`{cadence: busy|idle, earliestSeconds}` or `null`), `backgroundTimeHolds` (by name: `onForeground`, `onSilentPush`, `tail(…)`, …),
     `pushRegistrations`, the download session (`up`, `started`, `inFlight`), `uploadSessionHandbacks`,
-    `databasesOpened`, `stagedFiles`. A receipted `/os` answer carries it as read at the release (`osAtRelease`).
+    `databasesOpened`, `stagedFiles`, `appStorageBytes` (the bytes the app's files take, its diagnostics — logs, memory
+    trail, saved report — left out: what the storage page shows a person). A receipted `/os` answer carries it as read at the release (`osAtRelease`).
   - `device/relaunch?scene=false` — a cold background launch: no screen is built. Read only `device/os-record`
     until an `os/app/onForeground`: `/device/state` and `/user` read the screen and would assemble it.
   - `device/reinstall` (JVM host only) — delete the app and launch it again: files, databases and user defaults gone;
     Keychain, photo library and backend kept.
 - The **operator levers** (on the app host, only for the systems its adapter choice mocks): the transfers' — the
   upload-job queue, the app's upload session and the download session — are typed services (below, "The transfers'
-  typed services"), and so is the photo library's (below); `device/databases/locked?on=`,
-  `device/membership/undeletable?on=`,
-  `device/invite?event=` (JVM host only: the event's whole invite, key included, as its creating device shares it),
-  `device/event-key/lose` (JVM host only: the joined event's key gone from the Keychain, the membership kept).
+  typed services"), and so are the photo library's and the device's stores' (below);
+  `device/invite?event=` (JVM host only: the event's whole invite, key included, as its creating device shares it).
 - The **integration surface's** levers and reads (the same rule on the app host):
   - the backend, the photo library, the crash reporter, the system UI, the network, the clock, the device's
-    conditions, the process information, the build and its development controls: **typed services**, below;
-  - OS: `relaunch[?scene=false]`,
-    `logs/append?process=app|extension` (body = text),
-    `staging/seed-legacy-backlog` (the one lever that writes app-private state: an upgraded install's leftovers).
-- Device facts off the mocked disk: `device/staging`.
+    conditions, the process information, the build and its development controls, and the device's stores:
+    **typed services**, below;
+  - OS: `relaunch[?scene=false]`.
+- The app's private files are no fact a test reads: what the outside sees of them is `appStorageBytes`.
 - `/contract` refuses on this host (`409`, naming `JVM`): JVM contract bindings run under Gradle.
 - Typed client for tests: `:test:control`'s `RigClient` (a `409` is a `Reply.Refused`, never an exception), and
   `client.levers(BackendLevers)` / `client.levers(PublicBackendLevers)` / `client.levers(LibraryLevers)` for the typed
@@ -770,6 +768,34 @@ What the operating system tells the app about the device, and what the app hands
 Gone with the move: `device/clock/advance`, `device/network`, `device/conditions`, `device/diagnostics/sent`,
 `device/app-version`, `device/invite-link-hints`, `device/encrypt-new-events`, and `os-record`'s `systemUi`.
 
+### The device's stores' typed services
+
+Each honoured wherever its system is mocked — always on the JVM host, on the app host where its adapter choice mocks
+it — and refused, naming the real system, everywhere else:
+
+- `databases` (`DatabasesLevers`) — `lock(on)` (every database unreadable: a device before its first unlock since
+  boot; an open fails, so does every statement on one already open), `fail(database, table, kind, times?)` (the next
+  `times` — once by default — statements of `WriteKind.INSERT|UPDATE|DELETE` on that table fail as SQLite fails a write
+  whose lock another process holds: thrown, nothing changed, the database still open — the `Databases` contract's
+  `A_REFUSED_WRITE_THROWS_AND_CHANGES_NOTHING`; a database not created yet, or a table it does not hold, throws; each
+  failure is told on the stream as `DatabaseFaulted`. No read fails: under iOS's write-ahead log a reader is never
+  blocked); read `switches()` (locked, the faults not yet spent).
+- `files` (`FilesLevers`) — `appendLog(process, text)` (`LogProcess.APP|EXTENSION`: text a process's device log
+  carries, what a diagnostic dump reads back).
+- `keychain` (`KeychainLevers`) — `forget(item)` (`KeychainItem.EVENT_KEY`: the joined event's key gone, the membership
+  kept — a restore onto a new phone).
+- `older-install` (`OlderInstallLevers`) — `stagedBacklog(device?, asset?)` (an install upgraded from a build before
+  per-asset byte release: a confirmed import whose staged files survive; answers the bytes it left on disk).
+
+```bash
+$R --url $B databases fail --database ledger.db --table membership --kind delete
+$R --url $B files append-log --process app --text 'a line'
+$R --url $B keychain forget --item event-key
+```
+
+Gone with the move: `device/databases/locked`, `device/membership/undeletable`, `device/event-key/lose`,
+`device/logs/append`, `device/staging/seed-legacy-backlog`, and the `device/staging` fact.
+
 ### The world's events — waiting without polling (JVM host only)
 
 The JVM host runs the app on **one loop** (`LaneLoop`): every lane of both processes, and the channel's own, is a lane
@@ -792,7 +818,8 @@ RigClient("http://127.0.0.1:$PORT").use { client ->
     val world = client.levers(WorldLevers)
     world.events().collect { println(it) }   // from the host's start: Acted, UiChanged, BackendReceived, BackendHeld,
                                               // UploadJobCreated, SessionTransferCreated, DownloadStarted, Library…,
-                                              // Shared, UrlOpened, SettingsOpened, DumpReceived, Settled, LaneViolation
+                                              // Shared, UrlOpened, SettingsOpened, DumpReceived, DatabaseFaulted,
+                                              // Settled (its state: appStorageBytes), LaneViolation
     world.advance(5_000)                      // an act: the mocked clock 5 s on
     world.advanceTo("2026-06-02T09:00:00Z")   // an act: the mocked clock to an instant (back: fires nothing)
     world.whyNotSettled()                     // what runs, what is queued, what it waits on outside

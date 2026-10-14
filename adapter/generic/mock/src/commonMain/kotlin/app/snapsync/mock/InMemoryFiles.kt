@@ -11,13 +11,11 @@ import app.snapsync.ports.Files
  * The honest in-memory [Files]: one map of path → bytes per area, the maps being the caller's own cells (initial
  * state by constructor, per the fake-honesty rule). An area mapped to `null` is unreachable — every operation
  * answers [FileResult.AreaUnavailable] — and a path in [denied] is a present file this process may not touch,
- * answering [FileResult.Denied] and never absence. A path in [undeletable] is readable and writable, but its delete is
- * [FileResult.Denied] — a file the platform will not remove.
+ * answering [FileResult.Denied] and never absence.
  */
 internal class InMemoryFiles(
     private val areas: Map<FileArea, MutableMap<String, ByteArray>?>,
     private val denied: Set<Pair<FileArea, String>>,
-    private val undeletable: Set<Pair<FileArea, String>> = emptySet(),
     private val conditions: FileConditions = FileConditions(),
 ) : Files {
 
@@ -101,7 +99,6 @@ internal class InMemoryFiles(
 
     override fun delete(area: FileArea, path: String): FileResult<Unit> = at(area, path, changing = true) { files ->
         when {
-            (area to path) in undeletable -> FileResult.Denied("$area/$path cannot be deleted")
             files.isDirectory(path) -> FileResult.Failed("$path is a directory")
             files.remove(path) != null -> FileResult.Ok(Unit)
             else -> FileResult.NotFound

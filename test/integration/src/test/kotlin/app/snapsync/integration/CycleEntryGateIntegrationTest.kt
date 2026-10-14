@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
 /**
  * The cycle's **entry gate** over the real stack — an unreadable config is not an absent config: the real
  * `UploadCycle` and ledger over the backend mock, driven through the control protocol, with only the membership read
- * forced (`databases/locked`).
+ * forced (`databases.lock`).
  *
  * These assertions could not be made before the gate moved into the shared core, in either of the two senses that
  * matter:
@@ -30,7 +30,7 @@ class CycleEntryGateIntegrationTest {
 
     private suspend fun Rig.membershipUnreadable(on: Boolean) {
         // Before the first unlock after a boot every App-Group file is closed: the databases the membership lives in.
-        device("databases/locked", "on" to on.toString())
+        databases.lock(on)
     }
 
     @Test
@@ -97,6 +97,11 @@ class CycleEntryGateIntegrationTest {
     // The other half of the gate: the fix must not turn a REAL leave into a skip. A definitively absent
     // membership reads as not joined, and the cycle uploads nothing for it.
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Leaving or switching stops every transfer for the old event",
+        scenario = "Leaving stops uploads in progress",
+    )
     fun a_cleared_membership_reads_as_not_joined_and_uploads_nothing() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -114,6 +119,7 @@ class CycleEntryGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
     fun a_readable_membership_still_uploads_so_the_gate_is_not_skipping_everything() = rigTest {
         extensionUploadsOnly()
         // The control. A gate that declines every cycle is indistinguishable from a gate that works

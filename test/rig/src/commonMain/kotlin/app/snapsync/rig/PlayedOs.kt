@@ -145,15 +145,17 @@ class PlayedOs(private val device: MockDevice, private val mocked: (MockedSystem
         if (mocked(MockedSystem.UPLOAD_SESSION)) put("uploadSessionHandbacks", device.uploadSession.view().handbacks)
         // The device's disk: every database any process opened, and the files in the download staging directory.
         if (mocked(MockedSystem.DATABASES)) {
-            putJsonArray("databasesOpened") { device.databases.operator.opened.forEach { add(JsonPrimitive(it)) } }
+            putJsonArray("databasesOpened") { device.databases.opened.forEach { add(JsonPrimitive(it)) } }
         }
         // Counted over the operator's copy, never the live area: the app writes the disk from its own thread while this
         // request runs on the server's, and iterating the live map died half-way on a concurrent stage or release.
         if (mocked(MockedSystem.FILES)) {
             put(
                 "stagedFiles",
-                device.disk.operator.paths(FileArea.SHARED).count { it.startsWith("$DOWNLOAD_STAGING_DIR/") },
+                device.disk.paths(FileArea.SHARED).count { it.startsWith("$DOWNLOAD_STAGING_DIR/") },
             )
+            // The storage the app takes, as the device's storage page shows it — `Settled.state` carries the same.
+            put("appStorageBytes", device.disk.appStorageBytes())
         }
     }.toString()
 

@@ -4,6 +4,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.LogProcess
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.ReceivedDump
 import app.snapsync.levers.WorldEvent
@@ -39,13 +40,9 @@ class DiagnosticDumpIntegrationTest {
     private fun logLine(prefix: String, n: Int) =
         (1..n).joinToString("") { "$prefix line $it ..............................................\n" }
 
-    private suspend fun Rig.appendLog(process: String, text: String) {
-        device("logs/append", "process" to process, body = text)
-    }
+    private suspend fun Rig.appendLog(process: LogProcess, text: String) = files.appendLog(process, text)
 
-    private suspend fun Acts.appendLog(process: String, text: String) {
-        device("logs/append", "process" to process, body = text)
-    }
+    private suspend fun Acts.appendLog(process: LogProcess, text: String) = files.appendLog(process, text)
 
     private suspend fun Rig.sendDiagnostics(note: String, screen: String = SCREEN) {
         user("sendDiagnostics", "note" to note, "screen" to screen)
@@ -76,8 +73,8 @@ class DiagnosticDumpIntegrationTest {
         cycle()
         completeJobs(primaryJob("CAM"))
         cycle()
-        appendLog("app", "app: cycle finished\n")
-        appendLog("extension", "ext: enumeration 1 seen\n")
+        appendLog(LogProcess.APP, "app: cycle finished\n")
+        appendLog(LogProcess.EXTENSION, "ext: enumeration 1 seen\n")
 
         sendDiagnostics(NOTE)
 
@@ -173,7 +170,7 @@ class DiagnosticDumpIntegrationTest {
             eventId = joinedEvent()
             step(
                 "its id in the app's log",
-                act = { appendLog("app", "app: reconcile(eventId=$eventId) ok\n") },
+                act = { appendLog(LogProcess.APP, "app: reconcile(eventId=$eventId) ok\n") },
                 until = {},
             )
         }
@@ -200,8 +197,8 @@ class DiagnosticDumpIntegrationTest {
         given {
             joinedEvent()
             step("both logs huge", act = {
-                appendLog("app", logLine("app", 30_000))
-                appendLog("extension", logLine("ext", 30_000))
+                appendLog(LogProcess.APP, logLine("app", 30_000))
+                appendLog(LogProcess.EXTENSION, logLine("ext", 30_000))
             }, until = {})
         }
 

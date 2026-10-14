@@ -7,8 +7,6 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.rig.DownloadView
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -86,18 +84,19 @@ class InterruptedImportIntegrationTest {
         scenario = "Space is released after saving",
     )
     fun staged_bytes_survive_an_unconfirmed_import_and_are_released_once_it_settles() = rigTest {
+        val base = storage()
         stageWithAbandonedImport()
 
-        val staged = stagedFiles()
-        assertTrue(staged.isNotEmpty(), "the transfer staged bytes")
+        val staged = storage()
+        assertTrue(staged > base, "the transfer staged bytes")
         // A full trigger cycle against the unconfirmed row leaves them where they are.
         reconcile()
         os("app", "onBackgroundTask", HEARTBEAT)
-        assertEquals(staged, stagedFiles(), "unconfirmed → the bytes stay; the retry needs them")
+        assertTrue(storage() >= staged, "unconfirmed → the bytes stay; the retry needs them")
 
         relaunchAndAssemble() // the startup sweep adjudicates → present → settles the row
 
-        eventually(read = { stagedFiles() }) { files -> files.none { it in staged } }
+        eventually<Long>(read = { storage() }) { it <= base }
         assertTrue(downloadProgress().settled(), "confirmed → the bytes are redundant and released")
     }
 
@@ -126,14 +125,15 @@ class InterruptedImportIntegrationTest {
     @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
     fun after_a_leave_the_interrupted_import_still_settles_without_a_duplicate() = rigTest {
         extensionUploadsOnly()
+        val base = storage()
         val before = stageWithAbandonedImport()
-        val staged = stagedFiles()
+        assertTrue(storage() > base, "precondition: the transfer staged bytes")
 
         leave()
         createAndJoin(name = "Second Event")
         relaunchAndAssemble()
         // The sweep settled the inherited row: its now-redundant bytes are released.
-        eventually(read = { stagedFiles() }) { files -> files.none { it in staged } }
+        eventually<Long>(read = { storage() }) { it <= base }
         cycle()
 
         assertEquals(before + 1, libraryTotal(), "still exactly one asset created for this photo")
@@ -343,9 +343,8 @@ class InterruptedImportIntegrationTest {
     private fun assertUnsettled(progress: DownloadView, what: String) =
         assertTrue(progress.total > 0 && progress.downloaded < progress.total, "$what: $progress")
 
-    /** The files in the download staging directory. */
-    private suspend fun Rig.stagedFiles(): Set<String> =
-        deviceJson("staging").getValue("files").jsonArray.mapTo(mutableSetOf()) { it.jsonPrimitive.content }
+    /** The storage the app takes, as the device's storage page shows it. */
+    private suspend fun Rig.storage(): Long = osRecord().appStorageBytes
 
     /** What the joined screen counts as received. */
     private fun Layer.Joined.received() = counts?.received

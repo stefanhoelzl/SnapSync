@@ -3,7 +3,6 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.serialization.json.jsonArray
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -31,6 +30,7 @@ class ColdDownloadRelaunchIntegrationTest {
         createAndJoin()
         foreignDevice(DEV_F, "FQ")
         val before = libraryTotal()
+        val storage = osRecord().appStorageBytes
         reconcile()
 
         device("relaunch")
@@ -55,10 +55,11 @@ class ColdDownloadRelaunchIntegrationTest {
         }
 
         assertEquals(before + 1, libraryTotal(), "the staged asset was imported into the library, once")
-        assertTrue(stagingFiles().isEmpty(), "every resource the session delivered was staged, imported and released")
+        assertTrue(
+            osRecord().appStorageBytes <= storage,
+            "every resource the session delivered was staged, imported and released: the app holds no more than before",
+        )
     }
-
-    private suspend fun Rig.stagingFiles() = deviceJson("staging").getValue("files").jsonArray
 
     private companion object {
         /** Any transfer channel that is not the upload session's is the download session's. */

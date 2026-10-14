@@ -897,6 +897,25 @@ A face's typed values are its own (`NetworkState`, `Footprint`, `ReceivedDump`, 
 screen's vocabulary, so a domain type crosses as the service's word for it. The typed accessors a host or an in-process
 test needs (the network's `NetworkAccess`, the clock's `Instant`) are plumbing on the mock, not on its face.
 
+The device's stores followed, each needing its system mocked (so a device host whose adapter choice mocks it honours it
+too):
+
+- `databases` (`DatabasesLevers`, `DatabasesOperator`) — the lock of a device before its first unlock, and
+  `fail(database, table, kind, times?)`: the next statements of that kind on that table fail as SQLite fails a write
+  whose lock another process holds. **The fault is held to the real adapters**: the `Databases` contract's
+  `CONTENDED` state takes a real write lock through a second connection on every platform's SQLite (JVM, Android,
+  iOS), and the mocks enter it through `fail` itself — so the lever offers exactly the writes a real SQLite was shown
+  to refuse, and no read (under iOS's write-ahead log a reader is never blocked). The fault lives in each process's
+  driver; the inspector's own reads (`DatabasesMock.inspectorPort()`) go around it.
+- `files` (`FilesLevers`, `FileSystemOperator`) — text a process's device log carries.
+- `keychain` (`KeychainLevers`) and `older-install` (`OlderInstallLevers`) — implemented by the rig, which sees the
+  app's services and so maps a Keychain item, named by what it is, to its address, and writes what an older build
+  left over the device's own stores.
+
+**Plumbing stays on the mock, never the face**: what the channel and the other mocks need of a system — the disk's
+read, write and list, the databases' opens and their deletion — is a member of the mock class, which the face gate
+(`LeverFacesTest`) does not look at, as `BackendMock.watch` is. A face is only what a test may pull.
+
 **They are served over kRPC**, kotlinx-rpc's protocol, on a WebSocket at `ws://<host>:<port>/rpc` beside the rig's
 HTTP routes. The plugin generates the client a test calls (`client.levers(BackendLevers).offline(true)`,
 `:test:control`) and the stub the rig registers the implementation under, so no message format, route or dispatch is
@@ -1122,12 +1141,16 @@ until it answers.
 The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
 (`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (the backend's
 `BackendReceived` and `BackendHeld`; the transfers' `UploadJobCreated`, `SessionTransferCreated` and `DownloadStarted`;
-and the photo library's: a walk, an add or an import parked on an operator's hold — `LibraryEnumerationHeld`,
+the photo library's: a walk, an add or an import parked on an operator's hold — `LibraryEnumerationHeld`,
 `LibraryAddHeld`, `LibraryImportParked` — a photo an import created (`LibraryAssetCreated`), an album the app made
 (`LibraryAlbumCreated`) and a photo that joined one, once per photo as a person would see it arrive
 (`LibraryJoinedAlbum`); the system UI's `Shared`, `UrlOpened` and `SettingsOpened`; the crash reporter's
-`DumpReceived`; each face batch adds its face's), each `Settled(now, nextTimer)`, and each lane rule
-broken (`LaneViolation`). Every request a caller makes runs as a task of the loop — an act announced first, a read
+`DumpReceived`; the databases' `DatabaseFaulted`; each face batch adds its face's), each
+`Settled(now, nextTimer, state)`, and each lane rule broken (`LaneViolation`). A settle's `state` (`SettledState`) is what
+systems outside the app record at that moment — today `appStorageBytes`, the storage the app's files take, its
+diagnostics left out — read at exactly that settle, so `settled { … }` judges it and hands it on (`given` hands a later
+`then` the world as it left it). A field joins only if a system outside the app records it, it is cheap to read at
+every settle, and some test asserts it at a settle. Every request a caller makes runs as a task of the loop — an act announced first, a read
 not — so everything after an act's announcement is the act's or later.
 
 Under mocked time the clock moves only when a test moves it: `advance(d)` — or `advanceTo(instant)`, which may also move
@@ -1154,7 +1177,7 @@ the app — then a gate, then review.
 | **A transient is observed only by holding what it waits for**: every external wait needs a hold lever | review |
 | **Typed matchers, not equality**: `screen<L> { … }`, `event<E> { … }`, `never<E>`, `neverScreen<L>`. Unordered by default; `inOrder { … }` only where the order is the contract, `times(n) { … }` only where a count is the behaviour | the DSL; review |
 | **Observe what a person sees and what the outside world records**: the screen, the backend, the photo library, the push service, the crash reporter's receipts, and of the operating system's record only what the OS knows (handlers handed over and released, wakes and their timing, background-time holds, push registrations, sessions) — never an app-side label such as the trigger a hold began under | the stream carries nothing else; review for the polling tests |
-| **Never** log text, the app's private files (`device/staging`, the staging seeder), its databases, the ledger, or `device/gallery` (it runs the app's own selection policy) | the stream; review for the polling tests, whose remaining reads the face batches replace |
+| **Never** log text, the app's private files (the staging directory included: what the outside sees of it is the storage the app takes, `appStorageBytes`), its databases, the ledger, or `device/gallery` (it runs the app's own selection policy) | the stream; review for the polling tests, whose remaining reads the face batches replace |
 | **Nothing asserted on a generated id or a random value** (`next-event-id` where a fixed id is needed; mock randomness seeded per test); **no global mutable state** in the app, the mocks or the rig, so tests pass in any order and in parallel | review; `-Psnapsync.lanes=shuffled:<seed>` and `parallel` find what order hides |
 | **Work reaches the app only through the loop** | the host: a dispatch onto an app lane from a thread the loop does not own fails the test (`LaneViolation`) |
 | **No retries, anywhere** | review |

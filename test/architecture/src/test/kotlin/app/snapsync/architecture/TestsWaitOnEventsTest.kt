@@ -104,12 +104,12 @@ class TestsWaitOnEventsTest {
 
         /** May only shrink: classes with a test that claims no requirement yet. */
         val UNCLAIMED = setOf(
-            "CycleEntryGateIntegrationTest", "EntryIntegrationTest",
+            "EntryIntegrationTest",
             "EventChecksIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest",
             "HeartbeatCadenceIntegrationTest", "IncrementalUnionIntegrationTest", "JoinGateIntegrationTest",
             "ManifestVersionIntegrationTest", "OsCompletionIntegrationTest", "PushIntegrationTest",
             "PushRegistrationIntegrationTest", "RelaunchIntegrationTest", "RenameIntegrationTest",
-            "SwitchAfterFailedLeaveIntegrationTest", "UnreadStatusIntegrationTest", "VersionGateIntegrationTest",
+            "UnreadStatusIntegrationTest", "VersionGateIntegrationTest",
         )
 
         /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */
@@ -119,7 +119,6 @@ class TestsWaitOnEventsTest {
             "OsCompletionIntegrationTest",
             "PushIntegrationTest",
             "Rig",
-            "StagedByteReclaimIntegrationTest",
         )
     }
 }

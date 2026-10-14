@@ -65,8 +65,6 @@ object RigVocabulary {
      * adapters") — refused, naming the real system, everywhere else.
      */
     val worldLevers: List<String> = listOf(
-        "device/databases/locked",
-        "device/membership/undeletable",
         // The integration surface's observable reads of the world's simulated systems (`docs/testing.md`, "The
         // seam-to-UI-state integration surface"): what the operating system recorded of the app — the completion
         // handlers it handed over and got back, the screen, the selection observer, the heartbeat requests, the
@@ -78,16 +76,7 @@ object RigVocabulary {
         "device/relaunch",
         "device/reinstall",
         "device/invite",
-        "device/event-key/lose",
-        "device/logs/append",
-        "device/staging/seed-legacy-backlog",
     )
-
-    /**
-     * Device facts — the staging directory's files — read off the mocked disk, so honoured like [worldLevers] wherever
-     * it is a mock.
-     */
-    val deviceFacts: List<String> = listOf("device/staging")
 
     /**
      * The launch-time adapters (`docs/testing.md`, "Launch-time adapters"): read the choice this launch runs
@@ -114,7 +103,7 @@ object RigVocabulary {
 
     val entries: Set<String> =
         (
-            appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers + deviceFacts +
+            appEntries + playedOsEntries + extensionEntries + reads + sharedCommands + appHostCommands + worldLevers +
                 serviceVerbs + adapterCommands + CONTRACT
             )
             .toSet()

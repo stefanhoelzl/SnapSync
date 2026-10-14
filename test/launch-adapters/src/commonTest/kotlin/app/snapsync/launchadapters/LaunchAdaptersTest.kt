@@ -44,7 +44,7 @@ class LaunchAdaptersTest {
     private val files: Files = disk.port()
     private val facts = AdapterFacts(osDrivenUpload = true, appVersion = "9.9", freshDeviceId = { FRESH })
 
-    private fun write(path: String, text: String) = disk.operator.write(FileArea.SHARED, path, text.encodeToByteArray())
+    private fun write(path: String, text: String) = disk.write(FileArea.SHARED, path, text.encodeToByteArray())
 
     private fun launch(process: AdapterProcess = AdapterProcess.APP) = LaunchAdapters.read(files, process, facts)
 

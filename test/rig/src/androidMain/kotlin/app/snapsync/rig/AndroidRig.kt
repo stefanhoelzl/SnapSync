@@ -260,10 +260,6 @@ private fun androidRefusals(world: MockWorld): Map<String, String> = world.lever
         "deleting the app ends the process the channel runs in; `adb uninstall` it and install it again from outside",
     )
     put(
-        "device/event-key/lose",
-        "the phone's own store keeps the event's key; losing it is restoring onto a new phone, outside the channel",
-    )
-    put(
         "device/invite",
         "an event's key leaves the creating phone only inside its invite: read it from the joined screen's share link",
     )

@@ -48,13 +48,6 @@ class JvmHostProtocolTest {
             },
             "the JVM host honours every world lever",
         )
-        assertEquals(
-            emptyList(),
-            RigVocabulary.deviceFacts.filterNot {
-                it in ad.honoured
-            },
-            "the JVM host reads every device fact",
-        )
     }
 
     /**

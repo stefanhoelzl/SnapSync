@@ -8,7 +8,6 @@ import app.snapsync.model.encodeEventKey
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.SharedDatabase
-import app.snapsync.services.secure.SecureSlots
 import app.snapsync.ui.state.Layer
 
 // The JVM host's `/device` writes, its gallery read, and what it refuses of the shared vocabulary (`docs/testing.md`,
@@ -68,12 +67,6 @@ internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world
         val key = rig.mocks.eventKeys.keyOf(event)?.let(::encodeEventKey)
         CommandResult.ok("""{"invite":"${encodeEventUrl(EventLinkPayload(id, key = key))}"}""")
     },
-    // The joined event's key gone from the Keychain while the membership stays — what a restore onto a new phone or a
-    // reset of the phone's own key protection leaves.
-    "event-key/lose" to RigCommand { _, _ ->
-        rig.mocks.keychain.port().delete(SecureSlots.EVENT_KEY)
-        CommandResult.ok("""{"lost":true}""")
-    },
     // Deleting the app and installing it again: its files, databases and user defaults are gone, the Keychain, the
     // photo library and the backend keep theirs (what a reinstall forgets), then a cold
     // foreground launch as `relaunch` makes one.
@@ -99,7 +92,7 @@ internal fun joinedEventId(rig: JvmRig): String? {
     val shown = if (screenBuilt) rig.app.composed.host.screen.value.layer as? Layer.Joined else null
     return shown?.membership?.eventId
         ?: (
-            ConfigService(SharedDatabase(rig.mocks.databases.port(), legacy = null), rig.mocks.clock.port()).read()
+            ConfigService(SharedDatabase(rig.mocks.databases.inspectorPort(), legacy = null), rig.mocks.clock.port()).read()
                 as? ConfigRead.Joined
             )?.config?.eventId?.value
 }

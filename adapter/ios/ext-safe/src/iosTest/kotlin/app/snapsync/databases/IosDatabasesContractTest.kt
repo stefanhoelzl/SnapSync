@@ -36,13 +36,14 @@ class IosDatabasesContractTest {
             DatabasesState.OLD,
             DatabasesState.NEWER,
             DatabasesState.UNOPENABLE,
+            DatabasesState.CONTENDED,
         )
         override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<DatabasesSubject> {
             val dir = newTempDirectory()
             val databases = IosDatabases(dir).recorded(log)
             when (state) {
                 DatabasesState.ABSENT -> Unit
-                DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
+                DatabasesState.CURRENT, DatabasesState.CONTENDED -> DatabasesContract.enterCurrent(databases)
                 // A test executable is no launchd job: libnotify answers it `NOTIFY_STATUS_OPT_DISABLE`, so a commit's
                 // notice cannot travel here. The simulator app runs this state (`SimAppDatabasesBinding`).
                 DatabasesState.SHARED -> return Entered.Unreachable("libnotify is disabled in a test executable")
@@ -54,7 +55,26 @@ class IosDatabasesContractTest {
                         "this is not a database, and it is long enough to have a header\n".repeat(8),
                     )
             }
-            return Entered.Ready(DatabasesSubject(databases)) { removeDirectory(dir) }
+            return Entered.Ready(
+                DatabasesSubject(databases, contend = { holdWriteLock(IosDatabases(dir)) }),
+            ) { removeDirectory(dir) }
+        }
+    }
+
+    /**
+     * Another writer mid-commit: a second instance's connection to the same file that began (`BEGIN IMMEDIATE`), wrote,
+     * and has not ended. Raw statements, not the driver's transaction, which ends with its block: the native driver runs
+     * a statement outside a transaction on its one writer connection, which keeps the transaction open between calls.
+     */
+    private fun holdWriteLock(other: IosDatabases): () -> Unit {
+        val opened = assertIs<DbOpen.Opened>(
+            other.open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = false),
+        )
+        opened.driver.execute(null, "BEGIN IMMEDIATE", 0)
+        opened.driver.execute(null, "INSERT INTO probe (id, v) VALUES (${DatabasesContract.HELD_ROW}, 'held')", 0)
+        return {
+            opened.driver.execute(null, "ROLLBACK", 0)
+            opened.driver.close()
         }
     }
 

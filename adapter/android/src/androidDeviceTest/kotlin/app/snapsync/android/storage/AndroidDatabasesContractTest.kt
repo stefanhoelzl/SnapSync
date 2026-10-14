@@ -1,5 +1,6 @@
 package app.snapsync.android.storage
 
+import android.database.sqlite.SQLiteDatabase
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind
 import app.snapsync.contracts.CallLog
@@ -30,6 +31,7 @@ class AndroidDatabasesContractTest {
             DatabasesState.OLD,
             DatabasesState.NEWER,
             DatabasesState.UNOPENABLE,
+            DatabasesState.CONTENDED,
         )
 
         override fun create(state: DatabasesState, clauseId: String, log: CallLog): Entered<DatabasesSubject> {
@@ -37,7 +39,7 @@ class AndroidDatabasesContractTest {
             val databases = AndroidDatabases(context, dir).recorded(log)
             when (state) {
                 DatabasesState.ABSENT -> Unit
-                DatabasesState.CURRENT -> DatabasesContract.enterCurrent(databases)
+                DatabasesState.CURRENT, DatabasesState.CONTENDED -> DatabasesContract.enterCurrent(databases)
                 // One process: the platform has no second one to commit elsewhere, so the binding never reaches it.
                 DatabasesState.SHARED -> return Entered.Unreachable(ONE_PROCESS)
                 DatabasesState.OLD -> DatabasesContract.enterOld(databases)
@@ -45,7 +47,24 @@ class AndroidDatabasesContractTest {
                 DatabasesState.UNOPENABLE -> File(dir, DatabasesContract.NAME)
                     .writeText("this is not a database, and it is long enough to have a header\n".repeat(8))
             }
-            return Entered.Ready(DatabasesSubject(databases)) { dir.deleteRecursively() }
+            return Entered.Ready(
+                DatabasesSubject(databases, contend = { holdWriteLock(File(dir, DatabasesContract.NAME)) }),
+            ) { dir.deleteRecursively() }
+        }
+    }
+
+    /**
+     * Another writer mid-commit on [file]: a connection of the platform's own SQLite, outside the adapter, that began
+     * (`BEGIN IMMEDIATE`), wrote, and has not ended. The platform binds a transaction to its thread, and the clause
+     * releases on the thread that took it.
+     */
+    private fun holdWriteLock(file: File): () -> Unit {
+        val other = SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READWRITE)
+        other.beginTransactionNonExclusive()
+        other.execSQL("INSERT INTO probe (id, v) VALUES (${DatabasesContract.HELD_ROW}, 'held')")
+        return {
+            other.endTransaction()
+            other.close()
         }
     }
 

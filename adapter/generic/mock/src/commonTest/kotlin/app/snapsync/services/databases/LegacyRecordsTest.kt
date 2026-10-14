@@ -84,7 +84,7 @@ class LegacyRecordsTest {
 
     @Test
     fun `a locked database is unavailable - not pending`() {
-        databases.operator.lock()
+        databases.lock()
         assertIs<SharedRecordsReadiness.Unavailable>(app().readiness())
     }
 

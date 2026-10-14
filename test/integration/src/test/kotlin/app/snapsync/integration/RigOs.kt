@@ -7,6 +7,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 
 // The protocol calls that play the operating system — its entry points, its expiry — and read back what it recorded
 // of the app: the completion handlers it handed over and got back, the screen, the selection observer, the heartbeat
@@ -71,6 +72,9 @@ class OsRecord(private val json: JsonObject) {
 
     /** The files in the download staging directory. */
     val stagedFiles: Int get() = json.int("stagedFiles")
+
+    /** The bytes the app's files take, its logs left out — what the device's storage page shows a person. */
+    val appStorageBytes: Long get() = json.getValue("appStorageBytes").jsonPrimitive.long
 
     private val text = json.toString()
 
