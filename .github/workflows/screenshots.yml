@@ -1,6 +1,8 @@
-# The store listings' and landing page's marketing screenshots. DISPATCH-ONLY and NON-GATING dev infra:
-# it posts no status check and never blocks a merge. It changes no product behavior. Its
-# rationale (why it exists at all, and every knob below) lives here so there is no separate capability.
+# The store listings' and landing page's marketing screenshots: a dispatch captures them for an operator to commit, and
+# ci.yml's `screenshots` gate calls it on every branch push (`compare: true`), failing when a capture differs from the
+# committed raw — so a change that moves a listing image carries its new raws, and the raws never rot. It changes no
+# product behavior. Its rationale (why it exists at all, and every knob below) lives here so there is no separate
+# capability.
 # The one product-facing PROPERTY — that a committed raw depicts the real screen in a state the real
 # reduction reached — is spec'd in `docs/deployment.md`, beside the requirement making those raws
 # the source of truth for the listing.
@@ -15,7 +17,8 @@
 # screen. That could show a frame the app never reached (its joining shot had no photo count; its in_sync shot
 # no downloads), and it rotted between dispatches because nothing ran it. Now each state is one the real
 # reduction reached over the mocks, and the scenario that reaches it gates every build on the JVM host.
-# It uploads **6 RAW captures** (3 states x light/dark) as a workflow ARTIFACT and stops there.
+# It uploads **6 RAW captures** (3 states x light/dark) as a workflow ARTIFACT, and under `compare` checks them against
+# the committed set (`CompareShots`, which says what it forgives) and uploads a diff image of each differing shot.
 #
 # ANDROID (the `android` job): the same three states, captured the same way from the Android rig build on an emulator
 # on a Linux runner with KVM — the DEBUG build, because the capture resets the mocked systems' saved state through
@@ -51,12 +54,19 @@ name: screenshots
 
 on:
   workflow_dispatch:
+  # ci.yml's `screenshots` gate. Its jobs post as `screenshots / ios` and `screenshots / android`.
+  workflow_call:
+    inputs:
+      compare:
+        description: Fail when a capture differs from the committed raw.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  screenshots:
+  ios:
     runs-on: macos-26
     # Gradle's cache: ios-build's, read only, as journeys (ios) reads it. Under its own job name this restored an entry
     # only a dispatch on main ever wrote — five days stale once, so nearly every task rebuilt — while ios-build's carries
@@ -217,9 +227,27 @@ jobs:
           name: screenshots-raw
           path: shots/
           if-no-files-found: error
+      - name: Compare with the committed raws
+        id: compare
+        if: inputs.compare
+        run: |
+          "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp "$(cat test/integration/build/screenshots-classpath.txt)" \
+            app.snapsync.screenshots.CompareShotsKt shots screenshots/ios shots-diff 0 || {
+            echo "::error::the App Store raws moved: if the change is intended, download this run's screenshots-raw, look at them and commit them to screenshots/ios/ (the diffs: screenshots-diff)"
+            exit 1
+          }
+      - name: Upload the diffs
+        if: failure() && steps.compare.outcome == 'failure'
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: screenshots-diff
+          path: shots-diff/
 
   android:
     runs-on: ubuntu-26.04
+    # Gradle's cache: ci.yml's `build`'s, read only, as journeys (android) reads it.
+    env:
+      GRADLE_BUILD_ACTION_CACHE_KEY_JOB: build
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-java@v6
@@ -227,6 +255,8 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
 
       # The DEBUG rig build (`run-as` needs a debuggable app) against `prod`, for the same reason as above: `in_sync`'s QR
       # encodes the deployment's invite origin. Every system the shots touch is mocked, so nothing reaches prod. The
@@ -267,3 +297,19 @@ jobs:
           name: screenshots-android-raw
           path: shots/
           if-no-files-found: error
+      # The status bar's 120 rows are left out: its demo-mode clock moves between emulator boots (`CompareShots`).
+      - name: Compare with the committed raws
+        id: compare
+        if: inputs.compare
+        run: |
+          java -cp "$(cat test/integration/build/screenshots-classpath.txt)" \
+            app.snapsync.screenshots.CompareShotsKt shots screenshots/android shots-diff 120 || {
+            echo "::error::the Google Play raws moved: if the change is intended, download this run's screenshots-android-raw, look at them and commit them to screenshots/android/ (the diffs: screenshots-android-diff)"
+            exit 1
+          }
+      - name: Upload the diffs
+        if: failure() && steps.compare.outcome == 'failure'
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: screenshots-android-diff
+          path: shots-diff/

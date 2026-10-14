@@ -32,6 +32,10 @@
 #                   contracts (`scripts/sim-contracts`), on Android over every real adapter it has
 #                   (`scripts/android-journeys`). Scripts, not Gradle: every Gradle and Kotlin daemon
 #                   must be gone before the simulator boots on the 7 GB macOS runner, and the journeys run in a bare JVM
+#   screenshots / ios|android   the marketing raws captured afresh (screenshots.yml, called with `compare`) and
+#                   checked against the committed `screenshots/` — a change that moves a listing image fails until its
+#                   new raws are committed with it. Not on main: the merge already passed it, and a push holds a macOS
+#                   runner fewer
 #   metadata · api-test · migration-rehearsal · site-build    the Linux checks of the spec, deployment resolver, App
 #                   Store listing, backend and site
 #
@@ -47,7 +51,7 @@
 # dispatch-driven store promotion (promote.yml).
 #
 # Deployers stay in their own files: deploy.yml (api, site, listing text — main only), promote.yml,
-# screenshots.yml, nightly-cleanup.yml, ssh-runner-macos.yml.
+# nightly-cleanup.yml, ssh-runner-macos.yml. screenshots.yml is a gate here and a dispatch of its own.
 name: ci
 
 on:
@@ -743,12 +747,23 @@ jobs:
             build/android-journeys/
           if-no-files-found: ignore
 
+  # ── Screenshots ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+  # The captures, compared (screenshots.yml says how). Its iOS job reads the settled simulator journeys (ios) saves and the
+  # rig app ios-build seeds on main, so it ends well inside the journeys. Skipped on main, which `ci` accepts.
+  screenshots:
+    if: github.ref != 'refs/heads/main'
+    uses: ./.github/workflows/screenshots.yml
+    with:
+      compare: true
+
   # ── The aggregate ───────────────────────────────────────────────────────────────────────────────────────
 
-  # `always()` so it posts whatever the gates did: a gate that failed, was cancelled or was skipped fails it. Without
-  # `always()` a red gate would SKIP this job, and a skipped required check counts as passing.
+  # `always()` so it posts whatever the gates did: a gate that failed, was cancelled or was skipped fails it (bar
+  # `screenshots` on main, skipped by design). Without `always()` a red gate would SKIP this job, and a skipped required
+  # check counts as passing.
   ci:
-    needs: [build, metadata, api-test, migration-rehearsal, site-build, ios-build, android-build, journeys]
+    needs: [build, metadata, api-test, migration-rehearsal, site-build, ios-build, android-build, journeys, screenshots]
     if: always()
     runs-on: ubuntu-26.04
     steps:
@@ -757,7 +772,8 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null || {
+          echo "$NEEDS" | jq -e 'all(to_entries[]; .value.result == "success"
+            or (.key == "screenshots" and .value.result == "skipped" and env.GITHUB_REF == "refs/heads/main"))' > /dev/null || {
             echo "::error::a gate did not succeed"
             exit 1
           }

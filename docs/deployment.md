@@ -467,8 +467,9 @@ cached.
 ruleset (read it with `gh api repos/stefanhoelzl/SnapSync/rulesets`) and requires every check that ran on a PR, so a
 new gate joins it on the next ship by having run; a **renamed or removed** gate must be dropped in that ship
 (`--drop-context`), because a required context never posted again freezes every merge. The aggregate `ci` `needs:`
-every gate, runs `if: always()`, and fails unless each succeeded; it is what `ios-deliver` and `android-deliver` wait on. `ios-deliver`, `android-deliver`, `deploy.yml`, `nightly-cleanup`, `screenshots` and
-`promote` must **never** be required: none of them runs on a PR push.
+every gate, runs `if: always()`, and fails unless each succeeded; it is what `ios-deliver` and `android-deliver` wait on. `ios-deliver`, `android-deliver`, `deploy.yml`, `nightly-cleanup`, a `screenshots.yml` dispatch and
+`promote` must **never** be required: none of them runs on a PR push. (The `screenshots` gate — screenshots.yml called
+from `ci.yml` — is required; it is skipped on main only, which the aggregate accepts.)
 
 **No gate `needs:` another**: each compiles what it needs, so a red gate never skips another's run. The artifact
 edges are `ios-build` → `ios-deliver` and `android-build` → `android-deliver`. The marketing version both builds carry
@@ -489,6 +490,7 @@ min against ~10).
 | `android-build` | ubuntu | On a delivering run, `:app:android:assembleRelease`: the plain release, the store's (a PR skips it: `build` runs the same task) — R8 and resource shrinking over its whole graph, the R8 mapping in `app/android/build/outputs/mapping/release/` (that R8 output RUNS is `journeys (android)`'s, on the rig release). On a delivering run the same R8 run also produces the **bundle** (`bundleRelease`, channel `release`, the DSN, the computed version and the build number as `versionCode`); the job asserts the DSN is in the bundle's dex (compared, never printed) and uploads the unsigned bundle, its mapping and its version for `android-deliver` (1-day retention). Then every module's device tests on ONE Pixel 6 / API 36 emulator (`.github/actions/android-emulator`, booted once, the APKs built before it boots): `connectedAndroidDeviceTest` for the short-of-full grant modules first, on the clean device, then `:adapter:android` and the crash reporter, with the transfer fixture served by the build (host `ANDROID_EMU`, KVM). |
 | `journeys (ios)` | macos-26 | `scripts/sim-contracts`: builds the rig app (`-Psnapsync.rig=true`, `local` deployment) and ad-hoc signs it (`scripts/sim-sign`). **Nothing overlaps the build**: only after it, with the Gradle and Kotlin daemons stopped, does it boot **one** fresh simulator — on CI the runner image's iPhone 17 Pro Max — the store's 6.9" screenshot device, so `screenshots.yml` restores the same entry — restored already settled past its first boot (`.github/actions/settled-simulator`; settled and saved on main) — (a booting simulator slows the build several-fold, and a second fresh one's first-boot work tripled the job). Right after boot it stops the simulator's daemons nothing tested needs (`daemons-stop.log`): `apsd` (its reconnect loop to Apple's push sandbox logged a million lines in six minutes and cost ~170 s of CPU through the log daemon), the Photos library's media analysis (minutes after boot it took ~2.3 of the runner's 3 cores and stalled the app and the local api past the app's 5 s timeout, failing the journeys' create), and the widgets, wallpapers and other system services that halved the rest of a booting simulator's CPU and opens Photos, so the library's first-use preparation starts while the app installs (the first write then took 1–46 s instead of 1:23–4:43). Spotlight is switched off on the runner. It installs the app, grants photo access (pinned `applesimutils`), starts `scripts/transfer-fixture.py` and a local `api/` on a fresh filesystem store (warmed with one request), and launches the app. A timestamped **photo-library readiness** stage then makes the first library write (an asset dated outside every contract's window), because a fresh simulator's library takes minutes to accept one and that wait belongs to the platform, not to the first contract. It then waits for the system library's **background migration** to complete — a system task `assetsd` runs when the scheduler chooses, which holds every library write while it runs (96–184 s measured) and so failed whichever clause was writing — on that task's completion event in `assetsd`'s own log (`scripts/await-photo-migration.py`), never on a timer. It then checks the `GET /device` vocabulary, runs every registered port contract over the rig (host `IOS_SIM_APP`), and runs the all-real journeys on a bare JVM, with no Gradle alive next to the simulator (`docs/testing.md` section 7). Fails on any `Failed`/`NotWithin` clause, a refused run, an empty registry, a failed journey (printing its assertion message), or a fixture, backend or app that never answers (it captures a screenshot and the app log in that case). Evidence kept: the fixture's request log, the backend's output with a per-request log, host memory/CPU samples, host and simulator crash reports. Decision record: `changes/archive/2026-09-25-one-simulator-journeys`. |
 | `journeys (android)` | ubuntu (KVM) | Builds the rig **release** APK (R8 and resource shrinking as the store build runs them, signed with the debug key; `local` deployment) and the journeys, stops the daemons, boots one emulator and runs `scripts/android-journeys`: a local `api/` reversed into the emulator, the app granted the photo library before its first launch, an adapter choice real for every system Android has an adapter for (only the crash reporter and the iOS-only upload-job queue and extension registration mocked), the `GET /device` vocabulary check, then the same journeys on a bare JVM. |
+| `screenshots / ios`, `screenshots / android` | macos-26, ubuntu (KVM) | Every branch, never main: `screenshots.yml` called with `compare`, which captures the six raws per platform ("Screenshots" below) and fails when one differs from the committed raw — a channel off by more than 2/255, Android's status bar left out (`CompareShots`). A failed run carries the captures (`screenshots-raw`, `screenshots-android-raw`) and a diff image of each differing shot (`screenshots-diff`, `screenshots-android-diff`). |
 | `ci` | ubuntu | The aggregate above. |
 
 **The Kotlin/Native cache is one family**, `-device-`: `ios-build` restores it inside `.github/actions/ios-archive`
@@ -796,10 +798,12 @@ foreground life, and `:test:integration`'s capture drives it to each state throu
 Attest are all mocks, so no real member's content can reach the listing. The clock is mocked at a fixed instant and the
 status bar overridden, and the event id the `in_sync` QR encodes is fixed, so an unchanged UI captures identically —
 save the simulator's anti-aliasing of the Dynamic Island's rim (≤~120 pixels, each ≤2/255), which is noise. `ShotsTest` runs the same scenarios on the JVM
-host inside `build`, so they cannot rot between dispatches.
+host inside `build`, and the `screenshots` gate captures and compares both platforms' raws on every branch push, so a
+change that moves a listing image fails its PR until the new raws are committed with it. To refresh them, take the
+failed gate's artifacts, or dispatch:
 
 ```
-gh workflow run screenshots.yml --ref <branch>          # ~11-19 min
+gh workflow run screenshots.yml --ref <branch>
 RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')
 gh run download "$RID" -n screenshots-raw -D screenshots/ios   # refuses to overwrite: download elsewhere and copy
 # LOOK AT THEM, then: git add screenshots/ && git commit
@@ -811,7 +815,9 @@ resets the mocked systems' saved state through `run-as`; the status bar is Syste
 Google Play listing: `compose_screenshots.sh`'s `play` target puts the use-case graphic first (`CONCEPT_FRAME=off`
 leaves it out of a target), then composites the light set with the same headlines onto a
 1080×1920 (9:16) canvas, since a raw 1080×2400 breaks Play's 2:1 limit, and a promote uploads them when they changed
-("Google Play listing delivery" above). The landing page keeps the iPhone raws. An unchanged UI captures byte-identically on the emulator too.
+("Google Play listing delivery" above). The landing page keeps the iPhone raws. An unchanged UI captures identically on
+the emulator too, bar the demo-mode clock, which sits ~50 px further right after some emulator boots (4 of 10 runs) — so
+the gate leaves the status bar out, and a raw whose only diff is that clock is not worth committing.
 
 ```
 gh workflow run screenshots.yml --ref <branch>          # both jobs
@@ -819,7 +825,7 @@ RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')
 gh run download "$RID" -n screenshots-android-raw -D screenshots/android
 ```
 
-⚠️ **Looking at them is the only check there is.** A system notification ("Ready for Apple
+⚠️ **Look at new raws before committing them** — the gate only says they changed, not that they are right. A system notification ("Ready for Apple
 Intelligence") landed in 1 of 2 runs under the forge; the rig path reuses the same pre-booted simulator, so the risk
 is unchanged. Re-dispatch if one does. On an unchanged UI every raw comes back identical, `create` included, bar
 that Dynamic Island noise. A

@@ -374,17 +374,19 @@ each state by the scenarios in `:test:integration`'s `Shots.kt` — which `Shots
 in `screenshots/android/` from the emulator (artifact `screenshots-android-raw`); eyeball and commit them the same way.
 Both the App Store listing (at release time) and the `site/` landing page (on merge) derive from these
 committed raws (Google Play's listing, also at release time, from `screenshots/android/`), so refreshing them is a **commit**; nothing regenerates automatically, and a merge to
-`main` uploads nothing to the store.
+`main` uploads nothing to the store. **`ci.yml`'s `screenshots` gate** captures both sets on every branch push and
+fails when one differs from the committed raw (diff images in `screenshots-diff` / `screenshots-android-diff`), so a UI
+change carries its new raws: take them from that failed run's artifacts, or dispatch:
 
 ```
-gh workflow run screenshots.yml --ref <branch>          # ~11-19 min
+gh workflow run screenshots.yml --ref <branch>
 RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')
 gh run download "$RID" -n screenshots-raw -D screenshots/ios   # refuses to overwrite: download elsewhere and copy
 # LOOK AT THEM (below), then:
 git add screenshots/ && git commit
 ```
 
-- **Eyeball them before committing — this is the only check there is.** A system notification
+- **Eyeball them before committing — the gate only says they changed, not that they are right.** A system notification
   (*"Ready for Apple Intelligence"*, fired by fresh-device onboarding) can land in a capture; it hit
   **1 of 2** runs under the forge, on the same pre-booted simulator the rig path reuses. Re-dispatch if
   one does. This is **not** automatable by asserting the top band is
