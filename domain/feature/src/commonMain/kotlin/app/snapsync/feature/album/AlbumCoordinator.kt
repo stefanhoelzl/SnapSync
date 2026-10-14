@@ -28,8 +28,10 @@ import co.touchlab.kermit.Logger
  *    folder, and it is not the app's file to move;
  *  - an empty folder is no album, so "does not resolve" cannot mean "deleted" by itself — the album map's `filled`
  *    mark tells an album the member emptied (deleted, emptied or renamed) from one not filled yet. A deleted one
- *    answers no album at import ([albumIdFor]), so photos land in the camera folder, and is recreated only on an
- *    opt-in ([ensureAlbum]'s `optIn`), never on a launch's grant replay.
+ *    answers no album at import ([albumIdFor]), so photos land in the camera folder.
+ *
+ * Under either kind a deleted album is recreated only on an opt-in ([ensureAlbum]'s `optIn`), never on a launch's
+ * grant replay.
  */
 class AlbumCoordinator(
     private val manager: GalleryAlbums,
@@ -56,13 +58,12 @@ class AlbumCoordinator(
      * `granted`, which read as "fully granted" to every caller and reviewer (decision record
      * `harden-seam-bug-classes`).
      * Reuses the stored album if it still resolves (so a re-join keeps the prior membership's photos);
-     * recreates and overwrites the map if the stored id is dangling (the user deleted the album).
+     * on an [optIn], recreates and overwrites the map if the stored id is dangling (the user deleted the album).
      * **App-only** — the sole-creator invariant that removes the cross-process create race (design D3).
      *
      * [optIn] says whether this call is the member's deliberate opt-in — a join, a rejoin or a settings Save —
-     * rather than the grant subscription's replay at a launch. Only an opt-in recreates a deleted
-     * [AlbumKind.FOLDER] album — a deleted album is recreated only when the member asks; under
-     * [AlbumKind.COLLECTION] it changes nothing.
+     * rather than the grant subscription's replay at a launch. Only an opt-in recreates a deleted album, under either
+     * [AlbumKind]: the member deleted it, so it comes back only when they ask for it again.
      */
     suspend fun ensureAlbum(
         eventId: EventId,
@@ -81,8 +82,8 @@ class AlbumCoordinator(
                 log.i { "ensureAlbum: reused album=$existing for event=$eventId" }
                 return existing
             }
-            if (kind == AlbumKind.FOLDER && !optIn) {
-                log.i { "ensureAlbum: album for event=$eventId was emptied by the member — not recreated without an opt-in" }
+            if (!optIn) {
+                log.i { "ensureAlbum: album for event=$eventId was deleted by the member — not recreated without an opt-in" }
                 return null
             }
             log.i { "ensureAlbum: stored album for event=$eventId no longer resolves — recreating" }
