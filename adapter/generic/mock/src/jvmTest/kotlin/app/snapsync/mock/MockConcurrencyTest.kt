@@ -8,7 +8,6 @@ import app.snapsync.model.FileArea
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.SecureSlot
-import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadTarget
 import app.snapsync.wire.api.CreateEventReply
@@ -113,14 +112,14 @@ class MockConcurrencyTest {
                             UploadTarget("https://in-memory/$round/primary", emptyMap(), TransferNetwork.ANY),
                         )
                         if (round % BATCH == BATCH - 1) {
-                            queue.operator.liveJobs().forEach { queue.operator.failJob(it, TransferFailure("network")) }
+                            queue.view().live.forEach { queue.operator.failJob(it, "network") }
                             port.retryOffered().forEach { port.acknowledge(it) }
                         }
                     }
                 },
                 read = {
-                    queue.operator.liveJobs().whole()
-                    queue.operator.created.whole()
+                    queue.view().live.whole()
+                    queue.view().created.whole()
                     MockState.encode(device, MockedSystem.UPLOAD_QUEUE)
                 },
             ),
@@ -145,7 +144,7 @@ class MockConcurrencyTest {
                     }
                 },
                 read = {
-                    downloads.operator.inFlight().whole()
+                    downloads.view().inFlight.whole()
                     MockState.encode(device, MockedSystem.DOWNLOADS)
                 },
             ),

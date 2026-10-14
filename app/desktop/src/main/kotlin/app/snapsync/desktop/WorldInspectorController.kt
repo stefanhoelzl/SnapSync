@@ -223,12 +223,14 @@ class WorldInspectorController(
 
     fun completeJob(job: String) = launchMutation { mocks.uploadQueue.operator.completeJob(job) }
 
-    fun failJob(job: String, error: TransferFailure) = launchMutation { mocks.uploadQueue.operator.failJob(job, error) }
+    fun failJob(job: String, error: TransferFailure) = launchMutation {
+        mocks.uploadQueue.operator.failJob(job, error.detail)
+    }
 
     /** The OS lands one of the app uploader's transfers — its end reported to the app as it happens. */
     fun completeAppUpload(key: String) = launchMutation { mocks.uploadSession.operator.complete(key) }
 
-    fun setJobLimit(limit: Int) = launchMutation { mocks.uploadQueue.operator.jobLimit = limit.coerceAtLeast(0) }
+    fun setJobLimit(limit: Int) = launchMutation { mocks.uploadQueue.operator.jobLimit(limit.coerceAtLeast(0)) }
 
     // ---- downloads -------------------------------------------------------------------------------
 
@@ -239,8 +241,11 @@ class WorldInspectorController(
      * stages, and the downloads stay pending.
      */
     fun stageAllDownloads(outcome: TransferOutcome = DownloadSessionMock.HEALTHY) = launchMutation {
-        val session = mocks.downloads.operator
-        session.inFlight().forEach { session.finish(it.description, outcome) }
+        mocks.downloads.operator.finish(
+            status = outcome.statusCode,
+            expected = outcome.expectedBytes,
+            received = outcome.receivedBytes,
+        )
     }
 
     // ---- failure levers --------------------------------------------------------------------------
@@ -481,11 +486,11 @@ class WorldInspectorController(
                 objects = mocks.backend.operator.objectsOf(id).sorted(),
             )
         }
-        val queue = mocks.uploadQueue.operator
-        val jobs = queue.liveJobs().map { job -> JobRow(job, attempts = queue.created.count { it.job == job }) }
-        val session = mocks.uploadSession.operator
-        val appUploads = session.liveKeys().map { key -> JobRow(key, attempts = session.created.count { it == key }) }
-        val downloads = mocks.downloads.operator.inFlight().map {
+        val queue = mocks.uploadQueue.operator.queue()
+        val jobs = queue.live.map { job -> JobRow(job, attempts = queue.created.count { it.job == job }) }
+        val session = mocks.uploadSession.operator.session()
+        val appUploads = session.live.map { key -> JobRow(key, attempts = session.created.count { it == key }) }
+        val downloads = mocks.downloads.operator.downloads().inFlight.map {
             DownloadRow(
                 url = it.url,
                 description = it.description,
@@ -498,7 +503,7 @@ class WorldInspectorController(
             jobs = jobs,
             appUploads = appUploads,
             downloads = downloads,
-            jobLimit = queue.jobLimit,
+            jobLimit = queue.jobLimit ?: Int.MAX_VALUE,
             backendOffline = mocks.backend.operator.switches().offline,
             refusedAttestation = mocks.backend.operator.switches().refusingAttestation?.let {
                 DeviceRefusal.valueOf(

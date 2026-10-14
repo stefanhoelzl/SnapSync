@@ -2,6 +2,15 @@ package app.snapsync.mock
 
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.levers.CreatedJob
+import app.snapsync.levers.DownloadSessionLevers
+import app.snapsync.levers.DownloadSessionView
+import app.snapsync.levers.StartedDownload
+import app.snapsync.levers.UploadQueueLevers
+import app.snapsync.levers.UploadQueueView
+import app.snapsync.levers.UploadSessionLevers
+import app.snapsync.levers.UploadSessionView
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
@@ -47,6 +56,11 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  */
 fun interface UploadNetwork {
     suspend fun put(url: String, headers: Map<String, String>, bytes: ByteArray): Int?
+}
+
+/** Told what a transfer system records, on the app's thread, as the app hands it the work. */
+fun interface TransferWatcher {
+    fun told(event: WorldEvent.Transfer)
 }
 
 /**
@@ -105,6 +119,14 @@ class UploadQueueMock(
 
     @Volatile internal var failCreate = false
 
+    /** Who is told each job the app creates — the control channel's event stream, or no one. */
+    @Volatile private var watcher: TransferWatcher = TransferWatcher {}
+
+    /** Tells [listener] each job the app creates, as it creates it (`docs/testing.md`, "How a test waits"). */
+    fun watch(listener: TransferWatcher) {
+        watcher = listener
+    }
+
     private val face: OsUploadQueue = Face()
 
     /** The port face: one for every process, as the OS holds one queue for the app. */
@@ -141,13 +163,15 @@ class UploadQueueMock(
             if (resource !is InMemoryResource && !acceptsAnyHandle) return CreateOutcome.FAILED
             val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }?.value
                 ?: "application/octet-stream"
-            return locked {
-                if (jobs.size >= jobLimit) return@locked CreateOutcome.LIMIT_EXCEEDED
-                val job = Job(contentType, resource, target)
-                jobs.add(job)
-                created.add(CreatedUpload(job.name, contentType))
-                CreateOutcome.CREATED
-            }
+            val job = locked {
+                if (jobs.size >= jobLimit) return@locked null
+                Job(contentType, resource, target).also {
+                    jobs.add(it)
+                    created.add(CreatedUpload(it.name, contentType))
+                }
+            } ?: return CreateOutcome.LIMIT_EXCEEDED
+            watcher.told(WorldEvent.UploadJobCreated(job.name))
+            return CreateOutcome.CREATED
         }
     }
 
@@ -155,6 +179,16 @@ class UploadQueueMock(
     fun port(): OsUploadQueue = face
 
     val operator: UploadQueueOperator = UploadQueueOperator(this)
+
+    /** The queue as the operating system holds it now — what the operator reads, and the played OS's record. */
+    fun view(): UploadQueueView = locked {
+        UploadQueueView(
+            live = jobs.map { it.name },
+            created = created.map { CreatedJob(it.job, it.contentType) },
+            jobLimit = jobLimit.takeIf { it != Int.MAX_VALUE },
+            failingCreate = failCreate,
+        )
+    }
 
     private fun Job.view() = OsUploadJob(
         handle = this,
@@ -167,28 +201,27 @@ class UploadQueueMock(
 }
 
 /** The operating system's side of the upload-job queue, played: it performs, fails and caps jobs. */
-class UploadQueueOperator internal constructor(private val mock: UploadQueueMock) {
-    /** The in-flight cap: `create` answers `LIMIT_EXCEEDED` at or above it. */
-    var jobLimit: Int
-        get() = mock.jobLimit
-        set(value) { mock.jobLimit = value }
+class UploadQueueOperator internal constructor(private val mock: UploadQueueMock) : UploadQueueLevers {
+    override suspend fun jobLimit(limit: Int?) {
+        mock.jobLimit = limit?.coerceAtLeast(0) ?: Int.MAX_VALUE
+    }
 
-    /** `create` answers `FAILED` — an unusable payload. */
-    var failCreate: Boolean
-        get() = mock.failCreate
-        set(value) { mock.failCreate = value }
+    override suspend fun failCreate(on: Boolean) {
+        mock.failCreate = on
+    }
 
-    /** Every job created, in order (retry chains show as repeated names). */
-    val created: List<CreatedUpload> get() = mock.locked { mock.created.toList() }
-
-    /** The names ([jobNameOf]) of every live (in-flight or terminal-unacknowledged) job. */
-    fun liveJobs(): List<String> = mock.locked { mock.jobs.map { it.name } }
+    override suspend fun queue(): UploadQueueView = mock.view()
 
     /**
      * The OS performs a pending job's request over the network, and the job settles on the answer — unless the device is
-     * on a restricted network, where the OS holds every job (see [UploadQueueMock]) and this leaves it pending.
+     * on a restricted network, where the OS holds every job (see [UploadQueueMock]) and this leaves it pending. Every
+     * live job's, by their names ([jobNameOf]), when [job] is `null`.
      */
-    suspend fun completeJob(job: String) {
+    override suspend fun completeJob(job: String?) {
+        (job?.let(::listOf) ?: mock.locked { mock.jobs.map { it.name } }).forEach { complete(it) }
+    }
+
+    private suspend fun complete(job: String) {
         val (j, target) = mock.locked {
             mock.jobs.firstOrNull { it.name == job && it.state == UploadJobState.PENDING }?.let { it to it.target }
         } ?: return
@@ -211,11 +244,11 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
         }
     }
 
-    /** A pending job fails with a chosen [failure], driving the real retry chain next cycle. */
-    fun failJob(job: String, failure: TransferFailure) = mock.locked {
+    /** A pending job fails with a chosen [error], driving the real retry chain next cycle. */
+    override suspend fun failJob(job: String, error: String) = mock.locked {
         val j = mock.jobs.firstOrNull { it.name == job && it.state == UploadJobState.PENDING } ?: return@locked
         j.state = UploadJobState.FAILED
-        j.failure = failure
+        j.failure = TransferFailure(error)
     }
 
     private companion object {
@@ -262,6 +295,14 @@ class UploadSessionMock(
     internal val live = mutableListOf<Live>()
     internal val created = mutableListOf<String>()
 
+    /** Who is told each transfer the app creates — the control channel's event stream, or no one. */
+    @Volatile private var watcher: TransferWatcher = TransferWatcher {}
+
+    /** Tells [listener] each transfer the app creates, as it creates it (`docs/testing.md`, "How a test waits"). */
+    fun watch(listener: TransferWatcher) {
+        watcher = listener
+    }
+
     fun port(): TransferSession = Face()
 
     /** The port face a process is handed. */
@@ -277,12 +318,17 @@ class UploadSessionMock(
             if (source !is TransferSource.File && !(sendsResources && source is TransferSource.Resource)) {
                 return CreateOutcome.FAILED
             }
-            return locked {
-                if (live.size >= LIVE_CAP) return@locked CreateOutcome.LIMIT_EXCEEDED
-                live += Live(tag, target, (source as? TransferSource.File)?.from ?: 0)
-                created += tag
-                CreateOutcome.CREATED
+            val accepted = locked {
+                (live.size < LIVE_CAP).also { room ->
+                    if (room) {
+                        live += Live(tag, target, (source as? TransferSource.File)?.from ?: 0)
+                        created += tag
+                    }
+                }
             }
+            if (!accepted) return CreateOutcome.LIMIT_EXCEEDED
+            watcher.told(WorldEvent.SessionTransferCreated(tag))
+            return CreateOutcome.CREATED
         }
 
         override suspend fun live(): List<Transfer> =
@@ -300,27 +346,39 @@ class UploadSessionMock(
 
     val operator: UploadSessionOperator = UploadSessionOperator(this)
 
+    /** The session as the operating system holds it now — what the operator reads, and the played OS's record. */
+    fun view(): UploadSessionView = locked { UploadSessionView(live.map { it.tag }, created.toList(), handbacks) }
+
+    /**
+     * The operating system relaunches the app for this session's events, handing [completion] — the played OS's
+     * delivery (`/os`), never an operator's: a live completion does not cross the channel. The ends of transfers that
+     * landed while no process ran were reported as they happened, so the drain report follows at once.
+     */
+    fun handBack(completion: Completion) {
+        val registered = handlers.require("a hand-back")
+        registered.onBackgroundEvents.handle(SessionRelaunch(drains), completion)
+        handbacks++
+        registered.onEventsDrained.deliver(SessionDrain(++drains))
+    }
+
     internal companion object {
         /** The live transfers a session holds before `create` answers `LIMIT_EXCEEDED` — the iOS adapter's cap. */
         const val LIVE_CAP = 4
     }
 }
 
-class UploadSessionOperator internal constructor(private val mock: UploadSessionMock) {
-    /** How many background-event handbacks reached the session. */
-    val handbacks: Int get() = mock.handbacks
-
-    /** The tags (upload keys) of the transfers still in flight. */
-    fun liveKeys(): List<String> = mock.locked { mock.live.map { it.tag } }
-
-    /** Every transfer created, in order, by its tag (a re-created failure shows as a repeated key). */
-    val created: List<String> get() = mock.locked { mock.created.toList() }
+class UploadSessionOperator internal constructor(private val mock: UploadSessionMock) : UploadSessionLevers {
+    override suspend fun session(): UploadSessionView = mock.view()
 
     /**
-     * The OS performs the live transfer tagged [key] over the network, and reports its end to the process that
-     * registered last — at once, as a running app's session delegate hears it.
+     * The OS performs the live transfer tagged [key] — every live one when `null` — over the network, and reports its
+     * end to the process that registered last — at once, as a running app's session delegate hears it.
      */
-    suspend fun complete(key: String) {
+    override suspend fun complete(key: String?) {
+        (key?.let(::listOf) ?: mock.locked { mock.live.map { it.tag } }).forEach { land(it) }
+    }
+
+    private suspend fun land(key: String) {
         val transfer = mock.locked { mock.live.firstOrNull { it.tag == key } } ?: return
         if (mock.held(transfer.target.network)) return
         val bytes = TRANSFERRED_BYTES.copyOfRange(transfer.from.toInt().coerceIn(0, FILE_SIZE), FILE_SIZE)
@@ -332,17 +390,6 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
             else -> TransferFailure("http:$status")
         }
         mock.handlers.require("a transfer's end").onFinished.deliver(FinishedTransfer(transfer.tag, failure))
-    }
-
-    /**
-     * The operating system relaunches the app for this session's events, handing [completion]. The ends of transfers
-     * that landed while no process ran were reported as they happened, so the drain report follows at once.
-     */
-    fun handBack(completion: Completion) {
-        val registered = mock.handlers.require("a hand-back")
-        registered.onBackgroundEvents.handle(SessionRelaunch(mock.drains), completion)
-        mock.handbacks++
-        registered.onEventsDrained.deliver(SessionDrain(++mock.drains))
     }
 
     private companion object {
@@ -418,6 +465,14 @@ class DownloadSessionMock(
 
     @Volatile internal var current: Face? = null
 
+    /** Who is told each download the app starts — the control channel's event stream, or no one. */
+    @Volatile private var watcher: TransferWatcher = TransferWatcher {}
+
+    /** Tells [listener] each download the app starts, as it starts it (`docs/testing.md`, "How a test waits"). */
+    fun watch(listener: TransferWatcher) {
+        watcher = listener
+    }
+
     internal inner class Face : Download {
         /** Whether this process has brought the session up — by starting, cancelling, or being handed its events. */
         @Volatile var realized: Boolean = false
@@ -434,6 +489,7 @@ class DownloadSessionMock(
             if (refusesUnfetchable && !url.startsWith("http://") && !url.startsWith("https://")) return StartResult.NotStarted
             if (refusesMalformed && '[' in url && ']' !in url) return StartResult.NotStarted
             locked { started += Started(url, tag, network) }
+            watcher.told(WorldEvent.DownloadStarted(tag))
             return StartResult.Started
         }
 
@@ -458,6 +514,29 @@ class DownloadSessionMock(
 
     internal fun registered(): DownloadHandlers = handlers.require("a download session event")
 
+    /** The session as the operating system holds it now — what the operator reads, and the played OS's record. */
+    fun view(): DownloadSessionView = locked {
+        DownloadSessionView(
+            up = current?.realized == true,
+            started = started.map { it.view() },
+            inFlight = inFlight().map { it.view() },
+        )
+    }
+
+    /** The transfers still awaiting a finish, de-duplicated by tag; under the lock. */
+    internal fun inFlight(): List<Started> = started.filterNot { it.cancelled || it.finished }.distinctBy { it.description }
+
+    private fun Started.view() = StartedDownload(url, description, cancelled, finished)
+
+    /**
+     * The operating system relaunches the app for this session's events, handing [completion] — the played OS's
+     * delivery (`/os`), never an operator's: a live completion does not cross the channel.
+     */
+    fun handBack(completion: Completion) {
+        registered().onBackgroundEvents.handle(SessionRelaunch(drains), completion)
+        current?.realized = true
+    }
+
     companion object {
         /** An ordinary healthy transfer: `200`, no declared length. */
         val HEALTHY: TransferOutcome = TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1_024L)
@@ -478,24 +557,39 @@ class DownloadSessionMock(
 }
 
 /** The operating system's side of the download session, played: it finishes transfers and hands events back. */
-class DownloadSessionOperator internal constructor(private val mock: DownloadSessionMock) {
-    /** Every transfer ever started, cancelled ones included. */
-    val started: List<DownloadSessionMock.Started> get() = mock.locked { mock.started.toList() }
+class DownloadSessionOperator internal constructor(private val mock: DownloadSessionMock) : DownloadSessionLevers {
+    override suspend fun downloads(): DownloadSessionView = mock.view()
 
-    /** Whether the running process has brought the session up. */
-    val realized: Boolean get() = mock.current?.realized == true
-
-    /** The transfers still awaiting a finish, de-duplicated by tag. */
-    fun inFlight(): List<DownloadSessionMock.Started> =
-        mock.locked { mock.started.filterNot { it.cancelled || it.finished }.distinctBy { it.description } }
+    @OptIn(ExperimentalEncodingApi::class)
+    override suspend fun finish(
+        description: String?,
+        status: Int?,
+        expected: Long?,
+        received: Long?,
+        base64Bytes: String?,
+    ) {
+        val outcome = if (status == null && expected == null && received == null) {
+            DownloadSessionMock.HEALTHY
+        } else {
+            TransferOutcome(statusCode = status, expectedBytes = expected ?: -1L, receivedBytes = received ?: 0L)
+        }
+        val bytes = base64Bytes?.let { Base64.decode(it) }
+        val descriptions = description?.let(::listOf)
+            ?: if (mock.current?.realized == true) mock.locked { mock.inFlight().map { it.description } } else emptyList()
+        descriptions.forEach { finish(it, outcome, bytes) }
+    }
 
     /**
      * A finish for [description], as the real delegate delivers one: the facts and a temporary file, then the
-     * completion. A rejected [outcome] leaves the resource un-staged. The file holds [bytes] when given — the
-     * operator choosing what the transfer brought, e.g. a real motion photo — and a minimal JPEG otherwise. A transfer
-     * the device's network holds ([DownloadSessionMock.held]) does not finish: the OS would not run it.
+     * completion. A rejected [outcome] leaves the resource un-staged. The file holds [bytes] when given and a minimal
+     * JPEG otherwise. A transfer the device's network holds ([DownloadSessionMock.held]) does not finish: the OS would
+     * not run it.
      */
-    fun finish(description: String, outcome: TransferOutcome = DownloadSessionMock.HEALTHY, bytes: ByteArray? = null) {
+    internal fun finish(
+        description: String,
+        outcome: TransferOutcome = DownloadSessionMock.HEALTHY,
+        bytes: ByteArray? = null,
+    ) {
         val runs = mock.locked {
             val held = mock.started.any { it.description == description && !it.cancelled && !it.finished && mock.held(it.network) }
             if (!held) mock.started.filter { it.description == description }.forEach { it.finished = true }
@@ -508,12 +602,10 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
         mock.registered().onCompleted.deliver(CompletedDownload(description, null))
     }
 
-    /** The operating system relaunches the app for this session's events, handing [completion]. */
-    fun handBack(completion: Completion) {
-        mock.registered().onBackgroundEvents.handle(SessionRelaunch(mock.drains), completion)
-        mock.current?.realized = true
-    }
-
     /** The session reports every event delivered (`urlSessionDidFinishEvents`). */
-    fun reportEventsDrained() = mock.registered().onEventsDrained.deliver(SessionDrain(++mock.drains))
+    override suspend fun reportEventsDrained() = drain()
+
+    internal fun drain() {
+        mock.registered().onEventsDrained.deliver(SessionDrain(++mock.drains))
+    }
 }

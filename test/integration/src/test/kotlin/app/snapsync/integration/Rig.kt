@@ -5,7 +5,10 @@ import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.UploadQueueLevers
+import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.rig.GalleryView
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigState
@@ -60,6 +63,15 @@ class Rig(val client: RigClient) {
 
     /** The backend through its public surface, as another member reaches it — on either backend. */
     val publicBackend: PublicBackendLevers = client.levers(PublicBackendLevers)
+
+    /** The operating system's upload-job queue, which the OS-driven extension creates jobs on. */
+    val uploadQueue: UploadQueueLevers = client.levers(UploadQueueLevers)
+
+    /** The app uploader's background transfer session. */
+    val uploadSession: UploadSessionLevers = client.levers(UploadSessionLevers)
+
+    /** The background download session. */
+    val downloadSession: DownloadSessionLevers = client.levers(DownloadSessionLevers)
 
     suspend fun state(): RigState = client.state()
 

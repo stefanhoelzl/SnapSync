@@ -74,3 +74,26 @@ suspend fun Acts.network(access: String, backendReachable: Boolean = access == "
     backend.offline(!backendReachable)
     device("network", "access" to access)
 }
+
+/**
+ * Only the extension uploads: the app's uploader is switched off. Both run on a phone and the JVM host composes both, so
+ * a behaviour about the OS-driven cycle states that it drives that cycle alone.
+ */
+suspend fun Given.extensionUploadsOnly() =
+    step("only the extension uploads", act = { device("uploaders", "app" to "off") }, until = {})
+
+/** Own photos taken on the event's day, in the library, and whatever the app does about them done. */
+suspend fun Given.photos(vararg ids: String) = step(
+    "photos ${ids.joinToString()} taken",
+    act = { ids.forEach { takePhoto(it) } },
+    until = { settled { true } },
+)
+
+/** An own photo [id] taken on the event's day lands in the library. */
+suspend fun Acts.takePhoto(id: String) {
+    device("gallery/add", "id" to id, "date" to Rig.PHOTO_DATE, "kind" to "photo")
+}
+
+/** One upload cycle, as the OS-driven extension runs it. Answers what it tells the system (`completed`, `processing`). */
+suspend fun Acts.cycle(): String =
+    Json.parseToJsonElement(os("photokit-ext", "processRawValue")).jsonObject.getValue("result").jsonPrimitive.content

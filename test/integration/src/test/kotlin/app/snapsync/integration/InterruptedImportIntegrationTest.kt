@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import app.snapsync.rig.DownloadView
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
@@ -78,6 +79,11 @@ class InterruptedImportIntegrationTest {
      * permanently and silently. These pin the ordering from both sides.
      */
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos do not take up space twice",
+        scenario = "Space is released after saving",
+    )
     fun staged_bytes_survive_an_unconfirmed_import_and_are_released_once_it_settles() = rigTest {
         stageWithAbandonedImport()
 
@@ -95,6 +101,7 @@ class InterruptedImportIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "delivery", requirement = "Download problems delay photos, never corrupt or lose them")
     fun a_failed_import_keeps_its_bytes_for_the_retry() = rigTest {
         createAndJoin()
         foreignDevice(foreignDevice, foreignAsset)
@@ -139,6 +146,7 @@ class InterruptedImportIntegrationTest {
      * status line below 100% forever, which reads as a broken app and would ship silently.
      */
     @Test
+    @Verifies(spec = "sync-status", requirement = "The joined screen counts what was shared and received")
     fun download_progress_settles_after_an_interrupted_import() = rigTest {
         stageWithAbandonedImport()
         assertUnsettled(downloadProgress(), "precondition: unconfirmed, so progress is genuinely short")
@@ -243,6 +251,11 @@ class InterruptedImportIntegrationTest {
      * settlement is observed through the staging directory: a settled row releases its bytes.
      */
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Other members' photos arrive in the photo library automatically",
+        scenario = "Receiving under limited access",
+    )
     fun under_a_partial_grant_the_sweep_waits_for_the_selection_snapshot() = behaviour {
         given {
             joinedEvent()
@@ -253,10 +266,13 @@ class InterruptedImportIntegrationTest {
                     device("import/suspend-next", "afterCommit" to "true")
                     os("app", "onForeground")
                 },
-                until = { settled { true } },
+                until = {
+                    event<WorldEvent.DownloadStarted>()
+                    settled { true }
+                },
             )
             // The import fires from the staged-resource callback, and parks there: the asset exists, the row does not know.
-            step("its bytes staged", act = { device("downloads/stage") }, until = { settled { true } })
+            step("its bytes staged", act = { downloadSession.finish() }, until = { settled { true } })
             step(
                 "the grant narrowed",
                 act = { device("permission", "status" to "LIMITED") },

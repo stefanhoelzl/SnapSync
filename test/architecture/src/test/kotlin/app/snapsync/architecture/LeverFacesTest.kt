@@ -173,7 +173,6 @@ class LeverFacesTest {
             "LifecycleOperator", "LinksOperator", "PushServiceOperator", "ScreenOperator", "DevControlsOperator",
             "ExtensionHostOperator", "PhotoLibraryOperator", "CrashReporterOperator", "ProcessInfoOperator",
             "ClockOperator", "SystemUiOperator", "NetworkOperator", "FileSystemOperator", "DatabasesOperator",
-            "UploadQueueOperator", "UploadSessionOperator", "DownloadSessionOperator",
         )
     }
 }

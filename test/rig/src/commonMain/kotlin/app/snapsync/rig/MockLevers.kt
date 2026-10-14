@@ -1,10 +1,8 @@
 package app.snapsync.rig
 
-import app.snapsync.contracts.PhotoLibrary
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.mock.DeviceConditionsText
-import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.APP_LOG_FILE_NAME
@@ -22,8 +20,6 @@ import app.snapsync.model.uploadKey
 import app.snapsync.ports.LibraryAlbumKind
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
-import app.snapsync.ports.TransferFailure
-import app.snapsync.ports.TransferOutcome
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.SeedOutcome
@@ -110,7 +106,7 @@ private fun mocked(system: MockedSystem, command: RigCommand) = Lever(listOf(Nee
 
 /** The whole table, bound to this world. */
 internal fun MockWorld.levers(): Map<String, Lever> {
-    return reporterReads() + versionLevers() + transferLevers() + libraryLevers() + deviceLevers() +
+    return reporterReads() + versionLevers() + libraryLevers() + deviceLevers() +
         deviceFacts()
 }
 
@@ -136,99 +132,6 @@ private fun MockWorld.versionLevers(): Map<String, Lever> = mapOf(
             val version = params["version"] ?: return@RigCommand CommandResult.badRequest("version is required")
             this.version!!.value = version
             CommandResult.ok(buildJsonObject { put("appVersion", version) }.toString())
-        },
-    ),
-)
-
-private fun MockWorld.transferLevers(): Map<String, Lever> = mapOf(
-    "jobs" to mocked(
-        MockedSystem.UPLOAD_QUEUE,
-        RigCommand { _, _ ->
-            val queue = device.uploadQueue.operator
-            CommandResult.ok("""{"live":${jsonList(queue.liveJobs())},"created":${queue.created.size}}""")
-        },
-    ),
-    "jobs/limit" to mocked(
-        MockedSystem.UPLOAD_QUEUE,
-        RigCommand { params, _ ->
-            val n = params["n"]?.toIntOrNull()
-            if (n == null || n < 0) {
-                CommandResult.badRequest("n must be a non-negative integer, was '${params["n"]}'")
-            } else {
-                device.uploadQueue.operator.jobLimit = n
-                CommandResult.ok("""{"jobLimit":$n}""")
-            }
-        },
-    ),
-    // Without `job` (`<assetId>/<role>`, what its destination names), every live job — what a caller that just ran a
-    // cycle usually means.
-    "jobs/complete" to mocked(
-        MockedSystem.UPLOAD_QUEUE,
-        RigCommand { params, _ ->
-            val queue = device.uploadQueue.operator
-            val jobs = params["job"]?.let(::listOf) ?: queue.liveJobs()
-            jobs.forEach { queue.completeJob(it) }
-            CommandResult.ok("""{"completed":${jsonList(jobs)}}""")
-        },
-    ),
-    // The app uploader's transfer session: its live transfers and how many it was ever handed.
-    "uploads" to mocked(
-        MockedSystem.UPLOAD_SESSION,
-        RigCommand { _, _ ->
-            val session = device.uploadSession.operator
-            CommandResult.ok("""{"live":${jsonList(session.liveKeys())},"created":${session.created.size}}""")
-        },
-    ),
-    // The OS lands every live app-uploader transfer (or the one `key` names), each reported to the app as it ends.
-    "uploads/complete" to mocked(
-        MockedSystem.UPLOAD_SESSION,
-        RigCommand { params, _ ->
-            val session = device.uploadSession.operator
-            val keys = params["key"]?.let(::listOf) ?: session.liveKeys()
-            keys.forEach { session.complete(it) }
-            CommandResult.ok("""{"completed":${jsonList(keys)}}""")
-        },
-    ),
-    "jobs/fail" to mocked(
-        MockedSystem.UPLOAD_QUEUE,
-        RigCommand { params, _ ->
-            // `error` is what the OS says of the failure — `network`, `http:503`, anything: nothing reads it but the log.
-            val job = params["job"]
-            val error = params["error"]?.takeIf { it.isNotBlank() }
-            when {
-                job == null -> CommandResult.badRequest("job is required: <assetId>/<role>")
-                error == null -> CommandResult.badRequest("error is required: what the OS says of the failure")
-                else -> {
-                    device.uploadQueue.operator.failJob(job, TransferFailure(error))
-                    CommandResult.ok("""{"failed":${jsonString(job)},"error":${jsonString(error)}}""")
-                }
-            }
-        },
-    ),
-    // The operating system finishes every in-flight download — healthy, or answered `status` with `received` bytes of
-    // an error body — and, with `drained=true`, then reports the session's events delivered (`urlSessionDidFinishEvents`).
-    // Answers at once: what the app makes of the transfers (staging, the import its tail runs) is observed, not
-    // awaited. Nothing is delivered while this launch has not brought its download session up.
-    "downloads/stage" to mocked(
-        MockedSystem.DOWNLOADS,
-        RigCommand { params, _ ->
-            val status = params["status"]?.toIntOrNull()
-            val outcome = if (status == null) {
-                DownloadSessionMock.HEALTHY
-            } else {
-                TransferOutcome(statusCode = status, expectedBytes = -1L, receivedBytes = params["received"]?.toLongOrNull() ?: 0L)
-            }
-            // `bytes=motion-photo`: what each transfer brought is a real Google motion photo (`PhotoLibrary.motionPhoto`).
-            val bytes = when (params["bytes"]) {
-                null -> null
-                "motion-photo" -> PhotoLibrary.motionPhoto
-                else -> return@RigCommand CommandResult.badRequest("bytes is motion-photo or absent, was '${params["bytes"]}'")
-            }
-            val finished = finishDownloads(outcome, bytes)
-            if (params["drained"]?.toBoolean() == true && device.downloads.operator.realized) {
-                device.downloads.operator.reportEventsDrained()
-            }
-            CommandResult.ok("""{"finished":${jsonList(finished)}}""")
         },
     ),
 )
@@ -628,13 +531,6 @@ fun MockWorld.mockGalleryReader(): suspend (
     leverJson.encodeToString(GalleryView.serializer(), reader.read(cutoff, resources, includesUpload))
 }
 
-/** The operating system finishes every in-flight download with [outcome]; answers their descriptions. */
-private fun MockWorld.finishDownloads(outcome: TransferOutcome, bytes: ByteArray? = null): List<String> {
-    val session = device.downloads.operator
-    if (!session.realized) return emptyList()
-    return session.inFlight().map { it.description }.onEach { session.finish(it, outcome, bytes) }
-}
-
 /** A fellow member with a primary resource per asset, captured on [filename]. */
 internal fun foreignAsset(
     assetId: String,
@@ -690,10 +586,6 @@ private fun dumpJson(dump: CrashEvent) = buildJsonObject {
 }
 
 internal fun flag(params: Map<String, String>, name: String): Boolean = params[name]?.toBoolean() ?: true
-
-internal fun jsonList(values: List<String>): String = values.joinToString(prefix = "[", postfix = "]") {
-    jsonString(it)
-}
 
 private val leverJson = Json {
     encodeDefaults = true

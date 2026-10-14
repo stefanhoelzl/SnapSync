@@ -12,16 +12,11 @@ suspend fun Rig.cycle(): String =
     Json.parseToJsonElement(os("photokit-ext", "processRawValue")).jsonObject.getValue("result").jsonPrimitive.content
 
 /** The operating system's upload jobs: the ones still live (`<assetId>/<role>`), and how many were ever created. */
-suspend fun Rig.jobs(): Rig.Jobs = deviceJson("jobs").let { json ->
-    Rig.Jobs(
-        live = json.getValue("live").jsonArray.map { it.jsonPrimitive.content },
-        created = json.getValue("created").jsonPrimitive.content.toInt(),
-    )
-}
+suspend fun Rig.jobs(): Rig.Jobs = uploadQueue.queue().let { Rig.Jobs(live = it.live, created = it.created.size) }
 
 /** The OS finishes every live job (or the one [job] names, `<assetId>/<role>`), as a transfer landing. */
 suspend fun Rig.completeJobs(job: String? = null) {
-    if (job == null) device("jobs/complete") else device("jobs/complete", "job" to job)
+    uploadQueue.completeJob(job)
 }
 
 /** Upload everything the cycle picks up: a cycle, every job landing, and a cycle to settle and publish. */
@@ -77,11 +72,7 @@ suspend fun Rig.reconcile() = foreground()
  * directory and the library — unchanged across a few reads.
  */
 suspend fun Rig.stage(wait: Boolean = true, status: Int? = null) {
-    val params = listOfNotNull(
-        status?.let { "status" to it.toString() },
-        status?.let { "received" to "137" },
-    ).toTypedArray()
-    device("downloads/stage", *params)
+    downloadSession.finish(status = status, received = status?.let { ERROR_BODY_BYTES })
     if (wait) settleDownloads()
 }
 
@@ -147,3 +138,6 @@ suspend fun Rig.deviceConfig(): Pair<String, String>? {
 /** The pushes the backend sent, as (event, device, token). */
 suspend fun Rig.pushesSent(): List<Triple<String, String, String>> =
     backend.pushes().map { Triple(it.eventId, it.deviceId, it.token) }
+
+/** What an error answer's body brings: a few bytes of text, not the photo. */
+private const val ERROR_BODY_BYTES = 137L

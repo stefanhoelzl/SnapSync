@@ -181,7 +181,7 @@ class EntryDispatchTest {
         assertEquals(CreateOutcome.CREATED, upload.create(TransferSource.File("staged/a"), target, "A-primary.jpg"))
 
         session.operator.complete("A-primary.jpg")
-        session.operator.handBack(completion)
+        session.handBack(completion)
 
         assertEquals(
             listOf("finished A-primary.jpg ok", "background events after 0", "drained 1"),

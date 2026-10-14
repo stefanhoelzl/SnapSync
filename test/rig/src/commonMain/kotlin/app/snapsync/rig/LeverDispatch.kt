@@ -2,6 +2,7 @@ package app.snapsync.rig
 
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.DeviceAdvertisement
+import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.JoinedEvent
 import app.snapsync.levers.LEVER_SERVICES
 import app.snapsync.levers.LeverNeed
@@ -10,6 +11,8 @@ import app.snapsync.levers.LeverService
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.ThisDevice
+import app.snapsync.levers.UploadQueueLevers
+import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.WorldLevers
 import app.snapsync.mock.MockedSystem
 import co.touchlab.kermit.Logger
@@ -79,12 +82,18 @@ internal fun MockWorld.serviceRefusals(): Map<String, String> = servedServices()
 private fun MockWorld.implementationOf(service: LeverService<*>): Any = when (service) {
     BackendLevers -> device.backend.operator.also { check(isMocked(MockedSystem.BACKEND)) }
     PublicBackendLevers -> PublicBackend(this, checkNotNull(reach))
+    UploadQueueLevers -> device.uploadQueue.operator
+    UploadSessionLevers -> device.uploadSession.operator
+    DownloadSessionLevers -> device.downloads.operator
     else -> error("$service has no implementation in this world")
 }
 
 private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.BACKEND_MOCKED -> Need.Operator
     LeverNeed.BACKEND_REACHABLE -> Need.Reach
+    LeverNeed.UPLOAD_QUEUE_MOCKED -> Need.Mocked(MockedSystem.UPLOAD_QUEUE)
+    LeverNeed.UPLOAD_SESSION_MOCKED -> Need.Mocked(MockedSystem.UPLOAD_SESSION)
+    LeverNeed.DOWNLOADS_MOCKED -> Need.Mocked(MockedSystem.DOWNLOADS)
 }
 
 /** How an omitted `@JoinedEvent` / `@ThisDevice` argument is named: by this world's joined event and device. */

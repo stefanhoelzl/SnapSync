@@ -730,8 +730,8 @@ The screen's "now" is the launch's `Clock`, like the core's: a test runs on mock
 
 **Both uploaders run, as on a phone.** The app's uploader is the real one over the mocked transfer session
 (`UploadSessionMock`: a `URLSession`'s shape — four live transfers, no free retry, each end reported to the app as it
-happens), whose transfers the operator lands (`/device/uploads/complete`); the extension's cycle runs when a caller
-invokes it (`/os/photokit-ext/processRawValue`) and its jobs land through `/device/jobs/complete`. Both would take the
+happens), whose transfers the operator lands (`upload-session`'s `complete`); the extension's cycle runs when a caller
+invokes it (`/os/photokit-ext/processRawValue`) and its jobs land through `upload-queue`'s `completeJob`. Both would take the
 same photos, so a test about one of them says so: a test driving the extension's cycle switches the app's uploader off
 first (`extensionUploadsOnly()`, over `/device/uploaders?app=off` — the build's development controls, which the JVM
 host honours like a device's rig build), and a test under a partial grant, where the extension withholds by its own
@@ -790,8 +790,8 @@ app's own bookkeeping, and bytes that landed are read from the backend. 11g2 dro
 
 **On the JVM host every lever and read is a mock's operator face** — the backend's, the photo library's, the upload
 queue's, the download session's, the disk's, the clock's, the reporter's, the screen's — never the composed core
-(11g2b). What the app makes of a lever is observed, not awaited: `downloads/stage` finishes the OS's transfers and
-answers; the staging and the import it starts are read off the staging directory and the library. The reconcile
+(11g2b). What the app makes of a lever is observed, not awaited: `download-session`'s `finish` finishes the OS's
+transfers and answers; the staging and the import it starts are read off the staging directory and the library. The reconcile
 and the status read are the foreground entry's (`/os/app/onForeground`), so the protocol has no verb for either. The
 gallery read is the library's own answer under the person's grant, through the selection policy — the whole library
 under a full grant, the person's selection under a partial one. Over the real backend, a lever or read only the
@@ -856,6 +856,19 @@ echoed back. The backend is the first face to move, as two services:
   reaches it: the union, the event, a device's objects, a fellow member joining, leaving, reporting what it received.
   It needs only the backend reachable, so it holds against the real `api/` too. Each method names the operator members
   it stands in for (`@StandsInFor`).
+
+The operating system's background transfers follow, each needing its system mocked (`LeverNeed.*_MOCKED`), so a device
+host honours one only where its adapter choice mocks that system:
+
+- `upload-queue` (`UploadQueueLevers`) — the OS's upload-job queue: the cap, a create that fails, a job performed or
+  failed, and the queue as a read.
+- `upload-session` (`UploadSessionLevers`) — the app uploader's background session: a transfer landed, and the session
+  as a read.
+- `download-session` (`DownloadSessionLevers`) — the background download session: a transfer finished (healthy, an
+  error answer, a short body, or bytes the operator chooses), the drain report, and the session as a read.
+
+The operating system's relaunch for a session's events hands the app a live completion, which does not cross a wire: it
+stays the played OS's (`/os`, `MockEntryDriver`), on the mock rather than its face.
 
 **They are served over kRPC**, kotlinx-rpc's protocol, on a WebSocket at `ws://<host>:<port>/rpc` beside the rig's
 HTTP routes. The plugin generates the client a test calls (`client.levers(BackendLevers).offline(true)`,
@@ -923,7 +936,8 @@ cannot see. The journeys keep condition waits until they convert (a later phase)
 are **acts**, announced (`Acted`) before they do anything; a `GET` is a read, run there unannounced, because a read can
 still start app work (the state read refreshes the counts it reports). The mocks tell the stream what they record as
 they record it — the screen mock each state the app shows, the backend mock each request that reaches it and each one
-an operator's hold parks — on the thread that did it, so the order is the app's.
+an operator's hold parks, the transfer mocks each upload job, session transfer and download the app hands them — on
+the thread that did it, so the order is the app's.
 
 ### Launch-time adapters
 
@@ -967,8 +981,8 @@ MetricKit (`/device/process-metrics` feeds the real handler). Code: `:test:launc
   coherence rules keep every system it would write real there. A relaunch finds what the last launch left.
 - **Everything mocked is operator-driven**: nothing a mock plays happens on its own. A mocked wake cancels the real
   heartbeat and answers a real one at once; a mocked upload session holds the app's uploader's transfers until the
-  channel lands them (`device/uploads/complete`), as on the JVM root, and a mocked upload-job queue holds the
-  extension's until `device/jobs/complete`. `/os` delivers through each system's mock where
+  channel lands them (`upload-session`'s `complete`), as on the JVM root, and a mocked upload-job queue holds the
+  extension's until `upload-queue`'s `completeJob`. `/os` delivers through each system's mock where
   it is mocked (`ChosenEntryDriver`) and through the iOS adapter otherwise; `device/os-record` reports the mocked
   systems' part. A mocked download stages a 16×16 JPEG, which a real library imports.
 - **Memory**: the extension, in its own process, restores only the systems its choice mocks — under the rules above,
@@ -1077,7 +1091,8 @@ until it answers.
 
 The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
 (`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (today the backend's
-`BackendReceived` and `BackendHeld`; each face batch adds its face's), each `Settled(now, nextTimer)`, and each lane rule
+`BackendReceived` and `BackendHeld`, and the transfers' `UploadJobCreated`, `SessionTransferCreated` and
+`DownloadStarted`; each face batch adds its face's), each `Settled(now, nextTimer)`, and each lane rule
 broken (`LaneViolation`). Every request a caller makes runs as a task of the loop — an act announced first, a read
 not — so everything after an act's announcement is the act's or later.
 

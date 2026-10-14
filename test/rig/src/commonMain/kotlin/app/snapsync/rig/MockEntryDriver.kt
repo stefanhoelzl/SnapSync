@@ -52,9 +52,9 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
 
     override fun backgroundTransfers(identifier: String, done: () -> Unit) {
         if (identifier == UPLOAD_TRANSFER_CHANNEL) {
-            os.deliver(done) { device.uploadSession.operator.handBack(it) }
+            os.deliver(done) { device.uploadSession.handBack(it) }
         } else {
-            os.deliver(done) { device.downloads.operator.handBack(it) }
+            os.deliver(done) { device.downloads.handBack(it) }
         }
     }
 }

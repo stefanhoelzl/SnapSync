@@ -171,7 +171,8 @@ class OsCompletionIntegrationTest {
         val atRelease = coroutineScope {
             val wake = async { os("app", "onBackgroundTransfers", DOWNLOAD_SESSION) }
             awaitOs { it.downloadSessionUp }
-            device("downloads/stage", "drained" to "true")
+            downloadSession.finish()
+            downloadSession.reportEventsDrained()
             osAtRelease(wake.await())
         }
 

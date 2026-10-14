@@ -483,8 +483,9 @@ curl -s -X POST $B/device/adapters/clear  # back to all real; exits
 - **Mocked means operator-driven**: nothing a mock plays happens on its own. The levers of the JVM host section below
   are honoured here for exactly the systems the choice mocks (`GET /device` lists which); `/os` entries go through the
   mock where the system is mocked. With `upload-session` mocked the app's own uploader still runs, and its transfers
-  wait for you: `device/uploads` lists them, `device/uploads/complete` lands them. The extension's cycle runs with
-  `/os/photokit-ext/processRawValue`, its jobs land with `device/jobs/complete`. Both uploaders take the same photos,
+  wait for you: `rig --url $B upload-session session` lists them, `upload-session complete` lands them (the typed
+  transfer services, below). The extension's cycle runs with `/os/photokit-ext/processRawValue`, its jobs land with
+  `upload-queue complete-job`. Both uploaders take the same photos,
   so to drive one alone switch the other off (`device/uploaders`, below — the JVM host honours it too).
 - Mock state persists across relaunches (`rig/state/`, `rig/databases/` in the App Group), written by the app.
 - Measured 2026-09-28 on the SE2 (iOS 26.6.2): the choice above over the phone's REAL library — 55 resources (Live
@@ -595,13 +596,11 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     until an `os/app/onForeground`: `/device/state` and `/user` read the screen and would assemble it.
   - `device/reinstall` (JVM host only) — delete the app and launch it again: files, databases and user defaults gone;
     Keychain, photo library and backend kept.
-- The **operator levers** (on the app host, only for the systems its adapter choice mocks): `device/jobs` (live jobs, each `<assetId>/<role>` — what its destination names, the one fact the OS keeps), `device/jobs/complete[?job=]` (the "OS"
-  finishes a transfer — its bytes cross to the backend's byte route), `device/jobs/fail?job=&error=`, `device/jobs/limit?n=`,
-  `device/permission?status=`,
+- The **operator levers** (on the app host, only for the systems its adapter choice mocks): the transfers' — the
+  upload-job queue, the app's upload session and the download session — are typed services (below, "The transfers'
+  typed services"); `device/permission?status=`,
   `device/import/fail-next`, `device/databases/locked?on=`, `device/membership/undeletable?on=`,
-  `device/downloads/stage[?status=502][&drained=true][&bytes=motion-photo]` (the OS finishes every in-flight
-  download, then optionally reports the session's events drained; `bytes=motion-photo` makes what each brought a real
-  Google motion photo — the mocked session otherwise leaves a fixed 16×16 JPEG, whatever was uploaded), `device/album/place?album=&asset=`, `device/album/hold-adds?on=`,
+  `device/album/place?album=&asset=`, `device/album/hold-adds?on=`,
   `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read),
   `device/encrypt-new-events?on=false` (the next event this device creates is PLAIN — its invite the fragment form;
   a rig build encrypts by default, its invite carrying `#k=` — unlike a shipped one, which creates plain events until
@@ -694,7 +693,34 @@ throws `LeverRefused`; an omitted `event` is the joined one, an omitted `device`
   `foreignDeviceReceived(device, event?)`.
 
 Gone with the move: every `backend/…` and `foreign-device[/…]` curl verb; `backend/deposit` (an own photo's bytes land
-unacknowledged with `jobs/complete` and no extension invoke).
+unacknowledged with `upload-queue complete-job` and no extension invoke).
+
+### The transfers' typed services
+
+The operating system's background transfers are typed services too, each honoured where its system is mocked (always
+on the JVM host; on the app host for what its adapter choice mocks) and refused naming the real system elsewhere.
+Nothing lands until you land it:
+
+- `upload-queue` (`UploadQueueLevers`) — the OS's upload-job queue, which the extension creates jobs on, each named
+  `<assetId>/<role>` (what its destination names, the one fact the OS keeps): levers `jobLimit(limit?)` (the in-flight
+  cap; none: no cap), `failCreate(on)`, `completeJob(job?)` (the OS performs a job's request — every live one when
+  omitted — so its bytes cross to the backend's byte route), `failJob(job, error)` (`network`, `http:503`, …); read
+  `queue()` (live jobs, every created one, the cap).
+- `upload-session` (`UploadSessionLevers`) — the app uploader's background session: `complete(key?)` (lands a
+  transfer — every live one when omitted — each end reported to the app); read `session()` (live keys, every created
+  one, hand-backs).
+- `download-session` (`DownloadSessionLevers`) — the background download session: `finish(description?, status?,
+  expected?, received?, base64Bytes?)` (every in-flight transfer when omitted, nothing while this launch has not
+  brought the session up; no status/length is a healthy `200`; `base64Bytes` is what each brought — a real motion
+  photo, say — and a fixed 16×16 JPEG otherwise), `reportEventsDrained()`; read `downloads()` (up, started, in flight).
+
+```bash
+$R --url $B upload-queue job-limit --limit 2
+$R --url $B upload-queue complete-job                   # every live job lands
+$R --url $B download-session finish --status 502 --received 137
+$R --url $B download-session finish --base64-bytes "$(base64 -w0 motion.jpg)"
+$R --url $B download-session report-events-drained
+```
 
 ### The world's events — waiting without polling (JVM host only)
 
@@ -716,7 +742,8 @@ The `world` service (`WorldLevers`, kRPC, refused by a device host):
 ```kotlin
 RigClient("http://127.0.0.1:$PORT").use { client ->
     val world = client.levers(WorldLevers)
-    world.events().collect { println(it) }   // from the host's start: Acted, UiChanged, BackendReceived, BackendHeld, Settled, LaneViolation
+    world.events().collect { println(it) }   // from the host's start: Acted, UiChanged, BackendReceived, BackendHeld,
+                                              // UploadJobCreated, SessionTransferCreated, DownloadStarted, Settled, LaneViolation
     world.advance(5_000)                      // an act: the mocked clock 5 s on
     world.whyNotSettled()                     // what runs, what is queued, what it waits on outside
 }

@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -18,29 +20,47 @@ class UploadCycleIntegrationTest {
     // ---- the upload extension's answers ---------------------------------------------------------------------------
 
     @Test
-    fun process_starts_a_new_upload_and_asks_to_be_called_again() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("A")
-
-        assertEquals("processing", cycle(), "the system is asked to call again while the upload is in flight")
-        assertEquals(listOf(primaryJob("A")), jobs().live, "the new photo's upload is started")
+    @Verifies(
+        spec = "delivery",
+        requirement = "Photos travel without the app being opened",
+        scenario = "A photo taken with the app closed reaches the event",
+    )
+    fun process_starts_a_new_upload_and_asks_to_be_called_again() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+        }
+        var answer = ""
+        whenever { answer = cycle() }
+        then { event<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") } }
+        assertEquals("processing", answer, "the system is asked to call again while the upload is in flight")
     }
 
     @Test
-    fun process_with_nothing_new_completes() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        assertEquals("completed", cycle())
-        assertEquals(0, jobs().created, "nothing is uploaded")
+    @Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
+    fun process_with_nothing_new_completes() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+        }
+        var answer = ""
+        whenever { answer = cycle() }
+        then { never<WorldEvent.UploadJobCreated>() }
+        assertEquals("completed", answer)
     }
 
     @Test
-    fun process_without_a_membership_declines() = rigTest {
-        extensionUploadsOnly()
-        addPhoto("A")
-        assertEquals("completed", cycle())
-        assertEquals(0, jobs().created, "nothing is uploaded")
+    @Verifies(spec = "join-event", requirement = "Joining happens only on confirmation and needs a connection")
+    fun process_without_a_membership_declines() = behaviour {
+        given {
+            extensionUploadsOnly()
+            photos("A")
+        }
+        var answer = ""
+        whenever { answer = cycle() }
+        then { never<WorldEvent.UploadJobCreated>() }
+        assertEquals("completed", answer)
     }
 
     // ---- the grant's admission ------------------------------------------------------------------------------------
@@ -94,6 +114,7 @@ class UploadCycleIntegrationTest {
      * taken only for an admitted cycle — so a withheld cycle never pauses on it either.
      */
     @Test
+    @Verifies(spec = "delivery", requirement = "Losing photo access stops new uploads but lets in-flight ones finish")
     fun a_withheld_cycle_never_opens_the_download_store() = rigTest {
         extensionUploadsOnly()
         createAndJoin()
@@ -147,11 +168,11 @@ class UploadCycleIntegrationTest {
         cycle()
         assertEquals(1, jobs().created)
 
-        device("jobs/fail", "job" to primaryJob("A"), "error" to "network")
+        uploadQueue.failJob(primaryJob("A"), "network")
         cycle() // the first failure: the single free retry re-points the job
         assertEquals(1, jobs().created, "the first retry creates no new job")
 
-        device("jobs/fail", "job" to primaryJob("A"), "error" to "network")
+        uploadQueue.failJob(primaryJob("A"), "network")
         cycle() // retry spent: re-created in the same cycle
         assertEquals(2, jobs().created, "the spent retry re-creates the job")
         assertTrue(primaryJob("A") in jobs().live)
@@ -188,6 +209,7 @@ class UploadCycleIntegrationTest {
      * listing and re-baselines, so the walk re-discovers what the bytes lost.
      */
     @Test
+    @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
     fun a_storage_reset_then_a_new_event_re_uploads_everything() = rigTest {
         extensionUploadsOnly()
         val first = createAndJoin()
@@ -219,6 +241,11 @@ class UploadCycleIntegrationTest {
      * background launch is never forced into an open by composition — and the first cycle is what opens the ledger.
      */
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "A locked phone delays uploads and never ends the membership",
+        scenario = "A wake before the first unlock after a restart",
+    )
     fun a_wake_that_needs_no_store_opens_no_database_and_the_first_cycle_opens_the_ledger() = rigTest {
         extensionUploadsOnly()
         createAndJoin()

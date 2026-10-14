@@ -1,8 +1,5 @@
 package app.snapsync.integration
 
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonPrimitive
-
 // The two uploaders, as the JVM host composes them: both run, as on a phone, and take the same photos — so a test about
 // one of them switches the other off, and a test of the app's uploader lands its transfers.
 
@@ -23,14 +20,10 @@ suspend fun Rig.awaitAppUploads(expected: Int): Rig.Jobs =
     eventually(read = { appUploads() }) { it.live.size >= expected }
 
 /** The app uploader's transfers (its background session): the keys still live, and how many were ever created. */
-suspend fun Rig.appUploads(): Rig.Jobs = deviceJson("uploads").let { json ->
-    Rig.Jobs(
-        live = json.getValue("live").jsonArray.map { it.jsonPrimitive.content },
-        created = json.getValue("created").jsonPrimitive.content.toInt(),
-    )
-}
+suspend fun Rig.appUploads(): Rig.Jobs =
+    uploadSession.session().let { Rig.Jobs(live = it.live, created = it.created.size) }
 
 /** The OS lands every live app-uploader transfer (or one), each reported to the app as it ends. */
 suspend fun Rig.completeAppUploads(key: String? = null) {
-    if (key == null) device("uploads/complete") else device("uploads/complete", "key" to key)
+    uploadSession.complete(key)
 }

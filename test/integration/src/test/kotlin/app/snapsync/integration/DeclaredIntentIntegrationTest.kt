@@ -38,7 +38,7 @@ class DeclaredIntentIntegrationTest {
 
         // One slot: the cycle can start exactly one of the two resources, so the asset is genuinely half-uploaded
         // when the manifest is published — the state the old projection mis-described.
-        device("jobs/limit", "n" to "1")
+        uploadQueue.jobLimit(1)
         cycle()
         // The operator plays the OS: the one job that was created lands. The second resource never got a slot, so
         // the asset is genuinely half-uploaded.
@@ -64,7 +64,7 @@ class DeclaredIntentIntegrationTest {
         )
 
         // The remaining slot frees up and the second resource lands.
-        device("jobs/limit", "n" to "8")
+        uploadQueue.jobLimit(8)
         cycle()
         completeJobs()
         cycle() // settle the terminal and publish
@@ -85,7 +85,7 @@ class DeclaredIntentIntegrationTest {
 
         // No slots at all: the cycle records what it discovered and publishes, but creates no job. The declaration
         // is complete even though nothing uploaded.
-        device("jobs/limit", "n" to "0")
+        uploadQueue.jobLimit(0)
         cycle()
 
         assertEquals(setOf("A"), manifest(event)?.keys, "declared on the strength of discovery alone")

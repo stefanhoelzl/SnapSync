@@ -188,7 +188,7 @@ fun iosRefusals(launch: RigLaunch): Map<String, String> = buildMap {
     if (world.isMocked(MockedSystem.UPLOAD_QUEUE)) {
         put(
             "device/upload-jobs/perform",
-            "the upload-job queue is mocked on this launch — its jobs verbs (POST /device/jobs/…) play it",
+            "the upload-job queue is mocked on this launch — its typed service (`upload-queue`) plays it",
         )
     }
     if (world.isMocked(MockedSystem.EXTENSION_REGISTRY)) {

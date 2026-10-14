@@ -412,7 +412,7 @@ rm -rf "$F"                                            # back to all real (or PO
 ```
 
 Measured 2026-09-28 (iOS 26 simulator): real photos + a mocked backend — create, join, a cycle through the mocked
-queue, `jobs/complete`, the objects in the mocked backend, all surviving a relaunch; an ALL-mock launch creates an
+queue, its jobs completed (then `jobs/complete`, now the `upload-queue` typed service), the objects in the mocked backend, all surviving a relaunch; an ALL-mock launch creates an
 event over the mocked backend; a misspelt adapters file composes nothing and every app route answers `409`.
 
 An adapter choice the process cannot use — a typo, an incoherent pair, a state file that does not restore — composes **nothing**
