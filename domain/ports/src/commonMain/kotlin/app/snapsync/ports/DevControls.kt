@@ -12,8 +12,7 @@ import app.snapsync.model.UploaderPin
  * made with `-Psnapsync.rig=true` and into no other. So a shipped process cannot be switched, structurally rather
  * than by a runtime check.
  *
- * An event port for the one command it delivers ([DevHandlers.onReset]); the reads are read at every use, but for
- * [networkGraceMillis], read once as the network watch is composed.
+ * An event port for the one command it delivers ([DevHandlers.onReset]); the reads are read at every use.
  */
 interface DevControls : EventPort<DevHandlers> {
     /**
@@ -38,14 +37,6 @@ interface DevControls : EventPort<DevHandlers> {
      * plain events deletes this read.
      */
     fun createsPlainEvents(): Boolean
-
-    /**
-     * How long, in milliseconds, a missing network must last before the member is told, where the build shortens the
-     * app's own grace (`feature/status`'s `NetworkWatch`) — read once, as the watch is composed. **Always `null` in a
-     * production build**, so a shipped process waits the grace chosen for human perception; a test host shortens it so
-     * its tests do not wait out a real five seconds per notice.
-     */
-    fun networkGraceMillis(): Long?
 }
 
 /** What the development controls tell the core. Built only by a composition. */

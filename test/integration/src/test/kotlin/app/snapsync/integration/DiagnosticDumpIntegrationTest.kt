@@ -1,16 +1,17 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Acts
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.NetworkState
+import app.snapsync.levers.ReceivedDump
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.ReportNotice
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.int
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -19,7 +20,8 @@ import kotlin.test.assertTrue
 /**
  * The operator-initiated diagnostic dump over the **real** stack:
  * the same `snapSyncApp` core the device shells call, fired through `/user/sendDiagnostics` — the same
- * `UserCommands` bundle presentation fires — landing in the host's reporter (`diagnostics/sent`).
+ * `UserCommands` bundle presentation fires — landing in the host's reporter (the `crash-reporter` service, and the
+ * world's `DumpReceived`).
  *
  * What this proves that the unit tests cannot: the command is *wired* — from the bundle, through the
  * composed assembly, to the port — and that a dump crossing the real graph carries the real counts
@@ -41,29 +43,24 @@ class DiagnosticDumpIntegrationTest {
         device("logs/append", "process" to process, body = text)
     }
 
+    private suspend fun Acts.appendLog(process: String, text: String) {
+        device("logs/append", "process" to process, body = text)
+    }
+
     private suspend fun Rig.sendDiagnostics(note: String, screen: String = SCREEN) {
         user("sendDiagnostics", "note" to note, "screen" to screen)
     }
 
-    /** Every dump the reporter received, in order. */
-    private suspend fun Rig.dumpsSent(): List<Dump> =
-        deviceJson("diagnostics/sent").getValue("dumps").jsonArray.map { Dump(it.jsonObject) }
+    private suspend fun Acts.sendDiagnostics(note: String, screen: String = SCREEN) {
+        user("sendDiagnostics", "note" to note, "screen" to screen)
+    }
 
     /**
      * The dumps, once [count] have reached the reporter. The command is accepted when the tap fires; the dump is
      * assembled and sent after it, so a read straight after the command can precede it.
      */
-    private suspend fun Rig.awaitDumps(count: Int): List<Dump> =
-        eventually<List<Dump>>(read = { dumpsSent() }) { it.size >= count }
-
-    private class Dump(json: JsonObject) {
-        val note = json.getValue("note").jsonPrimitive.content
-        val state = json.getValue("state").jsonObject.mapValues { it.value.jsonPrimitive.content }
-        val ledger = json.getValue("ledger").jsonObject.mapValues { it.value.jsonPrimitive.content }
-        val appLog = json.getValue("appLog").jsonPrimitive.content
-        val extensionLog = json.getValue("extensionLog").jsonPrimitive.content
-        val logBytes = json.getValue("logBytes").jsonPrimitive.int
-    }
+    private suspend fun Rig.awaitDumps(count: Int): List<ReceivedDump> =
+        eventually<List<ReceivedDump>>(read = { crashReporter.sent() }) { it.size >= count }
 
     @Test
     @Verifies(
@@ -101,20 +98,27 @@ class DiagnosticDumpIntegrationTest {
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
     )
-    fun a_dump_carries_the_device_state_the_operating_system_reports() = rigTest {
-        createAndJoin()
-        device("network", "access" to "restricted")
-        device(
-            "conditions",
-            "power_saving" to "true",
-            "background_refresh" to "unsupported",
-            "standby_bucket" to "rare",
-            "thermal" to "failed:no thermal service",
-        )
+    fun a_dump_carries_the_device_state_the_operating_system_reports() = behaviour {
+        given {
+            joinedEvent()
+            step("the device's state", act = {
+                network.set(NetworkState.RESTRICTED)
+                deviceConditions.set(
+                    mapOf(
+                        "power_saving" to "true",
+                        "background_refresh" to "unsupported",
+                        "standby_bucket" to "rare",
+                        "thermal" to "failed:no thermal service",
+                    ),
+                )
+            }, until = { settled { true } })
+        }
 
-        sendDiagnostics(NOTE)
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then { received = event<WorldEvent.DumpReceived>() }
 
-        val state = awaitDumps(1).single().state
+        val state = received.value.dump.state
         assertEquals("online_restricted", state[DiagnosticKeys.NETWORK])
         assertEquals("true", state[DiagnosticKeys.POWER_SAVING])
         assertEquals("rare", state[DiagnosticKeys.STANDBY_BUCKET])
@@ -160,16 +164,25 @@ class DiagnosticDumpIntegrationTest {
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
     )
-    fun the_dump_travels_verbatim_with_its_identifiers_intact() = rigTest {
+    fun the_dump_travels_verbatim_with_its_identifiers_intact() = behaviour {
         // The deliberate carve-out: a dump is confirmed by the operator
         // and worthless without the ids — a log where every id reads alike cannot answer WHICH event.
         // Automatic events stay redacted; only this path is exempt.
-        val eventId = createAndJoin()
-        appendLog("app", "app: reconcile(eventId=$eventId) ok\n")
+        lateinit var eventId: String
+        given {
+            eventId = joinedEvent()
+            step(
+                "its id in the app's log",
+                act = { appendLog("app", "app: reconcile(eventId=$eventId) ok\n") },
+                until = {},
+            )
+        }
 
-        sendDiagnostics(NOTE)
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then { received = event<WorldEvent.DumpReceived>() }
 
-        val dump = awaitDumps(1).single()
+        val dump = received.value.dump
         assertTrue(
             eventId in dump.appLog,
             "the event id was redacted out of the dump's log — the exemption is undone: ${dump.appLog}",
@@ -178,19 +191,24 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
-    fun a_huge_pair_of_logs_still_fits_the_budget() = rigTest {
-        createAndJoin()
-        appendLog("app", logLine("app", 30_000))
-        appendLog("extension", logLine("ext", 30_000))
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "The user sends a report",
+    )
+    fun a_huge_pair_of_logs_still_fits_the_budget() = behaviour {
+        given {
+            joinedEvent()
+            step("both logs huge", act = {
+                appendLog("app", logLine("app", 30_000))
+                appendLog("extension", logLine("ext", 30_000))
+            }, until = {})
+        }
 
-        sendDiagnostics(NOTE)
-
-        val dump = awaitDumps(1).single()
-        assertTrue(
-            dump.logBytes <= DIAGNOSTIC_LOG_BUDGET_BYTES,
-            "carried ${dump.logBytes} bytes: over the budget the reporting server rejects the event " +
-                "and the SDK swallows the error, so the dump arrives nowhere and says nothing",
-        )
+        // Over the budget, the reporting server rejects the event and the SDK swallows the error: the dump would arrive
+        // nowhere and say nothing.
+        whenever { sendDiagnostics(NOTE) }
+        then { event<WorldEvent.DumpReceived> { it.dump.logBytes <= DIAGNOSTIC_LOG_BUDGET_BYTES } }
     }
 
     @Test
@@ -198,19 +216,22 @@ class DiagnosticDumpIntegrationTest {
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
     )
-    fun each_confirmation_sends_exactly_one_dump() = rigTest {
-        createAndJoin()
+    fun each_confirmation_sends_exactly_one_dump() = behaviour {
+        given { joinedEvent() }
 
-        sendDiagnostics("first report")
-        sendDiagnostics("second report")
-
-        val dumps = awaitDumps(2)
-        assertEquals(2, dumps.size, "no rate limit: each confirmed gesture sends one")
-        assertEquals(
-            listOf("first report", "second report"),
-            dumps.map { it.note },
-            "each report carries its own account — they are distinct issues, not one repeated",
-        )
+        // No rate limit: each confirmed gesture sends one, and each report carries its own account — they are distinct
+        // issues, not one repeated.
+        whenever {
+            sendDiagnostics("first report")
+            sendDiagnostics("second report")
+        }
+        then {
+            times(2) { event<WorldEvent.DumpReceived>() }
+            inOrder {
+                event<WorldEvent.DumpReceived> { it.dump.note == "first report" }
+                event<WorldEvent.DumpReceived> { it.dump.note == "second report" }
+            }
+        }
     }
 
     @Test
@@ -218,15 +239,15 @@ class DiagnosticDumpIntegrationTest {
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
     )
-    fun a_described_identifier_reaches_the_reporter_unredacted() = rigTest {
+    fun a_described_identifier_reaches_the_reporter_unredacted() = behaviour {
         // The description rides in the event MESSAGE, which is the one field the scrub reaches. An
         // operator quoting the event id they are stuck on is exactly the case worth protecting, and
         // losing it would be invisible: the report still sends, and only a later reader finds `‹uuid›`.
-        val eventId = createAndJoin()
+        lateinit var eventId: String
+        given { eventId = joinedEvent() }
 
-        sendDiagnostics("stuck on $eventId since Tuesday")
-
-        assertEquals("stuck on $eventId since Tuesday", awaitDumps(1).single().note)
+        whenever { sendDiagnostics("stuck on $eventId since Tuesday") }
+        then { event<WorldEvent.DumpReceived> { it.dump.note == "stuck on $eventId since Tuesday" } }
     }
 
     @Test
@@ -246,6 +267,7 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "app-experience", requirement = "The app menu is one tap away on every screen")
     fun the_screen_names_the_running_build() = rigTest {
         // The app menu's footer reads the build the composition was handed, not a guess.
         val build = awaitState { it.ui.build != BuildLine.UNKNOWN }.ui.build

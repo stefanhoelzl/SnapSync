@@ -37,6 +37,13 @@ interface WorldLevers {
      */
     suspend fun advance(millis: Long)
 
+    /**
+     * Moves the clock to [at], an ISO instant, firing every timer due on the way at its own instant and settling between
+     * them; an instant before now moves the clock back and fires nothing. On a host whose timers run on the wall clock it
+     * moves only the clock the app reads. An act, like [advance].
+     */
+    suspend fun advanceTo(at: String)
+
     /** Why the app is not settled: what runs, what is queued, what work outside the app it waits on. */
     suspend fun whyNotSettled(): String
 
@@ -137,4 +144,28 @@ sealed interface WorldEvent {
     @Serializable
     @SerialName("library-joined-album")
     data class LibraryJoinedAlbum(val album: String, val asset: String) : Library
+
+    /** What the platform's own UI recorded: what the app handed it. */
+    @Serializable
+    sealed interface HandedOver : WorldEvent
+
+    /** The app presented the share sheet with [text], under [title]. */
+    @Serializable
+    @SerialName("shared")
+    data class Shared(val text: String, val title: String) : HandedOver
+
+    /** The app asked the platform to open [url]. */
+    @Serializable
+    @SerialName("url-opened")
+    data class UrlOpened(val url: String) : HandedOver
+
+    /** The app opened its Settings page. */
+    @Serializable
+    @SerialName("settings-opened")
+    data object SettingsOpened : HandedOver
+
+    /** The crash reporter's backend received a diagnostic [dump]. */
+    @Serializable
+    @SerialName("dump-received")
+    data class DumpReceived(val dump: ReceivedDump) : WorldEvent
 }

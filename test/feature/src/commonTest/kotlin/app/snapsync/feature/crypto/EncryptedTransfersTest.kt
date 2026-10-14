@@ -418,7 +418,7 @@ class EncryptedTransfersTest {
         val controls = app.snapsync.mock.DevControlsMock()
         val minting = EventKeyMinting(EventKeys(crypto, inMemorySecureStore()), controls.port())
         assertEquals(16, minting.forNewEvent()!!.keyId.length, "a build asking for no plain event encrypts it")
-        controls.operator.encryptsNewEvents = false
+        controls.encrypts = false
         assertEquals(null, minting.forNewEvent(), "a rig build may still create a plain event")
     }
 }

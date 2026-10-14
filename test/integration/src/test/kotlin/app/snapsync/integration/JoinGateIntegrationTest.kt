@@ -303,7 +303,7 @@ class JoinGateIntegrationTest {
         // The nightly sweep deletes the event out from under a still-active member, and time moves
         // past the deadline the membership persisted at join. BOTH witnesses now hold.
         backend.sweep(event)
-        device("clock/advance", "to" to PAST_EVERY_DEADLINE)
+        advanceTo(PAST_EVERY_DEADLINE)
 
         os("app", "onForeground")
         // The app never leaves an event on its own: the member stays, and is shown the event is over.
@@ -327,7 +327,7 @@ class JoinGateIntegrationTest {
         // The event is very much alive; the backend just cannot be reached. Past the deadline too, so
         // ONLY the confirmed-absence witness is missing — exactly the systemic-fault shape.
         backend.offline(true)
-        device("clock/advance", "to" to PAST_EVERY_DEADLINE)
+        advanceTo(PAST_EVERY_DEADLINE)
 
         os("app", "onForeground")
         // A NEGATIVE assertion, so it needs a bounded wait rather than an await-until: give the flow's escaping

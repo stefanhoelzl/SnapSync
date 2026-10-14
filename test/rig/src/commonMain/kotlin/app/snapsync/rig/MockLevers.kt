@@ -2,18 +2,14 @@ package app.snapsync.rig
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
-import app.snapsync.mock.DeviceConditionsText
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.AssetRef
-import app.snapsync.model.CrashEvent
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.FileArea
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
@@ -32,13 +28,10 @@ import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
-import kotlin.time.Instant
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -61,6 +54,9 @@ internal sealed interface Need {
 
     /** The build's declared version must be a cell the channel may change. */
     data object Version : Need
+
+    /** Nothing but a lever may move the clock: no loop owns it. */
+    data object ClockUnowned : Need
 }
 
 /** A lever: what it [needs], and what it does. */
@@ -79,6 +75,7 @@ internal fun MockWorld.refusalFor(needs: List<Need>, name: String): String? = ne
             "this build's declared version is baked, not a cell the channel may change; it is one only where the " +
                 "backend is the mock, which reads it"
             ).takeIf { version == null }
+        Need.ClockUnowned -> clockOwner
     }
 }
 
@@ -100,35 +97,8 @@ private fun mocked(system: MockedSystem, command: RigCommand) = Lever(listOf(Nee
 
 /** The whole table, bound to this world. */
 internal fun MockWorld.levers(): Map<String, Lever> {
-    return reporterReads() + versionLevers() + deviceLevers() +
-        deviceFacts()
+    return deviceLevers() + deviceFacts()
 }
-
-/** The crash reporter's backend: what the diagnostic dumps carried as they left the process. */
-private fun MockWorld.reporterReads(): Map<String, Lever> = mapOf(
-    "diagnostics/sent" to mocked(
-        MockedSystem.CRASH_REPORTER,
-        RigCommand { _, _ ->
-            CommandResult.ok(
-                buildJsonObject {
-                    put("dumps", JsonArray(device.crashReporter.operator.sent.value.map(::dumpJson)))
-                }.toString(),
-            )
-        },
-    ),
-)
-
-private fun MockWorld.versionLevers(): Map<String, Lever> = mapOf(
-    // The marketing version this build declares on every request — so a test can play an old build, or an update.
-    "app-version" to needs(
-        Need.Version,
-        command = RigCommand { params, _ ->
-            val version = params["version"] ?: return@RigCommand CommandResult.badRequest("version is required")
-            this.version!!.value = version
-            CommandResult.ok(buildJsonObject { put("appVersion", version) }.toString())
-        },
-    ),
-)
 
 private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
     // Every database made unreadable — a device before its first unlock after a boot, when the operating system keeps
@@ -157,81 +127,6 @@ private fun MockWorld.deviceLevers(): Map<String, Lever> = mapOf(
                 },
             )
             CommandResult.ok("""{"membershipUndeletable":$on}""")
-        },
-    ),
-    // The operating system's wall clock, as the core reads it. `to` is an ISO instant.
-    "clock/advance" to mocked(
-        MockedSystem.CLOCK,
-        RigCommand { params, _ ->
-            val to = params["to"]?.let { runCatching { Instant.parse(it) }.getOrNull() }
-                ?: return@RigCommand CommandResult.badRequest("to must be an ISO instant, was '${params["to"]}'")
-            device.clock.operator.now = to
-            CommandResult.ok(buildJsonObject { put("now", to.toString()) }.toString())
-        },
-    ),
-    // The device's network as the operating system reports it to the app: `access` is
-    // online|restricted|offline|blocked — restricted is mobile data, a hotspot or Low Data Mode,
-    // blocked the network withheld from this app, offline none at all.
-    "network" to mocked(
-        MockedSystem.NETWORK,
-        RigCommand { params, _ ->
-            val name = params["access"]?.lowercase()
-            val access = NETWORK_ACCESSES[name]
-            if (access == null) {
-                CommandResult.badRequest("access must be one of ${NETWORK_ACCESSES.keys.joinToString("|")}, was '${params["access"]}'")
-            } else {
-                device.connectivity.operator.access = access
-                CommandResult.ok("""{"network":"$name"}""")
-            }
-        },
-    ),
-    // The device's power saving, battery, thermal state and background allowance, as a bug report reads them:
-    // each parameter is a report key (power_saving, background_refresh, standby_bucket,
-    // battery_optimization_exempt, battery_percent, battery_charging, thermal) set to a value, `unsupported` or
-    // `failed:<reason>`; a field not named keeps its value. `hold=true` leaves every read unanswered until `hold=false`.
-    "conditions" to mocked(
-        MockedSystem.DEVICE_CONDITIONS,
-        RigCommand { params, _ ->
-            val unknown = params.keys - DeviceConditionsText.keys - "hold"
-            val hold = params["hold"]?.let {
-                it.toBooleanStrictOrNull() ?: return@RigCommand CommandResult.badRequest("hold must be true|false")
-            }
-            if (unknown.isNotEmpty()) return@RigCommand CommandResult.badRequest("unknown fields $unknown; known: ${DeviceConditionsText.keys}")
-            val operator = device.deviceConditions.operator
-            runCatching { DeviceConditionsText.apply(operator.reading, params - "hold") }.fold(
-                onSuccess = { reading ->
-                    operator.reading = reading
-                    hold?.let { operator.holding = it }
-                    CommandResult.ok(
-                        buildJsonObject {
-                            DeviceConditionsText.encode(reading).forEach { (key, value) -> put(key, value) }
-                            put("hold", operator.holding)
-                        }.toString(),
-                    )
-                },
-                onFailure = { CommandResult.badRequest(it.message.orEmpty().replace("\"", "'")) },
-            )
-        },
-    ),
-    // How this build answers an invite link's dev/test hints: `honoured=false` plays a shipped build, which ignores
-    // them; a host starts as a rig build, which honours them. The build's own controls, so on every host.
-    "invite-link-hints" to Lever(
-        emptyList(),
-        RigCommand { params, _ ->
-            val honoured = flag(params, "honoured")
-            setInviteLinkHints(if (honoured) InviteLinkHints.Honoured else InviteLinkHints.Ignored)
-            CommandResult.ok("""{"honoured":$honoured}""")
-        },
-    ),
-    // Whether an event this device creates is encrypted (the encrypted file format): a rig build encrypts every event
-    // by default; `on=false` creates the plain events a shipped build creates until encrypted creation is re-enabled
-    // (`PENDING_CLEANUPS.md`). The build's own control.
-    "encrypt-new-events" to Lever(
-        emptyList(),
-        RigCommand { params, _ ->
-            val on = flag(params, "on")
-            setEncryptsNewEvents(on)
-            CommandResult.ok("""{"on":$on}""")
         },
     ),
     // Text a process's device log carries — what a diagnostic dump reads back. `process` is app|extension.
@@ -380,18 +275,6 @@ private suspend fun MockWorld.seedLegacyStagedBacklog(ref: AssetRef): Set<String
 }
 
 /** A dump as it left the process, read back into its five sections (`model/diagnosticDumpEvent` wrote them). */
-private fun dumpJson(dump: CrashEvent) = buildJsonObject {
-    val section = { name: String -> dump.contexts[name].orEmpty() }
-    val appLog = section("app_log")["text"].orEmpty()
-    val extensionLog = section("ext_log")["text"].orEmpty()
-    put("note", section("note")["text"].orEmpty())
-    putJsonObject("state") { section("state").forEach { (k, v) -> put(k, v) } }
-    putJsonObject("ledger") { section("ledger").forEach { (k, v) -> put(k, v) } }
-    put("appLog", appLog)
-    put("extensionLog", extensionLog)
-    put("logBytes", appLog.encodeToByteArray().size + extensionLog.encodeToByteArray().size)
-}
-
 internal fun flag(params: Map<String, String>, name: String): Boolean = params[name]?.toBoolean() ?: true
 
 private val leverJson = Json {
@@ -404,12 +287,5 @@ private val LEGACY_BYTES = "staged".encodeToByteArray()
 private const val BULK_DATE = "2001-09-09T01:46:40Z"
 
 /** The `network` lever's accesses, by the name a caller passes. */
-private val NETWORK_ACCESSES: Map<String, NetworkAccess> = mapOf(
-    "online" to NetworkAccess.Online(restricted = false),
-    "restricted" to NetworkAccess.Online(restricted = true),
-    "offline" to NetworkAccess.Offline,
-    "blocked" to NetworkAccess.Blocked,
-)
-
 /** The device a legacy staged backlog is seeded for when the caller names none — a device id like every other. */
 private const val LEGACY_DEVICE = "1e6ac700-0000-4000-8000-000000000001"

@@ -27,7 +27,7 @@ class AppForegroundTest {
 
         foreground.left()
         assertFalse(foreground.isForeground)
-        clock.operator.now = clock.operator.now + 5.minutes
+        clock.now = clock.now + 5.minutes
         foreground.entered()
         assertEquals(2, foreground.returns.value.count)
         assertEquals(5.minutes, foreground.returns.value.awayFor)

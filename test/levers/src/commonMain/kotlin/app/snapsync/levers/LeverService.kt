@@ -57,6 +57,33 @@ enum class LeverNeed(val what: String) {
 
     /** The photo library is the mock, whose operator the service is: a real library's photos are the member's. */
     LIBRARY_MOCKED("the photo library mock's operator"),
+
+    /** The device's network is the mock, whose operator the service is. */
+    NETWORK_MOCKED("the network's mock"),
+
+    /** The device's power, battery, thermal and background-allowance state is the mock's. */
+    DEVICE_CONDITIONS_MOCKED("the device conditions' mock"),
+
+    /** The wall clock is the mock, whose operator the service is. */
+    CLOCK_MOCKED("the clock's mock"),
+
+    /**
+     * Nothing else moves the clock: on the JVM host the loop owns it, and `world.advanceTo` moves it with the timers
+     * due on the way — a lever that set it alone would leave them behind.
+     */
+    CLOCK_UNOWNED("a clock no loop owns"),
+
+    /** What the operating system says of the app's process is the mock's. */
+    PROCESS_INFO_MOCKED("the process information's mock"),
+
+    /** The crash reporter's channel is the mock, whose backend the service reads. */
+    CRASH_REPORTER_MOCKED("the crash reporter's mock"),
+
+    /** The platform's share sheet, URL opener and Settings page are the mock's. */
+    SYSTEM_UI_MOCKED("the system UI's mock"),
+
+    /** The build's declared version is a cell the channel may change — where the backend is the mock, which reads it. */
+    VERSION_SETTABLE("a declared version the channel may change"),
 }
 
 /**
@@ -89,6 +116,14 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     UploadSessionLevers,
     DownloadSessionLevers,
     LibraryLevers,
+    NetworkLevers,
+    DeviceConditionsLevers,
+    ClockLevers,
+    ProcessInfoLevers,
+    CrashReporterLevers,
+    SystemUiLevers,
+    DevControlsLevers,
+    BuildLevers,
 )
 
 /**

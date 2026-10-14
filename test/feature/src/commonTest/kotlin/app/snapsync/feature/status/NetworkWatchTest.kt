@@ -15,7 +15,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -40,18 +39,12 @@ class NetworkWatchTest {
         }
 
     @Test
-    fun the_grace_is_the_watch_s_own_unless_the_build_shortens_it() {
-        assertEquals(NetworkWatch.DEFAULT_GRACE, NetworkWatch.graceFor(null), "a shipped build's controls answer null")
-        assertEquals(200.milliseconds, NetworkWatch.graceFor(200L), "a test host's shortened grace")
-    }
-
-    @Test
     fun a_two_second_drop_publishes_nothing() = runTest {
         val watch = watching()
         val returns = returnsOf(watch)
-        network.operator.access = NetworkAccess.Offline
+        network.access = NetworkAccess.Offline
         advanceTimeBy(2.seconds)
-        network.operator.access = NetworkAccess.Online(restricted = false)
+        network.access = NetworkAccess.Online(restricted = false)
         advanceTimeBy(10.seconds)
         assertEquals(NetworkAccess.Online(restricted = false), watch.access.value)
         assertEquals(emptyList(), returns, "nothing was shown, so nothing returned")
@@ -60,7 +53,7 @@ class NetworkWatchTest {
     @Test
     fun a_six_second_drop_publishes_offline_after_the_grace() = runTest {
         val watch = watching()
-        network.operator.access = NetworkAccess.Offline
+        network.access = NetworkAccess.Offline
         advanceTimeBy(4.9.seconds)
         assertEquals(NetworkAccess.Online(restricted = false), watch.access.value, "still inside the grace")
         advanceTimeBy(1.seconds)
@@ -71,9 +64,9 @@ class NetworkWatchTest {
     fun the_return_clears_at_once_and_is_announced_once() = runTest {
         val watch = watching()
         val returns = returnsOf(watch)
-        network.operator.access = NetworkAccess.Offline
+        network.access = NetworkAccess.Offline
         advanceTimeBy(6.seconds)
-        network.operator.access = NetworkAccess.Online(restricted = false)
+        network.access = NetworkAccess.Online(restricted = false)
         runCurrent()
         assertEquals(NetworkAccess.Online(restricted = false), watch.access.value)
         assertEquals(1, returns.size)
@@ -82,16 +75,16 @@ class NetworkWatchTest {
     @Test
     fun a_changed_cause_after_a_shown_warning_is_immediate() = runTest {
         val watch = watching()
-        network.operator.access = NetworkAccess.Offline
+        network.access = NetworkAccess.Offline
         advanceTimeBy(6.seconds)
-        network.operator.access = NetworkAccess.Blocked
+        network.access = NetworkAccess.Blocked
         runCurrent()
         assertEquals(NetworkAccess.Blocked, watch.access.value)
     }
 
     @Test
     fun opening_offline_waits_the_same_grace() = runTest {
-        network.operator.access = NetworkAccess.Blocked
+        network.access = NetworkAccess.Blocked
         val watch = watching()
         assertEquals(
             NetworkAccess.Online(restricted = false),
@@ -106,11 +99,11 @@ class NetworkWatchTest {
     fun stop_resets_to_online_without_announcing_a_return_and_stops_following() = runTest {
         val watch = watching()
         val returns = returnsOf(watch)
-        network.operator.access = NetworkAccess.Offline
+        network.access = NetworkAccess.Offline
         advanceTimeBy(6.seconds)
         watch.stop()
         assertEquals(NetworkAccess.Online(restricted = false), watch.access.value)
-        network.operator.access = NetworkAccess.Blocked
+        network.access = NetworkAccess.Blocked
         advanceTimeBy(10.seconds)
         assertEquals(NetworkAccess.Online(restricted = false), watch.access.value, "a stopped watch follows nothing")
         assertEquals(emptyList(), returns, "a reset is not a return")
@@ -121,9 +114,9 @@ class NetworkWatchTest {
         val watch = watching()
         watch.start()
         val returns = returnsOf(watch)
-        network.operator.access = NetworkAccess.Offline
+        network.access = NetworkAccess.Offline
         advanceTimeBy(6.seconds)
-        network.operator.access = NetworkAccess.Online(restricted = false)
+        network.access = NetworkAccess.Online(restricted = false)
         runCurrent()
         assertEquals(1, returns.size, "one watch, one return")
     }

@@ -806,7 +806,7 @@ class AppCore internal constructor(
     }
 
     /** The foreground-gated network watch and what it tells the member. */
-    val network: AppNetwork by lazy { AppNetwork(scope, ports.network, statusCountsPoller, ports.devControls) }
+    val network: AppNetwork by lazy { AppNetwork(scope, ports.network, statusCountsPoller) }
 
     /**
      * Whether a push's wake joins the wake's work — the upload arm's active-event guard.

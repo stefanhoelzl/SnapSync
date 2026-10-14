@@ -6,12 +6,12 @@ import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.levers.DevControlsLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.DeviceManifest
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
@@ -74,10 +74,16 @@ class MockWorld(
     val ownDeviceId: () -> String,
     /** The event the device is joined to, as the screen or the membership file says — or `null`. */
     val joinedEventId: () -> String?,
-    /** Set how this build answers an invite link's dev/test hints. */
-    val setInviteLinkHints: (InviteLinkHints) -> Unit,
-    /** Whether an event this device creates is encrypted — the build's own control, so honoured on every host. */
-    val setEncryptsNewEvents: (Boolean) -> Unit,
+    /**
+     * The build's development controls — its own, so honoured on every host. A pin here only sets the switch; the
+     * channel reconciles the uploads with it ([servedServices]).
+     */
+    val controls: DevControlsLevers,
+    /**
+     * Why nothing but the host's own loop may set the clock here — it moves the clock with the timers due on the way —
+     * or `null` where a lever may set it.
+     */
+    val clockOwner: String? = null,
 ) {
     fun isMocked(system: MockedSystem): Boolean = system in mocked
 

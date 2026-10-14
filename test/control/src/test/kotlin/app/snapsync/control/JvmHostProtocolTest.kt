@@ -1,10 +1,13 @@
 package app.snapsync.control
 
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.LeverRefused
+import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.UploadQueueLevers
@@ -18,6 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The control protocol's JVM host, driven the way any caller drives either host: through [RigClient] and nothing
@@ -81,20 +85,34 @@ class JvmHostProtocolTest {
     }
 
     /**
-     * The network lever moves what the screen says, through the network the app watches while in front (capability
-     * `sync-status`): every value reaches the reduced state, a missing network after the watch's grace (the host's short
-     * one, `JvmRigHost`'s `NETWORK_GRACE_MILLIS`).
+     * The network service moves what the screen says, through the network the app watches while in front (capability
+     * `sync-status`): every value reaches the reduced state, a missing network once the watch's grace — the phone's five
+     * seconds, on mocked time — has passed.
      */
     @Test
-    fun the_network_lever_reaches_the_screen_in_every_value() = onHost { client ->
-        client.os("app", "onForeground").done()
-        client.deviceVerb("network", mapOf("access" to "offline")).done()
-        client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.network == NetworkNotice.OFFLINE }
-        client.deviceVerb("network", mapOf("access" to "blocked")).done()
-        client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.network == NetworkNotice.BLOCKED }
-        client.deviceVerb("network", mapOf("access" to "online")).done()
-        client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.network == null }
-        assertEquals(400, assertIs<Reply.Failed>(client.deviceVerb("network", mapOf("access" to "flaky"))).status)
+    fun the_network_service_reaches_the_screen_in_every_value() = behaviour {
+        given { step("in front", act = { os("app", "onForeground") }, until = { settled { true } }) }
+        whenever {
+            network.set(NetworkState.OFFLINE)
+            advance(5.seconds)
+        }
+        then { screen<Layer.CreateEvent> { it.network == NetworkNotice.OFFLINE } }
+        whenever { network.set(NetworkState.BLOCKED) }
+        then { screen<Layer.CreateEvent> { it.network == NetworkNotice.BLOCKED } }
+        whenever { network.set(NetworkState.ONLINE) }
+        then { screen<Layer.CreateEvent> { it.network == null } }
+    }
+
+    /**
+     * The JVM host's loop owns the clock, so only the world moves it — with the timers due on the way; a lever that set
+     * it alone would leave them behind, and is refused with the reason.
+     */
+    @Test
+    fun the_world_moves_the_clock_and_the_clock_service_is_refused() = onHost { client ->
+        val ad = client.levers(RigLevers).advertise()
+        assertTrue("world.advanceTo" in ad.honoured, "honoured: ${ad.honoured}")
+        assertTrue("owns the clock" in ad.refused.getValue("clock.set"), ad.refused.getValue("clock.set"))
+        assertFailsWith<LeverRefused> { client.levers(ClockLevers).set("2026-01-01T00:00:00Z") }
     }
 
     @Test

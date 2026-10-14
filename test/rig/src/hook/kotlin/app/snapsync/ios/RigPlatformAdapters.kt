@@ -167,7 +167,9 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     ),
     readGallery = galleryReader(launch, core = { SnapSyncRoot.app }),
     // The typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it.
-    services = launch.world.servedServices(),
+    services = launch.world.servedServices(
+        reconcileUploads = { SnapSyncRoot.app.uploadTransitions.onOverrideChanged() },
+    ),
     // The registration the app runs over — the adapter choice's, where it mocks it.
     osExtensionEnabled = osExtensionEnabled(registry = { SnapSyncRoot.ports.extensionRegistry.value }),
     // The path decision (and its `null` case) lives in `:test:rig`; this side supplies only the write,

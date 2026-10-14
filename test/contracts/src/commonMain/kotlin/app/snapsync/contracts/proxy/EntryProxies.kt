@@ -65,7 +65,6 @@ internal class DevControlsProxy(private val inner: DevControls, log: CallLog) : 
     override fun uploaderPin() = r.returns("uploaderPin", inner.uploaderPin())
     override fun inviteLinkHints() = r.answer("inviteLinkHints", inner.inviteLinkHints())
     override fun createsPlainEvents() = r.answer("createsPlainEvents", inner.createsPlainEvents())
-    override fun networkGraceMillis() = r.returns("networkGraceMillis", inner.networkGraceMillis())
 
     @CompositionOnly
     override fun inbound(handlers: DevHandlers) = r.returns(

@@ -32,18 +32,18 @@ internal fun jvmWorld(rig: JvmRig, os: PlayedOs): MockWorld = MockWorld(
     os = os,
     ownDeviceId = { rig.mocks.ownDeviceId },
     joinedEventId = { joinedEventId(rig) },
-    setInviteLinkHints = { rig.mocks.devControls.operator.inviteLinkHints = it },
-    setEncryptsNewEvents = { rig.mocks.devControls.operator.encryptsNewEvents = it },
+    controls = rig.mocks.devControls.operator,
+    clockOwner = "the JVM host's loop owns the clock: `world.advanceTo` moves it, firing every timer due on the way",
 )
 
 /** The JVM host's `/device` write commands. */
 internal fun jvmDeviceCommands(rig: JvmRig): Map<String, RigCommand> = rig.world.honouredLevers() + mapOf(
-    "reset" to resetCommand(reset = { rig.mocks.devControls.operator.reset() }),
+    "reset" to resetCommand(reset = { rig.mocks.devControls.reset() }),
     // The per-uploader switch, on the mocked development controls. This host composes both uploaders, as a phone does,
     // and both run; a test about one of them switches the other off here, since both would take the same photos.
     "uploaders" to uploadersCommand(
-        pin = { rig.mocks.devControls.operator.pin },
-        setPin = { rig.mocks.devControls.operator.pin = it },
+        pin = { rig.mocks.devControls.pin },
+        setPin = { rig.mocks.devControls.pin = it },
         osSupportsOsDrivenUpload = { false },
         permission = { rig.app.composed.core.photoPermission.value },
         reconcile = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },

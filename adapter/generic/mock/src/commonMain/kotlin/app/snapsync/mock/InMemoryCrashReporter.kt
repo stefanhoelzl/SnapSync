@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.levers.WorldEvent
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
@@ -23,10 +24,10 @@ import kotlin.concurrent.Volatile
  */
 internal class InMemoryCrashReporter(
     private val started: MutableStateFlow<Boolean>,
-    private val dumps: MutableStateFlow<List<CrashEvent>>,
+    private val dumps: ReceivedDumps,
 ) : CrashReporter {
 
-    constructor() : this(MutableStateFlow(false), MutableStateFlow(emptyList()))
+    constructor() : this(MutableStateFlow(false), ReceivedDumps())
 
     @Volatile private var handlers: CrashHandlers? = null
 
@@ -51,7 +52,25 @@ internal class InMemoryCrashReporter(
     override suspend fun sendDump(dump: CrashEvent): DumpHandOff {
         if (!started.value) return DumpResult.NotSent("the channel is not running")
         // Nothing unshaped leaves: no handler, or a handler's null, sends nothing — as on the real channel.
-        handlers?.onEvent?.invoke(dump)?.let { shaped -> dumps.value = dumps.value + shaped }
+        handlers?.onEvent?.invoke(dump)?.let(dumps::receive)
         return DumpResult.Queued
+    }
+}
+
+/**
+ * What the reporter's backend received, in order, in the caller's [cell] — and, where the control channel watches, each
+ * dump told to it as it arrives (`docs/testing.md`, "How a test waits").
+ */
+class ReceivedDumps(internal val cell: MutableStateFlow<List<CrashEvent>> = MutableStateFlow(emptyList())) {
+    @Volatile private var watcher: WorldWatcher = WorldWatcher {}
+
+    /** Tells [listener] each dump as it arrives. */
+    fun watch(listener: WorldWatcher) {
+        watcher = listener
+    }
+
+    internal fun receive(dump: CrashEvent) {
+        cell.value = cell.value + dump
+        watcher.told(WorldEvent.DumpReceived(received(dump)))
     }
 }

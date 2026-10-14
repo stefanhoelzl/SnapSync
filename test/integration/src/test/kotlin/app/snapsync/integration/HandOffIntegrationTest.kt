@@ -1,9 +1,13 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
+import app.snapsync.levers.WorldEvent
 import app.snapsync.presentation.url
 import app.snapsync.ui.state.AppLink
+import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -22,13 +26,17 @@ class HandOffIntegrationTest {
         spec = "invite-link",
         requirement = "The joined screen offers the invite until the event's photos are deleted",
     )
-    fun sharing_the_invite_hands_the_share_sheet_the_invite_the_screen_shows() = rigTest {
-        createAndJoin()
-        val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl
+    fun sharing_the_invite_hands_the_share_sheet_the_invite_the_screen_shows() = behaviour {
+        lateinit var joined: Seen<Layer.Joined>
+        given {
+            createdEvent()
+            step("joined", act = { user("confirmJoin") }, until = {
+                joined = screen<Layer.Joined> { it.inviteUrl?.contains("#k=") == true }
+            })
+        }
 
-        user("shareInvite")
-
-        assertEquals(listOf(invite), awaitOs { it.shared.isNotEmpty() }.shared)
+        whenever { user("shareInvite") }
+        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl } }
     }
 
     @Test
@@ -37,17 +45,16 @@ class HandOffIntegrationTest {
         requirement = "The app menu is one tap away on every screen",
         scenario = "Reading the Privacy Policy",
     )
-    fun a_menu_link_opens_its_page_outside_the_app() = rigTest {
-        user("openLink", "link" to AppLink.PRIVACY_POLICY.name)
-
-        assertEquals(listOf(AppLink.PRIVACY_POLICY.url), awaitOs { it.opened.isNotEmpty() }.opened)
+    fun a_menu_link_opens_its_page_outside_the_app() = behaviour {
+        whenever { user("openLink", "link" to AppLink.PRIVACY_POLICY.name) }
+        then { event<WorldEvent.UrlOpened> { it.url == AppLink.PRIVACY_POLICY.url } }
     }
 
     @Test
-    fun opening_settings_opens_the_app_s_settings_page_once() = rigTest {
-        user("openSettings")
-
-        assertEquals(1, awaitOs { it.settingsOpened > 0 }.settingsOpened)
+    @Verifies(spec = "photo-access", requirement = "The system's access dialog is raised only by a deliberate tap")
+    fun opening_settings_opens_the_app_s_settings_page_once() = behaviour {
+        whenever { user("openSettings") }
+        then { times(1) { event<WorldEvent.SettingsOpened>() } }
     }
 
     @Test

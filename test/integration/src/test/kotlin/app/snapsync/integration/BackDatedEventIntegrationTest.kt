@@ -35,7 +35,7 @@ class BackDatedEventIntegrationTest {
         uploadAll()
 
         // Day 2: a guest scans the invite, joins and shares the photo they took that weekend.
-        device("clock/advance", "to" to DAY_TWO)
+        advanceTo(DAY_TWO)
         foreignDevice(GUEST, "GUEST-1", final = true)
         downloadAll()
         refresh()
@@ -49,7 +49,7 @@ class BackDatedEventIntegrationTest {
         assertFalse(finished(event), "the open-until date has not passed")
 
         // After the week, with everyone done, the event is finished — and the host is still in it.
-        device("clock/advance", "to" to AFTER_THE_WEEK)
+        advanceTo(AFTER_THE_WEEK)
         eventually(read = {
             refresh()
             finished(event)
@@ -82,7 +82,7 @@ class BackDatedEventIntegrationTest {
         foreignDevice(OLD_BUILD, "OLD-1", final = true)
         downloadAll()
         refresh()
-        device("clock/advance", "to" to AFTER_THE_WEEK)
+        advanceTo(AFTER_THE_WEEK)
 
         // Once everyone still in the event has shared, the older build is told the event closed — what it waits for.
         val closedAt = eventually(read = {

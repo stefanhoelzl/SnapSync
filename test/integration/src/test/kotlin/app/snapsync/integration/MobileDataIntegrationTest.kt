@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.levers.NetworkState
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -11,7 +12,7 @@ import kotlin.test.assertTrue
 /**
  * **Photos kept off mobile data wait for Wi-Fi**, over the real composed stack, driven through the control protocol.
  *
- * The operator plays the device's network (`network?access=restricted` — mobile data, a hotspot, Low Data Mode) and the
+ * The operator plays the device's network (`network.set(RESTRICTED)` — mobile data, a hotspot, Low Data Mode) and the
  * operating system's transfers: it lands what the platform would run, and the platform runs no transfer held to an
  * unrestricted network while the network is restricted. The app's own uploader is the one under test — the OS-driven
  * queue holds every job on a restricted network whatever the member chose (measured; `UploadQueueMock`), so it is
@@ -31,10 +32,6 @@ class MobileDataIntegrationTest {
         awaitState { it.ui.mobileData.on == on }
     }
 
-    private suspend fun Rig.network(access: String) {
-        device("network", "access" to access)
-    }
-
     /** The app's uploader picks up [photo]: the foreground's tail creates its transfer. */
     private suspend fun Rig.shareFromForeground(photo: String) {
         addPhoto(photo)
@@ -52,7 +49,7 @@ class MobileDataIntegrationTest {
     fun an_untouched_choice_shares_over_mobile_data() = rigTest {
         appUploadsOnly()
         createAndJoin()
-        network("restricted")
+        network.set(NetworkState.RESTRICTED)
         shareFromForeground("P1")
         awaitAppUploads(1)
         completeAppUploads()
@@ -70,7 +67,7 @@ class MobileDataIntegrationTest {
         appUploadsOnly()
         createAndJoin()
         mobileData(false)
-        network("restricted")
+        network.set(NetworkState.RESTRICTED)
         shareFromForeground("P1")
         awaitAppUploads(1)
 
@@ -83,7 +80,7 @@ class MobileDataIntegrationTest {
             "still arrows, and the line says the photo waits for Wi-Fi",
         )
 
-        network("online")
+        network.set(NetworkState.ONLINE)
         completeAppUploads()
         eventually<Boolean>(read = { landed("P1") }) { it }
         awaitHealth { it !is SyncHealth.Syncing || !it.waitingForWifi }
@@ -99,7 +96,7 @@ class MobileDataIntegrationTest {
     fun with_mobile_data_off_a_received_photo_waits_for_wifi() = rigTest {
         createAndJoin("direction" to "download")
         mobileData(false)
-        network("restricted")
+        network.set(NetworkState.RESTRICTED)
         foreignDevice(DEV_F, "FA")
         reconcile()
         eventually(read = { state().download.inFlight }) { inFlight: Int -> inFlight == 1 }
@@ -107,7 +104,7 @@ class MobileDataIntegrationTest {
         stage()
         assertEquals(0, state().download.downloaded, "the platform runs no held download on a restricted network")
 
-        network("online")
+        network.set(NetworkState.ONLINE)
         stage()
         eventually<Int>(read = { state().download.downloaded }) { it == 1 }
     }
@@ -118,7 +115,7 @@ class MobileDataIntegrationTest {
         appUploadsOnly()
         createAndJoin()
         mobileData(false)
-        network("restricted")
+        network.set(NetworkState.RESTRICTED)
         shareFromForeground("P1")
         awaitAppUploads(1)
 
@@ -134,7 +131,7 @@ class MobileDataIntegrationTest {
     @Test
     @Verifies(spec = "mobile-data", requirement = "Everything but photo transfers keeps working on any network")
     fun joining_and_renaming_work_on_mobile_data_with_photos_kept_off_it() = rigTest {
-        network("restricted")
+        network.set(NetworkState.RESTRICTED)
         mobileData(false)
         val event = createAndJoin()
         assertEquals(false, state().ui.mobileData.on)
@@ -158,7 +155,7 @@ class MobileDataIntegrationTest {
 
         createAndJoin()
         assertEquals(false, state().ui.mobileData.on, "the next event starts with the device's choice")
-        network("restricted")
+        network.set(NetworkState.RESTRICTED)
         shareFromForeground("P1")
         awaitAppUploads(1)
         completeAppUploads()
@@ -174,13 +171,13 @@ class MobileDataIntegrationTest {
     fun chosen_before_joining() = rigTest {
         appUploadsOnly()
         mobileData(false)
-        network("restricted")
+        network.set(NetworkState.RESTRICTED)
         createAndJoin()
         shareFromForeground("P1")
         awaitAppUploads(1)
         completeAppUploads()
         assertTrue(!landed("P1"), "no photo of the event travels over mobile data")
-        network("online")
+        network.set(NetworkState.ONLINE)
         completeAppUploads()
         eventually<Boolean>(read = { landed("P1") }) { it }
     }

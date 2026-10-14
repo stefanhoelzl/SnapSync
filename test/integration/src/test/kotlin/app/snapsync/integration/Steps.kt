@@ -3,6 +3,7 @@ package app.snapsync.integration
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
+import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.EventLinkPayload
@@ -90,9 +91,9 @@ suspend fun Acts.openLink(url: String) {
  * The device's network as the operating system reports it, and whether the backend can be reached: on a phone the two
  * are one event, which the operator plays as two levers.
  */
-suspend fun Acts.network(access: String, backendReachable: Boolean = access == "online") {
+suspend fun Acts.network(access: NetworkState, backendReachable: Boolean = access == NetworkState.ONLINE) {
     backend.offline(!backendReachable)
-    device("network", "access" to access)
+    network.set(access)
 }
 
 /**

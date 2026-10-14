@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -81,11 +80,5 @@ class NetworkWatch(
     companion object {
         /** How long a missing network must last before the member is told. Chosen, not derived (see the class KDoc). */
         val DEFAULT_GRACE: Duration = 5.seconds
-
-        /**
-         * The grace a watch is composed with: [DEFAULT_GRACE], unless the build's development controls shorten it to
-         * [overrideMillis] — a test host, never a shipped build, whose controls answer `null`.
-         */
-        fun graceFor(overrideMillis: Long?): Duration = overrideMillis?.milliseconds ?: DEFAULT_GRACE
     }
 }

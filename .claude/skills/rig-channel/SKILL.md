@@ -600,24 +600,12 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   upload-job queue, the app's upload session and the download session — are typed services (below, "The transfers'
   typed services"), and so is the photo library's (below); `device/databases/locked?on=`,
   `device/membership/undeletable?on=`,
-  `device/invite-link-hints?honoured=false` (play a shipped build; relaunch to be sure the new answer is read),
-  `device/encrypt-new-events?on=false` (the next event this device creates is PLAIN — its invite the fragment form;
-  a rig build encrypts by default, its invite carrying `#k=` — unlike a shipped one, which creates plain events until
-  encrypted creation is re-enabled (`PENDING_CLEANUPS.md`). The mocked download session's fixed
-  JPEG does not open as an encrypted file, so a mocked-download world stages nothing of an encrypted event: create a
-  plain one to see downloads land on a device; the JVM host seals them itself),
   `device/invite?event=` (JVM host only: the event's whole invite, key included, as its creating device shares it),
   `device/event-key/lose` (JVM host only: the joined event's key gone from the Keychain, the membership kept).
 - The **integration surface's** levers and reads (the same rule on the app host):
-  - `diagnostics/sent` (the dumps the reporter received);
-  - the backend: its two **typed services**, below;
-  - the photo library: its **typed service**, below;
-  - OS: `clock/advance?to=<instant>`, `network?access=online|offline|blocked` (what the OS reports to
-    the app; a notice follows after the watch's ~5 s grace, and only while the app is foregrounded — pair `offline`
-    with the backend's `offline(true)` to play a network that is really gone), `conditions?<key>=<value>|unsupported|failed:<reason>[&hold=true|false]`
-    (power saving, battery, thermal state and background allowance as a bug report reads them; the keys are the report's —
-    `power_saving`, `background_refresh`, `standby_bucket`, `battery_optimization_exempt`, `battery_percent`,
-    `battery_charging`, `thermal`; `hold=true` leaves every read unanswered), `app-version?version=`, `relaunch[?scene=false]`,
+  - the backend, the photo library, the crash reporter, the system UI, the network, the clock, the device's
+    conditions, the process information, the build and its development controls: **typed services**, below;
+  - OS: `relaunch[?scene=false]`,
     `logs/append?process=app|extension` (body = text),
     `staging/seed-legacy-backlog` (the one lever that writes app-private state: an upgraded install's leftovers).
 - Device facts off the mocked disk: `device/staging`.
@@ -748,6 +736,40 @@ Gone with the move: `selection/change`, `permission`, `gallery/add|remove|fail-n
 `library.imports().parked`), `album/place|hold-adds|kind|delete|contents`. The real library's own verbs stay strings:
 `device/gallery/seed`, `device/gallery/wipe`, `device/gallery/add-moving` and the `device/gallery` read.
 
+### The device's surroundings — typed services
+
+What the operating system tells the app about the device, and what the app hands the platform, are typed services too
+(`:test:levers`' `SurroundingsLevers.kt` and `BuildLevers.kt`), each refused where its system is real:
+
+- `network` (`NetworkLevers`) — `set(access)` (`NetworkState.ONLINE|RESTRICTED|OFFLINE|BLOCKED`: restricted is mobile
+  data, a hotspot or Low Data Mode, blocked the network withheld from this app), read `access()`. A notice follows the
+  watch's 5 s grace, only while the app is foregrounded — on the JVM host's mocked time, once `world.advance` has moved
+  past it. Pair `OFFLINE` with the backend's `offline(true)` to play a network that is really gone.
+- `device-conditions` (`DeviceConditionsLevers`) — `set(fields)`, each by the bug report's key (`power_saving`,
+  `background_refresh`, `standby_bucket`, `battery_optimization_exempt`, `battery_percent`, `battery_charging`,
+  `thermal`) to a value, `unsupported` or `failed:<reason>`; `hold(on)` leaves every read unanswered; read `reading()`.
+  From `rig`, a map or a structure is its JSON: `$R --url $B device-conditions set --fields '{"power_saving":"true"}'`.
+- `clock` (`ClockLevers`) — `set(at)` (an ISO instant), read `now()`. **Refused on the JVM host**, whose loop owns the
+  clock: there `world.advanceTo(at)` moves it, with every timer due on the way.
+- `process-info` (`ProcessInfoLevers`) — `protectedData(available)`, `footprint(footprint?)`, read `info()`.
+- `crash-reporter` (`CrashReporterLevers`) — reads `started()`, `sent()` (each dump the reporter's backend received:
+  note, state, ledger, both logs, their bytes).
+- `system-ui` (`SystemUiLevers`) — read `record()` (what the share sheet was handed, the URLs opened, the Settings page
+  opened and in front); `leaveSettings()`, and the refusals `noWindow(on)`, `noSheet(on)`, `unclaimed(urls)`.
+- `dev-controls` (`DevControlsLevers`, every host — the build's own) — `pin(app, extension)` / `unpin()` (each uploader
+  on or off; the uploads are reconciled with the switch at once), `inviteLinkHints(honoured)` (`false` plays a shipped
+  build; relaunch to be sure the new answer is read), `encryptNewEvents(on)` (`false`: the next event this device
+  creates is PLAIN — its invite the fragment form; a rig build encrypts by default, its invite carrying `#k=` — unlike a
+  shipped one, which creates plain events until encrypted creation is re-enabled (`PENDING_CLEANUPS.md`). The mocked
+  download session's fixed JPEG does not open as an encrypted file, so a mocked-download world stages nothing of an
+  encrypted event: create a plain one to see downloads land on a device; the JVM host seals them itself), `reset()`,
+  read `controls()`.
+- `build` (`BuildLevers`) — `declare(version)` (the marketing version the build declares on every request — play an
+  old build, or an update), read `declared()`; only where the backend is the mock, which reads it.
+
+Gone with the move: `device/clock/advance`, `device/network`, `device/conditions`, `device/diagnostics/sent`,
+`device/app-version`, `device/invite-link-hints`, `device/encrypt-new-events`, and `os-record`'s `systemUi`.
+
 ### The world's events — waiting without polling (JVM host only)
 
 The JVM host runs the app on **one loop** (`LaneLoop`): every lane of both processes, and the channel's own, is a lane
@@ -756,9 +778,9 @@ but an operator's hold (`docs/testing.md` §7, "How a test waits"). Every reques
 typed call is an **act**, announced first; a `GET` runs there unannounced. Two consequences when driving it by hand:
 
 - **Time.** `JvmRigHost.start(time = LoopTime.REAL)` — what `runJvmHost` and the old `rigTest` use — keeps the wall
-  clock: timers fire after their real duration and `clock/advance?to=` only moves the clock the app reads. Under
-  `LoopTime.MOCKED` (what `behaviour { }` uses) nothing fires until `world.advance(millis)` moves the clock, each timer
-  at its own instant, settling between them.
+  clock: timers fire after their real duration and `world.advanceTo(at)` only moves the clock the app reads. Under
+  `LoopTime.MOCKED` (what `behaviour { }` uses) nothing fires until `world.advance(millis)` or `world.advanceTo(at)`
+  moves the clock, each timer at its own instant, settling between them.
 - **Lanes.** `-Dsnapsync.lanes=turns|shuffled:<seed>|parallel` (the integration suite: `-Psnapsync.lanes=…`) picks how
   the lanes take turns. A dispatch onto an app lane from a thread the loop does not own is a **lane violation**: told on
   the stream, and a test fails on it.
@@ -770,8 +792,9 @@ RigClient("http://127.0.0.1:$PORT").use { client ->
     val world = client.levers(WorldLevers)
     world.events().collect { println(it) }   // from the host's start: Acted, UiChanged, BackendReceived, BackendHeld,
                                               // UploadJobCreated, SessionTransferCreated, DownloadStarted, Library…,
-                                              // Settled, LaneViolation
+                                              // Shared, UrlOpened, SettingsOpened, DumpReceived, Settled, LaneViolation
     world.advance(5_000)                      // an act: the mocked clock 5 s on
+    world.advanceTo("2026-06-02T09:00:00Z")   // an act: the mocked clock to an instant (back: fires nothing)
     world.whyNotSettled()                     // what runs, what is queued, what it waits on outside
 }
 ```

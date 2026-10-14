@@ -167,7 +167,7 @@ class WorldInspectorController(
      * The device's network as the operating system reports it to the app. The app tells the
      * member only after the network watch's grace, so a notice appears a few seconds after the lever, as on a phone.
      */
-    fun setNetwork(access: NetworkAccess) = launchMutation { mocks.connectivity.operator.access = access }
+    fun setNetwork(access: NetworkAccess) = launchMutation { mocks.connectivity.access = access }
 
     fun armNextRequest(grants: Boolean) {
         armedGrants = grants
@@ -383,7 +383,7 @@ class WorldInspectorController(
         appWatchers = scope.launch {
             mocks.library.operator.requestAnswer(if (armedGrants) PhotoGrant.GRANTED else PhotoGrant.DENIED)
             launch {
-                mocks.systemUi.operator.shared.collect { shared ->
+                mocks.systemUi.shared.collect { shared ->
                     shared.lastOrNull()?.let { url ->
                         runCatchingCancellable { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
                         appendConsole("share invite → $url")

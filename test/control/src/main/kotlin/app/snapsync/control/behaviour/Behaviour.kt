@@ -4,9 +4,14 @@ import app.snapsync.control.Reply
 import app.snapsync.control.RigClient
 import app.snapsync.control.done
 import app.snapsync.levers.BackendLevers
+import app.snapsync.levers.BuildLevers
+import app.snapsync.levers.DevControlsLevers
+import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.LibraryLevers
+import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.PublicBackendLevers
+import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.WorldEvent
@@ -164,6 +169,21 @@ class Acts internal constructor(private val client: RigClient) {
     /** The photo library operator's levers — the library mock's. */
     val library: LibraryLevers = client.levers(LibraryLevers)
 
+    /** The device's network, as the operating system reports it to the app. */
+    val network: NetworkLevers = client.levers(NetworkLevers)
+
+    /** The device's power, battery, thermal state and background allowance, as the operating system reports them. */
+    val deviceConditions: DeviceConditionsLevers = client.levers(DeviceConditionsLevers)
+
+    /** The platform's own UI: what refuses a hand-over, and the member leaving the Settings page. */
+    val systemUi: SystemUiLevers = client.levers(SystemUiLevers)
+
+    /** The build's development controls. */
+    val devControls: DevControlsLevers = client.levers(DevControlsLevers)
+
+    /** The build itself: the version it declares. */
+    val build: BuildLevers = client.levers(BuildLevers)
+
     private val world: WorldLevers = client.levers(WorldLevers)
 
     /** A person's command, which must be accepted. */
@@ -184,4 +204,7 @@ class Acts internal constructor(private val client: RigClient) {
 
     /** The mocked clock moves [by], each timer due on the way firing at its own instant. */
     suspend fun advance(by: Duration) = world.advance(by.inWholeMilliseconds)
+
+    /** The mocked clock moves to [at], an ISO instant, each timer due on the way firing at its own instant. */
+    suspend fun advanceTo(at: String) = world.advanceTo(at)
 }

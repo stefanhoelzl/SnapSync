@@ -2,6 +2,9 @@ package app.snapsync.rig
 
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.levers.DevControlsLevers
+import app.snapsync.levers.DevControlsView
+import app.snapsync.mock.devControlsView
 import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
@@ -42,9 +45,9 @@ class RigUi(private val inner: Lazy<Ui<UiState, UiIntent>>) : Ui<UiState, UiInte
 }
 
 /**
- * A rig build's development controls: the per-uploader switch `/device/uploaders` sets, invite-link hints
- * **honoured** — the channel's callers join headlessly with `autoJoin` — unless
- * `/device/invite-link-hints` plays a shipped build that ignores them, and the reset `/device/reset` delivers.
+ * A rig build's development controls, as the `dev-controls` service ([levers]) moves them: the per-uploader switch,
+ * invite-link hints **honoured** — the channel's callers join headlessly with `autoJoin` — unless the channel plays a
+ * shipped build that ignores them, encrypted creation, and the reset it delivers.
  */
 class RigDevControls : DevControls {
     private var handlers: DevHandlers? = null
@@ -58,9 +61,6 @@ class RigDevControls : DevControls {
     /** Whether an event this device creates is encrypted; `true`, as a shipped build, until the channel sets it. */
     var encrypts: Boolean = true
 
-    /** How long a missing network must last before the member is told; `null` (the app's own grace) unless set. */
-    var networkGraceMillis: Long? = null
-
     @CompositionOnly
     override fun inbound(handlers: DevHandlers) {
         this.handlers = handlers
@@ -72,7 +72,28 @@ class RigDevControls : DevControls {
 
     override fun createsPlainEvents(): Boolean = !encrypts
 
-    override fun networkGraceMillis(): Long? = networkGraceMillis
+    /** The controls as the channel moves them — a pin only sets the switch; the channel reconciles the uploads. */
+    val levers: DevControlsLevers = object : DevControlsLevers {
+        override suspend fun pin(app: Boolean, extension: Boolean) {
+            pin = UploaderPin(app, extension)
+        }
+
+        override suspend fun unpin() {
+            pin = null
+        }
+
+        override suspend fun inviteLinkHints(honoured: Boolean) {
+            hints = if (honoured) InviteLinkHints.Honoured else InviteLinkHints.Ignored
+        }
+
+        override suspend fun encryptNewEvents(on: Boolean) {
+            encrypts = on
+        }
+
+        override suspend fun reset() = this@RigDevControls.reset()
+
+        override suspend fun controls(): DevControlsView = devControlsView(pin, hints, encrypts)
+    }
 
     /** `/device/reset`: void this device's durable sync state; returns once it is void. */
     suspend fun reset() {

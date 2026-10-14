@@ -146,7 +146,7 @@ class MockStateTest {
         val copy = copyOf(drive())
         assertEquals("{}", copy.disk.operator.read(FileArea.SHARED, "eventconfig.json")?.decodeToString())
         assertTrue(copy.disk.operator.isDenied(FileArea.PRIVATE, "secret"))
-        assertEquals(Instant.parse("2026-07-01T12:00:00Z"), copy.clock.operator.now)
+        assertEquals(Instant.parse("2026-07-01T12:00:00Z"), copy.clock.now)
         assertEquals(TimeZone.of("Europe/Berlin"), copy.clock.port().timeZone())
         assertEquals(
             mapOf(WakeId.Heartbeat to WakeTrigger.After(1.hours, network = WakeNetwork.ANY)),
@@ -155,12 +155,12 @@ class MockStateTest {
         assertEquals(listOf("A1/primary"), copy.uploadQueue.view().live)
         assertEquals(1, copy.uploadQueue.view().created.size)
         assertEquals(true, copy.extensionRegistry.operator.registered)
-        assertEquals(Availability.UNAVAILABLE, copy.processInfo.operator.protectedData)
-        assertEquals(NetworkAccess.Blocked, copy.connectivity.operator.access)
-        assertEquals(CONDITIONS, copy.deviceConditions.operator.reading)
-        assertEquals(listOf("hello"), copy.systemUi.operator.shared.value)
-        assertEquals(listOf("Party"), copy.systemUi.operator.sharedTitles.value)
-        assertEquals("dump", copy.crashReporter.operator.sent.value.single().message)
+        assertEquals(Availability.UNAVAILABLE, copy.processInfo.protectedData)
+        assertEquals(NetworkAccess.Blocked, copy.connectivity.access)
+        assertEquals(CONDITIONS, copy.deviceConditions.reading)
+        assertEquals(listOf("hello"), copy.systemUi.shared.value)
+        assertEquals(listOf("Party"), copy.systemUi.sharedTitles.value)
+        assertEquals("dump", copy.crashReporter.sent.value.single().message)
         assertEquals(1, copy.enclave.keys.snapshot().second.size)
         assertEquals("v", (copy.keychain.items[SLOT])?.value)
     }
@@ -219,10 +219,10 @@ class MockStateTest {
                 ),
             )
         }
-        device.processInfo.operator.protectedData = Availability.UNAVAILABLE
-        device.connectivity.operator.access = NetworkAccess.Blocked
-        device.deviceConditions.operator.reading = CONDITIONS
-        device.clock.operator.now = Instant.parse("2026-07-01T12:00:00Z")
+        device.processInfo.protectedData = Availability.UNAVAILABLE
+        device.connectivity.access = NetworkAccess.Blocked
+        device.deviceConditions.reading = CONDITIONS
+        device.clock.now = Instant.parse("2026-07-01T12:00:00Z")
         device.clock.zone = TimeZone.of("Europe/Berlin")
         device.wakes.port().schedule(WakeId.Heartbeat, WakeTrigger.After(1.hours, network = WakeNetwork.ANY))
         device.extensionRegistry.port().setEnabled(true)

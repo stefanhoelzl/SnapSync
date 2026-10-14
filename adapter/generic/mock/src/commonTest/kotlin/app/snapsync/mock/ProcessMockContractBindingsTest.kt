@@ -85,7 +85,7 @@ class ProcessMockContractBindingsTest {
         override val reaches = setOf(LinkOpenerState.CLAIMED, LinkOpenerState.UNCLAIMED)
         override fun create(state: LinkOpenerState, clauseId: String, log: CallLog): Entered<SystemUi> {
             val mock = SystemUiMock()
-            if (state == LinkOpenerState.UNCLAIMED) mock.operator.unclaimed = setOf(LinkOpenerContract.UNCLAIMED_URL)
+            if (state == LinkOpenerState.UNCLAIMED) mock.unclaimed = setOf(LinkOpenerContract.UNCLAIMED_URL)
             return Entered.Ready(mock.port().recorded(log))
         }
     }
@@ -98,8 +98,8 @@ class ProcessMockContractBindingsTest {
             setOf(SharePresenterState.PRESENTABLE, SharePresenterState.NO_WINDOW, SharePresenterState.NO_SHEET)
         override fun create(state: SharePresenterState, clauseId: String, log: CallLog): Entered<SystemUi> {
             val mock = SystemUiMock()
-            mock.operator.noWindow = state == SharePresenterState.NO_WINDOW
-            mock.operator.noSheet = state == SharePresenterState.NO_SHEET
+            mock.noWindow = state == SharePresenterState.NO_WINDOW
+            mock.noSheet = state == SharePresenterState.NO_SHEET
             return Entered.Ready(mock.port().recorded(log))
         }
     }
@@ -114,8 +114,8 @@ class ProcessMockContractBindingsTest {
             return Entered.Ready(
                 ShownSettings(
                     mock.port().recorded(log),
-                    settingsInFront = { mock.operator.settingsInFront.value },
-                    leave = { mock.operator.leaveSettings() },
+                    settingsInFront = { mock.settingsInFront.value },
+                    leave = { mock.leaveSettings() },
                 ),
             )
         }

@@ -114,8 +114,8 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
     ),
     MockedSystem.CRASH_REPORTER to codec(
         CrashDumpsDto.serializer(),
-        { CrashDumpsDto(it.crashReporter.dumps.value.map(CrashDto::of)) },
-        { device, dto -> device.crashReporter.dumps.value = dto.dumps.map { it.event() } },
+        { CrashDumpsDto(it.crashReporter.dumps.cell.value.map(CrashDto::of)) },
+        { device, dto -> device.crashReporter.dumps.cell.value = dto.dumps.map { it.event() } },
     ),
     MockedSystem.PROCESS_INFO to scalars(
         { mapOf(PROTECTED to it.processInfo.cell.value.name) },
@@ -182,9 +182,9 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
             SystemUiDto(it.systemUi.shared.value, it.systemUi.opened.value, it.systemUi.settings.value, it.systemUi.sharedTitles.value)
         },
         { device, ui ->
-            device.systemUi.shared.value = ui.shared
-            device.systemUi.sharedTitles.value = ui.sharedTitles
-            device.systemUi.opened.value = ui.opened
+            device.systemUi.sharedCell.value = ui.shared
+            device.systemUi.sharedTitlesCell.value = ui.sharedTitles
+            device.systemUi.openedCell.value = ui.opened
             device.systemUi.settings.value = ui.settings
         },
     ),

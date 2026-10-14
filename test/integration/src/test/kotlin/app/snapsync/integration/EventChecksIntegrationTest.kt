@@ -14,15 +14,15 @@ class EventChecksIntegrationTest {
     @Test
     fun heartbeats_read_the_union_at_most_once_an_hour() = rigTest {
         val event = createAndJoin()
-        device("clock/advance", "to" to T0)
+        advanceTo(T0)
         heartbeat() // long after the join's own reads: this wake asks
         val first = unionReads(event)
 
-        device("clock/advance", "to" to T0_PLUS_10_MIN)
+        advanceTo(T0_PLUS_10_MIN)
         heartbeat()
         assertEquals(first, unionReads(event), "ten minutes later it does not")
 
-        device("clock/advance", "to" to T0_PLUS_1_H)
+        advanceTo(T0_PLUS_1_H)
         heartbeat()
         assertEquals(first + 1, unionReads(event), "an hour later it asks again")
     }
@@ -30,33 +30,33 @@ class EventChecksIntegrationTest {
     @Test
     fun a_push_reads_the_union_whenever_it_comes_and_resets_the_hour() = rigTest {
         val event = createAndJoin()
-        device("clock/advance", "to" to T0)
+        advanceTo(T0)
         heartbeat()
         val before = unionReads(event)
 
-        device("clock/advance", "to" to T0_PLUS_10_MIN)
+        advanceTo(T0_PLUS_10_MIN)
         os("app", "onSilentPush", event)
         eventually(read = { unionReads(event) }) { it == before + 1 }
 
-        device("clock/advance", "to" to T0_PLUS_20_MIN)
+        advanceTo(T0_PLUS_20_MIN)
         heartbeat()
         assertEquals(before + 1, unionReads(event), "the wake after a push reads nothing")
     }
 
     @Test
     fun after_the_end_heartbeats_read_the_event_at_most_once_an_hour_and_a_push_always() = rigTest {
-        device("clock/advance", "to" to DURING)
+        advanceTo(DURING)
         val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
         // A second member that never settles keeps the event open, so this one stays joined to be woken.
         foreignDevice(DEV_F, "FQ")
         // The join's own wake runs on after the join answers, and asks the event whenever it ends — it is not bounded:
         // awaited before the end passes, or a late one reads the event's state between the two heartbeats.
         awaitOs { it.backgroundTimeHolds.isEmpty() }
-        device("clock/advance", "to" to AFTER_THE_END)
+        advanceTo(AFTER_THE_END)
         heartbeat()
         val first = eventReads(event)
 
-        device("clock/advance", "to" to AFTER_THE_END_PLUS_10_MIN)
+        advanceTo(AFTER_THE_END_PLUS_10_MIN)
         heartbeat()
         assertEquals(first, eventReads(event), "a wake within the hour reads no state")
 

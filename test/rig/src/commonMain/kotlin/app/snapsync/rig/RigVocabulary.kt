@@ -67,21 +67,14 @@ object RigVocabulary {
     val worldLevers: List<String> = listOf(
         "device/databases/locked",
         "device/membership/undeletable",
-        "device/invite-link-hints",
-        "device/encrypt-new-events",
         // The integration surface's observable reads of the world's simulated systems (`docs/testing.md`, "The
-        // seam-to-UI-state integration surface") — what the crash reporter recorded. The backend's are its services'.
-        "device/diagnostics/sent",
-        // What the operating system recorded of the app: the completion handlers it handed over and got back, the
-        // screen, the selection observer, the heartbeat requests, the background-time holds, the push registrations
-        // and the transfer sessions.
+        // seam-to-UI-state integration surface"): what the operating system recorded of the app — the completion
+        // handlers it handed over and got back, the screen, the selection observer, the heartbeat requests, the
+        // background-time holds, the push registrations and the transfer sessions. The backend's, the crash
+        // reporter's and the system UI's are their services'.
         "device/os-record",
         // ...and the levers that put those systems and the operating system into the states a test starts from. The
-        // photo library's are its typed service's (`library`, `LibraryLevers`).
-        "device/clock/advance",
-        "device/network",
-        "device/conditions",
-        "device/app-version",
+        // photo library's are its typed service's (`library`, `LibraryLevers`), the device's surroundings theirs.
         "device/relaunch",
         "device/reinstall",
         "device/invite",

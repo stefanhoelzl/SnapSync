@@ -272,7 +272,7 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `the device's state is written under the report's keys`() = runTest {
         val conditions = DeviceConditionsMock()
-        conditions.operator.reading = DeviceConditionsMock.TYPICAL.copy(powerSaving = Fact.Known(true))
+        conditions.reading = DeviceConditionsMock.TYPICAL.copy(powerSaving = Fact.Known(true))
         val dump = collector(
             network = NetworkAccess.Online(restricted = true),
             conditions = conditions.port(),
@@ -311,7 +311,7 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `a failed fact is written failed with its reason — cut to the bound`() = runTest {
         val conditions = DeviceConditionsMock()
-        conditions.operator.reading = DeviceConditionsMock.TYPICAL.copy(
+        conditions.reading = DeviceConditionsMock.TYPICAL.copy(
             thermal = Fact.Failed("x".repeat(500)),
             standbyBucket = Fact.Known(StandbyBucket.RARE),
         )
@@ -323,7 +323,7 @@ class CollectDiagnosticDumpTest {
 
     @Test
     fun `a device read that never answers fails its facts and the report still goes`() = runTest {
-        val conditions = DeviceConditionsMock().also { it.operator.holding = true }
+        val conditions = DeviceConditionsMock().also { it.held = true }
         val dump = collector(appLog = "app\n", conditions = conditions.port()).collect(NOTE, SCREEN)
 
         val expected = "failed (the device conditions read timed out after ${CollectDiagnosticDump.DEFAULT_READ_TIMEOUT})"
@@ -408,7 +408,7 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `the state section at its worst stays inside its row of the event budget`() = runTest {
         val longest = "y".repeat(500)
-        val conditions = DeviceConditionsMock().also { it.operator.reading = DeviceConditionsReading.failed(longest) }
+        val conditions = DeviceConditionsMock().also { it.reading = DeviceConditionsReading.failed(longest) }
         val failed = Fact.Failed(longest)
         val dump = collector(
             config = EventConfig(

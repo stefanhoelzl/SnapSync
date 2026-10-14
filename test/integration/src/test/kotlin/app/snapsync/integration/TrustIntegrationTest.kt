@@ -53,7 +53,7 @@ class TrustIntegrationTest {
         // The system takes the photo's upload in hand with the proof the app holds…
         cycle()
         // …and performs it only after the member has left the app unopened for longer than the proof lasts (30 days).
-        device("clock/advance", "to" to "2026-07-15T12:00:00Z")
+        advanceTo("2026-07-15T12:00:00Z")
         completeJobs()
         // Refused for its expired proof: the job is still held, never dropped (a landed one is acknowledged and gone).
         cycle()
@@ -74,26 +74,26 @@ class TrustIntegrationTest {
         extensionUploadsOnly()
         createAndJoin()
         backend.minAppVersion("0.4")
-        device("app-version", "version" to "0.3")
+        build.declare("0.3")
         reconcile()
         awaitState { it.ui.layer is Layer.UpdateRequired }
 
         addPhoto("P1")
         // A fellow member shares meanwhile (through the backend's public surface, as a build the backend serves).
-        device("app-version", "version" to "0.4")
+        build.declare("0.4")
         foreignDevice(OTHER, "FA")
-        device("app-version", "version" to "0.3")
+        build.declare("0.3")
         cycle()
         completeJobs()
         foreground()
         // Read while still outdated, before the update: the backend's public listing refuses an outdated build too.
         assertTrue(downloadedNothing(), "an outdated app receives nothing")
 
-        device("app-version", "version" to "0.4")
+        build.declare("0.4")
         assertTrue(primaryKey("P1") !in objects(), "and shared nothing while it was outdated")
-        device("app-version", "version" to "0.3")
+        build.declare("0.3")
 
-        device("app-version", "version" to "0.4")
+        build.declare("0.4")
         reconcile()
         awaitState { it.ui.layer !is Layer.UpdateRequired }
         eventually(read = { uploadedObjects() }) { held: Set<String> -> primaryKey("P1") in held }

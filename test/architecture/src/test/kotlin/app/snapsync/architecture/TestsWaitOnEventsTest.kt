@@ -104,7 +104,7 @@ class TestsWaitOnEventsTest {
 
         /** May only shrink: classes with a test that claims no requirement yet. */
         val UNCLAIMED = setOf(
-            "CycleEntryGateIntegrationTest", "DiagnosticDumpIntegrationTest", "EntryIntegrationTest",
+            "CycleEntryGateIntegrationTest", "EntryIntegrationTest",
             "EventChecksIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest",
             "HeartbeatCadenceIntegrationTest", "IncrementalUnionIntegrationTest", "JoinGateIntegrationTest",
             "ManifestVersionIntegrationTest", "OsCompletionIntegrationTest", "PushIntegrationTest",
@@ -116,7 +116,6 @@ class TestsWaitOnEventsTest {
         val STILL_WAITING_BY_TIME = setOf(
             "EntryIntegrationTest",
             "JoinGateIntegrationTest",
-            "NetworkIntegrationTest",
             "OsCompletionIntegrationTest",
             "PushIntegrationTest",
             "Rig",

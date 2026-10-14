@@ -37,7 +37,7 @@ class RelaunchIntegrationTest {
     fun the_version_gates_refusal_is_process_memory() = rigTest {
         createAndJoin()
         backend.minAppVersion("0.4")
-        device("app-version", "version" to "0.3")
+        build.declare("0.3")
         foreground() // any backend call: the gate precedes every route
         awaitState { it.ui.layer is Layer.UpdateRequired }
 

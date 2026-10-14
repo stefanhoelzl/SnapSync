@@ -1,7 +1,9 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.levers.AlbumKind
+import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.assetIdFromUploadKey
@@ -199,11 +201,12 @@ class ReinstallIntegrationTest {
         device("reinstall")
         backend.failUnion(true)
         rejoinUnrecognised(event)
-        device("network", "access" to "offline")
-        awaitHealth { it is SyncHealth.NoNetwork } // a missing network is published only once it has lasted
+        network.set(NetworkState.OFFLINE)
+        // A missing network is published only once it has lasted the watch's grace — real time on this host.
+        awaitHealth(timeout = NetworkWatch.DEFAULT_GRACE * 3) { it is SyncHealth.NoNetwork }
         backend.failUnion(false)
 
-        recognisedAfter { device("network", "access" to "online") }
+        recognisedAfter { network.set(NetworkState.ONLINE) }
         cycle()
         assertEquals(0, jobs().created, "the received photo is recognised, not shared")
     }

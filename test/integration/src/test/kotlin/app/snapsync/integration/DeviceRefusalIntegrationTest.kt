@@ -9,9 +9,6 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.SyncHealth
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -149,11 +146,7 @@ class DeviceRefusalIntegrationTest {
 
     /** Every report the reporter received, by its note: its state section. */
     private suspend fun Rig.reportedStates(): Map<String, Map<String, String>> =
-        deviceJson("diagnostics/sent").getValue("dumps").jsonArray.associate { dump ->
-            val o = dump.jsonObject
-            o.getValue("note").jsonPrimitive.content to
-                o.getValue("state").jsonObject.mapValues { it.value.jsonPrimitive.content }
-        }
+        crashReporter.sent().associate { it.note to it.state }
 
     /**
      * The refused phone as it is in the field: holding no token. The rig's phone attested as it started; one refused tap

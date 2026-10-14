@@ -24,7 +24,7 @@ class PathFormLinkIntegrationTest {
     )
     fun a_path_form_link_opens_the_join_screen_for_its_event() = rigTest {
         // The bare path form names a PLAIN event; an encrypted one's carries its key (`EncryptedEventIntegrationTest`).
-        device("encrypt-new-events", "on" to "false")
+        devControls.encryptNewEvents(false)
         val event = registerEvent(name = "Anna's 40th")
 
         openLink("$LINK_ORIGIN/join/$event")

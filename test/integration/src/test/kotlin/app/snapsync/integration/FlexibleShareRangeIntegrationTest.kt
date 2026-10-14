@@ -24,7 +24,7 @@ class FlexibleShareRangeIntegrationTest {
     )
     fun photos_from_before_the_start_wait_for_it_and_are_shared_once_it_has_passed() = rigTest {
         extensionUploadsOnly()
-        device("clock/advance", "to" to BEFORE_THE_START)
+        advanceTo(BEFORE_THE_START)
         create(startsAt = START, endsAt = END)
         // The member shares from the evening before the event, and took a photo then.
         join("cutoff" to EVENING_BEFORE)
@@ -33,7 +33,7 @@ class FlexibleShareRangeIntegrationTest {
         uploadAll()
         assertTrue(objects().isEmpty(), "nothing is uploaded before the event starts")
 
-        device("clock/advance", "to" to DURING)
+        advanceTo(DURING)
         uploadAll()
         assertTrue(objects().any { it.startsWith("EVE") }, "the photo from the evening before is shared once it starts")
     }
@@ -46,14 +46,14 @@ class FlexibleShareRangeIntegrationTest {
     )
     fun a_range_ending_after_the_event_is_settled_at_its_own_end() = rigTest {
         extensionUploadsOnly()
-        device("clock/advance", "to" to DURING)
+        advanceTo(DURING)
         val event = createAndJoin("until" to TWO_DAYS_AFTER, startsAt = START, endsAt = END)
 
-        device("clock/advance", "to" to AFTER_THE_EVENT)
+        advanceTo(AFTER_THE_EVENT)
         cycle()
         assertEquals(false, final(event), "the member's range has not ended yet")
 
-        device("clock/advance", "to" to AFTER_THE_RANGE)
+        advanceTo(AFTER_THE_RANGE)
         cycle()
         assertEquals(true, final(event), "settled once the member's own range has ended")
     }
@@ -62,10 +62,10 @@ class FlexibleShareRangeIntegrationTest {
     @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after their own range has ended")
     fun a_range_ending_before_the_event_is_settled_before_the_event_ends() = rigTest {
         extensionUploadsOnly()
-        device("clock/advance", "to" to DURING)
+        advanceTo(DURING)
         val event = createAndJoin("direction" to "upload", "until" to EARLY_END, startsAt = START, endsAt = END)
 
-        device("clock/advance", "to" to AFTER_THE_EARLY_END)
+        advanceTo(AFTER_THE_EARLY_END)
         cycle()
         assertEquals(true, final(event), "settled at the member's own end, while the event still runs")
     }

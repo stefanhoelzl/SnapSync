@@ -74,8 +74,7 @@ internal fun launchWorld(
         val config = ConfigService(SharedDatabase(ports.databases.value, legacy = null), ports.clock.value)
         (config.read() as? ConfigRead.Joined)?.config?.eventId?.value
     },
-    setInviteLinkHints = { controls.hints = it },
-    setEncryptsNewEvents = { controls.encrypts = it },
+    controls = controls.levers,
 )
 
 /**

@@ -14,7 +14,7 @@ import kotlin.test.assertNull
  * On a shipped build, no invite link, however it is crafted, joins, switches or starts sharing without the member
  * confirming on the join screen.
  *
- * The host starts as a rig build, which honours a link's hints; `device/invite-link-hints?honoured=false` plays the
+ * The host starts as a rig build, which honours a link's hints; `dev-controls.inviteLinkHints(false)` plays the
  * shipped build, which ignores them. The positive control — a rig build auto-confirming the same link — is
  * `JoinGateIntegrationTest.autoJoin_auto_confirms_without_a_confirmation`, so the negatives here cannot pass by the
  * link simply failing to decode or load.
@@ -40,7 +40,7 @@ class InviteLinkHintsIntegrationTest {
     )
 
     private suspend fun Rig.shippedBuild() {
-        device("invite-link-hints", "honoured" to "false")
+        devControls.inviteLinkHints(false)
         device("relaunch")
     }
 
