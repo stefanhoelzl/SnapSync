@@ -50,7 +50,9 @@ import kotlin.time.Instant
  *   library imported and skips any other (the platform will not let the app move a camera photo). Every read reaches
  *   into the album folders as into any folder of the default gallery.
  * - [requestAccess] applies the state's answer **only while the grant is undetermined**, because a platform asks
- *   once. The selection picker has no surface off device and changes nothing.
+ *   once — and only then is the dialog raised ([WorldEvent.LibraryAccessAsked]). [widenSelection] presents the picker
+ *   ([WorldEvent.LibraryPickerShown]) only under a partial grant, the one a platform has a picker for; it changes
+ *   nothing — the selection the person picks arrives through the operator.
  * - **An import is two-phase, exactly like the real adapter**: the placeholder reaches `onImportPlaceholder` inside
  *   the "change block", before the asset is observable, and the outcome reaches `onImportSettled` before [import]
  *   returns. The state's [LibraryChangeAnswers] is how the library answers each change. **Every import mints a
@@ -232,12 +234,18 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
     }
 
     override suspend fun requestAccess(): LibraryGrant {
-        state.access.compareAndSet(LibraryGrant.NOT_DETERMINED, state.answer)
+        if (state.access.compareAndSet(LibraryGrant.NOT_DETERMINED, state.answer)) {
+            state.watcher.told(WorldEvent.LibraryAccessAsked)
+        }
         return state.access.value
     }
 
     override suspend fun widenSelection(): LibraryGrant {
-        state.pickersShown++
+        // Only a partial grant has a selection to widen; under any other the platform asks nothing (the Gallery contract).
+        if (state.access.value == LibraryGrant.LIMITED) {
+            state.pickersShown++
+            state.watcher.told(WorldEvent.LibraryPickerShown)
+        }
         return state.access.value
     }
 

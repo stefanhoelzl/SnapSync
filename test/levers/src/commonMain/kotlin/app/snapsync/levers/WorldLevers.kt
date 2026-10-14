@@ -154,6 +154,19 @@ sealed interface WorldEvent {
     @SerialName("library-joined-album")
     data class LibraryJoinedAlbum(val album: String, val asset: String) : Library
 
+    /**
+     * The platform's photo-access dialog was raised — the app asked while the grant was still undecided, the one time a
+     * platform asks.
+     */
+    @Serializable
+    @SerialName("library-access-asked")
+    data object LibraryAccessAsked : Library
+
+    /** The platform's photo picker was presented to widen a partial selection — the one grant it has a surface under. */
+    @Serializable
+    @SerialName("library-picker-shown")
+    data object LibraryPickerShown : Library
+
     /** What the platform's own UI recorded: what the app handed it. */
     @Serializable
     sealed interface HandedOver : WorldEvent

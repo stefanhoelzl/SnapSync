@@ -1220,7 +1220,8 @@ The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, 
 the photo library's: a walk, an add or an import parked on an operator's hold — `LibraryEnumerationHeld`,
 `LibraryAddHeld`, `LibraryImportParked` — a photo an import created (`LibraryAssetCreated`), an album the app made
 (`LibraryAlbumCreated`) and a photo that joined one, once per photo as a person would see it arrive
-(`LibraryJoinedAlbum`); the system UI's `Shared`, `UrlOpened` and `SettingsOpened`; the crash reporter's
+(`LibraryJoinedAlbum`), the access dialog raised (`LibraryAccessAsked`) and the picker presented under a partial grant
+(`LibraryPickerShown`); the system UI's `Shared`, `UrlOpened` and `SettingsOpened`; the crash reporter's
 `DumpReceived` and `EventReceived`; the databases' `DatabaseFaulted`; the operating system's `WorldEvent.Os`; each face batch adds its face's), each
 `Settled(now, nextTimer, state)`, and each lane rule broken (`LaneViolation`). A settle's `state` (`SettledState`) is what
 systems outside the app record at that moment — today `appStorageBytes`, the storage the app's files take, its
