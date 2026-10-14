@@ -184,7 +184,7 @@ coverage {
     }
     ":domain:presentation" {
         unit(alsoCoveredBy = listOf(":ui:screens"))
-        integration(instructions = 86, branches = 76)
+        integration(instructions = 87, branches = 76)
     }
     ":app:jvm" {
         unit(alsoCoveredBy = listOf(":test:integration"))

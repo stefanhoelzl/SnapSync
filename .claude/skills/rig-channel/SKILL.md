@@ -877,7 +877,8 @@ RigClient("http://127.0.0.1:$PORT").use { client ->
 
 The library's events: a walk, an add or an import parked on a hold (`LibraryEnumerationHeld`, `LibraryAddHeld`,
 `LibraryImportParked`), a photo an import created (`LibraryAssetCreated`), an album the app made
-(`LibraryAlbumCreated`) and a photo that joined one, once per photo (`LibraryJoinedAlbum`).
+(`LibraryAlbumCreated`) and a photo that joined one, once per photo (`LibraryJoinedAlbum`); the access dialog raised
+(`LibraryAccessAsked`) and the picker presented under a partial grant (`LibraryPickerShown`).
 
 `tagActs(tag)` / `actsTagged(tag)` mark a caller's acts so it finds where they begin in the stream — the behaviour DSL's
 own bookkeeping. A test never reads the stream by hand: it states a `behaviour { given / whenever / then }`

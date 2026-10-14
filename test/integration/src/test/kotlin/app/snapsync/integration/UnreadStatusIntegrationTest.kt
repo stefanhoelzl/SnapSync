@@ -111,7 +111,11 @@ class UnreadStatusIntegrationTest {
 
     @Test
     @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
-    @Verifies(spec = "photo-access", requirement = "A selection the app has not yet looked at withdraws nothing")
+    @Verifies(
+        spec = "photo-access",
+        requirement = "A selection the app has not yet looked at withdraws nothing",
+        scenario = "Reopening the app under limited access",
+    )
     fun `a limited grant whose selection has not arrived never reads in sync`() = behaviour {
         // A partial grant, a joined membership, photos in the library — and NO selection snapshot yet. On device
         // that window is the cold launch: the snapshot source's baseline read is a PhotoKit fetch plus an eager
