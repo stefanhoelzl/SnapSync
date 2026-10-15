@@ -1,15 +1,18 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.levers.KeychainItem
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -20,7 +23,8 @@ import kotlin.test.assertTrue
  */
 class EncryptedEventIntegrationTest {
 
-    private suspend fun Rig.creatingPlain() = devControls.encryptNewEvents(false)
+    private suspend fun Given.creatingPlain() =
+        step("events created plain", act = { devControls.encryptNewEvents(false) }, until = {})
 
     @Test
     @Verifies(
@@ -28,47 +32,75 @@ class EncryptedEventIntegrationTest {
         requirement = "Every invite form opens in every future version",
         scenario = "An encrypted event's invite carries its key",
     )
-    fun an_encrypted_event_s_invite_carries_its_key() = rigTest {
-        val event = createAndJoin()
-        val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl!!
+    fun an_encrypted_event_s_invite_carries_its_key() = behaviour {
+        val event = given { createdEvent() }
+
+        lateinit var joined: Seen<Layer.Joined>
+        whenever { confirmJoin() }
+        then { joined = screen<Layer.Joined> { it.inviteUrl?.contains("#k=") == true } }
+        val invite = joined.value.inviteUrl!!
         assertTrue(invite.startsWith("$LINK_ORIGIN/join/$event#k="), invite)
         assertEquals(43, invite.substringAfter("#k=").length, "a 32-byte key, base64url")
     }
 
     @Test
     @Verifies(spec = "invite-link", requirement = "Every invite form opens in every future version")
-    fun a_plain_event_keeps_the_fragment_form_invite() = rigTest {
-        creatingPlain()
-        createAndJoin()
-        val invite = awaitState { it.joined != null }.joined!!.inviteUrl!!
+    fun a_plain_event_keeps_the_fragment_form_invite() = behaviour {
+        given {
+            creatingPlain()
+            createdEvent()
+        }
+
+        lateinit var joined: Seen<Layer.Joined>
+        whenever { confirmJoin() }
+        then { joined = screen<Layer.Joined> { it.inviteUrl != null } }
+        val invite = joined.value.inviteUrl!!
         assertTrue(invite.startsWith("$LINK_ORIGIN/join#v=3&d="), invite)
     }
 
     @Test
     @Verifies(spec = "invite-link", requirement = "An incomplete invite never joins an encrypted event")
-    fun an_invite_without_the_key_never_joins_an_encrypted_event() = rigTest {
-        val event = createAndJoin()
-        val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl!!
-        leave()
+    fun an_invite_without_the_key_never_joins_an_encrypted_event() = behaviour {
+        val (event, invite) = given {
+            val event = createdEvent()
+            val invite = joinedWithItsInvite().inviteUrl!!
+            step("left", act = { tap(UiIntent.LeaveEvent) }, until = {
+                screen<Layer.CreateEvent>()
+                settled { true }
+            })
+            event to invite
+        }
 
-        openLink("$LINK_ORIGIN/join/$event")
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.WrongLink }
-        tap(UiIntent.CancelJoin)
-        awaitState { it.ui.layer is Layer.CreateEvent }
+        whenever { openLink("$LINK_ORIGIN/join/$event") }
+        then {
+            screen<Layer.JoiningEvent> { it.phase == JoinPhase.WrongLink }
+            never<WorldEvent.MemberJoined>()
+            settled { true }
+        }
+        whenever { tap(UiIntent.CancelJoin) }
+        then { screen<Layer.CreateEvent>() }
 
         // The whole invite still opens it.
-        openLink(invite)
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
-        assertEquals(event, join())
+        whenever { openLink(invite) }
+        then { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } }
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined> { it.membership.eventId == event }
+            event<WorldEvent.MemberJoined> { it.event == event }
+        }
     }
 
     @Test
     @Verifies(spec = "invite-link", requirement = "An incomplete invite never joins an encrypted event")
-    fun a_key_never_opens_a_plain_event() = rigTest {
-        val plain = registerEvent()
-        openLink("$LINK_ORIGIN/join/$plain#k=" + "A".repeat(42) + "E")
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.WrongLink }
-        assertNull(manifest(plain), "no enrolment")
+    fun a_key_never_opens_a_plain_event() = behaviour {
+        val plain = given { registeredEvent() }
+
+        whenever { openLink("$LINK_ORIGIN/join/$plain#k=" + "A".repeat(42) + "E") }
+        then {
+            screen<Layer.JoiningEvent> { it.phase == JoinPhase.WrongLink }
+            never<WorldEvent.MemberJoined>() // no enrolment
+            settled { true }
+        }
     }
 
     @Test
@@ -89,45 +121,74 @@ class EncryptedEventIntegrationTest {
         requirement = "The joined screen offers the invite until the event's photos are deleted",
         scenario = "The invite returns with the key",
     )
-    fun a_lost_key_stops_both_directions_and_the_reopened_invite_resumes_them() = rigTest {
-        val event = createAndJoin()
-        val invite = awaitState { it.joined?.inviteUrl?.contains("#k=") == true }.joined!!.inviteUrl!!
-        val settingsBefore = state().ready
+    fun a_lost_key_stops_both_directions_and_the_reopened_invite_resumes_them() = behaviour {
+        val (event, before) = given { createdEvent() to joinedWithItsInvite() }
+        val invite = before.inviteUrl!!
 
         // The phone was restored onto a new device: the membership came back, the key did not.
-        keychain.forget(KeychainItem.EVENT_KEY)
-        foreground()
-        awaitState { it.joined?.health == SyncHealth.KeyLost }
-        assertNull(state().joined?.inviteUrl, "no invite is offered without its key")
+        whenever {
+            keychain.forget(KeychainItem.EVENT_KEY)
+            os.foreground()
+        }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.KeyLost && it.inviteUrl == null }
+            // no invite is offered without its key
+            neverScreen<Layer.Joined> { it.health == SyncHealth.KeyLost && it.inviteUrl != null }
+            settled { true }
+        }
 
         // Neither uploader takes the new photo, and the other member's photo is not fetched.
-        addPhoto("OWN-1")
-        foreignDevice(DEV_F, "FQ")
-        foreground()
-        assertEquals("completed", cycle(), "the extension's cycle is withheld, and the system rests")
-        assertEquals(0, jobs().created, "the extension creates no upload")
-        assertEquals(0, appUploads().created, "the app's uploader creates no upload")
-        assertEquals(emptySet(), objects(), "nothing of this device reached the event")
-        assertEquals(0, state().download.inFlight, "no download starts")
-        assertEquals(SyncHealth.KeyLost, state().joined?.health)
+        lateinit var answer: String
+        whenever {
+            takePhoto("OWN-1")
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+            os.foreground()
+            answer = cycle()
+        }
+        then {
+            never<WorldEvent.UploadJobCreated>() // the extension creates no upload
+            never<WorldEvent.SessionTransferCreated>() // the app's uploader creates no upload
+            never<WorldEvent.BytesStored> { it.device != DEV_F } // nothing of this device reached the event
+            never<WorldEvent.DownloadStarted>() // no download starts
+            never<WorldEvent.UiChanged> { (it.ui.layer as? Layer.Joined)?.health != SyncHealth.KeyLost }
+        }
+        assertEquals("completed", answer, "the extension's cycle is withheld, and the system rests")
 
         // An invite without its key gives nothing back.
-        openLink("$LINK_ORIGIN/join/$event")
-        foreground()
-        assertEquals(SyncHealth.KeyLost, state().joined?.health)
+        whenever {
+            openLink("$LINK_ORIGIN/join/$event")
+            os.foreground()
+        }
+        then { never<WorldEvent.UiChanged> { (it.ui.layer as? Layer.Joined)?.health != SyncHealth.KeyLost } }
 
         // The whole invite gives the key back in place: no join screen, the same settings, both directions resume.
-        openLink(invite)
-        awaitState { it.joined != null && it.joined?.health != SyncHealth.KeyLost }
-        assertEquals(settingsBefore, state().ready, "the membership's settings are unchanged")
-        assertEquals(null, state().joined?.pendingSwitch, "no join screen")
-        assertEquals(
-            invite,
-            awaitState { it.joined?.inviteUrl != null }.joined!!.inviteUrl,
-            "the whole invite is offered again",
-        )
-        awaitAppUploads(1)
-        downloadAll()
-        assertTrue(gallery().census.total >= 2, "the other member's photo arrived beside the own one")
+        lateinit var resumed: Seen<Layer.Joined>
+        whenever { openLink(invite) }
+        then {
+            resumed = screen<Layer.Joined> { it.health != SyncHealth.KeyLost && it.inviteUrl == invite }
+            neverScreen<Layer.JoiningEvent>() // no join screen
+            neverScreen<Layer.Joined> { it.pendingSwitch != null }
+            event<WorldEvent.SessionTransferCreated>()
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
+        assertEquals(before.membership, resumed.value.membership, "the membership's settings are unchanged")
+
+        whenever { downloadSession.finish() }
+        then {
+            // the other member's photo arrived beside the own one
+            event<WorldEvent.LibraryAssetCreated> { it.asset == "imported-$DEV_F-FQ" }
+            settled { it.state.libraryPhotos.orEmpty().size >= 2 }
+        }
+    }
+
+    /** Joined through the open gate; answers the joined screen once it offers the whole invite, its key included. */
+    private suspend fun Given.joinedWithItsInvite(): Layer.Joined {
+        lateinit var joined: Seen<Layer.Joined>
+        step("joined", act = { confirmJoin() }, until = {
+            joined = screen<Layer.Joined> { it.inviteUrl?.contains("#k=") == true }
+            settled { true }
+        })
+        return joined.value
     }
 }

@@ -3,10 +3,10 @@ package app.snapsync.integration
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.BackendCall
-import app.snapsync.levers.RigState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -14,10 +14,6 @@ import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.step
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Seam ↔ UI-state integration for the join gate over the real
@@ -34,23 +30,26 @@ class JoinGateIntegrationTest {
         requirement = "Joining happens only on confirmation and needs a connection",
         scenario = "Confirming joins",
     )
-    fun first_join_loads_details_then_enrolls_and_joins() = rigTest {
-        val event = registerEvent(name = "Anna's Wedding") // exists, but not yet joined
+    fun first_join_loads_details_then_enrolls_and_joins() = behaviour {
+        val event = given { registeredEvent(name = "Anna's Wedding") } // exists, but not yet joined
 
-        openLink(inviteLink(event))
         // The event and the phase the gate reached — not the whole state: a loaded phase also carries the range the
         // reduction resolved, and restating that here would assert the resolution rules a second time.
         // `RangeResolutionTest` owns those.
-        val gate = awaitState { it.readyGate() != null }.ui.layer as Layer.JoiningEvent
-        assertEquals(event, gate.eventId)
-        assertEquals("Anna's Wedding", (gate.phase as JoinPhase.Detailed).eventName)
-
-        join() // config flipped present → joined layer
+        lateinit var gate: Seen<Layer.JoiningEvent>
+        whenever { openLink(inviteLink(event)) }
+        then { gate = screen<Layer.JoiningEvent> { it.readyGate() != null } }
+        assertEquals(event, gate.value.eventId)
+        assertEquals("Anna's Wedding", (gate.value.phase as JoinPhase.Detailed).eventName)
 
         // Outcomes: the membership is this event, and a register-only EMPTY manifest was deposited (membership).
-        assertEquals(event, state().joined!!.membership.eventId)
-        val manifest = manifest(event)
-        assertTrue(manifest != null && manifest.isEmpty(), "enrollment writes an empty manifest: $manifest")
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined> { it.membership.eventId == event }
+            event<WorldEvent.MemberJoined> { it.event == event }
+            event<WorldEvent.ManifestPublished> { it.event == event && it.added.isEmpty() } // enrollment writes it empty
+            never<WorldEvent.ManifestPublished> { it.added.isNotEmpty() }
+        }
     }
 
     @Test
@@ -59,15 +58,17 @@ class JoinGateIntegrationTest {
         requirement = "The join screen verifies the event before offering to join",
         scenario = "An event that does not exist cannot be joined",
     )
-    fun a_missing_event_blocks_the_join() = rigTest {
+    fun a_missing_event_blocks_the_join() = behaviour {
         // A well-formed id no backend ever minted.
         val event = "33333333-3333-4333-8333-333333333333"
 
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.NotFound }
-
-        assertFalse(state().ready.configResolved)
-        assertNull(manifest(event))
+        whenever { openLink(inviteLink(event)) }
+        then {
+            screen<Layer.JoiningEvent> { it.phase == JoinPhase.NotFound }
+            neverScreen<Layer.Joined>()
+            never<WorldEvent.MemberJoined>()
+            settled { true }
+        }
     }
 
     @Test
@@ -76,16 +77,21 @@ class JoinGateIntegrationTest {
         requirement = "The join screen verifies the event before offering to join",
         scenario = "An unreachable server can be retried",
     )
-    fun a_load_failure_is_retryable() = rigTest {
-        val event = registerEvent(name = "Anna's Wedding")
+    fun a_load_failure_is_retryable() = behaviour {
+        val event = given {
+            registeredEvent(name = "Anna's Wedding").also {
+                step("the backend unreachable", act = { backend.offline(true) }, until = {})
+            }
+        }
 
-        backend.offline(true)
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase == JoinPhase.LoadFailed }
+        whenever { openLink(inviteLink(event)) }
+        then { screen<Layer.JoiningEvent> { it.phase == JoinPhase.LoadFailed } }
 
-        backend.offline(false)
-        tap(UiIntent.RetryLoad)
-        awaitReady()
+        whenever {
+            backend.offline(false)
+            tap(UiIntent.RetryLoad)
+        }
+        then { screen<Layer.JoiningEvent> { it.readyGate() != null } }
     }
 
     @Test
@@ -94,19 +100,19 @@ class JoinGateIntegrationTest {
         requirement = "Joining happens only on confirmation and needs a connection",
         scenario = "A failed join is retryable and leaves nothing behind",
     )
-    fun a_failed_enrollment_does_not_join() = rigTest {
-        val event = registerEvent(name = "Anna's Wedding")
-
-        openLink(inviteLink(event))
-        awaitReady()
-
-        backend.offline(true) // enrollment PUT now fails
-        confirmJoin()
-        awaitState {
-            ((it.ui.layer as? Layer.JoiningEvent)?.phase)?.step == JoinPhase.Detailed.Step.CommitFailed
+    fun a_failed_enrollment_does_not_join() = behaviour {
+        given {
+            gateReady(registeredEvent(name = "Anna's Wedding"))
+            step("the backend unreachable", act = { backend.offline(true) }, until = {}) // enrollment PUT now fails
         }
 
-        assertFalse(state().ready.configResolved) // not joined
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.JoiningEvent> { it.phase.step == JoinPhase.Detailed.Step.CommitFailed }
+            neverScreen<Layer.Joined>() // not joined
+            never<WorldEvent.MemberJoined>()
+            settled { true }
+        }
     }
 
     /**
@@ -122,53 +128,56 @@ class JoinGateIntegrationTest {
         requirement = "Opening another event's invite asks before switching",
         scenario = "Confirming leaves, then configures the new event",
     )
-    fun a_switch_leaves_the_current_event_then_joins_the_new_one_as_configured() = rigTest {
-        val next = registerEvent(name = "Anna's Wedding") // F exists to switch to
-        val current = createAndJoin(name = "Summer Trip") // already joined to E
-
-        openLink(inviteLink(next))
-        awaitSwitchReady()
+    fun a_switch_leaves_the_current_event_then_joins_the_new_one_as_configured() = behaviour {
+        val (next, current) = given { switchOffered() }
 
         // Confirm = the leave alone. E is gone and the SAME pending join is now the full-screen
         // surface for F, where the choices are made.
-        tap(UiIntent.ConfirmSwitch)
-        awaitState { it.ui.layer is Layer.JoiningEvent && !it.ready.configResolved }
+        whenever { tap(UiIntent.ConfirmSwitch) }
+        then {
+            screen<Layer.JoiningEvent> { it.eventId == next }
+            event<WorldEvent.MemberLeft> { it.event == current } // and departed the old
+        }
 
-        confirmJoin(Choices(direction = Direction.DownloadOnly, saveToAlbum = true))
-        val membership = awaitState { it.ready.eventId == next }.joined!!.membership
-
-        assertEquals(next, membership.eventId) // switched
+        lateinit var joined: Seen<Layer.Joined>
+        whenever { confirmJoin(Choices(direction = Direction.DownloadOnly, saveToAlbum = true)) }
+        then {
+            joined = screen<Layer.Joined> { it.membership.eventId == next } // switched
+            event<WorldEvent.MemberJoined> { it.event == next } // enrolled in the new event
+        }
+        val membership = joined.value.membership
         assertEquals(false to true, membership.shares to membership.receives) // the member's direction, not Both
         assertEquals(true, membership.savesToAlbum) // the member's album opt-in
-        assertNotNull(manifest(next), "enrolled in the new event")
-        eventually<Boolean>(read = { departed(current) }) { it } // and departed the old
     }
 
     @Test
     @Verifies(spec = "invite-link", requirement = "Opening another event's invite asks before switching")
-    fun a_switch_does_not_block_on_the_departed_events_delete() = rigTest {
-        val next = registerEvent(name = "Anna's Wedding") // F exists to switch to
-        val current = createAndJoin(name = "Summer Trip") // already joined to E
+    fun a_switch_does_not_block_on_the_departed_events_delete() = behaviour {
+        val (next, current) = given {
+            // The backend holds E's DELETE open, so it never completes while the switch runs.
+            step("the leave held", act = { backend.hold(BackendCall.LEAVE) }, until = {})
+            switchOffered()
+        }
 
-        // The backend holds E's DELETE open, so it never completes while the switch runs.
-        backend.hold(BackendCall.LEAVE)
-
-        openLink(inviteLink(next))
-        awaitSwitchReady()
-
-        tap(UiIntent.ConfirmSwitch)
         // The join surface appears even though E's DELETE is still pending: the leave's local teardown
         // never waits on the departed event's fire-and-forget backend notify.
-        awaitState { it.ui.layer is Layer.JoiningEvent && !it.ready.configResolved }
+        whenever { tap(UiIntent.ConfirmSwitch) }
+        then {
+            screen<Layer.JoiningEvent> { it.eventId == next }
+            event<WorldEvent.BackendHeld> { it.call == BackendCall.LEAVE }
+        }
 
-        confirmJoin()
         // …and the new event's join completes with E's DELETE still hanging.
-        awaitState { it.ready.eventId == next }
-        assertNotNull(manifest(next), "enrolled in the new event")
-        assertFalse(departed(current), "E's DELETE never gated either step")
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined> { it.membership.eventId == next }
+            event<WorldEvent.MemberJoined> { it.event == next } // enrolled in the new event
+            never<WorldEvent.MemberLeft>() // E's DELETE never gated either step
+            settled { true }
+        }
 
-        backend.release(BackendCall.LEAVE)
-        eventually<Boolean>(read = { departed(current) }) { it }
+        whenever { backend.release(BackendCall.LEAVE) }
+        then { event<WorldEvent.MemberLeft> { it.event == current } }
     }
 
     @Test
@@ -225,37 +234,39 @@ class JoinGateIntegrationTest {
 
     @Test
     @Verifies(spec = "event-album", requirement = "The album is offered on by default and declinable in one tap")
-    fun an_untouched_gate_commits_the_album() = rigTest {
+    fun an_untouched_gate_commits_the_album() = behaviour {
         // The seed is only a claim until it crosses `JoinEvent`. Every other join case here sets the album
         // explicitly, so without this one nothing covers the default actually reaching the persisted membership.
-        val event = registerEvent(name = "Anna's Wedding")
-
-        openLink(inviteLink(event))
-        awaitReady()
+        given { gateReady(registeredEvent(name = "Anna's Wedding")) }
 
         // Touch nothing — confirm the surface exactly as it loaded.
-        join()
-
-        assertEquals(true, state().joined!!.membership.savesToAlbum)
+        lateinit var joined: Seen<Layer.Joined>
+        whenever { confirmJoin() }
+        then { joined = screen<Layer.Joined>() }
+        assertEquals(true, joined.value.membership.savesToAlbum)
     }
 
     @Test
-    fun join_persists_the_capture_date_cutoff_through_the_provision_path() = rigTest {
+    fun join_persists_the_capture_date_cutoff_through_the_provision_path() = behaviour {
         // Regression: the chosen cutoff must survive the confirm → the join → the stored membership. A wiring that
         // drops it (as an early iOS build did) leaves the extension whole-library.
         //
         // The cutoff here is ABOVE the event's start (and inside its window), so the floor binds nothing and it
         // lands verbatim.
-        val event = registerEvent(name = "Anna's Wedding")
+        val event = given { registeredEvent(name = "Anna's Wedding").also { gateReady(it) } }
 
         val cutoff = "2026-06-10T00:00:00Z"
-        openLink(inviteLink(event))
-        awaitReady()
-        join(Choices(cutoff = cutoff))
-        val joined = awaitState { it.ready.eventId == event }
+
+        lateinit var joined: Seen<Layer.Joined>
+        whenever { confirmJoin(Choices(cutoff = cutoff)) }
+        then { joined = screen<Layer.Joined> { it.membership.eventId == event } }
 
         // The calendar chooses a day, in the device's zone: the chosen day is what must reach the membership.
-        assertEquals("2026-06-10", joined.ready.minPhotoDate?.take(10), "the cutoff must be persisted in config")
+        assertEquals(
+            "2026-06-10",
+            joined.value.membership.sharesFrom.toString().take(10),
+            "the cutoff must be persisted in config",
+        )
     }
 
     // ── The membership self-leave ─────────────────────────────────────────────────────────────────────────────
@@ -314,17 +325,30 @@ class JoinGateIntegrationTest {
     // ---- helpers --------------------------------------------------------------------------------
 
     /** The open join gate's loaded phase, once it offers the confirm. */
-    private fun RigState.readyGate(): JoinPhase.Detailed? =
-        ((ui.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.takeIf { it.step == JoinPhase.Detailed.Step.Ready }
+    private fun Layer.JoiningEvent.readyGate(): JoinPhase.Detailed? =
+        (phase as? JoinPhase.Detailed)?.takeIf { it.step == JoinPhase.Detailed.Step.Ready }
 
-    private suspend fun Rig.awaitReady(): JoinPhase.Detailed = awaitState { it.readyGate() != null }.readyGate()!!
+    /** [event]'s invite opened, its join gate ready to join. */
+    private suspend fun Given.gateReady(event: String) = step("its join gate ready", act = {
+        openLink(inviteLink(event))
+    }, until = { screen<Layer.JoiningEvent> { it.eventId == event && it.readyGate() != null } })
 
-    private suspend fun Rig.awaitSwitchReady() {
-        awaitState { it.joined?.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready }
+    /**
+     * Joined to E ("Summer Trip") with F ("Anna's Wedding") existing, and F's invite opened: the switch offered, ready.
+     * Answers F and E.
+     */
+    private suspend fun Given.switchOffered(): Pair<String, String> {
+        val next = registeredEvent(name = "Anna's Wedding") // F exists to switch to
+        val current = createdEvent(name = "Summer Trip") // already joined to E
+        step("joined to it", act = { confirmJoin() }, until = {
+            screen<Layer.Joined>()
+            settled { true }
+        })
+        step("F's invite opened", act = { openLink(inviteLink(next)) }, until = {
+            screen<Layer.Joined> { it.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready }
+        })
+        return next to current
     }
-
-    private suspend fun Rig.departed(event: String): Boolean =
-        backend.membership(event).departed
 
     private companion object {
         /** Past the retention deadline of every event these tests create. */
