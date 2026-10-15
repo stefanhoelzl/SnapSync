@@ -1,6 +1,5 @@
 package app.snapsync.mock
 
-import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.CrashReporter
@@ -37,10 +36,8 @@ fun inMemoryCrashReporter(
 
 fun inMemoryCrashReporter(): CrashReporter = InMemoryCrashReporter()
 
-/** [readable] is the caller's own cell: a device unlocked since boot by default. */
-fun inMemoryProcessInfo(
-    protectedData: MutableStateFlow<Availability> = MutableStateFlow(Availability.AVAILABLE),
-): ProcessInfo = InMemoryProcessInfo(protectedData)
+/** A process whose footprint is a plausible small app's. */
+fun inMemoryProcessInfo(): ProcessInfo = InMemoryProcessInfo()
 
 /** [access] is the caller's own cell: what the operating system reports about the network. */
 fun inMemoryNetworkMonitor(access: MutableStateFlow<NetworkAccess>): NetworkMonitor = InMemoryNetworkMonitor(access)

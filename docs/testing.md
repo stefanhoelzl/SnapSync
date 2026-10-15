@@ -632,9 +632,8 @@ recording is input to a clause, never an expectation.
 it in the app's `Documents/contracts/` too. A production build contains none of the contract module, the
 bindings or the recorder.
 
-Some states exist only once the app has left the person's hands, and their runs wait for it: the screen locked
-(`ProcessInfo@IOS_DEVICE_APP.LOCKED.rec`), the app sent to the home screen until its background time runs out
-(`BackgroundTime`). Each holds background time and waits — reading the app's own state, unrecorded — for the person
+Some states exist only once the app has left the person's hands, and their runs wait for it: the app sent to the home
+screen until its background time runs out (`BackgroundTime`). Each holds background time and waits — reading the app's own state, unrecorded — for the person
 to put the phone there. Two span launches, and are asked for in two steps (`?step=arm`, then `?step=collect`): the
 relaunch, where the app prepares a transfer in a session of its own and exits, and iOS relaunches it in the
 background to deliver the transfer's end (`TransferSession@IOS_DEVICE_APP.rec`, and `SharePresenter@IOS_DEVICE_APP.rec` from

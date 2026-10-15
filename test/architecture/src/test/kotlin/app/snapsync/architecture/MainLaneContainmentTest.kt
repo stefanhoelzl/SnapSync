@@ -56,11 +56,6 @@ class MainLaneContainmentTest {
         // adapter's `Completion` puts the call where UIKit requires (phase 11f — before it, `OsCompletions` took a lane).
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/ios/urlsession/SessionCompletion.kt" to
             "the background URLSession completion handler (UIKit, main-thread-only)",
-        // Reads the main-thread-only `isProtectedDataAvailable` for the background entry points' diagnostics
-        // (capability `sync-status`). The read moved here from `SnapSyncRoot` when the shell became a driving
-        // adapter: the core's entries ask the `ProcessInfo` port, and this adapter names the lane itself.
-        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/protection/IosProcessInfo.kt" to
-            "UIApplication.isProtectedDataAvailable",
         // Reads the main-thread-only `UIDevice` battery (switching battery monitoring on and back off in the same hop)
         // and `UIApplication.backgroundRefreshStatus` for a bug report (capability `privacy-security`).
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/device/IosDeviceConditions.kt" to
@@ -69,10 +64,10 @@ class MainLaneContainmentTest {
         // sheet it presented, and UIKit dismissal is main-thread-only like the presentation it undoes.
         "/adapter/ios/app-only/src/rig/kotlin/app/snapsync/contract/HandoffContracts.kt" to
             "dismisses the UIActivityViewController a clause presented",
-        // The device runs' reads of the app's own state (rig-gated): whether it is in the background, whether the
-        // person locked the phone — `UIApplication`, main-thread-only.
+        // The device runs' reads of the app's own state (rig-gated): whether it is in the background, and the background
+        // time a run holds — `UIApplication`, main-thread-only.
         "/adapter/ios/app-only/src/rig/kotlin/app/snapsync/contract/MainThreadReads.kt" to
-            "UIApplication.applicationState + isProtectedDataAvailable",
+            "UIApplication.applicationState + background time",
         // The Android app shell: its composition scope runs on the main lane — the lifecycle adapter's process observer
         // must be added on the main thread. The composition itself names no main lane: every platform-UI adapter
         // hops there on its own (`docs/architecture.md`, "Dispatcher lanes are fixed by the composition").

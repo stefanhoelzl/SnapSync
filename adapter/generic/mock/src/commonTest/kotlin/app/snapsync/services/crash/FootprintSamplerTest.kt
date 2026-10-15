@@ -2,7 +2,6 @@ package app.snapsync.services.crash
 
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryFiles
-import app.snapsync.model.Availability
 import app.snapsync.model.MemoryFootprint
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.services.foreground.AppForeground
@@ -24,7 +23,6 @@ class FootprintSamplerTest {
     /** A [ProcessInfo] reading [footprint] as its own memory accounting. */
     private class Reading(private val footprint: MemoryFootprint?) : ProcessInfo {
         var reads = 0
-        override suspend fun protectedDataAvailable() = Availability.AVAILABLE
         override fun memoryFootprint(): MemoryFootprint? = footprint.also { reads++ }
     }
 

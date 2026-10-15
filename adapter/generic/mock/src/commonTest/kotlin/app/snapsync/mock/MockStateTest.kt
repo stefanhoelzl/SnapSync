@@ -7,7 +7,6 @@ import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.StoredDeviceConfig
-import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.CrashOptions
@@ -156,7 +155,6 @@ class MockStateTest {
         assertEquals(1, copy.uploadQueue.view().created.size)
         assertEquals(true, copy.extensionRegistry.record.value)
         assertTrue(copy.extensionRegistry.carried, "the OS carrying the extension is the device's, so it survives")
-        assertEquals(Availability.UNAVAILABLE, copy.processInfo.protectedData)
         assertEquals(NetworkAccess.Blocked, copy.connectivity.access)
         assertEquals(CONDITIONS, copy.deviceConditions.reading)
         assertEquals(listOf("hello"), copy.systemUi.shared.value)
@@ -225,7 +223,6 @@ class MockStateTest {
             setContext("standing", mapOf("k" to "v"))
             capture(CrashEvent(message = "event"))
         }
-        device.processInfo.protectedData = Availability.UNAVAILABLE
         device.connectivity.access = NetworkAccess.Blocked
         device.deviceConditions.reading = CONDITIONS
         device.clock.now = Instant.parse("2026-07-01T12:00:00Z")

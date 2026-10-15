@@ -13,7 +13,6 @@ import app.snapsync.levers.ReceivedEvent
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.SystemUiRecord
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.Handoff
 import app.snapsync.model.MemoryFootprint
@@ -106,33 +105,24 @@ internal fun received(dump: CrashEvent): ReceivedDump {
     )
 }
 
-/** What the OS says about the device: whether protected data is readable. */
-class ProcessInfoMock(protectedData: Availability = Availability.AVAILABLE) {
-    internal val cell = MutableStateFlow(protectedData)
+/** What the OS says about the app's process: its memory footprint. */
+class ProcessInfoMock {
     internal val footprint = MutableStateFlow<MemoryFootprint?>(DEFAULT_FOOTPRINT)
-
-    /** The device's protected data, locked or not. In-process plumbing; the channel's is the [operator]. */
-    var protectedData: Availability by cell::value
 
     /** The process's memory footprint, as the app reads it when it records one; `null` reads as none answered. */
     var memory: MemoryFootprint? by footprint::value
 
-    fun port(): ProcessInfo = InMemoryProcessInfo(cell, footprint)
+    fun port(): ProcessInfo = InMemoryProcessInfo(footprint)
 
     val operator: ProcessInfoOperator = ProcessInfoOperator(this)
 }
 
 class ProcessInfoOperator internal constructor(private val mock: ProcessInfoMock) : ProcessInfoLevers {
-    override suspend fun protectedData(available: Boolean) {
-        mock.protectedData = if (available) Availability.AVAILABLE else Availability.UNAVAILABLE
-    }
-
     override suspend fun footprint(footprint: Footprint?) {
         mock.memory = footprint?.let { MemoryFootprint(it.bytes, it.peakBytes, it.headroomBytes) }
     }
 
     override suspend fun info(): ProcessInfoView = ProcessInfoView(
-        protectedDataAvailable = mock.protectedData == Availability.AVAILABLE,
         footprint = mock.memory?.let { Footprint(it.footprintBytes, it.peakBytes, it.headroomBytes) },
     )
 }

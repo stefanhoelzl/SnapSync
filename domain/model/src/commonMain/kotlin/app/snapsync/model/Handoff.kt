@@ -18,9 +18,6 @@ sealed interface Handoff {
     data class Refused(val reason: String) : Handoff
 }
 
-/** Whether something the platform guards can be reached right now — a read every platform can always make. */
-enum class Availability { AVAILABLE, UNAVAILABLE }
-
 /**
  * Records a hand-off to the platform that did not happen, and answers it unchanged. Nothing acts on a [Handoff], but a
  * refusal is logged at `Error` by [log] as [name]'s, because the user then tapped and nothing happened — on the
