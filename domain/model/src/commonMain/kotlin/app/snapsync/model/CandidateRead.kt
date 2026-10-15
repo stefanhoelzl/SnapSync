@@ -37,7 +37,11 @@ sealed interface CandidateRead {
      * other count does. A non-contributing membership and a member whose library holds only screenshots
      * both land here.
      */
-    data class Readable(val candidates: List<Candidate>) : CandidateRead
+    data class Readable(
+        val candidates: List<Candidate>,
+        /** Where these candidates came from, which decides the rules that judge them ([SelectionPolicy.over]). */
+        val scope: CandidateScope,
+    ) : CandidateRead
 
     /**
      * **The admitted set cannot be stated right now.** Named for that consequence rather than for any

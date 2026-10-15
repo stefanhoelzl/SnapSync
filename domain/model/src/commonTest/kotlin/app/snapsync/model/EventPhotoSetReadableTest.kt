@@ -42,7 +42,9 @@ class EventPhotoSetReadableTest {
 
     @Test
     fun a_readable_library_yields_a_set_that_counts() = runTest {
-        val set = EventPhotoSet.readable(policy()) { CandidateRead.Readable(camera("A") + camera("B")) }
+        val set = EventPhotoSet.readable(policy()) {
+            CandidateRead.Readable(camera("A") + camera("B"), CandidateScope.Library)
+        }
 
         assertEquals(2, set?.count())
     }
@@ -59,7 +61,7 @@ class EventPhotoSetReadableTest {
         // Out of scope by capture date — read successfully, admitted by nothing. This is the answer that
         // must stay distinguishable from the one above: it is a COUNTED zero, and it settles the screen.
         val set = EventPhotoSet.readable(policy()) {
-            CandidateRead.Readable(camera("OLD", creationDate = "2020-01-01T00:00:00Z"))
+            CandidateRead.Readable(camera("OLD", creationDate = "2020-01-01T00:00:00Z"), CandidateScope.Library)
         }
 
         assertEquals(0, set?.count(), "nothing qualifies is a count, not an absence")
@@ -75,9 +77,32 @@ class EventPhotoSetReadableTest {
 
         EventPhotoSet.readable(expected) { p ->
             seen = p
-            CandidateRead.Readable(emptyList())
+            CandidateRead.Readable(emptyList(), CandidateScope.Library)
         }
 
         assertTrue(seen === expected, "the unwrap must hand the policy to the read")
+    }
+
+    @Test
+    fun a_selection_is_judged_by_the_rules_its_read_names() = runTest {
+        // Where the read says its candidates came from picks the rules (`SelectionPolicy.over`): a hand-picked
+        // screenshot and a small image count under a partial grant's selection, and the same photos read by a walk of
+        // the library do not. The read still receives the whole policy — what the platform narrows on is unchanged.
+        val photos = candidatesFromFacts(
+            listOf(
+                AssetFacts(AssetId("SHOT"), TimestampText.captureDate(inWindow), isScreenshot = true),
+                AssetFacts(AssetId("SMALL"), TimestampText.captureDate(inWindow), pixelArea = 1600L * 1200L),
+            ),
+        )
+        var seen: SelectionPolicy? = null
+        val selected = EventPhotoSet.readable(policy()) { p ->
+            seen = p
+            CandidateRead.Readable(photos, CandidateScope.Selection)
+        }
+        val walked = EventPhotoSet.readable(policy()) { CandidateRead.Readable(photos, CandidateScope.Library) }
+
+        assertEquals(2, selected?.count(), "the member chose each one")
+        assertEquals(0, walked?.count(), "a walk still excludes what is certainly not an event photo")
+        assertEquals(policy(), seen)
     }
 }

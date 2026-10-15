@@ -37,6 +37,11 @@ enum class AlbumLookupFailure { AdmitOnDoubt, FailCycle }
  *
  * The empty set is the honest answer, not a fallback: the denylist is a subtraction and the policy admits on
  * doubt.
+ *
+ * **Load-bearing for a partial grant on Android too**, where a folder is readable on every item: a selection is judged
+ * without the album rule (`SelectionPolicy.over`), but a ledger ROW is judged by the plain policy — the enqueue, the
+ * manifest, the album gather — so a non-empty set under `LIMITED` would hold back a selected photo the admission just
+ * let through. Asking only under a full grant keeps the two agreeing.
  */
 suspend fun denylistedAlbumMembers(
     manager: GalleryAlbums,

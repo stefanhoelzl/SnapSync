@@ -8,6 +8,7 @@ import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.AlbumContents
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
+import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.StoreKind
@@ -139,8 +140,15 @@ internal data class Picking(val range: EventRange, val bounds: RangeBounds)
 internal fun CutoffFormatter.shareBounds(windowStart: LocalDateTime, windowEnd: LocalDateTime): RangeBounds =
     RangeBounds.aroundEvent(windowStart, windowEnd, ::latestEnd, ::earliestStart)
 
-/** A form and what it resolved to — with the calendar, while it is [picking] — as the participation surface shows them. */
-internal fun RangeForm.view(range: ResolvedRange, picking: Picking? = null): RangeView = RangeView(
+/**
+ * A form and what it resolved to — with the calendar, while it is [picking] — as the participation surface shows them.
+ * [permission] decides what the surface says is shared: under a partial grant, the member's selection.
+ */
+internal fun RangeForm.view(
+    range: ResolvedRange,
+    permission: GalleryAccess,
+    picking: Picking?,
+): RangeView = RangeView(
     shareOn = shareOn,
     receiveOn = receiveOn,
     saveToAlbum = saveToAlbum,
@@ -156,6 +164,7 @@ internal fun RangeForm.view(range: ResolvedRange, picking: Picking? = null): Ran
     shareCount = range.shareCount,
     picker = picking?.let { it.range.view(it.bounds, range.today) },
     outside = outsideReach(range),
+    sharesSelection = permission == GalleryAccess.LIMITED,
 )
 
 /**

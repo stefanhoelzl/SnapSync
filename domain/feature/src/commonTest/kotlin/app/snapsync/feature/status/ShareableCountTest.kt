@@ -6,6 +6,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TimestampText
@@ -57,6 +58,7 @@ private class FactsSource(private val facts: List<AssetFacts>) : CandidateSource
                     override suspend fun resources(): List<Resource> = error("a count must not read resources")
                 }
             },
+            CandidateScope.Library,
         )
     }
 }

@@ -21,6 +21,7 @@ import app.snapsync.ui.resources.share_off_note
 import app.snapsync.ui.resources.share_outside_after
 import app.snapsync.ui.resources.share_outside_before
 import app.snapsync.ui.resources.share_outside_both
+import app.snapsync.ui.resources.share_selection_note
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.share_zero_note
 import app.snapsync.ui.state.AlbumHolds
@@ -90,7 +91,8 @@ internal fun ColumnScope.ParticipationSections(
 
 /**
  * What sharing means, beneath its switch: the range row, a line when the range reaches outside the event's dates,
- * then what is never shared — or, with sharing off, that nothing leaves the phone.
+ * then what is never shared (or, under a partial grant, that the selected photos are) — or, with sharing off, that
+ * nothing leaves the phone.
  */
 @Composable
 private fun ColumnScope.ShareBody(state: ParticipationState, actions: ParticipationActions) {
@@ -115,8 +117,10 @@ private fun ColumnScope.ShareBody(state: ParticipationState, actions: Participat
     // The origin exclusions, stated as what is SUBTRACTED, never as a
     // guarantee of what gets through: the policy cannot infer capture-origin, so it removes only what is
     // certainly not a capture and ADMITS ON DOUBT. "Screenshots … are never shared" is exactly true; "only
-    // photos you took are shared" would not be.
-    AppSectionNote(stringResource(Res.string.share_exclusions_note))
+    // photos you took are shared" would not be. Under a partial grant none of them applies — the member picked each
+    // photo — so the surface says what IS shared instead.
+    val note = if (state.range.sharesSelection) Res.string.share_selection_note else Res.string.share_exclusions_note
+    AppSectionNote(stringResource(note))
 }
 
 /**

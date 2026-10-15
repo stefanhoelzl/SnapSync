@@ -5,8 +5,8 @@
 Serves every member — host or guest — at the one decision SnapSync ever asks of them: whether the app
 may see their photos. Once access is on and an event is joined, sharing runs by itself with no upload
 button and no per-photo consent. Full and limited access are both working answers, on iPhone and on
-Android 14 and later: under limited access the photos the member hand-picked are exactly what they
-share, which for a guest at someone else's event is often the more natural choice. Missing access never
+Android 14 and later: under limited access the photos the member hand-picked from their range are exactly what
+they share, which for a guest at someone else's event is often the more natural choice. Missing access never
 hides the event, never nags, and is only ever requested because the member asked for it; the app offers
 its own routes to widen access and picks up any change made in the phone's Settings.
 Decision record: changes/archive/2026-07-20-accept-limited-photo-access
@@ -53,12 +53,13 @@ granted.
 
 ### Requirement: Limited access is a working membership whose scope is the selection
 
-Under limited access the photos the member selected in the system's photo selection — and only those —
-SHALL be the photos considered for sharing, filtered exactly as a full library would be (capability
-`photo-sharing`). Nothing outside the selection SHALL ever be uploaded, by the app or in the background.
-"Up to date" SHALL mean every selected, in-range photo is shared and everything received has arrived; limited
-access SHALL NOT be shown as a problem. Limited access SHALL be offered wherever the phone's system offers
-it — every supported iPhone, and Android 14 and later; below Android 14 access is full or none.
+Under limited access the photos the member selected in the system's photo selection — and only those — SHALL be the
+photos considered for sharing, and of those the ones inside the member's capture range are shared, whatever else they
+are (capability `photo-sharing`, requirement "Under limited access the member's selection decides what a photo is").
+Nothing outside the selection SHALL ever be uploaded, by the app or in the background. "Up to date" SHALL mean every
+selected, in-range photo is shared and everything received has arrived; limited access SHALL NOT be shown as a
+problem. Limited access SHALL be offered wherever the phone's system offers it — every supported iPhone, and Android
+14 and later; below Android 14 access is full or none.
 
 #### Scenario: Selected photos share through the ordinary rules
 - **WHEN** a limited-access member has selected photos, some taken inside the event's range and some
@@ -75,8 +76,8 @@ it — every supported iPhone, and Android 14 and later; below Android 14 access
 
 #### Scenario: Android 14 offers a selection
 - **WHEN** a member on Android 14 or later chooses to allow access to selected photos only
-- **THEN** they are a working member sharing only the selected photos that are in DCIM, outside its excluded
-  folders, and in range
+- **THEN** they are a working member sharing only the selected photos that are in range, wherever on the phone
+  they are stored
 
 ### Requirement: Receive-only with limited access is never nagged
 
@@ -135,10 +136,13 @@ foreground, without any action inside the app.
 
 ### Requirement: Switching between full and limited access never re-uploads
 
-Moving from full to limited access SHALL narrow what is shared to the selection from then on: selected
-photos already shared SHALL stay shared without being uploaded again, and photos outside the selection
-SHALL be withdrawn like any de-selected photo (capability `photo-sharing`). Moving from limited to full
-access SHALL share only the in-range photos not yet shared, re-uploading nothing.
+Moving from full to limited access SHALL narrow what is shared to the selection from then on: selected photos already
+shared SHALL stay shared without being uploaded again, and photos outside the selection SHALL be withdrawn like any
+de-selected photo (capability `photo-sharing`). Moving from limited to full access SHALL share only the in-range
+photos not yet shared, re-uploading nothing. A switch SHALL also change which kinds of photo are shared: a selected
+photo that only limited access shares (capability `photo-sharing`, requirement "Under limited access the member's
+selection decides what a photo is") SHALL be withdrawn on moving to full access, and shared again — uploaded again,
+like a photo recovered after being deleted — if access becomes limited with it still selected.
 
 #### Scenario: Widening to full access
 - **WHEN** a member who shared photos under limited access switches to full access
@@ -155,6 +159,11 @@ access SHALL share only the in-range photos not yet shared, re-uploading nothing
   that excludes some of them
 - **THEN** the excluded photos leave the event for the other members, the selected ones stay without
   being uploaded again, and the status reflects the selection
+
+#### Scenario: A selected screenshot leaves on widening to full access
+- **WHEN** a limited-access member shared a selected screenshot taken during the event, then switches to full access
+- **THEN** the screenshot stops being offered to the other members, members who already have it keep it, and
+  nothing is uploaded again
 
 ### Requirement: A selection the app has not yet looked at withdraws nothing
 

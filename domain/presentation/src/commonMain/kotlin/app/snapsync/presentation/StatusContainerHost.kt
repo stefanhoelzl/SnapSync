@@ -1445,7 +1445,8 @@ private fun unjoinedLayer(
         val layer = Layer.JoiningEvent(
             eventId = pending.eventId.value,
             stage = when (val shown = phase.shows) {
-                is JoinPhase.Detailed -> JoinStage.Loaded(shown, form.view(checkNotNull(range), choices.picking))
+                is JoinPhase.Detailed ->
+                    JoinStage.Loaded(shown, form.view(checkNotNull(range), permission, choices.picking))
                 is JoinPhase.Eventless -> JoinStage.Unloaded(shown)
             },
             // The same transient cell the create and joined layers read: a rejected link is rejected
@@ -1684,7 +1685,7 @@ private fun joinedLayer(
         notice = transient,
         surface = if (range != null) {
             JoinedSurface.Reconfigure(
-                range = form.view(range, choices.picking),
+                range = form.view(range, permission, choices.picking),
                 saveFailed = reconfiguring.surface == SettingsSurface.SaveFailed,
                 askingToStopSharing = reconfiguring.askingToStopSharing,
             )

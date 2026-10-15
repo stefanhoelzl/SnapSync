@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
@@ -63,6 +64,8 @@ class SelectionScopedDiscovery(
                 // nothing will need re-fetching by identifier later.
                 candidates = candidatesFromResources(scope.resources),
                 fullEnumeration = true,
+                // The member's hand-picked selection: judged by the range and echo suppression alone.
+                scope = CandidateScope.Selection,
             )
             SelectionScope.Unread -> refuseUnread("discover")
         }

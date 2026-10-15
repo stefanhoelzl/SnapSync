@@ -6,6 +6,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -52,6 +53,7 @@ class PermissionAwareCandidateSourceTest {
                         override suspend fun resources(): List<Resource> = emptyList()
                     }
                 },
+                CandidateScope.Library,
             )
         }
     }
@@ -89,6 +91,16 @@ class PermissionAwareCandidateSourceTest {
     }
 
     @Test
+    fun `the read says where its candidates came from`() = runTest {
+        // The label is what picks the rules (`SelectionPolicy.over`), so it is the source's to state: the snapshot is
+        // the member's selection, and the walk is the library.
+        val limited = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1")).second.candidates(policy())
+        val granted = source(GalleryAccess.GRANTED).second.candidates(policy())
+        assertEquals(CandidateScope.Selection, assertIs<CandidateRead.Readable>(limited).scope)
+        assertEquals(CandidateScope.Library, assertIs<CandidateRead.Readable>(granted).scope)
+    }
+
+    @Test
     fun `LIMITED before the first snapshot is NOT READABLE and still never walks`() = runTest {
         // Between a grant turning partial and the first observer emission there is nothing selected that
         // we know of, and we may not go looking for it. That is not an empty selection: an empty one is a
@@ -105,7 +117,7 @@ class PermissionAwareCandidateSourceTest {
         // The other half of the pair above, and the reason it cannot simply be `.orEmpty()`: a member who
         // selected nothing is receive-only, which is a valid resting state, and their screen SHOULD settle.
         val (walk, source) = source(GalleryAccess.LIMITED, snapshot = emptyList())
-        assertEquals(CandidateRead.Readable(emptyList()), source.candidates(policy()))
+        assertEquals(CandidateRead.Readable(emptyList(), CandidateScope.Selection), source.candidates(policy()))
         assertEquals(0, walk.walks)
     }
 

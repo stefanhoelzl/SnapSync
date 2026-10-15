@@ -4,6 +4,7 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
 import app.snapsync.model.RESOURCE_META_IS_VIDEO
@@ -54,7 +55,7 @@ private class ResourceCandidates(private val cell: MutableStateFlow<List<Resourc
     constructor(resources: List<Resource>) : this(MutableStateFlow(resources))
 
     override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
-        CandidateRead.Readable(candidatesFromResources(cell.value))
+        CandidateRead.Readable(candidatesFromResources(cell.value), CandidateScope.Library)
 }
 
 class OwnDeviceGalleryStatusSourceTest {
@@ -195,7 +196,7 @@ class OwnDeviceGalleryStatusSourceTest {
             object : CandidateSource {
                 override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
                     if (readable) {
-                        CandidateRead.Readable(candidatesFromResources(cell.value))
+                        CandidateRead.Readable(candidatesFromResources(cell.value), CandidateScope.Library)
                     } else {
                         CandidateRead.NotReadable
                     }

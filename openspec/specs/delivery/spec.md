@@ -118,8 +118,8 @@ Each shared photo SHALL be uploaded as its original as captured — full resolut
 original filename, and its embedded details such as the capture location intact — and a Live Photo SHALL be
 uploaded with both its still and its video. Edits made in Photos (crops, filters, adjustments), their
 rendered versions and RAW alternates SHALL NOT be uploaded; other members receive the original. On Android
-the photo is uploaded as the file DCIM holds: a motion photo SHALL be uploaded as its single
-file; an edit a gallery app saves as a new photo in DCIM SHALL be a photo of its own; and an
+the photo is uploaded as the file the phone stores: a motion photo SHALL be uploaded as its single
+file; an edit a gallery app saves as a new photo SHALL be a photo of its own; and an
 edit a gallery app saves over the photo before it was uploaded SHALL be what is uploaded. No iCloud or
 Google account SHALL be required.
 

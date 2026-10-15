@@ -202,6 +202,7 @@ class UiStateSerializationTest {
         today = LocalDate(2026, 7, 7),
         commitEnabled = true,
         shareCount = count,
+        sharesSelection = true,
     )
 
     @Test

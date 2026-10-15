@@ -107,7 +107,7 @@ class ReinstallIntegrationTest {
     )
     @Verifies(
         spec = "photo-sharing",
-        requirement = "On Android, only photos in the DCIM folder are shared",
+        requirement = "On Android under full access, only photos in the DCIM folder are shared",
         scenario = "An own photo moved into the event album is shared",
     )
     fun an_android_reinstall_shares_no_received_album_photo_back_but_an_own_photo_put_there() = rigTest {

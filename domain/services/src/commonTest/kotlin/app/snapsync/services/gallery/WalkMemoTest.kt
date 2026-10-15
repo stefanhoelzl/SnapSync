@@ -5,6 +5,7 @@ package app.snapsync.services.gallery
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TimestampText
@@ -58,10 +59,11 @@ class WalkMemoTest {
         override suspend fun discover(policy: SelectionPolicy): Discovery {
             walks++
             duringWalk?.also { duringWalk = null }?.invoke()
-            if (!readable) return Discovery(emptyList(), fullEnumeration = false)
+            if (!readable) return Discovery(emptyList(), fullEnumeration = false, scope = CandidateScope.Library)
             return Discovery(
                 candidatesFromResources(assets.map(::resource)),
                 fullEnumeration = grant == LibraryGrant.GRANTED && authoritative,
+                scope = CandidateScope.Library,
             )
         }
 

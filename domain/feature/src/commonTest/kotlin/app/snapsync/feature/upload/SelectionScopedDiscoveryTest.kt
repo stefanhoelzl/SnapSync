@@ -2,6 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
@@ -46,7 +47,7 @@ class SelectionScopedDiscoveryTest {
         var resolveCalls = 0
         override suspend fun discover(policy: SelectionPolicy): Discovery {
             discoverCalls++
-            return Discovery(emptyList(), fullEnumeration = true)
+            return Discovery(emptyList(), fullEnumeration = true, scope = CandidateScope.Library)
         }
         override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
             resolveCalls++
@@ -72,6 +73,7 @@ class SelectionScopedDiscoveryTest {
 
         assertEquals(1, delegate.discoverCalls)
         assertTrue(discovery.fullEnumeration, "the platform walk's own answer crosses unchanged")
+        assertEquals(CandidateScope.Library, discovery.scope, "a walk is judged as the library")
     }
 
     @Test
@@ -91,6 +93,8 @@ class SelectionScopedDiscoveryTest {
         // Under a partial grant the selection IS the gallery: a photo it no longer carries has left, so a read
         // snapshot drives ledger deletion exactly as a library walk does (`changes/selection-is-the-walk`, D1).
         assertTrue(discovery.fullEnumeration)
+        // …and judged as what it is: the member's own pick, by the range and echo suppression alone.
+        assertEquals(CandidateScope.Selection, discovery.scope)
     }
 
     @Test

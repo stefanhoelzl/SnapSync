@@ -93,8 +93,9 @@ else and share the photos they took within the event's range, however long after
 The join screen SHALL show the event's name and two switches — share my photos, and receive everyone's
 photos — both on by default, and SHALL NOT make the user pick a named mode. Neither switch SHALL ever
 flip the other. With sharing on, the screen SHALL state what is never shared (screenshots, screen
-recordings, GIFs and pictures saved from chat apps, capability `photo-sharing`) and the capture range
-being shared; with it off, it SHALL say that nothing of the user's leaves the phone and hide the range.
+recordings, GIFs and pictures saved from chat apps, capability `photo-sharing`) — except under limited photo
+access, where it SHALL instead state that the photos the user selected from the range are shared — and the
+capture range being shared; with it off, it SHALL say that nothing of the user's leaves the phone and hide the range.
 With both switches off, Join SHALL be disabled and the reason stated beside it. The screen SHALL also offer
 the event-album choice (capability `event-album`), whose note names only the photos the current switches would
 collect — on Android only received photos ever are. The screen SHALL NOT offer the choice whether photos may
@@ -123,6 +124,10 @@ use mobile data: that is the device's, made in the app menu (capability `mobile-
 #### Scenario: Joining follows the device's mobile-data choice
 - **WHEN** a user who turned mobile data off in the app menu loads an event and joins
 - **THEN** the join screen offers no mobile-data choice, and the membership's photos travel only on Wi-Fi (capability `mobile-data`)
+
+#### Scenario: Limited access is told what is shared
+- **WHEN** a user whose photo access is limited to a selection loads an event with sharing on
+- **THEN** the join screen says that the photos they selected from the range are shared, and names no exclusions
 
 ### Requirement: The shared capture range is always bounded and chosen by the member
 With sharing on, the join screen SHALL let the user choose the range of capture dates they share,

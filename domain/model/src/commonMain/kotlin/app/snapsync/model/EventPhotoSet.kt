@@ -100,7 +100,9 @@ class EventPhotoSet(
             read: suspend (SelectionPolicy) -> CandidateRead,
         ): EventPhotoSet? = when (val result = read(policy)) {
             CandidateRead.NotReadable -> null
-            is CandidateRead.Readable -> EventPhotoSet(policy, result.candidates)
+            // Judged by the rules for where the read says its candidates came from — never by a second look at the
+            // grant.
+            is CandidateRead.Readable -> EventPhotoSet(policy.over(result.scope), result.candidates)
         }
     }
 

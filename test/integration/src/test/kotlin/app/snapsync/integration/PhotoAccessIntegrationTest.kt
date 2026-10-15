@@ -392,23 +392,6 @@ class PhotoAccessIntegrationTest {
     private suspend fun Given.refused() =
         step("access refused", act = { library.permission(PhotoGrant.DENIED) }, until = {})
 
-    /** A member who granted a partial selection, and joined; nothing selected is read yet. */
-    private suspend fun Given.limitedMember() {
-        step("a partial grant", act = { library.permission(PhotoGrant.LIMITED) }, until = {})
-        createdEvent()
-        step("joined", act = { confirmJoin() }, until = { screen<Layer.Joined> { it.canChoosePhotos } })
-    }
-
-    /** The person's selection is exactly [ids], read by the app — which hands each one to an upload. */
-    private suspend fun Given.selected(vararg ids: String) = step(
-        "selected ${ids.joinToString()}",
-        act = { library.changeSelection(ids.toList()) },
-        until = {
-            ids.forEach { id -> event<WorldEvent.SessionTransferCreated> { it.key == primaryKey(id) } }
-            settled { true }
-        },
-    )
-
     /** A fellow member's photo, downloaded and saved in this member's library. */
     private suspend fun Given.aMembersPhotoArrived() {
         step(

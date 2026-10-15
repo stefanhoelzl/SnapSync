@@ -2195,6 +2195,13 @@ class StatusContainerHostTest {
                 ),
             )
             assertFalse(state.asksAccessOnJoin(), "$answered must not announce a dialog")
+            // capability `join-event`, "Limited access is told what is shared": only a partial grant shares a
+            // selection.
+            assertEquals(
+                answered == GalleryAccess.LIMITED,
+                (state.layer as Layer.JoiningEvent).range?.sharesSelection,
+                "$answered: what the surface says is shared",
+            )
             containerHost.onConfirmJoin()
             do { val s = awaitShown() } while (s.joinStep() != JoinPhase.Detailed.Step.CommitFailed)
             cancelAndIgnoreRemainingItems()

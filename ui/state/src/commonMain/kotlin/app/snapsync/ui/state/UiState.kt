@@ -739,6 +739,11 @@ data class RangeView(
     val picker: PickerView? = null,
     /** Where the chosen range reaches outside the event's dates; `null` while it lies within them. */
     val outside: OutsideReach? = null,
+    /**
+     * Photo access is limited to a selection, so the member's selected photos from the range are what is shared —
+     * none excluded for what it is — and the surface says so instead of listing what is never shared.
+     */
+    val sharesSelection: Boolean,
 )
 
 /** Which side of the event's own dates a member's chosen range reaches past. */

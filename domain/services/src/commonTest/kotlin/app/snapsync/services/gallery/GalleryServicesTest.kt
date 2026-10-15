@@ -4,6 +4,7 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
@@ -154,7 +155,7 @@ class GalleryServicesTest {
                 val gallery = ScriptedGallery(access = access, assets = listOf(photo("A")))
                 val read = GalleryCandidateSource(gallery).candidates(denyAll)
                 if (access == LibraryGrant.GRANTED || access == LibraryGrant.LIMITED) {
-                    assertEquals(CandidateRead.Readable(emptyList()), read, "$access")
+                    assertEquals(CandidateRead.Readable(emptyList(), CandidateScope.Library), read, "$access")
                 } else {
                     assertEquals(CandidateRead.NotReadable, read, "$access")
                 }

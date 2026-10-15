@@ -2,18 +2,18 @@
 
 ## Purpose
 
-Every member who shares relies on one promise: the photos they took in the range they chose — by default the
-event's own dates — and only those reach the other members, and nothing else from their camera roll does. This
-capability decides which of a member's photos enter an event: a capture-date range that is always bounded, at most
-30 days long and overlapping the event's dates, minus media that is certainly not a photo someone took at the event (screenshots,
-screen recordings, compressed received media, messaging-app albums). On iPhone, where the app cannot tell,
-it shares, because a stray meme is visible and harmless while an event photo that silently never arrives
-is a failure nobody can notice or fix; on Android only the phone's camera folder (DCIM) is shared, for
-cleaner events. It also promises what the other members see of that contribution over
-time — a photo appears only once it is complete, disappears when the member deletes or stops sharing it
-until the event's photos are deleted (capability `event-lifetime`), and a
-photo already in the event is not uploaded again because the member rejoins, switches events and back, or reinstalls.
-How the photos travel is capability `delivery`; what arrives on the other side is capability `receiving-photos`.
+Every member who shares relies on one promise: the photos they took in the range they chose — by default the event's
+own dates — and only those reach the other members, and nothing else from their camera roll does. This capability
+decides which of a member's photos enter an event: a capture-date range that is always bounded, at most 30 days long
+and overlapping the event's dates, minus media that is certainly not a photo someone took at the event (screenshots,
+screen recordings, compressed received media, messaging-app albums). On iPhone, where the app cannot tell, it shares,
+because a stray meme is visible and harmless while an event photo that silently never arrives is a failure nobody can
+notice or fix; on Android only the phone's camera folder (DCIM) is shared, for cleaner events. Under limited access the
+member's own selection decides instead: what they picked from their range is shared, whatever it is. It also promises what
+the other members see of that contribution over time — a photo appears only once it is complete, disappears when the
+member deletes or stops sharing it until the event's photos are deleted (capability `event-lifetime`), and a photo
+already in the event is not uploaded again because the member rejoins, switches events and back, or reinstalls. How
+the photos travel is capability `delivery`; what arrives on the other side is capability `receiving-photos`.
 
 Decision record: changes/archive/2026-07-15-add-photo-selection-policy
 
@@ -92,13 +92,14 @@ start date (capability `receiving-photos`).
 
 ### Requirement: Media that is certainly not an event photo is excluded
 
-Inside the range the member's contribution SHALL exclude: screenshots; screen recordings; images smaller
-than 3 megapixels and videos smaller than 1280 × 720, unless the photo or video was edited on the device;
-and photos in an album whose title exactly matches (ignoring case) a known messaging or social app —
-such as WhatsApp, Telegram, Signal or Instagram — or the phone's own screenshots or screen recordings
-(Screenshots, Screen recordings, ScreenRecorder); on Android an album is a subfolder of DCIM (requirement "On
-Android, only photos in the DCIM folder are shared"). These floors SHALL be fixed values, never derived from
-the device's camera, and a 1080p video SHALL be shared.
+Under full photo access, inside the range the member's contribution SHALL exclude: screenshots; screen recordings;
+images smaller than 3 megapixels and videos smaller than 1280 × 720, unless the photo or video was edited on the
+device; and photos in an album whose title exactly matches (ignoring case) a known messaging or social app — such as
+WhatsApp, Telegram, Signal or Instagram — or the phone's own screenshots or screen recordings (Screenshots, Screen
+recordings, ScreenRecorder); on Android an album is a subfolder of DCIM (requirement "On Android under full access,
+only photos in the DCIM folder are shared"). These floors SHALL be fixed values, never derived from the device's
+camera, and a 1080p video SHALL be shared. Under limited access none of these exclusions SHALL apply to a photo the
+member selected (requirement "Under limited access the member's selection decides what a photo is").
 
 #### Scenario: A screenshot is never shared
 - **WHEN** a member takes a screenshot during the event
@@ -134,13 +135,14 @@ the device's camera, and a 1080p video SHALL be shared.
 
 ### Requirement: When in doubt, a photo is shared
 
-On iPhone, a photo that no exclusion certainly identifies as received or generated media SHALL be shared.
-Panoramas, HDR, Live Photos, portrait-mode photos, cropped photos and photos from third-party camera apps
-SHALL be shared. A full-resolution photo received by AirDrop or saved from Messages, and an edited or
-full-resolution GIF, SHALL be shared too — an accepted gap. On Android the DCIM rule (requirement "On
-Android, only photos in the DCIM folder are shared") decides instead: inside DCIM, panoramas, HDR, motion
-photos, portrait-mode photos, photos from third-party camera apps and anything else no exclusion identifies
-SHALL be shared; outside it nothing is, even when nothing marks it as received.
+On iPhone under full access, a photo that no exclusion certainly identifies as received or generated media SHALL be
+shared. Panoramas, HDR, Live Photos, portrait-mode photos, cropped photos and photos from third-party camera apps
+SHALL be shared. A full-resolution photo received by AirDrop or saved from Messages, and an edited or full-resolution
+GIF, SHALL be shared too — an accepted gap. On Android under full access the DCIM rule (requirement "On Android under
+full access, only photos in the DCIM folder are shared") decides instead: inside DCIM, panoramas, HDR, motion photos,
+portrait-mode photos, photos from third-party camera apps and anything else no exclusion identifies SHALL be shared;
+outside it nothing is, even when nothing marks it as received. Under limited access, on both platforms, the member's
+selection decides instead (requirement "Under limited access the member's selection decides what a photo is").
 
 #### Scenario: A panorama is shared
 - **WHEN** a member takes a panorama during the event
@@ -154,21 +156,22 @@ SHALL be shared; outside it nothing is, even when nothing marks it as received.
 - **WHEN** an Android member takes a motion photo with the phone's camera app during the event
 - **THEN** it is shared
 
-### Requirement: On Android, only photos in the DCIM folder are shared
+### Requirement: On Android under full access, only photos in the DCIM folder are shared
 
-On Android a member SHALL share only photos and videos stored in the phone's DCIM folder — where camera apps
-save — and its subfolders, on the phone's own storage and on an SD card alike. Each subfolder of DCIM SHALL
-count as an album for the album rule (requirement "Media that is certainly not an event photo is excluded"),
-so a subfolder named for a messaging or social app, or for the phone's screenshots or screen recordings, is
-excluded. Inside DCIM the capture range and the resolution floors SHALL apply too, to edited photos as well,
-because Android does not tell the app that a photo was edited. A photo or video outside DCIM SHALL NOT be
-shared, however it got there and whatever its resolution — media saved from a messaging app or the web,
-downloads, and photos from in-app cameras that save elsewhere — and the member SHALL have no way to add
-another folder. The folder inside DCIM where SnapSync keeps the event albums (capability `event-album`) is a
-subfolder like any other: the photos the member received there are kept out as every received photo is
-(capability `receiving-photos`), and a photo the member put there themselves is shared under the same rules as
-any photo in DCIM. Under limited access (capability `photo-access`) the member's selection SHALL be filtered the
-same way. On iPhone this requirement does not apply.
+On Android, under full photo access, a member SHALL share only photos and videos stored in the phone's DCIM folder —
+where camera apps save — and its subfolders, on the phone's own storage and on an SD card alike. Each subfolder of
+DCIM SHALL count as an album for the album rule (requirement "Media that is certainly not an event photo is
+excluded"), so a subfolder named for a messaging or social app, or for the phone's screenshots or screen recordings,
+is excluded. Inside DCIM the capture range and the resolution floors SHALL apply too, to edited photos as well,
+because Android does not tell the app that a photo was edited. A photo or video outside DCIM SHALL NOT be shared,
+however it got there and whatever its resolution — media saved from a messaging app or the web, downloads, and photos
+from in-app cameras that save elsewhere — and the member SHALL have no way to add another folder. The folder inside
+DCIM where SnapSync keeps the event albums (capability `event-album`) is a subfolder like any other: the photos the
+member received there are kept out as every received photo is (capability `receiving-photos`), and a photo the member
+put there themselves is shared under the same rules as any photo in DCIM. Under limited access (capability
+`photo-access`) this requirement SHALL NOT apply: the member's selection decides, wherever on the phone a selected
+photo is stored (requirement "Under limited access the member's selection decides what a photo is"). On iPhone this
+requirement does not apply.
 
 #### Scenario: A camera photo is shared
 - **WHEN** an Android member takes a photo with the phone's camera app during the event
@@ -191,9 +194,10 @@ same way. On iPhone this requirement does not apply.
   "Screen recordings" folder inside DCIM
 - **THEN** it is not shared
 
-#### Scenario: A selected photo outside DCIM is not shared
-- **WHEN** a limited-access Android member selects an in-range photo saved from the web and an in-range camera photo
-- **THEN** only the camera photo is shared
+#### Scenario: Under limited access a selected photo outside DCIM is shared
+- **WHEN** a limited-access Android member selects an in-range photo saved from the web, stored outside DCIM, and an
+  in-range camera photo
+- **THEN** both are shared
 
 #### Scenario: A small image in DCIM is excluded
 - **WHEN** a 1600 × 1200 image lands in the camera's folder during the event
@@ -208,24 +212,54 @@ same way. On iPhone this requirement does not apply.
 - **WHEN** an Android member moves an in-range photo they took themselves into an event's album folder
 - **THEN** it is shared like any of their photos in DCIM
 
-### Requirement: Under limited access the messaging-app album rule cannot apply
+### Requirement: Under limited access the member's selection decides what a photo is
 
-On iPhone, a photo a limited-access member selected SHALL be shared even if it belongs to a messaging-app
-album, because albums are not visible to the app under limited photo access (capability `photo-access`). The
-capture range and every other exclusion SHALL still apply. On Android the album rule SHALL apply under
-limited access too, because a photo's folder stays visible.
+Under limited access (capability `photo-access`), on iPhone and on Android, a photo the member selected SHALL be
+shared when it lies inside their capture range, whatever it is: a screenshot, a screen recording, an image or video
+below the resolution floors, a GIF, a photo in a messaging-app album or folder, and on Android a photo stored outside
+DCIM. The member chose each one, so none is excluded for what it is. The capture range SHALL still apply in full:
+nothing outside it is shared, nothing is shared before the event's start, and a selected photo with no capture date
+is not shared — the phone keeps the selection across events, so it is not a choice made for one event. A photo the
+member received through SnapSync SHALL NOT be shared back even when it is in the selection (capability
+`receiving-photos`), and a photo outside the selection SHALL never be shared (capability `photo-access`).
 
-#### Scenario: A selected WhatsApp photo uploads under limited access
-- **WHEN** a limited-access iPhone member selects an in-range, full-resolution photo from a WhatsApp album
+#### Scenario: A selected screenshot is shared
+- **WHEN** a limited-access member selects a screenshot taken during the event
 - **THEN** it is shared
 
-#### Scenario: A selected screenshot is still excluded
-- **WHEN** a limited-access member selects a screenshot taken during the event
+#### Scenario: A selected screen recording is shared
+- **WHEN** a limited-access member selects a screen recording made during the event
+- **THEN** it is shared
+
+#### Scenario: A selected WhatsApp photo is shared on iPhone
+- **WHEN** a limited-access iPhone member selects an in-range photo from a WhatsApp album
+- **THEN** it is shared
+
+#### Scenario: A selected photo from a WhatsApp folder is shared on Android
+- **WHEN** a limited-access Android member selects an in-range photo in a "WhatsApp" folder inside DCIM
+- **THEN** it is shared
+
+#### Scenario: A selected small image is shared
+- **WHEN** a limited-access member selects a 1600 × 1200 image saved from a chat during the event
+- **THEN** it is shared
+
+#### Scenario: A selected photo outside the range stays private
+- **WHEN** a limited-access member's selection holds photos taken before the start of their range
+- **THEN** none of those photos is uploaded, listed to other members, or counted as shareable
+
+#### Scenario: Photos selected for an earlier event stay private
+- **WHEN** a limited-access member selected photos while sharing to an earlier event, then joins a new event whose
+  range does not cover them
+- **THEN** none of those photos is shared to the new event
+
+#### Scenario: A selected undated photo is not shared
+- **WHEN** a limited-access member selects a photo that carries no capture date
 - **THEN** it is not shared
 
-#### Scenario: A selected photo from a WhatsApp folder is excluded on Android
-- **WHEN** a limited-access Android member selects an in-range photo in a "WhatsApp" folder inside DCIM
-- **THEN** it is not shared
+#### Scenario: A received photo in the selection is not shared back
+- **WHEN** a limited-access iPhone member receives photos from others during the event, and they join the
+  selection as they are saved
+- **THEN** none of them is shared as the member's own
 
 ### Requirement: What the member is told is shared is exactly what is shared
 
@@ -261,11 +295,11 @@ to others one by one as they complete, while the member's device is still workin
 
 Until the event's photos are deleted (capability `event-lifetime`), a photo SHALL stop being offered to other members
 when the member deletes it from their library (moving it to the trash counts), removes it from their limited
-selection, moves it out of DCIM on Android, or stops sharing it — by narrowing the range, adding
-it to a messaging-app album, or turning sharing off (capability `manage-membership`). The withdrawal SHALL
-take effect from the device's next upload pass, also for a photo that was still uploading. Members who
-already received it SHALL keep their copy, and a withdrawal SHALL wake no other member. Losing photo access,
-or the app being unable to read the library for a moment, SHALL NOT withdraw anything.
+selection, moves it out of DCIM on Android under full access, or stops sharing it — by narrowing the range, adding it
+to a messaging-app album under full access, or turning sharing off (capability `manage-membership`). The withdrawal
+SHALL take effect from the device's next upload pass, also for a photo that was still uploading. Members who already
+received it SHALL keep their copy, and a withdrawal SHALL wake no other member. Losing photo access, or the app being
+unable to read the library for a moment, SHALL NOT withdraw anything.
 
 #### Scenario: A deleted photo is withdrawn
 - **WHEN** a member deletes a photo that other members could receive
@@ -281,7 +315,7 @@ or the app being unable to read the library for a moment, SHALL NOT withdraw any
 - **THEN** it stops being offered to other members
 
 #### Scenario: Moving a photo out of DCIM withdraws it
-- **WHEN** an Android member moves a shared photo from DCIM into a folder outside it
+- **WHEN** an Android member with full photo access moves a shared photo from DCIM into a folder outside it
 - **THEN** it stops being offered to other members, and members who already have it keep it
 
 #### Scenario: Turning sharing off withdraws the member's photos
@@ -304,9 +338,11 @@ or the app being unable to read the library for a moment, SHALL NOT withdraw any
 
 Until the event's photos are deleted (capability `event-lifetime`), a photo SHALL be offered to the other members again
 when it is recovered from Recently Deleted or the trash, re-added to the selection, moved back into
-DCIM on Android, or brought back into scope by widening the range or turning sharing back on. A
+DCIM on Android under full access, or brought back into scope by widening the range or turning sharing back on. A
 photo that was already uploaded and was only out of scope SHALL come back without being uploaded again, and
-bringing it back SHALL wake the other members.
+bringing it back SHALL wake the other members. A photo that was withdrawn because full access excludes it for what it
+is — a screenshot, a screen recording, or an image or video below the resolution floors that limited access had
+shared (capability `photo-access`) — is the exception: it comes back as a recovered photo does, uploaded again.
 
 #### Scenario: A recovered photo is shared again
 - **WHEN** a member recovers a withdrawn photo from Recently Deleted
@@ -317,8 +353,13 @@ bringing it back SHALL wake the other members.
 - **THEN** the photos that fell out come back for the other members with no photo uploaded again
 
 #### Scenario: A photo moved back into DCIM is shared again
-- **WHEN** an Android member moves a withdrawn photo back into DCIM before the event's photos are deleted
+- **WHEN** an Android member with full photo access moves a withdrawn photo back into DCIM before the event's photos are deleted
 - **THEN** it is offered to the other members again
+
+#### Scenario: A screenshot withdrawn by full access returns with limited access
+- **WHEN** a member's selected screenshot was withdrawn when they switched to full access, and they switch back to
+  limited access with it still selected
+- **THEN** it is uploaded again and offered to the other members
 
 ### Requirement: A photo already in an event is not uploaded again for it
 

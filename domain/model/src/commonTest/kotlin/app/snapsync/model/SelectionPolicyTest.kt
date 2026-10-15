@@ -102,6 +102,84 @@ class SelectionPolicyTest {
         assertFalse(SelectionPolicy(listOf(SelectionRule.ExcludeScreenshots, SelectionRule.DenyAll)).contributes)
     }
 
+    // ── A partial grant's selection (capability `photo-sharing`, "the selection decides what a photo is") ──
+
+    private val june = CaptureCutoff(TimestampText.parse("2026-06-01T00:00:00Z"))
+    private val juneEnd = CaptureCeiling(TimestampText.parse("2026-06-30T00:00:00Z"))
+
+    /** In range unless told otherwise; `ECHO` is a received photo and `CHAT` sits in a denylisted album. */
+    private fun facts(
+        id: String,
+        at: String? = "2026-06-15T12:00:00Z",
+        isScreenshot: Boolean = false,
+        isScreenRecording: Boolean = false,
+        isVideo: Boolean = false,
+        pixelArea: Long? = 4032L * 3024L,
+    ) = AssetFacts(
+        AssetId(id),
+        captureDate = at?.let { CaptureDate.Dated(TimestampText.parse(it)) } ?: CaptureDate.Undated,
+        isScreenshot = isScreenshot,
+        isScreenRecording = isScreenRecording,
+        isVideo = isVideo,
+        pixelArea = pixelArea,
+    )
+
+    private suspend fun membershipPolicy(includesUpload: Boolean = true) = selectionPolicyFor(
+        includesUpload = includesUpload,
+        cutoff = june,
+        ceiling = juneEnd,
+        suppressedAssetIds = { setOf(AssetId("ECHO")) },
+        albumExcludedAssetIds = { setOf(AssetId("CHAT")) },
+    )
+
+    private val whatItIs = listOf(
+        facts("SHOT", isScreenshot = true),
+        facts("REC", isVideo = true, isScreenRecording = true),
+        facts("SMALL", pixelArea = 1600L * 1200L),
+        facts("SMALLVID", isVideo = true, pixelArea = 640L * 360L),
+        facts("CHAT"),
+    )
+
+    @Test
+    fun `a selected photo is not excluded for what it is`() = runTest {
+        val policy = membershipPolicy()
+        whatItIs.forEach { assertTrue(policy.over(CandidateScope.Selection).admits(it), it.assetId.value) }
+    }
+
+    @Test
+    fun `a library photo is still excluded for what it is`() = runTest {
+        val policy = membershipPolicy()
+        assertEquals(policy, policy.over(CandidateScope.Library))
+        whatItIs.forEach { assertFalse(policy.over(CandidateScope.Library).admits(it), it.assetId.value) }
+    }
+
+    @Test
+    fun `a selection is still judged by the range, echo suppression and the direction`() = runTest {
+        val selection = membershipPolicy().over(CandidateScope.Selection)
+        assertFalse(selection.admits(facts("BEFORE", at = "2026-05-31T23:59:59Z")), "before the range")
+        assertFalse(selection.admits(facts("AFTER", at = "2026-07-01T00:00:01Z")), "after the range")
+        assertFalse(selection.admits(facts("UNDATED", at = null)), "undated")
+        assertFalse(selection.admits(facts("ECHO")), "a received photo")
+        assertTrue(selection.admits(facts("CAMERA")))
+        assertFalse(membershipPolicy(includesUpload = false).over(CandidateScope.Selection).contributes, "receive only")
+    }
+
+    @Test
+    fun `every rule says whether it judges what a photo is`() = runTest {
+        val judging = membershipPolicy().rules.filter { it.judgesWhatItIs }.map { it::class.simpleName }.toSet()
+        assertEquals(
+            setOf(
+                "ExcludeScreenshots",
+                "ExcludeScreenRecordings",
+                "MinImageArea",
+                "MinVideoArea",
+                "NotInDenylistedAlbum",
+            ),
+            judging,
+        )
+        assertFalse(SelectionRule.DenyAll.judgesWhatItIs)
+    }
+
     // ── Subtypes ──────────────────────────────────────────────────────────────────────────────────────
 
     @Test

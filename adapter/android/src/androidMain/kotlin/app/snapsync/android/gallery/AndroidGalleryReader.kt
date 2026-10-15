@@ -35,7 +35,8 @@ import kotlin.time.Instant
 /**
  * The Android [GalleryReader] over MediaStore: photos and videos of the member's
  * [DefaultGallery] — `DCIM` and its folders, on every external volume (the `external` collections are the union of
- * them). Trashed and pending items are excluded, as MediaStore's default query excludes them.
+ * them). Trashed and pending items are excluded, as MediaStore's default query excludes them. A partial grant's
+ * selection is read whole instead ([selectedItems]): the member's pick is their gallery, `DCIM` or not.
  *
  * - **Identity** is MediaStore's `_ID`: one database spans every external volume, so it is unique across them, it is
  *   owned by the system (it survives this app's reinstall), and a decimal already obeys the canonical asset-id rule, so
@@ -231,7 +232,16 @@ open class AndroidGalleryReader(
 
     /** Every default-gallery item matching [narrowing], images and videos alike ([DefaultGallery]). */
     internal fun items(narrowing: Query): List<MediaItem> =
-        COLLECTIONS.flatMap { collection -> query(collection, narrowing) }
+        COLLECTIONS.flatMap { collection -> query(collection, Query(DefaultGallery.SQL).and(narrowing)) }
+
+    /**
+     * Everything a partial grant lets the app see, wherever on the phone it is stored: the member's selection, plus
+     * the rows this app saved itself (its imports, which echo suppression keeps out of the share). Under a partial
+     * grant the selection IS the member's gallery, `DCIM` or not — the member picked each photo
+     * (`changes/archive/2026-10-15-limited-selection-decides`). Never a read for a full grant — there, an unscoped
+     * query is the whole library; [AndroidGallery]'s observer checks the grant around it.
+     */
+    internal fun selectedItems(): List<MediaItem> = COLLECTIONS.flatMap { collection -> query(collection, Query()) }
 
     /** The items in the folder [path] exactly — not its subfolders. */
     private fun inFolder(path: String) = Query("relative_path = ?", listOf(path))
@@ -272,8 +282,7 @@ open class AndroidGalleryReader(
         }
             .distinctBy { it.id }
 
-    private fun query(collection: Uri, narrowing: Query): List<MediaItem> {
-        val scoped = Query(DefaultGallery.SQL).and(narrowing)
+    private fun query(collection: Uri, scoped: Query): List<MediaItem> {
         return resolver.query(collection, PROJECTION, scoped.selection, scoped.args.toTypedArray(), null)
             ?.use { cursor -> buildList { while (cursor.moveToNext()) add(MediaItem.of(cursor, collection)) } }
             ?: emptyList<MediaItem>().also { log.w { "the media provider answered no cursor for $collection" } }
