@@ -6,6 +6,7 @@ import app.snapsync.levers.CreatedJob
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.DownloadSessionView
 import app.snapsync.levers.StartedDownload
+import app.snapsync.levers.TransferEnd
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadQueueView
 import app.snapsync.levers.UploadSessionLevers
@@ -58,7 +59,7 @@ fun interface UploadNetwork {
     suspend fun put(url: String, headers: Map<String, String>, bytes: ByteArray): Int?
 }
 
-/** Told what a transfer system records, on the app's thread, as the app hands it the work. */
+/** Told what a transfer system records: the work the app hands it, and how each transfer ended. */
 fun interface TransferWatcher {
     fun told(event: WorldEvent.Transfer)
 }
@@ -154,8 +155,10 @@ class UploadQueueMock(
 
         /** Only a job this queue presented is owed an acknowledgement; another is refused, as PhotoKit refuses it. */
         override suspend fun acknowledge(job: OsUploadJob): ChangeOutcome {
-            val presented = locked { jobs.remove(job.handle) }
-            return if (presented) ChangeOutcome.Applied else ChangeOutcome.Refused(null, "not this queue's job")
+            val ended = locked { (job.handle as? Job)?.takeIf { jobs.remove(it) } }
+                ?: return ChangeOutcome.Refused(null, "not this queue's job")
+            watcher.told(WorldEvent.UploadJobEnded(ended.name, ended.end()))
+            return ChangeOutcome.Applied
         }
 
         override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome {
@@ -188,6 +191,13 @@ class UploadQueueMock(
             jobLimit = jobLimit.takeIf { it != Int.MAX_VALUE },
             failingCreate = failCreate,
         )
+    }
+
+    /** How an acknowledged job ended: as it settled, or cancelled when the app let it go before the OS ran it. */
+    private fun Job.end(): TransferEnd = when (state) {
+        UploadJobState.SUCCEEDED -> TransferEnd.DELIVERED
+        UploadJobState.FAILED -> TransferEnd.failed(failure?.detail ?: "failed")
+        else -> TransferEnd.CANCELLED
     }
 
     private fun Job.view() = OsUploadJob(
@@ -298,10 +308,12 @@ class UploadSessionMock(
     /** Who is told each transfer the app creates — the control channel's event stream, or no one. */
     @Volatile private var watcher: TransferWatcher = TransferWatcher {}
 
-    /** Tells [listener] each transfer the app creates, as it creates it (`docs/testing.md`, "How a test waits"). */
+    /** Tells [listener] each transfer the app creates, and each one's end, as it happens (`docs/testing.md`, "How a test waits"). */
     fun watch(listener: TransferWatcher) {
         watcher = listener
     }
+
+    internal fun ended(key: String, outcome: TransferEnd) = watcher.told(WorldEvent.SessionTransferEnded(key, outcome))
 
     fun port(): TransferSession = Face()
 
@@ -338,6 +350,7 @@ class UploadSessionMock(
         override suspend fun cancel(transfer: Transfer) {
             val live = transfer.handle as? Live ?: return
             if (locked { this@UploadSessionMock.live.remove(live) }) {
+                watcher.told(WorldEvent.SessionTransferEnded(live.tag, TransferEnd.CANCELLED))
                 handlers.orNull("a cancelled transfer's end", BeforeListen.Dropped)
                     ?.onFinished?.deliver(FinishedTransfer(live.tag, TransferFailure(CANCELLED)))
             }
@@ -425,6 +438,7 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
             status in 200..299 -> null
             else -> TransferFailure("http:$status")
         }
+        mock.ended(transfer.tag, failure?.let { TransferEnd.failed(it.detail) } ?: TransferEnd.DELIVERED)
         mock.handlers.require("a transfer's end").onFinished.deliver(FinishedTransfer(transfer.tag, failure))
     }
 
@@ -504,10 +518,13 @@ class DownloadSessionMock(
     /** Who is told each download the app starts — the control channel's event stream, or no one. */
     @Volatile private var watcher: TransferWatcher = TransferWatcher {}
 
-    /** Tells [listener] each download the app starts, as it starts it (`docs/testing.md`, "How a test waits"). */
+    /** Tells [listener] each download the app starts, and each one's end, as it happens (`docs/testing.md`, "How a test waits"). */
     fun watch(listener: TransferWatcher) {
         watcher = listener
     }
+
+    internal fun ended(description: String, outcome: TransferEnd) =
+        watcher.told(WorldEvent.DownloadEnded(description, outcome))
 
     internal inner class Face : Download {
         /** Whether this process has brought the session up — by starting, cancelling, or being handed its events. */
@@ -533,7 +550,10 @@ class DownloadSessionMock(
         override suspend fun cancelAll() {
             realized = true
             val cancelled = locked { started.filterNot { it.cancelled }.onEach { it.cancelled = true } }
-            cancelled.forEach { registered().onCompleted.deliver(CompletedDownload(it.description, "cancelled")) }
+            cancelled.forEach {
+                watcher.told(WorldEvent.DownloadEnded(it.description, TransferEnd.CANCELLED))
+                registered().onCompleted.deliver(CompletedDownload(it.description, "cancelled"))
+            }
         }
     }
 
@@ -643,6 +663,11 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
             !held
         }
         if (!runs) return
+        val status = outcome.statusCode
+        mock.ended(
+            description,
+            if (status == null || status in 200..299) TransferEnd.DELIVERED else TransferEnd.failed("http:$status"),
+        )
         mock.registered().onFinished.deliver(
             FinishedDownload(description, outcome, mock.leaveTempFile(description, bytes)),
         )
