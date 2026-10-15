@@ -2,13 +2,13 @@ package app.snapsync.architecture
 
 import app.snapsync.contracts.CallLog
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.TimestampText
 import app.snapsync.inbound.Answered
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Granted
 import app.snapsync.inbound.Inbound
 import app.snapsync.inbound.Running
-import app.snapsync.model.TimestampText
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +27,7 @@ import kotlin.reflect.KParameter
 import kotlin.reflect.KProperty
 import kotlin.reflect.KType
 import kotlin.reflect.full.callSuspendBy
+import kotlin.reflect.full.declaredMemberProperties
 import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.full.isSuperclassOf
 import kotlin.reflect.full.memberProperties
@@ -171,7 +172,7 @@ class ProxyCompletenessTest {
                 var action: Any? = null
                 handleAnswers[javaName(member)] = { args ->
                     action = args[paramIndex(member, p.param)]
-                    Unit
+                    dummy(member.returnType)
                 }
                 callMember(wrapped, member)
                 invokeFunction(action!!, member.parameters.first { it.name == p.param }.type, p.args!!)
@@ -191,6 +192,20 @@ class ProxyCompletenessTest {
             if (producer != null) {
                 answers[javaName(producer)] = { handle }
                 return callMember(proxy(), producer)!!
+            }
+            // A handle a leaf of a sealed answer carries: the adapter answers that leaf, the proxy hands its handle on.
+            val carrier = allMembers(through).firstOrNull { m ->
+                (m.returnType.classifier as? KClass<*>)?.let { it.isSealed && handleType in carriedHandles(it) } == true
+            }
+            if (carrier != null) {
+                val leaf = PortGrid.leaves(carrier.returnType.classifier as KClass<*>).first { l ->
+                    l.declaredMemberProperties.any { it.returnType.classifier == handleType }
+                }
+                answers[javaName(carrier)] = { leaf.primaryConstructor!!.call(handle) }
+                val answered = callMember(proxy(), carrier)!!
+                return leaf.declaredMemberProperties.first { it.returnType.classifier == handleType }.getter.call(
+                    answered,
+                )!!
             }
             val taking = allMembers(
                 through,
@@ -424,7 +439,7 @@ class ProxyCompletenessTest {
                 k != null && k.java.isEnum -> k.java.enumConstants.first { "${k.simpleName}.${(it as Enum<*>).name}" == variant }
                 k != null && k.isSealed -> PortGrid.leaves(
                     k,
-                ).first { PortGrid.relativeName(it) == variant }.let(::instance)
+                ).first { PortGrid.relativeName(it) == variant }.let(::leafInstance)
                 else -> dummy(type)
             }
         }
@@ -530,5 +545,15 @@ private fun deliveryDouble(type: KType, body: (List<Any?>) -> Any?): Any {
         }
         val given = args.orEmpty().toList().filterNot { it == Unit }
         body(given) ?: if (k == Granted::class) ProxyCompletenessTest.double(Running::class) { null } else null
+    }
+}
+
+/** A sealed leaf; one that carries a handle (`DbOpen.Opened`) carries a double of it, as an adapter's would. */
+private fun leafInstance(leaf: KClass<*>): Any {
+    val carried = leaf.primaryConstructor?.parameters.orEmpty().map { it.type.classifier as? KClass<*> }
+    return if (carried.isNotEmpty() && carried.all { it != null && it.java.isInterface }) {
+        leaf.primaryConstructor!!.call(*carried.map { ProxyCompletenessTest.double(it!!) { null } }.toTypedArray())
+    } else {
+        ProxyCompletenessTest.instance(leaf)
     }
 }

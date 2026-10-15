@@ -7,6 +7,13 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.data.store.db.EventAlbum
+import app.snapsync.data.store.db.EventCheck
+import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.data.store.db.LedgerRow
+import app.snapsync.data.store.db.Membership
+import app.snapsync.data.store.db.PendingLeave
+import app.snapsync.data.store.db.UploadedManifest
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
@@ -19,19 +26,13 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.OpenDatabase
 import app.snapsync.services.downloads.db.DownloadAsset
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.services.downloads.db.DownloadResource
 import app.snapsync.services.downloads.db.EventRef
 import app.snapsync.services.downloads.db.Recognised
 import app.snapsync.services.downloads.db.UnionCursor
-import app.snapsync.services.ledger.db.EventAlbum
-import app.snapsync.services.ledger.db.EventCheck
-import app.snapsync.services.ledger.db.LedgerDatabase
-import app.snapsync.services.ledger.db.LedgerRow
-import app.snapsync.services.ledger.db.Membership
-import app.snapsync.services.ledger.db.PendingLeave
-import app.snapsync.services.ledger.db.UploadedManifest
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.time.Instant
@@ -160,10 +161,10 @@ private val DOWNLOADS = ProductionSchema(
 private fun firstVersionOf(production: ProductionSchema<*, *>) =
     production.schema.at(production.firstVersion, production.firstRow)
 
-private fun Databases.openedReadWrite(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): SqlDriver {
+private fun Databases.openedReadWrite(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): OpenDatabase {
     val opened = open(name, schema, readOnly = false)
     assertIs<DbOpen.Opened>(opened, "expected $name to open read-write, got $opened")
-    return opened.driver
+    return opened.database
 }
 
 /**
@@ -227,9 +228,9 @@ internal fun ClauseList<DatabasesState, DatabasesSubject>.schemaClauses() {
             DatabasesState.ABSENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
         ) { (databases) ->
-            val driver = databases.openedReadWrite("${production.label}.db", production.schema)
-            runEveryStatement(production, driver)
-            driver.close()
+            val database = databases.openedReadWrite("${production.label}.db", production.schema)
+            database.ran { runEveryStatement(production, it) }
+            database.close()
         }
 
         clause(
@@ -241,12 +242,12 @@ internal fun ClauseList<DatabasesState, DatabasesSubject>.schemaClauses() {
             val migrated = databases.openedReadWrite("migrated.db", production.schema)
             val created = databases.openedReadWrite("created.db", production.schema)
             assertEquals(
-                created.shape(),
-                migrated.shape(),
+                created.ran { it.shape() },
+                migrated.ran { it.shape() },
                 "a migrated ${production.label} database is the created one",
             )
             created.close()
-            runEveryStatement(production, migrated)
+            migrated.ran { runEveryStatement(production, it) }
             migrated.close()
         }
     }

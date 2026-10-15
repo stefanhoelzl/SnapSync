@@ -1,6 +1,7 @@
 package app.snapsync.services.upload
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AesKey
 import app.snapsync.model.FileAccess
@@ -10,7 +11,6 @@ import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
 import app.snapsync.model.GcmNonce
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
 import app.snapsync.ports.CreateOutcome

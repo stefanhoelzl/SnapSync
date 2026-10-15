@@ -61,18 +61,6 @@ enum class PauseReason {
     LEGACY_RECORDS,
 }
 
-/** Whether the shared database's records can be read now. */
-sealed interface SharedRecordsReadiness {
-    /** Every record lives in the database. */
-    data object Ready : SharedRecordsReadiness
-
-    /** Some record is still in its legacy file or key: the app copies it on its next run. */
-    data object LegacyPending : SharedRecordsReadiness
-
-    /** The database cannot be opened or read now (a locked device). [detail] is diagnostics only. */
-    data class Unavailable(val detail: String) : SharedRecordsReadiness
-}
-
 /**
  * Whether this process's echo-suppression read can answer right now — asked by the upload cycle after its
  * admission and before anything else.

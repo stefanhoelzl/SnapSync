@@ -10,7 +10,7 @@ import kotlin.test.assertSame
 
 /**
  * The union a provision already read, handed from the adoption to the download reconcile (capability
- * `receiving-photos`): held only during a provision and only for the event it provisions, and answered once — so a
+ * `receiving-photos`): held only while a join is open and only for the event it provisions, and answered once — so a
  * join reads the union once and no later trigger plans from a union it did not read.
  */
 class JoinUnionTest {
@@ -64,8 +64,13 @@ class JoinUnionTest {
         assertNull(union.take(testEventId("E")), "an offer after it is dropped too")
     }
 
-    @Test
-    fun `the provision's answer is during's`() = runTest {
-        assertSame(page, union.during(testEventId("E")) { page })
+    /** A join's span, as its entry point opens and closes it: [block] between the two, however it ends. */
+    private inline fun <T> JoinUnion.during(event: app.snapsync.domain.event.EventId, block: () -> T): T {
+        open(event)
+        try {
+            return block()
+        } finally {
+            close()
+        }
     }
 }

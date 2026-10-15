@@ -22,6 +22,14 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.membership.InviteFact
+import app.snapsync.domain.membership.JoinChoice
+import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.SettingsResult
+import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
@@ -29,28 +37,28 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.Direction
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinChoice
-import app.snapsync.model.JoinCommit
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
+import app.snapsync.query.RequestStatuses
+import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.membership.JoinDetailsQuery
+import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
@@ -85,7 +93,7 @@ internal class ContainerRig(
     config: EventConfig? = null,
     permission: GalleryAccess = GalleryAccess.GRANTED,
     refusal: VersionRefusal? = null,
-    private val details: suspend (String) -> JoinLoad = { error("no details here") },
+    private val details: suspend (String) -> JoinDetails = { error("no details here") },
     network: NetworkAccess = NetworkAccess.Online(restricted = false),
     deviceRefusal: DeviceRefusal? = null,
     val clock: TestClock = TestClock(),
@@ -104,6 +112,15 @@ internal class ContainerRig(
 
     private fun record(what: String) = firedCell.update { it + what }
 
+    /** What the rig answers the membership's requests on — at once, as a core that settles every one does. */
+    private val statuses = MembershipStatuses()
+    private var lastRequest = 0L
+
+    private fun <T> answered(on: RequestStatuses<T>, answer: T?): RequestId = RequestId(++lastRequest).also { id ->
+        on.begun(id)
+        answer?.let { on.done(id, it) }
+    }
+
     val host = StatusContainerHost(
         StatusSources(
             sync = object : SyncStatusSource {
@@ -120,11 +137,17 @@ internal class ContainerRig(
                 override val returned: Flow<Unit> = emptyFlow()
             },
             foreground = foreground,
+            requests = RequestStatusFlows(
+                join = statuses.join.status,
+                settings = statuses.settings.status,
+                switch = statuses.switch.status,
+                rename = statuses.rename.status,
+            ),
         ),
         scope = scope,
         cutoffFormatter = CutoffFormatter(now = { clock.instant }, zone = TimeZone.UTC),
         commands = object : UserCommands {
-            override suspend fun leave() {
+            override fun leave() {
                 record("leave")
                 this@ContainerRig.config.value = null
             }
@@ -134,9 +157,9 @@ internal class ContainerRig(
                 createdCell.update { it + Triple(name, startsAt, endsAt) }
             }
 
-            override suspend fun commitJoin(choice: JoinChoice): JoinCommit {
-                record("commitJoin:${choice.eventId}:${choice.direction}:${choice.saveToAlbum}")
-                return JoinCommit.Failed()
+            override fun commitJoin(choice: JoinChoice): RequestId {
+                record("commitJoin:${choice.event.id}:${choice.direction}:${choice.saveToAlbum}")
+                return answered(statuses.join, JoinCommit.Failed())
             }
 
             override fun share(url: String, title: String) = record("share:$url")
@@ -149,20 +172,17 @@ internal class ContainerRig(
 
             override fun choosePhotos() = record("choosePhotos")
 
-            override suspend fun reconfigure(
-                eventId: EventId,
-                direction: Direction,
-                minPhotoDate: CaptureCutoff,
-                maxPhotoDate: CaptureCeiling,
-                saveToAlbum: Boolean,
-            ): ReconfigureOutcome {
-                record("reconfigure:$eventId:$direction")
-                return ReconfigureOutcome.Saved
+            override fun reconfigure(choice: ShareChoice): RequestId {
+                record("reconfigure:${choice.event}:${choice.direction}")
+                return answered(statuses.settings, SettingsResult.Saved)
             }
 
-            override fun rename(eventId: EventId, name: String) = record("rename:$eventId:$name")
+            override fun rename(eventId: EventId, name: String): RequestId {
+                record("rename:$eventId:$name")
+                return answered(statuses.rename, null)
+            }
 
-            override suspend fun resetRename() = record("resetRename")
+            override fun switch(invite: InviteFact): RequestId = answered(statuses.switch, SwitchVerdict.Ask)
 
             override suspend fun sendDiagnostics(note: String, context: ReportContext): ReportOutcome {
                 // A report opened from "Report this" is marked: only it carries the refused verification's facts.
@@ -181,11 +201,10 @@ internal class ContainerRig(
             }
         },
         queries = object : UserQueries {
-            override suspend fun loadJoinDetails(eventId: EventId, linkKey: String?) = details(eventId.value)
-
             override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
-
-            override suspend fun switchLosesNothing(): Boolean = false
+        },
+        joinDetails = object : JoinDetailsQuery {
+            override suspend fun load(invite: InviteLink): JoinDetails = details(invite.event.value)
         },
         diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
         reduction = Dispatchers.Default,

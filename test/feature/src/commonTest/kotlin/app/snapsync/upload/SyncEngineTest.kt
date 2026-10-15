@@ -1,10 +1,10 @@
 package app.snapsync.upload
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SyncEngine
-import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.SyncDecision
 import app.snapsync.model.SyncEvent

@@ -48,6 +48,7 @@ internal class AppUploader(private val core: AppCore) {
                 eventKeys = app.eventKeys,
                 process = UploaderProcess.App(core.appUploadAdmission),
                 records = app.sharedDatabase,
+                membership = app.membership,
                 // The THREE-state membership read, never the core's StateFlow.
                 config = app.config,
                 mobileData = app.mobileData,

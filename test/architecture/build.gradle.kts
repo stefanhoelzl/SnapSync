@@ -49,6 +49,8 @@ dependencies {
     // orphans in-flight work), which no text scan can see.
     testImplementation(project(":domain:model"))
     testImplementation(project(":domain:domain"))
+    testImplementation(project(":domain:format"))
+    testImplementation(project(":domain:data"))
     // The generated wire (`api/openapi.yaml`): the limits and routes the client's mirrors are pinned to.
     testImplementation(project(":domain:wire"))
     // The screen's vocabulary: the name cap the event-name gate pins, and the types `AppPorts` binds `Ui` to.
@@ -148,6 +150,7 @@ tasks.test {
             include("test/contracts/*")
             // MigrationPinTest's subject: the migration chains. Without them an edit to a shipped `.sqm` — the one
             // change the pin exists to catch — leaves this task UP-TO-DATE and the pin silently stops pinning.
+            include("domain/data/src/commonMain/sqldelight/**/*.sqm")
             include("domain/services/src/commonMain/sqldelight/**/*.sqm")
             // The event-link domain guard's subjects. Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it

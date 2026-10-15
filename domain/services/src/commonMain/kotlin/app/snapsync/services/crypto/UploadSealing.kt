@@ -1,16 +1,16 @@
 package app.snapsync.services.crypto
 
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.format.EventKeyText
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.Resource
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.model.encodeEventKey
 import app.snapsync.model.roleFromUploadKey
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.identity.requireDeviceId
+import app.snapsync.services.membership.MembershipProjection
 
 /**
  * **How one upload is sealed** (the encrypted file format, `docs/architecture.md`): not at all for a plain event; for an
@@ -23,7 +23,7 @@ import app.snapsync.services.identity.requireDeviceId
 class UploadSealing(
     private val keys: EventKeys,
     private val cipher: FileCipher,
-    private val config: ConfigService,
+    private val config: MembershipProjection,
     private val identity: DeviceIdentity,
 ) {
 
@@ -57,8 +57,8 @@ class UploadSealing(
     fun edgeHeaders(seal: UploadSeal.Sealed): Map<String, String> {
         val elsewhere = cipher.sealedElsewhere(seal.eventKey, seal.associatedData)
         return mapOf(
-            EncryptedFileFormat.FILE_KEY_HEADER to encodeEventKey(elsewhere.fileKey.bytes),
-            EncryptedFileFormat.FILE_HEAD_HEADER to encodeEventKey(elsewhere.head),
+            EncryptedFileFormat.FILE_KEY_HEADER to EventKeyText.encode(elsewhere.fileKey.bytes),
+            EncryptedFileFormat.FILE_HEAD_HEADER to EventKeyText.encode(elsewhere.head),
         )
     }
 

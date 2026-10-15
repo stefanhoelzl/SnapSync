@@ -11,11 +11,13 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
+import app.snapsync.ports.OpenDatabase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlin.reflect.KFunction2
 import kotlin.test.assertEquals
-import kotlin.test.assertFails
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -150,19 +152,17 @@ object DatabasesContract : Contract<DatabasesState, DatabasesSubject>("Databases
     private fun seed(databases: Databases, schema: SqlSchema<QueryResult.Value<Unit>>) {
         val opened = databases.open(NAME, schema, readOnly = false)
         check(opened is DbOpen.Opened) { "could not enter the state: $opened" }
-        opened.driver.execute(null, "INSERT INTO probe (id, v) VALUES (1, '$KEPT')", 0)
-        opened.driver.close()
+        opened.database.ran { it.execute(null, "INSERT INTO probe (id, v) VALUES (1, '$KEPT')", 0) }
+        opened.database.close()
     }
 
-    private fun SqlDriver.kept(): String? =
-        executeQuery(null, "SELECT v FROM probe WHERE id = 1", { c ->
-            QueryResult.Value(if (c.next().value) c.getString(0) else null)
-        }, 0).value
+    private fun OpenDatabase.kept(): String? = ran { it.keptRow() }
 
-    private fun SqlDriver.hasColumnW(): Boolean =
-        executeQuery(null, "SELECT count(*) FROM pragma_table_info('probe') WHERE name = 'w'", { c ->
+    private fun OpenDatabase.hasColumnW(): Boolean = ran { driver ->
+        driver.executeQuery(null, "SELECT count(*) FROM pragma_table_info('probe') WHERE name = 'w'", { c ->
             QueryResult.Value(c.next().value && (c.getLong(0) ?: 0L) > 0L)
         }, 0).value
+    }
 
     override val clauses = clauses {
         schemaClauses()
@@ -170,11 +170,24 @@ object DatabasesContract : Contract<DatabasesState, DatabasesSubject>("Databases
         clause(
             "ABSENT_READ_WRITE_CREATES_IT",
             DatabasesState.ABSENT,
-            covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+            covers = cells {
+                on<Databases> {
+                    answers(Databases::open).with(DbOpen.Opened::class)
+                    handle<OpenDatabase>().answers(EXECUTE).withGenericLeaf(DbResult.Ok::class)
+                    handle<OpenDatabase>().callsBack(EXECUTE, "statements", SqlDriver::class)
+                }
+            },
         ) { (databases) ->
-            val driver = databases.opened(Current, readOnly = false)
-            driver.execute(null, "INSERT INTO probe (id, v, w) VALUES (1, '$KEPT', 'x')", 0)
-            driver.close()
+            val database = databases.opened(Current, readOnly = false)
+            assertEquals(
+                DbResult.Ok(KEPT),
+                database.execute { driver ->
+                    driver.execute(null, "INSERT INTO probe (id, v, w) VALUES (1, '$KEPT', 'x')", 0)
+                    KEPT
+                },
+                "statements that ran answer what their block answered",
+            )
+            database.close()
             val again = databases.opened(Current, readOnly = true)
             assertEquals(KEPT, again.kept(), "a created database keeps what was written to it")
             again.close()
@@ -198,10 +211,10 @@ object DatabasesContract : Contract<DatabasesState, DatabasesSubject>("Databases
             DatabasesState.OLD,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
         ) { (databases) ->
-            val driver = databases.opened(Current, readOnly = false)
-            assertTrue(driver.hasColumnW(), "the migration ran")
-            assertEquals(KEPT, driver.kept(), "a migration that loses rows loses every suppression handle")
-            driver.close()
+            val database = databases.opened(Current, readOnly = false)
+            assertTrue(database.hasColumnW(), "the migration ran")
+            assertEquals(KEPT, database.kept(), "a migration that loses rows loses every suppression handle")
+            database.close()
         }
 
         clause(
@@ -227,9 +240,9 @@ object DatabasesContract : Contract<DatabasesState, DatabasesSubject>("Databases
             DatabasesState.CURRENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
         ) { (databases) ->
-            val driver = databases.opened(Current, readOnly = true)
-            assertEquals(KEPT, driver.kept())
-            driver.close()
+            val database = databases.opened(Current, readOnly = true)
+            assertEquals(KEPT, database.kept())
+            database.close()
         }
 
         clause(
@@ -237,9 +250,9 @@ object DatabasesContract : Contract<DatabasesState, DatabasesSubject>("Databases
             DatabasesState.CURRENT,
             covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
         ) { (databases) ->
-            val driver = databases.opened(Current, readOnly = false)
-            assertEquals(KEPT, driver.kept(), "a re-open is not a re-create")
-            driver.close()
+            val database = databases.opened(Current, readOnly = false)
+            assertEquals(KEPT, database.kept(), "a re-open is not a re-create")
+            database.close()
         }
 
         clause(
@@ -301,7 +314,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         val here = subject.databases.opened(DatabasesContract.Current, readOnly = false)
         val other = subject.otherProcess().opened(DatabasesContract.Current, readOnly = false)
 
-        ProbeWriter(other).insert(2)
+        ProbeWriter.on(other) { insert(2) }
 
         awaitWithin { DatabasesContract.NAME in heard.value }
         here.close()
@@ -324,7 +337,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         val here = subject.databases.opened(DatabasesContract.Current, readOnly = true)
         val other = subject.otherProcess().opened(DatabasesContract.Current, readOnly = false)
 
-        ProbeWriter(other).insert(2)
+        ProbeWriter.on(other) { insert(2) }
 
         awaitWithin { DatabasesContract.NAME in heard.value }
         here.close()
@@ -345,7 +358,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         val here = subject.databases.opened(DatabasesContract.Current, readOnly = false)
         val other = subject.otherProcess().opened(DatabasesContract.Current, readOnly = false)
 
-        ProbeWriter(other).insertRolledBack(2)
+        ProbeWriter.on(other) { insertRolledBack(2) }
 
         transferSettle()
         assertEquals(emptyList(), heard.value, "a transaction that rolled back changed nothing")
@@ -366,7 +379,7 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
         val heard = subject.listening()
         val here = subject.databases.opened(DatabasesContract.Current, readOnly = false)
 
-        ProbeWriter(here).insert(2)
+        ProbeWriter.on(here) { insert(2) }
 
         transferSettle()
         assertEquals(emptyList(), heard.value, "this process's own commit is not another process's")
@@ -376,34 +389,42 @@ private fun ClauseList<DatabasesState, DatabasesSubject>.changeClauses() {
 
 /**
  * A statement that fails on a database already open (`Databases`, "A statement can fail"): SQLite answers a write it
- * cannot make — the write lock held elsewhere, the disk full — by failing that statement, and the caller is told by a
- * thrown exception; the database stays open, nothing the failed statement asked for happened, and the next write once
+ * cannot make — the write lock held elsewhere, the disk full — by failing that statement, and the adapter answers it as
+ * [DbResult.Failed]; the database stays open, nothing the failed statement asked for happened, and the next write once
  * the cause is gone goes through. What the mocks' `fail` lever plays rests on this.
  */
 private fun ClauseList<DatabasesState, DatabasesSubject>.contendedClauses() {
     clause(
-        "A_REFUSED_WRITE_THROWS_AND_CHANGES_NOTHING",
+        "A_REFUSED_WRITE_FAILS_AND_CHANGES_NOTHING",
         DatabasesState.CONTENDED,
-        covers = cells { on<Databases>().answers(Databases::open).with(DbOpen.Opened::class) },
+        covers = cells {
+            on<Databases> {
+                answers(Databases::open).with(DbOpen.Opened::class)
+                handle<OpenDatabase>().answers(EXECUTE).withGenericLeaf(DbResult.Failed::class)
+            }
+        },
     ) { subject ->
         val here = subject.databases.opened(DatabasesContract.Current, readOnly = false)
         val release = checkNotNull(subject.contend) { "a CONTENDED binding makes the writes fail" }()
         try {
-            assertFails("an insert under a held write lock") {
-                here.execute(null, "INSERT INTO probe (id, v) VALUES (2, 'written')", 0)
-            }
-            assertFails("an update under a held write lock") {
-                here.execute(null, "UPDATE probe SET v = 'changed' WHERE id = 1", 0)
-            }
-            assertFails("a delete under a held write lock") {
-                here.execute(null, "DELETE FROM probe WHERE id = 1", 0)
-            }
+            assertIs<DbResult.Failed>(
+                here.execute { it.execute(null, "INSERT INTO probe (id, v) VALUES (2, 'written')", 0) },
+                "an insert under a held write lock",
+            )
+            assertIs<DbResult.Failed>(
+                here.execute { it.execute(null, "UPDATE probe SET v = 'changed' WHERE id = 1", 0) },
+                "an update under a held write lock",
+            )
+            assertIs<DbResult.Failed>(
+                here.execute { it.execute(null, "DELETE FROM probe WHERE id = 1", 0) },
+                "a delete under a held write lock",
+            )
         } finally {
             release()
         }
-        assertEquals(DatabasesContract.KEPT, here.keptRow(), "a failed statement changed nothing")
-        here.execute(null, "INSERT INTO probe (id, v) VALUES (2, 'written')", 0)
-        assertEquals(listOf(1L, 2L), here.ids(), "once the cause is gone the database takes writes again")
+        assertEquals(DatabasesContract.KEPT, here.ran { it.keptRow() }, "a failed statement changed nothing")
+        here.ran { it.execute(null, "INSERT INTO probe (id, v) VALUES (2, 'written')", 0) }
+        assertEquals(listOf(1L, 2L), here.ran { it.ids() }, "once the cause is gone the database takes writes again")
         here.close()
     }
 }
@@ -418,6 +439,18 @@ private fun SqlDriver.ids(): List<Long> =
         QueryResult.Value(buildList { while (c.next().value) add(c.getLong(0)!!) })
     }, 0).value
 
+/** [statements]' answer — a clause that needs them to run fails here, naming the failure. */
+fun <T> OpenDatabase.ran(statements: (SqlDriver) -> T): T = when (val result = execute(statements)) {
+    is DbResult.Ok -> result.value
+    is DbResult.Failed -> throw AssertionError("expected the statements to run, got $result")
+}
+
+/** [OpenDatabase.execute] as a cell names it: a generic member's reference needs its type spelled out. */
+private val EXECUTE: KFunction2<OpenDatabase, (SqlDriver) -> Any?, DbResult<Any?>> = OpenDatabase::execute
+
+/** Closes the database's driver — a clause's own tidying, so the next open of the file is a fresh one. */
+fun OpenDatabase.close() = ran { it.close() }
+
 /** Every database [DatabasesSubject.databases] heard another process commit to, in order. */
 private fun DatabasesSubject.listening(): StateFlow<List<String>> {
     val heard = MutableStateFlow(emptyList<String>())
@@ -429,10 +462,10 @@ private fun DatabasesSubject.otherProcess(): Databases =
     checkNotNull(elsewhere) { "a SHARED binding stands up the second process" }()
 
 /** [DatabasesContract.NAME] opened at [schema] — a clause that needs it open fails here, naming the answer. */
-private fun Databases.opened(schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): SqlDriver {
+private fun Databases.opened(schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): OpenDatabase {
     val opened = open(DatabasesContract.NAME, schema, readOnly)
     assertIs<DbOpen.Opened>(opened, "expected the database to open (readOnly=$readOnly), got $opened")
-    return opened.driver
+    return opened.database
 }
 
 /** Writes the probe table as generated SQLDelight code does: in a transaction, its listeners notified of the table. */
@@ -449,7 +482,10 @@ private class ProbeWriter(driver: SqlDriver) : TransacterImpl(driver) {
         notifyQueries(PROBE_QUERY) { emit -> emit("probe") }
     }
 
-    private companion object {
-        const val PROBE_QUERY = 1
+    companion object {
+        private const val PROBE_QUERY = 1
+
+        /** [write] on [database], through the port. */
+        fun on(database: OpenDatabase, write: ProbeWriter.() -> Unit) = database.ran { ProbeWriter(it).write() }
     }
 }

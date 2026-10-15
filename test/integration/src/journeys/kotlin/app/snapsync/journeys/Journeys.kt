@@ -1,6 +1,9 @@
 package app.snapsync.journeys
 
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.control.Choices
+import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.format.InviteLinkText
 import app.snapsync.control.RigClient
 import app.snapsync.control.Verifies
 import app.snapsync.control.person
@@ -12,10 +15,7 @@ import app.snapsync.levers.MovingPhoto
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.SeedKind
-import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.Direction
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.decodeEventUrl
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.wire.api.Limits
@@ -173,13 +173,14 @@ class Journeys {
      */
     private suspend fun receive(a: RigClient, member: Member) {
         val invite = (a.state().ui.layer as? Layer.Joined)?.inviteUrl ?: fail("A's joined screen carries no invite link")
-        val link = when (val decoded = decodeEventUrl(invite)) {
-            is ConfigDecodeResult.Success -> decoded.payload
-            is ConfigDecodeResult.Failure -> fail("A's invite link does not decode (${decoded.reason}): $invite")
+        val link = when (val read = InviteLinkText.parse(invite)) {
+            is InviteLinkVerdict.Invite -> read.link
+            is InviteLinkVerdict.KeyUnreadable, InviteLinkVerdict.NotAnInvite ->
+                fail("A's invite link does not read ($read): $invite")
         }
-        val event = link.eventId.value
+        val event = link.event.value
         // An encrypted event's invite carries its key, and the member keeps it as a device does at its join.
-        member.join(event, link.key)
+        member.join(event, link.key?.text)
         // Captured today at noon: inside the event's window, as a member's photo of the event would be.
         val today = Clock.System.todayIn(TimeZone.UTC)
         val shared = member.share(event, count = MEMBER_PHOTOS, creationDate = "${today}T12:00:00Z")

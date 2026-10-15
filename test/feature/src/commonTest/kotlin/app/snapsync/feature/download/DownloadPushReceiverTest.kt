@@ -1,5 +1,8 @@
 package app.snapsync.feature.download
 
+import app.snapsync.data.membership.EventCheckRecord
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.time.WallClock
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -13,9 +16,9 @@ import app.snapsync.feature.support.downloadJobs
 import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testShared
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.EventConfig
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.GalleryImport
@@ -23,11 +26,10 @@ import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.staging.StagingService
-import app.snapsync.services.wake.EventChecks
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -73,7 +75,8 @@ class DownloadPushReceiverTest {
             // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no
             // longer defaults: a permissive default is what let "no membership" mean "download freely".
             arm = DownloadArm(enabled = { true }, keyHeld = { true }),
-            checks = EventChecks(testShared(), now = { kotlin.time.Instant.fromEpochMilliseconds(0) }),
+            checks = EventCheckRecord(testShared()),
+            clock = WallClock(testClock()),
             readyToImport = { true },
         )
     }
@@ -103,7 +106,7 @@ class DownloadPushReceiverTest {
         val union = RecordingUnion()
         val store = SharedStore().apply { membershipUnreadable() }
         val receiver = DownloadPushReceiver(
-            configSource = ConfigService(store.db, testClock()),
+            configSource = MembershipProjection(MembershipRepository(store.db), testClock()),
             controller = controller(union),
         )
         receiver.onSilentPush(eventA)
@@ -155,13 +158,13 @@ class DownloadPushReceiverTest {
 }
 
 /** The real membership service, holding [eventId]'s membership — or none. */
-private fun membership(eventId: String?): ConfigService = configService(
+private fun membership(eventId: String?): MembershipProjection = configService(
     eventId?.let {
         EventConfig(
             testEventId(it),
             "E",
             CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-            maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
             endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
             deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )

@@ -7,15 +7,10 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.EventLookup
-import app.snapsync.model.JoinResult
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.MemberCounts
 import app.snapsync.model.PushEndpoint
-import app.snapsync.model.RenameOutcome
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.StoredResource
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.HttpResult
 import app.snapsync.services.identity.MapSecureStore
@@ -47,88 +42,6 @@ class BackendServicesTest {
             """"endsAt":"2026-07-08T00:00:00Z","openUntil":"2026-07-08T00:00:00Z","capacity":40,""" +
             """"deletesAt":"2026-07-31T00:00:00Z","closedAt":null,"completedAt":null}"""
 
-    private fun details(
-        name: String = "Party",
-        startsAt: String = "2026-07-01T00:00:00Z",
-        endsAt: String = "2026-07-08T00:00:00Z",
-        deletesAt: String = "2026-07-31T00:00:00Z",
-        closedAt: String? = null,
-        completedAt: String? = null,
-        openUntil: String = endsAt,
-    ): HttpResult = json(
-        200,
-        """{"eventId":"${testEventId("E").value}","name":"$name","createdAt":"2026-06-01T00:00:00Z","startsAt":"$startsAt",""" +
-            """"endsAt":"$endsAt","openUntil":"$openUntil","capacity":40,"deletesAt":"$deletesAt",""" +
-            """"closedAt":${closedAt.quoted()},"completedAt":${completedAt.quoted()},""" +
-            """"members":{"active":2,"final":1,"waiting":1}}""",
-    )
-
-    private fun String?.quoted() = this?.let { "\"$it\"" } ?: "null"
-
-    // ── the event directory ────────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun a_served_read_with_every_field_is_found() = runTest {
-        val found = assertIs<EventLookup.Found>(servicesAnswering(details()).directory.fetch(testEventId("E")))
-        assertEquals("Party", found.name)
-        assertEquals("2026-07-01T00:00:00Z", TimestampText.format(found.startsAt.at))
-        assertEquals("2026-07-08T00:00:00Z", TimestampText.format(found.endsAt.at))
-        assertEquals("2026-07-31T00:00:00Z", TimestampText.format(found.deletesAt.at))
-        assertEquals("2026-07-08T00:00:00Z", found.openUntil?.at?.let(TimestampText::format), "open until its end")
-        assertEquals(MemberCounts(active = 2, settled = 1, waiting = 1), found.completion.members)
-        assertEquals(2, found.completion.members?.active)
-        assertEquals(1, found.completion.members?.settled)
-    }
-
-    @Test
-    fun a_legacy_events_millisecond_start_is_normalized_toward_the_earlier_second() = runTest {
-        val found = assertIs<EventLookup.Found>(
-            servicesAnswering(details(startsAt = "2026-07-01T00:00:00.182Z")).directory.fetch(testEventId("E")),
-        )
-        assertEquals("2026-07-01T00:00:00Z", TimestampText.format(found.startsAt.at))
-    }
-
-    @Test
-    fun a_served_read_blanking_or_garbling_any_field_is_failed_never_an_invented_one() = runTest {
-        for (reply in listOf(
-            details(name = "  "),
-            details(startsAt = "garbage"),
-            details(endsAt = "garbage"),
-            details(deletesAt = "garbage"),
-            json(200, """{"eventId":"${testEventId("E").value}","name":"Party"}"""),
-        )) {
-            assertEquals(EventLookup.Failed(), servicesAnswering(reply).directory.fetch(testEventId("E")), "$reply")
-        }
-    }
-
-    /**
-     * Presence is the fact (capability `event-lifetime`): only a completed event's photos are deleted. `closedAt` is for
-     * builds that predate open-until dates and means nothing to this one.
-     */
-    @Test
-    fun a_served_read_says_whether_the_event_completed_and_ignores_closed_at() = runTest {
-        suspend fun completed(closedAt: String?, completedAt: String?) = assertIs<EventLookup.Found>(
-            servicesAnswering(
-                details(closedAt = closedAt, completedAt = completedAt),
-            ).directory.fetch(testEventId("E")),
-        ).completion.completed
-        assertEquals(false, completed(closedAt = null, completedAt = null))
-        assertEquals(false, completed(closedAt = "2026-07-09T00:00:00Z", completedAt = null))
-        assertEquals(true, completed(closedAt = "2026-07-10T00:00:00Z", completedAt = "2026-07-10T00:00:00Z"))
-    }
-
-    @Test
-    fun a_served_read_carries_the_date_its_host_chose_and_an_unreadable_one_costs_only_that() = runTest {
-        val chosen = assertIs<EventLookup.Found>(
-            servicesAnswering(details(openUntil = "2026-07-20T00:00:00Z")).directory.fetch(testEventId("E")),
-        )
-        assertEquals("2026-07-20T00:00:00Z", chosen.openUntil?.at?.let(TimestampText::format))
-        val garbled = assertIs<EventLookup.Found>(
-            servicesAnswering(details(openUntil = "garbage")).directory.fetch(testEventId("E")),
-        )
-        assertEquals(null, garbled.openUntil)
-    }
-
     // ── what the device received ───────────────────────────────────────────────────────────────────
 
     @Test
@@ -143,26 +56,7 @@ class BackendServicesTest {
         )
     }
 
-    @Test
-    fun only_an_event_not_found_is_not_found_every_other_answer_is_failed() = runTest {
-        assertEquals(
-            EventLookup.NotFound,
-            servicesAnswering(text(404, "event not found")).directory.fetch(testEventId("E")),
-        )
-        assertEquals(
-            EventLookup.Failed(ServiceFault.TROUBLE),
-            servicesAnswering(text(502, "upstream")).directory.fetch(testEventId("E")),
-        )
-        assertEquals(
-            EventLookup.Failed(ServiceFault.UPDATING, retryAfterSeconds = 60),
-            servicesAnswering(maintenance).directory.fetch(testEventId("E")),
-            "an update says when asking again is worth it",
-        )
-        assertEquals(EventLookup.Failed(), servicesAnswering(json(200, "<html/>")).directory.fetch(testEventId("E")))
-        assertEquals(EventLookup.Failed(), servicesAnswering(offline).directory.fetch(testEventId("E")))
-    }
-
-    // ── create and rename ──────────────────────────────────────────────────────────────────────────
+    // ── create ─────────────────────────────────────────────────────────────────────────────────────────
 
     @Test
     fun a_served_create_answers_the_minted_id_and_stored_name() = runTest {
@@ -247,85 +141,13 @@ class BackendServicesTest {
         // An answer from a working service that the app has no reading of — here, this build too old — is told as the
         // one condition whose remedy may be the member's own: never as the service failing.
         val tooOld = json(426, """{"error":"app too old","minAppVersion":"9.9"}""")
-        val services = servicesAnswering(tooOld)
-        assertEquals(CreateOutcome.Transient(ServiceFault.UNREACHABLE), services.creation.create("n", "s", null))
-        assertEquals(EventLookup.Failed(ServiceFault.UNREACHABLE), services.directory.fetch(testEventId("E")))
         assertEquals(
-            JoinResult.Failed(ServiceFault.UNREACHABLE),
-            services.join.join(testEventId("E"), testDeviceId("D")),
-        )
-    }
-
-    @Test
-    fun a_rename_answers_the_echoed_name_not_the_submitted_one() = runTest {
-        assertEquals(
-            RenameOutcome.Renamed("Echoed"),
-            servicesAnswering(json(200, event("Echoed"))).rename.rename(testEventId("E"), "Asked"),
-        )
-    }
-
-    @Test
-    fun a_refused_rename_is_the_name_and_a_gone_event_is_transient_never_event_gone() = runTest {
-        assertEquals(
-            RenameOutcome.InvalidName,
-            servicesAnswering(text(400, "invalid name")).rename.rename(testEventId("E"), " "),
-        )
-        assertEquals(
-            RenameOutcome.Transient(fault = null),
-            servicesAnswering(text(404, "event not found")).rename.rename(testEventId("E"), "n"),
-            "a 404 is an answer, told generically",
-        )
-        assertEquals(
-            RenameOutcome.Transient(ServiceFault.UNREACHABLE),
-            servicesAnswering(json(200, """{"name":"n"}""")).rename.rename(testEventId("E"), "n"),
-            "an echo missing the event is malformed",
-        )
-        assertEquals(
-            RenameOutcome.Transient(ServiceFault.UNREACHABLE),
-            servicesAnswering(offline).rename.rename(testEventId("E"), "n"),
-        )
-        assertEquals(
-            RenameOutcome.Transient(ServiceFault.TROUBLE),
-            servicesAnswering(text(502, "")).rename.rename(testEventId("E"), "n"),
-        )
-        assertEquals(
-            RenameOutcome.Transient(ServiceFault.UPDATING),
-            servicesAnswering(maintenance).rename.rename(testEventId("E"), "n"),
-        )
-    }
-
-    @Test
-    fun a_rename_the_service_answers_with_the_photos_deleted_is_the_event_over() = runTest {
-        assertEquals(
-            RenameOutcome.EventOver,
-            servicesAnswering(json(410, """{"error":"closed"}""")).rename.rename(testEventId("E"), "n"),
+            CreateOutcome.Transient(ServiceFault.UNREACHABLE),
+            servicesAnswering(tooOld).creation.create("n", "s", null),
         )
     }
 
     // ── membership ─────────────────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun a_closed_event_and_a_gone_one_are_their_own_answers_and_everything_else_failed() = runTest {
-        assertEquals(JoinResult.Joined, servicesAnswering(ok()).join.join(testEventId("E"), testDeviceId("D")))
-        assertEquals(
-            JoinResult.EventNotFound,
-            servicesAnswering(text(404, "event not found")).join.join(testEventId("E"), testDeviceId("D")),
-        )
-        assertEquals(
-            JoinResult.Failed(ServiceFault.TROUBLE),
-            servicesAnswering(text(502, "upstream")).join.join(testEventId("E"), testDeviceId("D")),
-        )
-        assertEquals(JoinResult.Failed(), servicesAnswering(offline).join.join(testEventId("E"), testDeviceId("D")))
-        assertEquals(
-            JoinResult.EventClosed,
-            servicesAnswering(json(410, CLOSED)).join.join(testEventId("E"), testDeviceId("D")),
-        )
-        assertEquals(
-            JoinResult.Unverified,
-            servicesAnswering(UNAUTHORIZED).join.join(testEventId("E"), testDeviceId("D")),
-            "a credential refusal",
-        )
-    }
 
     @Test
     fun a_publish_is_confirmed_only_by_a_served_write() = runTest {
@@ -395,30 +217,14 @@ class BackendServicesTest {
     }
 
     @Test
-    fun leaving_is_best_effort_and_never_throws() = runTest {
-        assertTrue(servicesAnswering(ok()).leave.notifyLeaving(testEventId("E"), received = false).isSuccess)
-        // An event the backend no longer holds has nothing left to leave: done, so a recorded leave stops retrying.
-        assertTrue(
-            servicesAnswering(
-                text(404, "event not found"),
-            ).leave.notifyLeaving(testEventId("E"), received = false).isSuccess,
-        )
-        assertTrue(
-            servicesAnswering(text(502, "upstream")).leave.notifyLeaving(testEventId("E"), received = false).isFailure,
-        )
-        assertTrue(servicesAnswering(offline).leave.notifyLeaving(testEventId("E"), received = false).isFailure)
-    }
-
-    @Test
-    fun the_leaving_device_is_resolved_at_the_call_and_an_unreadable_one_is_a_failure() = runTest {
+    fun the_device_is_resolved_at_the_call_and_an_unreadable_one_is_a_failure() = runTest {
         val store = MapSecureStore()
         val services = servicesAnswering(ok(), store)
-        val leave = services.leave
+        val pushTokens = services.pushTokens
         assertEquals(0, store.reads, "building the service reads no identity — a locked launch composes it")
-        leave.notifyLeaving(testEventId("E"), received = false)
+        pushTokens.publish(PushEndpoint("apns", "t", "e"))
         assertTrue(store.reads > 0, "the call resolves the identity")
         val locked = servicesAnswering(ok(), MapSecureStore(unavailable = true))
-        assertTrue(locked.leave.notifyLeaving(testEventId("E"), received = false).isFailure)
         assertTrue(locked.pushTokens.publish(PushEndpoint("apns", "t", "e")).isFailure)
     }
 

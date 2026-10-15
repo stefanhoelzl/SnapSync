@@ -6,7 +6,7 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.Files
-import app.snapsync.services.config.ConfigService
+import app.snapsync.services.membership.MembershipProjection
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -38,7 +38,7 @@ fun openingFilesOf(landing: String): List<String> = listOf("$landing$SEALED_SUFF
 class DownloadOpening(
     private val keys: EventKeys,
     private val cipher: FileCipher,
-    private val config: ConfigService,
+    private val config: MembershipProjection,
     private val files: Files,
     private val log: Logger = Logger.withTag("DownloadOpening"),
 ) {

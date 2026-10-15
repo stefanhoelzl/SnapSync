@@ -1,18 +1,13 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.membership.ForgetMembership
 import app.snapsync.application.trust.RefreshAttestation
-import app.snapsync.feature.album.AlbumCoordinator
+import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.links.readmodel.OpenedLinks
-import app.snapsync.feature.membership.EventCompletion
-import app.snapsync.feature.membership.JoinUnion
-import app.snapsync.feature.membership.MembershipEntry
-import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.membership.ReceivedPhotoAdoption
-import app.snapsync.feature.membership.ResetDeviceState
-import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.feature.status.ForegroundWatches
 import app.snapsync.feature.status.StatusRefresh
@@ -24,7 +19,6 @@ import app.snapsync.feature.upload.WakeRearm
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.model.CycleResult
-import app.snapsync.model.EventConfig
 import app.snapsync.model.PlatformError
 import app.snapsync.model.PushMessage
 import app.snapsync.model.PushToken
@@ -39,24 +33,25 @@ import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.SessionDrain
 import app.snapsync.ports.SessionRelaunch
-import app.snapsync.scheduling.EntryPoint
+import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.GrantedEntryPoint
-import app.snapsync.scheduling.InlineEntryPoint
+import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Pass
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Sequence
 import app.snapsync.scheduling.steps
-import app.snapsync.services.backend.EventDirectory
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
+import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.ImportMarkers
 import app.snapsync.services.foreground.AppForeground
-import app.snapsync.services.gallery.GalleryAccessState
+import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.links.LinkOpening
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.push.PushTokenRequest
 import app.snapsync.services.push.PushTokenSource
+import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.upload.SessionTransfer
 import app.snapsync.services.wake.Heartbeat
@@ -76,7 +71,7 @@ class OnForeground(
     private val host: HostAssembly,
     private val work: ForegroundWork,
     private val wake: WakeWork,
-) : EntryPoint<Unit>(runtime) {
+) : BackgroundEntryPoint<Unit>(runtime) {
     override suspend fun run(arg: Unit) = steps {
         required { foreground.entered() }
         required { pushTokens.request() }
@@ -95,7 +90,7 @@ class OnBackground(
     private val foreground: AppForeground,
     private val watches: ForegroundWatches,
     private val footprints: FootprintSampler,
-) : InlineEntryPoint<Unit>(runtime) {
+) : InboundEntryPoint<Unit>(runtime) {
     private val log = Log("OnBackground")
 
     override fun run(arg: Unit) {
@@ -108,7 +103,7 @@ class OnBackground(
 
 /** The network came back while the app was in front: what waited for it runs now. */
 class OnNetworkReturned(runtime: Runtime, private val work: ForegroundWork, private val wake: WakeWork) :
-    EntryPoint<Unit>(runtime) {
+    BackgroundEntryPoint<Unit>(runtime) {
     override suspend fun run(arg: Unit) = steps {
         isolated("own work") { work.run() }
         required { wake.full(WakeKind.NETWORK) }
@@ -125,7 +120,7 @@ class OnSilentPush(
     private val receiver: DownloadPushReceiver,
     private val guard: PushTailGuard,
     private val wake: WakeWork,
-) : EntryPoint<PushMessage>(runtime) {
+) : BackgroundEntryPoint<PushMessage>(runtime) {
     override suspend fun run(arg: PushMessage) = steps {
         required { prelude.run() }
         isolated("receive") { receiver.onSilentPush(arg.payload) }
@@ -148,7 +143,7 @@ class OnScheduledWake(runtime: Runtime, private val wake: WakeWork) : GrantedEnt
  * so — the relaunch is answered, and the wake's work follows under the process's background time.
  */
 class OnUploadSessionEvents(runtime: Runtime, private val drains: SessionDrains, private val wake: WakeWork) :
-    EntryPoint<SessionRelaunch>(runtime) {
+    BackgroundEntryPoint<SessionRelaunch>(runtime) {
     override suspend fun run(arg: SessionRelaunch) = steps {
         required { drains.awaitAfter(arg.drainsBefore) }
         detached { wake.afterPrelude(WakeKind.UPLOAD_SESSION) }
@@ -164,7 +159,7 @@ class OnDownloadSessionEvents(
     private val drains: SessionDrains,
     private val jobs: DownloadJobs,
     private val wake: WakeWork,
-) : EntryPoint<SessionRelaunch>(runtime) {
+) : BackgroundEntryPoint<SessionRelaunch>(runtime) {
     override suspend fun run(arg: SessionRelaunch) = steps {
         required { drains.awaitAfter(arg.drainsBefore) }
         required { jobs.awaitOutstandingStagings() }
@@ -173,7 +168,7 @@ class OnDownloadSessionEvents(
 }
 
 /** A transfer session delivered every event it held: a relaunch waiting for them goes on. */
-class OnSessionDrained(runtime: Runtime, private val drains: SessionDrains) : InlineEntryPoint<SessionDrain>(runtime) {
+class OnSessionDrained(runtime: Runtime, private val drains: SessionDrains) : InboundEntryPoint<SessionDrain>(runtime) {
     override fun run(arg: SessionDrain) = drains.reported(arg.drains)
 }
 
@@ -183,7 +178,7 @@ class OnUploadFinished(
     private val transfer: SessionTransfer,
     private val uploads: OwnUploads,
     private val topUp: TopUp,
-) : InlineEntryPoint<FinishedTransfer>(runtime) {
+) : InboundEntryPoint<FinishedTransfer>(runtime) {
     override fun run(arg: FinishedTransfer) {
         transfer.recordFinished(arg.tag, arg.failure)
         when (uploads.mayFillSlot()) {
@@ -194,14 +189,14 @@ class OnUploadFinished(
 }
 
 /** A download's bytes arrived: moved to staging before the platform deletes them. */
-class OnDownloadFinished(runtime: Runtime, private val jobs: DownloadJobs) : InlineEntryPoint<FinishedDownload>(
+class OnDownloadFinished(runtime: Runtime, private val jobs: DownloadJobs) : InboundEntryPoint<FinishedDownload>(
     runtime,
 ) {
     override fun run(arg: FinishedDownload) = jobs.onFinished(arg.tag, arg.facts, arg.tempPath)
 }
 
 /** A download ended — finished, failed or cancelled: its slot is free. */
-class OnDownloadCompleted(runtime: Runtime, private val jobs: DownloadJobs) : InlineEntryPoint<CompletedDownload>(
+class OnDownloadCompleted(runtime: Runtime, private val jobs: DownloadJobs) : InboundEntryPoint<CompletedDownload>(
     runtime,
 ) {
     override fun run(arg: CompletedDownload) = jobs.onCompleted(arg.tag, arg.error)
@@ -224,22 +219,24 @@ class OnKeyRestored(private val runtime: Runtime, private val work: ForegroundWo
 
 /** The library is creating an import's asset, inside its change block: the marker that keeps it from going back up. */
 class OnImportPlaceholder(runtime: Runtime, private val markers: ImportMarkers) :
-    InlineEntryPoint<ImportPlaceholder>(runtime) {
+    InboundEntryPoint<ImportPlaceholder>(runtime) {
     override fun run(arg: ImportPlaceholder) = markers.placeholder(arg.correlation, arg.created)
 }
 
 /** An import came out: persisted here — the library reports it once, even when its requester is gone. */
-class OnImportSettled(runtime: Runtime, private val markers: ImportMarkers) : InlineEntryPoint<ImportSettled>(runtime) {
+class OnImportSettled(runtime: Runtime, private val markers: ImportMarkers) : InboundEntryPoint<ImportSettled>(
+    runtime,
+) {
     override fun run(arg: ImportSettled) = markers.settled(arg.correlation, arg.outcome)
 }
 
 /** The platform issued, re-delivered or rotated this device's push token. */
-class OnPushToken(runtime: Runtime, private val tokens: PushTokenSource) : InlineEntryPoint<PushToken>(runtime) {
+class OnPushToken(runtime: Runtime, private val tokens: PushTokenSource) : InboundEntryPoint<PushToken>(runtime) {
     override fun run(arg: PushToken) = tokens.deliver(arg.value)
 }
 
 /** The platform could not issue a push token: no silent push arrives until it can. */
-class OnPushTokenFailure(runtime: Runtime) : InlineEntryPoint<PlatformError>(runtime) {
+class OnPushTokenFailure(runtime: Runtime) : InboundEntryPoint<PlatformError>(runtime) {
     private val log = Log("OnPushTokenFailure")
 
     override fun run(arg: PlatformError) =
@@ -248,14 +245,30 @@ class OnPushTokenFailure(runtime: Runtime) : InlineEntryPoint<PlatformError>(run
 
 /** The app was opened with a link: kept until the screen opens it. */
 class OnLink(runtime: Runtime, private val opening: LinkOpening, private val links: OpenedLinks) :
-    InlineEntryPoint<LinkDelivery>(runtime) {
+    InboundEntryPoint<LinkDelivery>(runtime) {
     override fun run(arg: LinkDelivery) = links.offer(opening.urlIn(arg))
 }
 
-/** The control channel voids this device's durable state (a rig build only). */
-class OnDevReset(runtime: Runtime, private val reset: ResetDeviceState) : EntryPoint<Unit>(runtime) {
+/**
+ * The control channel voids this device's durable sync state (a rig build only), so a build pointed at a different
+ * backend starts from nothing: the ledger, the download rows that are not a suppression handle, the membership —
+ * locally, telling no backend, which belongs to the build left behind — its key, and the mobile-data choice.
+ */
+class OnDevReset(
+    runtime: Runtime,
+    private val ledger: LedgerService,
+    private val downloads: DownloadController,
+    private val forget: ForgetMembership,
+    private val keys: EventKeys,
+    private val mobileData: MobileDataSetting,
+) : BackgroundEntryPoint<Unit>(runtime) {
+    @OptIn(EntryPointCall::class)
     override suspend fun run(arg: Unit) = steps {
-        required { reset.reset() }
+        isolated("ledger") { ledger.clear() }
+        isolated("downloads") { downloads.onDurableStateReset() }
+        isolated("membership") { forget() }
+        isolated("key") { keys.forget() }
+        isolated("mobile data") { mobileData.clear() }
     }
 }
 
@@ -263,11 +276,11 @@ class OnDevReset(runtime: Runtime, private val reset: ResetDeviceState) : EntryP
 class OnSelectionChanged(
     runtime: Runtime,
     private val adoption: ReceivedPhotoAdoption,
-    private val config: ConfigService,
+    private val config: MembershipProjection,
     private val statusRefresh: StatusRefresh,
     private val uploads: OwnUploads,
     private val wake: WakeWork,
-) : EntryPoint<Unit>(runtime) {
+) : BackgroundEntryPoint<Unit>(runtime) {
     override suspend fun run(arg: Unit) = steps {
         required { adoption.afterSelectionPublished(config.config.value) }
         isolated("total") { statusRefresh.refreshTotal() }
@@ -278,7 +291,7 @@ class OnSelectionChanged(
 
 /** A process-metric report: accounted for before the platform's callback returns — it may be delivered once. */
 class OnMetricReport(runtime: Runtime, private val account: ProcessAccount) :
-    InlineEntryPoint<ProcessMetricPayload>(runtime) {
+    InboundEntryPoint<ProcessMetricPayload>(runtime) {
     override fun run(arg: ProcessMetricPayload) = account.handle(arg)
 }
 
@@ -307,7 +320,7 @@ class UploadEngine(
  * What the re-read before a wake's own work covers: the membership, which another process may have changed, and the
  * token.
  */
-class Prelude(private val config: ConfigService, private val refreshAttestation: RefreshAttestation) {
+class Prelude(private val membership: MembershipRepository, private val refreshAttestation: RefreshAttestation) {
     @OptIn(EntryPointCall::class)
     suspend fun run() = steps {
         isolated("membership") { membership() }
@@ -315,20 +328,20 @@ class Prelude(private val config: ConfigService, private val refreshAttestation:
     }
 
     /** The membership alone, re-read: what a screen about to be drawn needs before the token's network round trip. */
-    fun membership() = config.reload()
+    fun membership() = membership.reload()
 }
 
 /** The foreground's own work — and a returned network's, which is the same. */
 class ForegroundWork(
     private val prelude: Prelude,
-    private val config: ConfigService,
+    private val config: MembershipProjection,
     private val watches: ForegroundWatches,
     private val transfer: SessionTransfer,
     private val settle: StoredUploadSettle,
     private val statusRefresh: StatusRefresh,
     private val downloads: DownloadController,
-    private val membership: MembershipRefresh,
-    private val directory: EventDirectory,
+    private val stateRefresh: StateRefresh,
+    private val leftovers: SweepLeftovers,
 ) {
     suspend fun run() = steps {
         required { prelude.run() }
@@ -339,7 +352,8 @@ class ForegroundWork(
             child("status") { statusRefresh.run() }
             child("reconcile") { downloads.reconcileJoined(config.activeEventId(), UnionTrigger.FOREGROUND) }
             child("reclaim") { downloads.releaseSettledBytes() }
-            child("membership") { membership.refreshJoined(config.activeEventId(), directory) }
+            child("membership") { stateRefresh.run() }
+            child("leftovers") { leftovers.run() }
         }
     }
 }
@@ -353,8 +367,7 @@ class WakeWork(
     private val importReceived: ImportReceived,
     private val uploadOwn: UploadOwn,
     private val rearm: WakeRearm,
-    private val completion: EventCompletion,
-    private val downloads: DownloadController,
+    private val end: EndOfWake,
     private val footprints: FootprintSampler,
 ) {
     suspend fun full(kind: WakeKind) = steps {
@@ -363,41 +376,13 @@ class WakeWork(
         ensure("footprint") { footprints.record("after the ${kind.name.lowercase()} wake") }
         run(importReceived)
         uploads = run(uploadOwn)
-        isolated(
-            "end of wake",
-        ) { completion.endOfWake(kind.checksPhotos, kind.boundsEventRead, downloads::reconcileIfDue) }
+        isolated("end of wake") { end.run(kind) }
     }
 
     /** [full], after the re-read every wake's own work starts with — for a wake that has no other. */
     suspend fun afterPrelude(kind: WakeKind) = steps {
         required { prelude.run() }
         required { full(kind) }
-    }
-}
-
-/**
- * Entering a membership the join confirmed — a switch or a first join — or re-saving the joined one, then what follows
- * a join: the counts, the event album, the foreign photos and the push registration. The join command's work; it moves
- * under the command's entry point when commands do (phase 4.9).
- */
-class Provision(
-    private val entry: MembershipEntry,
-    private val config: ConfigService,
-    private val statusRefresh: StatusRefresh,
-    private val albums: AlbumCoordinator,
-    private val access: GalleryAccessState,
-    private val downloads: DownloadController,
-    private val joinUnion: JoinUnion,
-    private val push: PushRegistration,
-    private val tokens: PushTokenSource,
-) {
-    suspend fun run(cfg: EventConfig) {
-        entry.provision(config.activeEventId(), cfg)
-        statusRefresh.run()
-        albums.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, hasUsableAccess = access.usable)
-        // The union the entry's adoption read in this same provision, when it did: one union read per join.
-        downloads.reconcile(cfg.eventId, UnionTrigger.JOIN, known = joinUnion.take(cfg.eventId))
-        push.reRegister(tokens)
     }
 }
 

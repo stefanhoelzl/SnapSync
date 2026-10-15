@@ -86,6 +86,7 @@ class DetektTiersPlugin : Plugin<Project> {
         root.registerTier("detektDomainTier", "domain", srcDirs("domain")) { exclude(excludeTests) }
         root.registerTier("detektDataTier", "data", srcDirs("data")) { exclude(excludeTests) }
         root.registerTier("detektApplicationTier", "application", srcDirs("application")) { exclude(excludeTests) }
+        root.registerTier("detektQueryTier", "query", srcDirs("query")) { exclude(excludeTests) }
         root.registerTier("detektHarnessTier", "harness", srcDirs("harness")) {
             exclude(excludeTests)
             // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2.
@@ -222,6 +223,7 @@ class DetektTiersPlugin : Plugin<Project> {
             ":domain:model" to "core",
             ":domain:inbound" to "core",
             ":domain:wire" to "core",
+            ":domain:format" to "core",
             ":domain:ports" to "core",
             ":domain:services" to "core",
             ":domain:feature" to "core",
@@ -244,6 +246,7 @@ class DetektTiersPlugin : Plugin<Project> {
             ":domain:domain" to "domain",
             ":domain:data" to "data",
             ":domain:application" to "application",
+            ":domain:query" to "query",
 
             // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
             // STRUCTURALLY — a screen that renders six states has six branches by construction.

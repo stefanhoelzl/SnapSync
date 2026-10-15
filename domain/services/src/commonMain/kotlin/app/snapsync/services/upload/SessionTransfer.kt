@@ -1,8 +1,8 @@
 package app.snapsync.services.upload
 
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.LedgerState
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.Resource
 import app.snapsync.model.TerminalOutcome

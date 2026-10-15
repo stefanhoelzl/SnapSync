@@ -2,6 +2,9 @@ package app.snapsync.rig
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.contracts.attest.InMemoryKeyAttestation
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFiles
@@ -14,13 +17,10 @@ import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.WorldEvent
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.ConfigRead
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.SecureStoreRead
-import app.snapsync.services.config.ConfigService
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.ui.state.UiState
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -73,8 +73,8 @@ internal fun launchWorld(
     os = PlayedOs(device) { it in mocked },
     ownDeviceId = { (ports.secureStore.value.read(TrustSlots.DEVICE_ID) as? SecureStoreRead.Found)?.value.orEmpty() },
     joinedEventId = {
-        val config = ConfigService(SharedDatabase(ports.databases.value, legacy = null), ports.clock.value)
-        (config.read() as? ConfigRead.Joined)?.config?.eventId?.value
+        val membership = MembershipRepository(SharedDatabase(ports.databases.value, legacy = null))
+        (membership.read() as? MembershipRead.Joined)?.membership?.event?.id?.value
     },
     controls = controls.levers,
 )

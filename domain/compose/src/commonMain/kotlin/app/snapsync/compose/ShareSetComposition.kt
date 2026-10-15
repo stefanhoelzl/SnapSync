@@ -1,7 +1,5 @@
 package app.snapsync.compose
 
-import app.snapsync.domain.event.EventId
-import app.snapsync.feature.membership.MembershipEntry
 import app.snapsync.feature.membership.ReceivedPhotoAdoption
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.model.GalleryAccess
@@ -68,20 +66,3 @@ internal suspend fun AppCore.onGrantChanged(permission: GalleryAccess) {
  */
 internal suspend fun AppCore.importsReady(): Boolean =
     receivedPhotoAdoption.ensureAdoptedUnder(galleryAccess.usable, services.config.config.value)
-
-/**
- * Entering a new membership: the order is
-
- * `MembershipEntry`'s rule — stop, backend leave, load, adopt, save, start uploads. [notifyLeave] is the composition's
- * best-effort leave, awaited here as it always was on this path. A top-level factory because `AppCore` is measured
- * (see [shareSetLoadFor]).
- */
-internal fun AppCore.membershipEntry(notifyLeave: suspend (eventId: EventId) -> Unit): MembershipEntry =
-    MembershipEntry(
-        stopUploads = { uploadTransitions.onLeave() },
-        notifyLeave = notifyLeave,
-        loadShareSet = { eventId -> shareSetLoad.load(eventId) },
-        adoptReceived = { cfg -> receivedPhotoAdoption.adopt(cfg) },
-        saveConfig = saveConfig,
-        startUploads = { uploadTransitions.onJoin() },
-    )

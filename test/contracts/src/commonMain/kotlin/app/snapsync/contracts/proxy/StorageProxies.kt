@@ -3,13 +3,16 @@
 package app.snapsync.contracts.proxy
 
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.contracts.CallLog
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.FileArea
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
+import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Files
+import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureSlot
@@ -69,13 +72,27 @@ fun Databases.recorded(log: CallLog): Databases = DatabasesProxy(log.wraps(this)
 internal class DatabasesProxy(private val inner: Databases, log: CallLog) : Databases {
     private val r = log.recorder("Databases")
 
-    override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean) =
-        r.answer("open", inner.open(name, schema, readOnly))
+    override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen =
+        when (val opened = r.answer("open", inner.open(name, schema, readOnly))) {
+            is DbOpen.Opened -> DbOpen.Opened(OpenDatabaseProxy(opened.database, r.handle("OpenDatabase")))
+            else -> opened
+        }
 
     @CompositionOnly
     override fun inbound(handlers: DatabaseHandlers) = r.returns(
         "inbound",
         inner.inbound(DatabaseHandlers(InboundProxy(handlers.onChangedElsewhere, r, "onChangedElsewhere", "String"))),
+    )
+}
+
+/** The [OpenDatabase] handle a [Databases] hands out, recorded under that port ([r] is its `OpenDatabase` recorder). */
+internal class OpenDatabaseProxy(private val inner: OpenDatabase, private val r: Recorder) : OpenDatabase {
+    override fun <T> execute(statements: (SqlDriver) -> T) = r.answer(
+        "execute",
+        inner.execute { driver ->
+            r.called("execute.statements", Recorder.arg(driver, "SqlDriver"))
+            statements(driver)
+        },
     )
 }
 

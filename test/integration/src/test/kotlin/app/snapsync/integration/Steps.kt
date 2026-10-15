@@ -7,11 +7,6 @@ import app.snapsync.control.behaviour.Seen
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.decodeEventUrl
-import app.snapsync.model.encodeEventUrl
-import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -34,23 +29,31 @@ suspend fun Given.createdEvent(
     return gate.value.eventId
 }
 
-/** An event that exists on the backend and that this device has not joined: created, then the gate abandoned. */
-suspend fun Given.registeredEvent(name: String = Rig.EVENT_NAME): String {
-    val event = createdEvent(name)
+/**
+ * An event that exists on the backend and that this device has not joined: created, then the gate abandoned. A range
+ * already over is kept open for the days a create keeps it open by default.
+ */
+suspend fun Given.registeredEvent(
+    name: String = Rig.EVENT_NAME,
+    startsAt: String = Rig.WINDOW_START,
+    endsAt: String = Rig.WINDOW_END,
+): String {
+    val event = createdEvent(name, startsAt, endsAt)
     step("its join gate abandoned", act = { tap(UiIntent.CancelJoin) }, until = { screen<Layer.CreateEvent>() })
     return event
 }
 
 /**
- * An event running [startsAt]..[endsAt] created and joined with [choices], on its joined screen, and whatever the join
- * started done. Answers its id.
+ * An event named [name] running [startsAt]..[endsAt] created and joined with [choices], on its joined screen, and
+ * whatever the join started done. Answers its id.
  */
 suspend fun Given.joinedEvent(
     choices: Choices = Choices(),
+    name: String = Rig.EVENT_NAME,
     startsAt: String = Rig.WINDOW_START,
     endsAt: String = Rig.WINDOW_END,
 ): String {
-    val event = createdEvent(startsAt = startsAt, endsAt = endsAt)
+    val event = createdEvent(name, startsAt, endsAt)
     step("joined", act = { confirmJoin(choices) }, until = {
         screen<Layer.Joined>()
         settled { true }
@@ -110,12 +113,8 @@ suspend fun Acts.heartbeat() {
 suspend fun Given.inviteFor(eventId: String): String =
     step("the invite for $eventId", act = { inviteLink(eventId) }, until = {})
 
-/** [eventId]'s invite, as the device that created it shares it — with the `autoJoin` hint, where [autoJoin]. */
-suspend fun Acts.inviteLink(eventId: String, autoJoin: Boolean = false): String {
-    val invite = host.invite(eventId)
-    val key = (decodeEventUrl(invite) as ConfigDecodeResult.Success).payload.key
-    return encodeEventUrl(EventLinkPayload(testEventId(eventId), autoJoin = autoJoin, minPhotoDate = null, key = key))
-}
+/** [eventId]'s invite, as the device that created it shares it. */
+suspend fun Acts.inviteLink(eventId: String): String = host.invite(eventId)
 
 /** The operating system delivers a scanned event link. */
 suspend fun Acts.openLink(url: String) {

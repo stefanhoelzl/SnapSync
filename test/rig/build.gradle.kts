@@ -83,6 +83,7 @@ kotlin {
             implementation(project(":test:levers"))
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
+            implementation(project(":domain:format"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:inbound"))
             // `BackendReach` speaks the device API as `api/openapi.yaml` declares it: the generated routes and DTOs.

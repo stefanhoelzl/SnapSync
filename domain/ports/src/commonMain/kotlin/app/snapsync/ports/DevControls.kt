@@ -2,7 +2,6 @@ package app.snapsync.ports
 
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.UploaderPin
 
 /**
@@ -21,13 +20,6 @@ interface DevControls : EventPort<DevHandlers> {
      * `changes/both-uploaders-active`, D8).
      */
     fun uploaderPin(): UploaderPin?
-
-    /**
-     * Whether the join gate acts on an invite link's dev/test hints (`autoJoin` + its overrides). **Always
-     * [InviteLinkHints.Ignored] in a production build**, so no crafted link can join, switch or start sharing
-     * without the member confirming: joining happens only on confirmation.
-     */
-    fun inviteLinkHints(): InviteLinkHints
 
     /**
      * Whether an event this device creates is PLAIN rather than encrypted (the encrypted file format,

@@ -1270,7 +1270,8 @@ until it answers.
 
 The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
 (`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (the backend's
-`BackendReceived`, `BackendHeld`, `DeviceRegistered` and `PushSent`; the transfers' `UploadJobCreated`, `SessionTransferCreated` and `DownloadStarted`;
+`BackendReceived`, `BackendHeld`, `DeviceRegistered` and `PushSent`, and `UnionChanged` — a photo that became, or
+stopped being, what the event offers its members; the transfers' `UploadJobCreated`, `SessionTransferCreated` and `DownloadStarted`;
 the photo library's: a walk, an add or an import parked on an operator's hold — `LibraryEnumerationHeld`,
 `LibraryAddHeld`, `LibraryImportParked` — a photo an import created (`LibraryAssetCreated`), an album the app made
 (`LibraryAlbumCreated`) and a photo that joined one, once per photo as a person would see it arrive

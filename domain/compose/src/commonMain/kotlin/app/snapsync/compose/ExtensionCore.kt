@@ -6,6 +6,8 @@ import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.DropOnlyCredential
 import app.snapsync.data.trust.SecureCredentialStore
@@ -28,9 +30,7 @@ import app.snapsync.ports.SecureStore
 import app.snapsync.scheduling.Runtime
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.SuppressionService
 import app.snapsync.services.gallery.AlbumLookupFailure
 import app.snapsync.services.gallery.GalleryAlbums
@@ -39,6 +39,7 @@ import app.snapsync.services.gallery.denylistedAlbumMembers
 import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.upload.Uploader
 import kotlinx.coroutines.CoroutineDispatcher
@@ -127,7 +128,7 @@ fun snapSyncExtension(
     val cycle = lazy { uploadCycle(process, services) }
     ports.host.inbound(
         ExtensionHandlers(
-            OnProcess(runtime, attestStore, services.config, cycle, services.ledger),
+            OnProcess(runtime, attestStore, services.membership, cycle, services.ledger),
             OnTerminate(runtime),
         ),
     )
@@ -149,11 +150,13 @@ private fun extensionServices(
     val exchange = BackendExchange(ports.http, BuildTarget(build), VersionIgnored)
     // The extension never copies the records' legacy homes: it pauses until the app has (see `CycleGateRead`).
     val records = SharedDatabase(ports.databases, legacy = null)
-    val config = ConfigService(records, process.clock)
+    val membership = MembershipRepository(records)
+    val config = MembershipProjection(membership, process.clock)
     // The app's download store, read-only: both the echo suppression and the recognition record.
     val downloads = SuppressionService(ports.databases)
     return UploadServices(
         records = records,
+        membership = membership,
         config = config,
         // The same shared choice the app's menu writes, read per job.
         mobileData = MobileDataSetting(ports.preferences),

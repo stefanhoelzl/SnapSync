@@ -6,8 +6,8 @@ import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.Direction
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface

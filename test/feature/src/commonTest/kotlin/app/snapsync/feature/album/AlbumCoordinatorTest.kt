@@ -6,9 +6,9 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.testShared
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.EventConfig
-import app.snapsync.model.TimestampText
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
@@ -158,7 +158,7 @@ class AlbumCoordinatorTest {
 
     @Test
     fun `ensureAlbum without granted access is a no-op — the access fact is the coordinator’s guard`() = runTest {
-        // The Provision flow passes the fact; the rule (no album without full photo access) is
+        // The join's steps pass the fact; the rule (no album without full photo access) is
         // this feature's leading guard since the migration finale, so no caller can forget it.
         val manager = FakeAlbumManager(createResult = "album-X")
         val store = albumMap()

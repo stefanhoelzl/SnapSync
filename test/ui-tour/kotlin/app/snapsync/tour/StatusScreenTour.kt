@@ -2,6 +2,22 @@
 
 package app.snapsync.tour
 
+import app.snapsync.domain.service.ServiceFault
+import app.snapsync.domain.event.Event
+import app.snapsync.domain.event.EventName
+import app.snapsync.domain.event.EventNameVerdict
+import app.snapsync.domain.event.EventRange
+import app.snapsync.domain.event.EventRangeVerdict
+import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.membership.InviteFact
+import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.request.RequestId
+import app.snapsync.query.RequestStatuses
+import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.membership.JoinDetailsQuery
+import app.snapsync.presentation.RequestStatusFlows
+import app.snapsync.format.InviteLinkText
+import app.snapsync.domain.invite.InviteLink
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -37,23 +53,22 @@ import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.Direction
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinChoice
-import app.snapsync.model.JoinCommit
-import app.snapsync.model.JoinLoad
+import app.snapsync.domain.membership.JoinChoice
+import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.query.membership.JoinDetails
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.ReconfigureOutcome
+import app.snapsync.domain.membership.RenameResult
+import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
-import app.snapsync.model.encodeEventUrl
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
@@ -151,16 +166,27 @@ private val MEMBERSHIP = EventConfig(
     deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
-private val OTHER_EVENT = JoinLoad.Found(
-    "Anna’s Wedding",
-    EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
-    EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
-    DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
+private val OTHER_EVENT = JoinDetails.Found(
+    Event(
+        id = EventId.parse(OTHER_ID)!!,
+        name = (EventName.of("Anna’s Wedding") as EventNameVerdict.Ok).name,
+        range = (
+            EventRange.of(
+                EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
+                EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
+            ) as EventRangeVerdict.Ok
+            ).range,
+        openUntil = null,
+        deletesAt = DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
+        keyId = null,
+        members = null,
+    ),
+    completed = false,
 )
 
 private val CUTOFF = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC)
 
-private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(EventId.parse(eventId)!!))
+private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(EventId.parse(eventId)!!, null))
 
 // A test reads the words the screen shows; production never blocks on a resource.
 private fun str(res: StringResource, vararg args: Any): String = runBlocking { getString(res, *args) }
@@ -228,10 +254,19 @@ abstract class StatusScreenTour {
         permission: GalleryAccess = GalleryAccess.GRANTED,
         refusal: VersionRefusal? = null,
         deviceRefusal: DeviceRefusal? = null,
-        private val details: suspend (EventId) -> JoinLoad = { OTHER_EVENT },
+        private val details: suspend (EventId) -> JoinDetails = { OTHER_EVENT },
     ) {
         val config = MutableStateFlow(config)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+        /** What the rig answers the membership's requests on — at once, as a core that settles every one does. */
+        private val statuses = MembershipStatuses()
+        private var lastRequest = 0L
+
+        private fun <T> answered(on: RequestStatuses<T>, answer: T?): RequestId = RequestId(++lastRequest).also { id ->
+            on.begun(id)
+            answer?.let { on.done(id, it) }
+        }
 
         val host = StatusContainerHost(
             StatusSources(
@@ -249,17 +284,23 @@ abstract class StatusScreenTour {
                     )
                     override val returned: Flow<Unit> = emptyFlow()
                 },
+                requests = RequestStatusFlows(
+                    join = statuses.join.status,
+                    settings = statuses.settings.status,
+                    switch = statuses.switch.status,
+                    rename = statuses.rename.status,
+                ),
             ),
             scope = scope,
             cutoffFormatter = CUTOFF,
             commands = object : UserCommands {
-                override suspend fun leave() {
+                override fun leave() {
                     this@Rig.config.value = null
                 }
 
                 override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) = Unit
 
-                override suspend fun commitJoin(choice: JoinChoice) = JoinCommit.Failed()
+                override fun commitJoin(choice: JoinChoice) = answered(statuses.join, JoinCommit.Failed())
 
                 override fun share(url: String, title: String) = Unit
 
@@ -271,17 +312,11 @@ abstract class StatusScreenTour {
 
                 override fun choosePhotos() = Unit
 
-                override suspend fun reconfigure(
-                    eventId: EventId,
-                    direction: Direction,
-                    minPhotoDate: CaptureCutoff,
-                    maxPhotoDate: CaptureCeiling,
-                    saveToAlbum: Boolean,
-                ) = ReconfigureOutcome.Saved
+                override fun reconfigure(choice: ShareChoice) = answered(statuses.settings, SettingsResult.Saved)
 
-                override fun rename(eventId: EventId, name: String) = Unit
+                override fun rename(eventId: EventId, name: String) = answered(statuses.rename, RenameResult.Renamed)
 
-                override suspend fun resetRename() = Unit
+                override fun switch(invite: InviteFact) = answered(statuses.switch, SwitchVerdict.Ask)
 
                 override suspend fun sendDiagnostics(note: String, context: ReportContext) = ReportOutcome.SENT
 
@@ -290,11 +325,10 @@ abstract class StatusScreenTour {
                 override suspend fun restoreEventKey(linkKey: String) = false
             },
             queries = object : UserQueries {
-                override suspend fun loadJoinDetails(eventId: EventId, linkKey: String?) = details(eventId)
-
                 override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
-
-                override suspend fun switchLosesNothing(): Boolean = false
+            },
+            joinDetails = object : JoinDetailsQuery {
+                override suspend fun load(invite: InviteLink): JoinDetails = details(invite.event)
             },
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
             reduction = Dispatchers.Default,
@@ -514,7 +548,7 @@ abstract class StatusScreenTour {
 
     private fun ComposeUiTest.joinGate() {
         var loads = 0
-        val rig = Rig(details = { if (++loads == 1) JoinLoad.Failed() else OTHER_EVENT })
+        val rig = Rig(details = { if (++loads == 1) JoinDetails.Unanswered(ServiceFault.UNREACHABLE) else OTHER_EVENT })
         use(rig) { it.layer is Layer.CreateEvent }
         // A failed load, retried; then the gate cancelled.
         rig.host.onOpenUrl(linkTo(OTHER_ID))
@@ -578,8 +612,7 @@ abstract class StatusScreenTour {
         onNode(hasSetTextAction()).performTextInput("Anna’s Party")
         onNodeWithText(str(Res.string.save)).performClick()
         waitForIdle()
-        // No rename status arrives over these cells, so the sheet stays up after Save: close it.
-        if (rig.host.screen.value.overlays.renaming) onNodeWithText(str(Res.string.cancel)).performClick()
+        // The rename answers Renamed, so the sheet closes on Save.
         awaitShown { !it.overlays.renaming }
         // The event's settings: stopping sharing asked about, kept, asked again and confirmed; then closed.
         onNodeWithText(str(Res.string.footer_settings)).performClick()

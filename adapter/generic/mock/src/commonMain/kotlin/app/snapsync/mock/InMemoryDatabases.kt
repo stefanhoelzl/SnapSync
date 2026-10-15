@@ -14,6 +14,8 @@ import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
+import app.snapsync.ports.OpenDatabase
 import kotlin.concurrent.Volatile
 
 /**
@@ -47,6 +49,13 @@ internal class InMemoryDatabases(
     /** Whether every database is unreadable — a device before its first unlock since boot. */
     @Volatile
     var locked: Boolean = false
+
+    /** The databases that cannot be read on their own — a file the platform answers an I/O error for. */
+    @Volatile
+    var unreadable: Set<String> = emptySet()
+
+    /** Whether database [name] can be neither read nor written now. */
+    private fun closed(name: String): Boolean = locked || name in unreadable
 
     /** Every open asked for, by name, in order. */
     val opened: List<String> get() = lock.locked { openLog.toList() }
@@ -97,37 +106,48 @@ internal class InMemoryDatabases(
     /** The processes each database has been opened by, by name — who a commit is announced to. */
     private val openedBy = mutableMapOf<String, MutableSet<Process>>()
 
-    fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen = lock.locked {
+    fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): Found = lock.locked {
         openLog += name
-        if (locked) return@locked DbOpen.Failed("locked: the device has not been unlocked since boot")
-        refusals[name] ?: runCatchingCancellable { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
-            .getOrElse { DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
+        if (locked) return@locked Found.Answered(DbOpen.Failed("locked: the device has not been unlocked since boot"))
+        if (name in unreadable) return@locked Found.Answered(DbOpen.Failed("disk I/O error: $name cannot be read"))
+        refusals[name]?.let { Found.Answered(it) }
+            ?: runCatchingCancellable { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
+                .getOrElse { Found.Answered(DbOpen.Failed("${it::class.simpleName}: ${it.message}")) }
     }
 
-    private fun openReadOnly(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
-        val driver = held[name] ?: onDisk(name) ?: return DbOpen.Missing
+    /** An open's outcome before a process holds it: the database's driver, or the port's answer without one. */
+    sealed interface Found {
+        class Driver(val driver: SqlDriver) : Found
+
+        class Answered(val answer: DbOpen) : Found
+    }
+
+    private fun openReadOnly(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): Found {
+        val driver = held[name] ?: onDisk(name) ?: return Found.Answered(DbOpen.Missing)
         val version = userVersion(driver)
         return when {
-            version < schema.version -> DbOpen.OldSchema
-            version > schema.version -> DbOpen.Failed(
-                "schema version $version is newer than this build's ${schema.version}",
+            version < schema.version -> Found.Answered(DbOpen.OldSchema)
+            version > schema.version -> Found.Answered(
+                DbOpen.Failed("schema version $version is newer than this build's ${schema.version}"),
             )
-            else -> DbOpen.Opened(driver)
+            else -> Found.Driver(driver)
         }
     }
 
-    private fun openReadWrite(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
+    private fun openReadWrite(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): Found {
         val existing = held[name] ?: onDisk(name)
-        val driver = existing ?: Kept(newDriver(name), ::locked).also { held[name] = it }
+        val driver = existing ?: Kept(newDriver(name)) { closed(name) }.also { held[name] = it }
         val version = if (existing == null) 0L else userVersion(driver)
         when {
             existing == null -> schema.create(driver)
             version < schema.version -> schema.migrate(driver, version, schema.version)
             version > schema.version ->
-                return DbOpen.Failed("schema version $version is newer than this build's ${schema.version}")
+                return Found.Answered(
+                    DbOpen.Failed("schema version $version is newer than this build's ${schema.version}"),
+                )
         }
         driver.execute(null, "PRAGMA user_version = ${schema.version}", 0)
-        return DbOpen.Opened(driver)
+        return Found.Driver(driver)
     }
 
     /**
@@ -171,7 +191,7 @@ internal class InMemoryDatabases(
     /** A database a file already holds — another process's, or an earlier launch's — opened and kept. */
     private fun onDisk(name: String): SqlDriver? = directory
         ?.takeIf { databaseFileExists(it, name) }
-        ?.let { Kept(newFileDriver(it, name), ::locked).also { driver -> held[name] = driver } }
+        ?.let { Kept(newFileDriver(it, name)) { closed(name) }.also { driver -> held[name] = driver } }
 
     private fun newDriver(name: String): SqlDriver = directory?.let { newFileDriver(it, name) } ?: newInMemoryDriver()
 
@@ -198,15 +218,34 @@ internal class Process(private val databases: InMemoryDatabases, private val fau
     }
 
     override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen =
-        when (val opened = databases.open(name, schema, readOnly)) {
-            is DbOpen.Opened -> DbOpen.Opened(databases.signalling(opened.driver, name, this, faulted))
-            else -> opened
+        when (val found = databases.open(name, schema, readOnly)) {
+            is InMemoryDatabases.Found.Driver ->
+                DbOpen.Opened(MockOpenDatabase(databases.signalling(found.driver, name, this, faulted)))
+            is InMemoryDatabases.Found.Answered -> found.answer
         }
 
     fun changedElsewhere(name: String) {
         handlers?.onChangedElsewhere?.deliver(name)
     }
 }
+
+/**
+ * A database a [Process] opened. A statement the mock refuses ([StatementRefused]: an armed fault, a locked device) or
+ * the platform's SQLite refuses answers [DbResult.Failed] ([refusedAsFailure]), as a real adapter answers its
+ * platform's refusal.
+ */
+private class MockOpenDatabase(private val driver: SqlDriver) : OpenDatabase {
+    override fun <T> execute(statements: (SqlDriver) -> T): DbResult<T> = refusedAsFailure { statements(driver) }
+}
+
+/** A statement the mock refuses, as SQLite refuses one: thrown, nothing changed, the database still open. */
+internal class StatementRefused(message: String) : Exception(message)
+
+/**
+ * [statements]' answer, or [DbResult.Failed] for a [StatementRefused] or the exception the target's SQLite driver tells
+ * a refused statement by.
+ */
+internal expect fun <T> refusedAsFailure(statements: () -> T): DbResult<T>
 
 /**
  * [inner] as one process holds it: each finished commit — SQLDelight's notice to its listeners, after the commit — is
@@ -224,8 +263,9 @@ private class ProcessDriver(
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)?,
     ): QueryResult<Long> {
-        val fault = spend(sql)
-        check(fault == null) { "database is locked: ${fault?.kind} on ${fault?.table} (an operator's fault)" }
+        spend(
+            sql,
+        )?.let { throw StatementRefused("database is locked: ${it.kind} on ${it.table} (an operator's fault)") }
         return inner.execute(identifier, sql, parameters, binders)
     }
 
@@ -281,9 +321,9 @@ private class Kept(private val driver: SqlDriver, private val locked: () -> Bool
 
     override fun newTransaction(): QueryResult<Transacter.Transaction> = unlocked { driver.newTransaction() }
 
-    private fun <T> unlocked(block: () -> T): T {
-        check(!locked()) { "locked: the device has not been unlocked since boot" }
-        return block()
+    private fun <T> unlocked(block: () -> T): T = when (locked()) {
+        true -> throw StatementRefused("locked: the device has not been unlocked since boot")
+        false -> block()
     }
 }
 

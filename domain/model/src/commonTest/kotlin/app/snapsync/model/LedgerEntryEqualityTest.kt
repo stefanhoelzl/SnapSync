@@ -1,6 +1,7 @@
 package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.upload.LedgerState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals

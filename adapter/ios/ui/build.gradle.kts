@@ -36,8 +36,12 @@ kotlin {
             // platform's own date formatting, tapped through a Compose UI test.
             implementation(project(":adapter:ios:app-only"))
             implementation(project(":domain:presentation"))
+            // The membership's request statuses the tour's commands answer on.
+            implementation(project(":domain:query"))
             implementation(project(":domain:feature"))
             implementation(libs.kotlinx.datetime)
+            // The tour spells the dates it sets (`TimestampText`).
+            implementation(project(":domain:format"))
             implementation(libs.coroutines.core)
             implementation(libs.compose.ui.test)
             implementation(libs.compose.components.resources)

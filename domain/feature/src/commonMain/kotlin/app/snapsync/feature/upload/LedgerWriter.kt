@@ -1,7 +1,7 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.toLedgerRow
 import app.snapsync.services.ledger.LedgerService

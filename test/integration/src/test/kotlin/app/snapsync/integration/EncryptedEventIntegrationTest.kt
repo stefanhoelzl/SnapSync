@@ -1,8 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.levers.KeychainItem
-import app.snapsync.model.LINK_ORIGIN
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth

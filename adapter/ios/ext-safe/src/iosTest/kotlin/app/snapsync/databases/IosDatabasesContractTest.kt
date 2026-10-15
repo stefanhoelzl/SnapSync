@@ -8,7 +8,9 @@ import app.snapsync.contracts.DatabasesState
 import app.snapsync.contracts.DatabasesSubject
 import app.snapsync.contracts.Entered
 import app.snapsync.contracts.Host
+import app.snapsync.contracts.close
 import app.snapsync.contracts.proxy.recorded
+import app.snapsync.contracts.ran
 import app.snapsync.contracts.verify
 import app.snapsync.ports.DbOpen
 import app.snapsync.testsupport.fileExists
@@ -69,12 +71,12 @@ class IosDatabasesContractTest {
     private fun holdWriteLock(other: IosDatabases): () -> Unit {
         val opened = assertIs<DbOpen.Opened>(
             other.open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = false),
-        )
-        opened.driver.execute(null, "BEGIN IMMEDIATE", 0)
-        opened.driver.execute(null, "INSERT INTO probe (id, v) VALUES (${DatabasesContract.HELD_ROW}, 'held')", 0)
+        ).database
+        opened.ran { it.execute(null, "BEGIN IMMEDIATE", 0) }
+        opened.ran { it.execute(null, "INSERT INTO probe (id, v) VALUES (${DatabasesContract.HELD_ROW}, 'held')", 0) }
         return {
-            opened.driver.execute(null, "ROLLBACK", 0)
-            opened.driver.close()
+            opened.ran { it.execute(null, "ROLLBACK", 0) }
+            opened.close()
         }
     }
 
@@ -91,7 +93,7 @@ class IosDatabasesContractTest {
     fun `the database file lands where the container says`() {
         withTempDirectory { dir ->
             val opened = IosDatabases(dir).open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = false)
-            assertIs<DbOpen.Opened>(opened).driver.close()
+            assertIs<DbOpen.Opened>(opened).database.close()
             assertTrue(
                 fileExists("$dir/${DatabasesContract.NAME}"),
                 "a driver that ignored the base path shares nothing",

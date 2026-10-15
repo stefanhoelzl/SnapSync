@@ -4,14 +4,13 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.invite.InviteLink
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.EventLinkPayload
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
-import app.snapsync.model.encodeEventUrl
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -121,7 +120,7 @@ class RangeIntentsTest {
             testScheduler.runCurrent()
             assertEquals(before, containerHost.screen.value)
 
-            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT_ID))))
+            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
             awaitShown { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready }
 
             containerHost.onIntent(UiIntent.RangePickerOpen)
@@ -297,29 +296,33 @@ class RangeIntentsTest {
         scope: CoroutineScope,
         created: (String, EventStart, EventEnd, OpenUntil?) -> Unit =
             { _, _, _, _ -> },
-    ) = StatusContainerHost(
-        StatusSources(
-            object : SyncStatusSource {
-                override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
+    ) = TestCommands(create = created).let { commands ->
+        StatusContainerHost(
+            StatusSources(
+                object : SyncStatusSource {
+                    override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
+                },
+                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(null),
+                creation = MutableStateFlow(CreationStatus.Idle),
+                requests = commands.requests.flows,
+            ),
+            scope,
+            commands = commands,
+            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+            joinDetails = joinDetails { _ ->
+                found(
+                    "Picnic",
+                    EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
+                    EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
+                    DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
+                )
             },
-            MutableStateFlow(GalleryAccess.GRANTED),
-            MutableStateFlow(null),
-            creation = MutableStateFlow(CreationStatus.Idle),
-        ),
-        scope,
-        commands = testCommands(create = created),
-        cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-        queries = joinDetails { _ ->
-            JoinLoad.Found(
-                "Picnic",
-                EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
-                EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
-                DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
-            )
-        },
-        diagnostics = testDiagnostics(),
-        reduction = Dispatchers.Default,
-    )
+            queries = noQueries,
+            diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
+        )
+    }
 
     private companion object {
         const val EVENT_ID = "11111111-1111-4111-8111-111111111111"

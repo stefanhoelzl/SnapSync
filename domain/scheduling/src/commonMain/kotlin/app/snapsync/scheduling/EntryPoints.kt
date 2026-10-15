@@ -17,7 +17,7 @@ import app.snapsync.inbound.Trigger
  * expires it.
  */
 @OptIn(InboundImplementation::class)
-abstract class EntryPoint<A>(private val runtime: Runtime) : Background<A> {
+abstract class BackgroundEntryPoint<A>(private val runtime: Runtime) : Background<A> {
     protected abstract suspend fun run(arg: A)
 
     final override fun handle(arg: A, completion: Completion) {
@@ -28,8 +28,9 @@ abstract class EntryPoint<A>(private val runtime: Runtime) : Background<A> {
 }
 
 /**
- * [EntryPoint] for a delivery that is itself the operating system's grant of time — a scheduled wake: the run holds
- * no background time of its own, and the [Running] it answers is what the adapter expires when the grant is withdrawn.
+ * [BackgroundEntryPoint] for a delivery that is itself the operating system's grant of time — a scheduled wake: the run
+ * holds no background time of its own, and the [Running] it answers is what the adapter expires when the grant is
+ * withdrawn.
  */
 @OptIn(InboundImplementation::class)
 abstract class GrantedEntryPoint<A>(private val runtime: Runtime) : Granted<A> {
@@ -46,7 +47,7 @@ abstract class GrantedEntryPoint<A>(private val runtime: Runtime) : Granted<A> {
  * delivering thread, labelled and contained, and **persists what the delivery means before it returns**.
  */
 @OptIn(InboundImplementation::class)
-abstract class InlineEntryPoint<A>(private val runtime: Runtime) : Inbound<A, Unit> {
+abstract class InboundEntryPoint<A>(private val runtime: Runtime) : Inbound<A, Unit> {
     protected abstract fun run(arg: A)
 
     final override fun deliver(arg: A) = runtime.inline(name) { run(arg) }

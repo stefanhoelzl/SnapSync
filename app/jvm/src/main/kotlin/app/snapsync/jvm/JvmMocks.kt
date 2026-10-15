@@ -4,7 +4,6 @@ import app.snapsync.crypto.JcaCrypto
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.LogSink
@@ -15,9 +14,8 @@ import app.snapsync.ports.LogSink
  */
 class JvmMocks(
     ownDeviceId: String = DEFAULT_DEVICE_ID,
-    inviteLinkHints: InviteLinkHints,
     network: UploadNetwork?,
-) : MockDevice(ownDeviceId, inviteLinkHints, network) {
+) : MockDevice(ownDeviceId, network) {
 
     /**
      * One launch's adapters over these mocks. [http] is the device API's transport — the backend mock's own face, or one

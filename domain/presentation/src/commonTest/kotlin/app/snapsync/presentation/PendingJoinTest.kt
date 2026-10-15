@@ -17,7 +17,6 @@ class PendingJoinTest {
             testEventId("event-1"),
             JoinProgress.Loading,
             linkKey = "the-secret-key",
-            eventKeyId = "k1",
         )
         val written = pending.toString()
 

@@ -1,0 +1,140 @@
+import app.snapsync.domain.asset.AssetId;
+import app.snapsync.domain.event.DeletesAt;
+import app.snapsync.domain.event.EventEnd;
+import app.snapsync.domain.event.EventId;
+import app.snapsync.domain.event.EventStart;
+import app.snapsync.domain.event.OpenUntil;
+import app.snapsync.domain.sharing.CaptureCeiling;
+import app.snapsync.domain.sharing.CaptureCutoff;
+import app.snapsync.domain.sharing.Direction;
+import app.snapsync.domain.upload.LedgerState;
+import kotlin.Boolean;
+
+-- v16 -> v17: the membership's and the ledger's vocabulary moved into the domain layer, and `ledger.db` into the data
+-- layer (`docs/architecture.md`, "The core and its zones"). Two tables are re-created with their types — the way 15.sqm
+-- re-created them, since a column's Kotlin type lives in the `CREATE TABLE` of a migration that may never be edited
+-- (`MigrationPinTest`):
+--
+-- - `ledgerRow`: `state` is the domain's `LedgerState`. NOTHING a device stores changes: the same columns, SQL types,
+--   constraints, indexes and triggers, the same rows. The triggers are dropped FIRST, so moving the rows back does not
+--   count as a manifest change.
+-- - `membership`: `direction` is the domain's `Direction`, and the legacy `closed` column is gone — nothing has read it
+--   since events stopped closing (decision record `changes/back-dated-events`); a row an earlier build wrote keeps
+--   every other column.
+-- - `pendingLeave`: the `received` column is gone. A leave no longer says whether this device received everything —
+--   its report of what it holds does — and the backend reads a leave without it as it always has; a leave an earlier
+--   build recorded is delivered without it.
+--
+-- ROW-PRESERVING. DOWNGRADE: an earlier build reads `ledgerRow` unchanged; its membership read names `closed`, fails,
+-- and answers the membership unreadable — never "not joined", so it leaves nothing; its pending-leave read names
+-- `received`, fails, and delivers nothing until it is updated again.
+
+CREATE TABLE ledgerRow_v16 AS SELECT * FROM ledgerRow;
+
+DROP TRIGGER ledgerRow_version_insert;
+DROP TRIGGER ledgerRow_version_delete;
+DROP TRIGGER ledgerRow_version_update;
+DROP INDEX ledgerRow_assetId;
+DROP INDEX ledgerRow_destinationPath;
+DROP TABLE ledgerRow;
+
+CREATE TABLE ledgerRow (
+    eventId TEXT NOT NULL,
+    key TEXT NOT NULL,
+    assetId TEXT AS AssetId NOT NULL,
+    state TEXT AS LedgerState NOT NULL,
+    creationDate TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    contentType TEXT NOT NULL DEFAULT '',
+    originalFilename TEXT NOT NULL DEFAULT '',
+    destinationPath TEXT,
+    PRIMARY KEY (eventId, key)
+);
+
+INSERT INTO ledgerRow (
+    eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+)
+SELECT eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+FROM ledgerRow_v16;
+
+DROP TABLE ledgerRow_v16;
+
+CREATE INDEX ledgerRow_assetId ON ledgerRow(eventId, assetId);
+
+CREATE INDEX ledgerRow_destinationPath ON ledgerRow(destinationPath);
+
+CREATE TRIGGER ledgerRow_version_insert AFTER INSERT ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_delete AFTER DELETE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1 WHERE id = 0;
+END;
+
+CREATE TRIGGER ledgerRow_version_update AFTER UPDATE ON ledgerRow
+BEGIN
+    INSERT INTO manifestVersion (id, value)
+    SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM manifestVersion WHERE id = 0);
+    UPDATE manifestVersion SET value = value + 1
+    WHERE id = 0 AND (
+        old.eventId IS NOT new.eventId
+        OR old.key IS NOT new.key
+        OR old.assetId IS NOT new.assetId
+        OR old.creationDate IS NOT new.creationDate
+        OR old.role IS NOT new.role
+        OR old.contentType IS NOT new.contentType
+        OR old.originalFilename IS NOT new.originalFilename
+    );
+END;
+
+CREATE TABLE membership_v16 AS SELECT * FROM membership;
+
+DROP TABLE membership;
+
+CREATE TABLE membership (
+    id             INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    eventId        TEXT AS EventId NOT NULL,
+    name           TEXT    NOT NULL,
+    minPhotoDate   TEXT AS CaptureCutoff NOT NULL,
+    startsAt       TEXT AS EventStart NOT NULL,
+    endsAt         TEXT AS EventEnd NOT NULL,
+    maxPhotoDate   TEXT AS CaptureCeiling NOT NULL,
+    deletesAt      TEXT AS DeletesAt NOT NULL,
+    direction      TEXT AS Direction NOT NULL,
+    saveToAlbum    INTEGER AS Boolean NOT NULL,
+    membersActive  INTEGER,
+    membersSettled INTEGER,
+    keyId          TEXT,
+    openUntil      TEXT AS OpenUntil,
+    membersWaiting INTEGER,
+    deleted        INTEGER AS Boolean NOT NULL DEFAULT 0,
+    CHECK ((membersActive IS NULL) = (membersSettled IS NULL))
+);
+
+INSERT INTO membership (
+    id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum,
+    membersActive, membersSettled, keyId, openUntil, membersWaiting, deleted
+)
+SELECT id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum,
+    membersActive, membersSettled, keyId, openUntil, membersWaiting, deleted
+FROM membership_v16;
+
+DROP TABLE membership_v16;
+
+CREATE TABLE pendingLeave_v16 AS SELECT * FROM pendingLeave;
+
+DROP TABLE pendingLeave;
+
+CREATE TABLE pendingLeave (
+    eventId TEXT AS EventId NOT NULL PRIMARY KEY
+);
+
+INSERT INTO pendingLeave (eventId) SELECT eventId FROM pendingLeave_v16;
+
+DROP TABLE pendingLeave_v16;

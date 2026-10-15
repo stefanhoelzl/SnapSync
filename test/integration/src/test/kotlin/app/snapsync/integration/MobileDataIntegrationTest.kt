@@ -2,8 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.NetworkState
-import app.snapsync.model.Direction
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth

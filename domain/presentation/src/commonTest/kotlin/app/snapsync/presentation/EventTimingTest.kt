@@ -2,7 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
-import app.snapsync.model.TimestampText
+import app.snapsync.format.TimestampText
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.TimeLeft
 import kotlin.test.Test

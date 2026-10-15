@@ -5,22 +5,23 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.Direction
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
-import app.snapsync.model.encodeEventUrl
+import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.JoinPhase
@@ -74,27 +75,31 @@ class StatusContainerHostNetworkTest {
         permission: GalleryAccess = GalleryAccess.GRANTED,
         attested: Boolean = true,
         creation: CreationStatus = CreationStatus.Idle,
-        load: suspend (String) -> JoinLoad = { JoinLoad.Failed() },
+        load: suspend (String) -> JoinDetails = { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) },
         scope: CoroutineScope = backgroundScope,
         progress: SyncProgress = SyncProgress(0, 0, 0, 0, false, null),
         mobileData: Boolean = true,
-    ) = StatusContainerHost(
-        StatusSources(
-            Sync(SyncStatus.Ready(progress)),
-            MutableStateFlow(permission),
-            MutableStateFlow(config),
-            creation = MutableStateFlow(creation),
-            verification = DeviceVerification(MutableStateFlow(attested)),
-            network = network,
-            mobileData = MutableStateFlow(mobileData),
-        ),
-        scope,
-        queries = joinDetails(load),
-        commands = testCommands(),
-        cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
-        diagnostics = testDiagnostics(),
-        reduction = Dispatchers.Default,
-    )
+    ) = TestCommands().let { commands ->
+        StatusContainerHost(
+            StatusSources(
+                Sync(SyncStatus.Ready(progress)),
+                MutableStateFlow(permission),
+                MutableStateFlow(config),
+                creation = MutableStateFlow(creation),
+                verification = DeviceVerification(MutableStateFlow(attested)),
+                network = network,
+                mobileData = MutableStateFlow(mobileData),
+                requests = commands.requests.flows,
+            ),
+            scope,
+            joinDetails = joinDetails(load),
+            commands = commands,
+            cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
+            queries = noQueries,
+            diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
+        )
+    }
 
     /** [block] with the container's intents running, as on a screen — Orbit starts them on create. */
     private suspend fun TestScope.driving(host: StatusContainerHost, block: suspend () -> Unit) =
@@ -271,9 +276,14 @@ class StatusContainerHostNetworkTest {
     fun `an invite opened offline loads by itself once the network returns`() = runTest {
         val network = FakeNetwork(NetworkAccess.Offline)
         var loads = 0
-        val host = host(network, config = null, load = { if (loads++ == 0) JoinLoad.Failed() else FOUND })
+        val host =
+            host(
+                network,
+                config = null,
+                load = { if (loads++ == 0) JoinDetails.Unanswered(ServiceFault.UNREACHABLE) else FOUND },
+            )
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
+            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), null)))
             runCurrent()
             val offline = assertIs<Layer.JoiningEvent>(host.screen.value.layer)
             assertEquals(JoinPhase.LoadFailed, offline.phase)
@@ -294,10 +304,10 @@ class StatusContainerHostNetworkTest {
         var loads = 0
         val host = host(network, config = null, load = {
             loads++
-            JoinLoad.Failed()
+            JoinDetails.Unanswered(ServiceFault.UNREACHABLE)
         })
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
+            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), null)))
             runCurrent()
             assertEquals(JoinPhase.LoadFailed, assertIs<Layer.JoiningEvent>(host.screen.value.layer).phase)
             network.access.value = NetworkAccess.Online(restricted = false) // no return: nothing was missing
@@ -311,7 +321,7 @@ class StatusContainerHostNetworkTest {
         val network = FakeNetwork()
         val host = host(network, config = null, load = { FOUND })
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
+            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), null)))
             runCurrent()
             network.access.value = NetworkAccess.Blocked
             runCurrent()
@@ -341,7 +351,7 @@ class StatusContainerHostNetworkTest {
             endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
             deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
-        val FOUND = JoinLoad.Found(
+        val FOUND = found(
             "Party",
             EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
             EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),

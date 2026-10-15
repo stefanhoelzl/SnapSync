@@ -4,10 +4,10 @@ import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.RigState
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.Direction
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -179,20 +179,25 @@ class JoinGateIntegrationTest {
         // URL — ~130 ms apart on an iOS 18.7.9 cold launch, and 8 ms apart on iOS 26.6 while running.
         // Both hooks stay live because neither is reliable on every OS, so "exactly once" is enforced by
         // the gate rather than by the hook arrangement.
-        //
-        // autoJoin is the sharpest case: it auto-confirms with no surface and no tap, so before the
-        // duplicate rungs it was the one path a doubled delivery would double-PROVISION.
         val link = given {
             val event = registeredEvent(name = "Anna's Wedding")
-            val link = step("the auto-joining invite", act = { inviteLink(event, autoJoin = true) }, until = {})
-            step("joined through it", act = { openLink(link) }, until = {
+            val link = step("its invite", act = { inviteLink(event) }, until = {})
+            step(
+                "its gate opened twice — the duplicate delivery while the gate is open",
+                act = {
+                    openLink(link)
+                    openLink(link)
+                },
+                until = { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } },
+            )
+            step("joined through it", act = { confirmJoin() }, until = {
                 screen<Layer.Joined>()
                 settled { true }
             })
             link
         }
 
-        whenever { openLink(link) } // the duplicate delivery
+        whenever { openLink(link) } // and once more, joined
         // Joined once: a second provision would enrol again and republish the manifest — empty.
         then {
             never<WorldEvent.BackendReceived> { it.operation in REPROVISION }
@@ -235,60 +240,22 @@ class JoinGateIntegrationTest {
     }
 
     @Test
-    fun autoJoin_auto_confirms_without_a_confirmation() = rigTest {
-        val event = registerEvent(name = "Anna's Wedding")
-
-        openLink(inviteLink(event, autoJoin = true))
-        val membership = awaitState { it.ready.eventId == event }.joined!!.membership // straight to joined, no tap
-
-        assertEquals(event, membership.eventId)
-        assertNotNull(manifest(event))
-        // The headless path does NOT inherit the surface's seeds wholesale: the cutoff and direction mirror them,
-        // but the album stays off unless the link says otherwise. A default-on here
-        // would have every dev/test launch write an album.
-        assertEquals(false, membership.savesToAlbum)
-    }
-
-    @Test
     fun join_persists_the_capture_date_cutoff_through_the_provision_path() = rigTest {
-        // Regression: the chosen cutoff must survive decode → autoConfirm → commitJoin → join →
-        // provision → config. A wiring that drops it (as an early iOS build did) leaves the extension
-        // whole-library. An autoJoin deeplink carries the dev/test cutoff explicitly.
+        // Regression: the chosen cutoff must survive the confirm → the join → the stored membership. A wiring that
+        // drops it (as an early iOS build did) leaves the extension whole-library.
         //
         // The cutoff here is ABOVE the event's start (and inside its window), so the floor binds nothing and it
         // lands verbatim.
         val event = registerEvent(name = "Anna's Wedding")
 
         val cutoff = "2026-06-10T00:00:00Z"
-        openLink(inviteLink(event, autoJoin = true, minPhotoDate = cutoff))
+        openLink(inviteLink(event))
+        awaitReady()
+        join(Choices(cutoff = cutoff))
         val joined = awaitState { it.ready.eventId == event }
 
-        assertEquals(cutoff, joined.ready.minPhotoDate, "the cutoff must be persisted in config")
-    }
-
-    @Test
-    @Verifies(
-        spec = "join-event",
-        requirement = "The shared capture range is always bounded and chosen by the member",
-        scenario = "A range that breaks the rules is refused",
-    )
-    fun a_hostile_autoJoin_deeplink_cannot_widen_the_membership_below_the_event_start() = rigTest {
-        // THE attack the old floor closed, proven end-to-end through the real stack.
-        //
-        // `minPhotoDate` is decoded from ANY event link — it is documented as a dev/test key, but nothing stops an
-        // attacker putting it in a QR. Unchecked, a QR carrying `autoJoin=true` plus a distant-past cutoff would
-        // auto-confirm a join at near-whole-library scope WITHOUT A TAP.
-        //
-        // The share-range rule lives in `JoinEvent`, which every entry path funnels through — including this headless
-        // one. A member's range may now reach before the event (decision record `changes/flexible-share-range`), but
-        // never further than an event may last, so a 2001 cutoff is REFUSED: nothing is joined. (A production build no
-        // longer honours `autoJoin` at all — `InviteLinkHints`, proven by `InviteLinkHintsWorldTest`; this rig-composed
-        // host does, and the rule still defends it.)
-        val event = registerEvent(name = "Anna's Wedding")
-
-        openLink(inviteLink(event, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"))
-
-        neverWithin(what = "a 2001 cutoff joins nothing") { it.ready.eventId == event }
+        // The calendar chooses a day, in the device's zone: the chosen day is what must reach the membership.
+        assertEquals("2026-06-10", joined.ready.minPhotoDate?.take(10), "the cutoff must be persisted in config")
     }
 
     // ── The membership self-leave ─────────────────────────────────────────────────────────────────────────────

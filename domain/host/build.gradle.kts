@@ -25,6 +25,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
+            implementation(project(":domain:query"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:feature"))
             implementation(project(":domain:compose"))

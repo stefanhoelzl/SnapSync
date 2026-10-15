@@ -1,7 +1,6 @@
 package app.snapsync.dev
 
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
 import app.snapsync.model.UploaderPin
@@ -10,7 +9,7 @@ import app.snapsync.ports.DevHandlers
 
 /**
  * A production build's [DevControls]: inert, and never delivering (`docs/architecture.md`, "A build-time-only module
- * is contained by compilation"). No uploader is pinned and no invite-link hint is honoured, on every platform and for
+ * is contained by compilation"). No uploader is pinned, on every platform and for
  * the process's whole life — the only [DevControls] that does anything is the control channel's, which a production
  * build does not contain.
  *
@@ -22,7 +21,6 @@ import app.snapsync.ports.DevHandlers
  */
 @NeverAnswers(
     Never(member = "createsPlainEvents", answer = "false"),
-    Never(member = "inviteLinkHints", answer = "InviteLinkHints.Honoured"),
     Never(member = "uploaderPin", answer = "returns"),
     Never(handler = "onReset"),
 )
@@ -32,8 +30,6 @@ object InertDevControls : DevControls {
     override fun inbound(handlers: DevHandlers) = Unit
 
     override fun uploaderPin(): UploaderPin? = null
-
-    override fun inviteLinkHints(): InviteLinkHints = InviteLinkHints.Ignored
 
     override fun createsPlainEvents(): Boolean = true
 }

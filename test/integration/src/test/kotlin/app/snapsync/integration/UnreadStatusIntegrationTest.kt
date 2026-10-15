@@ -4,8 +4,8 @@ import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.PhotoGrant
-import app.snapsync.model.Direction
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test

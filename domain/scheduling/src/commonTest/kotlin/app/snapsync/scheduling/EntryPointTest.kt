@@ -21,7 +21,9 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class EntryPointTest {
-    private class OnWork(world: World, val body: suspend (String) -> Unit) : EntryPoint<String>(world.runtime) {
+    private class OnWork(world: World, val body: suspend (String) -> Unit) : BackgroundEntryPoint<String>(
+        world.runtime,
+    ) {
         override suspend fun run(arg: String) = body(arg)
     }
 
@@ -150,7 +152,7 @@ class EntryPointTest {
     fun `an inline delivery runs on the delivering thread - labelled - and is contained`() = runTest {
         val world = World(this)
         var seen: String? = null
-        class OnDelivery : InlineEntryPoint<Int>(world.runtime) {
+        class OnDelivery : InboundEntryPoint<Int>(world.runtime) {
             override fun run(arg: Int) {
                 seen = world.label.current()
                 check(arg > 0) { "refused" }

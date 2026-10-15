@@ -103,8 +103,8 @@ abstract class DeploymentExtension @Inject constructor(
             "LinkOrigin",
             """
             /**
-             * The event link's canonical origin. Both halves of the codec are anchored here: [encodeEventUrl]
-             * emits it and [decodeEventUrl] matches it, so producer and consumer cannot drift.
+             * The invite link's canonical origin. Both halves of the codec are anchored here: `InviteLinkText.format`
+             * writes it and `InviteLinkText.parse` matches it, so producer and consumer cannot drift.
              */
             public const val LINK_ORIGIN: String = "https://$domain"
             """.trimIndent(),

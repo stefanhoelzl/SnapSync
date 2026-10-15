@@ -1,5 +1,7 @@
 package app.snapsync.architecture
 
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -9,22 +11,21 @@ import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
 import app.snapsync.feature.upload.extensionAdmission
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.model.selectionScope
 import app.snapsync.ports.LibraryGrant
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.galleryAccess
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -103,7 +104,33 @@ class ProducerExclusivityTest {
         var joined = false
 
         /** The REAL membership, over [database] — which the caller hands over with no membership row. */
-        val config = ConfigService(database, CLOCK)
+        val membership = MembershipRepository(database)
+        private val held = database
+        val config = MembershipProjection(membership, CLOCK)
+
+        /** [joined] as the membership row a join writes, re-read as every trigger re-reads it. */
+        fun join(joined: EventConfig) {
+            held.use {
+                it.membershipQueries.saveMembership(
+                    eventId = joined.eventId,
+                    name = joined.name,
+                    minPhotoDate = joined.minPhotoDate,
+                    startsAt = joined.startsAt,
+                    endsAt = joined.endsAt,
+                    maxPhotoDate = joined.maxPhotoDate,
+                    deletesAt = joined.deletesAt,
+                    direction = joined.direction,
+                    saveToAlbum = joined.saveToAlbum,
+                    membersActive = null,
+                    membersSettled = null,
+                    membersWaiting = null,
+                    keyId = null,
+                    openUntil = null,
+                    deleted = false,
+                )
+            }
+            membership.reload()
+        }
         var pin: UploaderPin? = null
         val registration = PlatformRegistration(grant, registered, supported = osSupported)
         val engine = Engine()
@@ -143,13 +170,13 @@ class ProducerExclusivityTest {
         when (step) {
             Step.Join -> {
                 joined = true
-                config.save(MEMBERSHIP)
+                join(MEMBERSHIP)
                 transitions.onJoin()
             }
             Step.Reconfigure -> { if (joined) transitions.onReconfigure() }
             Step.Leave -> {
                 joined = false
-                config.clear()
+                membership.forget()
                 transitions.onLeave()
             }
             is Step.Permission -> {
@@ -207,10 +234,10 @@ class ProducerExclusivityTest {
         // One in-memory shared database for every script, its membership row cleared before each: opening and
         // migrating a fresh one per script was most of this guard's runtime (~16k scripts, 27 s).
         val database = SharedDatabase(inMemoryDatabases(), LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
-        val reset = ConfigService(database, CLOCK)
+        val reset = MembershipRepository(database)
         for (osSupported in listOf(true, false)) for (registered in listOf(false, true)) {
             for (a in steps) for (b in steps) for (c in steps) {
-                reset.clear()
+                reset.forget()
                 val device = Device(osSupported, registered = registered && osSupported, database)
                 val script = listOf(a, b, c)
                 for (step in script) {
@@ -264,7 +291,7 @@ private val MEMBERSHIP =
         testEventId("E"),
         "E",
         CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )

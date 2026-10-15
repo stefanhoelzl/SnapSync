@@ -6,6 +6,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.configService
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryWake
 import app.snapsync.model.AssetRef
@@ -13,7 +14,6 @@ import app.snapsync.model.CycleResult
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.TimestampText
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
@@ -115,7 +115,7 @@ class WakeRearmTest {
                 testEventId("E"),
                 "E",
                 CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-                maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
                 endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
                 deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
             ),

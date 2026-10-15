@@ -20,9 +20,6 @@ interface DevControlsLevers {
     /** Both uploaders, as a shipped build runs them, reconciled at once. */
     suspend fun unpin()
 
-    /** How the build answers an invite link's dev/test hints: [honoured] `false` plays a shipped build, which ignores them. */
-    suspend fun inviteLinkHints(honoured: Boolean)
-
     /**
      * Whether an event this device creates is encrypted: [on] `false` creates the plain events a shipped build creates
      * until encrypted creation is re-enabled (`PENDING_CLEANUPS.md`).
@@ -44,14 +41,13 @@ interface DevControlsLevers {
     )
 }
 
-/** The development controls as they stand: which uploaders run, and how the build answers hints and creates events. */
+/** The development controls as they stand: which uploaders run, and how the build creates events. */
 @Serializable
 data class DevControlsView(
     val appUploads: Boolean,
     val extensionUploads: Boolean,
     /** Whether the channel pinned the uploaders; unpinned, both run, as on a shipped build. */
     val pinned: Boolean,
-    val inviteLinkHintsHonoured: Boolean,
     val encryptsNewEvents: Boolean,
 )
 

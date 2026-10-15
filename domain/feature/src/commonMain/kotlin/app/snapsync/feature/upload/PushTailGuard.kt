@@ -1,9 +1,9 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.membership.MembershipRead
 import app.snapsync.domain.event.EventId
-import app.snapsync.model.MembershipRead
 import app.snapsync.model.pushEventId
-import app.snapsync.services.config.ConfigService
+import app.snapsync.services.membership.MembershipProjection
 import co.touchlab.kermit.Logger
 
 /**
@@ -27,7 +27,7 @@ import co.touchlab.kermit.Logger
  */
 class PushTailGuard(
     /** The membership: the active event id is read fresh at every push. */
-    private val configSource: ConfigService,
+    private val configSource: MembershipProjection,
     private val log: Logger = Logger.withTag("PushTailGuard"),
 ) {
     /** Whether a push carrying [payload] joins the tail: only one that names an event, and that event the active one. */
@@ -36,9 +36,9 @@ class PushTailGuard(
     /** `true` when the push for [eventId] names this device's active event, so its wake joins the tail. */
     fun joinsTail(eventId: EventId): Boolean {
         val active = when (val membership = configSource.membership) {
-            is MembershipRead.Member -> membership.config.eventId
-            MembershipRead.NotMember -> null
-            MembershipRead.Unreadable -> {
+            is MembershipRead.Joined -> membership.membership.event.id
+            is MembershipRead.NotJoined -> null
+            is MembershipRead.Unavailable -> {
                 log.w { "silent push for $eventId joins no tail — the membership is unreadable right now" }
                 return false
             }

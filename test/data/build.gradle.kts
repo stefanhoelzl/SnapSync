@@ -17,11 +17,17 @@ kotlin {
         commonTest.dependencies {
             implementation(project(":domain:data"))
             implementation(project(":domain:application"))
+            implementation(project(":domain:query"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:wire"))
             implementation(project(":domain:inbound"))
             implementation(project(":adapter:generic:mock"))
+            // A timestamp's text, which the store's date columns spell.
+            implementation(project(":domain:format"))
+            // A schema as it stood at an older version (`SqlSchema.at`), for the store's migration suites.
+            implementation(project(":test:contracts"))
+            implementation(libs.sqldelight.runtime)
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
             // The structured log's severities, read back from what a suite records.

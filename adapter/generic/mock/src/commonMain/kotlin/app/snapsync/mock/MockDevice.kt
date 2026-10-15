@@ -2,7 +2,6 @@ package app.snapsync.mock
 
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.model.FileArea
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferNetwork
@@ -20,8 +19,6 @@ import kotlin.time.Instant
 open class MockDevice(
     /** This device's id, already in its Keychain — a device whose app has launched before. */
     val ownDeviceId: String = DEFAULT_DEVICE_ID,
-    /** Whether this build honours an invite link's dev/test hints — a shipped build ignores them. */
-    inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
     network: UploadNetwork? = null,
     /**
      * Whether this operating system carries the OS-driven upload mechanism (iOS ≥26.1) when the device is built — by
@@ -87,7 +84,7 @@ open class MockDevice(
     val links = LinksMock()
     val pushService = PushServiceMock()
     val screen = ScreenMock()
-    val devControls = DevControlsMock(inviteLinkHints)
+    val devControls = DevControlsMock()
     val extensionHost = ExtensionHostMock()
     val systemUi = SystemUiMock()
 

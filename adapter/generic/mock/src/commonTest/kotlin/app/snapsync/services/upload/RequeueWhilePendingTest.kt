@@ -1,11 +1,11 @@
 package app.snapsync.services.upload
 
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger

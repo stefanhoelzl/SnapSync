@@ -564,30 +564,11 @@ object SnapSyncRoot {
     fun onSilentPush(payload: Map<Any?, *>, completion: () -> Unit) =
         pushNotifications.deliverMessage(payload, completion)
 
-    /**
-     * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
-     * event. Persists the config (the container's `ConfigSource` is this instance), re-reads the gallery
-     * total and the storage-truth status sources, then runs the upload arm's **join** transition (the tested,
-     * stateless `UploadTransitions`). At a first join or a switch the Provision flow also loads the
-     * upload ledger from the device's stored-file listing.
-
-     *
-     * Starting here is load-bearing: the grant collector fires only on a *transition* to GRANTED, so a
-     * membership provisioned while access is already granted — the common case for every join after the
-     * first — would otherwise never start uploading at all.
-     *
-     * Nothing is cancelled, toggled, or reset. This path used to run a PhotoKit-shaped "disable→enable"
-     * ritual regardless of tier; on the app-driven tier its disable half resolved to a full *leave*
-     * (cancelling transfers and the heartbeat, wiping the ledger and the discovery cursor) while its enable
-     * half was a no-op below iOS 26.1 — so joining an event tore the upload arm down and started nothing,
-     * then re-uploaded the whole post-cutoff library. The seam now has no destructive verb to reach.
-     */
     // The permission-grant subscriptions (upload-arm start + event-album ensure) live in `compose/`
-    // (`AppCore.installPermissionSubscriptions`, migration step 8) and are installed ONLY from the
-    // [host] assembly above — never on mere [AppCore] construction, so a cold background wake starts
-    // no producer off the StateFlow's replay. Both fire only on a *transition* to GRANTED, so neither
-    // can rescue a membership provisioned while access was already granted — the provision flow owns
-    // that case.
+    // (`AppCore.installPermissionSubscriptions`) and are installed ONLY from the [host] assembly above — never on mere
+    // [AppCore] construction, so a cold background wake starts no producer off the StateFlow's replay. Both fire only
+    // on a *transition* to GRANTED; a membership entered while access was already granted is armed by the join's own
+    // steps (`AfterJoin`).
 
     /**
      * Where `handleEventsForBackgroundURLSession` goes: routed by the identifier the OS named, in the adapter module.

@@ -203,11 +203,14 @@ internal object PortGrid {
     private fun isFunction(type: KType): Boolean =
         (type.classifier as? KClass<*>)?.let { Function::class.isSuperclassOf(it) } == true
 
-    /** A non-port, non-sealed interface of the ports zone that a port hands over: a handle, whose members are cells too. */
+    /**
+     * A non-port, non-sealed interface of the ports zone that a port hands over: a handle, whose members are cells too —
+     * handed as it is, or carried by a leaf of a sealed answer (`DbOpen.Opened`'s database).
+     */
     private fun noteHandle(type: KType, handles: MutableSet<KClass<*>>) {
         val k = type.classifier as? KClass<*> ?: return
-        val inZone = k.java.isInterface && k.java.packageName == PORTS_PACKAGE
-        if (inZone && !Port::class.isSuperclassOf(k) && !k.isSealed) handles += k
+        if (isHandle(k)) handles += k
+        if (k.isSealed && k.java.packageName == PORTS_PACKAGE) handles += carriedHandles(k)
     }
 
     /** The handler bundle an event port ([EventPort]) is listened to with, or `null` for a port that is not one. */
@@ -255,7 +258,7 @@ internal object PortGrid {
         }.toSet()
     }
 
-    private const val PORTS_PACKAGE = "app.snapsync.ports"
+    internal const val PORTS_PACKAGE = "app.snapsync.ports"
     private const val REPLY = "Reply"
 
     /** The owner of the wire cells — what a clause's `backend(…)` renders, and what the gateway records. */
@@ -289,3 +292,12 @@ internal fun deliveryReturnsRunning(type: KType): Boolean = type.classifier == G
 
 /** [this] with a type parameter of [binding] replaced by what it is bound to, at the top level only. */
 private fun KType.boundBy(binding: Map<KTypeParameter, KType>): KType = binding[classifier] ?: this
+
+/** A non-port, non-sealed interface of the ports zone: what a port hands over as a handle. */
+private fun isHandle(k: KClass<*>): Boolean = k.java.isInterface && k.java.packageName == PortGrid.PORTS_PACKAGE &&
+    !Port::class.isSuperclassOf(k) && !k.isSealed
+
+/** The handles the leaves of sealed [answer] carry as properties (`DbOpen.Opened`'s database). */
+fun carriedHandles(answer: KClass<*>): List<KClass<*>> = PortGrid.leaves(answer).flatMap { leaf ->
+    leaf.declaredMemberProperties.mapNotNull { it.returnType.classifier as? KClass<*> }
+}.filter(::isHandle)

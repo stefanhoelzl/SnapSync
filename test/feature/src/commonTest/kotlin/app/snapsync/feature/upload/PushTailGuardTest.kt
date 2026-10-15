@@ -6,9 +6,9 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.TimestampText
-import app.snapsync.services.config.ConfigService
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -50,10 +50,12 @@ class PushTailGuardTest {
 
     @Test
     fun the_membership_is_read_at_every_push() = runTest {
-        val live = membership("E")
+        val store = SharedStore()
+        val live = configService(config("E"), store)
         val guard = PushTailGuard(live)
         assertTrue(guard.joinsTail(testEventId("E")))
-        live.save(config("F"))
+        store.persist(config("F"))
+        live.reload()
         assertFalse(
             guard.joinsTail(testEventId("E")),
             "a guard that held its first answer would wake the tail for a left event",
@@ -68,14 +70,14 @@ class PushTailGuardTest {
         assertFalse(guard.joinsTail(mapOf<Any?, Any?>("seq" to 3L)), "a push that names no event")
     }
 
-    private fun membership(eventId: String?): ConfigService = configService(eventId?.let(::config))
+    private fun membership(eventId: String?): MembershipProjection = configService(eventId?.let(::config))
 
     private fun config(eventId: String) =
         EventConfig(
             testEventId(eventId),
             "E",
             CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-            maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
             endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
             deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )

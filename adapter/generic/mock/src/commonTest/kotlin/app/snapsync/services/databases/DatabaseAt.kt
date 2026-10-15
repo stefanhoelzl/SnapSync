@@ -3,11 +3,14 @@ package app.snapsync.services.databases
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
+import app.snapsync.ports.OpenDatabase
 import kotlin.test.assertIs
 
 /**
@@ -18,7 +21,7 @@ import kotlin.test.assertIs
 fun databaseAt(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): Pair<Databases, SqlDriver> {
     val databases = inMemoryDatabases()
     val opened = assertIs<DbOpen.Opened>(databases.open(name, schema, readOnly = false))
-    return databases to opened.driver
+    return databases to opened.database.driver()
 }
 
 /** The first column of every row [sql] answers, as text. */
@@ -30,3 +33,6 @@ fun SqlDriver.strings(sql: String): List<String> =
 /** The shared database over [databases], its legacy homes empty — every record lives in the database from the start. */
 fun sharedOver(databases: Databases = inMemoryDatabases()): SharedDatabase =
     SharedDatabase(databases, LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
+
+/** The open database's driver, held outside an execute — a test's own reach, for what no query exposes. */
+fun OpenDatabase.driver(): SqlDriver = assertIs<DbResult.Ok<SqlDriver>>(execute { it }).value

@@ -1,24 +1,28 @@
 package app.snapsync.compose
 
 import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.membership.EventCheckRecord
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.membership.PendingLeaves
+import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.services.membership.MembershipProjection
+import app.snapsync.services.membership.MembershipTransition
 import app.snapsync.services.push.PushRegistrationRecord
 import app.snapsync.services.push.PushTokenSource
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.staging.StagingService
-import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 
 /**
@@ -36,11 +40,22 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     val log: Logger = process.logger("app")
 
     /**
-     * The membership: read, saved, cleared and re-read through this one service — every
-     * trigger flow re-reads it before acting (`ConfigService.reload`), because cross-process writes and a
-     * pre-first-unlock seed never notify this process's state flow.
+     * The membership — every trigger re-reads it before acting ([MembershipRepository.reload]), because cross-process
+     * writes and a pre-first-unlock seed never notify this process's state flow.
      */
-    val config: ConfigService by lazy { ConfigService(sharedDatabase, process.clock) }
+    val membership: MembershipRepository by lazy { MembershipRepository(sharedDatabase) }
+
+    /** The membership as the old zones read it — MIGRATING ([MembershipProjection]). */
+    val config: MembershipProjection by lazy { MembershipProjection(membership, process.clock) }
+
+    /** The device's wall clock, as the layers read time. */
+    val wallClock: WallClock by lazy { WallClock(process.clock) }
+
+    /** A join in progress, from its key to its membership — what a sweep of a failed leave's leftovers waits out. */
+    val transition: MembershipTransition = MembershipTransition()
+
+    /** The leaves the backend has not confirmed. */
+    val pendingLeaves: PendingLeaves by lazy { PendingLeaves(sharedDatabase) }
 
     /**
      * The shared database — `ledger.db`, which the extension opens too — holding the upload rows and the small records
@@ -70,8 +85,8 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
 
     /**
      * The device manifest's skip record, in the shared database — the SAME record the ≥26.1 extension's producer reads.
-     * Enrolling overwrites the server's manifest with an empty one, so it must invalidate this record or the producer
-     * skips the rewrite (see [app.snapsync.feature.membership.ManifestDeviceEnroller]).
+     * A join writes no manifest; its share-set load advances the manifest version, so the producer republishes under
+     * the newer one.
      */
     val manifestStore: DeviceManifestService by lazy { DeviceManifestService(sharedDatabase) }
 
@@ -114,7 +129,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * `changes/timely-background-receiving`, D4–D5) — in the shared database, so it outlives the process a wake usually
      * is.
      */
-    val eventChecks: EventChecks by lazy { EventChecks(sharedDatabase, now = process.clock::now) }
+    val eventChecks: EventCheckRecord by lazy { EventCheckRecord(sharedDatabase) }
 
     /**
      * The OS-delivered push token, paired with the push service's kind (its adapter's)

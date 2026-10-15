@@ -127,6 +127,7 @@ snapsync:
       - '**/domain/domain/src/commonMain/**'
       - '**/domain/data/src/commonMain/**'
       - '**/domain/application/src/commonMain/**'
+      - '**/domain/query/src/commonMain/**'
   NoFunctionTypes:
     active: true
     includes:
@@ -136,6 +137,7 @@ snapsync:
       - '**/domain/domain/src/commonMain/**'
       - '**/domain/data/src/commonMain/**'
       - '**/domain/application/src/commonMain/**'
+      - '**/domain/query/src/commonMain/**'
   DomainPurity:
     # The domain is values and verdicts (`docs/patterns.md`, "The domain").
     active: true

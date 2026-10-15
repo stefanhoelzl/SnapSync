@@ -1,20 +1,17 @@
 package app.snapsync.services.ledger
 
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.model.DONE_STATES
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.NEEDS_JOB_STATES
 import app.snapsync.model.PendingResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.upload.TransferRecord
-
-/** The upload ledger's database file — runtime identity (`docs/architecture.md`, section 9): a device holds it. */
-const val LEDGER_DB_NAME: String = "ledger.db"
 
 /**
  * The upload ledger: [LedgerService] over the shared SQLDelight database (schema:
@@ -32,7 +29,7 @@ const val LEDGER_DB_NAME: String = "ledger.db"
  * **Over the shared database ([SharedDatabase])**, opened on first use, never at construction: building the
  * composition opens no database (a locked background launch must not be forced into one early). Either process may
  * open it read-write and migrate it — the ledger is shared by the app and the upload extension, one guarded writer per
- * kind of write. A failed open throws [app.snapsync.services.databases.DatabaseUnavailable] from that use and is
+ * kind of write. A failed open throws [app.snapsync.data.store.DatabaseUnavailable] from that use and is
  * retried on the next: only a success is kept.
  */
 class LedgerService(

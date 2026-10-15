@@ -7,8 +7,8 @@ import app.snapsync.feature.support.configService
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.services.membership.MembershipProjection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -215,4 +215,4 @@ class StatusCountsPollerTest {
 }
 
 /** The real membership service, holding a fixed answer. */
-private fun membership(config: EventConfig?): ConfigService = configService(config)
+private fun membership(config: EventConfig?): MembershipProjection = configService(config)

@@ -2,16 +2,13 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
-import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.AlbumKind
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.AlbumHolds
-import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
-import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -269,19 +266,6 @@ class AlbumIntegrationTest {
             os.foreground()
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
-    }
-
-    /** This device leaves its event. */
-    private suspend fun Given.left() = step("left", act = { tap(UiIntent.LeaveEvent) }, until = { settled { true } })
-
-    /** The join gate open on [event], through its invite, ready to join. */
-    private suspend fun Given.gateOpenOn(event: String) {
-        val link = inviteFor(event)
-        step(
-            "its join gate open",
-            act = { openLink(link) },
-            until = { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } },
-        )
     }
 
     /** The photo library plays an Android phone's, whose albums are folders — read once at host assembly. */

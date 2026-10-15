@@ -1,7 +1,12 @@
 package app.snapsync.feature.download
 
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.membership.EventCheck
+import app.snapsync.data.membership.EventCheckRecord
+import app.snapsync.data.time.WallClock
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.membership.CheckCadence
+import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetPresence
@@ -24,9 +29,8 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.identity.requireDeviceId
+import app.snapsync.services.membership.MembershipTransition
 import app.snapsync.services.staging.StagingService
-import app.snapsync.services.wake.EventCheck
-import app.snapsync.services.wake.EventChecks
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -69,7 +73,9 @@ class DownloadController(
     // When a background wake last read the union (decision record `changes/timely-background-receiving`, D4): every
     // read stamps it, and [reconcileIfDue] reads the union only when an hour has passed. Required: the bound is what
     // keeps a busy heartbeat from reading a whole union per wake.
-    private val checks: EventChecks,
+    private val checks: EventCheckRecord,
+    // The wall clock the hourly bound is read on.
+    private val clock: WallClock,
     // Whether the drain may import now: a usable grant, AND the current membership's
     // received photos already recognised by their SnapSync mark (`ReceivedPhotoAdoption.ensureAdopted`, which the
     // composition runs here — once per membership per process, and again while the library cannot be read). The drain
@@ -157,13 +163,12 @@ class DownloadController(
         heldPosition(eventId, UnionTrigger.RECEIVED_CHECK, receives = arm.enabled() == true)
 
     /**
-     * Whether this device holds every photo of the others in the membership [membership] describes, asked without the
-     * joined configuration — what a leave asks once it has cleared that configuration. A membership that does not
-     * receive has nothing to wait for. A union that cannot be read answers `false`: doubt must not report a member that
-     * lacks photos as having everything.
+     * Whether this device holds every photo of the others in the membership [membership] describes — what a switch asks
+     * of the joined one. A membership that does not receive has nothing to wait for. No membership, or a union that
+     * cannot be read, answers `false`: doubt must not report a member that lacks photos as having everything.
      */
-    suspend fun holdsEverythingFor(membership: EventConfig): Boolean = !membership.direction.includesDownload ||
-        heldPosition(membership.eventId, UnionTrigger.LEAVE_CHECK, receives = true) != null
+    suspend fun holdsEverythingFor(membership: EventConfig?): Boolean = membership != null &&
+        (!membership.direction.includesDownload || heldPosition(membership.eventId, UnionTrigger.LEAVE_CHECK, receives = true) != null)
 
     /**
      * The position a FULL read of the union covers (decision record `changes/incremental-union`, D6 — the answer must
@@ -191,7 +196,7 @@ class DownloadController(
      * hour per event. A push, an opening and a join call [reconcile] themselves — each has a reason to read now.
      */
     suspend fun reconcileIfDue(eventId: EventId) {
-        if (!checks.due(EventCheck.PHOTOS, eventId)) {
+        if (CheckCadence.of(checks.last(EventCheck.PHOTOS, eventId), clock.now()) == CheckCadence.NotYet) {
             log.i { "union read within the hour — this wake reads none" }
             return
         }
@@ -252,7 +257,7 @@ class DownloadController(
             return@body
         }
         // Every read counts, a failing one too: a backend that fails is asked no more often than one that answers.
-        checks.stamp(EventCheck.PHOTOS, eventId)
+        checks.stamp(EventCheck.PHOTOS, eventId, clock.now())
         val from = stored.takeIf { !trigger.full && known == null }
         // A failed union fetch costs this wake its DISCOVERY, not its imports: the tail that follows the wake's own
         // work drains what is staged whatever the union answered, because the drain reads only the store and the
@@ -834,3 +839,12 @@ class DownloadArm(
 /** What a reconcile's read covered, for its line: the announced position it read from, or the join's union. */
 private fun readOf(announced: Long?, known: Any?): String =
     (if (announced != null) " announced=$announced" else "") + (if (known != null) " (the join's union)" else "")
+
+/**
+ * Stop what a failed leave left receiving, while [none] proves no membership is held — unless a join is in progress,
+ * whose own downloads these may already be.
+ */
+suspend fun DownloadController.stopLeftovers(
+    @Suppress("UNUSED_PARAMETER") none: ConfirmedNotJoined,
+    transition: MembershipTransition,
+) = transition.unlessJoining { onLeaveOrSwitch() }

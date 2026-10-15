@@ -2,21 +2,22 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
-import app.snapsync.model.encodeEventUrl
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -26,12 +27,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -65,7 +68,6 @@ class GuardedIntentTest {
 
     private class Spy {
         var leaves = 0
-        var resets = 0
         val leaveStarted = CompletableDeferred<Unit>()
         val leaveMayFinish = CompletableDeferred<Unit>()
     }
@@ -73,40 +75,46 @@ class GuardedIntentTest {
     private fun onHost(
         spy: Spy,
         config: MutableStateFlow<EventConfig?>,
-        rename: MutableStateFlow<RenameStatus> = MutableStateFlow(RenameStatus.Idle),
+        rename: suspend (EventId, String) -> RenameResult? = { _, _ -> null },
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val commands = TestCommands(
+                leave = {
+                    spy.leaves++
+                    spy.leaveStarted.complete(Unit)
+                    scope.launch {
+                        spy.leaveMayFinish.await()
+                        config.value = null
+                    }
+                },
+                rename = rename,
+            )
             try {
                 body(
                     StatusContainerHost(
-                        StatusSources(IdleSync(), MutableStateFlow(GalleryAccess.GRANTED), config, rename = rename),
+                        StatusSources(
+                            IdleSync(),
+                            MutableStateFlow(GalleryAccess.GRANTED),
+                            config,
+                            requests = commands.requests.flows,
+                        ),
                         scope,
-                        queries = joinDetails {
-                            JoinLoad.Found(
+                        joinDetails = joinDetails {
+                            found(
                                 "Trip",
                                 EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
                                 EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
                                 DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
                             )
                         },
-                        commands = testCommands(
-                            leave = {
-                                spy.leaves++
-                                spy.leaveStarted.complete(Unit)
-                                spy.leaveMayFinish.await()
-                                config.value = null
-                            },
-                            resetRename = {
-                                spy.resets++
-                                rename.value = RenameStatus.Idle
-                            },
-                        ),
+                        commands = commands,
                         cutoffFormatter = CutoffFormatter(
                             now = { Instant.parse("2026-07-09T12:00:00Z") },
                             zone = TimeZone.UTC,
                         ),
+                        queries = noQueries,
                         diagnostics = testDiagnostics(),
                         reduction = Dispatchers.Default,
                     ),
@@ -127,7 +135,7 @@ class GuardedIntentTest {
         }
 
     private suspend fun StatusContainerHost.awaitSwitchConfirmation() {
-        onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(OTHER))))
+        onOpenUrl(InviteLinkText.format(InviteLink(testEventId(OTHER), null)))
         stateWhere("the switch confirmation") { (it.layer as? Layer.Joined)?.pendingSwitch?.eventId == OTHER }
     }
 
@@ -165,17 +173,16 @@ class GuardedIntentTest {
     }
 
     @Test
-    fun `a rename result that landed after the sheet was dismissed does not greet the next edit`() {
-        // The sheet closes itself on a success. A result that arrived while it was dismissed stayed latched, and
-        // reopening the sheet read it as the new edit's outcome and closed at once.
+    fun `a rename result that landed before the sheet reopened does not greet the next edit`() {
+        // The sheet closes itself on a success. Each edit's answer is keyed by its own request, so an answer that
+        // landed for an earlier edit is none of the next one's: reopening the sheet shows a fresh edit.
         val spy = Spy()
-        val rename = MutableStateFlow<RenameStatus>(RenameStatus.Succeeded)
-        onHost(spy, MutableStateFlow(CONFIG), rename) { host ->
+        onHost(spy, MutableStateFlow(CONFIG), rename = { _, _ -> RenameResult.Renamed }) { host ->
+            host.onRenameEvent(CONFIG.eventId.value, "Lake week")
+            host.stateWhere("the rename answered") { (it.layer as? Layer.Joined)?.renameState == RenameState.Succeeded }
             host.surfaces.onRenameOpen()
-            host.stateWhere("the rename sheet") { it.overlays.renaming }
-
-            assertEquals(1, spy.resets)
-            assertEquals(RenameStatus.Idle, rename.value)
+            val reopened = host.stateWhere("the rename sheet") { it.overlays.renaming }
+            assertEquals(RenameState.Idle, assertIs<Layer.Joined>(reopened.layer).renameState)
         }
     }
 }

@@ -13,7 +13,6 @@ import app.snapsync.levers.ScreenLevers
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.model.PlatformError
 import app.snapsync.model.ProcessingAnswer
@@ -279,17 +278,11 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) : Screen
     override suspend fun live() = mock.live()
 }
 
-/**
- * The build's development controls: the invite-link hints are fixed per build ([hints]) — a shipped build ignores
- * them, and an operator playing another build sets them — and the per-uploader pin is the channel's to set.
- */
-class DevControlsMock(hints: InviteLinkHints = InviteLinkHints.Ignored) {
+/** The build's development controls: the per-uploader pin and new events' encryption are the channel's to set. */
+class DevControlsMock {
     internal val handlers = HandlerSlot<DevHandlers>("DevControls", BeforeListen.Thrown)
 
     // In-process plumbing — the hosts' own; the channel's is the [operator].
-
-    /** How the build answers an invite link's hints — fixed per build; an operator plays another build with it. */
-    @Volatile var hints: InviteLinkHints = hints
 
     /** The per-uploader switch; `null`, as on every shipped build, unless the channel pins one. */
     @Volatile var pin: UploaderPin? = null
@@ -315,8 +308,6 @@ class DevControlsMock(hints: InviteLinkHints = InviteLinkHints.Ignored) {
 
         override fun uploaderPin(): UploaderPin? = pin
 
-        override fun inviteLinkHints(): InviteLinkHints = hints
-
         override fun createsPlainEvents(): Boolean = !encrypts
     }
 
@@ -336,25 +327,20 @@ class DevControlsOperator internal constructor(private val mock: DevControlsMock
         mock.pin = null
     }
 
-    override suspend fun inviteLinkHints(honoured: Boolean) {
-        mock.hints = if (honoured) InviteLinkHints.Honoured else InviteLinkHints.Ignored
-    }
-
     override suspend fun encryptNewEvents(on: Boolean) {
         mock.encrypts = on
     }
 
     override suspend fun reset() = mock.reset()
 
-    override suspend fun controls(): DevControlsView = devControlsView(mock.pin, mock.hints, mock.encrypts)
+    override suspend fun controls(): DevControlsView = devControlsView(mock.pin, mock.encrypts)
 }
 
 /** The development controls as the channel reads them. */
-fun devControlsView(pin: UploaderPin?, hints: InviteLinkHints, encrypts: Boolean): DevControlsView = DevControlsView(
+fun devControlsView(pin: UploaderPin?, encrypts: Boolean): DevControlsView = DevControlsView(
     appUploads = pin?.app ?: true,
     extensionUploads = pin?.extension ?: true,
     pinned = pin != null,
-    inviteLinkHintsHonoured = hints == InviteLinkHints.Honoured,
     encryptsNewEvents = encrypts,
 )
 

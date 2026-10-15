@@ -1,6 +1,5 @@
 package app.snapsync.model
 
-import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 
@@ -10,25 +9,17 @@ import app.snapsync.domain.sharing.CaptureCutoff
  *
  * Seated beside [UserCommands] for the same reason — `model/` is the zone both `compose/` (which builds and
  * decorates the live implementation) and `:domain:presentation` (which receives it by constructor) may name. It exists
- * because these reads touch ports: the shareable count reads the download store and the photo library, the
- * join details cross the network. Built outside `compose/`, a query ran on whatever thread invoked it — for the
- * count, a composable effect on the main thread — and no gate saw it, because the lane gate covered only the
- * command bundle. Built there, every query is lane-decorated in the one file that builds both bundles.
+ * because these reads touch ports: the shareable count reads the download store and the photo library. Built outside
+ * `compose/`, a query ran on whatever thread invoked it — for the count, a composable effect on the main thread — and
+ * no gate saw it, because the lane gate covered only the command bundle. Built there, every query is lane-decorated in
+ * the one file that builds both bundles. The join screen's read of an invite is the query layer's
+ * (`JoinDetailsQuery`), awaited on the composition lane like this one.
  *
  * No query has a default body: a host that cannot answer a query must say what it answers instead.
  *
- * - [loadJoinDetails] — the join gate's details read: `GET /events/:id` mapped to
- *   a block / retry / ready outcome, and [JoinLoad.WrongLink] when the link's key (`linkKey`) does not open the event.
  * - [shareableCount] — how many of the member's own photos the range `[cutoff, until]` would share,
  *   or `null` when the grant permits no count. Purely local.
- * - [switchLosesNothing] — whether opening another event's invite may leave the joined event without asking: its
- *   photos were deleted, or its range has ended, every member still in it has shared everything, and this device
- *   holds everything it receives. One read of the event; any doubt answers `false`.
  */
 interface UserQueries {
-    suspend fun loadJoinDetails(eventId: EventId, linkKey: String?): JoinLoad
-
     suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int?
-
-    suspend fun switchLosesNothing(): Boolean
 }

@@ -8,6 +8,7 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
@@ -17,7 +18,6 @@ import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger

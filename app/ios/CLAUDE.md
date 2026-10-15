@@ -161,8 +161,8 @@ family, a transport's guarded terminal write, and the membership reset family. O
 
 - **App Group `group.app.snapsync`** (both `*.entitlements`): the shared on-disk container for the
   shared database both processes write (`ledger.db`, `SharedDatabase` over `IosDatabases`): the ledger rows and the
-  membership of record (`ConfigService`; its `membership` row is the only membership there is, so the container's
-  lifetime IS the membership's: **reinstall = left the event**). An updated device's app copies the membership's
+  membership of record (`MembershipRepository`; its `membership` row is the only membership there is, so the
+  container's lifetime IS the membership's: **reinstall = left the event**). An updated device's app copies the membership's
   legacy file (`eventconfig.json`) into it once; until it has, the not-found classification (`isFileAbsence`,
   behind `IosFiles`) is what stands between a misread error and a silent logout. **Must be registered in the
   Developer portal** and enabled on both App IDs, or signed builds fail to provision.

@@ -65,20 +65,24 @@ class NoticeTimersTest {
         scope: CoroutineScope,
         creation: CreationStatus = CreationStatus.Idle,
         report: suspend () -> ReportOutcome = { ReportOutcome.SENT },
-    ) = StatusContainerHost(
-        StatusSources(
-            FixedSync(SyncStatus.Loading),
-            MutableStateFlow(GalleryAccess.GRANTED),
-            MutableStateFlow<EventConfig?>(null),
-            creation = MutableStateFlow(creation),
-        ),
-        scope,
-        cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-        commands = testCommands(sendDiagnostics = { _, _ -> report() }),
-        queries = noQueries,
-        diagnostics = testDiagnostics(),
-        reduction = Dispatchers.Default,
-    )
+    ) = TestCommands(sendDiagnostics = { _, _ -> report() }).let { commands ->
+        StatusContainerHost(
+            StatusSources(
+                FixedSync(SyncStatus.Loading),
+                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow<EventConfig?>(null),
+                creation = MutableStateFlow(creation),
+                requests = commands.requests.flows,
+            ),
+            scope,
+            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+            commands = commands,
+            queries = noQueries,
+            joinDetails = unanswered,
+            diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
+        )
+    }
 
     private fun UiState.createError(): ScreenMessage? = assertIs<Layer.CreateEvent>(layer).error
 

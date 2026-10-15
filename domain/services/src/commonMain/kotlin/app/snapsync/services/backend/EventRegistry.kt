@@ -5,14 +5,10 @@ import app.snapsync.data.backend.faultOf
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.model.CreateOutcome
-import app.snapsync.model.RenameOutcome
-import app.snapsync.wire.api.ChangeEventReply
-import app.snapsync.wire.api.Closed
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.Invalid
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.api.Unauthorized
-import app.snapsync.wire.models.EventChange
 import app.snapsync.wire.models.EventCreate
 
 /**
@@ -33,17 +29,6 @@ interface EventCreation {
         keyId: String? = null,
         openUntil: String? = null,
     ): CreateOutcome
-}
-
-/**
- * Renaming an event. Non-throwing: a transport or parse error maps to
- * [RenameOutcome.Transient], never an exception.
- *
- * [name] arrives **already trimmed** by the caller, matching [EventCreation]'s contract; the backend trims again and
- * its echo is authoritative.
- */
-fun interface EventRename {
-    suspend fun rename(eventId: EventId, name: String): RenameOutcome
 }
 
 /**
@@ -93,26 +78,4 @@ class BackendEventCreation(
             else -> CreateOutcome.Transient(faultOf(reply) ?: ServiceFault.UNREACHABLE)
         }
     }
-}
-
-/**
- * [EventRename] over the backend's event change: a changed event answers the name the backend stored; a refused
- * request ([Invalid]) is [RenameOutcome.InvalidName]; every other answer is [RenameOutcome.Transient].
- *
- * ⚠️ A `404` maps to [RenameOutcome.Transient] like every other answer but a refused request, and that collapse is deliberate
- * rather than incidental — see [RenameOutcome.Transient] for why a lone `404` must never acquire a distinct meaning
- * on this path.
- *
- * The stored name is what the caller persists. It is **required** (`Event.name`): an answer that carries none does
- * not decode, and is [RenameOutcome.Transient] rather than a success reporting a name this client invented.
- */
-class BackendEventRename(private val gateway: BackendGateway) : EventRename {
-
-    override suspend fun rename(eventId: EventId, name: String): RenameOutcome =
-        when (val reply = gateway.send(Routes.ChangeEvent.request(eventId.value, EventChange(name = name)))) {
-            is ChangeEventReply.Changed -> RenameOutcome.Renamed(reply.event.name)
-            is Invalid -> RenameOutcome.InvalidName
-            is Closed -> RenameOutcome.EventOver
-            else -> RenameOutcome.Transient(faultOf(reply))
-        }
 }

@@ -4,15 +4,16 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.data.store.LEDGER_DB_NAME
+import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.levers.SeededInstall
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.model.FileArea
 import app.snapsync.model.PrefRead
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.db.DownloadDatabase
-import app.snapsync.services.ledger.LEDGER_DB_NAME
-import app.snapsync.services.ledger.db.LedgerDatabase
 import app.snapsync.wire.api.Limits
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -111,9 +112,11 @@ internal class OlderInstalls(private val world: MockWorld) {
             // it, and deleted it (v0.6:domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt).
             RECORDS_MOVED -> {
                 now.ledger.of("membership").forEach { db.insert("membership", it - OPEN_UNTIL_FACTS) }
+                // A leave copied from 0.4's line carries no marker, so it says it had not received everything — the
+                // `received` column 16.sqm dropped (v0.6:domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt:43,161).
+                now.ledger.of("pendingLeave").forEach { db.insert("pendingLeave", mapOf("received" to "0") + it) }
                 listOf(
                     "uploadedManifest",
-                    "pendingLeave",
                     "eventAlbum",
                     "eventCheck",
                     "legacyImport",
@@ -271,8 +274,11 @@ internal class OlderInstalls(private val world: MockWorld) {
     /** Every row of each table of database [name] as the device holds it now. */
     private fun held(name: String, schema: SqlSchema<QueryResult.Value<Unit>>): Rows {
         val opened = databases.inspectorPort().open(name, schema, readOnly = true)
-        val driver = (opened as? DbOpen.Opened)?.driver ?: error("$name is not readable as this build's ($opened)")
-        return Tables(driver).snapshot()
+        val database = (opened as? DbOpen.Opened)?.database ?: error("$name is not readable as this build's ($opened)")
+        return when (val read = database.execute { Tables(it).snapshot() }) {
+            is DbResult.Ok -> read.value
+            is DbResult.Failed -> error("$name could not be read: ${read.detail}")
+        }
     }
 
     /**

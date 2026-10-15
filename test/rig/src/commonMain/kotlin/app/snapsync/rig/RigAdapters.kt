@@ -5,7 +5,6 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DevControlsView
 import app.snapsync.mock.devControlsView
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
@@ -53,17 +52,13 @@ class RigUi(
 
 /**
  * A rig build's development controls, as the `dev-controls` service ([levers]) moves them: the per-uploader switch,
- * invite-link hints **honoured** — the channel's callers join headlessly with `autoJoin` — unless the channel plays a
- * shipped build that ignores them, encrypted creation, and the reset it delivers.
+ * encrypted creation, and the reset it delivers.
  */
 class RigDevControls : DevControls {
     private var handlers: DevHandlers? = null
 
     /** The per-uploader switch; `null` (both uploaders, as a shipped build runs) until the channel sets one. */
     var pin: UploaderPin? = null
-
-    /** How this build answers an invite link's dev/test hints. */
-    var hints: InviteLinkHints = InviteLinkHints.Honoured
 
     /** Whether an event this device creates is encrypted; `true`, as a shipped build, until the channel sets it. */
     var encrypts: Boolean = true
@@ -74,8 +69,6 @@ class RigDevControls : DevControls {
     }
 
     override fun uploaderPin(): UploaderPin? = pin
-
-    override fun inviteLinkHints(): InviteLinkHints = hints
 
     override fun createsPlainEvents(): Boolean = !encrypts
 
@@ -89,17 +82,13 @@ class RigDevControls : DevControls {
             pin = null
         }
 
-        override suspend fun inviteLinkHints(honoured: Boolean) {
-            hints = if (honoured) InviteLinkHints.Honoured else InviteLinkHints.Ignored
-        }
-
         override suspend fun encryptNewEvents(on: Boolean) {
             encrypts = on
         }
 
         override suspend fun reset() = this@RigDevControls.reset()
 
-        override suspend fun controls(): DevControlsView = devControlsView(pin, hints, encrypts)
+        override suspend fun controls(): DevControlsView = devControlsView(pin, encrypts)
     }
 
     /** `dev-controls.reset()`: void this device's durable sync state; returns once it is void. */

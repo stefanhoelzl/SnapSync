@@ -19,20 +19,26 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventName
+import app.snapsync.domain.event.EventNameVerdict
+import app.snapsync.domain.event.EventRange
+import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.version.VersionRefusal
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
-import app.snapsync.model.encodeEventUrl
 import app.snapsync.presentation.url
+import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.network_blocked
@@ -112,14 +118,25 @@ private val MEMBERSHIP = EventConfig(
 )
 
 /** What the details load answers for [OTHER_ID]: an event that has started and runs past "now". */
-private val OTHER_EVENT = JoinLoad.Found(
-    "Anna's Wedding",
-    EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
-    EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
-    DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
+private val OTHER_EVENT = JoinDetails.Found(
+    Event(
+        id = testEventId(OTHER_ID),
+        name = (EventName.of("Anna's Wedding") as EventNameVerdict.Ok).name,
+        range = (
+            EventRange.of(
+                EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
+                EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
+            ) as EventRangeVerdict.Ok
+            ).range,
+        openUntil = null,
+        deletesAt = DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
+        keyId = null,
+        members = null,
+    ),
+    completed = false,
 )
 
-private fun linkTo(eventId: String) = encodeEventUrl(EventLinkPayload(testEventId(eventId)))
+private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(testEventId(eventId), null))
 
 /**
  * The status screen's ONE tap → intent table, [statusActions], clicked through the real screen over a real
@@ -143,7 +160,7 @@ class HostStatusActionsTest {
         permission: GalleryAccess = GalleryAccess.GRANTED,
         refusal: VersionRefusal? = null,
         @Suppress("UNUSED_PARAMETER") diagnostics: Boolean = false,
-        details: suspend (String) -> JoinLoad = { OTHER_EVENT },
+        details: suspend (String) -> JoinDetails = { OTHER_EVENT },
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
         deviceRefusal: app.snapsync.domain.trust.DeviceRefusal? = null,
     ) = ContainerRig(config, permission, refusal, details, network, deviceRefusal)
@@ -210,8 +227,6 @@ class HostStatusActionsTest {
             awaitState(rig) { it.overlays.renaming }
             onNodeWithText(str(Res.string.cancel)).performClick()
             awaitState(rig) { !it.overlays.renaming }
-            // Dismissing also clears the rename latch.
-            awaitFired(rig, "resetRename")
 
             onNodeWithContentDescription(str(Res.string.rename_event)).performClick()
             awaitState(rig) { it.overlays.renaming }
@@ -391,7 +406,9 @@ class HostStatusActionsTest {
     @Test
     fun `Retry after a failed load loads again`() {
         var loads = 0
-        rigTest(rig(details = { if (++loads == 1) JoinLoad.Failed() else OTHER_EVENT })) { rig ->
+        rigTest(
+            rig(details = { if (++loads == 1) JoinDetails.Unanswered(ServiceFault.UNREACHABLE) else OTHER_EVENT }),
+        ) { rig ->
             rig.host.onOpenUrl(linkTo(OTHER_ID))
             awaitState(rig) { it.joining?.phase == JoinPhase.LoadFailed }
             onNodeWithText(str(Res.string.retry)).performClick()

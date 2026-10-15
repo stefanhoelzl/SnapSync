@@ -5,8 +5,8 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.format.TimestampText
 import app.snapsync.model.CreateOutcome
-import app.snapsync.model.TimestampText
 import app.snapsync.services.backend.EventCreation
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred

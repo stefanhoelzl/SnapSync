@@ -2,12 +2,12 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PreferenceItem
 import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.LINK_ORIGIN
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -112,6 +112,34 @@ class ProtectedStoresIntegrationTest {
         then {
             event<WorldEvent.BackendReceived> { it.operation == "joinEvent" }
             screen<Layer.Joined> { it.membership.eventId == event }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "Joining happens only on confirmation and needs a connection",
+        scenario = "A failed join is retryable and leaves nothing behind",
+    )
+    fun a_join_the_phone_cannot_name_itself_for_fails_and_enrols_nothing() = behaviour {
+        given {
+            val event = registeredEvent()
+            step(
+                "a launch whose device-id reads are refused",
+                act = {
+                    keychain.fail(KeychainItem.DEVICE_ID, StoreFault.READ, always)
+                    host.relaunch()
+                },
+                until = { settled { true } },
+            )
+            gateOpenOn(event)
+        }
+
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.JoiningEvent> { (it.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.CommitFailed }
+            never<WorldEvent.BackendReceived> { it.operation == "joinEvent" }
+            neverScreen<Layer.Joined>()
         }
     }
 

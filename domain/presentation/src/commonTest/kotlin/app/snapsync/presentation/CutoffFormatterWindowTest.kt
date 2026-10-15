@@ -1,7 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.EventWindow
-import app.snapsync.model.TimestampText
+import app.snapsync.format.TimestampText
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test

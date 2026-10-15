@@ -7,13 +7,14 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.format.TimestampText
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
+import app.snapsync.model.UserCommands
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.BuildLine
@@ -83,32 +84,39 @@ class StatusContainerHostMenuTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
-                val host = StatusContainerHost(
-                    StatusSources(
-                        MenuTestSync(),
-                        world.permission,
-                        world.config,
-                        creation = world.creation,
-                        mobileData = world.mobileData,
-                    ),
-                    scope,
-                    commands = testMenuCommands(
-                        openLink = { world.links += it },
-                        sendDiagnostics = { note, _ ->
-                            world.reports += note
-                            world.outcome()
-                        },
-                        setMobileData = { on -> world.saves.also { if (it) world.mobileData.value = on } },
-                    ),
-                    cutoffFormatter = CutoffFormatter(
-                        now = { Instant.parse("2026-07-09T12:00:00Z") },
-                        zone = TimeZone.UTC,
-                    ),
-                    queries = noQueries,
-                    diagnostics = testDiagnostics(),
-                    build = BuildLabel("0.12", "2140"),
-                    reduction = Dispatchers.Default,
+                val base = TestCommands(
+                    openLink = { world.links += it },
+                    sendDiagnostics = { note, _ ->
+                        world.reports += note
+                        world.outcome()
+                    },
                 )
+                val host = object : UserCommands by base {
+                    override suspend fun setMobileData(on: Boolean) =
+                        world.saves.also { if (it) world.mobileData.value = on }
+                }.let { commands ->
+                    StatusContainerHost(
+                        StatusSources(
+                            MenuTestSync(),
+                            world.permission,
+                            world.config,
+                            creation = world.creation,
+                            mobileData = world.mobileData,
+                            requests = base.requests.flows,
+                        ),
+                        scope,
+                        commands = commands,
+                        cutoffFormatter = CutoffFormatter(
+                            now = { Instant.parse("2026-07-09T12:00:00Z") },
+                            zone = TimeZone.UTC,
+                        ),
+                        queries = noQueries,
+                        joinDetails = unanswered,
+                        diagnostics = testDiagnostics(),
+                        build = BuildLabel("0.12", "2140"),
+                        reduction = Dispatchers.Default,
+                    )
+                }
                 body(host, world)
             } finally {
                 scope.cancel()

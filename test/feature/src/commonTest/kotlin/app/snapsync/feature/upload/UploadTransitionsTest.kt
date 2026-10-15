@@ -1,5 +1,7 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -7,14 +9,16 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
+import app.snapsync.feature.support.testShared
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
 import app.snapsync.ports.LibraryGrant
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.galleryAccess
+import app.snapsync.services.membership.MembershipProjection
+import app.snapsync.services.membership.MembershipTransition
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -283,6 +287,21 @@ class UploadTransitionsTest {
     }
 
     @Test
+    fun `what a failed leave left uploading is stopped, unless a join is keeping its own`() = runTest {
+        val w = World(grant = LibraryGrant.GRANTED)
+        val none = (MembershipRepository(testShared()).read() as MembershipRead.NotJoined).evidence
+        val transition = MembershipTransition()
+
+        transition.begin()
+        w.transitions.stopLeftovers(none, transition)
+        assertEquals(emptyList(), w.log, "the join's own registration stays")
+
+        transition.end()
+        w.transitions.stopLeftovers(none, transition)
+        assertEquals(listOf("deregister", "disarm", "cancel"), w.log)
+    }
+
+    @Test
     fun `below 26_1 a leave and a compared reconcile touch only the app engine`() = runTest {
         val w = World(osSupported = false, grant = LibraryGrant.GRANTED)
 
@@ -311,12 +330,12 @@ class UploadTransitionsTest {
  * The real membership over the shared database: joined to `E`, or not joined — or, when [unreadable], a database the
  * device cannot read (locked since boot), which the service reads as unreadable whatever the row holds.
  */
-private fun membership(joined: Boolean, unreadable: Boolean): ConfigService = configService(
+private fun membership(joined: Boolean, unreadable: Boolean): MembershipProjection = configService(
     initial = EventConfig(
         testEventId("E"),
         "E",
         CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )

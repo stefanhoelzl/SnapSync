@@ -4,28 +4,38 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.membership.InviteFact
+import app.snapsync.domain.membership.JoinChoice
+import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.feature.membership.QuietSwitch
-import app.snapsync.feature.membership.toCommit
+import app.snapsync.entrypoints.JoinRequest
+import app.snapsync.entrypoints.RenameRequest
+import app.snapsync.entrypoints.SettingsRequest
+import app.snapsync.entrypoints.SwitchRequest
+import app.snapsync.format.TimestampText
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Trigger
-import app.snapsync.model.Direction
 import app.snapsync.model.Handoff
-import app.snapsync.model.JoinChoice
-import app.snapsync.model.JoinCommit
-import app.snapsync.model.JoinLoad
-import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.outcome
 import app.snapsync.model.recordingRefusal
+import app.snapsync.query.RequestStatusSink
+import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.membership.JoinDetailsQuery
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
 
 // The user-tap command bundle and the user-query bundle (`docs/architecture.md`, "Commands cross one door" and
 // "Queries cross a lane-gated door"): built and decorated only here in `compose/`, injected into
@@ -83,16 +93,44 @@ private fun <T> AppCore.detachedOnCoreLane(
     }
 }
 
+/**
+ * A tap handed to the entry point that runs it: the third lane-declaring form beside [awaitingOnCoreLane] and
+ * [detachedOnCoreLane] — the entry point's runtime runs its work on the composition lane, and nothing but the hand-off
+ * runs on the tapping thread. Returns at once.
+ */
+private fun <A> handedOff(name: String, params: String, entry: Background<A>, arg: A) {
+    tapLog.i { "$name($params)" }
+    entry.handle(arg, Completion.None)
+}
+
+/**
+ * A member's request, [handedOff]: [id] marked as running on its status first, and [entry]'s work answers [id] on that
+ * status when it ends.
+ */
+private fun <A> requested(
+    name: String,
+    params: String,
+    id: RequestId,
+    status: RequestStatusSink<*>,
+    entry: Background<A>,
+    arg: (RequestId) -> A,
+): RequestId {
+    status.begun(id)
+    handedOff(name, "$params, request ${id.value}", entry, arg(id))
+    return id
+}
+
 /** The user-tap command bundle, each command's lane declared where it is built. */
+@OptIn(ExperimentalAtomicApi::class)
 internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
-    // Leave: cancel in-flight downloads and drop non-terminal rows (imported photos stay;
-    // suppression rows are permanent), then run the leave use-case (disable producer → notify
-    // the backend it is leaving → clear config/producer). Imported foreign photos are never
-    // touched.
-    override suspend fun leave() = awaitingOnCoreLane<Unit>("tap.leave") {
-        downloadController.onLeaveOrSwitch()
-        leaveEvent.leave()
-    }
+    /** Each request's id: unique for the process, which is as long as a status lives. */
+    private val ids = AtomicLong(0)
+
+    private fun nextId() = RequestId(ids.incrementAndFetch())
+
+    // Leave: the membership ends, then everything it held is stopped (`OnLeaveConfirmed`). Its outcome is the
+    // membership turning "not joined"; one that stays joined is a leave that could not be written.
+    override fun leave() = handedOff("tap.leave", "", work.leaveConfirmed, Unit)
 
     // Create: mint via the backend; the use-case routes the minted event into the SAME join
     // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
@@ -105,15 +143,15 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
         eventCreator.create(name, TimestampText.format(startsAt.at), TimestampText.format(endsAt.at), openUntil)
     }
 
-    // The join gate's commit: join (no body, no manifest) then
-    // provision. The outcome is NAMED rather than reduced to a Boolean, because a closed event and a
-    // transient failure need different screens: one offers a Retry that may work, the other must
-    // not offer one at all. The same-event no-op is a success.
-    override suspend fun commitJoin(choice: JoinChoice): JoinCommit = awaitingOnCoreLane(
+    // The join gate's commit: enrolled, then entered, then what follows a join (`OnJoinConfirmed`). Answered on the
+    // join status under the returned id.
+    override fun commitJoin(choice: JoinChoice): RequestId = requested(
         "tap.commitJoin",
-        params = "eventId=${choice.eventId}",
-        result = { commit: JoinCommit -> "commit=$commit" },
-    ) { joinEvent.join(choice).toCommit() }
+        "eventId=${choice.event.id}",
+        nextId(),
+        membershipStatuses.join,
+        work.joinConfirmed,
+    ) { id -> JoinRequest(id, choice) }
 
     // Share is pure platform (a system sheet over the top view controller). Decorated like the
     // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
@@ -141,40 +179,41 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     // the selection-change seam.
     override fun choosePhotos() = detachedOnCoreLane("tap.choosePhotos") { ports.gallery.widenSelection() }
 
-    // In-place membership reconfigure: edit direction/
-    // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
-    override suspend fun reconfigure(
-        eventId: EventId,
-        direction: Direction,
-        minPhotoDate: CaptureCutoff,
-        maxPhotoDate: CaptureCeiling,
-        saveToAlbum: Boolean,
-    ): ReconfigureOutcome = awaitingOnCoreLane(
+    // In-place membership settings: range, direction and album without leaving (`OnSettingsChanged`). Distinct from
+    // `openSettings` (the system settings page). Answered on the settings status under the returned id.
+    override fun reconfigure(choice: ShareChoice): RequestId = requested(
         "tap.reconfigure",
-        params = "eventId=$eventId",
-        result = { outcome: ReconfigureOutcome -> "$outcome" },
-    ) {
-        reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
-    }
+        "eventId=${choice.event}",
+        nextId(),
+        membershipStatuses.settings,
+        work.settingsChanged,
+    ) { id -> SettingsRequest(id, choice) }
 
     // The device's mobile-data choice from the app menu: one shared preference, read by
     // each transfer as it is created, so the change governs only what starts after it.
     override suspend fun setMobileData(on: Boolean): Boolean =
         awaitingOnCoreLane("tap.setMobileData", params = "on=$on") { services.mobileData.set(on) }
 
-    // Rename the joined event: unlike `reconfigure`, which edits only
-    // this device's settings, this rewrites the SHARED event — every member picks the new name up
-    // on their next foreground refresh. Fire-and-forget; the outcome rides `renameStatus`.
-    override fun rename(eventId: EventId, name: String) =
-        detachedOnCoreLane("tap.rename", params = "eventId=$eventId") {
-            renameEvent.rename(eventId, name)
-        }
+    // Rename the joined event: unlike `reconfigure`, which edits only this device's settings, this rewrites the SHARED
+    // event — every member picks the new name up on their next refresh (`OnRenameRequested`). Answered on the rename
+    // status under the returned id.
+    override fun rename(eventId: EventId, name: String): RequestId = requested(
+        "tap.rename",
+        "eventId=$eventId",
+        nextId(),
+        membershipStatuses.rename,
+        work.renameRequested,
+    ) { id -> RenameRequest(id, eventId, name) }
 
-    // Clear the rename latch once the screen has consumed a terminal status. Instrumented like
-    // the taps even though it is a screen-fired acknowledgement rather than a tap: it mutates
-    // the rename lifecycle, and an unattributed state change is the thing this trail exists to
-    // eliminate.
-    override suspend fun resetRename() = awaitingOnCoreLane<Unit>("tap.resetRename") { renameEvent.reset() }
+    // Another event's invite loaded while joined: may the joined one be left without asking (`OnInviteForOtherEvent`)?
+    // Answered on the switch status under the returned id.
+    override fun switch(invite: InviteFact): RequestId = requested(
+        "tap.switch",
+        "invite=$invite",
+        nextId(),
+        membershipStatuses.switch,
+        work.inviteForOtherEvent,
+    ) { id -> SwitchRequest(id, invite) }
 
     // The diagnostic dump, fired once the user has
     // written what went wrong: sent where the build reports, kept on the device where it does not —
@@ -201,16 +240,15 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
  * photo-library or network read never runs on the thread that asked.
  */
 internal fun AppCore.userQueriesFor(): UserQueries = object : UserQueries {
-    // Whether another event's invite may leave the joined one without asking: one read of the event when the invite
-    // is opened, and this device's own "holds everything" answer.
-    private val quietSwitch = QuietSwitch(services.config, backend.directory, downloadController::holdsEverythingFor)
-
-    override suspend fun loadJoinDetails(eventId: EventId, linkKey: String?): JoinLoad =
-        awaitingOnCoreLane("query.loadJoinDetails", "eventId=$eventId") { joinEvent.loadJoin(eventId, linkKey) }
-
     override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
         awaitingOnCoreLane("query.shareableCount") { loadShareableCount(cutoff, until) }
+}
 
-    override suspend fun switchLosesNothing(): Boolean =
-        awaitingOnCoreLane("query.switchLosesNothing") { quietSwitch.losesNothing() }
+/** The join gate's read of an invite's event, awaited on the composition lane like every query. */
+internal fun AppCore.joinDetailsFor(): JoinDetailsQuery = object : JoinDetailsQuery {
+    override suspend fun load(invite: InviteLink): JoinDetails =
+        awaitingOnCoreLane(
+            "query.joinDetails",
+            "eventId=${invite.event}",
+        ) { work.membership.joinDetails.load(invite) }
 }

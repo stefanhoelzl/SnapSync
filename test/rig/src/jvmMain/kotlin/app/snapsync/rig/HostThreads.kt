@@ -8,7 +8,6 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
 import app.snapsync.logging.JvmThreadLabel
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.ThreadLabel
 import app.snapsync.rig.time.Interleaving
@@ -113,9 +112,7 @@ internal class HostThreads private constructor(
                     ).loop.outside("an operating-system upload's request") { network.put(url, headers, bytes) }
                 }
             }
-            // Invite-link hints honoured, as the rig's development controls answer them on a device: this host IS the
-            // control channel, whose callers join headlessly with `autoJoin`.
-            val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Honoured, network = network)
+            val mocks = JvmMocks(network = network)
             startAt?.let { mocks.clock.now = it }
             val clock = object : LoopClock {
                 override var now: Instant by mocks.clock::now

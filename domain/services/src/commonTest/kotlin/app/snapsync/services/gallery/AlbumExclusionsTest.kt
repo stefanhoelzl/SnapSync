@@ -2,9 +2,9 @@ package app.snapsync.services.gallery
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.format.TimestampText
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SELECTION_CALIBRATION
-import app.snapsync.model.TimestampText
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset

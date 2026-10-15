@@ -10,6 +10,7 @@ import app.snapsync.contracts.inboundOf
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
 import java.lang.ref.Reference
 import java.nio.file.Files
 import java.util.concurrent.LinkedBlockingQueue
@@ -33,8 +34,10 @@ class JdbcDatabasesCommitsTest {
             QueryResult.Value(Unit)
     }
 
-    private fun JdbcDatabases.opened(): SqlDriver =
-        assertIs<DbOpen.Opened>(open("t.db", Schema, readOnly = false)).driver
+    private fun JdbcDatabases.opened(): SqlDriver {
+        val opened = assertIs<DbOpen.Opened>(open("t.db", Schema, readOnly = false))
+        return assertIs<DbResult.Ok<SqlDriver>>(opened.database.execute { it }).value
+    }
 
     @Test
     fun `an instance that never listened is not told and the commit goes on`() {

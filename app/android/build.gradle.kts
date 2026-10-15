@@ -14,9 +14,9 @@ plugins {
     id("snapsync.rig")
 }
 
-// The resolved deployment the app talks to (`docs/deployment.md`): `:domain:model` runs the resolver at configuration
+// The resolved deployment the app talks to (`docs/deployment.md`): `:domain:format` runs the resolver at configuration
 // time (it generates LINK_ORIGIN from the same resolution), so this project reads what that run rendered.
-evaluationDependsOn(":domain:model")
+evaluationDependsOn(":domain:format")
 
 val deployment: Map<String, String> = rootProject.layout.projectDirectory.file("build/deployment.properties").asFile
     .readLines()

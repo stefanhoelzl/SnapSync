@@ -241,4 +241,31 @@ class DeletionLedgerTest {
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
     }
+
+    /**
+     * The membership before its layers (phase 4.2): a service that read and wrote the membership as one `EventConfig`
+     * and a refresh that decided inside it; the old zones' join, leave, settings and switch rules, where use cases and
+     * entry points now run them; an event that could close, where nothing closes; an invite link's hints that could
+     * join headlessly; and the screen's join-details read, switch question and rename reset, where requests answer on
+     * their statuses.
+     */
+    @Test
+    fun `the membership's retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """(class|interface|object) (Config""" + "Service|Membership" + "Entry|Membership" +
+                "Refresh|Quiet" + "Switch|Event" + "Completion|ResetDevice" + "State|DeviceEn" + "roller)\b"
+            declared(files, pre).forEach { add("the membership's pre-layer types in $it (the layers' — 4.2)") }
+            declared(files, """val closed""" + ": Boolean\b").forEach {
+                add("a closed membership in $it (nothing closes; EventOver is the join's refusal — 4.2)")
+            }
+            declared(files, """auto""" + "Join\b|\binviteLink" + "Hints\b").forEach {
+                add("an invite link's hints in $it (joining happens only on confirmation — 4.2)")
+            }
+            declared(files, """fun (loadJoin""" + "Details|switchLoses" + "Nothing|reset" + "Rename)\b").forEach {
+                add("a door the requests replaced in $it (answered on their statuses — 4.2)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
 }

@@ -2,6 +2,10 @@ package app.snapsync.services.downloads
 
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
+import app.snapsync.data.store.AssetIdColumnAdapter
+import app.snapsync.data.store.DeviceIdColumnAdapter
+import app.snapsync.data.store.EventIdColumnAdapter
+import app.snapsync.data.store.OwnedDatabase
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.AdoptedAsset
@@ -16,10 +20,6 @@ import app.snapsync.model.StagedResource
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UnconfirmedImport
 import app.snapsync.ports.Databases
-import app.snapsync.services.databases.AssetIdColumnAdapter
-import app.snapsync.services.databases.DeviceIdColumnAdapter
-import app.snapsync.services.databases.EventIdColumnAdapter
-import app.snapsync.services.databases.openOwned
 import app.snapsync.services.downloads.db.DownloadAsset
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.services.downloads.db.DownloadResource
@@ -41,20 +41,19 @@ const val DOWNLOADS_DB_NAME: String = "downloads.db"
  */
 class DownloadService(databases: Databases) : SuppressionSource {
 
-    private val q by lazy {
-        DownloadDatabase(
-            databases.openOwned(DOWNLOADS_DB_NAME, DownloadDatabase.Schema),
-        ).downloadStoreQueries
-    }
+    private val store: OwnedDatabase<DownloadStoreQueries> =
+        object : OwnedDatabase<DownloadStoreQueries>(databases, DOWNLOADS_DB_NAME, DownloadDatabase.Schema) {
+            override fun over(driver: SqlDriver) = DownloadDatabase(driver).downloadStoreQueries
+        }
 
     /** The store's bookkeeping of the event union's reads — the position, and what a full read found withdrawn. */
-    val union: UnionTracking = UnionTracking { q }
+    val union: UnionTracking = UnionTracking(store)
 
     /** Which staged files the rows still claim — what a sweep of the staging directory keeps. */
-    val claims: StagingClaims = StagingClaims { q }
+    val claims: StagingClaims = StagingClaims(store)
 
     /** Which memberships' received photos have been recognised — what every uploader waits for. */
-    val recognition: Recognition = Recognition { q }
+    val recognition: Recognition = Recognition(store)
 
     /**
      * Always ready: a read-write open creates and migrates, so this process can never find the store at an old
@@ -63,14 +62,14 @@ class DownloadService(databases: Databases) : SuppressionSource {
     override suspend fun readiness(): SuppressionReadiness = SuppressionReadiness.Ready
 
     override suspend fun suppressedLocalIds(): Set<AssetId> =
-        q.suppressedLocalIds().executeAsList().toSet()
+        store.use { q -> q.suppressedLocalIds().executeAsList().toSet() }
 
     /**
      * The created local id of every imported photo of [eventId]'s union — the refs a reconcile of that event recorded,
      * and the photos adopted for it ([planAll], [adoptAll]). A photo two events share answers for both.
      */
     suspend fun importedLocalIdsOf(eventId: EventId): Set<AssetId> =
-        q.selectImportedLocalIdsOfEvent(eventId).executeAsList().toSet()
+        store.use { q -> q.selectImportedLocalIdsOfEvent(eventId).executeAsList().toSet() }
 
     /**
      * True if this foreign asset is **settled** — imported, or settled as permanently unimportable — so
@@ -79,7 +78,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * succeed.
      */
     suspend fun isSettled(ref: AssetRef): Boolean =
-        q.isSettled(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne()
+        store.use { q -> q.isSettled(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne() }
 
     // One read of every settled ref, filtered here: the table holds only the unions of the events this device has
     // joined, and binding a list of key PAIRS is awkward in SQLDelight. The port is stated by ref, so an index-driven
@@ -87,9 +86,11 @@ class DownloadService(databases: Databases) : SuppressionSource {
     suspend fun settledAmong(refs: Collection<AssetRef>): Set<AssetRef> {
         if (refs.isEmpty()) return emptySet()
         val wanted = refs.toSet()
-        return q.selectSettledRefs { device, asset -> AssetRef(device, asset) }
-            .executeAsList()
-            .filterTo(mutableSetOf()) { it in wanted }
+        return store.use { q ->
+            q.selectSettledRefs { device, asset -> AssetRef(device, asset) }
+                .executeAsList()
+                .filterTo(mutableSetOf()) { it in wanted }
+        }
     }
 
     /** Record a foreign asset (with its capture [creationDate]) and its expected resources as PENDING (idempotent; never downgrades IMPORTED). */
@@ -121,35 +122,37 @@ class DownloadService(databases: Databases) : SuppressionSource {
         declared: Long? = null,
     ) {
         if (assets.isEmpty() && (eventId == null || (members.isEmpty() && cursor == null))) return
-        q.transaction {
-            assets.forEach { (ref, creationDate, resources) ->
-                q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate)
-                resources.forEach { r ->
-                    q.upsertResource(
-                        ref.sourceDeviceId,
-                        ref.sourceAssetId,
-                        r.resourceKey,
-                        r.url,
-                        r.role,
-                        r.contentType,
-                        r.originalFilename,
-                        when (eventId) {
-                            null -> ""
-                            else -> eventId.value
-                        },
-                    )
+        store.use { q ->
+            q.transaction {
+                assets.forEach { (ref, creationDate, resources) ->
+                    q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate)
+                    resources.forEach { r ->
+                        q.upsertResource(
+                            ref.sourceDeviceId,
+                            ref.sourceAssetId,
+                            r.resourceKey,
+                            r.url,
+                            r.role,
+                            r.contentType,
+                            r.originalFilename,
+                            when (eventId) {
+                                null -> ""
+                                else -> eventId.value
+                            },
+                        )
+                    }
                 }
-            }
-            if (eventId != null) {
-                members.forEach {
-                    q.insertEventRef(
-                        eventId,
-                        it.sourceDeviceId,
-                        it.sourceAssetId,
-                    )
+                if (eventId != null) {
+                    members.forEach {
+                        q.insertEventRef(
+                            eventId,
+                            it.sourceDeviceId,
+                            it.sourceAssetId,
+                        )
+                    }
                 }
+                if (eventId != null && cursor != null) q.upsertUnionCursor(eventId, cursor, declared)
             }
-            if (eventId != null && cursor != null) q.upsertUnionCursor(eventId, cursor, declared)
         }
     }
 
@@ -162,25 +165,28 @@ class DownloadService(databases: Databases) : SuppressionSource {
      */
     suspend fun adoptAll(adopted: Collection<AdoptedAsset>, eventId: EventId): Set<AssetRef> {
         if (adopted.isEmpty()) return emptySet()
-        return q.transactionWithResult {
-            adopted.filterTo(mutableSetOf()) { a ->
-                val (device, asset) = a.ref
-                q.adoptImported(device, asset, a.creationDate, a.localId)
-                val recorded = q.changedRows().executeAsOne() > 0 || run {
-                    q.adoptPending(a.localId, device, asset)
-                    q.changedRows().executeAsOne() > 0
-                }
-                if (recorded) q.insertEventRef(eventId, device, asset)
-                recorded
-            }.mapTo(mutableSetOf()) { it.ref }
+        return store.use { q ->
+            q.transactionWithResult {
+                adopted.filterTo(mutableSetOf()) { a ->
+                    val (device, asset) = a.ref
+                    q.adoptImported(device, asset, a.creationDate, a.localId)
+                    val recorded = q.changedRows().executeAsOne() > 0 || run {
+                        q.adoptPending(a.localId, device, asset)
+                        q.changedRows().executeAsOne() > 0
+                    }
+                    if (recorded) q.insertEventRef(eventId, device, asset)
+                    recorded
+                }.mapTo(mutableSetOf()) { it.ref }
+            }
         }
     }
 
     /** The not-yet-staged resources across all non-imported assets — the download work queue. */
-    suspend fun pendingDownloads(): List<PendingDownload> =
+    suspend fun pendingDownloads(): List<PendingDownload> = store.use { q ->
         q.selectPendingResources { device, asset, key, url, role, contentType, original, eventId ->
             PendingDownload(AssetRef(device, asset), PlannedResource(key, url, role, contentType, original), eventId)
         }.executeAsList()
+    }
 
     /**
      * Mark each download as sent to the OS (a background transfer now exists) — the in-flight marker — in ONE
@@ -188,13 +194,15 @@ class DownloadService(databases: Databases) : SuppressionSource {
      */
     suspend fun markAllEnqueued(downloads: Collection<PendingDownload>) {
         if (downloads.isEmpty()) return
-        q.transaction {
-            downloads.forEach {
-                q.markResourceEnqueued(
-                    it.ref.sourceDeviceId,
-                    it.ref.sourceAssetId,
-                    it.resource.resourceKey,
-                )
+        store.use { q ->
+            q.transaction {
+                downloads.forEach {
+                    q.markResourceEnqueued(
+                        it.ref.sourceDeviceId,
+                        it.ref.sourceAssetId,
+                        it.resource.resourceKey,
+                    )
+                }
             }
         }
     }
@@ -205,7 +213,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * it has left — whose staged file nothing references and the caller discards.
      */
     suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String): Boolean =
-        q.markResourceStaged(stagedPath, ref.sourceDeviceId, ref.sourceAssetId, resourceKey).value > 0
+        store.use { q -> q.markResourceStaged(stagedPath, ref.sourceDeviceId, ref.sourceAssetId, resourceKey).value > 0 }
 
     /**
      * Assets whose every expected resource is staged and that are not yet imported — ready to import.
@@ -214,31 +222,34 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * importing them again is the duplicate this capability exists to prevent. They leave through
      * [unconfirmedImports] to be adjudicated, and re-enter here only once their marker is cleared.
      */
-    suspend fun importableAssets(): List<ImportableAsset> =
+    suspend fun importableAssets(): List<ImportableAsset> = store.use { q ->
         q.selectImportableAssets { device, asset, creationDate ->
             ImportableAsset(AssetRef(device, asset), creationDate)
         }.executeAsList()
+    }
 
     /** Rows whose asset was created but whose import was never confirmed — to be adjudicated, not re-imported. */
-    suspend fun unconfirmedImports(): List<UnconfirmedImport> =
+    suspend fun unconfirmedImports(): List<UnconfirmedImport> = store.use { q ->
         // The marker is non-null by the query's own `IS NOT NULL`, and SQLDelight narrows the generated
         // column type from it — so no narrowing (and no assertion) is needed here.
         q.selectUnconfirmedAssets { device, asset, createdLocalId ->
             UnconfirmedImport(AssetRef(device, asset), createdLocalId)
         }.executeAsList()
+    }
 
     /** The staged resources of an asset, to feed one PHAssetCreationRequest. */
-    suspend fun stagedResources(ref: AssetRef): List<StagedResource> =
+    suspend fun stagedResources(ref: AssetRef): List<StagedResource> = store.use { q ->
         q.selectResourcesForAsset(
             ref.sourceDeviceId,
             ref.sourceAssetId,
         ) { key, _, role, contentType, original, staged ->
             StagedResource(key, role, contentType, original, staged ?: "")
         }.executeAsList().filter { it.stagedPath.isNotEmpty() }
+    }
 
     /** Mark an asset imported and record the created local identifier (the suppression handle). */
     suspend fun markImported(ref: AssetRef, createdLocalId: AssetId) {
-        q.markImported(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId)
+        store.use { q -> q.markImported(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId) }
     }
 
     /**
@@ -249,12 +260,12 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * `false` means the row was pruned out from under this import — see the port's KDoc for why that is
      * an emergency rather than a miss.
      */
-    fun recordCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
+    fun recordCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied { q ->
         q.recordCreatedLocalId(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId)
     }
 
     /** The mirror of [recordCreatedLocalId], for a change the library reported as failed. */
-    fun clearCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
+    fun clearCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied { q ->
         q.clearCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
     }
 
@@ -262,7 +273,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * The success mirror. The marker guard is in the SQL, so a completion whose marker has moved on
      * updates no row rather than settling one it no longer describes.
      */
-    fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied {
+    fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: AssetId): Boolean = applied { q ->
         q.confirmCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
     }
 
@@ -273,9 +284,11 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * Non-suspending, because all three of its callers are: they are invoked from PhotoKit's change and
      * completion blocks, which cannot call a suspending function.
      */
-    private fun applied(write: () -> Unit): Boolean = q.transactionWithResult {
-        write()
-        q.changedRows().executeAsOne() > 0L
+    private fun applied(write: (DownloadStoreQueries) -> Unit): Boolean = store.use { q ->
+        q.transactionWithResult {
+            write(q)
+            q.changedRows().executeAsOne() > 0L
+        }
     }
 
     /**
@@ -286,11 +299,13 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * `suspend` unlike the three marker writes: this one is reached from the drain, not from inside a
      * PhotoKit block, so it has no reason to carry their constraint.
      */
-    suspend fun settleUnimportable(ref: AssetRef): Boolean = q.transactionWithResult {
-        q.settleUnimportable(ref.sourceDeviceId, ref.sourceAssetId)
-        val applied = q.changedRows().executeAsOne() > 0L
-        if (applied) q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId)
-        applied
+    suspend fun settleUnimportable(ref: AssetRef): Boolean = store.use { q ->
+        q.transactionWithResult {
+            q.settleUnimportable(ref.sourceDeviceId, ref.sourceAssetId)
+            val applied = q.changedRows().executeAsOne() > 0L
+            if (applied) q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId)
+            applied
+        }
     }
 
     /**
@@ -304,11 +319,11 @@ class DownloadService(databases: Databases) : SuppressionSource {
         // every event's imported rows as suppression handles, so the unscoped read is a census of the device
         // (diagnostics, reset), never this membership's progress.
         if (eventId == null) {
-            return q.projectionCounts().executeAsOne().let {
+            return store.use { q -> q.projectionCounts().executeAsOne() }.let {
                 DownloadCounts(it.imported.toInt(), it.stillArriving.toInt(), it.inFlight.toInt())
             }
         }
-        return q.projectionCountsForEvent(eventId).executeAsOne().let {
+        return store.use { q -> q.projectionCountsForEvent(eventId).executeAsOne() }.let {
             DownloadCounts(
                 imported = it.imported.toInt(),
                 stillArriving = it.stillArriving.toInt(),
@@ -328,26 +343,28 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * over a bound collection is not expressible in this dialect. Being inside the transaction is what makes
      * that equivalent — and clearer to read than the alternative would have been.
      */
-    suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> = q.transactionWithResult {
-        // The positions go with the plans (decision record `changes/incremental-union`, D6): one that stood past rows
-        // this prune drops would keep the next delta from serving them again, so every next read is a full one.
-        q.deleteUnionCursors()
-        val victims = q.selectPrunableAssets { device, asset -> AssetRef(device, asset) }
-            .executeAsList()
-            .filterNot { it in protecting }
-        victims.forEach { q.deletePrunableAsset(it.sourceDeviceId, it.sourceAssetId) }
-        // Read AFTER the deletes, from the rows they orphaned — so the paths returned are what this call
-        // really stranded, not what a pre-delete snapshot predicted it would. Getting that backwards frees
-        // the bytes of a row the delete spared, and a resource recorded as staged is never re-downloaded.
-        val stranded = q.selectStagedPathsOfOrphanedResources().executeAsList().filterNotNull()
-        // Sweeps those now-orphaned resource rows; a protected asset keeps both its row and its resources.
-        q.deleteNonTerminalResources()
-        stranded
+    suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> = store.use { q ->
+        q.transactionWithResult {
+            // The positions go with the plans (decision record `changes/incremental-union`, D6): one that stood past rows
+            // this prune drops would keep the next delta from serving them again, so every next read is a full one.
+            q.deleteUnionCursors()
+            val victims = q.selectPrunableAssets { device, asset -> AssetRef(device, asset) }
+                .executeAsList()
+                .filterNot { it in protecting }
+            victims.forEach { q.deletePrunableAsset(it.sourceDeviceId, it.sourceAssetId) }
+            // Read AFTER the deletes, from the rows they orphaned — so the paths returned are what this call
+            // really stranded, not what a pre-delete snapshot predicted it would. Getting that backwards frees
+            // the bytes of a row the delete spared, and a resource recorded as staged is never re-downloaded.
+            val stranded = q.selectStagedPathsOfOrphanedResources().executeAsList().filterNotNull()
+            // Sweeps those now-orphaned resource rows; a protected asset keeps both its row and its resources.
+            q.deleteNonTerminalResources()
+            stranded
+        }
     }
 
     /** Staged paths of assets whose import is CONFIRMED — redundant bytes, feeding the release pass. */
     suspend fun stagedPathsOfImportedAssets(): List<String> =
-        q.selectStagedPathsOfImportedAssets().executeAsList().filterNotNull()
+        store.use { q -> q.selectStagedPathsOfImportedAssets().executeAsList().filterNotNull() }
 
     /**
      * Drop one asset's resource rows, once its bytes have been released — so the store never records a
@@ -356,7 +373,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * an imported row's resources.
      */
     suspend fun dropResources(ref: AssetRef) {
-        q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId)
+        store.use { q -> q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId) }
     }
 
     /**
@@ -365,7 +382,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * made the work findable are gone, so a second pass finds nothing.
      */
     suspend fun dropResourcesOfImportedAssets() {
-        q.deleteResourcesOfImportedAssets()
+        store.use { q -> q.deleteResourcesOfImportedAssets() }
     }
 }
 
@@ -392,7 +409,7 @@ internal fun DownloadDatabase(driver: SqlDriver): DownloadDatabase = DownloadDat
 )
 
 /** The staging paths the download store's rows still claim, over the same database as [DownloadService]. */
-class StagingClaims internal constructor(private val queries: () -> DownloadStoreQueries) {
+class StagingClaims internal constructor(private val store: OwnedDatabase<DownloadStoreQueries>) {
 
     /**
      * Every staging path a resource row may still use, relative to the shared area: each row's recorded staged path,
@@ -400,7 +417,7 @@ class StagingClaims internal constructor(private val queries: () -> DownloadStor
      * this set has no row to record it, so nothing will ever read or release it.
      */
     suspend fun pathsInUse(root: String): Set<String> =
-        queries().selectResourcePaths().executeAsList().flatMapTo(HashSet()) { row ->
+        store.use { q -> q.selectResourcePaths().executeAsList() }.flatMapTo(HashSet()) { row ->
             val ref = AssetRef(row.sourceDeviceId, row.sourceAssetId)
             // Its event's folder, and the event-less path a transfer started before transfers named their event
             // still lands at.
@@ -417,16 +434,17 @@ class StagingClaims internal constructor(private val queries: () -> DownloadStor
  * same database as [DownloadService]; the extension reads it through its read-only [SuppressionService]. Purged with the
  * other memberships' event refs at a join.
  */
-class Recognition internal constructor(private val queries: () -> DownloadStoreQueries) : RecognitionSource {
+class Recognition internal constructor(private val store: OwnedDatabase<DownloadStoreQueries>) : RecognitionSource {
 
-    override suspend fun isRecognised(eventId: EventId): Boolean = queries().isRecognised(eventId).executeAsOne()
+    override suspend fun isRecognised(eventId: EventId): Boolean =
+        store.use { q -> q.isRecognised(eventId).executeAsOne() }
 
     /**
      * Record that [eventId]'s received photos have been recognised: what a recognition pass writes once it has READ the
      * event's union — never after a read that failed. The upload gate of both processes shares nothing before it.
      */
     suspend fun mark(eventId: EventId) {
-        queries().markRecognised(eventId)
+        store.use { q -> q.markRecognised(eventId) }
     }
 
     /**
@@ -434,7 +452,7 @@ class Recognition internal constructor(private val queries: () -> DownloadStoreQ
      * nothing of the membership may be shared until the next pass has.
      */
     suspend fun unmark(eventId: EventId) {
-        queries().unmarkRecognised(eventId)
+        store.use { q -> q.unmarkRecognised(eventId) }
     }
 }
 
@@ -443,14 +461,14 @@ class Recognition internal constructor(private val queries: () -> DownloadStoreQ
  * over the same database as [DownloadService] — whose [DownloadService.planAll] writes the position in the transaction
  * of the plan it covers, and whose [DownloadService.pruneNonTerminal] forgets every position with the plans it drops.
  */
-class UnionTracking internal constructor(private val queries: () -> DownloadStoreQueries) {
+class UnionTracking internal constructor(private val store: OwnedDatabase<DownloadStoreQueries>) {
 
     /** The union position [eventId] was last read to, or `null` for none — the next read is then a full one. */
-    suspend fun cursor(eventId: EventId): Long? = queries().selectUnionCursor(eventId).executeAsOneOrNull()
+    suspend fun cursor(eventId: EventId): Long? = store.use { q -> q.selectUnionCursor(eventId).executeAsOneOrNull() }
 
     /** The declared total stored with [eventId]'s position (change `count-declared-photos`), or `null` for none. */
     suspend fun declared(eventId: EventId): Long? =
-        queries().selectUnionDeclared(eventId).executeAsOneOrNull()?.declared
+        store.use { q -> q.selectUnionDeclared(eventId).executeAsOneOrNull()?.declared }
 
     /**
      * Forget which photos belonged to every event's union but [eventId]'s — the join's purge (change
@@ -460,11 +478,12 @@ class UnionTracking internal constructor(private val queries: () -> DownloadStor
      * untouched.
      */
     suspend fun purgeEventRefsExcept(eventId: EventId) {
-        val q = queries()
-        q.transaction {
-            q.purgeEventRefsExcept(eventId)
-            // Every other membership's recognition goes with it: joining one of them again recognises it again.
-            q.purgeRecognisedExcept(eventId)
+        store.use { q ->
+            q.transaction {
+                q.purgeEventRefsExcept(eventId)
+                // Every other membership's recognition goes with it: joining one of them again recognises it again.
+                q.purgeRecognisedExcept(eventId)
+            }
         }
     }
 
@@ -476,19 +495,22 @@ class UnionTracking internal constructor(private val queries: () -> DownloadStor
      * comes back is planned again.
      */
     suspend fun pruneWithdrawn(eventId: EventId, listed: Set<AssetRef>, protecting: Set<AssetRef>): List<String> {
-        val q = queries()
         // A read first, so the common case — nothing withdrawn — costs no durable commit; the transaction below reads
         // again, and only its read decides what goes.
-        val candidates = q.selectWithdrawable(eventId) { device, asset -> AssetRef(device, asset) }.executeAsList()
+        val candidates = store.use { q ->
+            q.selectWithdrawable(eventId) { device, asset -> AssetRef(device, asset) }.executeAsList()
+        }
         if (candidates.none { it !in listed && it !in protecting }) return emptyList()
-        return q.transactionWithResult {
-            val withdrawn = q.selectWithdrawable(eventId) { device, asset -> AssetRef(device, asset) }
-                .executeAsList()
-                .filterNot { it in listed || it in protecting }
-            withdrawn.forEach { q.deleteWithdrawn(it.sourceDeviceId, it.sourceAssetId) }
-            val stranded = q.selectStagedPathsOfOrphanedResources().executeAsList().filterNotNull()
-            q.deleteNonTerminalResources()
-            stranded
+        return store.use { q ->
+            q.transactionWithResult {
+                val withdrawn = q.selectWithdrawable(eventId) { device, asset -> AssetRef(device, asset) }
+                    .executeAsList()
+                    .filterNot { it in listed || it in protecting }
+                withdrawn.forEach { q.deleteWithdrawn(it.sourceDeviceId, it.sourceAssetId) }
+                val stranded = q.selectStagedPathsOfOrphanedResources().executeAsList().filterNotNull()
+                q.deleteNonTerminalResources()
+                stranded
+            }
         }
     }
 }

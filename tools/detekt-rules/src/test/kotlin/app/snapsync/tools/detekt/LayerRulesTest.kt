@@ -22,6 +22,20 @@ class LayerRulesTest {
     }
 
     @Test
+    fun `a membership block names at least one branch`() {
+        val findings = EntryPointShape().lint(
+            """
+            fun run() {
+                membership(branch, Freshness.Cached) { }
+                membership(branch, Freshness.Cached) { println() }
+                membership(branch, Freshness.Cached) { active { joined -> println(joined) } }
+            }
+            """.trimIndent(),
+        )
+        assertEquals(2, findings.size, findings.map { it.message }.toString())
+    }
+
+    @Test
     fun `data translates - its branches are named cases used as expressions`() {
         val findings = DataShape().lint(
             """

@@ -1,16 +1,18 @@
 package app.snapsync.services.crypto
 
+import app.snapsync.domain.invite.InviteKey
+import app.snapsync.domain.membership.ConfirmedNotJoined
+import app.snapsync.format.EventKeyText
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Hmac
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.model.decodeEventKey
-import app.snapsync.model.encodeEventKey
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.SecureStore
+import app.snapsync.services.membership.MembershipTransition
 import app.snapsync.services.secure.SecureSlots
 import app.snapsync.services.secure.persist
 import app.snapsync.services.secure.readExisting
@@ -39,11 +41,11 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
     /** A fresh key, as a link carries it, and its id, as the event row holds it. */
     fun mint(): MintedKey {
         val key = crypto.randomBytes(EncryptedFileFormat.KEY_LENGTH)
-        return MintedKey(encodeEventKey(key), idOf(key))
+        return MintedKey(EventKeyText.encode(key), idOf(key))
     }
 
     /** The id of the key [linkKey] names, or `null` when it names no key. */
-    fun idOf(linkKey: String): String? = decodeEventKey(linkKey)?.let(::idOf)
+    fun idOf(linkKey: String): String? = EventKeyText.decode(linkKey)?.let(::idOf)
 
     /**
      * Whether a link carrying [linkKey] (or none) opens the event whose row holds [eventKeyId] (or none). A plain
@@ -59,7 +61,7 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
      * The joined event's key, or `null` when none is kept. Throws [SecureStoreUnavailable] when it could not be read —
      * a locked device is never mistaken for a plain event.
      */
-    fun current(): ByteArray? = readExisting(store, SecureSlots.EVENT_KEY)?.let(::decodeEventKey)
+    fun current(): ByteArray? = readExisting(store, SecureSlots.EVENT_KEY)?.let(EventKeyText::decode)
 
     /** The joined event's key as its invite link carries it, or `null` when none is kept. Throws like [current]. */
     fun linkKey(): String? = readExisting(store, SecureSlots.EVENT_KEY)
@@ -129,6 +131,22 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
     fun forget() {
         store.delete(SecureSlots.EVENT_KEY)
     }
+
+    /**
+     * Keep the key a join's invite carried — [key], or none for a plain event, which forgets a previous event's — BEFORE
+     * the membership that names it is written, so a membership never names a key that is not kept. Throws
+     * [SecureStoreUnavailable] when the store refuses it, which fails the join.
+     */
+    fun adopt(key: InviteKey?) {
+        key?.let { keep(it.text) } ?: forget()
+    }
+
+    /** Forget a key a failed leave left behind, while [none] proves no membership names it — unless a join is keeping one. */
+    suspend fun forgetLeftover(
+        @Suppress("UNUSED_PARAMETER") none: ConfirmedNotJoined,
+        transition: MembershipTransition,
+    ) =
+        transition.unlessJoining { forget() }
 
     private fun idOf(key: ByteArray): String =
         EncryptedFileFormat.keyIdOf(key, hmac).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }

@@ -2,6 +2,7 @@ package app.snapsync.android.storage
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteDatabaseCorruptException
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
@@ -61,7 +62,7 @@ class AndroidDatabases(private val context: Context, private val directory: File
         // The helper opens lazily: until its first statement it has neither opened, created nor migrated the file. One
         // read here makes the open real — a failure throws into `open`'s guard and answers `Failed`.
         userVersion(driver)
-        return DbOpen.Opened(driver)
+        return DbOpen.Opened(AndroidOpenDatabase(driver))
     }
 
     private fun openReadOnly(file: File, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
@@ -72,7 +73,7 @@ class AndroidDatabases(private val context: Context, private val directory: File
             version > schema.version -> DbOpen.Failed(
                 "schema version $version is newer than this build's ${schema.version}",
             )
-            else -> DbOpen.Opened(driver(file, schema).also(::userVersion))
+            else -> DbOpen.Opened(AndroidOpenDatabase(driver(file, schema).also(::userVersion)))
         }
     }
 
@@ -101,5 +102,7 @@ class AndroidDatabases(private val context: Context, private val directory: File
     }
 
     private class CorruptDatabase(path: String?) :
-        IllegalStateException("SQLite reports $path corrupt; it is left in place rather than deleted and recreated")
+        SQLiteDatabaseCorruptException(
+            "SQLite reports $path corrupt; it is left in place rather than deleted and recreated",
+        )
 }

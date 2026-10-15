@@ -1,28 +1,29 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.SharedRecordsReadiness
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.model.ConfigRead
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PauseReason.LEGACY_RECORDS
 import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.model.SharedRecordsReadiness
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.membership.MembershipProjection
+import app.snapsync.services.membership.asConfig
 
 /**
  * THE ENTRY-GATE TRANSLATION — the upload cycle owns its entry decision — one
  * implementation over the services both uploaders build, where three per-root copies used to live. It is **port-pure**:
- * one fresh [ConfigService.read] per cycle, the identity probe, the host read, and the process's [admission] answer —
+ * one fresh [MembershipProjection.read] per cycle, the identity probe, the host read, and the process's [admission] answer —
  * and deliberately nothing else.
  *
  * It does not refresh the UI-facing membership `StateFlow`: the app-driven tier's copy once did, and the extension's
@@ -32,7 +33,7 @@ class CycleGateRead(
     /** Whether the shared records can be read here — the extension pauses until the app has copied their legacy homes. */
     private val records: SharedDatabase,
     private val ledger: LedgerService,
-    private val config: ConfigService,
+    private val config: MembershipProjection,
     private val identity: DeviceIdentity,
     private val suppression: SuppressionSource,
     /** Whether the joined membership's received photos have been recognised — read after the suppression store is ready. */
@@ -82,9 +83,12 @@ class CycleGateRead(
         val identityFailure = runCatchingCancellable { identity.requireDeviceId() }
             .onFailure { if (it !is SecureStoreUnavailable && it !is DeviceIdentityAbsent) throw it }
             .exceptionOrNull()
-        val payload = (read as? ConfigRead.Joined)?.config
+        val payload = when (read) {
+            is MembershipRead.Joined -> read.membership.asConfig()
+            is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
+        }
         return cycleGate(
-            configReadable = read !is ConfigRead.Unavailable && identityFailure == null && version.isSuccess,
+            configReadable = read !is MembershipRead.Unavailable && identityFailure == null && version.isSuccess,
             membership = payload?.let {
                 JoinedMembership(
                     eventId = it.eventId,
@@ -123,9 +127,9 @@ class CycleGateRead(
 }
 
 /** The skip line [CycleGateRead] hands the cycle: which read failed, and how. */
-internal fun skipDetail(read: ConfigRead, identityFailure: Throwable?, versionFailure: Throwable?): String =
+internal fun skipDetail(read: MembershipRead, identityFailure: Throwable?, versionFailure: Throwable?): String =
     "protected data unavailable (config: " +
-        "${(read as? ConfigRead.Unavailable)?.detail}, deviceId readable=${identityFailure == null}" +
+        "${(read as? MembershipRead.Unavailable)?.detail}, deviceId readable=${identityFailure == null}" +
         // Naming WHICH identity failure occurred is the difference between "the device is locked, this will pass" and
         // "this process has no identity and may not create one", which need opposite reactions from whoever reads the
         // log.

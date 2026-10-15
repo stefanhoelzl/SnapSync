@@ -25,16 +25,8 @@ import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.links.readmodel.OpenedLinks
-import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinUnion
-import app.snapsync.feature.membership.LeaveEvent
-import app.snapsync.feature.membership.ManifestDeviceEnroller
-import app.snapsync.feature.membership.MembershipRefresh
-import app.snapsync.feature.membership.ReconfigureEvent
-import app.snapsync.feature.membership.RenameEvent
-import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.membership.ShareSetLoad
-import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
@@ -85,6 +77,8 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Wake
+import app.snapsync.query.membership.JoinDetailsQuery
+import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
 import app.snapsync.services.backend.BackendServices
@@ -338,7 +332,7 @@ class AppCore internal constructor(
      * through [BackendServices.manifest] like every other caller.
      */
     val backend: BackendServices by lazy {
-        backendServicesFor(services, attestation, exchange, eventOver = { membershipRefresh.confirmedDeleted(it) })
+        backendServicesFor(services, attestation, exchange, eventOver = { services.config.markOver(it) })
     }
 
     /**
@@ -487,6 +481,7 @@ class AppCore internal constructor(
             identity = services.deviceIdentity,
             arm = downloadArm(),
             checks = services.eventChecks,
+            clock = services.wallClock,
             readyToImport = { importsReady() },
         )
     }
@@ -572,72 +567,16 @@ class AppCore internal constructor(
         )
     }
 
-    /** How a membership ends on its own, and how a leave reaches the backend — see [MembershipEnd]. */
-    val membershipEnd: MembershipEnd by lazy { MembershipEnd(this) }
-
-    // The leave use-case: stop the producer, clear the config (which flips the screen off the joined layer, and
-    // leaves the left event's ledger rows inert — the next join purges them), then notify the backend
-    // fire-and-forget. The download store is not touched.
-    val leaveEvent: LeaveEvent by lazy {
-        LeaveEvent(
-            config = services.config,
-            stopUploads = { uploadTransitions.onLeave() },
-            scope = scope,
-            notifyLeave = membershipEnd::notifyLeave,
-            everythingReceived = downloadController::holdsEverythingFor,
-            pendingLeaves = membershipEnd.pendingLeaves,
-            keys = services.eventKeys,
-        )
-    }
-
     // The join-time load, built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.deviceFiles) }
     internal val receivedPhotoAdoption by lazy { receivedPhotoAdoptionFor(services, backend, ports.gallery, this) }
 
-    /** The union one provision has read, handed from its adoption to its reconcile — see [JoinUnion]. */
+    /** The union one join has read, handed from its adoption to its reconcile — see [JoinUnion]. */
     internal val joinUnion = JoinUnion()
 
-    // The in-place reconfigure use-case: rewrite the joined
-    // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
-    // effects. Upload ARMS on enable but drains on disable (no stop); download reconciles on enable and
-    // cancels in-flight on disable — the deliberate arm asymmetry lives in the tested use-case.
-    val reconfigureEvent: ReconfigureEvent by lazy { reconfigureEventFor() }
-
-    // The join use-case: fetch details, enroll by writing the register-only
-    // EMPTY device manifest, then provision through the same path as create/scan.
-    val joinEvent: JoinEvent by lazy {
-        JoinEvent(
-            configSource = services.config,
-            identity = services.deviceIdentity,
-            details = backend.directory,
-            enroller = ManifestDeviceEnroller(backend.join),
-            keys = services.eventKeys,
-            // Every provision route — interactive join, switch, retry, `autoJoin`, a create routed into the
-            // join gate — passes here, so the album gather is started once the provision returns: the gather must not
-            // hold up the join. Built HERE, never supplied by a root, so every composition's join runs `Provision`.
-            provision = { cfg ->
-                joinUnion.during(cfg.eventId) { work.provision.run(cfg) }
-                albumGather.start("provision", cfg.eventId)
-            },
-        )
-    }
-
-    // The membership-refresh rule: what a fetched details result MEANS for the
-    // persisted membership — seated in `feature/membership` because that config is the feature's durable
-    // state. The *fetch* it pairs with is the foreground's own work (`ForegroundWork`, `refreshJoined`) — the
-    // sole trigger that refreshes. It reads the clock because the absence verdict needs a second,
-    // OFFLINE witness. A confirmed deletion stops every transfer as a leave does — downloads and uploads — and
-    // keeps the membership.
-    val membershipRefresh: MembershipRefresh by lazy {
-        MembershipRefresh(
-            configSource = services.config,
-            stopTransfers = {
-                downloadController.onLeaveOrSwitch()
-                uploadTransitions.onLeave()
-            },
-        )
-    }
+    /** The member's requests of the membership, each answered on its own status. */
+    val membershipStatuses: MembershipStatuses = MembershipStatuses()
 
     // Every event this device mints, emitted once the backend answered: the host zone collects it into its join gate —
     // the SAME gate a scanned QR takes — from its composition on, before any tap can
@@ -650,22 +589,6 @@ class AppCore internal constructor(
     /** The create-event status the use-case drives and the container reads (same instance). */
     val creationStatus = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
 
-    /** The rename status the use-case drives and the container reads (same instance) — the create twin, but
-     *  carrying a success value the screen must clear. */
-    val renameStatus = MutableStateFlow<RenameStatus>(RenameStatus.Idle)
-
-    // The rename use-case: rewrite the shared event's name on the backend,
-    // then fold the ECHOED name into this membership's config. The fifth writer of that config, seated
-    // in `feature/membership` beside the reconfigure for exactly that reason.
-    val renameEvent: RenameEvent by lazy {
-        RenameEvent(
-            configSource = services.config,
-            client = backend.rename,
-            status = renameStatus,
-            eventOver = { membershipRefresh.confirmedDeleted(it) },
-        )
-    }
-
     // The create-event use-case: mint via the backend, then route the minted event into the SAME
     // join gate a scanned QR takes.
     val eventCreator: EventCreator by lazy {
@@ -674,33 +597,6 @@ class AppCore internal constructor(
             status = creationStatus,
             onMinted = { eventId, linkKey -> minted.emit(MintedEvent(eventId, linkKey)) },
             minting = EventKeyMinting(services.eventKeys, ports.devControls),
-        )
-    }
-
-    /**
-     * Voids this device's durable sync state (`docs/testing.md`) so a build pointed at a
-     * different backend starts from nothing. Emptying the ledger is enough to make the next cycle upload
-     * everything in scope: every walk is a full enumeration, so there is no cursor to invalidate.
-     *
-     * Public because the dev/test control channel drives it directly. It has no user path by design —
-     * leaving deliberately keeps the ledger, and this is the one operation for which that reasoning
-     * stops holding — so there is no command-bundle entry to reach it through.
-     */
-    val resetDeviceState: ResetDeviceState by lazy {
-        ResetDeviceState(
-            config = services.config,
-            ledger = services.ledger,
-            // Read-only here now: the reset reports how many imported rows SURVIVED, which is the number
-            // that makes "imported rows were kept" verifiable rather than assumed.
-            downloads = services.downloadStore,
-            mobileData = services.mobileData,
-            // The download half is the CONTROLLER's, not the store's: the prune must run under the
-            // controller's lock, because a ref is claimed under it and a reset that merely reads a
-            // snapshot of what is claimed leaves a window for a claim in between — whose row is then
-            // pruned, so its change block's marker write lands on nothing. Passing the critical section
-            // rather than the value is also what keeps the membership feature blind to its sibling.
-            resetDownloads = { downloadController.onDurableStateReset() },
-            keys = services.eventKeys,
         )
     }
 
@@ -793,10 +689,9 @@ class AppCore internal constructor(
 
     /**
      * The status-refresh **rule**: cheap local reads before the library
-     * enumeration, and no count at all without a membership. Seated in `feature/status` because it has
-     * three callers — the foreground's work, the join's `Provision` and `ReconfigureEvent`, which is a feature
-     * and cannot hold an entry point's ordering — so it is a rule rather than one entry point's order (law "Rules
-     * in features, order in entry points", which offers exactly this alternative).
+     * enumeration, and no count at all without a membership. Seated in `feature/status` while the status is an old
+     * zone's: its callers are the foreground's work, a join's (`AfterJoin`) and a settings change's (`AfterSettings`),
+     * and it moves into the layers with the status (4.7).
      *
      * The two port touches it cannot make are built here: the config read, and the one policy
      * derivation.
@@ -836,14 +731,14 @@ class AppCore internal constructor(
     /** What the entry points run (`AppWork`): built once, on first touch, and handed to the ports. */
     internal val work: AppWork by lazy { AppWork(this) }
 
-    /** Persist the whole membership — the one save a join's entry and a re-provision of the joined event share. */
-    internal val saveConfig: suspend (EventConfig) -> Unit = { cfg -> services.config.save(cfg) }
-
     /** The user-tap command bundle — see [userCommandsFor]. */
     val userCommands: UserCommands by lazy { userCommandsFor() }
 
     /** The user-query bundle, lane-decorated beside the commands — see [userQueriesFor]. */
     val userQueries: UserQueries by lazy { userQueriesFor() }
+
+    /** The join gate's read of an invite's event, lane-decorated like the queries — see [joinDetailsFor]. */
+    val joinDetails: JoinDetailsQuery by lazy { joinDetailsFor() }
 
     /** The diagnostic dump assembly — see [diagnosticDumpFor]. */
     internal val collectDiagnosticDump: CollectDiagnosticDump by lazy { diagnosticDumpFor() }

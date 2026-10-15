@@ -17,53 +17,10 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
 import kotlinx.serialization.UseSerializers
-
-/**
- * The **event-link wire payload** carried by the invite QR: just the **event id**. Possession of
- * this high-entropy UUID is the upload capability — the edge endpoint authorizes by event id alone,
- * and the device holds no storage credential. The upload **host** and the event **name** are
- * deliberately NOT here: the host is fixed at compile time by the extension's
- * the baked `uploadBase`, and the name is fetched by id after joining (see [EventConfig]).
- *
- * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms instead of waiting for
- * a tap — **only in a rig build**. The decoder accepts it (and every override below) from ANY link, so the link is
- * never the authority: the composition root's [InviteLinkHints] is, and a production root answers
- * [InviteLinkHints.Ignored], under which such a link is an ordinary invite and its overrides are discarded.
- * [minPhotoDate] is likewise a **dev/test** key (default absent): a capture-date cutoff (UTC `…Z` string) that, on an
- * auto-confirmed join, forces a specific lower bound so a headless launch can observe date filtering. [maxPhotoDate] is
- * likewise a **dev/test** key (default absent): the capture-date **ceiling** (UTC `…Z` string) that, on an
- * auto-confirmed join, forces a specific upper bound — held to the share-range rule on the far side in `JoinEvent`,
- * exactly as [minPhotoDate] is — so a headless launch can exercise the upper end of the range.
- * [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one of the
- * [Direction.wire] tokens `both`/`upload`/`download` — that, on an auto-confirmed join, forces the membership's
- * direction so a headless launch can exercise upload-only / download-only without a tap. [saveToAlbum] is likewise a
- * **dev/test** key (default absent): an override that, on an auto-confirmed join, forces whether the membership gathers
- * its synced photos into an event album so a headless launch can exercise album placement without a tap. Because
- * `encodeDefaults` is off, a `false`/absent value is not serialized, so the canonical [encodeEventUrl] QR stays
- * `eventId`-only; the strict decoder accepts `autoJoin`/`minPhotoDate`/`maxPhotoDate`/`direction`/`saveToAlbum` as
- * known optional keys but still rejects any *other* extra key (and a `direction` outside the known tokens).
- *
- * This class is the wire DTO: its property name is the exact JSON key of the event-link payload.
- */
-@Serializable
-class EventLinkPayload(
-    val eventId: EventId,
-    val autoJoin: Boolean = false,
-    val minPhotoDate: String? = null,
-    val maxPhotoDate: String? = null,
-    val direction: String? = null,
-    val saveToAlbum: Boolean? = null,
-    /**
-     * An ENCRYPTED event's key, base64url (`k=` — the encrypted file format, `docs/architecture.md`): carried only by
-     * the path form's fragment, which no request ever sends, and never part of the fragment form's JSON — so a plain
-     * event's link is byte-identical to what every installed build reads.
-     */
-    @Transient val key: String? = null,
-)
 
 /** Whether the event's range has ended at [now]: strictly after its end. */
 fun EventConfig.hasEnded(now: Timestamp): Boolean = now > endsAt.at
@@ -88,7 +45,7 @@ fun EventConfig.sharingFloor(now: Timestamp): CaptureCutoff =
     if (now < startsAt.at) CaptureCutoff(maxOf(minPhotoDate.at, startsAt.at)) else minPhotoDate
 
 /**
- * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined `eventId`, the
+ * The **persisted, joined-event state** : the joined `eventId`, the
  * human-readable event `name`, and this device's chosen capture-date [minPhotoDate] cutoff for the event. The name is
  * **required, with no default**: the join gate only provisions from a loaded phase that carries a name, and the backend
  * enforces name-required on create, so a nameless event cannot exist.
@@ -117,7 +74,7 @@ fun EventConfig.sharingFloor(now: Timestamp): CaptureCutoff =
  *
  * [startsAt] is the **event's** start date — set once by the host at creation, immutable, and the same canonical `…Z`
  * shape as [minPhotoDate]. It is the **default** for this membership's cutoff, which the member MAY move before it
- * (`CaptureRange`, applied in `JoinEvent` and `ReconfigureEvent`). It is what holds "nothing is shared before the
+ * (`CaptureRange`, applied by the join's `EnrollDevice` and by `ReconfigureEvent`). It is what holds "nothing is shared before the
  * event starts" ([sharingFloor]) and what the not-started status line compares against (`startsAt > now`).
  *
  * Unlike [minPhotoDate], [startsAt] **defaults** — to [minPhotoDate] — so a config persisted before this
@@ -189,12 +146,6 @@ data class EventConfig(
     val deletesAt: DeletesAt,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
-    /**
-     * Whether the event CLOSED before events stopped closing (`PENDING_CLEANUPS.md`) — only a membership persisted by an
-     * earlier build carries `true`; nothing writes it any more. Such an event still refuses a rename until it is
-     * deleted. Defaults to `false`, so a config persisted before it existed decodes as open.
-     */
-    val closed: Boolean = false,
     /**
      * The event's active members and how many have settled what they share, as last served — the ended event's waiting
      * line. `null` until the details first carry them.

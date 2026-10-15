@@ -1,20 +1,20 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.StoredResource
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
-import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Severity

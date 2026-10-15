@@ -1,0 +1,11 @@
+-- `pendingLeave` — the leaves this device made that the backend has not confirmed (capability `event-lifetime`, "A leave
+-- made offline still counts"). A leave is recorded in the transaction that ends the membership.
+
+selectPendingLeaves:
+SELECT eventId FROM pendingLeave ORDER BY eventId;
+
+recordPendingLeave:
+INSERT INTO pendingLeave (eventId) VALUES (:eventId) ON CONFLICT (eventId) DO NOTHING;
+
+confirmPendingLeave:
+DELETE FROM pendingLeave WHERE eventId = :eventId;

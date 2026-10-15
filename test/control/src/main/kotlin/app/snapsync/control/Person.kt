@@ -1,7 +1,7 @@
 package app.snapsync.control
 
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.ScreenLevers
-import app.snapsync.model.Direction
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeChoice

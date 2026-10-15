@@ -6,11 +6,11 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import kotlinx.coroutines.CoroutineScope
@@ -173,20 +173,24 @@ private fun gateHost(
     store: Store? = Store("App Store", STORE_URL),
     config: EventConfig? = null,
     openLink: (String) -> Unit = {},
-) = StatusContainerHost(
-    StatusSources(
-        sync = object : SyncStatusSource {
-            override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
-        },
-        permission = MutableStateFlow(GalleryAccess.GRANTED),
-        config = MutableStateFlow(config),
-        versionRefusal = refusal,
-        store = store,
-    ),
-    scope,
-    commands = testCommands(openLink = openLink),
-    cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-    queries = noQueries,
-    diagnostics = testDiagnostics(),
-    reduction = Dispatchers.Default,
-)
+) = TestCommands(openLink = openLink).let { commands ->
+    StatusContainerHost(
+        StatusSources(
+            sync = object : SyncStatusSource {
+                override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
+            },
+            permission = MutableStateFlow(GalleryAccess.GRANTED),
+            config = MutableStateFlow(config),
+            versionRefusal = refusal,
+            store = store,
+            requests = commands.requests.flows,
+        ),
+        scope,
+        commands = commands,
+        cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+        queries = noQueries,
+        joinDetails = unanswered,
+        diagnostics = testDiagnostics(),
+        reduction = Dispatchers.Default,
+    )
+}

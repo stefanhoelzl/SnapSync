@@ -1,13 +1,14 @@
 package app.snapsync.rig
 
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.invite.InviteKey
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.format.EventKeyText
+import app.snapsync.format.InviteLinkText
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.ConfigRead
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.encodeEventKey
-import app.snapsync.model.encodeEventUrl
-import app.snapsync.services.config.ConfigService
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.ui.state.Layer
 
 // The JVM host's world, its own services and what it refuses of the shared vocabulary (`docs/testing.md`, "One control
@@ -49,9 +50,9 @@ internal fun joinedEventId(rig: JvmRig): String? {
     val shown = if (screenBuilt) rig.app.composed.host.screen.value.layer as? Layer.Joined else null
     return shown?.membership?.eventId
         ?: (
-            ConfigService(SharedDatabase(rig.mocks.databases.inspectorPort(), legacy = null), rig.mocks.clock.port()).read()
-                as? ConfigRead.Joined
-            )?.config?.eventId?.value
+            MembershipRepository(SharedDatabase(rig.mocks.databases.inspectorPort(), legacy = null)).read()
+                as? MembershipRead.Joined
+            )?.membership?.event?.id?.value
 }
 
 /** What the JVM host refuses of the shared vocabulary, each with its reason. */
@@ -86,7 +87,8 @@ internal fun jvmHostServices(rig: JvmRig, hooks: RigHooks): List<HostService<*>>
         // This world recorded every key the app drew and the event each keyed create made, so the invite carries it.
         invite = honoured { event ->
             val id = EventId.parse(event) ?: throw IllegalArgumentException("'$event' is not an event id")
-            encodeEventUrl(EventLinkPayload(id, key = rig.mocks.eventKeys.keyOf(event)?.let(::encodeEventKey)))
+            val key = rig.mocks.eventKeys.keyOf(event)?.let(EventKeyText::encode)
+            InviteLinkText.format(InviteLink(id, key?.let(::InviteKey)))
         },
         disk = refusing(
             "the JVM host's files are the mocked disk's, which a test reads through the app's own outcomes",

@@ -1,7 +1,11 @@
 package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.event.EventDirectory
+import app.snapsync.data.event.EventRename
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.membership.EventJoin
+import app.snapsync.data.membership.LeaveNotifier
 import app.snapsync.domain.event.EventId
 
 /**
@@ -22,12 +26,12 @@ class BackendServices(
      */
     private val eventOver: (suspend (EventId) -> Unit)?,
 ) {
-    val directory: EventDirectory by lazy { BackendEventDirectory(gateway) }
+    val directory: EventDirectory by lazy { EventDirectory(gateway) }
     val creation: EventCreation by lazy { BackendEventCreation(gateway, zone) }
-    val rename: EventRename by lazy { BackendEventRename(gateway) }
-    val join: EventJoin by lazy { BackendEventJoin(gateway) }
+    val rename: EventRename by lazy { EventRename(gateway) }
+    val join: EventJoin by lazy { EventJoin(gateway) }
     val manifest: ManifestPublisher by lazy { BackendManifestPublisher(gateway, eventOver) }
-    val leave: LeaveNotifier by lazy { BackendLeaveNotifier(gateway, identity) }
+    val leave: LeaveNotifier by lazy { LeaveNotifier(gateway, identity) }
     val received: ReceivedReporter by lazy { BackendReceivedReporter(gateway, identity) }
     val union: EventUnionSource by lazy { BackendEventUnionSource(gateway) }
     val deviceFiles: DeviceFilesSource by lazy { BackendDeviceFilesSource(gateway) }

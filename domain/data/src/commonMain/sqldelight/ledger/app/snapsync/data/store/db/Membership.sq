@@ -1,0 +1,43 @@
+-- `membership` — the joined event (capability `join-event`): at most one row, `id = 0`. No row is definitively not
+-- joined — the one road to "this device left the event". The event key is written BEFORE this row and forgotten after
+-- it is deleted, so a membership never names a key that is not kept.
+
+selectMembership:
+SELECT eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum,
+    membersActive, membersSettled, membersWaiting, keyId, openUntil, deleted
+FROM membership WHERE id = 0;
+
+saveMembership:
+INSERT OR REPLACE INTO membership (
+    id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum,
+    membersActive, membersSettled, membersWaiting, keyId, openUntil, deleted
+) VALUES (
+    0, :eventId, :name, :minPhotoDate, :startsAt, :endsAt, :maxPhotoDate, :deletesAt, :direction, :saveToAlbum,
+    :membersActive, :membersSettled, :membersWaiting, :keyId, :openUntil, :deleted
+);
+
+clearMembership:
+DELETE FROM membership;
+
+-- The membership's writes after its entry are compare-and-set: each names the event it was decided for and changes the
+-- row only while it still holds that event, not deleted — a decision made over a membership a switch, a leave or a
+-- deletion replaced meanwhile changes nothing. `changes()` then says whether it took effect.
+
+markDeleted:
+UPDATE membership SET deleted = 1 WHERE id = 0 AND eventId = :eventId AND deleted = 0;
+
+updateEvent:
+UPDATE membership SET name = :name, membersActive = :membersActive, membersSettled = :membersSettled,
+    membersWaiting = :membersWaiting, openUntil = :openUntil
+WHERE id = 0 AND eventId = :eventId AND deleted = 0;
+
+updateShare:
+UPDATE membership SET minPhotoDate = :minPhotoDate, maxPhotoDate = :maxPhotoDate, direction = :direction,
+    saveToAlbum = :saveToAlbum
+WHERE id = 0 AND eventId = :eventId AND deleted = 0;
+
+deleteMembership:
+DELETE FROM membership WHERE id = 0 AND eventId = :eventId;
+
+changedRows:
+SELECT changes();

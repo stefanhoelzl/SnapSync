@@ -5,15 +5,18 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.membership.SettingsResult
+import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.model.Direction
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
+import app.snapsync.model.UserCommands
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
@@ -57,20 +60,35 @@ class SettingsQueueTest {
         val config = MutableStateFlow<EventConfig?>(MEMBERSHIP)
         val reconfigured = mutableListOf<Direction>()
         val errors = mutableListOf<Throwable>()
-        var reconfigure: suspend (Direction) -> ReconfigureOutcome = { ReconfigureOutcome.Saved }
+
+        /** The door itself: what happens as a change is handed to it — a throw there is the intent's own. */
+        var door: (ShareChoice) -> Unit = {}
+
+        /** Where every change the door takes is saved, and answered. */
+        val saved = TestCommands(reconfigure = { SettingsResult.Saved })
+    }
+
+    /** The settings' door over [world]: every change it is handed is recorded, then saved. */
+    private fun commands(world: World): UserCommands = object : UserCommands by world.saved {
+        override fun reconfigure(choice: ShareChoice): RequestId {
+            world.reconfigured += choice.direction
+            world.door(choice)
+            return world.saved.reconfigure(choice)
+        }
     }
 
     private fun host(world: World, scope: CoroutineScope) = StatusContainerHost(
-        StatusSources(FixedSync(SETTLED), MutableStateFlow(GalleryAccess.GRANTED), world.config),
+        StatusSources(
+            FixedSync(SETTLED),
+            MutableStateFlow(GalleryAccess.GRANTED),
+            world.config,
+            requests = world.saved.requests.flows,
+        ),
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-        commands = testCommands(
-            reconfigure = { _, direction, _, _, _ ->
-                world.reconfigured += direction
-                world.reconfigure(direction)
-            },
-        ),
+        commands = commands(world),
         queries = noQueries,
+        joinDetails = unanswered,
         diagnostics = testDiagnostics(onIntentError = { world.errors += it }),
         reduction = Dispatchers.Default,
     )
@@ -79,12 +97,11 @@ class SettingsQueueTest {
     fun `a settings change that throws is reported and the next change still applies`() = runTest {
         var first = true
         val world = World().apply {
-            reconfigure = {
+            door = {
                 if (first) {
                     first = false
                     error("the save threw")
                 }
-                ReconfigureOutcome.Saved
             }
         }
         val host = host(world, backgroundScope)

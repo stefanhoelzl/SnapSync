@@ -27,7 +27,6 @@ import app.snapsync.model.CandidateScope
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ResourceRole
@@ -353,7 +352,7 @@ class WorldInspectorController(
             store = StorePage(Store("App Store", APP_STORE_URL)),
             pushEnvironment = "sandbox",
         )
-        val mocks = JvmMocks(inviteLinkHints = InviteLinkHints.Ignored, network = null)
+        val mocks = JvmMocks(network = null)
         // Real threads and real time, as on a phone: the operator plays the OS here, and nothing moves a clock for it.
         val lanes = JvmLanes(
             composition = lane,

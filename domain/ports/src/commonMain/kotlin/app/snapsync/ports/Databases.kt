@@ -30,6 +30,13 @@ import app.snapsync.inbound.Inbound
  * - a database that exists but cannot be opened (locked, unreadable, not a database) is [DbOpen.Failed] on
  *   **both** paths, never [DbOpen.Missing].
  *
+ * **A statement can fail on a database already open** — the write lock held by the other process past SQLite's busy
+ * timeout, a full disk, a file gone bad — and the platform's driver tells it by a throw. The adapter catches that throw
+ * where it knows the platform's exception, inside [OpenDatabase.execute], and answers it as [DbResult.Failed]: above
+ * this port a failed statement is a value, as every expected failure is (`docs/architecture.md`, "A port answers every
+ * expected failure as a value"). The database stays open, and nothing the failed statements asked for happened
+ * when they ran in one transaction.
+ *
  * **What another process committed arrives through [inbound]** ([DatabaseHandlers.onChangedElsewhere]): the app and
  * the upload extension write the same files, and neither process's own reads would otherwise learn of the other's
  * commit until it re-read on its own. A commit is a transaction that finished — the moment SQLDelight notifies the
@@ -53,8 +60,8 @@ class DatabaseHandlers @CompositionOnly constructor(
 /** One [Databases.open] answer. */
 sealed interface DbOpen {
 
-    /** The database is open at [Databases.open]'s schema version. The caller owns [driver] for the process. */
-    class Opened(val driver: SqlDriver) : DbOpen
+    /** The database is open at [Databases.open]'s schema version. The caller keeps [database] for the process. */
+    class Opened(val database: OpenDatabase) : DbOpen
 
     /** Read-only only: no database of that name exists. Nothing was created. */
     data object Missing : DbOpen
@@ -64,4 +71,28 @@ sealed interface DbOpen {
 
     /** The database could not be opened. [detail] is diagnostics only — log it, never branch on it. */
     data class Failed(val detail: String) : DbOpen
+}
+
+/**
+ * A database [Databases.open] opened: the only way to its statements. Each [execute] hands [statements] the platform's
+ * driver; the generated queries a store builds over it run inside, so a statement's failure is caught where the
+ * platform's exception is known. Neither the driver nor anything built over it is used outside the block.
+ */
+interface OpenDatabase {
+
+    /**
+     * Runs [statements] on this database. A statement the platform refuses answers [DbResult.Failed]; any other throw
+     * from [statements] is the caller's own and passes through.
+     */
+    fun <T> execute(statements: (SqlDriver) -> T): DbResult<T>
+}
+
+/** One [OpenDatabase.execute] answer. */
+sealed interface DbResult<out T> {
+
+    /** Every statement ran; [value] is what [OpenDatabase.execute]'s block answered. */
+    data class Ok<out T>(val value: T) : DbResult<T>
+
+    /** A statement failed; the database stays open. [detail] is diagnostics only — log it, never branch on it. */
+    data class Failed(val detail: String) : DbResult<Nothing>
 }

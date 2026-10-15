@@ -3,6 +3,7 @@ package app.snapsync.status
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
+import app.snapsync.format.TimestampText
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CandidateScope
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
@@ -12,7 +13,6 @@ import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
-import app.snapsync.model.TimestampText
 import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.gallery.CandidateSource

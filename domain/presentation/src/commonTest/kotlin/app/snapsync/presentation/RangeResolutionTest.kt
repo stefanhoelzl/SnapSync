@@ -5,10 +5,10 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
-import app.snapsync.model.Direction
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.TimestampText
 import app.snapsync.model.localToCutoff
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.OutsideReach

@@ -30,6 +30,8 @@ dependencies {
     api(project(":test:levers"))
     // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
     api(project(":domain:model"))
+    // A person's choices name the domain's values (`Choices.direction`).
+    api(project(":domain:domain"))
     api(project(":ui:state"))
     api(project(":domain:presentation"))
     api(project(":domain:feature"))

@@ -4,10 +4,9 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.decodeEventUrl
-import app.snapsync.model.encodeEventUrl
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.format.InviteLinkText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -109,10 +108,9 @@ class InstallReferrerIntegrationTest {
      */
     private suspend fun Given.referrerOf(event: String): String {
         val invite = inviteFor(event)
-        val key = (decodeEventUrl(invite) as ConfigDecodeResult.Success).payload.key
-        val payload = encodeEventUrl(EventLinkPayload(testEventId(event), autoJoin = false, minPhotoDate = null))
-            .substringAfter('#')
-        return key?.let { "$payload&k=$it" } ?: payload
+        val key = (InviteLinkText.parse(invite) as InviteLinkVerdict.Invite).link.key
+        val payload = InviteLinkText.format(InviteLink(testEventId(event), null)).substringAfter('#')
+        return key?.let { "$payload&k=${it.text}" } ?: payload
     }
 
     private companion object {
