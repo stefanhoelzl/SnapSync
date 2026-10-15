@@ -77,7 +77,8 @@ internal fun registryInState(
     when (state) {
         ExtensionRegistryState.RECORD_ABSENT -> api.setEnabled(false)
         ExtensionRegistryState.RECORD_PRESENT -> api.setEnabled(true)
-        ExtensionRegistryState.UNDER_PARTIAL_GRANT -> Unit
+        // Neither can be written under a partial grant: the record is whatever the full-grant run left.
+        ExtensionRegistryState.UNDER_PARTIAL_GRANT, ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT -> Unit
         ExtensionRegistryState.NO_MECHANISM -> error("a device that carries the mechanism never enters $state")
     }
     return Entered.Ready(PhotoKitExtensionRegistry(logger, api, supported).recorded(log), dispose = afterDispose)
@@ -110,7 +111,10 @@ internal class DeviceRegistryGrantedBinding(private val recorder: Recorder) :
 
 /**
  * The real registry in the app on a device under a PARTIAL grant, which a person sets in Settings before the
- * run. Replayed on every CI build by `PhotoKitExtensionRegistryReplayContractTest`.
+ * run — after the app joined an event of our own under the full grant, which registered the extension (a run of
+ * [DeviceRegistryGrantedBinding] leaves no record), so `A_PARTIAL_GRANT_READS_NO_RECORD` reads with a record present.
+ * Replayed on every CI build by
+ * `PhotoKitExtensionRegistryReplayContractTest`.
  */
 internal class DeviceRegistryLimitedBinding(private val recorder: Recorder) :
     Binding<ExtensionRegistryState, ExtensionRegistry> {
@@ -118,7 +122,8 @@ internal class DeviceRegistryLimitedBinding(private val recorder: Recorder) :
     override val kind = BindingKind.Live
     override val adapter = PhotoKitExtensionRegistry::class
     override val grant = LibraryGrant.LIMITED
-    override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
+    override val reaches =
+        setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT, ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT)
 
     override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
         if (state !in reaches) return Entered.Unreachable(REGISTRY_NEEDS_FULL_GRANT)

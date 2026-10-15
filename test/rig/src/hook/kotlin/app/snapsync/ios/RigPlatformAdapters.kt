@@ -111,7 +111,7 @@ private fun startRig(launch: RigLaunch) = RigServer(
 private fun iosHooks(launch: RigLaunch) = RigHooks(
     bootedAt = NSDate().description,
     // Which uploaders this OS carries — a build constant. What each may do now varies with the grant.
-    uploadTier = uploadersCarried(SnapSyncRoot.osSupportsOsDrivenUpload),
+    uploadTier = { uploadersCarried(SnapSyncRoot.osSupportsOsDrivenUpload) },
     uploadBase = bakedUploadBase(),
     // A compile-time fact, read rather than derived: the adapter that CHOSE the binding is the one that
     // reports it, so the rig cannot disagree with the transport about what this build does.

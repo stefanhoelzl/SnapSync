@@ -16,9 +16,11 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.concurrent.Volatile
 
 // The mocks of the operating system's background execution (`docs/testing.md`, "Mocks"): when it wakes the app, how
@@ -135,16 +137,28 @@ class BackgroundTimeOperator internal constructor(private val mock: BackgroundTi
 }
 
 /**
- * The operating system's record of the upload extension's registration. [supported] `false` — the JVM, iOS below
- * 26.1 — answers `Unsupported` to everything.
+ * The operating system's record of the upload extension's registration, and whether this operating system carries the
+ * extension at all ([carried]: iOS 26.1 and later). Without it — the JVM by default, iOS below 26.1 — every port answers
+ * `Unsupported` to everything.
+ *
+ * [carried] is a durable fact of the device, read when a launch builds its [port]: changing it reaches the app at its
+ * next launch, as a phone's root reads it once (`SnapSyncRoot.osSupportsOsDrivenUpload`). The [record] is kept
+ * whatever [carried] says, so a registration outlives the fact being toggled off and on.
+ *
+ * [grant] is the photo library's grant now: under a partial one the platform refuses every change, either way, and the
+ * record a full grant made survives — yet reads absent until the grant is full again (`ExtensionRegistryContract`,
+ * recorded on the SE2). [ExtensionRegistryOperator.registered] is the OS's record itself, whatever the grant.
  */
 class ExtensionRegistryMock(
-    supported: Boolean = false,
-    /** Whether the photo grant is partial — the platform then refuses every change, as a device does. */
-    internal val partialGrant: Boolean = false,
+    carried: Boolean = false,
+    /** The photo grant the platform judges a change by — the library's, read at every call. */
+    private val grant: StateFlow<LibraryGrant> = MutableStateFlow(LibraryGrant.GRANTED),
     registered: Boolean = false,
 ) {
-    internal val record: MutableStateFlow<Boolean>? = if (supported) MutableStateFlow(registered) else null
+    /** Whether this operating system carries the upload extension, as the next launch reads it. */
+    @Volatile var carried: Boolean = carried
+
+    internal val record: MutableStateFlow<Boolean> = MutableStateFlow(registered)
 
     /** Who is told each registration change — the control channel's event stream, or no one. */
     @Volatile private var watcher: OsWatcher = OsWatcher {}
@@ -154,11 +168,17 @@ class ExtensionRegistryMock(
         watcher = listener
     }
 
-    fun port(): ExtensionRegistry = InMemoryExtensionRegistry(record, partialGrant) { watcher.told(it) }
+    /** One launch's registry: whether the extension is carried is fixed when the launch builds it. */
+    fun port(): ExtensionRegistry =
+        InMemoryExtensionRegistry(record.takeIf { carried }, grant) { watcher.told(it) }
 
     val operator: ExtensionRegistryOperator = ExtensionRegistryOperator(this)
 }
 
 class ExtensionRegistryOperator internal constructor(private val mock: ExtensionRegistryMock) : ExtensionRegistryLevers {
-    override suspend fun registered(): Boolean? = mock.record?.value
+    override suspend fun registered(): Boolean? = mock.record.value.takeIf { mock.carried }
+
+    override suspend fun carried(on: Boolean) {
+        mock.carried = on
+    }
 }

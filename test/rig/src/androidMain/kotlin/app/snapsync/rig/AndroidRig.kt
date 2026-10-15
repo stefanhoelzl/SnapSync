@@ -157,7 +157,7 @@ private fun AndroidRigLaunch.hooks(
     context: Context,
 ): RigHooks = RigHooks(
     bootedAt = Clock.System.now().toString(),
-    uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
+    uploadTier = { uploadersCarried(osSupportsOsDrivenUpload = false) },
     uploadBase = uploadBase,
     transferBinding = "mock",
     deviceLog = LogTailService(ports.files.value)::tail,

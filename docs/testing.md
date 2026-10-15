@@ -747,6 +747,14 @@ host honours like a device's rig build), and a test under a partial grant, where
 admission, lands the app's transfers. The push service re-delivers the token it issued to a relaunched process's
 request, as the OS answers every launch's.
 
+**Which OS it plays is the operator's.** By default the JVM host's OS carries no uploader of its own — iOS below 26.1 —
+so the registry answers `Unsupported` and the app registers nothing. `extension-registry.carried(true)` makes it iOS 26.1
+or later: a durable device fact the app reads at launch, so it reaches the app at the next `host.relaunch`, and a
+registration made before is kept through the change. The mocked registry judges every change by the photo library's
+grant at that moment — under a partial grant it refuses both directions, and keeps the record a full grant made while
+reading it as absent until access is full again, as the SE2 recorded (`ExtensionRegistryContract`). The operator's
+`extension-registry.registered` is the OS's record itself, whatever the grant.
+
 Its callers are the rig's JVM host (section 6) and the desktop world harness (section 8).
 
 ### The JVM root boots cold
@@ -823,6 +831,12 @@ backend mock's operator has answers `409` with the reason.
   answered is expired) and every background-time hold expires; `played-os.expireNext` hands the next wake over already
   withdrawn. `played-os` needs the background-time holds mocked, so the app host honours it only when its adapter
   choice mocks them — a real OS's expiry is its own.
+- `played-os.forceQuit` is the member force-quitting the app. The process dies, and the session's transfers are
+  cancelled; their ends are reported when the member next opens the app (measured on the SE2). Until then the OS
+  launches the app for nothing: a background task, a silent push, session events, a push token or a move to the
+  background is refused with the reason. The extension is still invoked, and the app's pending wakes are kept.
+  `os.foreground` or an opened link is the opening, and it builds the screen. Only a host that owns the app's process
+  honours it, which is the JVM host's (`WorldEvent.ForceQuit`).
 - What the OS recorded of the app is each system's own read: `played-os.completions` (the completion handlers handed
   over, released, released a second time, still held), `wake.wakes` (the heartbeat requests accepted and every request
   pending now, with its cadence and delay), `background-time.holds` (by the name each was begun under, verbatim — the
@@ -970,14 +984,15 @@ The operating system as the app meets it followed (phase 3d):
   delivers on. A delivery the OS hands a completion handler answers once delivered — its release is the world's
   `CompletionReleased` — or, with `awaitRelease` `true` for a host with no event stream, once released, with how long
   the app held it.
-- `played-os` (`PlayedOsLevers`) — the expiry and the completion record, implemented by `PlayedOs`; it needs the
-  background-time holds mocked.
+- `played-os` (`PlayedOsLevers`) — the expiry, the completion record and the force-quit, implemented by `PlayedOs`; it
+  needs the background-time holds mocked, and its `forceQuit` a host that owns the app's process.
 - `extension-host` (`ExtensionHostLevers`) — the OS invoking the upload extension's `process()`, and ending it. A host
   implements it itself: the JVM host on the OS thread it owns, the iOS app host over the real extension root; Android,
   which has no extension, refuses it.
 - One service per OS system's face, each needing its system mocked: `lifecycle`, `links` (the install referrer only a
   store delivers), `push` (its kind — read as the app composes, so it takes effect at a relaunch — and whether it issues
-  tokens), `wake`, `background-time`, `extension-registry`.
+  tokens), `wake`, `background-time`, `extension-registry` (whether the OS carries the extension — `carried`, read at
+  launch — and the registration).
 
 A delivery hands the app a live completion handler, a thread or a run to expire, none of which crosses a wire, so the
 deliveries are plumbing on the mocks (`LifecycleMock.foreground`, `WakeMock.fire`, `ExtensionHostMock.process`, …),

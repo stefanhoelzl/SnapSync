@@ -87,6 +87,18 @@ interface PlayedOsLevers {
     /** The completion handlers the operating system handed the app, as it counts them. */
     suspend fun completions(): Completions
 
+    /**
+     * The member force-quits the app, as iOS takes it (Apple's documented behaviour; decision records
+     * `2026-07-04-add-url-session-upload`, `2026-07-05-push-notification-infra`): the process dies, the app's background
+     * transfers are cancelled, and the operating system launches the app for nothing — no wake, no silent push, no
+     * session event, each refused here with the reason — until the member opens it ([OsLevers.foreground]). The
+     * cancelled transfers' ends are reported then, late, as the opened app brings its session up (measured on the SE2:
+     * `2026-09-16-scope-stranded-repair`).
+     * iOS's own uploader keeps being invoked ([ExtensionHostLevers]), and the wakes the app asked for are kept.
+     * Honoured only by a host that owns the app's process.
+     */
+    suspend fun forceQuit()
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<PlayedOsLevers>(
         PlayedOsLevers::class,
@@ -248,6 +260,13 @@ interface BackgroundTimeLevers {
 interface ExtensionRegistryLevers {
     /** Whether a registration exists; `null` on a platform without the extension. */
     suspend fun registered(): Boolean?
+
+    /**
+     * Whether this operating system carries the upload extension at all — iOS 26.1 and later. A durable fact of the
+     * device, read at launch: the app sees it from its next launch on (`host.relaunch`), and a registration it made
+     * before is kept through the change.
+     */
+    suspend fun carried(on: Boolean)
 
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<ExtensionRegistryLevers>(

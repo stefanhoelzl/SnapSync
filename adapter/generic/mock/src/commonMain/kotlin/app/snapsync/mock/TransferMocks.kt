@@ -339,9 +339,34 @@ class UploadSessionMock(
             val live = transfer.handle as? Live ?: return
             if (locked { this@UploadSessionMock.live.remove(live) }) {
                 handlers.orNull("a cancelled transfer's end", BeforeListen.Dropped)
-                    ?.onFinished?.deliver(FinishedTransfer(live.tag, TransferFailure("cancelled")))
+                    ?.onFinished?.deliver(FinishedTransfer(live.tag, TransferFailure(CANCELLED)))
             }
         }
+    }
+
+    /** Transfers a force-quit cancelled, whose ends iOS reports only when a process next brings the session up. */
+    private val cancelledByForceQuit = mutableListOf<String>()
+
+    /**
+     * The member force-quit the app: iOS cancels the session's transfers, and is never relaunched for them. Their ends
+     * are reported late — as `NSURLErrorCancelled` (`-999`), when the app next brings the session up ([adopted]) —
+     * measured on the SE2 (decision record `2026-09-16-scope-stranded-repair`, "Force-quit mid-transfer").
+     */
+    fun forceQuit() {
+        locked {
+            cancelledByForceQuit += live.map { it.tag }
+            live.clear()
+        }
+    }
+
+    /**
+     * The app opened after a force-quit brings the session up: each transfer the force-quit cancelled is reported ended,
+     * cancelled, to the process now listening — which uploads its photo again.
+     */
+    fun adopted() {
+        val registered = handlers.orNull("a force-quit's cancelled transfers", BeforeListen.Dropped) ?: return
+        val ended = locked { cancelledByForceQuit.toList().also { cancelledByForceQuit.clear() } }
+        ended.forEach { tag -> registered.onFinished.deliver(FinishedTransfer(tag, TransferFailure(CANCELLED))) }
     }
 
     val operator: UploadSessionOperator = UploadSessionOperator(this)
@@ -631,3 +656,6 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
         mock.registered().onEventsDrained.deliver(SessionDrain(++mock.drains))
     }
 }
+
+/** What the platform says of a transfer it cancelled. */
+private const val CANCELLED = "cancelled"

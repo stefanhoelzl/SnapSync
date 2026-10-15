@@ -25,8 +25,8 @@ class HeartbeatCadenceIntegrationTest {
     @Test
     @Verifies(
         spec = "delivery",
-        requirement = "Photos travel without the app being opened",
-        scenario = "Uploads work below iOS 26.1",
+        requirement = "Only new photos are announced by a silent wake, and never only by it",
+        scenario = "No wake arrives",
     )
     fun a_full_grant_sharer_keeps_looking_during_the_event() = behaviour(startAt = DURING) {
         given {

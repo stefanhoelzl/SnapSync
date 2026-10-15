@@ -99,9 +99,10 @@ internal class SimulatorExtensionRegistry(
         return RegistrationAnswer.Answered(ok = code == null, domain = code?.let { PHOTOS_ERROR_DOMAIN }, code = code)
     }
 
+    // A partial grant cannot see the record it cannot change, as on a device (SE2, iOS 27.0.1).
     override fun isEnabled(): RegistrationState = when {
         !record.mechanism -> RegistrationState.UNSUPPORTED
-        record.registered -> RegistrationState.REGISTERED
+        record.registered && !record.partialGrant -> RegistrationState.REGISTERED
         else -> RegistrationState.NOT_REGISTERED
     }
 }

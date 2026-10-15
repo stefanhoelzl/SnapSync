@@ -33,6 +33,7 @@ class SimulatorExtensionRegistryContractTest {
             ExtensionRegistryState.RECORD_ABSENT,
             ExtensionRegistryState.RECORD_PRESENT,
             ExtensionRegistryState.UNDER_PARTIAL_GRANT,
+            ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT,
             ExtensionRegistryState.NO_MECHANISM,
         )
 
@@ -41,6 +42,8 @@ class SimulatorExtensionRegistryContractTest {
                 ExtensionRegistryState.RECORD_ABSENT -> SimulatorRecord(registered = false)
                 ExtensionRegistryState.RECORD_PRESENT -> SimulatorRecord(registered = true)
                 ExtensionRegistryState.UNDER_PARTIAL_GRANT -> SimulatorRecord(partialGrant = true)
+                ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT ->
+                    SimulatorRecord(registered = true, partialGrant = true)
                 ExtensionRegistryState.NO_MECHANISM -> SimulatorRecord(mechanism = false)
             }
             return Entered.Ready(SimulatorExtensionRegistry(Logger.withTag("contract"), record).recorded(log))

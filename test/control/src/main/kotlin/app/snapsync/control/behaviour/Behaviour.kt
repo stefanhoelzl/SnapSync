@@ -9,6 +9,7 @@ import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.ExtensionHostLevers
+import app.snapsync.levers.ExtensionRegistryLevers
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.GalleryLevers
 import app.snapsync.levers.HostLevers
@@ -241,6 +242,9 @@ class Acts internal constructor(
 
     /** The operating system's invocations of the upload extension. */
     val extensionHost: ExtensionHostLevers = client.levers(ExtensionHostLevers)
+
+    /** The upload extension's registration, and whether the operating system carries the extension at all. */
+    val extensionRegistry: ExtensionRegistryLevers = client.levers(ExtensionRegistryLevers)
 
     /** The push service: what it is, and whether it issues tokens. */
     val push: PushLevers = client.levers(PushLevers)

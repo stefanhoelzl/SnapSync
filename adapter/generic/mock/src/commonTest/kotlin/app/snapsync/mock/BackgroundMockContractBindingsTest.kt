@@ -23,6 +23,7 @@ import app.snapsync.model.WakeId
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -115,19 +116,28 @@ class BackgroundMockContractBindingsTest {
             ExtensionRegistryState.RECORD_ABSENT,
             ExtensionRegistryState.RECORD_PRESENT,
             ExtensionRegistryState.UNDER_PARTIAL_GRANT,
+            ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT,
             ExtensionRegistryState.NO_MECHANISM,
         )
 
         override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> {
+            // The grant is the photo library's, moved as the person moves it — the registry reads it at every change.
+            val library = PhotoLibraryMock()
+            val grant = library.grant
             val mock = when (state) {
-                ExtensionRegistryState.RECORD_ABSENT -> ExtensionRegistryMock(supported = true)
-                ExtensionRegistryState.RECORD_PRESENT -> ExtensionRegistryMock(supported = true, registered = true)
-                ExtensionRegistryState.UNDER_PARTIAL_GRANT -> ExtensionRegistryMock(
-                    supported = true,
-                    partialGrant = true,
-                )
-                ExtensionRegistryState.NO_MECHANISM -> ExtensionRegistryMock(supported = false)
+                ExtensionRegistryState.RECORD_ABSENT -> ExtensionRegistryMock(carried = true, grant = grant)
+                ExtensionRegistryState.RECORD_PRESENT ->
+                    ExtensionRegistryMock(carried = true, grant = grant, registered = true)
+                ExtensionRegistryState.UNDER_PARTIAL_GRANT -> ExtensionRegistryMock(carried = true, grant = grant)
+                ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT ->
+                    ExtensionRegistryMock(carried = true, grant = grant, registered = true)
+                ExtensionRegistryState.NO_MECHANISM -> ExtensionRegistryMock(carried = false, grant = grant)
             }
+            val partial = setOf(
+                ExtensionRegistryState.UNDER_PARTIAL_GRANT,
+                ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT,
+            )
+            if (state in partial) library.state.access.value = LibraryGrant.LIMITED
             return Entered.Ready(mock.port().recorded(log))
         }
     }

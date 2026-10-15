@@ -5,6 +5,7 @@ import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Running
 import app.snapsync.levers.AtRelease
 import app.snapsync.levers.Completions
+import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.Released
 import app.snapsync.levers.WorldEvent
@@ -38,6 +39,15 @@ class PlayedOs(
 
     /** Set by [expireNext]: the next grant of time is handed over already withdrawn. */
     private var nextExpired = false
+
+    /**
+     * The app's process, as the host that owns it lets the operating system end it and open it again — `null` where the
+     * host does not own it (a device's app host), which refuses a force-quit.
+     */
+    @Volatile var process: AppProcess? = null
+
+    /** Set by [forceQuit] until the member opens the app ([opened]): the operating system launches it for nothing. */
+    @Volatile private var quit = false
 
     /** Who is told each release — the control channel's event stream, or no one. */
     @Volatile private var watcher: OsWatcher = OsWatcher {}
@@ -106,6 +116,32 @@ class PlayedOs(
     /** The next grant of time handed over arrives already withdrawn. */
     override suspend fun expireNext() = locked { nextExpired = true }
 
+    override suspend fun forceQuit() {
+        val process = process ?: throw LeverRefused(FORCE_QUIT_NEEDS_THE_PROCESS)
+        device.uploadSession.forceQuit()
+        process.die()
+        quit = true
+        watcher.told(WorldEvent.ForceQuit)
+    }
+
+    /** Refuses [what] while the app is force-quit: the operating system does not launch it for that. */
+    fun launching(what: String) {
+        if (quit) {
+            throw LeverRefused(
+                "the app was force-quit and the member has not opened it since, so iOS delivers no $what",
+            )
+        }
+    }
+
+    /** The member opens the app: a force-quit app is launched cold, in front, and the operating system serves it again. */
+    fun opened() {
+        if (!quit) return
+        quit = false
+        checkNotNull(process).open()
+        // The opened app brings its session up, and iOS reports the transfers the force-quit cancelled.
+        device.uploadSession.adopted()
+    }
+
     override suspend fun completions(): Completions =
         locked { Completions(handed, released, releasedAgain, held.count { !it.released }) }
 
@@ -140,3 +176,16 @@ class PlayedOs(
         }
     }
 }
+
+/** The app's process, as a host that owns it hands it to the played operating system. */
+interface AppProcess {
+    /** The process dies and is not started again: nothing is delivered and no screen is built. */
+    suspend fun die()
+
+    /** The member opens the app: its screen is built, as a cold foreground launch builds it. */
+    fun open()
+}
+
+/** Why a host that does not own the app's process refuses a force-quit. */
+const val FORCE_QUIT_NEEDS_THE_PROCESS: String =
+    "this host does not own the app's process, so it cannot end it as a force-quit does — the JVM host's"

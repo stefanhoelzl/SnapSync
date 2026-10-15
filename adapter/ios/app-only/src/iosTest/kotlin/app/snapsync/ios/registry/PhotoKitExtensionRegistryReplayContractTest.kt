@@ -74,7 +74,8 @@ class PhotoKitExtensionRegistryReplayContractTest {
         override val kind = BindingKind.Replay
         override val adapter = PhotoKitExtensionRegistry::class
         override val grant = LibraryGrant.LIMITED
-        override val reaches = setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT)
+        override val reaches =
+            setOf(ExtensionRegistryState.UNDER_PARTIAL_GRANT, ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT)
 
         override fun create(state: ExtensionRegistryState, clauseId: String, log: CallLog): Entered<ExtensionRegistry> =
             if (state in reaches) {
