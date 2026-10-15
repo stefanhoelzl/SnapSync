@@ -2,7 +2,9 @@ package app.snapsync.rig
 
 import app.snapsync.jvm.JvmLanes
 import app.snapsync.jvm.JvmMocks
+import app.snapsync.levers.InFlight
 import app.snapsync.levers.LeverRefused
+import app.snapsync.levers.SettledAlbum
 import app.snapsync.levers.SettledState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
@@ -123,7 +125,7 @@ internal class HostThreads private constructor(
                 Interleaving.parse(System.getProperty(LANES_PROPERTY)),
                 clock,
                 onSettled = {
-                    val state = SettledState(appStorageBytes = mocks.disk.appStorageBytes())
+                    val state = mocks.settledState(backendMocked = backend.operator(mocks) != null)
                     events.tell(WorldEvent.Settled(it.now.toString(), it.nextTimer?.toString(), state))
                 },
                 onViolation = {
@@ -200,3 +202,19 @@ private class CheckedThreadLabel(private val loop: LaneLoop) : ThreadLabel {
 
     override fun current(): String? = label.current()
 }
+
+/**
+ * What the systems outside the app record at a settle ([SettledState]), read at once under the loop's lock. The backend's
+ * only where it is the mock: a real backend tells nothing.
+ */
+private fun JvmMocks.settledState(backendMocked: Boolean) = SettledState(
+    appStorageBytes = disk.appStorageBytes(),
+    libraryPhotos = library.photoIds,
+    albums = library.operator.appAlbums().map { SettledAlbum(it.id, it.title, it.photos) },
+    inFlight = InFlight(
+        jobs = uploadQueue.view().live,
+        sessionTransfers = uploadSession.view().live,
+        downloads = downloads.view().inFlight.map { it.description },
+    ),
+    backendEvents = backend.derivedEvents().takeIf { backendMocked },
+)

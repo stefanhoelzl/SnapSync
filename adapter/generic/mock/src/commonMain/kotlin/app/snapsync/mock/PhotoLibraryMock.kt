@@ -70,6 +70,9 @@ class PhotoLibraryMock(
     /** Whether the running process's selection observer is open — the operating system's own record of it. */
     val selectionObserved: Boolean get() = state.observer != null
 
+    /** Every photo the library holds, by id, in the order it came — the person's view of it. */
+    val photoIds: List<String> get() = state.library.value.map { it.id.value }
+
     /** How many times the app presented the limited-library picker — the operating system's own record of it. */
     val pickersShown: Int get() = state.pickersShown
 
@@ -235,7 +238,10 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
         )
     }
 
-    override suspend fun albums(): List<AppAlbum> = state.locked {
+    override suspend fun albums(): List<AppAlbum> = appAlbums()
+
+    /** The albums the app made, as [albums] reads them — without suspending, for a settle's snapshot. */
+    fun appAlbums(): List<AppAlbum> = state.locked {
         state.createdLog.map { (id, title) ->
             AppAlbum(
                 id = id,

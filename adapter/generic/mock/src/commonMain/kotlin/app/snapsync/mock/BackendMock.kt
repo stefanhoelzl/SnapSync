@@ -13,6 +13,7 @@ import app.snapsync.levers.MembershipRecord
 import app.snapsync.levers.PublishedAsset
 import app.snapsync.levers.PublishedManifest
 import app.snapsync.levers.SentPush
+import app.snapsync.levers.SettledEvent
 import app.snapsync.levers.StoredDeviceConfig
 import app.snapsync.levers.UnionFetch
 import app.snapsync.levers.WorldEvent
@@ -87,6 +88,11 @@ class BackendMock internal constructor(internal val state: BackendState) {
 
     /** The levers and reads — what the backend's operator, and a test, can do to it. */
     val operator: BackendOperator = BackendOperator(state)
+
+    /** What this backend derives of each event it holds, read at once — a settle's snapshot ([SettledEvent]). */
+    fun derivedEvents(): Map<String, SettledEvent> = state.locked {
+        state.events.keys.associateWith { SettledEvent(state.finished(it), state.closedForOldBuilds(it)) }
+    }
 
     /**
      * The byte route, as an OS transfer reaches it: `PUT <base>/events/<event>/files/devices/<device>/<asset>/<role>?filename=…`
@@ -181,7 +187,7 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
 
     override suspend fun sweep(event: String?) {
         val id = resolved(event)
-        state.locked { state.events.remove(id) }
+        state.locked { state.events.remove(id) }?.let { state.watcher.told(WorldEvent.EventDeleted(id)) }
     }
 
     override suspend fun complete(event: String?) {
@@ -473,10 +479,12 @@ internal class BackendState(
             existing.manifestVersion = null
             // A rejoined device has settled nothing yet for its new membership.
             existing.manifest = existing.manifest?.withFinal(false)
+            watcher.told(WorldEvent.MemberJoined(eventId, deviceId))
             return JoinOutcome.ENROLLED
         }
         // An open event admits any number of devices (decision record `changes/remove-event-device-cap`, D3).
         memberships[eventId to deviceId] = Membership()
+        watcher.told(WorldEvent.MemberJoined(eventId, deviceId))
         return JoinOutcome.ENROLLED
     }
 
@@ -498,11 +506,22 @@ internal class BackendState(
             return PublishOutcome.OLDER
         }
         val before = servable(eventId, deviceId)
+        val declared = membership.manifest?.assets.orEmpty().mapTo(mutableSetOf()) { it.assetId.value }
         membership.manifest = manifest
         membership.manifestVersion = incoming
         publishes[eventId to deviceId] = (publishes[eventId to deviceId] ?: 0) + 1
         val after = servable(eventId, deviceId)
         logChanges(eventId, deviceId, before, after)
+        val declaring = manifest.assets.mapTo(mutableSetOf()) { it.assetId.value }
+        watcher.told(
+            WorldEvent.ManifestPublished(
+                eventId,
+                deviceId,
+                incoming,
+                added = (declaring - declared).sorted(),
+                withdrawn = (declared - declaring).sorted(),
+            ),
+        )
         // Nothing closes. A settled declaration is kept as declared, whenever it comes: a device settles once its
         // member's own range has ended, which may be before the event's end (the real route does the same, which the
         // Backend contract pins against the real api/). Only a publish that made something newly servable wakes
@@ -517,7 +536,9 @@ internal class BackendState(
      * it.
      */
     fun leave(eventId: String, deviceId: String) {
-        memberships[eventId to deviceId]?.takeUnless { it.departed }?.departed = true
+        val membership = memberships[eventId to deviceId]?.takeUnless { it.departed } ?: return
+        membership.departed = true
+        watcher.told(WorldEvent.MemberLeft(eventId, deviceId))
     }
 
     /**
@@ -527,6 +548,7 @@ internal class BackendState(
     fun received(eventId: String, deviceId: String, position: Long): Boolean {
         val membership = memberships[eventId to deviceId]?.takeUnless { it.departed } ?: return false
         membership.receivedPosition = maxOf(membership.receivedPosition ?: -1L, position)
+        watcher.told(WorldEvent.ReceivedReported(eventId, deviceId, position))
         return true
     }
 
@@ -544,6 +566,7 @@ internal class BackendState(
     fun complete(eventId: String) {
         val event = events[eventId] ?: return
         event.completed = true
+        watcher.told(WorldEvent.EventDeleted(eventId))
         memberships.keys.filter { it.first == eventId }.forEach { memberships.remove(it) }
         // The union log goes with the photos.
         changes.removeAll { it.eventId == eventId }
@@ -618,6 +641,7 @@ internal class BackendState(
     fun deposit(eventId: String, deviceId: String, file: DeviceFile) {
         val was = servable(eventId, deviceId)
         storedFiles.getOrPut(eventId to deviceId) { mutableSetOf() } += file
+        watcher.told(WorldEvent.BytesStored(eventId, deviceId, file.assetId.value, file.role.wire))
         // After the write, as the real byte route does: when this byte completed an asset, the event logs the gain and
         // wakes its other members.
         val now = servable(eventId, deviceId)

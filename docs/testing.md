@@ -1108,8 +1108,9 @@ skill). The journeys keep condition waits until they convert (a later phase).
 **On the JVM host every request is a task of the loop**, on the channel's own lane: a `POST` and a typed service's call
 are **acts**, announced (`Acted`) before they do anything; a `GET` is a read, run there unannounced, because a read can
 still start app work (the state read refreshes the counts it reports). The mocks tell the stream what they record as
-they record it — the screen mock each state the app shows, the backend mock each request that reaches it and each one
-an operator's hold parks, the transfer mocks each upload job, session transfer and download the app hands them, the
+they record it — the screen mock each state the app shows, the backend mock each request that reaches it, each one
+an operator's hold parks and each change it stores, the transfer mocks each upload job, session transfer and download
+the app hands them and each one's end, the
 library mock each hold it parks, each photo it creates and each album change, the system UI each hand-over (`Shared`, `UrlOpened`,
 `SettingsOpened`), the crash reporter each dump and each automatic event its backend received (`DumpReceived`, the
 whole dump; `EventReceived`, the event with its contexts) — on the thread
@@ -1252,8 +1253,9 @@ port.
 
 Older tests still run under `rigTest { … }` (`Rig.kt`), which polls the state on real time (`awaitState`,
 `eventually`, `neverWithin`). Each face batch converted the tests it touched, and `TestsWaitOnEventsTest`'s polling
-gate holds the rest to a list that only shrinks: phase 31 gives the outcomes they wait on events, and phase 3g-b deletes
-the polling.
+gate holds the rest to a list that only shrinks: phase 31 gave the outcomes they waited on events and converted them,
+leaving only what still depends on a host with no event stream (the screenshots' scenarios, shared with the simulator
+capture), and phase 3g-b deletes the polling.
 
 Tests use **mocks only**, with no per-test real system. The port contracts are what justify trusting the
 mocks, and the journeys exercise the real systems.
@@ -1271,7 +1273,14 @@ until it answers.
 The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
 (`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (the backend's
 `BackendReceived`, `BackendHeld`, `DeviceRegistered` and `PushSent`, and `UnionChanged` — a photo that became, or
-stopped being, what the event offers its members; the transfers' `UploadJobCreated`, `SessionTransferCreated` and `DownloadStarted`;
+stopped being, what the event offers its members — and what it STORED — one event per stored change, each naming
+exactly what changed: `EventCreated`, `MemberJoined`, `MemberLeft`, `ManifestPublished` (every applied publish, with
+its version and the asset ids it `added` and `withdrew`; a republish of the same set tells both empty),
+`BytesStored`, `ReceivedReported`, `EventRenamed` and `EventDeleted`; the transfers' `UploadJobCreated`,
+`SessionTransferCreated` and `DownloadStarted`, and each one's end with its outcome — delivered, failed or cancelled —
+told as the transfer leaves the operating system's hold and before the app hears of it: `UploadJobEnded` when the app
+acknowledges the job (a failed job it retries has not ended), `SessionTransferEnded` when a transfer lands or the app
+cancels it, `DownloadEnded` when the session finishes a download or the app cancels it;
 the photo library's: a walk, an add or an import parked on an operator's hold — `LibraryEnumerationHeld`,
 `LibraryAddHeld`, `LibraryImportParked` — a photo an import created (`LibraryAssetCreated`), an album the app made
 (`LibraryAlbumCreated`) and a photo that joined one, once per photo as a person would see it arrive
@@ -1279,8 +1288,12 @@ the photo library's: a walk, an add or an import parked on an operator's hold �
 (`LibraryPickerShown`); the system UI's `Shared`, `UrlOpened` and `SettingsOpened`; the crash reporter's
 `DumpReceived` and `EventReceived`; the databases' `DatabaseFaulted`; the operating system's `WorldEvent.Os`; each face batch adds its face's), each
 `Settled(now, nextTimer, state)`, and each lane rule broken (`LaneViolation`). A settle's `state` (`SettledState`) is what
-systems outside the app record at that moment — today `appStorageBytes`, the storage the app's files take, its
-diagnostics left out — read at exactly that settle, so `settled { … }` judges it and hands it on (`given` hands a later
+systems outside the app record at that moment — `appStorageBytes`, the storage the app's files take, its diagnostics
+left out; the library's photos (`libraryPhotos`) and the app's albums as the library holds them
+(`albums`); the transfers the operating system still holds (`inFlight`: jobs, session transfers, downloads, each by
+what names it); and what the backend derives of each event from its clock and its members' reports (`backendEvents`:
+`finished`, `closedForOldBuilds`), which no event can carry because the clock passing a date tells nothing — read at
+exactly that settle, so `settled { … }` judges it and hands it on (`given` hands a later
 `then` the world as it left it). A field joins only if a system outside the app records it, it is cheap to read at
 every settle, and some test asserts it at a settle. Every request a caller makes runs as a task of the loop — an act announced first, a read
 not — so everything after an act's announcement is the act's or later.
@@ -1309,7 +1322,7 @@ the app — then a gate, then review.
 | **A transient is observed only by holding what it waits for**: every external wait needs a hold lever | review |
 | **Typed matchers, not equality**: `screen<L> { … }`, `event<E> { … }`, `never<E>`, `neverScreen<L>`. Unordered by default; `inOrder { … }` only where the order is the contract, `times(n) { … }` only where a count is the behaviour | the DSL; review |
 | **Observe what a person sees and what the outside world records**: the screen, the backend, the photo library, the push service, the crash reporter's receipts, and of the operating system's record only what the OS knows (handlers handed over and released, wakes and their timing, background-time holds, push registrations, sessions) — never an app-side label such as the trigger a hold began under | the stream carries nothing else; review for the polling tests |
-| **Never** log text, the app's private files (the staging directory included: what the outside sees of it is the storage the app takes, `appStorageBytes`), its databases, the ledger, or `gallery.read` (it runs the app's own selection policy) | the stream; review for the polling tests, whose remaining reads of the staging directory and the databases opened (`files.stagedFiles`, `databases.opened` — 3g-a typed them off the OS record) go with them |
+| **Never** log text, the app's private files (the staging directory included: what the outside sees of it is the storage the app takes, `appStorageBytes`), its databases, the ledger, or `gallery.read` (it runs the app's own selection policy) | the stream; review for the polling helpers, whose remaining reads of the staging directory and the databases opened (`files.stagedFiles`, `databases.opened` — 3g-a typed them off the OS record) go with them |
 | **Nothing asserted on a generated id or a random value** (`next-event-id` where a fixed id is needed; mock randomness seeded per test); **no global mutable state** in the app, the mocks or the rig, so tests pass in any order and in parallel | review; `-Psnapsync.lanes=shuffled:<seed>` and `parallel` find what order hides |
 | **Work reaches the app only through the loop** | the host: a dispatch onto an app lane from a thread the loop does not own fails the test (`LaneViolation`) |
 | **No retries, anywhere** | review |

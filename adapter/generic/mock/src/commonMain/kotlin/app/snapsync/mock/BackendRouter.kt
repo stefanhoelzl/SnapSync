@@ -195,6 +195,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
                 val eventId = state.nextEventId?.also { state.nextEventId = null } ?: Uuid.random().toString()
                 val event = BackendState.Event(name, state.createdAt, startsAt, endsAt, openUntil, keyId = req.keyId)
                 state.events[eventId] = event
+                state.watcher.told(WorldEvent.EventCreated(eventId, name))
                 json(CREATED, Event.serializer(), event.onWire(eventId))
             }
         }
@@ -240,6 +241,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
         // A completed event — or one closed before events stopped closing — changes no more.
         if (event.closed || event.completed) return closed()
         event.name = name
+        state.watcher.told(WorldEvent.EventRenamed(eventId, name))
         return json(OK, Event.serializer(), event.onWire(eventId))
     }
 

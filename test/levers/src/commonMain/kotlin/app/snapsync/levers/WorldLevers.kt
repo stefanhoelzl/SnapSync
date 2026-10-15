@@ -139,6 +139,24 @@ sealed interface WorldEvent {
     @SerialName("download-started")
     data class DownloadStarted(val description: String) : Transfer
 
+    /**
+     * An upload job left the operating system's queue with [outcome]: the app acknowledged it — its handback, which is
+     * when the queue lets a job go. A failed job the app retries has not ended.
+     */
+    @Serializable
+    @SerialName("upload-job-ended")
+    data class UploadJobEnded(val job: String, val outcome: TransferEnd) : Transfer
+
+    /** The upload session's transfer tagged [key] ended with [outcome]: it landed, failed, or the app cancelled it. */
+    @Serializable
+    @SerialName("session-transfer-ended")
+    data class SessionTransferEnded(val key: String, val outcome: TransferEnd) : Transfer
+
+    /** The download [description] ended with [outcome]: the session finished it, or the app cancelled it. */
+    @Serializable
+    @SerialName("download-ended")
+    data class DownloadEnded(val description: String, val outcome: TransferEnd) : Transfer
+
     /** What the photo library recorded. */
     @Serializable
     sealed interface Library : WorldEvent
@@ -220,6 +238,60 @@ sealed interface WorldEvent {
     @SerialName("backend-push-sent")
     data class PushSent(val event: String, val device: String, val token: String) : Backend
 
+    // What the backend STORED — one event per stored change, each naming exactly what changed, told by the backend mock
+    // from its own state as it changes it (a real backend tells none of these). Whoever caused it: the app's request, or
+    // an operator playing another member.
+
+    /** The backend stored a new event [event], named [name]. */
+    @Serializable
+    @SerialName("backend-event-created")
+    data class EventCreated(val event: String, val name: String) : Backend
+
+    /** The backend enrolled [device] in [event] — a first join, or a rejoin of a member who had left. */
+    @Serializable
+    @SerialName("backend-member-joined")
+    data class MemberJoined(val event: String, val device: String) : Backend
+
+    /** [device] left [event]: its membership is gone, and what it shared stays in the union. */
+    @Serializable
+    @SerialName("backend-member-left")
+    data class MemberLeft(val event: String, val device: String) : Backend
+
+    /**
+     * The backend applied [device]'s manifest for [event] at [version]: [added] are the asset ids it declares that the
+     * one it replaced did not, [withdrawn] those it no longer declares. Every applied publish is told — one that changes
+     * no asset (a republish under a newer version) with both empty; one answered and not applied (older, closed) is not.
+     */
+    @Serializable
+    @SerialName("backend-manifest-published")
+    data class ManifestPublished(
+        val event: String,
+        val device: String,
+        val version: Long?,
+        val added: List<String>,
+        val withdrawn: List<String>,
+    ) : Backend
+
+    /** The bytes of [asset]'s [role] (its wire name: `original`, `paired-video`, …) from [device] landed in [event]. */
+    @Serializable
+    @SerialName("backend-bytes-stored")
+    data class BytesStored(val event: String, val device: String, val asset: String, val role: String) : Backend
+
+    /** [device] reported holding every photo of [event]'s other members up to the union's [position]. */
+    @Serializable
+    @SerialName("backend-received-reported")
+    data class ReceivedReported(val event: String, val device: String, val position: Long) : Backend
+
+    /** The backend stored [name] as [event]'s name. */
+    @Serializable
+    @SerialName("backend-event-renamed")
+    data class EventRenamed(val event: String, val name: String) : Backend
+
+    /** The backend deleted [event]'s photos — the sweep's completion — or the event itself. */
+    @Serializable
+    @SerialName("backend-event-deleted")
+    data class EventDeleted(val event: String) : Backend
+
     /** What the operating system recorded of the app, as it happened — never an app-side fact. */
     @Serializable
     sealed interface Os : WorldEvent
@@ -289,4 +361,48 @@ data class SettledState(
      * what a test measures.
      */
     val appStorageBytes: Long? = null,
+    /** Every photo the library holds, by id, in the order it came. */
+    val libraryPhotos: List<String>? = null,
+    /** The albums the app made, as the library holds each now. */
+    val albums: List<SettledAlbum>? = null,
+    /** The transfers the operating system still holds for the app. */
+    val inFlight: InFlight? = null,
+    /** The events the backend holds, by id: what it derives of each from its clock and its members' reports. */
+    val backendEvents: Map<String, SettledEvent>? = null,
 )
+
+/** An album the app made, as the library holds it: its [photos] each once, while the library holds it. */
+@Serializable
+data class SettledAlbum(val id: String, val title: String, val photos: List<String>)
+
+/** The transfers the operating system holds for the app, each kind by what names it. */
+@Serializable
+data class InFlight(
+    /** The upload jobs on the OS's queue, not yet acknowledged — by job name (`<asset>/<role>`). */
+    val jobs: List<String>,
+    /** The upload session's live transfers, by upload key. */
+    val sessionTransfers: List<String>,
+    /** The downloads not yet finished or cancelled, by description. */
+    val downloads: List<String>,
+)
+
+/**
+ * What the backend derives of an event: [finished] — its open-until date passed and every member still in it shared
+ * and received everything — and [closedForOldBuilds], what the builds that predate open-until dates read as closed
+ * (`PENDING_CLEANUPS.md`).
+ */
+@Serializable
+data class SettledEvent(val finished: Boolean, val closedForOldBuilds: Boolean)
+
+/** How a transfer ended: [how], and the [failure] the system reported for a failed one. */
+@Serializable
+data class TransferEnd(val how: How, val failure: String? = null) {
+    enum class How { DELIVERED, FAILED, CANCELLED }
+
+    companion object {
+        val DELIVERED = TransferEnd(How.DELIVERED)
+        val CANCELLED = TransferEnd(How.CANCELLED)
+
+        fun failed(failure: String) = TransferEnd(How.FAILED, failure)
+    }
+}
