@@ -531,15 +531,18 @@ class JoinEventTest {
     }
 
     @Test
-    fun a_key_the_store_refuses_fails_the_join_before_anything_is_provisioned() = runTest {
+    fun a_key_the_store_refuses_fails_the_join_before_the_event_enrols_the_device() = runTest {
         val keys = EventKeys(fakeCrypto(), inMemorySecureStore(unavailable = true))
         val minted = EventKeys(fakeCrypto(), inMemorySecureStore()).mint()
         val provisioned = mutableListOf<EventConfig>()
+        val enroller = FakeEnroller()
         assertEquals(
             JoinOutcome.EnrollFailed(),
-            joinEvent(null, provisioned = provisioned, keys = keys).join(choice(minted.linkKey, minted.keyId)),
+            joinEvent(null, provisioned = provisioned, enroller = enroller, keys = keys)
+                .join(choice(minted.linkKey, minted.keyId)),
         )
         assertTrue(provisioned.isEmpty())
+        assertTrue(enroller.calls.isEmpty(), "never half-joined: the event does not count a device that failed to join")
     }
 
     @Test

@@ -128,6 +128,8 @@ coverage {
         // 81/59 → 82/60 when the JVM host began playing process-metric reports (`ProcessAccount`, `FootprintSampler`).
         // 82/60 → 85/64 when the update test began updating from every older install (`AppUpdateIntegrationTest`): the
         // shared records' legacy copy, the older databases' migrations, a 0.4 transfer's tag.
+        // Held with the locked phone and the refusing Keychain and preferences
+        // (`unavailable-keychain-and-preferences`).
         integration(instructions = 85, branches = 64)
     }
     ":domain:wire" {
@@ -142,6 +144,7 @@ coverage {
     ":domain:feature" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
         // 90/73 → 91/74 with the update test (`AppUpdateIntegrationTest`): the upload gate's pause for legacy records.
+        // Held with the locked phone and the refusing Keychain (`unavailable-keychain-and-preferences`).
         integration(instructions = 91, branches = 74)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
@@ -150,7 +153,9 @@ coverage {
         unit(alsoCoveredBy = listOf(":test:data"))
         // The protocol's every reply and every store failure are the data suites'; the suite reaches the paths a
         // member's day takes.
-        integration(instructions = 79, branches = 53)
+        // 79/53 → 81/58 with the locked phone and the refusing Keychain (`unavailable-keychain-and-preferences`): the
+        // identity that never mints while the Keychain cannot be looked in.
+        integration(instructions = 81, branches = 58)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))

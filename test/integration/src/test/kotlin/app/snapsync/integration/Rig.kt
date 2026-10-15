@@ -11,6 +11,7 @@ import app.snapsync.levers.CrashReporterLevers
 import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceConditionsLevers
+import app.snapsync.levers.DeviceLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.FilesLevers
@@ -23,6 +24,7 @@ import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.PlayedOsLevers
+import app.snapsync.levers.PreferencesLevers
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.PushLevers
 import app.snapsync.levers.RigState
@@ -132,6 +134,12 @@ class Rig(val client: RigClient) : Person {
 
     /** The device's Keychain. */
     val keychain: KeychainLevers = client.levers(KeychainLevers)
+
+    /** The device's preferences' faults. */
+    val preferences: PreferencesLevers = client.levers(PreferencesLevers)
+
+    /** The device that protects the stores: a phone before its first unlock since it restarted. */
+    val device: DeviceLevers = client.levers(DeviceLevers)
 
     /** What an older build left on the device. */
     val olderInstall: OlderInstallLevers = client.levers(OlderInstallLevers)

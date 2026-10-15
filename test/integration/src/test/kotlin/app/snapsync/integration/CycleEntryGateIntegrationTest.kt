@@ -7,8 +7,8 @@ import kotlin.test.assertTrue
 
 /**
  * The cycle's **entry gate** over the real stack — an unreadable config is not an absent config: the real
- * `UploadCycle` and ledger over the backend mock, driven through the control protocol, with only the membership read
- * forced (`databases.lock`).
+ * `UploadCycle` and ledger over the backend mock, driven through the control protocol, with the phone locked since it
+ * restarted (`device.lock`) — the Keychain, the databases the membership lives in and the files, all sealed at once.
  *
  * These assertions could not be made before the gate moved into the shared core, in either of the two senses that
  * matter:
@@ -29,8 +29,9 @@ class CycleEntryGateIntegrationTest {
     private suspend fun Rig.publishes(): Int = backend.membership().publishes
 
     private suspend fun Rig.membershipUnreadable(on: Boolean) {
-        // Before the first unlock after a boot every App-Group file is closed: the databases the membership lives in.
-        databases.lock(on)
+        // Before the first unlock after a boot every protected store is closed: the databases the membership lives in,
+        // the files and the Keychain with them.
+        if (on) device.lock() else device.unlock()
     }
 
     @Test

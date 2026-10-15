@@ -7,6 +7,7 @@ import app.snapsync.levers.BuildLevers
 import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceConditionsLevers
+import app.snapsync.levers.DeviceLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.ExtensionRegistryLevers
@@ -20,6 +21,7 @@ import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.PlayedOsLevers
+import app.snapsync.levers.PreferencesLevers
 import app.snapsync.levers.ProcessInfoLevers
 import app.snapsync.levers.ProcessMetricsLevers
 import app.snapsync.levers.PublicBackendLevers
@@ -207,7 +209,7 @@ class Acts internal constructor(
     /** The device's power, battery, thermal state and background allowance, as the operating system reports them. */
     val deviceConditions: DeviceConditionsLevers = client.levers(DeviceConditionsLevers)
 
-    /** What the operating system says of the app's process: its protected data and its memory footprint. */
+    /** What the operating system says of the app's process: its memory footprint. */
     val processInfo: ProcessInfoLevers = client.levers(ProcessInfoLevers)
 
     /** The platform's reports on the app's process, which it hands the app as they come — the JVM host's mock. */
@@ -230,6 +232,12 @@ class Acts internal constructor(
 
     /** The device's Keychain. */
     val keychain: KeychainLevers = client.levers(KeychainLevers)
+
+    /** The device's preferences' faults. */
+    val preferences: PreferencesLevers = client.levers(PreferencesLevers)
+
+    /** The device that protects the stores: a phone before its first unlock since it restarted. */
+    val device: DeviceLevers = client.levers(DeviceLevers)
 
     /** What an older build left on the device. */
     val olderInstall: OlderInstallLevers = client.levers(OlderInstallLevers)

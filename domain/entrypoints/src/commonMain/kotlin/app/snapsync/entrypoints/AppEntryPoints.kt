@@ -72,6 +72,7 @@ class OnForeground(
     runtime: Runtime,
     private val foreground: AppForeground,
     private val pushTokens: PushTokenRequest,
+    private val prelude: Prelude,
     private val host: HostAssembly,
     private val work: ForegroundWork,
     private val wake: WakeWork,
@@ -79,6 +80,9 @@ class OnForeground(
     override suspend fun run(arg: Unit) = steps {
         required { foreground.entered() }
         required { pushTokens.request() }
+        // The membership before the screen: a launch before the phone's first unlock since it restarted read it
+        // unreadable, and the first frame is drawn from what the device holds, never from that read.
+        isolated("membership") { prelude.membership() }
         required { host.assemble() }
         isolated("own work") { work.run() }
         required { wake.full(WakeKind.FOREGROUND) }
@@ -306,9 +310,12 @@ class UploadEngine(
 class Prelude(private val config: ConfigService, private val refreshAttestation: RefreshAttestation) {
     @OptIn(EntryPointCall::class)
     suspend fun run() = steps {
-        isolated("membership") { config.reload() }
+        isolated("membership") { membership() }
         isolated("attestation") { refreshAttestation() }
     }
+
+    /** The membership alone, re-read: what a screen about to be drawn needs before the token's network round trip. */
+    fun membership() = config.reload()
 }
 
 /** The foreground's own work — and a returned network's, which is the same. */

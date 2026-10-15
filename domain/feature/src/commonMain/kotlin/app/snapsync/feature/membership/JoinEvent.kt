@@ -138,19 +138,22 @@ class JoinEvent(
         // Every entry path funnels here, the headless one included, so the key is checked here too — never only on
         // the screen: a member must not join an encrypted event it could not read, nor upload plaintext into it.
         if (!keys.opens(choice.linkKey, choice.eventKeyId)) return JoinOutcome.WrongLink
+        // The key before the enrolment, and both before the config: a config naming a key id must never exist without
+        // its key, and a refused write must fail the join before the event counts this device as a member — never
+        // after, which would leave it enrolled at the event and joined to nothing (half-joined). A key kept with no
+        // membership is inert (no membership names it), and the next join, leave or reset replaces or removes it. A
+        // plain event's join removes a previous event's key.
+        val kept = runCatchingCancellable { choice.linkKey?.let(keys::keep) ?: keys.forget() }
+        if (kept.isFailure) {
+            log.w(kept.exceptionOrNull()) { "join: the event key could not be kept — the join is retried" }
+            return JoinOutcome.EnrollFailed()
+        }
         when (val enrolled = enroller.enroll(eventId, identity.requireDeviceId())) {
             JoinResult.Joined -> Unit
             JoinResult.EventClosed -> return JoinOutcome.EventClosed
             JoinResult.Unverified -> return JoinOutcome.Unverified
             JoinResult.EventNotFound -> return JoinOutcome.EnrollFailed()
             is JoinResult.Failed -> return JoinOutcome.EnrollFailed(enrolled.fault)
-        }
-        // The key before the config: a config naming a key id must never exist without its key. A refused write fails
-        // the join, which a retry repeats; a plain event's join removes a previous event's key.
-        val kept = runCatchingCancellable { choice.linkKey?.let(keys::keep) ?: keys.forget() }
-        if (kept.isFailure) {
-            log.w(kept.exceptionOrNull()) { "join: the event key could not be kept — the join is retried" }
-            return JoinOutcome.EnrollFailed()
         }
         provision(
             EventConfig(

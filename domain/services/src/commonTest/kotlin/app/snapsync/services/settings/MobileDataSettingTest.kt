@@ -71,18 +71,41 @@ class MobileDataSettingTest {
     }
 
     @Test
-    fun `an unreadable choice holds photos to Wi-Fi and shows the default`() {
+    fun `an unreadable choice is off for the menu and for every transfer`() {
         prefs.unreadable = true
         val setting = MobileDataSetting(prefs)
-        assertTrue(setting.allowed.value)
+        assertFalse(setting.allowed.value, "the menu shows the rule in effect, never the default")
         assertEquals(TransferNetwork.UNRESTRICTED_ONLY, setting.transferNetwork())
         assertEquals("unreadable", setting.describe())
     }
 
     @Test
-    fun `a malformed value holds photos to Wi-Fi`() {
+    fun `a malformed value is off for the menu and for every transfer`() {
         prefs.values[MOBILE_DATA_KEY] = "maybe"
-        assertEquals(TransferNetwork.UNRESTRICTED_ONLY, MobileDataSetting(prefs).transferNetwork())
+        val setting = MobileDataSetting(prefs)
+        assertFalse(setting.allowed.value)
+        assertEquals(TransferNetwork.UNRESTRICTED_ONLY, setting.transferNetwork())
+        assertEquals("unreadable", setting.describe())
+    }
+
+    @Test
+    fun `the menu and the transfers agree on every stored answer`() {
+        val answers = listOf<(Prefs) -> Unit>(
+            {},
+            { it.values[MOBILE_DATA_KEY] = "on" },
+            { it.values[MOBILE_DATA_KEY] = "off" },
+            { it.values[MOBILE_DATA_KEY] = "maybe" },
+            { it.unreadable = true },
+        )
+        answers.forEach { stored ->
+            val prefs = Prefs().also(stored)
+            val setting = MobileDataSetting(prefs)
+            assertEquals(
+                setting.allowed.value,
+                setting.transferNetwork() == TransferNetwork.ANY,
+                "the menu and the transfers disagree on '${setting.describe()}'",
+            )
+        }
     }
 
     @Test

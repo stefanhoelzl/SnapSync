@@ -87,6 +87,16 @@ sealed interface WorldEvent {
     @SerialName("database-faulted")
     data class DatabaseFaulted(val database: String, val table: String, val kind: WriteKind) : WorldEvent
 
+    /** A Keychain call of [kind] on [item] was refused, as an operator's [KeychainLevers.fail] armed it. */
+    @Serializable
+    @SerialName("keychain-faulted")
+    data class KeychainFaulted(val item: KeychainItem, val kind: StoreFault) : WorldEvent
+
+    /** A preferences call of [kind] on [item] was refused, as an operator's [PreferencesLevers.fail] armed it. */
+    @Serializable
+    @SerialName("preferences-faulted")
+    data class PreferencesFaulted(val item: PreferenceItem, val kind: StoreFault) : WorldEvent
+
     /** What the backend recorded. */
     @Serializable
     sealed interface Backend : WorldEvent

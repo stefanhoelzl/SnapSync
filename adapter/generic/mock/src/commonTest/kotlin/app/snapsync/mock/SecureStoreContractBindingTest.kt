@@ -41,7 +41,8 @@ class SecureStoreContractBindingTest {
             }
             return Entered.Ready(
                 when (state) {
-                    SecureStoreState.INACCESSIBLE -> inMemorySecureStore(unavailable = true)
+                    // Entered through the device's seal, as the channel's `DeviceLevers.lock` sets it.
+                    SecureStoreState.INACCESSIBLE -> SecureStoreMock().apply { sealed = true }.port()
                     SecureStoreState.EMPTY -> inMemorySecureStore()
                     SecureStoreState.HOLDING_BACKGROUND_READABLE ->
                         inMemorySecureStore(

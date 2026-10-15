@@ -947,19 +947,22 @@ test needs (the network's `NetworkAccess`, the clock's `Instant`) are plumbing o
 The device's stores followed, each needing its system mocked (so a device host whose adapter choice mocks it honours it
 too):
 
-- `databases` (`DatabasesLevers`, `DatabasesOperator`) — the lock of a device before its first unlock, the read
-  `opened()` (every database any process opened, in order), and
-  `fail(database, table, kind, times?)`: the next statements of that kind on that table fail as SQLite fails a write
-  whose lock another process holds. **The fault is held to the real adapters**: the `Databases` contract's
-  `CONTENDED` state takes a real write lock through a second connection on every platform's SQLite (JVM, Android,
-  iOS), and the mocks enter it through `fail` itself — so the lever offers exactly the writes a real SQLite was shown
-  to refuse, and no read (under iOS's write-ahead log a reader is never blocked). The fault lives in each process's
-  driver; the inspector's own reads (`DatabasesMock.inspectorPort()`) go around it.
-- `files` (`FilesLevers`), `keychain` (`KeychainLevers`) and `older-install` (`OlderInstallLevers`) — implemented by
-  the rig, which sees the app's services and so maps a device log to its file, the staging directory and the
-  diagnostics to theirs (`files`: text a process's device log carries, and the reads `stagedFiles()` and
-  `appStorageBytes()`), a Keychain item, named by what it is, to its address, and writes what an older build left over
-  the device's own stores.
+- `databases` (`DatabasesLevers`, `DatabasesOperator`) — the read `opened()` (every database any process opened, in
+  order), and `fail(database, table, kind, times?)`: the next statements of that kind on that table fail as SQLite
+  fails a write whose lock another process holds. **The fault is held to the real adapters**: the `Databases`
+  contract's `CONTENDED` state takes a real write lock through a second connection on every platform's SQLite (JVM,
+  Android, iOS), and the mocks enter it through `fail` itself — so the lever offers exactly the writes a real SQLite
+  was shown to refuse, and no read (under iOS's write-ahead log a reader is never blocked). The fault lives in each
+  process's driver; the inspector's own reads (`DatabasesMock.inspectorPort()`) go around it.
+- `files` (`FilesLevers`), `keychain` (`KeychainLevers`), `preferences` (`PreferencesLevers`) and `older-install`
+  (`OlderInstallLevers`) — implemented by the rig, which sees the app's services and so maps a device log to its file,
+  the staging directory and the diagnostics to theirs (`files`: text a process's device log carries, and the reads
+  `stagedFiles()` and `appStorageBytes()`), a Keychain item or a preference, named by what it is, to its address, and
+  writes what an older build left over the device's own stores. Their faults follow `databases.fail` — `fail(item,
+  kind, times?)`, a `StoreFault` READ or WRITE, each refusal a world event — addressed by a named item rather than the
+  store's own key: a Keychain slot or a lazily created preference cannot be checked the way a table or an
+  `operationId` is, so a raw key would let a renamed one silently disarm a test, while a renamed item breaks the rig's
+  build. The mocks enter the contracts' `INACCESSIBLE`, `FOREIGN` and `UNWRITABLE` states through the same plumbing.
   - `older-install.installedAt(ledgerBehind?, downloadsBehind?)` rewrites what the device holds now as an install
     whose database is that many versions older held it — the moment before an update; the relaunch after it is the
     update (`AppUpdateIntegrationTest`, one case per version). The older database is **built by this build's own
@@ -969,6 +972,14 @@ too):
     layer too: the shared records' legacy files and keys, a transfer an earlier build started on the address it gave
     it. Every format cites the release source it copies (`v0.4:<path>:<line>`); each layer is deleted with the shim
     that reads it, and squashing a chain folds the layers below its new baseline into the baseline's.
+- `device` (`DeviceLevers`) — a phone before its first unlock since it restarted, implemented by the rig over three
+  mocks at once: the Keychain, the databases and the files sealed together, never one without the others, so it needs
+  all three mocked. What each store answers then is Apple's documented semantics for the classes the app writes —
+  after-first-unlock for the Keychain, until-first-user-authentication for the files — and was never measured: an
+  app running in that window cannot write its own log. The preferences are left alone, their sealed answer being
+  unmeasured too. A running phone cannot enter the state, so a test plays the restart — `device.lock()`, then the
+  host's cold background relaunch — and a phone locked after a first unlock is no state at all here: every store the
+  app writes stays readable in it (`changes/unavailable-keychain-and-preferences`).
 
 **Plumbing stays on the mock, never the face**: what the channel and the other mocks need of a system — the disk's
 read, write and list, the databases' opens and their deletion — is a member of the mock class, which the face gate

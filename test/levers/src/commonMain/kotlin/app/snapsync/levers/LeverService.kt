@@ -178,6 +178,8 @@ val LEVER_SERVICES: List<LeverService<*>> = listOf<LeverService<*>>(
     DatabasesLevers,
     FilesLevers,
     KeychainLevers,
+    PreferencesLevers,
+    DeviceLevers,
     OlderInstallLevers,
     OsLevers,
     PlayedOsLevers,

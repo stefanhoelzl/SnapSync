@@ -143,6 +143,8 @@ internal class HostThreads private constructor(
             mocks.systemUi.watch { events.tell(it) }
             mocks.crashReporter.watch { events.tell(it) }
             mocks.databases.watch { events.tell(it) }
+            mocks.keychain.watch { events.tell(it) }
+            mocks.preferences.watch { events.tell(it) }
             // What the operating system records of the app: its wakes, holds, push registrations and extension
             // registration (the completion handlers are the played OS's own, told where it is made).
             mocks.wakes.watch { events.tell(it) }

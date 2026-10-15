@@ -61,6 +61,7 @@ fun AppCore.inbound(host: HostAssembly) {
                 runtime,
                 foreground,
                 PushTokenRequest(ports.pushNotifications),
+                work.prelude,
                 host,
                 work.foregroundWork,
                 work.wakeWork,

@@ -792,19 +792,27 @@ Gone with the move: `device/clock/advance`, `device/network`, `device/conditions
 Each honoured wherever its system is mocked — always on the JVM host, on the app host where its adapter choice mocks
 it — and refused, naming the real system, everywhere else:
 
-- `databases` (`DatabasesLevers`) — `lock(on)` (every database unreadable: a device before its first unlock since
-  boot; an open fails, so does every statement on one already open), `fail(database, table, kind, times?)` (the next
+- `databases` (`DatabasesLevers`) — `fail(database, table, kind, times?)` (the next
   `times` — once by default — statements of `WriteKind.INSERT|UPDATE|DELETE` on that table fail as SQLite fails a write
   whose lock another process holds: thrown, nothing changed, the database still open — the `Databases` contract's
   `A_REFUSED_WRITE_THROWS_AND_CHANGES_NOTHING`; a database not created yet, or a table it does not hold, throws; each
   failure is told on the stream as `DatabaseFaulted`. No read fails: under iOS's write-ahead log a reader is never
-  blocked); read `switches()` (locked, the faults not yet spent), read `opened()` (every database any process opened,
-  by name, in order).
+  blocked); read `switches()` (the faults not yet spent), read `opened()` (every database any process opened, by
+  name, in order).
 - `files` (`FilesLevers`) — `appendLog(process, text)` (`LogProcess.APP|EXTENSION`: text a process's device log
   carries, what a diagnostic dump reads back); reads `stagedFiles()` (the download staging directory's files) and
   `appStorageBytes()`.
 - `keychain` (`KeychainLevers`) — `forget(item)` (`KeychainItem.EVENT_KEY`: the joined event's key gone, the membership
-  kept — a restore onto a new phone).
+  kept — a restore onto a new phone), `fail(item, kind, times?)` (`KeychainItem.EVENT_KEY|DEVICE_ID`,
+  `StoreFault.READ|WRITE`: the next `times` — once by default — reads answer that the Keychain could not be looked in,
+  or writes and removals fail; each told on the stream as `KeychainFaulted`).
+- `preferences` (`PreferencesLevers`) — `fail(item, kind, times?)` (`PreferenceItem.MOBILE_DATA|PUSH_REGISTRATION`,
+  `StoreFault.READ|WRITE`: a read answers that the value cannot be read, a write or removal that it could not be kept;
+  each told as `PreferencesFaulted`). Needs the preferences mocked.
+- `device` (`DeviceLevers`) — `lock()` / `unlock()`: a phone before its first unlock since it restarted — the Keychain,
+  the databases and the files sealed at once (Apple's documented classes; never measured on a phone), the preferences
+  left alone. Needs all three mocked. A running phone cannot enter the state: play the restart with `lock()` then a
+  cold background relaunch (no scene).
 - `older-install` (`OlderInstallLevers`) — `stagedBacklog(device?, asset?)` (an install upgraded from a build before
   per-asset byte release: a confirmed import whose staged files survive; answers the bytes it left on disk).
 
@@ -812,6 +820,9 @@ it — and refused, naming the real system, everywhere else:
 $R --url $B databases fail --database ledger.db --table membership --kind delete
 $R --url $B files append-log --process app --text 'a line'
 $R --url $B keychain forget --item event-key
+$R --url $B keychain fail --item device-id --kind write
+$R --url $B preferences fail --item mobile-data --kind read
+$R --url $B device lock
 ```
 
 Gone with the move: `device/databases/locked`, `device/membership/undeletable`, `device/event-key/lose`,

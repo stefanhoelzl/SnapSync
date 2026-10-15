@@ -9,6 +9,7 @@ import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.DeviceConditionsLevers
+import app.snapsync.levers.DeviceLevers
 import app.snapsync.levers.DownloadSessionLevers
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.ExtensionRegistryLevers
@@ -26,6 +27,7 @@ import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.PlayedOsLevers
+import app.snapsync.levers.PreferencesLevers
 import app.snapsync.levers.ProcessInfoLevers
 import app.snapsync.levers.ProcessMetricsLevers
 import app.snapsync.levers.PublicBackendLevers
@@ -206,6 +208,8 @@ private fun MockWorld.implementationOf(
         DatabasesLevers -> device.databases.operator
         FilesLevers -> DeviceFiles(device.disk)
         KeychainLevers -> Keychain(this)
+        PreferencesLevers -> PreferencesFaults(this)
+        DeviceLevers -> LockedDevice(this)
         OlderInstallLevers -> OlderInstall(this)
         OsLevers -> checkNotNull(host.entries)
         PlayedOsLevers -> os

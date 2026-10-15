@@ -12,6 +12,7 @@ import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.ThrowingDeletes
 import app.snapsync.feature.support.downloadJobs
+import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testShared
 import app.snapsync.feature.support.underRuntime
 import app.snapsync.mock.inMemoryDatabases
@@ -231,7 +232,7 @@ class DownloadControllerTest {
             // Named from here on: this constructor has grown twice mid-change, and positional
             // arguments silently re-bind when it does.
             stagedBytes = staging,
-            myDeviceId = testDeviceId(myDevice),
+            identity = testIdentity(myDevice),
             arm = DownloadArm(enabled = downloadEnabled, keyHeld = keyHeld),
             checks = checks,
             readyToImport = readyToImport,
