@@ -6,10 +6,11 @@ import app.snapsync.model.PrefRead
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.WriteOutcome
+import app.snapsync.services.preferences.PreferenceKeys
 import co.touchlab.kermit.Logger
 
 /** The registration record's Preferences key — runtime identity. */
-private const val LAST_REGISTERED_KEY = "app.snapsync.push.lastRegistered"
+private const val LAST_REGISTERED_KEY = PreferenceKeys.LAST_REGISTERED
 
 /** Where the record lived before it moved into [Preferences] — runtime identity: an updated device still holds it. */
 private const val LEGACY_FILE = "push-registration/last-registered.txt"

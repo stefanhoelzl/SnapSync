@@ -11,6 +11,7 @@ import app.snapsync.contracts.PreferencesState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.levers.StoreFault
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences
@@ -46,7 +47,8 @@ class StorageMockContractBindingsTest {
                         denied = setOf(FileArea.SHARED to path),
                     ).recorded(log),
                 )
-                FilesState.UNAVAILABLE -> Entered.Ready(inMemoryFiles(shared = null).recorded(log))
+                // Entered through the device's seal, as the channel's `DeviceLevers.lock` sets it.
+                FilesState.UNAVAILABLE -> Entered.Ready(FileSystemMock().apply { sealed = true }.port().recorded(log))
                 FilesState.DENIED_SUBDIRECTORY -> Entered.Unreachable(
                     "the double holds no directories inside directories",
                 )
@@ -93,14 +95,17 @@ class StorageMockContractBindingsTest {
                     mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
                 ).recorded(log),
             )
+            // Entered through the operator's hand, as the channel's `PreferencesLevers.fail` arms it.
             PreferencesState.FOREIGN -> Entered.Ready(
-                InMemoryPreferences(mutableMapOf(), foreign = setOf(PreferencesContract.key(clauseId))).recorded(log),
+                PreferencesMock().apply {
+                    fail(PreferencesContract.key(clauseId), StoreFault.READ, times = Int.MAX_VALUE)
+                }.port().recorded(log),
             )
             PreferencesState.UNWRITABLE -> Entered.Ready(
-                InMemoryPreferences(
-                    mutableMapOf(PreferencesContract.key(clauseId) to PreferencesContract.seed(clauseId)),
-                    refusesWrites = true,
-                ).recorded(log),
+                PreferencesMock().apply {
+                    values[PreferencesContract.key(clauseId)] = PreferencesContract.seed(clauseId)
+                    fail(PreferencesContract.key(clauseId), StoreFault.WRITE, times = Int.MAX_VALUE)
+                }.port().recorded(log),
             )
         }
     }

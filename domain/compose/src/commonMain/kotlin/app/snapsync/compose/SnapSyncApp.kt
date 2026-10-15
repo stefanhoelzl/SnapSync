@@ -107,7 +107,6 @@ import app.snapsync.services.gallery.LatestSelection
 import app.snapsync.services.gallery.PermissionAwareAssetPresence
 import app.snapsync.services.gallery.PermissionAwareCandidateSource
 import app.snapsync.services.gallery.denylistedAlbumMembers
-import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.upload.ExtensionRegistration
@@ -485,7 +484,7 @@ class AppCore internal constructor(
             eventAlbum = { albumCoordinator.albumIdFor(services.config.config.value) },
             onImportedIntoAlbum = { album -> albumCoordinator.onImportedInto(services.config.config.value, album) },
             stagedBytes = services.stagedBytes,
-            myDeviceId = services.deviceIdentity.requireDeviceId(),
+            identity = services.deviceIdentity,
             arm = downloadArm(),
             checks = services.eventChecks,
             readyToImport = { importsReady() },

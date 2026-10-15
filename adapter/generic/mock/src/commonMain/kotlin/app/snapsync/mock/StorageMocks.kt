@@ -3,6 +3,8 @@ package app.snapsync.mock
 import app.snapsync.levers.DatabaseFault
 import app.snapsync.levers.DatabaseSwitches
 import app.snapsync.levers.DatabasesLevers
+import app.snapsync.levers.StoreFault
+import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WriteKind
 import app.snapsync.model.FileArea
 import app.snapsync.ports.Databases
@@ -31,10 +33,23 @@ class FileSystemMock {
     internal val private = SnapshotMap<String, ByteArray>()
     internal val denied = SnapshotMap<Pair<FileArea, String>, Unit>()
 
+    /**
+     * Whether every area is unreachable to the app — a device not unlocked since it restarted. The channel's is
+     * `DeviceLevers.lock`; an inspector's own reads below go around it.
+     */
+    var sealed: Boolean
+        get() = seal.on
+        set(on) {
+            seal.on = on
+        }
+
+    private val seal = Seal()
+
     /** A process's face. The upload extension reaches only the shared area: pass `privateArea = false`. */
     fun port(privateArea: Boolean = true): Files = InMemoryFiles(
         mapOf(FileArea.SHARED to shared, FileArea.PRIVATE to private.takeIf { privateArea }),
         denied.keys,
+        seal = seal,
     )
 
     /** An area's files, path → bytes — live: a write here is a write to the device's disk. */
@@ -113,8 +128,10 @@ class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: Strin
     val locked: Boolean get() = held.locked
 
     /**
-     * Make every database unreadable, or readable again — a device before its first unlock since boot, when iOS keeps
-     * every App-Group file closed: an open fails, and so does every statement on a database a process already holds.
+     * Make every database unreadable, or readable again — a device before its first unlock since it restarted, when iOS
+     * keeps every App-Group file closed: an open fails, and so does every statement on a database a process already
+     * holds (a state no phone is in — nothing can have opened one before the first unlock — kept so a test that locks
+     * mid-process reads nothing). The channel's is `DeviceLevers.lock`, which seals the other stores with it.
      */
     fun lock(on: Boolean = true) {
         held.locked = on
@@ -142,12 +159,10 @@ class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: Strin
 
 /** The faults a real SQLite answers, which a test plays on the device's databases ([DatabasesLevers]). */
 class DatabasesOperator internal constructor(private val mock: DatabasesMock) : DatabasesLevers {
-    override suspend fun lock(on: Boolean) = mock.lock(on)
-
     override suspend fun fail(database: String, table: String, kind: WriteKind, times: Int?) =
         mock.fail(database, table, kind, times ?: 1)
 
-    override suspend fun switches(): DatabaseSwitches = DatabaseSwitches(mock.locked, mock.armed)
+    override suspend fun switches(): DatabaseSwitches = DatabaseSwitches(mock.armed)
 
     override suspend fun opened(): List<String> = mock.opened
 }
@@ -156,10 +171,24 @@ class DatabasesOperator internal constructor(private val mock: DatabasesMock) : 
 class PreferencesMock {
     internal val values = SnapshotMap<String, String>()
 
-    fun port(): Preferences = InMemoryPreferences(values)
+    private val faults = ArmedFaults<String>()
+
+    fun port(): Preferences = InMemoryPreferences(values, StoreRefusals(faults = faults))
+
+    /**
+     * The next [times] calls of [kind] on [key] refused — the inspector's hand behind the channel's
+     * `PreferencesLevers.fail`, which names the item and the [told] event; a contract binding arms one with none.
+     */
+    fun fail(key: String, kind: StoreFault, times: Int = 1, told: WorldEvent? = null) =
+        faults.arm(key, kind, times, told)
 
     /** Every key the device holds now: one snapshot, however the app writes meanwhile — the inspector's read. */
     fun keys(): Set<String> = values.snapshot().keys
+
+    /** Told each refusal an armed fault names, as the app's call spends it. */
+    fun watch(listener: StoreWatcher) {
+        faults.watcher = listener
+    }
 }
 
 /**
@@ -171,8 +200,34 @@ class SecureStoreMock(seed: Map<SecureSlot, String> = emptyMap()) {
         putAll(seed.mapValues { SecureStoreRead.Found(it.value, StoredProtection.BACKGROUND_READABLE) })
     }
 
-    /** A process's face; [unavailable] is one that cannot read the Keychain at all (locked since boot). */
-    fun port(unavailable: Boolean = false): SecureStore = InMemorySecureStore(items, unavailable)
+    private val faults = ArmedFaults<SecureSlot>()
+
+    /**
+     * Whether every call is refused — a device not unlocked since it restarted. The channel's is `DeviceLevers.lock`;
+     * the inspector's own hand below goes around it.
+     */
+    var sealed: Boolean
+        get() = seal.on
+        set(on) {
+            seal.on = on
+        }
+
+    private val seal = Seal()
+
+    /** A process's face. */
+    fun port(): SecureStore = InMemorySecureStore(items, StoreRefusals(seal, faults))
+
+    /**
+     * The next [times] calls of [kind] on [slot] refused — the inspector's hand behind the channel's
+     * `KeychainLevers.fail`, which names the item and the [told] event.
+     */
+    fun fail(slot: SecureSlot, kind: StoreFault, times: Int = 1, told: WorldEvent? = null) =
+        faults.arm(slot, kind, times, told)
+
+    /** Told each refusal an armed fault names, as the app's call spends it. */
+    fun watch(listener: StoreWatcher) {
+        faults.watcher = listener
+    }
 
     /** [slot]'s item gone, everything else kept — the inspector's hand behind the channel's `KeychainLevers.forget`. */
     fun forget(slot: SecureSlot) {

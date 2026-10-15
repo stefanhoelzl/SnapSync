@@ -21,7 +21,8 @@ fun inMemoryFiles(
 ): Files = InMemoryFiles(mapOf(FileArea.SHARED to shared, FileArea.PRIVATE to private), denied)
 
 /** [values] is the caller's own cell. */
-fun inMemoryPreferences(values: MutableMap<String, String> = mutableMapOf()): Preferences = InMemoryPreferences(values)
+fun inMemoryPreferences(values: MutableMap<String, String> = mutableMapOf()): Preferences =
+    InMemoryPreferences(values, StoreRefusals())
 
 /**
  * [items] is the caller's own cell (slot → value and protection); [unavailable] is a store that cannot be read at
@@ -30,7 +31,9 @@ fun inMemoryPreferences(values: MutableMap<String, String> = mutableMapOf()): Pr
 fun inMemorySecureStore(
     items: MutableMap<SecureSlot, SecureStoreRead.Found> = mutableMapOf(),
     unavailable: Boolean = false,
-): SecureStore = InMemorySecureStore(items, unavailable)
+): SecureStore = InMemorySecureStore(items, StoreRefusals(always = UNAVAILABLE.takeIf { unavailable }))
+
+private const val UNAVAILABLE = "in-memory store constructed unavailable"
 
 /**
  * Real in-memory SQLite databases (see [InMemoryDatabases]). [refusals] is the operator's cell: while it names a

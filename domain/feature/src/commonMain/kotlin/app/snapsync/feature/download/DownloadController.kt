@@ -1,6 +1,6 @@
 package app.snapsync.feature.download
 
-import app.snapsync.domain.device.DeviceId
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
@@ -23,6 +23,7 @@ import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
+import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.staging.StagingService
 import app.snapsync.services.wake.EventCheck
 import app.snapsync.services.wake.EventChecks
@@ -32,7 +33,7 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * The device-side download/import orchestrator. Reads the event-wide
- * union, selects **foreign** assets (`deviceId != myDeviceId`) not already imported, records them in
+ * union, selects **foreign** assets (`deviceId` not this device's) not already imported, records them in
  * the [store], enqueues their resource downloads, and imports any asset whose resources are all staged.
  * It owns no transport or PhotoKit detail — those are the [jobs] and [importer] seams — so it is
  * exercised in `commonTest` with fakes. Network/union failures keep last-good state (never throw).
@@ -59,7 +60,10 @@ class DownloadController(
     // Where staged bytes live, what is still on disk, and the release of settled rows' bytes. Required: a
     // composition that downloads must say where the bytes land.
     private val stagedBytes: StagingService,
-    private val myDeviceId: DeviceId,
+    // This device's identity, its id read when the union is — never at construction: a launch before the phone's first
+    // unlock since it restarted cannot read the Keychain, and a read made at composition would end that launch before
+    // it began.
+    private val identity: DeviceIdentity,
     // Whether the download arm may run at all ([DownloadArm]): the membership's direction and the event's key.
     private val arm: DownloadArm,
     // When a background wake last read the union (decision record `changes/timely-background-receiving`, D4): every
@@ -170,7 +174,8 @@ class DownloadController(
     private suspend fun heldPosition(eventId: EventId, trigger: UnionTrigger, receives: Boolean): Long? {
         val page = union.union(eventId, null, trigger).getOrElse { return null }
         if (!receives) return page.cursor
-        val foreign = page.assets.filter { it.deviceId != myDeviceId }.map { AssetRef(it.deviceId, it.assetId) }
+        val me = identity.requireDeviceId()
+        val foreign = page.assets.filter { it.deviceId != me }.map { AssetRef(it.deviceId, it.assetId) }
         val holds = mutex.withLock {
             store.settledAmong(foreign).size == foreign.size &&
                 store.pendingDownloads().isEmpty() &&
@@ -272,7 +277,8 @@ class DownloadController(
         from: Long?,
     ) {
         // Own contribution is already in this library; only foreign assets are download work.
-        val foreign = page.assets.filter { it.deviceId != myDeviceId }
+        val me = identity.requireDeviceId()
+        val foreign = page.assets.filter { it.deviceId != me }
         val foreignRefs = foreign.map { AssetRef(it.deviceId, it.assetId) }
         // ONE read of which of them are settled (imported or unimportable — delete-proof / cross-event
         // dedup), and ONE transaction planning the rest. Per asset this was a query plus a transaction,

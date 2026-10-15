@@ -1,13 +1,19 @@
 package app.snapsync.rig
 
+import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.levers.DeviceLevers
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.KeychainLevers
 import app.snapsync.levers.LogProcess
 import app.snapsync.levers.OlderInstallLevers
+import app.snapsync.levers.PreferenceItem
+import app.snapsync.levers.PreferencesLevers
 import app.snapsync.levers.SeededInstall
+import app.snapsync.levers.StoreFault
+import app.snapsync.levers.WorldEvent
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.model.APP_LOG_FILE_NAME
@@ -19,6 +25,7 @@ import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.ports.SecureSlot
 import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.preferences.PreferenceKeys
 import app.snapsync.services.secure.SecureSlots
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
@@ -43,12 +50,43 @@ internal class DeviceFiles(private val disk: FileSystemMock) : FilesLevers {
     override suspend fun appStorageBytes(): Long = disk.appStorageBytes()
 }
 
-/** [KeychainLevers] over the mocked Keychain: an item named by what it is, forgotten at the address the app keeps it. */
+/** [KeychainLevers] over the mocked Keychain: an item named by what it is, acted on at the address the app keeps it. */
 internal class Keychain(private val world: MockWorld) : KeychainLevers {
     override suspend fun forget(item: KeychainItem) = world.device.keychain.forget(slotOf(item))
 
+    override suspend fun fail(item: KeychainItem, kind: StoreFault, times: Int?) =
+        world.device.keychain.fail(slotOf(item), kind, times ?: 1, WorldEvent.KeychainFaulted(item, kind))
+
     private fun slotOf(item: KeychainItem): SecureSlot = when (item) {
         KeychainItem.EVENT_KEY -> SecureSlots.EVENT_KEY
+        KeychainItem.DEVICE_ID -> TrustSlots.DEVICE_ID
+    }
+}
+
+/** [PreferencesLevers] over the mocked preferences: an item named by what it is, refused at the key the app keeps it. */
+internal class PreferencesFaults(private val world: MockWorld) : PreferencesLevers {
+    override suspend fun fail(item: PreferenceItem, kind: StoreFault, times: Int?) =
+        world.device.preferences.fail(keyOf(item), kind, times ?: 1, WorldEvent.PreferencesFaulted(item, kind))
+
+    private fun keyOf(item: PreferenceItem): String = when (item) {
+        PreferenceItem.MOBILE_DATA -> PreferenceKeys.MOBILE_DATA
+        PreferenceItem.PUSH_REGISTRATION -> PreferenceKeys.LAST_REGISTERED
+    }
+}
+
+/**
+ * [DeviceLevers] over the mocked Keychain, databases and files: a phone before its first unlock since it restarted,
+ * every one of them sealed at once — never one without the others.
+ */
+internal class LockedDevice(private val world: MockWorld) : DeviceLevers {
+    override suspend fun lock() = seal(true)
+
+    override suspend fun unlock() = seal(false)
+
+    private fun seal(on: Boolean) {
+        world.device.keychain.sealed = on
+        world.device.databases.lock(on)
+        world.device.disk.sealed = on
     }
 }
 

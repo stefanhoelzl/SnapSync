@@ -7,10 +7,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 // The device's stores as typed services (`docs/testing.md`, "Typed services"): what a test may do to the disk, the
-// databases and the Keychain the app keeps its state in. Never what they hold — the app's private files and databases
-// are not observable (`docs/testing.md` §7, "The rules") — but what the device itself sees of them: which databases a
-// process opened, how many files sit in the staging directory, and the storage the app takes
-// (`WorldEvent.Settled.state` carries the last too).
+// databases, the Keychain and the preferences the app keeps its state in, and to the device that protects them. Never
+// what they hold — the app's private files and databases are not observable (`docs/testing.md` §7, "The rules") — but
+// what the device itself sees of them: which databases a process opened, how many files sit in the staging directory,
+// and the storage the app takes (`WorldEvent.Settled.state` carries the last too).
 
 /**
  * **The device's SQLite databases' face** — the faults a real SQLite answers, which the app must survive. The databases
@@ -18,12 +18,6 @@ import kotlinx.serialization.Serializable
  */
 @Rpc
 interface DatabasesLevers {
-    /**
-     * Every database unreadable, or — [on] `false` — readable again: a device before its first unlock since boot, when
-     * iOS keeps every App-Group file closed. An open fails, and so does every statement on a database already open.
-     */
-    suspend fun lock(on: Boolean)
-
     /**
      * The next [times] (omitted: one) statements of [kind] on [table] of [database] fail, as SQLite fails a write whose
      * lock another process holds: the statement throws and changes nothing, and the database stays open. Held to the
@@ -69,7 +63,7 @@ data class DatabaseFault(val database: String, val table: String, val kind: Writ
 
 /** Every switch an operator set on the databases ([DatabasesLevers]) as it stands now. */
 @Serializable
-data class DatabaseSwitches(val locked: Boolean, val faults: List<DatabaseFault>)
+data class DatabaseSwitches(val faults: List<DatabaseFault>)
 
 /** **The device's files' face** — what a test may add to them, and what the device counts of them. */
 @Rpc
@@ -102,7 +96,7 @@ enum class LogProcess {
     EXTENSION,
 }
 
-/** **The device's Keychain's face** — an item gone from it. */
+/** **The device's Keychain's face** — an item gone from it, or a call on one refused. */
 @Rpc
 interface KeychainLevers {
     /**
@@ -110,6 +104,14 @@ interface KeychainLevers {
      * phone's own key protection, leaves.
      */
     suspend fun forget(item: KeychainItem)
+
+    /**
+     * The next [times] (omitted: one) calls of [kind] on [item] refused: a read answers that the Keychain could not be
+     * looked in, a write or a removal that it failed, and nothing changes. Held to the `SecureStore` contract's
+     * `INACCESSIBLE` clauses. A refusal a locked phone does not explain — the sustained one is [DeviceLevers.lock]. Each
+     * refusal is told as [WorldEvent.KeychainFaulted].
+     */
+    suspend fun fail(item: KeychainItem, kind: StoreFault, times: Int? = null)
 
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<KeychainLevers>(
@@ -129,6 +131,84 @@ enum class KeychainItem {
     /** The joined event's key, when it is encrypted. */
     @SerialName("event-key")
     EVENT_KEY,
+
+    /** This device's identity — the id every event knows the phone by. */
+    @SerialName("device-id")
+    DEVICE_ID,
+}
+
+/** The calls a store fault refuses ([KeychainLevers.fail], [PreferencesLevers.fail]). */
+@Serializable
+enum class StoreFault {
+    /** A read: the store answers that it could not look, never that the item is absent. */
+    @SerialName("read")
+    READ,
+
+    /** A write or a removal: the store answers that it failed, and nothing changes. */
+    @SerialName("write")
+    WRITE,
+}
+
+/** **The device's preferences' face** — a call on one of the app's preferences refused. */
+@Rpc
+interface PreferencesLevers {
+    /**
+     * The next [times] (omitted: one) calls of [kind] on [item] refused: a read answers that the value cannot be read —
+     * what a value of a kind the app never writes answers — a write or a removal that it could not be kept. Held to the
+     * `Preferences` contract's `FOREIGN` and `UNWRITABLE` clauses. Each refusal is told as
+     * [WorldEvent.PreferencesFaulted].
+     */
+    suspend fun fail(item: PreferenceItem, kind: StoreFault, times: Int? = null)
+
+    @OptIn(ExperimentalRpcApi::class)
+    companion object : LeverService<PreferencesLevers>(
+        PreferencesLevers::class,
+        "preferences",
+        setOf(LeverNeed.PREFERENCES_MOCKED),
+        { serviceDescriptorOf() },
+    )
+}
+
+/**
+ * The app's preferences a test may refuse, by what they are — the channel maps each to the key the app keeps it under,
+ * so a renamed key breaks the channel's build rather than silently disarming a test.
+ */
+@Serializable
+enum class PreferenceItem {
+    /** Whether photos may use mobile data. */
+    @SerialName("mobile-data")
+    MOBILE_DATA,
+
+    /** The push registration the backend last accepted. */
+    @SerialName("push-registration")
+    PUSH_REGISTRATION,
+}
+
+/**
+ * **The device that protects the stores**: a phone before its first unlock since it restarted, when iOS keeps the
+ * Keychain, the databases and the app's files sealed — read as Apple documents their protection classes (the Keychain's
+ * after-first-unlock, the files' until-first-user-authentication); the state was never measured on a phone. The
+ * preferences are left as they are: what they answer while sealed is unmeasured too, and no guess is played.
+ */
+@Rpc
+interface DeviceLevers {
+    /**
+     * Seal the Keychain, the databases and the files: every Keychain call refused, every database open failed, every file
+     * area unreachable. A running phone cannot enter this state, so a test plays the restart — this, then the host's
+     * cold background relaunch.
+     */
+    suspend fun lock()
+
+    /** The first unlock since the restart: every store readable again. */
+    suspend fun unlock()
+
+    @OptIn(ExperimentalRpcApi::class)
+    companion object : LeverService<DeviceLevers>(
+        DeviceLevers::class,
+        "device",
+        setOf(LeverNeed.KEYCHAIN_MOCKED, LeverNeed.DATABASES_MOCKED, LeverNeed.FILES_MOCKED),
+        { serviceDescriptorOf() },
+    )
 }
 
 /**

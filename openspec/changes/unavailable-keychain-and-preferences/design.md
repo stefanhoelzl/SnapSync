@@ -127,6 +127,26 @@ key id must never exist without its key" — still holds: the config is written 
 *Alternative:* leave the order and accept the stray enrolment. Rejected: it contradicts the requirement, and another
 member's screen would count the device.
 
+### D6 — A launch that cannot read the Keychain still composes
+
+Found by the locked-phone behaviours: the download controller took this device's id as a value read when the
+composition built it, so a launch whose Keychain could not be read — a background wake before the first unlock since a
+restart — threw out of the composition before it began. It takes a supplier now, read where the union is read, as the
+upload core already did ("constructed lazily so the device id resolves on first in-cycle use"). A read that fails then
+fails one reconcile, which the runtime catches and the next wake repeats.
+
+### D7 — The foreground re-reads the membership before the screen
+
+Found by the same behaviours: a background launch before the first unlock seeds the membership unreadable — `null` to
+the screen — and the foreground assembled the status host before its prelude re-read it, so the first frame after the
+unlock was the create screen, corrected a moment later. That broke `app-experience`'s "a read of the membership that
+fails temporarily — including on a locked device — SHALL NOT drop a joined member to the create screen". `OnForeground`
+now re-reads the membership alone (`Prelude.membership`) before `host.assemble`; the attestation refresh, a network
+round trip, stays after it, so the first frame waits for no network.
+
+*Alternative:* a neutral "membership not read yet" layer. Rejected for now: the state cannot outlive the first unlock,
+and the re-read answers it before anything is drawn.
+
 ## Risks / Trade-offs
 
 - [The lock encodes Apple's documented semantics, not a measurement] → each mock's KDoc and `docs/testing.md` say so;

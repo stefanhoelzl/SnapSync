@@ -11,6 +11,7 @@ import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.downloadJobs
 import app.snapsync.feature.support.testClock
+import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testShared
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.EventConfig
@@ -27,7 +28,6 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.staging.StagingService
 import app.snapsync.services.wake.EventChecks
-import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -68,7 +68,7 @@ class DownloadPushReceiverTest {
             eventAlbum = { null },
             onImportedIntoAlbum = {},
             stagedBytes = staging,
-            myDeviceId = testDeviceId(myDevice),
+            identity = testIdentity(myDevice),
             // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
             // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no
             // longer defaults: a permissive default is what let "no membership" mean "download freely".

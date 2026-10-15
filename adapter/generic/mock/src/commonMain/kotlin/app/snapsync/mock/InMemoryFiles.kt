@@ -11,13 +11,18 @@ import app.snapsync.ports.Files
  * The honest in-memory [Files]: one map of path → bytes per area, the maps being the caller's own cells (initial
  * state by constructor, per the fake-honesty rule). An area mapped to `null` is unreachable — every operation
  * answers [FileResult.AreaUnavailable] — and a path in [denied] is a present file this process may not touch,
- * answering [FileResult.Denied] and never absence.
+ * answering [FileResult.Denied] and never absence. While [seal] is on every area is unreachable: a device not unlocked
+ * since it restarted, whose files iOS keeps closed.
  */
 internal class InMemoryFiles(
     private val areas: Map<FileArea, MutableMap<String, ByteArray>?>,
     private val denied: Set<Pair<FileArea, String>>,
     private val conditions: FileConditions = FileConditions(),
+    private val seal: Seal = Seal(),
 ) : Files {
+
+    /** [area]'s files, or `null` while it is unreachable — never mapped, or sealed with the device. */
+    private fun held(area: FileArea): MutableMap<String, ByteArray>? = if (seal.on) null else areas[area]
 
     /** What [conditions] answer for an operation on [path] — a change, or a lookup — before the maps are touched. */
     private fun refusal(area: FileArea, path: String, changing: Boolean): FileAccess<Nothing>? = when {
@@ -35,7 +40,7 @@ internal class InMemoryFiles(
         changing: Boolean = false,
         op: (MutableMap<String, ByteArray>) -> FileResult<T>,
     ): FileResult<T> {
-        val files = areas[area] ?: return FileResult.AreaUnavailable
+        val files = held(area) ?: return FileResult.AreaUnavailable
         refusal(area, path, changing)?.let { return it }
         if ((area to path) in denied) return FileResult.Denied("$area/$path is denied")
         return op(files)
@@ -48,7 +53,7 @@ internal class InMemoryFiles(
         changing: Boolean = false,
         op: (MutableMap<String, ByteArray>) -> FileAccess<T>,
     ): FileAccess<T> {
-        val files = areas[area] ?: return FileResult.AreaUnavailable
+        val files = held(area) ?: return FileResult.AreaUnavailable
         refusal(area, path, changing)?.let { return it }
         if ((area to path) in denied) return FileResult.Denied("$area/$path is denied")
         return op(files)
@@ -110,14 +115,14 @@ internal class InMemoryFiles(
         access(area, path) { FileResult.Ok(path in it) }.let { answer ->
             // A denied file is still there: only a condition of the directories on its path refuses the lookup.
             if (answer is FileResult.Denied && refusal(area, path, changing = false) == null) {
-                FileResult.Ok(path in areas[area].orEmpty())
+                FileResult.Ok(path in held(area).orEmpty())
             } else {
                 answer
             }
         }
 
     override fun locate(area: FileArea, path: String): FileLocation<String> =
-        if (areas[area] == null) FileResult.AreaUnavailable else FileResult.Ok("$MEM${area.name.lowercase()}/$path")
+        if (held(area) == null) FileResult.AreaUnavailable else FileResult.Ok("$MEM${area.name.lowercase()}/$path")
 
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> = at(
         area,
@@ -136,14 +141,14 @@ internal class InMemoryFiles(
      * of them points; any other path names nothing it holds.
      */
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> {
-        if (areas[area] == null) return FileResult.AreaUnavailable
+        if (held(area) == null) return FileResult.AreaUnavailable
         val source = FileArea.entries.firstOrNull { osPath.startsWith("$MEM${it.name.lowercase()}/") }
             ?: return FileResult.NotFound
         val sourcePath = osPath.removePrefix("$MEM${source.name.lowercase()}/")
-        val bytes = areas[source]?.get(sourcePath) ?: return FileResult.NotFound
+        val bytes = held(source)?.get(sourcePath) ?: return FileResult.NotFound
         return at(area, to, changing = true) { files ->
             if (files.throughAFile(to)) return@at FileResult.Failed("$to runs through a file")
-            areas[source]?.remove(sourcePath)
+            held(source)?.remove(sourcePath)
             files[to] = bytes
             FileResult.Ok(Unit)
         }
@@ -151,7 +156,7 @@ internal class InMemoryFiles(
 
     /** No directories are held, only paths: a directory holds what its prefix names. */
     override fun list(area: FileArea, directory: String): FileAccess<List<String>> {
-        val files = areas[area] ?: return FileResult.AreaUnavailable
+        val files = held(area) ?: return FileResult.AreaUnavailable
         if ((area to directory) in conditions.unlistable) return FileResult.Denied("$area/$directory may not be listed")
         if (directory in files) return FileResult.Failed("$directory is a file, not a directory")
         return FileResult.Ok(files.keys.toList().filter { it.startsWith("$directory/") }.sorted())
