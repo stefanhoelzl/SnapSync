@@ -10,6 +10,7 @@ import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -260,12 +261,14 @@ class AlbumIntegrationTest {
             never<WorldEvent.LibraryJoinedAlbum>()
         }
 
-        // Its bytes land, and the app publishes what it shares: with the one photo in play, that photo.
+        // Its bytes land: shared, with nothing left to upload. Not judged by a manifest publish — the manifest declared
+        // the photo when the walk found it, and a finished upload changes nothing it lists, so whether this act
+        // publishes again depends only on how many walks came before it.
         whenever {
             uploadSession.complete()
             os.foreground()
         }
-        then { event<WorldEvent.BackendReceived> { it.operation == PUBLISH } }
+        then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
 
     /** This device leaves its event. */
@@ -290,8 +293,5 @@ class AlbumIntegrationTest {
     private companion object {
         /** The id the photo library gives the photo [DEV_F] shared as FQ. */
         const val RECEIVED = "imported-$DEV_F-FQ"
-
-        /** The backend operation a device publishes what it shares through. */
-        const val PUBLISH = "publishManifest"
     }
 }
