@@ -1,13 +1,16 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Acts
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.step
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * **The ledger is the current membership's share set**, over the real stack driven through the control protocol:
@@ -25,36 +28,33 @@ class ShareSetIntegrationTest {
         requirement = "A photo already in an event is not uploaded again for it",
         scenario = "Rejoining shares without re-uploading",
     )
-    fun leave_then_rejoin_the_same_event_re_uploads_nothing() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        addPhoto("A")
-        uploadAll()
-        assertTrue(primaryKey("A") in objects())
-        val jobsBefore = jobs().created
-
-        leave()
+    fun leave_then_rejoin_the_same_event_re_uploads_nothing() = behaviour {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent().also {
+                photos("A")
+                uploaded("A")
+                left()
+            }
+        }
 
         // Rejoin through the event's link, as a member re-scanning the QR does.
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.phase?.step == JoinPhase.Detailed.Step.Ready }
-        join()
-        // The join loaded the stored photo back as done: the screen reads settled with the photo still in the library.
-        refresh()
-        awaitInSync()
-        cycle()
+        whenever { openLink(inviteLink(event)) }
+        then { screen<Layer.JoiningEvent> { it.phase.step == JoinPhase.Detailed.Step.Ready } }
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined>()
+            event<WorldEvent.MemberJoined>()
+            settled { true }
+        }
 
-        assertEquals(jobsBefore, jobs().created, "nothing the backend already holds is uploaded again")
-    }
+        // The join loaded the stored photo back as done: the screen reads settled with the photo still in the library…
+        whenever { os.foreground() }
+        then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
 
-    /** A switch to [eventId]'s link while joined, confirmed, then the regular join. */
-    private suspend fun Rig.switchTo(eventId: String) {
-        openLink(inviteLink(eventId))
-        awaitState { it.joined?.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready }
-        tap(UiIntent.ConfirmSwitch)
-        awaitState { !it.ready.configResolved }
-        join()
-        assertEquals(eventId, state().ready.eventId)
+        // …and nothing the backend already holds is uploaded again.
+        whenever { cycle() }
+        then { never<WorldEvent.UploadJobCreated>() }
     }
 
     @Test
@@ -63,44 +63,57 @@ class ShareSetIntegrationTest {
         requirement = "A photo already in an event is not uploaded again for it",
         scenario = "A photo in two events is shared to each",
     )
-    fun a_switch_starts_the_new_events_share_set_afresh_and_uploads_for_it() = rigTest {
-        extensionUploadsOnly()
-        val next = registerEvent(name = "Next") // E2, to switch to
-        val first = createAndJoin() // E1
-        addPhoto("A")
-        uploadAll()
-        assertTrue(primaryKey("A") in objects())
-        // Work the first membership recorded but never finished: it belongs to E1's share set only.
-        addPhoto("B")
-        cycle()
-        val jobsBefore = jobs().created
+    fun a_switch_starts_the_new_events_share_set_afresh_and_uploads_for_it() = behaviour {
+        val next = given {
+            extensionUploadsOnly()
+            registeredEvent(name = "Next").also { // E2, to switch to
+                joinedEvent() // E1
+                photos("A")
+                uploaded("A")
+                // Work the first membership recorded but never finished: it belongs to E1's share set only.
+                photos("B")
+                step("B requested", act = { cycle() }, until = {
+                    event<WorldEvent.UploadJobCreated> { it.job == primaryJob("B") }
+                    settled { true }
+                })
+            }
+        }
 
-        switchTo(next)
-        cycle()
         // Each event holds its own bytes (change `per-event-storage-layout`): the new share set starts empty, so A —
         // stored for E1 — and E1's unfinished B are both uploaded for E2, one new job each.
-        val after = jobs()
-        assertEquals(jobsBefore + 2, after.created, "one new job for each of A and B: $after")
-        assertTrue(primaryKey("A") in objects(event = first), "E1 still holds what was stored for it")
+        whenever { switchTo(next) }
+        then {
+            screen<Layer.Joined> { it.membership.eventId == next }
+            never<WorldEvent.EventDeleted>() // E1 still holds what was stored for it
+        }
+        whenever { cycle() }
+        then {
+            times(2) { event<WorldEvent.UploadJobCreated>() }
+            event<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") }
+            event<WorldEvent.UploadJobCreated> { it.job == primaryJob("B") }
+        }
     }
 
     @Test
     @Verifies(spec = "photo-sharing", requirement = "A photo already in an event is not uploaded again for it")
-    fun switching_away_and_back_re_uploads_nothing_the_event_already_holds() = rigTest {
-        extensionUploadsOnly()
-        val next = registerEvent(name = "Next")
-        val first = createAndJoin()
-        addPhoto("A")
-        uploadAll()
-        assertTrue(primaryKey("A") in objects())
+    fun switching_away_and_back_re_uploads_nothing_the_event_already_holds() = behaviour {
+        val first = given {
+            extensionUploadsOnly()
+            val next = registeredEvent(name = "Next")
+            val first = joinedEvent()
+            photos("A")
+            uploaded("A")
+            switchedTo(next)
+            uploaded("A")
+            first
+        }
 
-        switchTo(next)
-        uploadAll()
-        val jobsAway = jobs().created
-        switchTo(first)
-        cycle()
+        whenever { switchTo(first) }
+        then { screen<Layer.Joined> { it.membership.eventId == first } }
 
-        assertEquals(jobsAway, jobs().created, "A is already in E1: nothing is uploaded again on the way back")
+        // A is already in E1: nothing is uploaded again on the way back.
+        whenever { cycle() }
+        then { never<WorldEvent.UploadJobCreated>() }
     }
 
     /**
@@ -115,21 +128,32 @@ class ShareSetIntegrationTest {
         scenario = "Rescanning the joined event changes nothing",
     )
     @Verifies(spec = "invite-link", requirement = "Reopening the current event's invite changes nothing")
-    fun re_scanning_your_own_events_link_creates_no_new_upload_job_and_re_uploads_nothing() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        addPhoto("A")
-        cycle() // A is requested: work in flight
-        assertEquals(1, jobs().created)
+    fun re_scanning_your_own_events_link_creates_no_new_upload_job_and_re_uploads_nothing() = behaviour {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent().also {
+                photos("A")
+                step("A requested: work in flight", act = { cycle() }, until = {
+                    times(1) { event<WorldEvent.UploadJobCreated>() }
+                    settled { true }
+                })
+            }
+        }
 
-        openLink(inviteLink(event))
-        cycle()
+        whenever { openLink(inviteLink(event)) }
+        then {
+            never<WorldEvent.MemberJoined>()
+            never<WorldEvent.MemberLeft>()
+            neverScreen<Layer.Joined> { it.membership.eventId != event }
+        }
 
-        val after = jobs()
-        assertEquals(1, after.created, "a re-scan loads nothing, so the in-flight work is not requested again: $after")
-        assertEquals(listOf(primaryJob("A")), after.live)
-        assertTrue(objects().isEmpty(), "nothing re-uploaded")
-        assertEquals(event, state().ready.eventId)
+        // A re-scan loads nothing, so the in-flight work is not requested again, and nothing is re-uploaded.
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.BytesStored>()
+            settled { it.state.inFlight?.jobs == listOf(primaryJob("A")) }
+        }
     }
 
     @Test
@@ -138,24 +162,64 @@ class ShareSetIntegrationTest {
         requirement = "A photo already in an event is not uploaded again for it",
         scenario = "An offline join may upload again, never duplicate",
     )
-    fun a_join_whose_listing_fails_still_joins_and_uploads() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("A")
-        uploadAll()
-        assertTrue(primaryKey("A") in objects())
-        leave()
-        val jobsBefore = jobs().created
+    fun a_join_whose_listing_fails_still_joins_and_uploads() = behaviour {
+        val next = given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            uploaded("A")
+            left()
+            step("the listing failing", act = { backend.failListing(true) }, until = {})
+            createdEvent(name = "Next")
+        }
 
-        backend.failListing(true)
-        val next = createAndJoin(name = "Next")
-        backend.failListing(false)
+        // The failed listing blocked nothing.
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined> { it.membership.eventId == next }
+            settled { true }
+        }
 
-        assertEquals(next, state().ready.eventId, "the failed listing blocked nothing")
-        cycle()
         // The ledger started empty rather than stale — and the cost of the failed load: the photo is uploaded
         // again, idempotently.
-        assertTrue(primaryJob("A") in jobs().live, "the photo is requested again")
-        assertEquals(jobsBefore + 1, jobs().created)
+        whenever {
+            backend.failListing(false)
+            cycle()
+        }
+        then {
+            times(1) { event<WorldEvent.UploadJobCreated>() }
+            settled { primaryJob("A") in it.state.inFlight?.jobs.orEmpty() } // the photo is requested again
+        }
+    }
+
+    // ---- helpers --------------------------------------------------------------------------------
+
+    /** The member leaves the joined event, and the backend records it. */
+    private suspend fun Given.left() = step("left", act = { tap(UiIntent.LeaveEvent) }, until = {
+        event<WorldEvent.MemberLeft>()
+        settled { true }
+    })
+
+    /** A switch to [eventId] while joined: done ([switchTo]), and whatever it started settled. */
+    private suspend fun Given.switchedTo(eventId: String) = step("switched to $eventId", act = {
+        switchTo(eventId)
+    }, until = {
+        screen<Layer.Joined> { it.membership.eventId == eventId }
+        settled { true }
+    })
+
+    /** [eventId]'s link opened while joined, the switch confirmed once its gate is ready, then the regular join. */
+    private suspend fun Acts.switchTo(eventId: String) {
+        openLink(inviteLink(eventId))
+        awaitScreen("the switch ready") { ui ->
+            (ui.layer as? Layer.Joined)?.pendingSwitch?.phase?.step == JoinPhase.Detailed.Step.Ready
+        }
+        tap(UiIntent.ConfirmSwitch)
+        awaitScreen("$eventId's join gate") { ui ->
+            (ui.layer as? Layer.JoiningEvent)?.let {
+                it.eventId == eventId && it.phase.step == JoinPhase.Detailed.Step.Ready
+            } == true
+        }
+        confirmJoin()
     }
 }

@@ -1,6 +1,8 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -26,24 +28,38 @@ import kotlin.test.assertEquals
 class CapTruncatedPublishIntegrationTest {
 
     @Test
-    fun a_device_that_never_drains_still_publishes_what_it_uploaded() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        uploadQueue.jobLimit(2) // fewer slots than there is work, with enough left over to stay behind
-        for (id in listOf("A", "B", "C", "D", "E")) addPhoto(id)
+    fun a_device_that_never_drains_still_publishes_what_it_uploaded() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            // Fewer slots than there is work, with enough left over to stay behind.
+            step("two slots", act = { uploadQueue.jobLimit(2) }, until = {})
+            photos("A", "B", "C", "D", "E")
+        }
 
         // Cycle 1: two jobs created, the third is left over → the cycle cannot drain.
-        assertEquals("processing", cycle())
-        assertEquals(setOf(primaryJob("A"), primaryJob("B")), jobs().live.toSet())
+        var answer = ""
+        whenever { answer = cycle() }
+        then {
+            times(2) { event<WorldEvent.UploadJobCreated>() }
+            settled { it.state.inFlight?.jobs?.toSet() == setOf(primaryJob("A"), primaryJob("B")) }
+        }
+        assertEquals("processing", answer)
 
         // The two uploads land, freeing both slots — and the next cycle is STILL truncated, because three assets
         // remain and only two can be in flight. This is the steady state of a device that is behind: it never
         // reaches the end of its own work list.
-        completeJobs()
-        assertEquals("processing", cycle())
-
+        whenever {
+            uploadQueue.completeJob()
+            answer = cycle()
+        }
         // THE POINT. A cycle that never drained has published what it settled, so the event union lists this
         // device's photos — while it is still uploading, not after it stops.
-        assertEquals(setOf("A", "B"), union(event).keys, "the union lists what landed, on a cycle that did not drain")
+        then {
+            event<WorldEvent.UnionChanged> { it.gained && it.asset == "A" }
+            event<WorldEvent.UnionChanged> { it.gained && it.asset == "B" }
+            never<WorldEvent.UnionChanged> { it.asset !in setOf("A", "B") || !it.gained }
+        }
+        assertEquals("processing", answer, "the union lists what landed, on a cycle that did not drain")
     }
 }

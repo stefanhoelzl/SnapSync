@@ -259,8 +259,9 @@ sealed interface WorldEvent {
 
     /**
      * The backend applied [device]'s manifest for [event] at [version]: [added] are the asset ids it declares that the
-     * one it replaced did not, [withdrawn] those it no longer declares. Every applied publish is told — one that changes
-     * no asset (a republish under a newer version) with both empty; one answered and not applied (older, closed) is not.
+     * one it replaced did not, [withdrawn] those it no longer declares, and [final] whether it declares the device's
+     * share settled. Every applied publish is told — one that changes no asset (a republish under a newer version) with
+     * both lists empty; one answered and not applied (older, closed) is not.
      */
     @Serializable
     @SerialName("backend-manifest-published")
@@ -270,6 +271,7 @@ sealed interface WorldEvent {
         val version: Long?,
         val added: List<String>,
         val withdrawn: List<String>,
+        val final: Boolean,
     ) : Backend
 
     /** The bytes of [asset]'s [role] (its wire name: `original`, `paired-video`, …) from [device] landed in [event]. */

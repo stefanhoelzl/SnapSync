@@ -2,10 +2,10 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import app.snapsync.domain.sharing.Direction
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * A member's range reaching outside the event's dates, over the REAL composition (decision record
@@ -24,20 +24,29 @@ class FlexibleShareRangeIntegrationTest {
         requirement = "Nothing is shared before the event starts",
         scenario = "Photos from before the start wait for it",
     )
-    fun photos_from_before_the_start_wait_for_it_and_are_shared_once_it_has_passed() = rigTest {
-        extensionUploadsOnly()
-        advanceTo(BEFORE_THE_START)
-        create(startsAt = START, endsAt = END)
-        // The member shares from the evening before the event, and took a photo then.
-        join(Choices(cutoff = EVENING_BEFORE))
-        addPhoto("EVE", date = TAKEN_THE_EVENING_BEFORE)
+    fun photos_from_before_the_start_wait_for_it_and_are_shared_once_it_has_passed() = behaviour(
+        startAt = BEFORE_THE_START,
+    ) {
+        given {
+            extensionUploadsOnly()
+            // The member shares from the evening before the event, and took a photo then.
+            joinedEvent(Choices(cutoff = EVENING_BEFORE), startsAt = START, endsAt = END)
+            photoTaken("EVE", date = TAKEN_THE_EVENING_BEFORE)
+        }
 
-        uploadAll()
-        assertTrue(objects().isEmpty(), "nothing is uploaded before the event starts")
+        // Nothing is uploaded before the event starts.
+        whenever { uploadAll() }
+        then {
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.BytesStored>()
+        }
 
-        advanceTo(DURING)
-        uploadAll()
-        assertTrue(objects().any { it.startsWith("EVE") }, "the photo from the evening before is shared once it starts")
+        // The photo from the evening before is shared once it starts.
+        whenever {
+            advanceTo(DURING)
+            uploadAll()
+        }
+        then { event<WorldEvent.BytesStored> { it.asset == "EVE" } }
     }
 
     @Test
@@ -46,35 +55,40 @@ class FlexibleShareRangeIntegrationTest {
         requirement = "A member's share is settled only after their own range has ended",
         scenario = "A range that ends after the event keeps it unfinished",
     )
-    fun a_range_ending_after_the_event_is_settled_at_its_own_end() = rigTest {
-        extensionUploadsOnly()
-        advanceTo(DURING)
-        val event = createAndJoin(Choices(until = TWO_DAYS_AFTER), startsAt = START, endsAt = END)
+    fun a_range_ending_after_the_event_is_settled_at_its_own_end() = behaviour(startAt = DURING) {
+        given {
+            extensionUploadsOnly()
+            joinedEvent(Choices(until = TWO_DAYS_AFTER), startsAt = START, endsAt = END)
+        }
 
-        advanceTo(AFTER_THE_EVENT)
-        cycle()
-        assertEquals(false, final(event), "the member's range has not ended yet")
+        whenever {
+            advanceTo(AFTER_THE_EVENT)
+            cycle()
+        }
+        then { never<WorldEvent.ManifestPublished> { it.final } } // the member's range has not ended yet
 
-        advanceTo(AFTER_THE_RANGE)
-        cycle()
-        assertEquals(true, final(event), "settled once the member's own range has ended")
+        whenever {
+            advanceTo(AFTER_THE_RANGE)
+            cycle()
+        }
+        then { event<WorldEvent.ManifestPublished> { it.final } } // settled once the member's own range has ended
     }
 
     @Test
     @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after their own range has ended")
-    fun a_range_ending_before_the_event_is_settled_before_the_event_ends() = rigTest {
-        extensionUploadsOnly()
-        advanceTo(DURING)
-        val event =
-            createAndJoin(Choices(direction = Direction.UploadOnly, until = EARLY_END), startsAt = START, endsAt = END)
+    fun a_range_ending_before_the_event_is_settled_before_the_event_ends() = behaviour(startAt = DURING) {
+        given {
+            extensionUploadsOnly()
+            joinedEvent(Choices(direction = Direction.UploadOnly, until = EARLY_END), startsAt = START, endsAt = END)
+        }
 
-        advanceTo(AFTER_THE_EARLY_END)
-        cycle()
-        assertEquals(true, final(event), "settled at the member's own end, while the event still runs")
+        // Settled at the member's own end, while the event still runs.
+        whenever {
+            advanceTo(AFTER_THE_EARLY_END)
+            cycle()
+        }
+        then { event<WorldEvent.ManifestPublished> { it.final } }
     }
-
-    private suspend fun Rig.final(event: String): Boolean =
-        checkNotNull(backend.membership(event).manifest).final
 
     private companion object {
         const val START = "2026-05-15T00:00:00"

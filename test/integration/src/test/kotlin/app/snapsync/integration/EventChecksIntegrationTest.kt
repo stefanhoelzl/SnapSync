@@ -1,8 +1,10 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Choices
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
 import kotlin.test.Test
-import kotlin.test.assertEquals
 
 /**
  * **A background wake asks the event at most once an hour** (decision record `changes/timely-background-receiving`,
@@ -13,90 +15,111 @@ import kotlin.test.assertEquals
 class EventChecksIntegrationTest {
 
     @Test
-    fun heartbeats_read_the_union_at_most_once_an_hour() = rigTest {
-        val event = createAndJoin()
-        advanceTo(T0)
-        heartbeat() // long after the join's own reads: this wake asks
-        val first = unionReads(event)
+    fun heartbeats_read_the_union_at_most_once_an_hour() = behaviour {
+        given {
+            joinedEvent()
+            // Long after the join's own reads: this wake asks.
+            step("a heartbeat at $T0", act = {
+                advanceTo(T0)
+                heartbeat()
+            }, until = { settled { true } })
+        }
 
-        advanceTo(T0_PLUS_10_MIN)
-        heartbeat()
-        assertEquals(first, unionReads(event), "ten minutes later it does not")
+        whenever {
+            advanceTo(T0_PLUS_10_MIN)
+            heartbeat()
+        }
+        then { never<WorldEvent.BackendReceived> { it.operation == UNION_READ } } // ten minutes later it does not
 
-        advanceTo(T0_PLUS_1_H)
-        heartbeat()
-        assertEquals(first + 1, unionReads(event), "an hour later it asks again")
+        whenever {
+            advanceTo(T0_PLUS_1_H)
+            heartbeat()
+        }
+        then {
+            times(
+                1,
+            ) { event<WorldEvent.BackendReceived> { it.operation == UNION_READ } }
+        } // an hour later it asks again
     }
 
     @Test
-    fun a_push_reads_the_union_whenever_it_comes_and_resets_the_hour() = rigTest {
-        val event = createAndJoin()
-        advanceTo(T0)
-        heartbeat()
-        val before = unionReads(event)
+    fun a_push_reads_the_union_whenever_it_comes_and_resets_the_hour() = behaviour {
+        val event = given {
+            joinedEvent().also {
+                step("a heartbeat at $T0", act = {
+                    advanceTo(T0)
+                    heartbeat()
+                }, until = { settled { true } })
+            }
+        }
 
-        advanceTo(T0_PLUS_10_MIN)
-        os.silentPush(event, awaitRelease = true)
-        eventually(read = { unionReads(event) }) { it == before + 1 }
+        whenever {
+            advanceTo(T0_PLUS_10_MIN)
+            os.silentPush(event)
+        }
+        then { times(1) { event<WorldEvent.BackendReceived> { it.operation == UNION_READ } } }
 
-        advanceTo(T0_PLUS_20_MIN)
-        heartbeat()
-        assertEquals(before + 1, unionReads(event), "the wake after a push reads nothing")
+        // The wake after a push reads nothing.
+        whenever {
+            advanceTo(T0_PLUS_20_MIN)
+            heartbeat()
+        }
+        then { never<WorldEvent.BackendReceived> { it.operation == UNION_READ } }
     }
 
     @Test
-    fun after_the_end_heartbeats_read_the_event_at_most_once_an_hour_and_a_push_always() = rigTest {
-        advanceTo(DURING)
-        val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
-        // A second member that never settles keeps the event open, so this one stays joined to be woken.
-        foreignDevice(DEV_F, "FQ")
-        // The join's own wake runs on after the join answers, and asks the event whenever it ends — it is not bounded:
-        // awaited before the end passes, or a late one reads the event's state between the two heartbeats.
-        awaitNoHolds()
-        advanceTo(AFTER_THE_END)
-        heartbeat()
-        val first = eventReads(event)
+    fun after_the_end_heartbeats_read_the_event_at_most_once_an_hour_and_a_push_always() = behaviour(startAt = DURING) {
+        val event = given {
+            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END).also {
+                // A second member that never settles keeps the event open, so this one stays joined to be woken.
+                fellowMember(DEV_F, "FQ")
+                step("a heartbeat after the end", act = {
+                    advanceTo(AFTER_THE_END)
+                    heartbeat()
+                }, until = { settled { true } })
+            }
+        }
 
-        advanceTo(AFTER_THE_END_PLUS_10_MIN)
-        heartbeat()
-        assertEquals(first, eventReads(event), "a wake within the hour reads no state")
+        whenever {
+            advanceTo(AFTER_THE_END_PLUS_10_MIN)
+            heartbeat()
+        }
+        then { never<WorldEvent.BackendReceived> { it.operation == EVENT_READ } } // a wake within the hour reads no state
 
-        os.silentPush(event, awaitRelease = true)
-        eventually<Int>(read = { eventReads(event) }) { it == first + 1 }
+        whenever { os.silentPush(event) }
+        then { times(1) { event<WorldEvent.BackendReceived> { it.operation == EVENT_READ } } }
     }
 
     @Test
-    fun a_join_reads_the_union_once() = rigTest {
-        val event = createAndJoin()
-        assertEquals(1, unionReads(event), "the join read it before the membership was saved")
-        settleDownloads()
-        assertEquals(1, unionReads(event), "nothing after the save reads it again: the reconcile, the arm, the gather")
+    fun a_join_reads_the_union_once() = behaviour {
+        given { createdEvent() }
+        // The join read it before the membership was saved; nothing after the save reads it again: the reconcile, the
+        // arm, the gather.
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined>()
+            times(1) { event<WorldEvent.BackendReceived> { it.operation == UNION_READ } }
+        }
     }
 
     @Test
-    fun a_reconfigure_reads_the_union_once() = rigTest {
-        val event = createAndJoin(Choices(saveToAlbum = false))
-        settleDownloads()
-        val before = unionReads(event)
-
-        reconfigure(Choices(saveToAlbum = true))
-        awaitState { it.joined?.membership?.savesToAlbum == true }
-        settleDownloads()
-
-        assertEquals(before + 1, unionReads(event), "the reconcile reads it; the arm and the gather do not")
+    fun a_reconfigure_reads_the_union_once() = behaviour {
+        given { joinedEvent(Choices(saveToAlbum = false)) }
+        // The reconcile reads it; the arm and the gather do not.
+        whenever { reconfigure(Choices(saveToAlbum = true)) }
+        then {
+            screen<Layer.Joined> { it.membership.savesToAlbum }
+            times(1) { event<WorldEvent.BackendReceived> { it.operation == UNION_READ } }
+        }
     }
-
-    private suspend fun Rig.heartbeat() {
-        os.backgroundTask(HEARTBEAT_TASK, awaitRelease = true)
-    }
-
-    private suspend fun Rig.unionReads(event: String): Int =
-        backend.eventState(event).unionReads
-
-    private suspend fun Rig.eventReads(event: String): Int =
-        backend.eventState(event).detailReads
 
     private companion object {
+        /** The union read's operation. */
+        const val UNION_READ = "eventFiles"
+
+        /** The event read's operation: its details and state. */
+        const val EVENT_READ = "getEvent"
+
         const val T0 = "2026-06-10T12:00:00Z"
         const val T0_PLUS_10_MIN = "2026-06-10T12:10:00Z"
         const val T0_PLUS_20_MIN = "2026-06-10T12:20:00Z"

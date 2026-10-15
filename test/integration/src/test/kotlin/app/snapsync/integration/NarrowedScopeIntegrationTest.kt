@@ -2,9 +2,14 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
-import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.control.behaviour.Acts
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
+import kotlinx.datetime.toLocalDateTime
 import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlin.time.Instant
 
 /**
  * **A narrowing takes effect on the bytes, not only on the manifest**, over the real stack: the composed core, the real
@@ -30,71 +35,82 @@ class NarrowedScopeIntegrationTest {
     private val late = "2026-06-10T10:00:00Z"
     private val narrow = "2026-06-01T00:00:00Z"
 
-    /** Raise the cutoff on the joined membership through the settings surface, as a member does. */
-    private suspend fun Rig.narrow() {
+    /** The member raises the cutoff on the joined membership through the settings surface, and the screen shows it. */
+    private suspend fun Acts.narrow() {
         reconfigure(Choices(cutoff = narrow))
-        awaitState { it.ready.minPhotoDate?.let { d -> d >= narrow } == true }
+        val from = Instant.parse(narrow).toLocalDateTime(zone)
+        awaitScreen("the narrowed range") { ui -> (ui.layer as? Layer.Joined)?.membership?.sharesFrom == from }
+    }
+
+    /**
+     * A backlog the wide policy recorded and no cycle has drained: the OS accepts no job, so a cycle records what its
+     * walk found — declared in the manifest — and enqueues nothing. Then the OS takes jobs again.
+     */
+    private suspend fun Given.backlogRecorded(vararg ids: String) {
+        step("no slot", act = { uploadQueue.jobLimit(0) }, until = {})
+        step("the backlog recorded", act = { cycle() }, until = {
+            ids.forEach { id -> event<WorldEvent.ManifestPublished> { id in it.added } } // recorded under the wide cutoff
+            never<WorldEvent.UploadJobCreated>() // nothing was enqueued yet
+        })
+        step("slots again", act = { uploadQueue.jobLimit() }, until = {})
     }
 
     @Test
     @Verifies(spec = "photo-sharing", requirement = "Only photos inside the range the member chose are shared")
-    fun raising_the_cutoff_stops_uploading_the_rows_the_wider_one_recorded() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        addPhoto("EARLY", date = early)
-        addPhoto("LATE", date = late)
+    fun raising_the_cutoff_stops_uploading_the_rows_the_wider_one_recorded() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("EARLY", date = early)
+            photoTaken("LATE", date = late)
+            backlogRecorded("EARLY", "LATE")
+            // The member narrows. EARLY is now outside the membership's scope.
+            step("narrowed", act = { narrow() }, until = { settled { true } })
+        }
 
-        // A backlog the wide policy recorded and no cycle has drained: the OS accepted no job.
-        uploadQueue.jobLimit(0)
-        cycle()
-        assertEquals(setOf("EARLY", "LATE"), manifest(event)?.keys, "both were recorded under the wide cutoff")
-        assertEquals(0, jobs().created, "nothing was enqueued yet")
+        // The excluded row costs no job — the narrowing reaches the bytes, not only the manifest.
+        whenever { cycle() }
+        then {
+            times(1) { event<WorldEvent.UploadJobCreated>() }
+            settled { it.state.inFlight?.jobs == listOf(primaryJob("LATE")) }
+        }
 
-        // The member narrows. EARLY is now outside the membership's scope.
-        uploadQueue.jobLimit()
-        narrow()
-
-        cycle()
-        assertEquals(
-            listOf(primaryJob("LATE")),
-            jobs().live,
-            "the excluded row costs no job — the narrowing reaches the bytes, not only the manifest",
-        )
-
-        // …and it keeps not uploading, cycle after cycle.
-        completeJobs(primaryJob("LATE"))
-        cycle()
-        cycle()
-        assertEquals(setOf(primaryKey("LATE")), objects(), "no excluded asset's bytes ever reach the backend")
-        assertEquals(1, jobs().created)
+        // …and it keeps not uploading, cycle after cycle: no excluded asset's bytes ever reach the backend.
+        whenever {
+            uploadQueue.completeJob(primaryJob("LATE"))
+            cycle()
+            cycle()
+        }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "LATE" }
+            never<WorldEvent.BytesStored> { it.asset != "LATE" }
+            never<WorldEvent.UploadJobCreated>()
+        }
     }
 
     @Test
     @Verifies(spec = "photo-sharing", requirement = "Only photos inside the range the member chose are shared")
-    fun excluded_rows_do_not_starve_admitted_work() = rigTest {
-        extensionUploadsOnly()
+    fun excluded_rows_do_not_starve_admitted_work() = behaviour {
         // The one way to make this worse than the bug: admit AFTER a bounded read. Rows needing a job come back in
         // a stable key order, so an excluded backlog at the front would fill a bounded read on every cycle and the
         // admitted row further down would never be reached — a permanent, silent stall.
-        val event = createAndJoin()
         // More excluded rows than several resolve chunks, all sorting AHEAD of the admitted one by key.
-        repeat(20) { i -> addPhoto("A${(i + 1).toString().padStart(2, '0')}", date = early) }
-        addPhoto("Z01", date = late)
+        val excluded = (1..20).map { i -> "A${i.toString().padStart(2, '0')}" }
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            excluded.forEach { photoTaken(it, date = early) }
+            photoTaken("Z01", date = late)
+            backlogRecorded(*(excluded + "Z01").toTypedArray()) // every asset was recorded under the wide cutoff
+            step("narrowed", act = { narrow() }, until = { settled { true } })
+        }
 
-        uploadQueue.jobLimit(0)
-        cycle()
-        assertEquals(21, manifest(event)?.size, "every asset was recorded under the wide cutoff")
-
-        uploadQueue.jobLimit()
-        narrow()
-        cycle()
-
-        assertEquals(
-            listOf(primaryJob("Z01")),
-            jobs().live,
-            "the admitted row is enqueued even though 20 excluded rows sort ahead of it",
-        )
-        assertEquals(1, jobs().created)
+        // The admitted row is enqueued even though 20 excluded rows sort ahead of it.
+        whenever { cycle() }
+        then {
+            times(1) { event<WorldEvent.UploadJobCreated>() }
+            settled { it.state.inFlight?.jobs == listOf(primaryJob("Z01")) }
+        }
     }
 
     @Test
@@ -104,24 +120,28 @@ class NarrowedScopeIntegrationTest {
         requirement = "Settings changes take effect immediately",
         scenario = "Narrowing withdraws listings but not received copies",
     )
-    fun after_a_narrowing_the_manifest_and_the_uploaded_set_are_the_same_set() = rigTest {
-        extensionUploadsOnly()
+    fun after_a_narrowing_the_manifest_and_the_uploaded_set_are_the_same_set() = behaviour {
         // Not "each is individually correct" — the SAME set. One policy gates both, so a narrowing that reached one
         // consumer and not the other is the defect, whatever each looks like alone.
-        val event = createAndJoin()
-        addPhoto("EARLY", date = early)
-        addPhoto("LATE", date = late)
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("EARLY", date = early)
+            photoTaken("LATE", date = late)
+            backlogRecorded("EARLY", "LATE")
+        }
 
-        uploadQueue.jobLimit(0)
-        cycle()
-        uploadQueue.jobLimit()
-        narrow()
-
-        uploadAll()
-
-        val listed = manifest(event)?.keys.orEmpty()
-        val uploaded = objects().mapTo(mutableSetOf()) { assetIdFromUploadKey(it).value }
-        assertEquals(setOf("LATE"), listed, "the manifest declares only what the narrowed policy admits")
-        assertEquals(listed, uploaded, "what is declared and what is uploaded are one set")
+        // Both were declared; from the narrowing on, the manifest declares only what the narrowed policy admits — and
+        // what is declared and what is uploaded are one set.
+        whenever {
+            narrow()
+            uploadAll()
+        }
+        then {
+            event<WorldEvent.ManifestPublished> { "EARLY" in it.withdrawn }
+            never<WorldEvent.ManifestPublished> { "EARLY" in it.added || "LATE" in it.withdrawn }
+            event<WorldEvent.BytesStored> { it.asset == "LATE" }
+            never<WorldEvent.BytesStored> { it.asset != "LATE" }
+        }
     }
 }
