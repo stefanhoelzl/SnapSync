@@ -39,6 +39,7 @@ class LaneLoop(
     private val interleaving: Interleaving,
     /** The clock every port face reads: the loop moves it under [LoopTime.MOCKED], and only reads it otherwise. */
     private val clock: LoopClock,
+    /** Told under the loop's lock, so the report precedes whatever runs next: it must not wait on a lane. */
     private val onSettled: (Settled) -> Unit = {},
     private val onViolation: (String) -> Unit = {},
 ) : AutoCloseable {
@@ -198,22 +199,19 @@ class LaneLoop(
     private fun work(lane: Lane) {
         CURRENT.set(lane)
         while (true) {
-            val next = lock.withLock { nextFor(lane) } ?: return
-            when (next) {
-                is Next.Run -> run(lane, next.task)
-                is Next.Report -> report(next.settled)
-            }
+            val task = lock.withLock { nextFor(lane) } ?: return
+            run(lane, task)
         }
     }
 
-    /** What [lane]'s thread does next, waiting while there is nothing; `null` once the loop closes. */
-    private fun nextFor(lane: Lane): Next? {
+    /** The next task [lane]'s thread runs, reporting a quiet loop while it waits; `null` once the loop closes. */
+    private fun nextFor(lane: Lane): Task? {
         while (!closed) {
-            take(lane)?.let { return Next.Run(it) }
-            settledNow()?.let { return Next.Report(it) }
+            take(lane)?.let { return it }
+            settledNow()?.let(::report)
             // Finding the loop quiet resumes whoever awaited it, which may queue work on this very lane: look again
             // before sleeping, or this thread sleeps on its own signal.
-            take(lane)?.let { return Next.Run(it) }
+            take(lane)?.let { return it }
             await()
         }
         return null
@@ -234,12 +232,18 @@ class LaneLoop(
         }
     }
 
+    /**
+     * Tells [onSettled], under the lock that found the loop quiet: no lane takes a task between the finding and the
+     * report. Told after the lock was let go, a report could follow an act a lane had since taken and announced — a
+     * `Settled` judged as the act's that was found before the act began.
+     */
     private fun report(settled: Settled) {
+        check(lock.isHeldByCurrentThread) { "a settled report is told under the lock that found the loop quiet" }
         onSettled(settled)
     }
 
     private fun reportIfQuiet() {
-        lock.withLock { settledNow() }?.let(::report)
+        lock.withLock { settledNow()?.let(::report) }
     }
 
     /** The next task of [lane] when it is that lane's turn, marked running. */
@@ -361,12 +365,6 @@ class LaneLoop(
     }
 
     private class Task(val at: Long, val seq: Long, val lane: Lane, val block: Runnable)
-
-    private sealed interface Next {
-        class Run(val task: Task) : Next
-
-        class Report(val settled: Settled) : Next
-    }
 
     private companion object {
         val CURRENT = ThreadLocal<Lane?>()
