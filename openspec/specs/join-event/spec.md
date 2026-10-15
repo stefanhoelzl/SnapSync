@@ -280,6 +280,11 @@ fact established, the user SHALL see the joined screen.
 - **WHEN** the user taps Cancel on the join screen
 - **THEN** nothing is joined or shared and the create screen is shown
 
+#### Scenario: A join whose key the phone cannot keep
+- **WHEN** the user taps Join on an encrypted event's invite and the phone refuses to keep the event's key
+- **THEN** the join screen says joining failed, offers Retry and Cancel, the device is in no event and the event does
+  not count it as a member; a Retry once the phone keeps the key shows the joined screen with the choices they made
+
 ### Requirement: A refused phone is told why it cannot join
 When the user taps Join and the service refuses this phone as not genuine, the join screen SHALL show that refusal
 and its cause (capability `privacy-security`, "A refused phone is told why") — never a generic failure and never

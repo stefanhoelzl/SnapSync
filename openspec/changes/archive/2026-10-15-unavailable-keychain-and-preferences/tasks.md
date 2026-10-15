@@ -88,7 +88,7 @@
 
 ## 7. Integration checks
 
-- [ ] 7.1 `./gradlew :test:architecture:verifiesReport` lists none of the ten scenarios as unclaimed
+- [x] 7.1 `./gradlew :test:architecture:verifiesReport` lists none of the ten scenarios as unclaimed
 - [x] 7.2 Raise (or delete) the integration exception of every module these tests move in the root build file's
   `coverage { }`, per its rule; verify `./gradlew build` is green, with `deno` on PATH
 - [x] 7.3 `./gradlew compileIosMainKotlinMetadata` and `./gradlew architectureDiagrams` (committed if moved) pass
