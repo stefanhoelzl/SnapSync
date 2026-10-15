@@ -1,10 +1,12 @@
 package app.snapsync.integration
 
-import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * **A terminal upload outcome survives the process that learned it** (decision record
@@ -20,7 +22,7 @@ import kotlin.test.assertTrue
  * two photos three times over two days and its status screen said "uploading" throughout.
  *
  * **What makes this assertable without a device** is that the host can simulate the one thing that
- * matters — a process boundary. `/device/relaunch` ends the app and composes a new one over the same durable
+ * matters — a process boundary. `host.relaunch` ends the app and composes a new one over the same durable
  * state: every in-memory registry the adapter held is gone, and only what reached durable storage survives. If a
  * completion is ever parked in memory again, the relaunched app cannot see it and these fail.
  */
@@ -29,63 +31,88 @@ class LostUploadAckIntegrationTest {
     @Test
     @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
     @Verifies(spec = "delivery", requirement = "A finished upload is recognised no later than the next opening")
-    fun a_completion_learned_by_a_dead_process_is_settled_and_never_re_uploaded() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("A")
+    fun a_completion_learned_by_a_dead_process_is_settled_and_never_re_uploaded() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+        }
 
         // Cycle 1 creates the upload job; the "OS" then finishes the transfer.
-        cycle()
-        assertEquals(1, jobs().created, "precondition: one upload job")
-        completeJobs()
-        assertTrue(primaryKey("A") in objects(), "the bytes landed")
+        whenever { cycle() }
+        then {
+            times(1) { event<WorldEvent.UploadJobCreated>() } // precondition: one upload job
+            settled { true }
+        }
+        whenever { uploadQueue.completeJob() }
+        then { event<WorldEvent.BytesStored> { it.asset == "A" } } // the bytes landed
 
         // ── the process dies here. Everything the adapter held in memory goes with it. ──
-        host.relaunch()
-        state() // the relaunched app's host is assembled on first touch, as a scene connecting does
+        whenever { host.relaunch() }
+        then {
+            screen<Layer.Joined>()
+            settled { true }
+        }
 
-        cycle()
-        refresh()
-
-        // Nothing is left outstanding: the screen settles over the photo it uploaded.
-        awaitInSync()
-        assertEquals(
-            1,
-            jobs().created,
-            "and its bytes are NEVER sent again — this is the whole defect: a lost acknowledgement used to read " +
-                "as a lost upload, and the photo was re-uploaded on every relaunch",
-        )
-        assertEquals(setOf(primaryKey("A")), objects(), "the object landed once")
+        whenever {
+            cycle()
+            os.foreground()
+            advance(STATUS_POLL)
+        }
+        then {
+            // Nothing is left outstanding: the screen settles over the photo it uploaded.
+            screen<Layer.Joined> { it.health == SyncHealth.InSync }
+            // And its bytes are NEVER sent again — this is the whole defect: a lost acknowledgement used to read as a
+            // lost upload, and the photo was re-uploaded on every relaunch. The object landed once.
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.BytesStored>()
+            never<WorldEvent.ManifestPublished> { "A" in it.withdrawn }
+        }
     }
 
     @Test
     @Verifies(spec = "event-album", requirement = "The album holds the event as this device holds it")
-    fun a_platform_that_reports_within_the_cycle_settles_in_that_same_cycle_and_places_once() = rigTest {
-        extensionUploadsOnly()
+    fun a_platform_that_reports_within_the_cycle_settles_in_that_same_cycle_and_places_once() = behaviour {
         // The PhotoKit tier's shape: that tier has no callback outside the cycle — its adapter fetches the
         // finished jobs, records them settled and acknowledges in place. The album is not waiting for that: the photo
         // is placed when its upload is first enqueued, so the completion changes nothing about the album.
-        val event = createAndJoin(Choices(saveToAlbum = true))
-        awaitAlbum() // a cycle places only into an album that exists
-        addPhoto("A")
+        val event = given {
+            extensionUploadsOnly()
+            joinedSavingToAlbum().first.also { photos("A") } // a cycle places only into an album that exists
+        }
 
-        cycle() // places, then creates the job
-        assertTrue(primaryKey("A") !in objects(), "precondition: no byte has reached the backend yet")
-        assertEquals(listOf("A"), albumAssets(), "in the album as soon as its upload is queued, before any byte moved")
-        completeJobs() // the "OS" finished it while we were away
+        // The cycle places, then creates the job.
+        whenever { cycle() }
+        then {
+            event<WorldEvent.LibraryJoinedAlbum> { it.asset == "A" }
+            times(1) { event<WorldEvent.UploadJobCreated>() }
+            event<WorldEvent.ManifestPublished> { it.event == event && "A" in it.added }
+            never<WorldEvent.BytesStored>() // precondition: no byte has reached the backend yet
+            // in the album as soon as its upload is queued, before any byte moved
+            settled { it.state.albums.orEmpty().flatMap { album -> album.photos } == listOf("A") }
+        }
 
-        // ONE cycle: the drain records the completion, and the manifest publishes it.
-        cycle()
-
-        // What the album HOLDS, never how often the app asked: a repeated add is a no-op on the platform (the
-        // GalleryReader contract's A_REPEATED_ADD_IS_A_NO_OP), and the join's album gather may place A again.
-        assertEquals(listOf("A"), albumAssets(), "the event album holds the photo once")
-        // The announcement IS the manifest write: on the versioned device API there is no notify route, so
-        // publishing the device's asset set is the only thing that tells the event anything happened.
-        assertEquals(setOf("A"), manifest(event)?.keys, "the settled upload reached the published manifest")
-        assertEquals(1, jobs().created)
+        // The "OS" finished it while we were away; ONE cycle: the drain records the completion, and the manifest
+        // publishes it.
+        whenever {
+            uploadQueue.completeJob()
+            cycle()
+        }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "A" }
+            // The announcement IS the manifest write: on the versioned device API there is no notify route, so
+            // publishing the device's asset set is the only thing that tells the event anything happened.
+            event<WorldEvent.ManifestPublished> { it.event == event }
+            never<WorldEvent.ManifestPublished> { "A" in it.withdrawn } // the settled upload stays published
+            never<WorldEvent.UploadJobCreated>()
+            // What the album HOLDS, never how often the app asked: a repeated add is a no-op on the platform (the
+            // GalleryReader contract's A_REPEATED_ADD_IS_A_NO_OP), and the join's album gather may place A again.
+            settled { it.state.albums.orEmpty().flatMap { album -> album.photos } == listOf("A") } // held once
+        }
     }
 
-    /** Every photo the albums this app created hold now, album by album. */
-    private suspend fun Rig.albumAssets(): List<String> = library.albums().flatMap { it.photos }
+    private companion object {
+        /** Long enough for the joined screen's status poll (every 2 s) to read again. */
+        val STATUS_POLL = 5.seconds
+    }
 }

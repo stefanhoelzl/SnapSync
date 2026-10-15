@@ -3,8 +3,8 @@ package app.snapsync.integration
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.levers.WorldEvent
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
 
 /**

@@ -3,8 +3,8 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.levers.WorldEvent
 import app.snapsync.format.LINK_ORIGIN
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage

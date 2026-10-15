@@ -1,10 +1,12 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * The end of an event's life over the REAL composition (decision record `changes/back-dated-events`): the end-of-wake
@@ -18,51 +20,71 @@ class EventCompletionIntegrationTest {
 
     @Test
     @Verifies(spec = "event-lifetime", requirement = "A member's share is settled only after their own range has ended")
-    fun the_only_member_settles_its_share_and_stays_in_the_finished_event() = rigTest {
-        extensionUploadsOnly()
-        advanceTo(DURING)
-        val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
-        advanceTo(AFTER_THE_END)
+    fun the_only_member_settles_its_share_and_stays_in_the_finished_event() = behaviour(startAt = DURING) {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END).also { afterTheEnd() }
+        }
+
         // The first upload cycle after the end settles the share — on this host the operator plays the uploader.
-        cycle()
-        val published = checkNotNull(backend.membership(event).manifest)
-        assertEquals(true, published.final, "the share is settled after the end")
+        whenever { cycle() }
+        then { event<WorldEvent.ManifestPublished> { it.event == event && it.final } } // the share is settled after the end
 
-        os.foreground()
-
-        neverWithin(what = "a finished event never ends a membership") { !it.ready.configResolved }
-        assertFalse(departed(event), "and the backend heard of no leave")
+        whenever { os.foreground() }
+        then {
+            never<WorldEvent.UiChanged> { it.ui.layer !is Layer.Joined } // a finished event never ends a membership
+            never<WorldEvent.MemberLeft>() // and the backend heard of no leave
+            settled { true }
+        }
     }
 
     @Test
     @Verifies(spec = "event-lifetime", requirement = "The date range closes nothing")
-    fun a_member_still_settling_keeps_this_member_in_the_event() = rigTest {
-        advanceTo(DURING)
-        createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
-        // Another member who has not settled its share (a manifest without the flag).
-        foreignDevice(DEV_F, "FQ")
-        downloadAll()
-        advanceTo(AFTER_THE_END)
+    fun a_member_still_settling_keeps_this_member_in_the_event() = behaviour(startAt = DURING) {
+        given {
+            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END)
+            // Another member who has not settled its share (a manifest without the flag).
+            fellowMember(DEV_F, "FQ")
+            step("its photo's download started", act = { os.foreground() }, until = {
+                event<WorldEvent.DownloadStarted>()
+                settled { true }
+            })
+            step("it arrived", act = { downloadSession.finish() }, until = {
+                event<WorldEvent.LibraryAssetCreated>()
+                settled { true }
+            })
+            afterTheEnd()
+        }
 
-        os.foreground()
-
-        neverWithin(what = "an event still being shared never ends a membership") { !it.ready.configResolved }
+        whenever { os.foreground() }
+        then {
+            // an event still being shared never ends a membership
+            never<WorldEvent.UiChanged> { it.ui.layer !is Layer.Joined }
+            settled { true }
+        }
     }
 
     @Test
     @Verifies(spec = "event-lifetime", requirement = "Deletion is never announced and never touches anyone's library")
-    fun a_completed_event_is_kept_as_deleted_from_a_background_wake() = rigTest {
-        advanceTo(DURING)
-        val event = createAndJoin(startsAt = SHORT_START, endsAt = SHORT_END)
-        foreignDevice(DEV_F, "FQ")
-        advanceTo(AFTER_THE_END)
-        // The clock ran out while this member was away: the sweep completed the event.
-        backend.complete(event)
+    fun a_completed_event_is_kept_as_deleted_from_a_background_wake() = behaviour(startAt = DURING) {
+        val event = given {
+            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END).also { event ->
+                fellowMember(DEV_F, "FQ")
+                afterTheEnd()
+                // The clock ran out while this member was away: the sweep completed the event.
+                step("the sweep completed it", act = { backend.complete(event) }, until = {
+                    event<WorldEvent.EventDeleted> { it.event == event }
+                })
+            }
+        }
 
-        os.silentPush(event, awaitRelease = true)
-
-        neverWithin(what = "a deleted event is never left on its own") { !it.ready.configResolved }
-        assertFalse(departed(event), "the backend heard of no leave")
+        whenever { os.silentPush(event) }
+        then {
+            event<WorldEvent.CompletionReleased>()
+            never<WorldEvent.UiChanged> { it.ui.layer !is Layer.Joined } // a deleted event is never left on its own
+            never<WorldEvent.MemberLeft>() // the backend heard of no leave
+            settled { true }
+        }
     }
 
     @Test
@@ -71,22 +93,33 @@ class EventCompletionIntegrationTest {
         requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest",
         scenario = "A leave made offline still counts",
     )
-    fun a_leave_made_offline_reaches_the_backend_on_a_later_wake() = rigTest {
-        val event = createAndJoin()
-        backend.offline(true)
+    fun a_leave_made_offline_reaches_the_backend_on_a_later_wake() = behaviour {
+        val event = given {
+            joinedEvent().also {
+                step("the backend unreachable", act = { backend.offline(true) }, until = {})
+            }
+        }
 
-        leave()
-        assertFalse(departed(event), "the backend was unreachable")
+        whenever { tap(UiIntent.LeaveEvent) }
+        then {
+            screen<Layer.CreateEvent>()
+            never<WorldEvent.MemberLeft>() // the backend was unreachable
+            settled { true }
+        }
 
-        backend.offline(false)
-        os.foreground()
-
-        val delivered = eventually(read = { departed(event) }, until = { it })
-        assertTrue(delivered, "the recorded leave was delivered without the member doing anything")
+        // The recorded leave is delivered without the member doing anything.
+        whenever {
+            backend.offline(false)
+            os.foreground()
+        }
+        then { event<WorldEvent.MemberLeft> { it.event == event } }
     }
 
-    private suspend fun Rig.departed(event: String): Boolean =
-        backend.membership(event).departed
+    /** The member puts the phone away until after the short event's end, and whatever the app does about it is done. */
+    private suspend fun Given.afterTheEnd() = step("away until after the end", act = {
+        os.background()
+        advanceTo(AFTER_THE_END)
+    }, until = { settled { true } })
 
     private companion object {
         const val SHORT_START = "2026-05-15T00:00:00"
