@@ -1275,8 +1275,8 @@ The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, 
 `BackendReceived`, `BackendHeld`, `DeviceRegistered` and `PushSent`, and `UnionChanged` — a photo that became, or
 stopped being, what the event offers its members — and what it STORED — one event per stored change, each naming
 exactly what changed: `EventCreated`, `MemberJoined`, `MemberLeft`, `ManifestPublished` (every applied publish, with
-its version and the asset ids it `added` and `withdrew`; a republish of the same set tells both empty),
-`BytesStored`, `ReceivedReported`, `EventRenamed` and `EventDeleted`; the transfers' `UploadJobCreated`,
+its version, the asset ids it `added` and `withdrew`, and whether it is `final`; a republish of the same set tells
+both empty), `BytesStored`, `ReceivedReported`, `EventRenamed` and `EventDeleted`; the transfers' `UploadJobCreated`,
 `SessionTransferCreated` and `DownloadStarted`, and each one's end with its outcome — delivered, failed or cancelled —
 told as the transfer leaves the operating system's hold and before the app hears of it: `UploadJobEnded` when the app
 acknowledges the job (a failed job it retries has not ended), `SessionTransferEnded` when a transfer lands or the app

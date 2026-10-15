@@ -2,22 +2,24 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
+import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.LogProcess
 import app.snapsync.levers.NetworkState
-import app.snapsync.levers.ReceivedDump
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.DirectionCount
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ReportNotice
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The operator-initiated diagnostic dump over the **real** stack:
@@ -41,45 +43,44 @@ class DiagnosticDumpIntegrationTest {
     private fun logLine(prefix: String, n: Int) =
         (1..n).joinToString("") { "$prefix line $it ..............................................\n" }
 
-    private suspend fun Rig.appendLog(process: LogProcess, text: String) = files.appendLog(process, text)
-
     private suspend fun Acts.appendLog(process: LogProcess, text: String) = files.appendLog(process, text)
-
-    private suspend fun Rig.sendDiagnostics(note: String, screen: String = SCREEN) {
-        tap(UiIntent.SendDiagnostics(note, screen))
-    }
 
     private suspend fun Acts.sendDiagnostics(note: String, screen: String = SCREEN) {
         tap(UiIntent.SendDiagnostics(note, screen))
     }
 
-    /**
-     * The dumps, once [count] have reached the reporter. The command is accepted when the tap fires; the dump is
-     * assembled and sent after it, so a read straight after the command can precede it.
-     */
-    private suspend fun Rig.awaitDumps(count: Int): List<ReceivedDump> =
-        eventually<List<ReceivedDump>>(read = { crashReporter.sent() }) { it.size >= count }
+    /** CAM uploaded through the extension: one cycle enqueues, the platform completes, the NEXT cycle records it. */
+    private suspend fun Given.camUploaded() {
+        extensionUploadsOnly()
+        joinedEvent()
+        photos("CAM")
+        uploaded("CAM")
+    }
 
     @Test
     @Verifies(
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
     )
-    fun a_confirmed_dump_carries_both_logs_and_the_live_counts() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("CAM")
-        // The operator plays the OS: one cycle enqueues, the platform completes, the NEXT cycle
-        // records COMPLETED — so the dump reads the counts a real device would show mid-flow.
-        cycle()
-        completeJobs(primaryJob("CAM"))
-        cycle()
-        appendLog(LogProcess.APP, "app: cycle finished\n")
-        appendLog(LogProcess.EXTENSION, "ext: enumeration 1 seen\n")
+    fun a_confirmed_dump_carries_both_logs_and_the_live_counts() = behaviour {
+        given {
+            // The operator plays the OS: one cycle enqueues, the platform completes, the NEXT cycle
+            // records COMPLETED — so the dump reads the counts a real device would show mid-flow.
+            camUploaded()
+            step("both logs written", act = {
+                appendLog(LogProcess.APP, "app: cycle finished\n")
+                appendLog(LogProcess.EXTENSION, "ext: enumeration 1 seen\n")
+            }, until = {})
+        }
 
-        sendDiagnostics(NOTE)
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then {
+            received = event<WorldEvent.DumpReceived>()
+            times(1) { event<WorldEvent.DumpReceived>() }
+        }
 
-        val dump = awaitDumps(1).single()
+        val dump = received.value.dump
         // The one section a log tail can never supply: what the operator was doing.
         assertEquals(NOTE, dump.note)
         assertEquals(SCREEN, dump.state["screen"])
@@ -131,22 +132,24 @@ class DiagnosticDumpIntegrationTest {
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
     )
-    fun a_dump_carries_the_counts_the_screen_showed() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("CAM")
-        cycle()
-        completeJobs(primaryJob("CAM"))
-        cycle()
+    fun a_dump_carries_the_counts_the_screen_showed() = behaviour {
+        given { camUploaded() }
         // Whatever the screen shows at the tap — the report's claim is "what the member saw", not a number. An opening
-        // refreshes the counts, so the completed upload is on the screen before it is read, and no later refresh can move
-        // it between this read and the tap.
-        foreground()
-        val counts = awaitState { (it.joined?.counts?.shared as? DirectionCount.Progress)?.done == 1 }.joined!!.counts!!
+        // refreshes the counts, so the completed upload is on the screen before the tap, and the app is settled so no
+        // later refresh can move it before the tap.
+        lateinit var shown: Seen<Layer.Joined>
+        whenever { os.foreground() }
+        then {
+            shown = screen<Layer.Joined> { (it.counts?.shared as? DirectionCount.Progress)?.done == 1 }
+            settled { true }
+        }
+        val counts = shown.value.counts!!
 
-        sendDiagnostics(NOTE)
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then { received = event<WorldEvent.DumpReceived>() }
 
-        val dump = awaitDumps(1).single()
+        val dump = received.value.dump
         assertEquals(counts.shared.shown(), dump.state[DiagnosticKeys.SHOWN_SHARED])
         assertEquals(counts.received.shown(), dump.state[DiagnosticKeys.SHOWN_RECEIVED])
         assertEquals("1", dump.ledger["photos_completed"], "beside the store's own count, which may differ from it")
@@ -253,22 +256,34 @@ class DiagnosticDumpIntegrationTest {
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
     )
-    fun a_sent_report_is_told_as_sent_and_the_word_clears_itself() = rigTest {
+    fun a_sent_report_is_told_as_sent_and_the_word_clears_itself() = behaviour {
         // What the user is told once the dump is handed off: "sent", never more.
-        createAndJoin()
+        given { joinedEvent() }
 
-        sendDiagnostics(NOTE)
+        whenever { sendDiagnostics(NOTE) }
+        then {
+            event<WorldEvent.DumpReceived>()
+            event<WorldEvent.UiChanged> { it.ui.overlays.reportNotice == ReportNotice.SENT }
+            settled { true }
+        }
 
-        awaitDumps(1)
-        awaitState { it.ui.overlays.reportNotice == ReportNotice.SENT }
-        awaitState { it.ui.overlays.reportNotice == null }
+        whenever { advance(NOTICE_SHOWN) }
+        then { event<WorldEvent.UiChanged> { it.ui.overlays.reportNotice == null } }
     }
 
     @Test
     @Verifies(spec = "app-experience", requirement = "The app menu is one tap away on every screen")
-    fun the_screen_names_the_running_build() = rigTest {
+    fun the_screen_names_the_running_build() = behaviour {
         // The app menu's footer reads the build the composition was handed, not a guess.
-        val build = awaitState { it.ui.build != BuildLine.UNKNOWN }.ui.build
+        lateinit var shown: Seen<WorldEvent.UiChanged>
+        whenever { tap(UiIntent.CreateName(Rig.EVENT_NAME)) }
+        then { shown = event<WorldEvent.UiChanged> { it.ui.build != BuildLine.UNKNOWN } }
+        val build = shown.value.ui.build
         assertTrue(build.version.isNotBlank() && build.version != BuildLine.UNKNOWN.version, "the version: $build")
+    }
+
+    private companion object {
+        /** Longer than the app shows a report's word for. */
+        val NOTICE_SHOWN = 5.seconds
     }
 }

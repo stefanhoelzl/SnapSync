@@ -1,9 +1,13 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * The cycle's **entry gate** over the real stack — an unreadable config is not an absent config: the real
@@ -25,14 +29,12 @@ import kotlin.test.assertTrue
  */
 class CycleEntryGateIntegrationTest {
 
-    /** How many manifest publishes the backend APPLIED for this device in the joined event. */
-    private suspend fun Rig.publishes(): Int = backend.membership().publishes
-
-    private suspend fun Rig.membershipUnreadable(on: Boolean) {
-        // Before the first unlock after a boot every protected store is closed: the databases the membership lives in,
-        // the files and the Keychain with them.
-        if (on) device.lock() else device.unlock()
-    }
+    /**
+     * Before the first unlock after a boot every protected store is closed: the databases the membership lives in, the
+     * files and the Keychain with them.
+     */
+    private suspend fun Given.membershipUnreadable() =
+        step("the membership unreadable", act = { device.lock() }, until = {})
 
     @Test
     @Verifies(
@@ -45,54 +47,63 @@ class CycleEntryGateIntegrationTest {
         requirement = "A membership survives updates, restarts, and a locked phone",
         scenario = "A locked phone never looks like a leave",
     )
-    fun an_unreadable_membership_leaves_the_ledger_untouched() = rigTest {
-        extensionUploadsOnly()
+    fun an_unreadable_membership_leaves_the_ledger_untouched() = behaviour {
         // Weakened from "the ledger rows are byte-identical" (the ledger is internal) to its observable twins: the
         // device stays joined, nothing is uploaded and no job is created while unreadable — and once readable again,
         // the settled photo is NOT re-queued, which a cleared ledger would do.
-        val eventId = createAndJoin()
-        addPhoto("A")
-        // Settle the join: a first readable cycle records and uploads.
-        uploadAll()
-        assertTrue(primaryKey("A") in objects(), "precondition: the settled cycle uploaded the asset")
-        val createdAfterSettle = jobs().created
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            uploaded("A") // settle the join: a first readable cycle records and uploads
+            // The device is now woken while its membership cannot be read — a boot with no unlock since.
+            membershipUnreadable()
+            photos("B")
+        }
 
-        // The device is now woken while its membership cannot be read — a boot with no unlock since.
-        membershipUnreadable(true)
-        addPhoto("B")
-        val result = cycle()
-
+        var answer = ""
+        whenever { answer = cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>() // no upload job while the membership is unreadable
+            never<WorldEvent.BytesStored>() // nothing uploaded while the membership is unreadable
+            never<WorldEvent.MemberLeft>() // unreadable is not a leave
+            neverScreen<Layer.CreateEvent>()
+        }
         // The whole App Group is closed, the ledger too, so the extension's after-cycle read of what is still in flight
         // fails and it answers `failed` — what a device locked since boot answers: it uploaded and claimed nothing.
-        assertEquals("failed", result, "an unreadable device uploads nothing and claims nothing")
-        assertEquals(eventId, state().ready.eventId, "unreadable is not a leave")
-        assertEquals(createdAfterSettle, jobs().created, "no upload job while the membership is unreadable")
-        assertEquals(setOf(primaryKey("A")), objects(), "nothing uploaded while the membership is unreadable")
+        assertEquals("failed", answer, "an unreadable device uploads nothing and claims nothing")
 
         // The device of a membership that never left keeps what it settled: the next readable cycle queues only the
         // new photo, never the one already uploaded.
-        membershipUnreadable(false)
-        cycle()
-        assertEquals(listOf(primaryJob("B")), jobs().live, "the settled photo was not re-queued")
+        whenever {
+            device.unlock()
+            cycle()
+        }
+        then {
+            times(1) { event<WorldEvent.UploadJobCreated>() }
+            settled { it.state.inFlight?.jobs == listOf(primaryJob("B")) } // the settled photo was not re-queued
+        }
     }
 
     @Test
     @Verifies(spec = "delivery", requirement = "A locked phone delays uploads and never ends the membership")
-    fun an_unreadable_membership_uploads_nothing_and_touches_no_storage() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("A")
-        membershipUnreadable(true)
-        val before = publishes()
+    fun an_unreadable_membership_uploads_nothing_and_touches_no_storage() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            membershipUnreadable()
+        }
 
-        cycle()
-
-        assertEquals(0, jobs().created, "no upload job")
-        assertTrue(objects().isEmpty(), "no object landed")
-        // The publish is what announces a device's asset set now (there is no notify route on the
-        // versioned device API), so "touched no storage" has to mean the cycle published nothing — not
-        // merely that the resulting manifest looks unchanged, which a republish would satisfy too.
-        assertEquals(before, publishes(), "no manifest published")
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>() // no upload job
+            never<WorldEvent.BytesStored>() // no object landed
+            // The publish is what announces a device's asset set now (there is no notify route on the
+            // versioned device API), so "touched no storage" has to mean the cycle published nothing — not
+            // merely that the resulting manifest looks unchanged, which a republish would satisfy too.
+            never<WorldEvent.ManifestPublished>()
+        }
     }
 
     // The other half of the gate: the fix must not turn a REAL leave into a skip. A definitively absent
@@ -103,35 +114,44 @@ class CycleEntryGateIntegrationTest {
         requirement = "Leaving or switching stops every transfer for the old event",
         scenario = "Leaving stops uploads in progress",
     )
-    fun a_cleared_membership_reads_as_not_joined_and_uploads_nothing() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("A")
-        cycle()
-        val created = jobs().created
+    fun a_cleared_membership_reads_as_not_joined_and_uploads_nothing() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            step("A requested", act = { cycle() }, until = {
+                event<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") }
+                settled { true }
+            })
+            // A real leave: the config is definitively gone, and readable.
+            step("left", act = { tap(UiIntent.LeaveEvent) }, until = {
+                event<WorldEvent.MemberLeft>()
+                settled { true }
+            })
+            photos("B")
+        }
 
-        // A real leave: the config is definitively gone, and readable.
-        leave()
-        addPhoto("B")
+        var answer = ""
+        whenever { answer = cycle() }
+        then { never<WorldEvent.UploadJobCreated>() } // a device that left uploads nothing
         // Declined, so the system is told to rest: with no membership nothing re-arms a wake for no event.
-        assertEquals("completed", cycle())
-
-        assertEquals(created, jobs().created, "a device that left uploads nothing")
+        assertEquals("completed", answer)
     }
 
     @Test
     @Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
-    fun a_readable_membership_still_uploads_so_the_gate_is_not_skipping_everything() = rigTest {
-        extensionUploadsOnly()
+    fun a_readable_membership_still_uploads_so_the_gate_is_not_skipping_everything() = behaviour {
         // The control. A gate that declines every cycle is indistinguishable from a gate that works
         // unless the happy path is asserted alongside it — and a silently-skipped upload is this
         // project's defining failure mode.
-        createAndJoin()
-        addPhoto("A")
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+        }
 
-        cycle()
-
-        assertEquals(listOf(primaryJob("A")), jobs().live)
+        whenever { cycle() }
+        then { settled { it.state.inFlight?.jobs == listOf(primaryJob("A")) } }
     }
 
     @Test
@@ -140,19 +160,23 @@ class CycleEntryGateIntegrationTest {
         requirement = "A locked phone delays uploads and never ends the membership",
         scenario = "A wake before the first unlock after a restart",
     )
-    fun the_membership_is_re_read_each_cycle_so_the_skip_is_not_sticky() = rigTest {
-        extensionUploadsOnly()
+    fun the_membership_is_re_read_each_cycle_so_the_skip_is_not_sticky() = behaviour {
         // The cycle is long-lived now. An unreadable read must not latch: the next cycle, once the device
         // is unlocked, has to resume normally.
-        createAndJoin()
-        addPhoto("A")
-        membershipUnreadable(true)
-        cycle()
-        assertEquals(0, jobs().created, "precondition: skipped")
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            membershipUnreadable()
+            step("a skipped cycle", act = { cycle() }, until = {
+                never<WorldEvent.UploadJobCreated>() // precondition: skipped
+            })
+        }
 
-        membershipUnreadable(false) // the user unlocked
-        cycle()
-
-        assertEquals(listOf(primaryJob("A")), jobs().live, "the next cycle resumes")
+        whenever {
+            device.unlock() // the user unlocked
+            cycle()
+        }
+        then { settled { it.state.inFlight?.jobs == listOf(primaryJob("A")) } } // the next cycle resumes
     }
 }

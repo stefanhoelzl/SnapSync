@@ -520,6 +520,7 @@ internal class BackendState(
                 incoming,
                 added = (declaring - declared).sorted(),
                 withdrawn = (declared - declaring).sorted(),
+                final = manifest.final,
             ),
         )
         // Nothing closes. A settled declaration is kept as declared, whenever it comes: a device settles once its

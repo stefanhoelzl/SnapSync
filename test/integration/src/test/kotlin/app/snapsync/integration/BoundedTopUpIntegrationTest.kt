@@ -1,9 +1,11 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * A backlog larger than the platform's job limit drains, each cycle creating until the platform refuses — over the
@@ -27,22 +29,42 @@ import kotlin.test.assertTrue
 class BoundedTopUpIntegrationTest {
 
     @Test
-    fun a_backlog_drains_across_cycles_stopping_at_each_refusal() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        uploadQueue.jobLimit(2) // far fewer slots than there is work
+    fun a_backlog_drains_across_cycles_stopping_at_each_refusal() = behaviour {
         val assets = listOf("A", "B", "C", "D", "E", "F")
-        for (id in assets) addPhoto(id)
-
-        // Drain the whole backlog two at a time, completing whatever the platform accepted each round.
-        var rounds = 0
-        while (cycle() == "processing" && rounds++ < assets.size * 2) {
-            assertTrue(jobs().live.size <= 2, "a cycle never creates past the platform's refusal")
-            completeJobs()
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            step("two slots", act = { uploadQueue.jobLimit(2) }, until = {}) // far fewer slots than there is work
+            photos(*assets.toTypedArray())
         }
 
-        assertEquals(assets.size, jobs().created, "every asset was eventually enqueued, once")
-        assertEquals(assets.map(::primaryKey).toSet(), objects(), "and every asset landed")
-        assertTrue(rounds > 1, "the backlog really did span several cycles")
+        // The backlog drains two at a time, the OS completing whatever the platform accepted each round.
+        val enqueued = mutableListOf<String>()
+        repeat(assets.size / 2) { round ->
+            var answer = ""
+            lateinit var cycled: Seen<WorldEvent.Settled>
+            whenever { answer = cycle() }
+            then {
+                // A cycle never creates past the platform's refusal.
+                times(2) { event<WorldEvent.UploadJobCreated>() }
+                cycled = settled { it.state.inFlight?.jobs?.size == 2 }
+            }
+            assertEquals("processing", answer, "round ${round + 1} leaves work in flight")
+            enqueued += cycled.value.state.inFlight!!.jobs
+
+            whenever { uploadQueue.completeJob() }
+            then { times(2) { event<WorldEvent.BytesStored>() } }
+        }
+
+        // The backlog really did span several cycles, and the one after it has nothing left to start.
+        var answer = ""
+        whenever { answer = cycle() }
+        then { never<WorldEvent.UploadJobCreated>() }
+        assertEquals("completed", answer)
+        assertEquals(
+            assets.map(::primaryJob),
+            enqueued.sorted(),
+            "every asset was enqueued, once — and every one landed",
+        )
     }
 }
