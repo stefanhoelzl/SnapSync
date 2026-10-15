@@ -79,6 +79,11 @@ problem. Limited access SHALL be offered wherever the phone's system offers it â
 - **THEN** they are a working member sharing only the selected photos that are in range, wherever on the phone
   they are stored
 
+#### Scenario: Narrowing access after joining keeps unselected photos private
+- **WHEN** a member on iOS 26.1 or later joins with full access, switches to limited access, and takes a new photo
+  that is not in their selection without opening the app
+- **THEN** it is not uploaded, until they add it to the selection
+
 ### Requirement: Receive-only with limited access is never nagged
 
 A limited-access member who selects nothing SHALL still receive the event's photos into their library

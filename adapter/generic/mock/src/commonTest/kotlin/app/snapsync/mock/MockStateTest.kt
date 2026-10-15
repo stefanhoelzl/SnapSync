@@ -60,7 +60,7 @@ class MockStateTest {
     private fun texts(device: MockDevice) = MockedSystem.entries.associateWith { MockState.encode(device, it) }
 
     private fun copyOf(device: MockDevice): MockDevice {
-        val fresh = MockDevice(ownDeviceId = device.ownDeviceId, osDrivenUpload = true)
+        val fresh = MockDevice(ownDeviceId = device.ownDeviceId)
         MockedSystem.entries.forEach { system ->
             MockState.encode(
                 device,
@@ -154,7 +154,8 @@ class MockStateTest {
         )
         assertEquals(listOf("A1/primary"), copy.uploadQueue.view().live)
         assertEquals(1, copy.uploadQueue.view().created.size)
-        assertEquals(true, copy.extensionRegistry.record?.value)
+        assertEquals(true, copy.extensionRegistry.record.value)
+        assertTrue(copy.extensionRegistry.carried, "the OS carrying the extension is the device's, so it survives")
         assertEquals(Availability.UNAVAILABLE, copy.processInfo.protectedData)
         assertEquals(NetworkAccess.Blocked, copy.connectivity.access)
         assertEquals(CONDITIONS, copy.deviceConditions.reading)
@@ -196,6 +197,8 @@ class MockStateTest {
 
         device.library.operator.add("A1")
         device.library.operator.add("S1", LibraryPhotoKind.SCREENSHOT)
+        // Registered under the full grant, the only grant a registration is written under; it survives the narrowing.
+        device.extensionRegistry.port().setEnabled(true)
         device.library.operator.permission(PhotoGrant.LIMITED)
         device.library.state.selection.value = listOf(LibraryAssets.photo("A1"))
         val gallery = device.library.port()
@@ -228,7 +231,6 @@ class MockStateTest {
         device.clock.now = Instant.parse("2026-07-01T12:00:00Z")
         device.clock.zone = TimeZone.of("Europe/Berlin")
         device.wakes.port().schedule(WakeId.Heartbeat, WakeTrigger.After(1.hours, network = WakeNetwork.ANY))
-        device.extensionRegistry.port().setEnabled(true)
         device.uploadQueue.port().create(
             InMemoryResource(PlatformAssetId("photo")),
             UploadTarget(

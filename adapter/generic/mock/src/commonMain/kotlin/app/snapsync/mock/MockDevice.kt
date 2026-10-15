@@ -23,7 +23,10 @@ open class MockDevice(
     /** Whether this build honours an invite link's dev/test hints — a shipped build ignores them. */
     inviteLinkHints: InviteLinkHints = InviteLinkHints.Ignored,
     network: UploadNetwork? = null,
-    /** Whether this operating system carries the OS-driven upload mechanism (iOS ≥26.1): the JVM does not. */
+    /**
+     * Whether this operating system carries the OS-driven upload mechanism (iOS ≥26.1) when the device is built — by
+     * default not; the operator changes it later through [ExtensionRegistryMock.carried].
+     */
     osDrivenUpload: Boolean = false,
     /** Where the databases are files, or `null` for in-memory ones. */
     databaseDirectory: String? = null,
@@ -58,7 +61,9 @@ open class MockDevice(
     val deviceConditions = DeviceConditionsMock()
     val wakes = WakeMock()
     val backgroundTime = BackgroundTimeMock()
-    val extensionRegistry = ExtensionRegistryMock(supported = osDrivenUpload)
+
+    /** The registration judges a change by the library's grant now, as the platform does. */
+    val extensionRegistry = ExtensionRegistryMock(carried = osDrivenUpload, grant = library.grant)
 
     /** Where an OS-performed upload lands: the backend mock's byte route, unless the caller routes it elsewhere. */
     private val uploadNetwork = network ?: backend.byteRoute

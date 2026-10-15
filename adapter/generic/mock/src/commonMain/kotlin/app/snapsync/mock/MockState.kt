@@ -147,8 +147,16 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
     ),
     MockedSystem.WAKE to codec(WakeDto.serializer(), { WakeDto.of(it.wakes) }, { d, dto -> dto.into(d.wakes) }),
     MockedSystem.EXTENSION_REGISTRY to scalars(
-        { device -> device.extensionRegistry.record?.let { mapOf(REGISTERED to it.value.toString()) }.orEmpty() },
-        { device, values -> values[REGISTERED]?.let { device.extensionRegistry.record?.value = it.toBoolean() } },
+        { device ->
+            mapOf(
+                CARRIED to device.extensionRegistry.carried.toString(),
+                REGISTERED to device.extensionRegistry.record.value.toString(),
+            )
+        },
+        { device, values ->
+            values[CARRIED]?.let { device.extensionRegistry.carried = it.toBoolean() }
+            values[REGISTERED]?.let { device.extensionRegistry.record.value = it.toBoolean() }
+        },
     ),
     MockedSystem.UPLOAD_QUEUE to codec(
         QueueDto.serializer(),
@@ -200,6 +208,7 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
 
 private const val PROTECTED = "protectedData"
 private const val ACCESS = "access"
+private const val CARRIED = "carried"
 private const val REGISTERED = "registered"
 private const val HANDBACKS = "handbacks"
 private const val EVER_ACTIVE = "everActive"

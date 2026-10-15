@@ -235,6 +235,14 @@ sealed interface WorldEvent {
     @SerialName("push-registered")
     data object PushRegistered : Os
 
+    /**
+     * The member force-quit the app: its process died, its background transfers were cancelled, and the operating system
+     * launches it for nothing until the member opens it again ([PlayedOsLevers.forceQuit]).
+     */
+    @Serializable
+    @SerialName("force-quit")
+    data object ForceQuit : Os
+
     /** The upload extension's registration was set [on] or off, as the operating system took the app's request. */
     @Serializable
     @SerialName("extension-registered")

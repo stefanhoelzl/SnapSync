@@ -264,9 +264,15 @@ private class ReconcilingControls(
     }
 }
 
-/** Why this world refuses some methods of a service it serves: the store page, where the build is the device's own. */
+/**
+ * Why this world refuses some methods of a service it serves: the store page, where the build is the device's own, and
+ * a force-quit, where no host owns the app's process.
+ */
 private fun MockWorld.methodRefusalsOf(service: LeverService<*>): Map<String, String> = when (service) {
     BuildLevers -> mapOf(BuildLevers::store.name to STORE_IS_BAKED).takeIf { store == null }.orEmpty()
+    // A force-quit ends the app's process, which only a host that owns it can do.
+    PlayedOsLevers ->
+        if (os.process == null) PlayedOsLevers.refusing("forceQuit", why = FORCE_QUIT_NEEDS_THE_PROCESS) else emptyMap()
     else -> emptyMap()
 }
 

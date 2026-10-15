@@ -4,7 +4,9 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationState
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * An honest in-memory [ExtensionRegistry]. With no [record] it is a platform without the upload extension — the JVM,
@@ -14,7 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
  */
 internal class InMemoryExtensionRegistry(
     private val record: MutableStateFlow<Boolean>?,
-    private val partialGrant: Boolean = false,
+    /** The photo grant now — read at every change, as the platform judges it; `null` for a grant that is always full. */
+    private val grant: StateFlow<LibraryGrant>?,
     /** Told each change taken, as the operating system records it. */
     private val watcher: OsWatcher = OsWatcher {},
 ) : ExtensionRegistry {
@@ -23,7 +26,13 @@ internal class InMemoryExtensionRegistry(
     override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
         val cell = record ?: return RegistrationAnswer.Unsupported
         // Under a partial grant a device refuses every change, either way (`PHPhotosErrorAccessUserDenied`).
-        if (partialGrant) return RegistrationAnswer.Answered(ok = false, domain = "PHPhotosErrorDomain", code = 3311L)
+        if (grant?.value == LibraryGrant.LIMITED) {
+            return RegistrationAnswer.Answered(
+                ok = false,
+                domain = "PHPhotosErrorDomain",
+                code = 3311L,
+            )
+        }
         // A disable that finds no record is the clean device's answer (`PHPhotosErrorIdentifierNotFound`).
         if (!enabled && !cell.value) {
             return RegistrationAnswer.Answered(
@@ -37,9 +46,10 @@ internal class InMemoryExtensionRegistry(
         return RegistrationAnswer.Answered(ok = true, domain = null, code = null)
     }
 
-    override fun isEnabled(): RegistrationState = when (record?.value) {
-        null -> RegistrationState.UNSUPPORTED
-        true -> RegistrationState.REGISTERED
-        false -> RegistrationState.NOT_REGISTERED
+    // A partial grant cannot see the record, which survives it: the read answers absent (SE2, iOS 27.0.1).
+    override fun isEnabled(): RegistrationState = when {
+        record == null -> RegistrationState.UNSUPPORTED
+        record.value && grant?.value != LibraryGrant.LIMITED -> RegistrationState.REGISTERED
+        else -> RegistrationState.NOT_REGISTERED
     }
 }

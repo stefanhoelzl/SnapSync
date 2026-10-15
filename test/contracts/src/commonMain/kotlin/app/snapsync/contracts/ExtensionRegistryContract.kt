@@ -16,7 +16,9 @@ import kotlin.test.assertTrue
  * [RECORD_ABSENT] and [RECORD_PRESENT] through the port's own write before the clause — under a full grant,
  * the only grant under which the write is allowed. Under a partial grant the write is refused in both
  * directions, so the record cannot be entered at all: [UNDER_PARTIAL_GRANT] says only which grant the process
- * holds, which is the whole of what those clauses depend on.
+ * holds, which is the whole of what those clauses depend on. [RECORD_PRESENT_UNDER_PARTIAL_GRANT] is entered by a person:
+ * the app joins an event under the full grant, which registers the extension, then the grant is narrowed in Settings
+ * before the partial-grant run.
  */
 enum class ExtensionRegistryState {
     /** Full grant, no configuration record. */
@@ -27,6 +29,9 @@ enum class ExtensionRegistryState {
 
     /** A partial (`.limited`) photo grant, whatever record exists. */
     UNDER_PARTIAL_GRANT,
+
+    /** A partial (`.limited`) photo grant, and the record a full grant made before the person narrowed it. */
+    RECORD_PRESENT_UNDER_PARTIAL_GRANT,
 
     /** On a platform with no OS-driven upload mechanism at all (Android; iOS below 26.1). */
     NO_MECHANISM,
@@ -135,6 +140,23 @@ object ExtensionRegistryContract :
             },
         ) { registry ->
             assertEquals(RegistrationOutcome.EnableRefusedByGrant, registrationOutcome(true, registry.setEnabled(true)))
+        }
+
+        clause(
+            "A_PARTIAL_GRANT_READS_NO_RECORD",
+            ExtensionRegistryState.RECORD_PRESENT_UNDER_PARTIAL_GRANT,
+            covers = cells {
+                on<ExtensionRegistry>().answers(ExtensionRegistry::isEnabled).with(RegistrationState.NOT_REGISTERED)
+            },
+        ) { registry ->
+            // The read is the grant's, not the record's: the record a full grant made survives the narrowing (it reads
+            // back once access is full again, and iOS still invokes the extension), yet a partial grant cannot see it.
+            // So only a full grant's read may be trusted.
+            assertEquals(
+                RegistrationState.NOT_REGISTERED,
+                registry.isEnabled(),
+                "a partial grant does not see the record a full grant made",
+            )
         }
 
         clause(

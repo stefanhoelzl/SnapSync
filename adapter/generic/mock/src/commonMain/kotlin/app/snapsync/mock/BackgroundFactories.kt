@@ -36,4 +36,4 @@ fun inMemoryBackgroundTime(
  * upload extension, answering `Unsupported`.
  */
 fun inMemoryExtensionRegistry(record: MutableStateFlow<Boolean>? = null): ExtensionRegistry =
-    InMemoryExtensionRegistry(record)
+    InMemoryExtensionRegistry(record, grant = null)

@@ -30,6 +30,8 @@ import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WipeScope
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
+import app.snapsync.rig.UPLOAD_HEARTBEAT_TASK
+import app.snapsync.rig.UPLOAD_TRANSFER_CHANNEL
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.UiIntent
@@ -86,6 +88,49 @@ class JvmHostProtocolTest {
             BackgroundTimeLevers, ExtensionRegistryLevers,
         ).flatMap { it.entries }
         assertEquals(emptyList(), os - advertised.honoured.toSet(), "refused: ${advertised.refused}")
+    }
+
+    /**
+     * Whether the played OS carries iOS's own uploader is a fact of the device that the app reads at launch, so the
+     * build's reported tier moves at the next launch and not before.
+     */
+    @Test
+    fun the_os_carrying_its_uploader_reaches_the_next_launch() = onHost { client ->
+        val host = client.levers(HostLevers)
+        assertEquals("app", host.state().build["uploadTier"], "the JVM host's OS carries none by default")
+        client.levers(ExtensionRegistryLevers).carried(true)
+        assertEquals("app", host.state().build["uploadTier"], "the running launch keeps what it composed with")
+        host.relaunch(scene = true)
+        assertEquals("app+extension", host.state().build["uploadTier"])
+    }
+
+    /**
+     * After a force-quit the played OS launches the app for nothing — each delivery that would launch it refused with
+     * the reason — while it keeps invoking iOS's own uploader; the member opening the app ends it, and the wakes the
+     * app asked for before are still there.
+     */
+    @Test
+    fun a_force_quit_app_is_launched_for_nothing_until_it_is_opened() = onHost { client ->
+        val os = client.levers(OsLevers)
+        val wakes = client.levers(WakeLevers).wakes()
+        client.levers(PlayedOsLevers).forceQuit()
+
+        val refused = listOf<suspend () -> Unit>(
+            { os.backgroundTask(UPLOAD_HEARTBEAT_TASK) },
+            { os.silentPush() },
+            { os.backgroundTransfers(UPLOAD_TRANSFER_CHANNEL) },
+            { os.background() },
+            { os.pushToken("BEEF") },
+        )
+        refused.forEach { delivery ->
+            val why = assertFailsWith<LeverRefused> { delivery() }
+            assertTrue("force-quit" in why.message.orEmpty(), why.message)
+        }
+        client.levers(ExtensionHostLevers).process()
+        assertEquals(wakes, client.levers(WakeLevers).wakes(), "the wakes the app asked for are kept")
+
+        os.foreground()
+        os.backgroundTask(UPLOAD_HEARTBEAT_TASK)
     }
 
     /** ...and it registers for pushes, which the JVM host once never did. */

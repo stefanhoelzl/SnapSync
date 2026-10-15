@@ -157,6 +157,12 @@ class JvmRigHost private constructor(
                 },
                 PlayedOs(mocks).also { os -> os.watch { threads.events.tell(it) } },
             )
+            // The app's process is this JVM's, so the played OS can end it as a force-quit does.
+            rig.os.process = object : AppProcess {
+                override suspend fun die() = rig.app.relaunch()
+
+                override fun open() = rig.showScreen()
+            }
             rig.showScreen()
             return rig
         }
@@ -171,7 +177,8 @@ class JvmRigHost private constructor(
                         reconcileUploads = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },
                     ) + rig.world.servedHostServices(jvmHostServices(rig, hooks), rig.threads.acts)
                 },
-                uploadTier = uploadersCarried(osSupportsOsDrivenUpload = false),
+                // The running launch's fact: the played OS may carry the upload extension from a relaunch on.
+                uploadTier = { uploadersCarried(rig.app.ports.systems.extensionRegistry.supported) },
                 uploadBase = rig.backend.base,
                 transferBinding = "mock",
                 world = HostWorld(servedWorld(JvmWorld(rig.threads), refusal = null), rig.threads.acts),

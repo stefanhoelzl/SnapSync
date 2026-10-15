@@ -26,8 +26,10 @@ class RigHooks(
      *
      * There used to be a `compositionMode` beside this, rendering the sealed mode the shell resolved. With
      * the forge moved to its own binary (since deleted) that mode had one case, so the two were the same fact twice.
+     *
+     * Read at every report, because a played OS changes the fact between launches (`extension-registry.carried`).
      */
-    private val uploadTier: String,
+    private val uploadTier: () -> String,
     /** The baked `uploadBase` — the oracle for "which backend is this build pointed at". */
     private val uploadBase: String,
     /**
@@ -160,7 +162,7 @@ class RigHooks(
      * a second request.
      */
     internal fun buildFacts(): Map<String, String> = mapOf(
-        "uploadTier" to uploadTier,
+        "uploadTier" to uploadTier(),
         "uploadBase" to uploadBase,
         "transferBinding" to transferBinding,
     )

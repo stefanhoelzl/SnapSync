@@ -49,7 +49,9 @@ data class RigState(
  * and [grantDependent] marks the answers where that collapse is live rather than leaving a reader to join
  * this field with the grant themselves.
  *
- * ⏰ Two cells are unmeasured: `LIMITED` access, and a record left by a differently-signed build.
+ * `LIMITED` access collapses the same way: measured on the SE2 (iOS 27.0.1), a record made under a full grant read
+ * `false` once access was narrowed, and `true` again once it was widened, with no write in between. ⏰ One cell is
+ * unmeasured: a record left by a differently-signed build.
  */
 @Serializable
 data class OsExtensionView(

@@ -21,13 +21,27 @@ const val UPLOAD_TRANSFER_CHANNEL: String = "app.snapsync.upload.session"
  * through the download session — the iOS adapter's routing.
  */
 class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) : EntryDriver {
-    override fun foreground() = device.lifecycle.foreground()
+    // A force-quit app is opened by the member — in front, or through a link — and launched for nothing else
+    // (`played-os.forceQuit`).
+    override fun foreground() {
+        os.opened()
+        device.lifecycle.foreground()
+    }
 
-    override fun background() = device.lifecycle.background()
+    override fun background() {
+        os.launching("move to the background")
+        device.lifecycle.background()
+    }
 
-    override fun pushToken(hex: String) = device.pushService.deliverToken(hex)
+    override fun pushToken(hex: String) {
+        os.launching("push token")
+        device.pushService.deliverToken(hex)
+    }
 
-    override fun pushTokenFailure(description: String) = device.pushService.deliverTokenFailure(description)
+    override fun pushTokenFailure(description: String) {
+        os.launching("push-token failure")
+        device.pushService.deliverTokenFailure(description)
+    }
 
     /**
      * The push the backend sent for [eventId], as APNs delivers it: the event, and the union position the backend's last
@@ -35,6 +49,7 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
      * whose union never grew, or when the backend behind the port is not the mock.
      */
     override fun silentPush(eventId: String?, done: () -> Unit) {
+        os.launching("silent push")
         val seq = device.backend.pushesHandedOver().lastOrNull { it.eventId == eventId }?.seq
         val payload = buildMap<Any?, Any?> {
             put("eventId", eventId)
@@ -43,14 +58,19 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
         os.deliver(done) { device.pushService.deliverMessage(payload, it) }
     }
 
-    override fun continueLink(url: String) = device.links.open(url)
+    override fun continueLink(url: String) {
+        os.opened()
+        device.links.open(url)
+    }
 
     override fun backgroundTask(identifier: String, done: () -> Unit) {
+        os.launching("background task")
         val heartbeat = identifier == UPLOAD_HEARTBEAT_TASK || identifier == IDLE_HEARTBEAT_TASK
         if (heartbeat) os.grant(done) { device.wakes.fire(WakeId.Heartbeat, it) } else done()
     }
 
     override fun backgroundTransfers(identifier: String, done: () -> Unit) {
+        os.launching("background-session events")
         if (identifier == UPLOAD_TRANSFER_CHANNEL) {
             os.deliver(done) { device.uploadSession.handBack(it) }
         } else {

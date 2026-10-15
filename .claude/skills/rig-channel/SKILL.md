@@ -829,7 +829,10 @@ The operating system as the app meets it (`docs/testing.md`, "Typed services") �
 - `played-os` (`PlayedOsLevers`) — what only a played OS does; needs `background-time` mocked (a real OS's expiry is
   its own): `expire()` (time is up for every held completion handler and background-time hold — hold a
   delivery open with `--await-release` in a second call and expire it), `expireNext()` (the next handler arrives
-  already expired), and the read `completions()` (`handed`, `released`, `releasedAgain`, `held`).
+  already expired), the read `completions()` (`handed`, `released`, `releasedAgain`, `held`), and `forceQuit()` (the
+  member force-quits the app: the process dies, the session's transfers are cancelled and reported at the next
+  opening, and every app-launching delivery is refused until `os foreground`; the extension is still invoked. Only a
+  host that owns the app's process honours it — the JVM host's).
 - `extension-host` (`ExtensionHostLevers`) — `process()` (the OS invokes the extension's `process()`: answers
   `completed|processing|failed`) and `terminate()`. The JVM host and the iOS app host serve it; Android refuses it. The
   simulator's scripted job sets are `upload-jobs process`'s, see `ios-simulator`.
@@ -838,7 +841,9 @@ The operating system as the app meets it (`docs/testing.md`, "Typed services") �
   app composes, so it takes effect at a relaunch; `refuseTokens(reason?)` — none: tokens again; the read `push()`:
   registrations, kind, refusal), `wake` (the read `wakes()`: heartbeats accepted, and every request pending with its
   cadence and delay), `background-time` (the read `holds()`, each by the name the app began it under, verbatim;
-  `expireAll()`), `extension-registry` (the read `registered()`; `null` where the platform has no extension).
+  `expireAll()`), `extension-registry` (the read `registered()`, `null` where the platform has no extension; and
+  `carried(on)`, whether the OS carries the extension at all, iOS 26.1 and later, read at launch so it takes effect at the
+  next relaunch).
 
 Gone with the move: `device/os-record`'s completions, `heartbeatsScheduled`, `pendingWake`, `backgroundTimeHolds` and
 `pushRegistrations` — each is its service's read above — and, with the string protocol (3g-a), `os-record` itself

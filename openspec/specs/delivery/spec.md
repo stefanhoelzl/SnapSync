@@ -97,6 +97,11 @@ app away from the recent apps SHALL NOT, unless the phone's maker makes swiping 
   recent apps and then takes a photo
 - **THEN** the photo is still uploaded in the background
 
+#### Scenario: iOS's uploader keeps sharing after a force-quit
+- **WHEN** a sharing member on iOS 26.1 or later with full access force-quits the app, takes photos during the event
+  and does not open the app
+- **THEN** the photos are uploaded in the background and become available to the other members
+
 ### Requirement: Each direction runs only if the member chose it
 
 A membership that does not share (capability `join-event`) SHALL upload nothing, from any trigger, in the
@@ -174,6 +179,11 @@ because the service failed while the member's phone was telling it what the memb
 #### Scenario: A large backlog drains in steps
 - **WHEN** a member has more photos queued than iOS accepts at once
 - **THEN** the rest are uploaded in later passes, without the member doing anything
+
+#### Scenario: A photo both uploaders pick up arrives once
+- **WHEN** a sharing member on iOS 26.1 or later with full access takes a photo that iOS's uploader and the app
+  each upload
+- **THEN** the photo reaches the event, and the other members receive it once
 
 ### Requirement: Download problems delay photos, never corrupt or lose them
 
