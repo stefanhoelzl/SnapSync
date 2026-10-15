@@ -2,6 +2,7 @@ package app.snapsync.services.gallery
 
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.TimestampText
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.ImportResult
 import app.snapsync.model.LibraryResource
@@ -15,7 +16,6 @@ import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.TimestampText
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources

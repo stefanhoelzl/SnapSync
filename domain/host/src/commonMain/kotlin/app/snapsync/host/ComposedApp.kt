@@ -15,10 +15,12 @@ import app.snapsync.ports.UiHandlers
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
 import app.snapsync.presentation.EventKeyView
+import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
+import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -108,9 +110,7 @@ fun snapSyncHost(
             cutoffFormatter = cutoffFormatter,
             commands = core.userCommands,
             queries = core.userQueries,
-            // Whose word authorizes a headless join: the build's controls, never the link's — inert on every
-            // production build.
-            inviteLinkHints = ports.devControls.inviteLinkHints(),
+            joinDetails = core.joinDetails,
             // Where a bug report goes on this build — the sheet says it.
             reportDestination = process.reportDestination,
             // Which build this is — the app menu's footer.
@@ -172,6 +172,10 @@ private class LiveScreen(private val composed: ComposedApp) : Inbound<Unit, UiSt
     override fun deliver(arg: Unit): UiState = composed.host.screen.value
 }
 
+/** The membership's request statuses, as the status host reads them. */
+private fun requestFlowsOf(statuses: MembershipStatuses): RequestStatusFlows =
+    RequestStatusFlows(statuses.join.status, statuses.settings.status, statuses.switch.status, statuses.rename.status)
+
 /**
  * Every read-model the status host reduces over, from the composed [core] and its [ports] — all of them, named
  * explicitly, so no host built from them can observe fewer than another.
@@ -181,7 +185,7 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     permission = core.photoPermission,
     config = core.membership,
     creation = core.creationStatus,
-    rename = core.renameStatus,
+    requests = requestFlowsOf(core.membershipStatuses),
     download = core.downloadStatusSource.progress,
     verification = DeviceVerification(core.attested, core.refusal, core.attestationFault, core.serviceFault),
     pending = MutableStateFlow(null),

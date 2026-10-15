@@ -3,12 +3,12 @@ package app.snapsync.feature.membership
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.TimestampText
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
@@ -38,7 +38,7 @@ private const val UNION_TIMEOUT_MS = 15_000L
  * universe through the existing `NotEcho` rule. No selection rule reads a filename.
  *
  * It runs at two moments, for EVERY direction — a share-only member can share a received photo back just as well:
- * - **at the join, before the config is saved** ([MembershipEntry]), so no uploader sees the membership while a
+ * - **at the join, before the config is saved** (the join's steps, `Joining`), so no uploader sees the membership while a
  *   received photo in its range is unsuppressed — enough when the grant is already usable;
  * - **when the photo grant becomes usable while joined**, before the uploads are armed and the staged downloads are
  *   imported (the composition's permission subscription). A reinstall resets the grant, so its rejoin ALWAYS

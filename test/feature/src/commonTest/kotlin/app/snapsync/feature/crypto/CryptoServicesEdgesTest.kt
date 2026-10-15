@@ -8,6 +8,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
@@ -18,7 +19,6 @@ import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.Resource
 import app.snapsync.model.SecureStoreUnavailable
-import app.snapsync.model.TimestampText
 import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
@@ -53,7 +53,7 @@ class CryptoServicesEdgesTest {
         eventId = testEventId(EVENT),
         name = "Secret",
         minPhotoDate = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
         keyId = keyId,
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),

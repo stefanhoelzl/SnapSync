@@ -2,11 +2,12 @@ package app.snapsync.buildlogic
 
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -14,7 +15,7 @@ import org.gradle.api.tasks.TaskAction
 import java.io.File
 
 /**
- * Generates, for every SQLDelight `*Queries` class under [generatedCode], one call per statement with a typed
+ * Generates, for every SQLDelight `*Queries` class under [generatedCode]'s roots, one call per statement with a typed
  * fixture for each argument — the statement list `DatabasesContract`'s schema clauses run on every platform's
  * SQLite (`docs/testing.md`, "Every statement runs on every SQLite").
  *
@@ -29,10 +30,13 @@ import java.io.File
  */
 abstract class SchemaStatementsTask : DefaultTask() {
 
-    /** SQLDelight's generated code root (`build/generated/sqldelight/code` of the module that owns the schemas). */
-    @get:InputDirectory
+    /**
+     * SQLDelight's generated code roots (`build/generated/sqldelight/code` of each module that owns a schema — the data
+     * layer's `ledger.db` and the services zone's `downloads.db` while they live apart).
+     */
+    @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val generatedCode: DirectoryProperty
+    abstract val generatedCode: ConfigurableFileCollection
 
     /** Where the statement objects are written: a Kotlin source root. */
     @get:OutputDirectory
@@ -51,8 +55,10 @@ abstract class SchemaStatementsTask : DefaultTask() {
 
     @TaskAction
     fun generate() {
-        val sources = generatedCode.get().asFile.walkTopDown().filter { it.name.endsWith("Queries.kt") }.toList()
-        if (sources.isEmpty()) throw GradleException("no *Queries.kt under ${generatedCode.get().asFile}")
+        val sources = generatedCode.files.flatMap { root ->
+            root.walkTopDown().filter { it.name.endsWith("Queries.kt") }.toList()
+        }
+        if (sources.isEmpty()) throw GradleException("no *Queries.kt under ${generatedCode.files}")
         val out = outputDir.get().asFile.also { it.deleteRecursively() }
         val target = File(out, packageName.get().replace('.', '/')).also { it.mkdirs() }
         sources.forEach { source ->
@@ -111,8 +117,9 @@ internal class ParsedStatement(val name: String, val params: List<ParsedParam>, 
 
 internal class ParsedParam(val name: String, val type: String)
 
-private val PACKAGE = Regex("""^package\s+([\w.]+)""", RegexOption.MULTILINE)
-private val IMPORT = Regex("""^import\s+([\w.]+)$""", RegexOption.MULTILINE)
+// A segment SQLDelight escapes (the data layer's package names `data`, a soft keyword) keeps its backticks.
+private val PACKAGE = Regex("""^package\s+([\w.`]+)""", RegexOption.MULTILINE)
+private val IMPORT = Regex("""^import\s+([\w.`]+)$""", RegexOption.MULTILINE)
 private val CLASS = Regex("""public class (\w+Queries)\(""")
 private val FUN = Regex("""public fun (<[^>]+> )?(`?\w+`?)\(""")
 

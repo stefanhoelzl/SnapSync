@@ -5,14 +5,15 @@ package app.snapsync.feature.upload
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.TestLedger
+import app.snapsync.format.TimestampText
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateScope
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.LibraryResource
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
@@ -28,7 +29,6 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadFailure
 import app.snapsync.model.UploadRequest

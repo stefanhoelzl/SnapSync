@@ -50,7 +50,7 @@ class AlbumCoordinator(
      * suggesting otherwise. [hasUsableAccess] joined that guard at
      * the migration finale: an album can only be ensured with USABLE photo access — full or limited
      * (`grantsPhotoAccess`), because asset and album creation is unrestricted under a limited grant —
-     * so the join's `Provision` passes the access fact instead of
+     * so a join's and a settings change's steps (`EventAlbum`) pass the access fact instead of
      * branching on it (the entry point orders, the feature decides); it defaults to `true` for the paths
      * that run *because* access became usable (the compose-installed grant subscription). It was called
      * `granted`, which read as "fully granted" to every caller and reviewer (decision record

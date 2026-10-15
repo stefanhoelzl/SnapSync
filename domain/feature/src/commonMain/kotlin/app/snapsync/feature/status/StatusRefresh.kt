@@ -3,8 +3,8 @@ package app.snapsync.feature.status
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.RecognitionSource
+import app.snapsync.services.membership.MembershipProjection
 import co.touchlab.kermit.Logger
 
 /**
@@ -22,19 +22,16 @@ import co.touchlab.kermit.Logger
  * **A rule in a feature, not order in an entry point, and that is the sanctioned reading of the law rather
  * than an exception to it.** `docs/architecture.md`'s "Rules in features, order in entry points" offers both
  * remedies for a sequence found outside an entry point: restore it to the entry point's steps, *"or the rule is
- * named and kept in the feature as a rule."* This is the second, because there are **three** callers and only two
- * are entry points' work — the foreground's and the join's `Provision` — while `ReconfigureEvent` is a
- * `feature/membership` use-case that cannot hold an entry point's ordering at all. A rule with three callers is a
- * rule.
+ * named and kept in the feature as a rule."* This is the second, for **three** callers — the foreground's work, a
+ * join's (`AfterJoin`) and a settings change's (`AfterSettings`); it moves into the layers with the status (4.7).
  *
  * It was previously an opaque `refreshStatus = { refreshStatusSources() }` lambda built in `compose/`, which made
  * the foreground's claim to decide nothing true of its own order and false of what it called.
  *
  * **Two features, one rule, and the sibling reached through a lambda.** The counts and the total are
  * `feature/status`; the "downloaded X of Y" line is `feature/download`. Features are mutually blind, so
- * [refreshDownloadLine] arrives as an injected effect the composition builds — the shape
- * `ResetDeviceState` already uses for `resetDownloads`, and for the same stated reason: passing the call
- * rather than the collaborator is what keeps one feature blind to its sibling.
+ * [refreshDownloadLine] arrives as an injected effect the composition builds: passing the call rather than the
+ * collaborator is what keeps one feature blind to its sibling.
  */
 class StatusRefresh(
     /** Own-device completeness and in-flight, from one consistent ledger read. */
@@ -44,7 +41,7 @@ class StatusRefresh(
     /** The foreign-download line — a SIBLING feature, so a lambda. */
     private val refreshDownloadLine: suspend () -> Unit,
     /** The joined membership, or `null` when unjoined. */
-    private val configSource: ConfigService,
+    private val configSource: MembershipProjection,
     /**
      * What this membership contributes — the ONE derivation, run
      * where the config and both port readers are in scope. Injected because deriving it costs two port

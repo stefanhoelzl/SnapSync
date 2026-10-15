@@ -1,11 +1,14 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.RenameResult
+import app.snapsync.domain.membership.SettingsResult
+import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.feature.membership.readmodel.RenameStatus
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
@@ -14,6 +17,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.Store
+import app.snapsync.query.RequestStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,9 +53,10 @@ class StatusSources(
      */
     val creation: StateFlow<CreationStatus> = MutableStateFlow(CreationStatus.Idle),
     /**
-     * The rename-status read-model, the create twin, with the same inert default for the same reason.
+     * The member's requests of the membership, each answered on its own status under the request's id. Inert by
+     * default (idle) so a host that never asks constructs unchanged.
      */
-    val rename: StateFlow<RenameStatus> = MutableStateFlow(RenameStatus.Idle),
+    val requests: RequestStatusFlows = RequestStatusFlows(),
     /**
      * Download progress.
      *
@@ -127,9 +132,8 @@ class EventKeyView(
  */
 class StatusDiagnostics(
     /**
-     * Dev-path abort logging: the headless negative oracle for an `autoJoin` run (it has
-     * no UI to show a load/commit failure, and a gate parked on a failed details load has no one watching
-     * its dialog). The iOS shell wires it into `debug.log`.
+     * The join gate's log: the headless negative oracle for a gate nobody watches — a details load or a commit
+     * that failed shows a dialog no headless run reads. The iOS shell wires it into `debug.log`.
      */
     val log: (String) -> Unit,
     /**
@@ -176,4 +180,12 @@ class DeviceVerification(
      * opening's first word.
      */
     val service: StateFlow<ServiceFault?> = MutableStateFlow(null),
+)
+
+/** The membership's request statuses, read: a join, a settings change, a switch and a rename. */
+class RequestStatusFlows(
+    val join: StateFlow<RequestStatus<JoinCommit>> = MutableStateFlow(RequestStatus.Idle),
+    val settings: StateFlow<RequestStatus<SettingsResult>> = MutableStateFlow(RequestStatus.Idle),
+    val switch: StateFlow<RequestStatus<SwitchVerdict>> = MutableStateFlow(RequestStatus.Idle),
+    val rename: StateFlow<RequestStatus<RenameResult>> = MutableStateFlow(RequestStatus.Idle),
 )

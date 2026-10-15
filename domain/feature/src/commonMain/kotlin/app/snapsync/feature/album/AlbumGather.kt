@@ -5,10 +5,10 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.membership.MembershipProjection
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -56,7 +56,7 @@ const val GATHER_BATCH_SIZE: Int = 500
  * places nothing twice. Best-effort throughout — a failed batch is swallowed by [AlbumCoordinator.place].
  */
 class AlbumGather(
-    private val configSource: ConfigService,
+    private val configSource: MembershipProjection,
     private val ledger: LedgerService,
     /** The membership's one selection policy — the same derivation every other consumer uses. */
     private val policyFor: suspend (EventConfig) -> SelectionPolicy,

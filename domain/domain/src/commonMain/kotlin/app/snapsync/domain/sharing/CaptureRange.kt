@@ -18,7 +18,8 @@ import app.snapsync.domain.event.EventWindow
  * "Nothing is uploaded before the event starts" does NOT follow from this rule — a floor before the start is allowed.
  * The membership's selection derivation holds it instead.
  */
-class CaptureRange private constructor(val from: CaptureCutoff, val until: CaptureCeiling) {
+@ConsistentCopyVisibility
+data class CaptureRange private constructor(val from: CaptureCutoff, val until: CaptureCeiling) {
     companion object {
         /** The range `[from, until]` for the event `[start, end]`, or why it cannot be one. */
         fun of(from: CaptureCutoff, until: CaptureCeiling, start: EventStart, end: EventEnd): CaptureRangeVerdict =

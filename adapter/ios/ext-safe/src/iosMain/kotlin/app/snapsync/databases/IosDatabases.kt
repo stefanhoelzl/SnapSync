@@ -91,16 +91,28 @@ class IosDatabases(private val basePath: String?) : Databases {
         val opened = runCatchingCancellable {
             if (readOnly) openReadOnly(base, name, schema) else openReadWrite(base, name, schema)
         }.getOrElse { return DbOpen.Failed("${it::class.simpleName}: ${it.message}") }
-        if (opened !is DbOpen.Opened) return opened
-        // The commit signalling reads the database too (`PRAGMA data_version`), so it can fail like the open: then the
-        // open failed, and the driver it would have wrapped is closed.
-        return runCatchingCancellable { DbOpen.Opened(signalled(name, opened.driver)) }.getOrElse {
-            opened.driver.close()
-            DbOpen.Failed("${it::class.simpleName}: ${it.message}")
+        return when (opened) {
+            is Driven.Opened -> signalledOpen(name, opened.driver)
+            is Driven.Answered -> opened.answer
         }
     }
 
-    private fun openReadWrite(base: String, name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
+    // The commit signalling reads the database too (`PRAGMA data_version`), so it can fail like the open: then the open
+    // failed, and the driver it would have wrapped is closed.
+    private fun signalledOpen(name: String, driver: SqlDriver): DbOpen =
+        runCatchingCancellable { DbOpen.Opened(IosOpenDatabase(signalled(name, driver))) }.getOrElse {
+            driver.close()
+            DbOpen.Failed("${it::class.simpleName}: ${it.message}")
+        }
+
+    /** An open's outcome before the commit signalling wraps it: the driver, or the port's answer without one. */
+    private sealed interface Driven {
+        class Opened(val driver: SqlDriver) : Driven
+
+        class Answered(val answer: DbOpen) : Driven
+    }
+
+    private fun openReadWrite(base: String, name: String, schema: SqlSchema<QueryResult.Value<Unit>>): Driven {
         // The driver creates a new file at the schema's version and migrates an older one, inside its own open.
         val driver = NativeSqliteDriver(
             schema = schema,
@@ -113,7 +125,7 @@ class IosDatabases(private val basePath: String?) : Databases {
         // anyone looks for it.
         userVersion(driver)
         protect(base, name)
-        return DbOpen.Opened(driver)
+        return Driven.Opened(driver)
     }
 
     private fun userVersion(driver: SqlDriver): Long =
@@ -121,7 +133,7 @@ class IosDatabases(private val basePath: String?) : Databases {
             QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L)
         }, 0).value
 
-    private fun openReadOnly(base: String, name: String, schema: SqlSchema<QueryResult.Value<Unit>>): DbOpen {
+    private fun openReadOnly(base: String, name: String, schema: SqlSchema<QueryResult.Value<Unit>>): Driven {
         val manager = createDatabaseManager(
             DatabaseConfiguration(
                 name = name,
@@ -132,11 +144,11 @@ class IosDatabases(private val basePath: String?) : Databases {
         )
         val version = manager.withConnection { it.getVersion() }.toLong()
         return when {
-            version < schema.version -> DbOpen.OldSchema
-            version > schema.version -> DbOpen.Failed(
-                "schema version $version is newer than this build's ${schema.version}",
+            version < schema.version -> Driven.Answered(DbOpen.OldSchema)
+            version > schema.version -> Driven.Answered(
+                DbOpen.Failed("schema version $version is newer than this build's ${schema.version}"),
             )
-            else -> DbOpen.Opened(NativeSqliteDriver(manager))
+            else -> Driven.Opened(NativeSqliteDriver(manager))
         }
     }
 

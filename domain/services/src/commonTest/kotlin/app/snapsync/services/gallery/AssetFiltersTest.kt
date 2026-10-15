@@ -2,9 +2,9 @@ package app.snapsync.services.gallery
 
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.format.TimestampText
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
-import app.snapsync.model.TimestampText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

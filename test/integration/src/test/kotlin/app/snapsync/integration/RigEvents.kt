@@ -1,15 +1,12 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Choices
+import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.format.InviteLinkText
 import app.snapsync.levers.AssetView
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.ParkedImport
 import app.snapsync.levers.PhotoGrant
-import app.snapsync.model.ConfigDecodeResult
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.decodeEventUrl
-import app.snapsync.model.encodeEventUrl
-import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -74,31 +71,14 @@ suspend fun Rig.openLink(url: String) {
 }
 
 /**
- * The link a member scans for [eventId]: its whole invite — carrying an encrypted event's key, as the device that
- * created it shares it — with any development hints added.
+ * The link a member scans for [eventId]: its whole invite, carrying an encrypted event's key, as the device that
+ * created it shares it.
  */
-suspend fun Rig.inviteLink(
-    eventId: String,
-    autoJoin: Boolean = false,
-    minPhotoDate: String? = null,
-    direction: String? = null,
-    saveToAlbum: Boolean? = null,
-): String = encodeEventUrl(
-    EventLinkPayload(
-        testEventId(eventId),
-        autoJoin,
-        minPhotoDate,
-        direction = direction,
-        saveToAlbum = saveToAlbum,
-        key = keyOf(eventId),
-    ),
-)
+suspend fun Rig.inviteLink(eventId: String): String = host.invite(eventId)
 
 /** [eventId]'s key as its invite carries it, or `null` for a plain event. */
-suspend fun Rig.keyOf(eventId: String): String? {
-    val invite = host.invite(eventId)
-    return (decodeEventUrl(invite) as ConfigDecodeResult.Success).payload.key
-}
+suspend fun Rig.keyOf(eventId: String): String? =
+    (InviteLinkText.parse(host.invite(eventId)) as InviteLinkVerdict.Invite).link.key?.text
 
 suspend fun Rig.leave() {
     tap(UiIntent.LeaveEvent)

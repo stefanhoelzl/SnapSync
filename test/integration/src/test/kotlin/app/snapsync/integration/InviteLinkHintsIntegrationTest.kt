@@ -1,9 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.encodeEventUrl
-import app.snapsync.testids.testEventId
+import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,13 +9,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 /**
- * On a shipped build, no invite link, however it is crafted, joins, switches or starts sharing without the member
- * confirming on the join screen.
- *
- * The host starts as a rig build, which honours a link's hints; `dev-controls.inviteLinkHints(false)` plays the
- * shipped build, which ignores them. The positive control — a rig build auto-confirming the same link — is
- * `JoinGateIntegrationTest.autoJoin_auto_confirms_without_a_confirmation`, so the negatives here cannot pass by the
- * link simply failing to decode or load.
+ * No invite link, however it is crafted, joins, switches or starts sharing without the member confirming on the join
+ * screen. Links once carried development hints (`autoJoin` and its overrides); one that still does opens the ordinary
+ * confirmation — which is also what shows the link decoded and loaded, so the negatives cannot pass by the link
+ * simply failing.
  */
 @Verifies(
     spec = "join-event",
@@ -26,28 +21,20 @@ import kotlin.test.assertNull
 )
 class InviteLinkHintsIntegrationTest {
 
-    /** Every hint the decoder accepts, set to its most damaging value, on the event's whole invite. */
-    private suspend fun Rig.craftedLink(eventId: String) = encodeEventUrl(
-        EventLinkPayload(
-            testEventId(eventId),
-            autoJoin = true,
-            minPhotoDate = "2001-01-01T00:00:00Z",
-            maxPhotoDate = "2099-01-01T00:00:00Z",
-            direction = "upload",
-            saveToAlbum = true,
-            key = keyOf(eventId),
-        ),
-    )
-
-    private suspend fun Rig.shippedBuild() {
-        devControls.inviteLinkHints(false)
-        host.relaunch()
-    }
+    /** Every hint links once carried, set to its most damaging value, on the event's whole invite. */
+    private suspend fun Rig.craftedLink(eventId: String) =
+        "$LINK_ORIGIN/join/$eventId#" + listOfNotNull(
+            keyOf(eventId)?.let { "k=$it" },
+            "autoJoin=true",
+            "minPhotoDate=2001-01-01T00:00:00Z",
+            "maxPhotoDate=2099-01-01T00:00:00Z",
+            "direction=upload",
+            "saveToAlbum=true",
+        ).joinToString("&")
 
     @Test
-    fun a_shipped_build_shows_the_join_screen_for_an_autoJoin_link_and_joins_nothing() = rigTest {
+    fun an_autoJoin_link_shows_the_join_screen_and_joins_nothing() = rigTest {
         val invited = registerEvent(name = "Anna's Wedding")
-        shippedBuild()
 
         openLink(craftedLink(invited))
 
@@ -58,10 +45,9 @@ class InviteLinkHintsIntegrationTest {
     }
 
     @Test
-    fun a_shipped_build_never_lets_an_autoJoin_link_leave_the_current_event() = rigTest {
+    fun an_autoJoin_link_never_leaves_the_current_event() = rigTest {
         val invited = registerEvent(name = "Anna's Wedding")
         val current = createAndJoin(name = "Trip")
-        shippedBuild()
 
         openLink(craftedLink(invited))
 

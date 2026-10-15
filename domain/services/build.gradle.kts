@@ -24,6 +24,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
+            implementation(project(":domain:format"))
             // MIGRATING: the backend gateway and the device identity the need-shaped services stand on live in data.
             implementation(project(":domain:data"))
             implementation(project(":domain:ports"))
@@ -49,17 +50,17 @@ kotlin {
     }
 }
 
-// The two databases this zone owns (`docs/architecture.md`, section 9). Each from its own source dir (two
-// `create` blocks may not share srcDirs). The generated packages sit under this zone's package, so the zone's
+// The database this zone still owns (`docs/architecture.md`, section 9) — downloads.db, until receiving moves into the
+// layers; ledger.db is the data layer's. The generated packages sit under this zone's package, so the zone's
 // compile boundary covers generated code too; the pinned db FILENAMES are the runtime identity, never the
 // packages.
 //
 // ---- The schema is the migration chain ------------------------------------------------------------------------
 //
 // `deriveSchemaFromMigrations`: each database's schema is its `.sqm` files and nothing else — a fresh install runs the
-// whole chain from the baseline (`11.sqm` for the ledger, `4.sqm` for the download store, each the oldest version a
-// device holds, squashed), an upgrading device runs the files from its version on. With one source there is no second
-// route to drift from it, so SQLDelight registers no `verify…Migration` task and keeps no schema snapshot.
+// whole chain from the baseline (`4.sqm`, the oldest version a device holds, squashed), an upgrading device runs the
+// files from its version on. With one source there is no second route to drift from it, so SQLDelight registers no
+// `verify…Migration` task and keeps no schema snapshot.
 //
 // What still has to hold, and where it is held:
 // - A SHIPPED MIGRATION IS NEVER EDITED: an edit splits upgraded phones from fresh installs, silently. Every `.sqm`
@@ -70,16 +71,6 @@ kotlin {
 //   clauses (`:test:contracts`).
 sqldelight {
     databases {
-        create("LedgerDatabase") {
-            packageName.set("app.snapsync.services.ledger.db")
-            srcDirs.setFrom("src/commonMain/sqldelight/ledger")
-            deriveSchemaFromMigrations.set(true)
-            // The sqlite-3-25 dialect: the oldest SQLite a device runs is Android 11's 3.28 (minSdk 30), and the
-            // dialect is what makes SQLDelight refuse anything newer at compile time — a 3.35 dialect let a
-            // `DROP COLUMN` through that left downloads.db unopenable on Android 11–13 (SNAPSYNC-59/60). Not lower:
-            // the record write's upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
-            dialect(libs.sqldelight.dialect.sqlite)
-        }
         create("DownloadDatabase") {
             packageName.set("app.snapsync.services.downloads.db")
             srcDirs.setFrom("src/commonMain/sqldelight/download")

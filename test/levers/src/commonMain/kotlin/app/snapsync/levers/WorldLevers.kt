@@ -112,6 +112,14 @@ sealed interface WorldEvent {
     @SerialName("backend-held")
     data class BackendHeld(val call: BackendCall) : Backend
 
+    /**
+     * What [event] offers its members changed: [device]'s photo [asset] became servable ([gained]) — every byte it
+     * declares landed — or stopped being ([gained] `false`): no longer declared. What another member's next read gets.
+     */
+    @Serializable
+    @SerialName("union-changed")
+    data class UnionChanged(val event: String, val device: String, val asset: String, val gained: Boolean) : Backend
+
     /** What the operating system's background transfers recorded: the work the app handed them. */
     @Serializable
     sealed interface Transfer : WorldEvent

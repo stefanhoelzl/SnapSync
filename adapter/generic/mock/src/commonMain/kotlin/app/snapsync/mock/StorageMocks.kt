@@ -137,6 +137,11 @@ class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: Strin
         held.locked = on
     }
 
+    /** Make database [name] alone unreadable, or readable again ([DatabasesLevers.unreadable]). */
+    fun unreadable(name: String, on: Boolean = true) {
+        held.unreadable = if (on) held.unreadable + name else held.unreadable - name
+    }
+
     /** The next [times] statements of [kind] on [table] of [database] fail ([DatabasesLevers.fail]). */
     fun fail(database: String, table: String, kind: WriteKind, times: Int = 1) = held.arm(database, table, kind, times)
 
@@ -159,6 +164,8 @@ class DatabasesMock(refusals: Map<String, DbOpen> = emptyMap(), directory: Strin
 
 /** The faults a real SQLite answers, which a test plays on the device's databases ([DatabasesLevers]). */
 class DatabasesOperator internal constructor(private val mock: DatabasesMock) : DatabasesLevers {
+    override suspend fun unreadable(database: String, on: Boolean) = mock.unreadable(database, on)
+
     override suspend fun fail(database: String, table: String, kind: WriteKind, times: Int?) =
         mock.fail(database, table, kind, times ?: 1)
 

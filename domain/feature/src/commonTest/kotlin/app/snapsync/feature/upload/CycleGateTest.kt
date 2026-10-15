@@ -1,13 +1,13 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.format.TimestampText
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.SuppressionReadiness
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.selectionScope

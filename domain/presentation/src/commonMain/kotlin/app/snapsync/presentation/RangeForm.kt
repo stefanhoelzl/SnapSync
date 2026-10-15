@@ -2,8 +2,8 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.model.AlbumContents
-import app.snapsync.model.Direction
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount
 import kotlinx.datetime.LocalDate
@@ -26,8 +26,7 @@ import kotlinx.datetime.LocalDateTime
  * The defaults are what an UNTOUCHED gate commits, so each is a stance. All three participation values start on —
  * including [saveToAlbum], because the album is the only on-device statement that a set of photos belongs to this
  * event, and a member who decides nothing should get that grouping. Whether photos may use mobile data is the device's,
- * not the gate's. The headless `autoJoin` path does NOT read these seeds and deliberately keeps its own album default
- * off; see `StatusContainerHost.autoConfirm`.
+ * not the gate's.
  *
  * [albumContents] is not a choice but what the event album holds on this phone: the album note says it — on an
  * Android phone, whose album is a folder, only the photos the member receives.

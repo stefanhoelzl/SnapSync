@@ -1,6 +1,7 @@
 package app.snapsync.rig.gallery
 
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.format.TimestampText
 import app.snapsync.levers.AssetView
 import app.snapsync.levers.CalibrationView
 import app.snapsync.levers.CensusView
@@ -11,7 +12,6 @@ import app.snapsync.model.CandidateRead
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionRule
-import app.snapsync.model.TimestampText
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.services.gallery.CandidateSource
 import kotlin.time.TimeSource

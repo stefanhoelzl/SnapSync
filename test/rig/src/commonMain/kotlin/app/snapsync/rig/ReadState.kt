@@ -1,10 +1,10 @@
 package app.snapsync.rig
 
 import app.snapsync.compose.AppCore
+import app.snapsync.format.TimestampText
 import app.snapsync.levers.DownloadView
 import app.snapsync.levers.Readiness
 import app.snapsync.levers.RigState
-import app.snapsync.model.TimestampText
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiState

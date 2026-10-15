@@ -1,7 +1,14 @@
 package app.snapsync.services.databases
 
+import app.snapsync.data.membership.EventCheck
+import app.snapsync.data.store.LegacyCopy
+import app.snapsync.data.store.LegacySource
+import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.data.store.db.MembershipQueries
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.ConfigFileDecode
+import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.PrefRead
@@ -9,9 +16,6 @@ import app.snapsync.model.decodeConfigFile
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences
-import app.snapsync.services.config.saveMembership
-import app.snapsync.services.ledger.db.LedgerDatabase
-import app.snapsync.services.wake.EventCheck
 import co.touchlab.kermit.Logger
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.SetSerializer
@@ -41,18 +45,6 @@ private const val ALBUM_MAP_KEY = "app.snapsync.album.map"
 /** The event-album filled marks' legacy Preferences key — runtime identity. */
 private const val ALBUM_FILLED_KEY = "app.snapsync.album.filled"
 
-/** A pending leave's legacy marker of "received every photo"; a line without it did not. */
-private const val RECEIVED = "received"
-
-/** One record's legacy home, as `legacyImport` names it once its rows are in the shared database. */
-enum class LegacySource(val key: String) {
-    MEMBERSHIP("membership"),
-    MANIFEST("manifest"),
-    PENDING_LEAVES("pendingLeaves"),
-    ALBUM("album"),
-    CHECKS("checks"),
-}
-
 /**
  * **The app's one-time copy of the shared records' legacy homes into `ledger.db`** — a
  * shim, listed in `PENDING_CLEANUPS.md`. Before the records moved into the database, they lived in files in the shared
@@ -74,14 +66,14 @@ class LegacyRecords(
     private val files: Files,
     private val preferences: Preferences,
     private val log: Logger = Logger.withTag("legacyRecords"),
-) {
+) : LegacyCopy {
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
      * Copies every source [db] has not marked yet, and deletes what a marked one left behind. Never raises: a source
      * that fails stays pending, and a leftover that is not deleted now is deleted at a later open.
      */
-    fun copyInto(db: LedgerDatabase) {
+    override fun copyInto(db: LedgerDatabase) {
         val done = db.legacyImportQueries.selectImported().executeAsList().toSet()
         LegacySource.entries.forEach { source ->
             runCatchingCancellable { if (source.key in done) forgetLeftover(source, db) else copy(source, db) }
@@ -160,11 +152,14 @@ class LegacyRecords(
         db.uploadedManifestQueries.recordUploaded(eventId, version, manifest)
     }
 
-    /** One leave per line: `"<eventId>"` or `"<eventId> received"`; a line naming no event is dropped. */
+    /**
+     * One leave per line: `"<eventId>"` or `"<eventId> received"` — whether it received everything is no longer kept;
+     * a line naming no event is dropped.
+     */
     private fun copyLeaves(db: LedgerDatabase, text: String) {
         text.lines().map(String::trim).filter { it.isNotEmpty() }.forEach { line ->
             val eventId = EventId.parse(line.substringBefore(' ')) ?: return@forEach
-            db.pendingLeaveQueries.recordPendingLeave(eventId, line.substringAfter(' ', "") == RECEIVED)
+            db.pendingLeaveQueries.recordPendingLeave(eventId)
         }
     }
 
@@ -231,3 +226,22 @@ class LegacyRecords(
 
     private fun checkKey(check: EventCheck, eventId: EventId) = "app.snapsync.check.${check.key}.$eventId"
 }
+
+/** [config], a legacy file's membership, as the one membership row. */
+private fun MembershipQueries.saveMembership(config: EventConfig) = saveMembership(
+    eventId = config.eventId,
+    name = config.name,
+    minPhotoDate = config.minPhotoDate,
+    startsAt = config.startsAt,
+    endsAt = config.endsAt,
+    maxPhotoDate = config.maxPhotoDate,
+    deletesAt = config.deletesAt,
+    direction = config.direction,
+    saveToAlbum = config.saveToAlbum,
+    membersActive = config.members?.active?.toLong(),
+    membersSettled = config.members?.settled?.toLong(),
+    membersWaiting = config.members?.waiting?.toLong(),
+    keyId = config.keyId,
+    openUntil = config.openUntil,
+    deleted = config.deleted,
+)

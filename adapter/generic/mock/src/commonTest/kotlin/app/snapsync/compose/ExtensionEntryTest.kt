@@ -1,12 +1,16 @@
 package app.snapsync.compose
 
 import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.TimestampText
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.mock.BackendMock
 import app.snapsync.mock.BuildInfoMock
@@ -22,13 +26,9 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.EventConfig
-import app.snapsync.model.TimestampText
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.testids.testEventId
@@ -106,17 +106,26 @@ class ExtensionEntryTest {
     private suspend fun joinedWithAToken(token: String) {
         MintingDeviceIdentity(secureStore, platformDeviceId = { null }).id()
         attest.setToken(TokenText.parse(token))
-        ConfigService(appDatabase, clock).save(
-            EventConfig(
+        // The membership row as a join writes it.
+        appDatabase.use {
+            it.membershipQueries.saveMembership(
                 eventId = testEventId("11111111-1111-4111-8111-111111111111"),
                 name = "Anna's Birthday",
                 minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-14T18:00:00Z")),
-                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-21T18:00:00Z")),
-                saveToAlbum = false,
+                startsAt = EventStart(TimestampText.parse("2026-07-14T18:00:00Z")),
                 endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
+                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-21T18:00:00Z")),
                 deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
-            ),
-        )
+                direction = Direction.Both,
+                saveToAlbum = false,
+                membersActive = null,
+                membersSettled = null,
+                membersWaiting = null,
+                keyId = null,
+                openUntil = null,
+                deleted = false,
+            )
+        }
         // The app creates and migrates the download store — the extension only ever opens it read-only — and has
         // recognised this membership's received photos, without which the extension shares nothing of it.
         DownloadService(databases).recognition.mark(testEventId("11111111-1111-4111-8111-111111111111"))

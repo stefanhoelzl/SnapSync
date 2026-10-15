@@ -1,13 +1,16 @@
 package app.snapsync.services.downloads
 
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.data.store.DatabaseUnavailable
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
-import app.snapsync.services.databases.DatabaseUnavailable
+import app.snapsync.ports.DbResult
+import app.snapsync.ports.OpenDatabase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -74,5 +77,17 @@ class SuppressionServiceTest {
         databases.answer = DbOpen.Missing
         assertEquals(SuppressionReadiness.Ready, service.readiness(), "and so is an old schema: the app migrates it")
         assertEquals(3, databases.opens.size)
+    }
+
+    @Test
+    fun `a read that fails on an open store is unavailable and never empty`() = runTest {
+        val failing = object : OpenDatabase {
+            override fun <T> execute(statements: (SqlDriver) -> T): DbResult<T> = DbResult.Failed("locked")
+        }
+        val service = SuppressionService(Scripted(DbOpen.Opened(failing)))
+        assertEquals(SuppressionReadiness.Ready, service.readiness(), "the store opened")
+        assertFailsWith<DatabaseUnavailable>("an empty answer would upload every downloaded photo back") {
+            service.suppressedLocalIds()
+        }
     }
 }

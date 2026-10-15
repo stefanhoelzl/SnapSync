@@ -28,11 +28,13 @@ flowchart LR
   domain_domain[":domain:domain"]
   domain_entrypoints[":domain:entrypoints"]
   domain_feature[":domain:feature"]
+  domain_format[":domain:format"]
   domain_host[":domain:host"]
   domain_inbound[":domain:inbound"]
   domain_model[":domain:model"]
   domain_ports[":domain:ports"]
   domain_presentation[":domain:presentation"]
+  domain_query[":domain:query"]
   domain_scheduling[":domain:scheduling"]
   domain_services[":domain:services"]
   domain_wire[":domain:wire"]
@@ -59,10 +61,12 @@ flowchart LR
   adapter_android --> adapter_generic_motionphoto
   adapter_android --> domain_domain
   adapter_android --> domain_feature
+  adapter_android --> domain_format
   adapter_android --> domain_inbound
   adapter_android --> domain_model
   adapter_android --> domain_ports
   adapter_android --> domain_presentation
+  adapter_android --> domain_query
   adapter_android --> domain_services
   adapter_android --> test_contracts
   adapter_android --> ui_components
@@ -79,6 +83,7 @@ flowchart LR
   adapter_generic_mock --> domain_data
   adapter_generic_mock --> domain_domain
   adapter_generic_mock --> domain_feature
+  adapter_generic_mock --> domain_format
   adapter_generic_mock --> domain_inbound
   adapter_generic_mock --> domain_model
   adapter_generic_mock --> domain_ports
@@ -112,10 +117,12 @@ flowchart LR
   adapter_ios_ui --> adapter_ios_app_only
   adapter_ios_ui --> adapter_ios_ext_safe
   adapter_ios_ui --> domain_feature
+  adapter_ios_ui --> domain_format
   adapter_ios_ui --> domain_inbound
   adapter_ios_ui --> domain_model
   adapter_ios_ui --> domain_ports
   adapter_ios_ui --> domain_presentation
+  adapter_ios_ui --> domain_query
   adapter_ios_ui --> test_contracts
   adapter_ios_ui --> ui_components
   adapter_ios_ui --> ui_screens
@@ -187,13 +194,16 @@ flowchart LR
   domain_compose --> domain_domain
   domain_compose --> domain_entrypoints
   domain_compose --> domain_feature
+  domain_compose --> domain_format
   domain_compose --> domain_inbound
   domain_compose --> domain_model
   domain_compose --> domain_ports
+  domain_compose --> domain_query
   domain_compose --> domain_scheduling
   domain_compose --> domain_services
   domain_compose --> ui_state
   domain_data --> domain_domain
+  domain_data --> domain_format
   domain_data --> domain_inbound
   domain_data --> domain_ports
   domain_data --> domain_wire
@@ -204,13 +214,16 @@ flowchart LR
   domain_entrypoints --> domain_inbound
   domain_entrypoints --> domain_model
   domain_entrypoints --> domain_ports
+  domain_entrypoints --> domain_query
   domain_entrypoints --> domain_scheduling
   domain_entrypoints --> domain_services
   domain_feature --> domain_data
   domain_feature --> domain_domain
+  domain_feature --> domain_format
   domain_feature --> domain_model
   domain_feature --> domain_scheduling
   domain_feature --> domain_services
+  domain_format --> domain_domain
   domain_host --> domain_compose
   domain_host --> domain_domain
   domain_host --> domain_entrypoints
@@ -219,27 +232,36 @@ flowchart LR
   domain_host --> domain_model
   domain_host --> domain_ports
   domain_host --> domain_presentation
+  domain_host --> domain_query
   domain_host --> domain_scheduling
   domain_host --> ui_state
   domain_model --> domain_domain
+  domain_model --> domain_format
   domain_ports --> domain_inbound
   domain_ports --> domain_model
   domain_presentation --> domain_domain
   domain_presentation --> domain_feature
+  domain_presentation --> domain_format
   domain_presentation --> domain_model
+  domain_presentation --> domain_query
   domain_presentation --> ui_state
+  domain_query --> domain_data
+  domain_query --> domain_domain
   domain_scheduling --> domain_inbound
   domain_scheduling --> domain_ports
   domain_services --> domain_data
   domain_services --> domain_domain
+  domain_services --> domain_format
   domain_services --> domain_inbound
   domain_services --> domain_model
   domain_services --> domain_ports
   domain_services --> domain_wire
   test_architecture --> adapter_generic_app
   test_architecture --> adapter_generic_mock
+  test_architecture --> domain_data
   test_architecture --> domain_domain
   test_architecture --> domain_feature
+  test_architecture --> domain_format
   test_architecture --> domain_model
   test_architecture --> domain_ports
   test_architecture --> domain_services
@@ -258,6 +280,7 @@ flowchart LR
   test_contracts --> domain_services
   test_contracts --> domain_wire
   test_contracts --> ui_state
+  test_control --> domain_domain
   test_control --> domain_feature
   test_control --> domain_model
   test_control --> domain_presentation
@@ -268,15 +291,19 @@ flowchart LR
   test_data --> domain_application
   test_data --> domain_data
   test_data --> domain_domain
+  test_data --> domain_format
   test_data --> domain_inbound
   test_data --> domain_ports
+  test_data --> domain_query
   test_data --> domain_wire
+  test_data --> test_contracts
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
   test_feature --> adapter_generic_mock
   test_feature --> domain_data
   test_feature --> domain_domain
   test_feature --> domain_feature
+  test_feature --> domain_format
   test_feature --> domain_inbound
   test_feature --> domain_model
   test_feature --> domain_ports
@@ -286,6 +313,7 @@ flowchart LR
   test_integration --> adapter_generic_app
   test_integration --> domain_domain
   test_integration --> domain_feature
+  test_integration --> domain_format
   test_integration --> domain_model
   test_integration --> domain_ports
   test_integration --> domain_presentation
@@ -319,6 +347,7 @@ flowchart LR
   test_rig --> domain_data
   test_rig --> domain_domain
   test_rig --> domain_feature
+  test_rig --> domain_format
   test_rig --> domain_inbound
   test_rig --> domain_model
   test_rig --> domain_ports
@@ -335,8 +364,10 @@ flowchart LR
   ui_screens --> adapter_generic_app
   ui_screens --> domain_domain
   ui_screens --> domain_feature
+  ui_screens --> domain_format
   ui_screens --> domain_model
   ui_screens --> domain_presentation
+  ui_screens --> domain_query
   ui_screens --> ui_components
   ui_screens --> ui_state
 ```

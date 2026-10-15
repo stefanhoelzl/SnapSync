@@ -1,8 +1,8 @@
 package app.snapsync.services.album
 
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.databases.SharedDatabase
 import co.touchlab.kermit.Logger
 
 /**

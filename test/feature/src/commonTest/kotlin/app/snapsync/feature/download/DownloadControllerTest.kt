@@ -1,32 +1,37 @@
 package app.snapsync.feature.download
 
+import app.snapsync.data.membership.EventCheckRecord
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.support.InMemoryAssetPresence
 import app.snapsync.feature.support.RecordingDatabases
 import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.ThrowingDeletes
+import app.snapsync.feature.support.clockOf
 import app.snapsync.feature.support.downloadJobs
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testShared
 import app.snapsync.feature.support.underRuntime
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
-import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionResource
@@ -43,9 +48,9 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.gallery.assetRefOf
+import app.snapsync.services.membership.MembershipTransition
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
-import app.snapsync.services.wake.EventChecks
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred
@@ -213,7 +218,7 @@ class DownloadControllerTest {
         // passes the disk it means and says so at the call site.
         disk: Files = RecordingFiles(),
         downloadEnabled: () -> Boolean? = { true },
-        checks: EventChecks = EventChecks(testShared(), now = { NOW }),
+        now: () -> Instant = { NOW },
         readyToImport: suspend () -> Boolean = { true },
         keyHeld: () -> Boolean = { true },
         album: EventAlbumHooks = EventAlbumHooks(),
@@ -234,7 +239,8 @@ class DownloadControllerTest {
             stagedBytes = staging,
             identity = testIdentity(myDevice),
             arm = DownloadArm(enabled = downloadEnabled, keyHeld = keyHeld),
-            checks = checks,
+            checks = EventCheckRecord(testShared()),
+            clock = WallClock(clockOf(now)),
             readyToImport = readyToImport,
         )
     }
@@ -807,6 +813,30 @@ class DownloadControllerTest {
         assertEquals(1, store.importableAssets().size, "still importable: no reconcile imports")
         underRuntime { c.importReady() }
         assertTrue(store.importableAssets().isEmpty(), "the drain imports it")
+    }
+
+    @Test
+    fun no_membership_holds_nothing() = runTest {
+        val union = FakeUnion(emptyList())
+        assertFalse(controller(union).holdsEverythingFor(null))
+        assertEquals(0, union.calls)
+    }
+
+    @Test
+    fun what_a_failed_leave_left_receiving_is_stopped_unless_a_join_is_keeping_its_own() = runTest {
+        val download = RecordingDownload()
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), download = download)
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        val none = (MembershipRepository(testShared()).read() as MembershipRead.NotJoined).evidence
+        val transition = MembershipTransition()
+
+        transition.begin()
+        c.stopLeftovers(none, transition)
+        assertFalse(download.cancelled, "the join's own downloads stay")
+
+        transition.end()
+        c.stopLeftovers(none, transition)
+        assertTrue(download.cancelled)
     }
 
     @Test
@@ -1605,8 +1635,7 @@ class DownloadControllerTest {
     fun a_wake_within_the_hour_of_any_read_reads_none() = runTest {
         val union = FakeUnion(emptyList())
         var now = NOW
-        val checks = EventChecks(testShared(), now = { now })
-        val controller = controller(union, checks = checks)
+        val controller = controller(union, now = { now })
         controller.reconcile(
             testEventId("event"),
             UnionTrigger.FOREGROUND,
@@ -1708,9 +1737,8 @@ class DownloadControllerTest {
     @Test
     fun a_push_announcing_what_was_already_read_reads_nothing_and_stamps_nothing() = runTest {
         val store = DownloadService(inMemoryDatabases())
-        val checks = EventChecks(testShared(), now = { NOW })
         val union = FakeUnion(emptyList(), position = 8)
-        val c = controller(union, store = store, checks = checks)
+        val c = controller(union, store = store)
         c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         c.reconcile(testEventId("event"), UnionTrigger.PUSH, announced = 8)
         c.reconcile(testEventId("event"), UnionTrigger.PUSH, announced = 3)

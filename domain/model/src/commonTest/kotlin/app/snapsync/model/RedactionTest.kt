@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.format.EventKeyText
+import app.snapsync.format.LINK_ORIGIN
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -121,5 +123,27 @@ class RedactionTest {
         assertTrue(redactsMessages(mapOf(NON_REDACTED_TAG to "0")))
         assertTrue(redactsMessages(mapOf(NON_REDACTED_TAG to "")))
         assertTrue(redactsMessages(mapOf(NON_REDACTED_TAG to "true")))
+    }
+
+    @Test
+    fun `no event key survives a log line, a report or the dump`() {
+        val eventId = "550e8400-e29b-41d4-a716-446655440000"
+        val text = EventKeyText.encode(ByteArray(EventKeyText.KEY_BYTES) { it.toByte() })
+        val line = "onOpenUrl url=$LINK_ORIGIN/join/$eventId#k=$text&autoJoin=true"
+        val scrubbed = redactEventKeys(line)
+        assertTrue(text !in scrubbed && REDACTED_KEY in scrubbed, scrubbed)
+        assertEquals("no key here", redactEventKeys("no key here"))
+        val dump = diagnosticDumpEvent(
+            DiagnosticDump(
+                note = "k=$text? #k=$text",
+                state = mapOf("invite" to "#k=$text"),
+                ledger = emptyMap(),
+                appLog = line,
+                extensionLog = "",
+            ),
+        )
+        val everything = dump.message + dump.contexts.values.flatMap { it.values }.joinToString()
+        assertTrue(text !in everything, "the dump keeps ids, never keys")
+        assertTrue(eventId in everything, "ids stay intact in the dump")
     }
 }

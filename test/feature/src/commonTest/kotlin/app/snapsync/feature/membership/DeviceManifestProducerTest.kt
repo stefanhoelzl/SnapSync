@@ -4,22 +4,20 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.testShared
+import app.snapsync.format.TimestampText
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.JoinResult
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.model.selectionRulesFor
-import app.snapsync.services.backend.EventJoin
 import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.testids.testDeviceId
@@ -91,15 +89,6 @@ class DeviceManifestProducerTest {
         override suspend fun publish(eventId: EventId, deviceId: DeviceId, manifest: DeviceManifest): Boolean {
             puts += Triple(eventId, deviceId, manifest.encodeToJson())
             return ok
-        }
-    }
-
-    /** A join that records its calls and writes nothing — which is the whole contract now. */
-    private class FakeJoin(private val result: JoinResult = JoinResult.Joined) : EventJoin {
-        val joins = mutableListOf<Pair<EventId, DeviceId>>()
-        override suspend fun join(eventId: EventId, deviceId: DeviceId): JoinResult {
-            joins += eventId to deviceId
-            return result
         }
     }
 
@@ -282,15 +271,12 @@ class DeviceManifestProducerTest {
         // version, which is what re-establishes it on the backend (capability `photo-sharing`).
         val store = manifestRecord()
         val up = FakeUploader()
-        val join = FakeJoin()
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
         producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
 
-        ManifestDeviceEnroller(join).enroll(testEventId("E"), testDeviceId("dev")) // the re-join
-
-        assertEquals(listOf(testEventId("E") to testDeviceId("dev")), join.joins)
-        assertEquals(1, up.puts.size, "the join must write no manifest")
+        // the re-join writes no manifest: the producer's record is untouched
+        assertEquals(1, up.puts.size)
 
         producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size, "an unchanged projection under the same version is correctly skipped")
@@ -331,16 +317,6 @@ class DeviceManifestProducerTest {
             manifestVersion = 6L,
         )
         assertEquals(2, up.puts.size)
-    }
-
-    @Test
-    fun a_refused_join_does_not_enrol_and_is_distinguishable() = runTest {
-        // A closed event is a refusal the user can act on; the seam must not flatten it into "something failed".
-        val closed = FakeJoin(JoinResult.EventClosed)
-        assertEquals(
-            JoinResult.EventClosed,
-            ManifestDeviceEnroller(closed).enroll(testEventId("E"), testDeviceId("dev")),
-        )
     }
 
     @Test

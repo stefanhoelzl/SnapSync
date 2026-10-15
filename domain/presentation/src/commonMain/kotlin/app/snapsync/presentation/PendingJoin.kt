@@ -1,6 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
@@ -24,8 +25,8 @@ data class PendingJoin(
     val phase: JoinProgress,
     /** The key the invite link carried, `null` when it carried none — committed with the join, shown nowhere. */
     val linkKey: String? = null,
-    /** The loaded event's key id, once its details loaded — what [linkKey] was checked against. */
-    val eventKeyId: String? = null,
+    /** The event as the server served it, once its details loaded — what a confirm commits. */
+    val loaded: Event? = null,
     /**
      * How SnapSync's service failed the load or the commit [phase] shows the failure of — told in its own words —
      * `null` on every other phase, and for a failure that was not the service's.

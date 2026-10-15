@@ -1,17 +1,33 @@
 package app.snapsync.compose
 
+import app.snapsync.entrypoints.AfterJoin
+import app.snapsync.entrypoints.AfterSettings
+import app.snapsync.entrypoints.DeletedTransfers
+import app.snapsync.entrypoints.EndOfWake
+import app.snapsync.entrypoints.EventAlbum
 import app.snapsync.entrypoints.ForegroundWork
 import app.snapsync.entrypoints.ImportReceived
+import app.snapsync.entrypoints.Joining
+import app.snapsync.entrypoints.Leaving
+import app.snapsync.entrypoints.OnDevReset
 import app.snapsync.entrypoints.OnDownloadStaged
+import app.snapsync.entrypoints.OnInviteForOtherEvent
+import app.snapsync.entrypoints.OnJoinConfirmed
 import app.snapsync.entrypoints.OnKeyRestored
+import app.snapsync.entrypoints.OnLeaveConfirmed
+import app.snapsync.entrypoints.OnRenameRequested
+import app.snapsync.entrypoints.OnSettingsChanged
 import app.snapsync.entrypoints.Prelude
-import app.snapsync.entrypoints.Provision
+import app.snapsync.entrypoints.StateRefresh
+import app.snapsync.entrypoints.SweepLeftovers
 import app.snapsync.entrypoints.TopUp
 import app.snapsync.entrypoints.UploadEngine
 import app.snapsync.entrypoints.UploadOwn
 import app.snapsync.entrypoints.WakeWork
+import app.snapsync.feature.download.ReceivedReport
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.feature.upload.OwnUploads
+import app.snapsync.feature.upload.ShareSettlement
 import app.snapsync.feature.upload.WakeRearm
 import app.snapsync.feature.upload.cadenceFacts
 import app.snapsync.services.wake.Heartbeat
@@ -36,7 +52,17 @@ internal class AppWork(private val core: AppCore) {
     internal val importReceived: ImportReceived by lazy { ImportReceived(core.downloadController, foregroundCounts) }
     internal val topUp: TopUp by lazy { TopUp(ownUploads, foregroundCounts) }
     private val uploadOwn: UploadOwn by lazy { UploadOwn(ownUploads, foregroundCounts) }
-    internal val prelude: Prelude by lazy { Prelude(core.services.config, core.refreshAttestation) }
+
+    /** The event album a join or a settings change makes and gathers into. */
+    private val eventAlbum: EventAlbum by lazy {
+        EventAlbum(
+            core.albumCoordinator,
+            core.albumGather,
+            core.galleryAccess,
+        )
+    }
+
+    internal val prelude: Prelude by lazy { Prelude(core.services.membership, core.refreshAttestation) }
 
     /** The heartbeat the wake's re-arm keeps pending, and a disarm cancels. */
     private val heartbeat: Heartbeat by lazy {
@@ -59,14 +85,40 @@ internal class AppWork(private val core: AppCore) {
         )
     }
 
+    /** The membership's use cases, queries and branch. */
+    internal val membership: MembershipLayers = MembershipLayers(core)
+
+    private val statuses get() = core.membershipStatuses
+
+    private val stateRefresh: StateRefresh by lazy {
+        StateRefresh(membership.branch, DeletedTransfers(core.uploadTransitions, core.downloadController))
+    }
+
+    private val endOfWake: EndOfWake by lazy {
+        EndOfWake(
+            membership.branch,
+            core.downloadController,
+            membership.deliver,
+            ShareSettlement(
+                core.services.config,
+                core.services.manifestStore,
+                // The uploader's own discovery → publish, which marks the manifest settled once the range has ended.
+                // Under a partial grant it reads the selection snapshot, never the library.
+                publishFinal = { core.appUploader.cycle.walkAndPublish() },
+            ),
+            membership.claimState,
+            stateRefresh,
+            ReceivedReport(core.services.config, core.downloadController, core.backend.received),
+        )
+    }
+
     internal val wakeWork: WakeWork by lazy {
         WakeWork(
             prelude,
             importReceived,
             uploadOwn,
             wakeRearm,
-            core.membershipEnd.completion,
-            core.downloadController,
+            endOfWake,
             core.footprints,
         )
     }
@@ -80,8 +132,14 @@ internal class AppWork(private val core: AppCore) {
             storedUploadSettleFor(core.services, core.backend.deviceFiles),
             core.statusRefresh,
             core.downloadController,
-            core.membershipRefresh,
-            core.backend.directory,
+            stateRefresh,
+            SweepLeftovers(
+                membership.branch,
+                core.services.eventKeys,
+                core.downloadController,
+                core.uploadTransitions,
+                core.services.transition,
+            ),
         )
     }
 
@@ -101,19 +159,85 @@ internal class AppWork(private val core: AppCore) {
     /** A lost event key kept from a reopened invite: the foreground's work runs again. */
     internal val keyRestored: OnKeyRestored by lazy { OnKeyRestored(core.runtime, foregroundWork, wakeWork) }
 
-    /** The join's provision: entering the membership, then what follows a join. */
-    internal val provision: Provision by lazy {
-        Provision(
-            // The order is `MembershipEntry`'s rule; the backend leave is awaited here, unlike the leave command's.
-            core.membershipEntry(core.leaveEvent::notifySwitchLeave),
-            core.services.config,
-            core.statusRefresh,
-            core.albumCoordinator,
-            core.galleryAccess,
+    /** The member confirmed a join. */
+    internal val joinConfirmed: OnJoinConfirmed by lazy {
+        OnJoinConfirmed(
+            core.runtime,
+            membership.enroll,
+            core.services.eventKeys,
+            Joining(
+                core.services.transition,
+                core.joinUnion,
+                core.shareSetLoad,
+                core.receivedPhotoAdoption,
+                membership.enter,
+                AfterJoin(
+                    core.uploadTransitions,
+                    core.statusRefresh,
+                    eventAlbum,
+                    core.downloadController,
+                    core.joinUnion,
+                    core.pushRegistration,
+                    core.services.pushTokens,
+                    statuses,
+                ),
+                statuses,
+            ),
+            statuses,
+        )
+    }
+
+    /** The member left. */
+    internal val leaveConfirmed: OnLeaveConfirmed by lazy {
+        OnLeaveConfirmed(
+            core.runtime,
+            membership.leave,
+            Leaving(core.uploadTransitions, core.downloadController, core.services.eventKeys, membership.deliver),
+        )
+    }
+
+    /** Another event's invite loaded while joined. */
+    internal val inviteForOtherEvent: OnInviteForOtherEvent by lazy {
+        OnInviteForOtherEvent(
+            core.runtime,
+            membership.switchLookup,
             core.downloadController,
-            core.joinUnion,
-            core.pushRegistration,
-            core.services.pushTokens,
+            core.services.config,
+            statuses,
+        )
+    }
+
+    /** The member changed the joined event's settings. */
+    internal val settingsChanged: OnSettingsChanged by lazy {
+        OnSettingsChanged(
+            core.runtime,
+            membership.branch,
+            membership.reconfigure,
+            AfterSettings(
+                core.statusRefresh,
+                core.uploadTransitions,
+                eventAlbum,
+                core.downloadController,
+                statuses,
+            ),
+            statuses,
+        )
+    }
+
+    /** The member renamed the joined event. */
+    internal val renameRequested: OnRenameRequested by lazy {
+        OnRenameRequested(core.runtime, membership.branch, membership.rename, statuses)
+    }
+
+    /** The control channel voids this device's durable state (a rig build only). */
+    internal val devReset: OnDevReset by lazy {
+        OnDevReset(
+            core.runtime,
+            core.services.ledger,
+            core.downloadController,
+            membership.forget,
+            core.services.eventKeys,
+            core.services.mobileData,
         )
     }
 }

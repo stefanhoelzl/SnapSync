@@ -19,6 +19,12 @@ import kotlinx.serialization.Serializable
 @Rpc
 interface DatabasesLevers {
     /**
+     * [database] alone unreadable, or — [on] `false` — readable again: a file the platform answers an I/O error for,
+     * while every other database reads as usual. An open fails, and so does every statement on it already open.
+     */
+    suspend fun unreadable(database: String, on: Boolean)
+
+    /**
      * The next [times] (omitted: one) statements of [kind] on [table] of [database] fail, as SQLite fails a write whose
      * lock another process holds: the statement throws and changes nothing, and the database stays open. Held to the
      * `Databases` contract's `A_REFUSED_WRITE_THROWS_AND_CHANGES_NOTHING`. A database the device has not created yet, or

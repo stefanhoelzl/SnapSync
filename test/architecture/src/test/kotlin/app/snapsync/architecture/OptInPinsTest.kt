@@ -37,6 +37,18 @@ class OptInPinsTest {
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt" to mapOf(
             "CompositionOnly" to Pin(1, "the extension's composition: its one entry port, registered"),
         ),
+        "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/membership/DeletionVerdict.kt" to mapOf(
+            "MintsConfirmedDeletion" to Pin(
+                2,
+                "the verdicts that confirm a deletion: a read of the event, and a write the server refused as over",
+            ),
+        ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/membership/MembershipRows.kt" to mapOf(
+            "MintsConfirmedNotJoined" to Pin(1, "the one read that says the store holds no membership"),
+        ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/membership/MembershipEnds.kt" to mapOf(
+            "MintsLeftMembership" to Pin(1, "the one transaction that ends a membership"),
+        ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppServices.kt" to mapOf(
             "AppProcessOnly" to Pin(1, "the app's device identity, the one that may mint"),
         ),
@@ -44,7 +56,17 @@ class OptInPinsTest {
             "AppProcessOnly" to Pin(1, "the app's credential, the one that attests"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
-            "EntryPointCall" to Pin(1, "the wake's prelude calls its use case"),
+            "EntryPointCall" to Pin(2, "the wake's prelude and the rig's reset call their use cases"),
+        ),
+        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/MembershipEntryPoints.kt" to mapOf(
+            "EntryPointCall" to Pin(1, "the membership's entry points and the steps they share call its use cases"),
+        ),
+        "/domain/application/src/commonMain/kotlin/app/snapsync/application/membership/EnrollDevice.kt" to mapOf(
+            "MintsEnrolled" to Pin(1, "the one enrolment the server admitted"),
+        ),
+        "/domain/services/src/commonMain/kotlin/app/snapsync/services/membership/MembershipProjection.kt" to mapOf(
+            "ExperimentalForInheritanceCoroutinesApi" to
+                Pin(1, "a hand-written StateFlow over the membership, for the old zones (MIGRATING)"),
         ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppUploader.kt" to mapOf(
             "AppProcessOnly" to Pin(1, "the app's uploader binds the memoised discovery; the extension walks afresh"),

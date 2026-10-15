@@ -4,11 +4,11 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
 import app.snapsync.model.KeyPresence
-import app.snapsync.model.TimestampText
 import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.WriteOutcome

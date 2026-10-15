@@ -2,13 +2,13 @@ package app.snapsync.services.gallery
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.format.TimestampText
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CandidateScope
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
-import app.snapsync.model.TimestampText
 import app.snapsync.model.resourcesOf
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum

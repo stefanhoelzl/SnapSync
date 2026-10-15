@@ -2,6 +2,7 @@ package app.snapsync.gallery
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.InMemoryResource
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.inMemoryGallery
@@ -17,7 +18,6 @@ import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.TimestampText
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.ports.GalleryAssetResources

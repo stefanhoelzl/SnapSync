@@ -2,30 +2,31 @@ package app.snapsync.services.ledger
 
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.contracts.at
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.store.LEDGER_DB_NAME
+import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.mock.fixedClock
+import app.snapsync.domain.upload.LedgerState
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
-import app.snapsync.model.LedgerState
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.TimestampText
 import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.Databases
 import app.snapsync.ports.Files
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.CONFIG_FILE_NAME
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.databases.strings
-import app.snapsync.services.ledger.db.LedgerDatabase
+import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -33,7 +34,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Instant
 
 /**
  * The ledger's migrations as a device upgrades through them (capability `photo-sharing`). 12.sqm parked every row
@@ -112,10 +112,9 @@ class LedgerMigrationTest {
             ),
         )
 
-        val read = ConfigService(appOpen(databases, inMemoryFiles()), fixedClock(Instant.parse("2026-07-10T00:00:00Z")))
-            .read()
+        val read = MembershipRepository(appOpen(databases, inMemoryFiles())).read()
 
-        val config = assertIs<ConfigRead.Joined>(read).config
+        val config = assertIs<MembershipRead.Joined>(read).membership.asConfig()
         assertEquals(testEventId(JOINED), config.eventId)
         assertEquals(false, config.deleted)
         assertNull(config.openUntil)
@@ -141,7 +140,7 @@ private fun membershipFile(eventId: String): Files = inMemoryFiles().apply {
         testEventId(eventId),
         name = "Anna's Birthday",
         minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-08-05T14:32:11Z")),
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )

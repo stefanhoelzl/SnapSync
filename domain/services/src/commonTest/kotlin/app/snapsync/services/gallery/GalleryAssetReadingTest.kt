@@ -2,11 +2,11 @@ package app.snapsync.services.gallery
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.format.TimestampText
 import app.snapsync.model.ImportResult
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.TimestampText
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.ImportOutcome

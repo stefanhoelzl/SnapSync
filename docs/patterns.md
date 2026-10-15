@@ -48,11 +48,12 @@ the extension's in `snapSyncExtension`.
 ## 2. Entry points
 
 One entry point per operating-system trigger, **named for it** (`OnSilentPush`, `OnScheduledWake`), in
-`entrypoints/AppEntryPoints.kt` or `ExtensionEntryPoints.kt`. Read top to bottom, those two files are what the app
-does on every trigger.
+`entrypoints/AppEntryPoints.kt` or `ExtensionEntryPoints.kt` — and one per request a member makes of the membership
+(`OnJoinConfirmed`, `OnLeaveConfirmed`, `OnSettingsChanged`, `OnRenameRequested`, `OnInviteForOtherEvent`), in
+`MembershipEntryPoints.kt`. Read top to bottom, those files are what the app does on every trigger.
 
 ```kotlin
-class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : EntryPoint<PushMessage>(runtime) {
+class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : BackgroundEntryPoint<PushMessage>(runtime) {
     override suspend fun run(arg: PushMessage) = steps {
         required { prelude.run() }
         isolated("receive") { receiver.onSilentPush(arg.payload) }
@@ -64,22 +65,35 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : EntryP
 }
 ```
 
-- **Pick the base by the kind:** `EntryPoint` (`Background`), `GrantedEntryPoint` (`Granted`), `InlineEntryPoint`
-  (`Inbound`, runs on the delivering thread and persists before it returns), `AnsweredEntryPoint` (`Answered`, with
-  the answer a failure gives).
+- **Pick the base by the interface the delivery comes through:** each base is named for the one it implements —
+  `InboundEntryPoint` (`Inbound`, runs on the delivering thread and persists before it returns),
+  `BackgroundEntryPoint` (`Background`), `GrantedEntryPoint` (`Granted`), `AnsweredEntryPoint` (`Answered`, with the
+  answer a failure gives).
 - **`run` orders and never decides.** Each step makes one call; what the step does is that call's. A `when` over a
   fact a feature answered selects between steps — with a subject, no `else`, as an expression — and nothing more.
   A decision is a feature's. The `entrypoints` detekt tier holds the claim (cyclomatic and cognitive 4).
 - **The base gives every trigger the same treatment by construction:** the `Trigger` (the class name), the
   containment, the background-time hold (begun on the delivering thread, before the callback returns — the OS may
   suspend the process the moment it does), and the expiry.
-- Work several entry points share is a plain class beside them (`Prelude`, `ForegroundWork`, `WakeWork`,
-  `Provision`), written in steps too. Work started from inside the process for a trigger that is not the platform's
+- Work several entry points share is a plain class beside them (`Prelude`, `ForegroundWork`, `WakeWork`, `Joining`,
+  `Leaving`, `EndOfWake`), written in steps too. Work started from inside the process for a trigger that is not the platform's
   (a staged download, a restored key, a transition's arm) is a small class whose `requested()` starts it
   `detached` under that name (`OnDownloadStaged`, `OnKeyRestored`, `OnArm`).
 - State whose change starts work is **followed**, not polled: `Observation.follow(flow, entryPoint)` hands each
   emission to an entry point as a delivery, and the next waits for that run (`OnSelectionChanged`,
   `OnNetworkReturned`).
+- **What the membership reads decides which steps run, through one builder**:
+  `membership(branch, Cached | Refreshed) { active { … } deleted { … } notJoined { … } }` reads the membership — as
+  held, or after bringing an active one up to the server's word — and runs the steps of the branch it is in, each
+  branch handed what it proves (the active membership, the deleted one, the evidence that none is held). A membership
+  that cannot be read runs nothing; an omitted branch does nothing; a block that names none is refused
+  (`EntryPointShape`).
+- **A use case's outcome carries what the member is told.** A refusal is one case of a sealed group whose `answer` is
+  the request's answer (`EnrollOutcome.NotEnrolled.answer: JoinCommit`), so an entry point branches only on whether the
+  operation went ahead, and the mapping is the use case's — unit-tested with it.
+- A member's request is answered on its **status** (section 13): the entry point's first step is
+  `ensure("answer") { status.settle(id, …) }`, so a run that ends early still answers, and the step that knows the
+  outcome writes it with `done`.
 - `entrypoints/` sees the ports' vocabulary for its arguments and calls no port. Its edges to `feature/` and
   `services/` are **migrating**: phase 4 moves the work underneath sequences and use cases.
 
@@ -222,15 +236,22 @@ it does not name, and the world read inside a call, are review's.
 
 `:domain:data` holds the **repositories over the ports and the backend's protocol over the transport** — what the
 backend's routes say and how a store keeps a value. Today it holds trust (`docs/architecture.md`, "Trust"): the gateway,
-the credential stores, the device identity, the attestation handshake, the version gate. Its edges are the domain, the
-ports, the generated wire and the inbound log — never an old zone, never `application`.
+the credential stores, the device identity, the attestation handshake, the version gate — and the membership: the
+`ledger.db` store, the membership row's repository, the leaves owed, the check times, the event's read and rename, the
+enrolment and the leave told to the backend. Its edges are the domain, the format, the ports, the generated wire and
+the inbound log — never an old zone, never `application`.
 
 - **Data translates and never decides.** Its only branch is an exhaustive `when` over a fact or a domain verdict,
   with a subject and no `else`, **used as an expression** — its value is the answer, so no case can quietly do nothing
   (`DataShape`). No `if`. Loops, safe calls and typed catches of a library's exceptions pass; the decision a branch
   stands for is a domain verdict (`RenewalVerdict`, `CredentialVerdict`, `VersionVerdict`).
-- **Nothing throws.** A store answers what it read (`TokenRead`, `KeyIdRead`, `DeviceIdRead`: the value, none, or
-  `Unavailable` — never mistaken for absence) and what it wrote (`WriteOutcome`).
+- **Nothing throws.** A store answers what it read (`TokenRead`, `KeyIdRead`, `DeviceIdRead`, `MembershipRead`: the
+  value, none, or `Unavailable` — never mistaken for absence) and what it wrote (`WriteOutcome`, `StoreWrite`). A
+  statement runs through the `Databases` port's `OpenDatabase.execute`, whose adapter catches its platform's SQL
+  exception and answers `DbResult.Failed`.
+- **A write is decided for one membership.** Every change after an entry names the membership it was decided for and
+  changes the row only while it is still that one (compare-and-set); a change of several records — a leave, a share
+  change — is ONE transaction, so it lands whole or not at all.
 - **A process holds the kind it may hold, by type.** Where two processes may do different things with one concept,
   they get two types, never a flag: `MintingDeviceIdentity` and `StoredDeviceIdentity`, `AttestingCredential` and
   `DropOnlyCredential`. The app-only kinds carry `@AppProcessOnly` on their constructors (§10).
@@ -252,11 +273,12 @@ A value's text — on the wire, in a store, in a JSON file — is the boundary's
 
 | format | the one place | |
 |---|---|---|
-| a timestamp's text (`yyyy-MM-dd'T'HH:mm:ss'Z'`) | `TimestampText` (`model/`) | `format`, `parse`, `parseOrNull`, and an asset's `captureDate`/`captureText` |
+| a timestamp's text (`yyyy-MM-dd'T'HH:mm:ss'Z'`) | `TimestampText` (`:domain:format`) | `format`, `parse`, `parseOrNull`, and an asset's `captureDate`/`captureText` |
 | a value in a JSON format | `AsString` serializers (`model/DomainSerializers.kt`) | each format opts in with `@file:UseSerializers(…)`; a missing one is a compile error |
-| a value in a database column | a `ColumnAdapter` per type (`services/databases/DomainColumnAdapters.kt`) | wired once per database; the `.sq` column names its type (`TEXT AS EventId`) |
+| a value in a database column | a `ColumnAdapter` per type (`data/store/DomainColumnAdapters.kt`) | wired once per database; the `.sq` column names its type (`TEXT AS EventId`) |
 
-Each moves to `data` with the services in phase 4. A column's Kotlin type lives in the `CREATE TABLE` of a migration,
+`:domain:format` holds the formats that zones on both sides of the data layer need: a dependency on it hands over
+nothing but formats — no DTO, no port, no store. The rest moves to `data` with the services in phase 4. A column's Kotlin type lives in the `CREATE TABLE` of a migration,
 and a shipped migration is never edited (`MigrationPinTest`): giving a column a type is a new migration that rebuilds
 its table (`ledger.db` 15, `downloads.db` 9), changing no byte a device stores. A column that holds a sentinel no
 value can be (`ledgerRow.eventId`'s parked `''`) stays text, converted where it is read.
@@ -290,7 +312,9 @@ A verdict that gates a later step answers an **evidence type** the step requires
 the verdict having said yes. Each evidence constructor carries its **own** `@RequiresOptIn(ERROR)` marker, opted into
 at exactly **one** call site (never module-wide), and listed by the pin (§10). Evidence is minted fresh for each use —
 never stored, never `@Serializable`, never a `data class`, never in API Swift can see — and a value class keeps it
-free. The mechanism is in place; each concept's evidence arrives with its phase.
+free. Each concept's evidence arrives with its phase; the membership's are `Enrolled` (the server admitted this
+device), `ConfirmedNotJoined` (the store answered with no membership), `LeftMembership` (the leave's transaction landed)
+and `ConfirmedDeletion` (the event's photos are deleted, by the server's word or the membership's own deadline).
 
 ---
 
@@ -299,12 +323,35 @@ free. The mechanism is in place; each concept's evidence arrives with its phase.
 A use case (`VerbNoun`, one operation) never calls another: entry points orchestrate, use cases do one thing. The
 compiler holds it — `invoke` carries an `EntryPointCall` opt-in only an entry point takes, pinned where it is taken
 (`OptInPinsTest`) — and so there is no shared `UseCase` interface, since a call through it would skip the marker. The
-first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs. A use case answers an `XOutcome`;
+first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the membership's are
+`application.membership`'s (`EnrollDevice`, `EnterMembership`, `LeaveEvent`, `RefreshMembership`, `ReconfigureEvent`,
+`RenameEvent`, `DeliverPendingLeaves`, `ClaimStateCheck`). A use case answers an `XOutcome`;
 `:domain:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
 
 ---
 
-## 13. Secret types and rendering
+## 13. Queries and requests
+
+What the screen **asks** is a query, in `:domain:query`: a read over the data layer, never a write
+(`QueryReadOnlyTest`) — the membership (`MembershipQuery`), an invite's event (`JoinDetailsQuery`), the server's word
+on the joined membership when another invite opens (`SwitchLookup`). A query answers a value the caller waits for.
+
+What a member **asks the app to do** is a request: the tap crosses the `UserCommands` door at once with a
+`RequestId`, an entry point runs it, and its outcome is answered on that kind of request's **status**
+(`RequestStatus`: `Idle` · `InFlight(id)` · `Done(id, value)`, `MembershipStatuses`). Statuses are keyed by the
+request's id, so a screen acts only on the answer to its own request — an earlier attempt's answer never greets a
+later one, and nothing has to be reset. The work writes through a `RequestStatusSink`: `begun` at the door, `done`
+where the outcome is known, and `settle` — which answers only a request still running — as the entry point's `ensure`
+step, so a run cut short still answers. There is no fifth entry-point base: a request is a `Background` delivery like
+any other, and its status is a read-model.
+
+At the door a request is `handedOff` (`compose/UserCommandsComposition.kt`): the third lane-declaring form beside
+`awaitingOnCoreLane` and `detachedOnCoreLane` (`CommandLaneTest`), since the entry point's runtime runs the work on
+the composition lane and nothing but the hand-off runs on the tapping thread.
+
+---
+
+## 14. Secret types and rendering
 
 A value that must never reach the crash channel is a **secret type** whose `toString` is masked: an event's key, a
 bearer token (`BearerToken`, trust's, equal by its secret), and an invite link with only its key masked (the rest of
@@ -320,11 +367,13 @@ subclass cannot cross modules.
 
 ---
 
-## 14. What holds these rules
+## 15. What holds these rules
 
 | rule | gate |
 |---|---|
-| An entry point holds no `if`; a `when` only over a subject, every case named | detekt `EntryPointShape` (`:domain:entrypoints`) |
+| An entry point holds no `if`; a `when` only over a subject, every case named; a `membership { }` block names a branch | detekt `EntryPointShape` (`:domain:entrypoints`) |
+| A query only reads | `QueryReadOnlyTest` |
+| Every user command declares its lane: awaited, detached or handed to an entry point | `CommandLaneTest` |
 | Data holds no `if`; a `when` only over a subject, every case named, used as an expression | detekt `DataShape` (`:domain:data`) |
 | Only an entry point calls a use case | `EntryPointCall` + `OptInPinsTest` |
 | A step is one call | detekt `OneCallPerStep` (`:domain:entrypoints`) |

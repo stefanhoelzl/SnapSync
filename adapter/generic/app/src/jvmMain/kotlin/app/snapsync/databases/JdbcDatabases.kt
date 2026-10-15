@@ -66,7 +66,7 @@ class JdbcDatabases(private val directory: File) : Databases {
                 "schema version $version is newer than this build's ${schema.version}",
             )
                 .also { driver.close() }
-            else -> DbOpen.Opened(signalling(driver, file, name = file.name))
+            else -> DbOpen.Opened(JdbcOpenDatabase(signalling(driver, file, name = file.name)))
         }
     }
 
@@ -104,7 +104,7 @@ class JdbcDatabases(private val directory: File) : Databases {
 
     private fun readable(driver: SqlDriver): DbOpen {
         userVersion(driver)
-        return DbOpen.Opened(driver)
+        return DbOpen.Opened(JdbcOpenDatabase(driver))
     }
 
     // `PRAGMA user_version` answers exactly one row holding an integer on every SQLite database, a new one's being 0.

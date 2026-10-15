@@ -1,9 +1,11 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.MembershipRead
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.GalleryAccessState
+import app.snapsync.services.membership.MembershipProjection
+import app.snapsync.services.membership.MembershipTransition
 import app.snapsync.services.upload.ExtensionRegistration
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.dropWhile
@@ -65,7 +67,7 @@ interface AppUploadEngine {
  */
 class UploadTransitions(
     /** The membership — whether an event is configured is read fresh at every transition, never held. */
-    private val configSource: ConfigService,
+    private val configSource: MembershipProjection,
     /** The current grant, read fresh at every transition. */
     private val photoAccess: GalleryAccessState,
     /** The registration fact — `model/extensionRegistrable` over the OS fact, the grant and the rig's switch. */
@@ -141,6 +143,16 @@ class UploadTransitions(
     }.also { log.i { "uploads.onLeave" } }
 
     /**
+     * Stop what a failed leave left uploading, while [none] proves no membership is held — unless a join is in progress,
+     * whose own registration this may already be.
+     */
+    suspend fun stopLeftovers(
+        @Suppress("UNUSED_PARAMETER") none: ConfirmedNotJoined,
+        transition: MembershipTransition,
+    ) =
+        transition.unlessJoining { onLeave() }
+
+    /**
      * The compared reconcile. With no membership nothing is armed and nothing registered — a surviving record is
      * left as it is, because only a leave deregisters. With one, register a record the OS reads absent (only where
      * registrable, which implies `GRANTED`), deregister one the rig switched off, and arm iff access is usable.
@@ -163,10 +175,10 @@ class UploadTransitions(
      * and nothing is armed or registered, because acting on "could not read it" as "not joined" is a false leave
      * and acting on it as "joined" arms for an event we cannot name. The next transition reads it again.
      */
-    private fun joined(): Boolean = when (configSource.membership) {
-        is MembershipRead.Member -> true
-        MembershipRead.NotMember -> false
-        MembershipRead.Unreadable -> {
+    private fun joined(): Boolean = when (configSource.read()) {
+        is MembershipRead.Joined -> true
+        is MembershipRead.NotJoined -> false
+        is MembershipRead.Unavailable -> {
             log.w { "the membership is unreadable right now — deferring this transition to the next one" }
             false
         }

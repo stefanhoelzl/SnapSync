@@ -6,7 +6,9 @@ import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.UnionEntry
 import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -74,8 +76,18 @@ class OsUploaderIntegrationTest {
                 until = { settled { true } },
             )
             step(
+                "the other event's invite opened, and the switch asked",
+                act = { openLink(inviteLink(new)) },
+                until = { screen<Layer.Joined> { (it.pendingSwitch?.phase as? JoinPhase.Detailed)?.step == READY } },
+            )
+            step(
+                "the switch confirmed",
+                act = { tap(UiIntent.ConfirmSwitch) },
+                until = { screen<Layer.JoiningEvent> { (it.phase as? JoinPhase.Detailed)?.step == READY } },
+            )
+            step(
                 "switched to the other event",
-                act = { openLink(inviteLink(new, autoJoin = true)) },
+                act = { confirmJoin() },
                 until = {
                     screen<Layer.Joined> { it.membership.eventId == new }
                     settled { true }
@@ -259,5 +271,9 @@ class OsUploaderIntegrationTest {
     private suspend fun Given.inBackground() {
         inFront()
         step("in the background", act = { os.background() }, until = { settled { true } })
+    }
+
+    private companion object {
+        val READY = JoinPhase.Detailed.Step.Ready
     }
 }

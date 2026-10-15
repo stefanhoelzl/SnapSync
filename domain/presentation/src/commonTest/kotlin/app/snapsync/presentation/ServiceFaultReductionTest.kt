@@ -5,25 +5,24 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.membership.readmodel.RenameFailureReason
-import app.snapsync.feature.membership.readmodel.RenameStatus
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinCommit
-import app.snapsync.model.JoinLoad
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
+import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
-import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.SyncHealth
@@ -66,17 +65,12 @@ private val DETAILS = EventDetails(
     MEMBERSHIP.deletesAt,
 )
 
-private val FOUND = JoinLoad.Found(MEMBERSHIP.name, MEMBERSHIP.startsAt, MEMBERSHIP.endsAt, MEMBERSHIP.deletesAt)
+private val FOUND = found(MEMBERSHIP.name, MEMBERSHIP.startsAt, MEMBERSHIP.endsAt, MEMBERSHIP.deletesAt)
 
 /** Everything of the member's shared, and photos still waiting. */
 private val SETTLED = SyncStatus.Ready(SyncProgress(0, 4, 4, 0, active = false, estimatedRemaining = null))
 private val WAITING = SyncStatus.Ready(SyncProgress(2, 2, 4, 0, active = false, estimatedRemaining = null))
 
-/**
- * How a failing service reaches what the member is told (decision record `changes/tell-service-faults`): the status
- * line's rungs, the create and rename messages, the join screen's failures — and the join screen's own reload once an
- * update has passed, on virtual time.
- */
 /** What the host reads of this phone's verification and of the service — what [ServiceFaultReductionTest]'s cases vary. */
 private data class Verified(
     val attested: Boolean = true,
@@ -85,6 +79,11 @@ private data class Verified(
     val service: ServiceFault? = null,
 )
 
+/**
+ * How a failing service reaches what the member is told (decision record `changes/tell-service-faults`): the status
+ * line's rungs, the create message, the join screen's failures — and the join screen's own reload once an update has
+ * passed, on virtual time. The rename dialog's words are `JoinedLayerTest`'s.
+ */
 class ServiceFaultReductionTest {
 
     private fun host(
@@ -93,32 +92,34 @@ class ServiceFaultReductionTest {
         config: EventConfig? = MEMBERSHIP,
         snapshot: SyncStatus = WAITING,
         creation: CreationStatus = CreationStatus.Idle,
-        rename: RenameStatus = RenameStatus.Idle,
         pending: PendingJoin? = null,
-        load: suspend (String) -> JoinLoad = { FOUND },
+        load: suspend (String) -> JoinDetails = { FOUND },
         commit: suspend () -> JoinCommit = { JoinCommit.Committed },
-    ) = StatusContainerHost(
-        StatusSources(
-            FixedSync(snapshot),
-            MutableStateFlow(GalleryAccess.GRANTED),
-            MutableStateFlow(config),
-            creation = MutableStateFlow(creation),
-            rename = MutableStateFlow(rename),
-            verification = DeviceVerification(
-                MutableStateFlow(trust.attested),
-                MutableStateFlow(trust.refusal),
-                MutableStateFlow(trust.attestFault),
-                MutableStateFlow(trust.service),
+    ) = TestCommands(commitJoin = { commit() }).let { commands ->
+        StatusContainerHost(
+            StatusSources(
+                FixedSync(snapshot),
+                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(config),
+                creation = MutableStateFlow(creation),
+                verification = DeviceVerification(
+                    MutableStateFlow(trust.attested),
+                    MutableStateFlow(trust.refusal),
+                    MutableStateFlow(trust.attestFault),
+                    MutableStateFlow(trust.service),
+                ),
+                pending = MutableStateFlow(pending),
+                requests = commands.requests.flows,
             ),
-            pending = MutableStateFlow(pending),
-        ),
-        scope,
-        cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-        commands = testCommands(commitJoin = { commit() }),
-        queries = joinDetails(load),
-        diagnostics = testDiagnostics(),
-        reduction = Dispatchers.Default,
-    )
+            scope,
+            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+            commands = commands,
+            queries = noQueries,
+            joinDetails = joinDetails(load),
+            diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
+        )
+    }
 
     private fun StatusContainerHost.health(): SyncHealth = assertIs<Layer.Joined>(screen.value.layer).health
 
@@ -193,7 +194,7 @@ class ServiceFaultReductionTest {
         )
     }
 
-    // ── the create and rename messages ───────────────────────────────────────────────────────────────
+    // ── the create message ───────────────────────────────────────────────────────────────
 
     @Test
     fun a_create_the_service_failed_says_which_way() = runTest {
@@ -218,25 +219,15 @@ class ServiceFaultReductionTest {
         assertEquals(ScreenMessage.CREATE_FAILED, error(CreationStatus.Failed(CreationFailureReason.UNVERIFIED)))
     }
 
-    @Test
-    fun a_rename_the_service_failed_or_answered_over_says_so() = runTest {
-        fun state(rename: RenameStatus) =
-            assertIs<Layer.Joined>(host(backgroundScope, rename = rename).screen.value.layer).renameState
-        assertEquals(
-            RenameState.Failed(ScreenMessage.SERVICE_UPDATING),
-            state(RenameStatus.Failed(RenameFailureReason.SERVER, ServiceFault.UPDATING)),
-        )
-        assertEquals(
-            RenameState.Failed(ScreenMessage.EVENT_OVER),
-            state(RenameStatus.Failed(RenameFailureReason.EVENT_OVER)),
-        )
-    }
-
     // ── the join screen ──────────────────────────────────────────────────────────────────────────────
 
     @Test
     fun a_join_the_service_failed_says_which_way() = runTest {
-        val ready = PendingJoin(testEventId(EVENT_ID), JoinProgress.Detailed(DETAILS, JoinPhase.Detailed.Step.Ready))
+        val ready = PendingJoin(
+            testEventId(EVENT_ID),
+            JoinProgress.Detailed(DETAILS, JoinPhase.Detailed.Step.Ready),
+            loaded = (FOUND as JoinDetails.Found).event.copy(id = testEventId(EVENT_ID)),
+        )
         val failed = host(
             backgroundScope,
             config = null,
@@ -283,7 +274,7 @@ class ServiceFaultReductionTest {
     }
 
     /** A join screen whose details load failed, and the loads [answers] give in turn. */
-    private fun failedLoad(timers: Timers, loads: MutableList<Int>, answers: (Int) -> JoinLoad) = host(
+    private fun failedLoad(timers: Timers, loads: MutableList<Int>, answers: (Int) -> JoinDetails) = host(
         timers.scope,
         config = null,
         pending = PendingJoin(testEventId(EVENT_ID), JoinProgress.LoadFailed),
@@ -295,7 +286,7 @@ class ServiceFaultReductionTest {
         advanceBy(0)
     }
 
-    private val updating = JoinLoad.Failed(ServiceFault.UPDATING, retryAfterSeconds = 60)
+    private val updating = JoinDetails.Unanswered(ServiceFault.UPDATING, retryAfterSeconds = 60)
 
     @Test
     fun a_load_during_an_update_loads_again_once_the_service_s_wait_has_passed() = onTimers { timers ->
@@ -307,6 +298,23 @@ class ServiceFaultReductionTest {
         timers.advanceBy(59)
         assertEquals(1, loads.size, "not before the service's suggested wait")
         timers.advanceBy(1)
+        host.awaitJoin { it.phase is JoinPhase.Detailed }
+        assertEquals(2, loads.size)
+    }
+
+    @Test
+    fun an_invite_opened_during_an_update_loads_again_once_the_service_s_wait_has_passed() = onTimers { timers ->
+        val loads = mutableListOf<Int>()
+        val host = host(
+            timers.scope,
+            config = null,
+            load = { (if (loads.isEmpty()) updating else FOUND).also { loads += loads.size } },
+        )
+        host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))).join()
+        timers.advanceBy(0)
+        host.awaitJoin { it.phase == JoinPhase.LoadFailed && it.service == ServiceNotice.UPDATING }
+
+        timers.advanceBy(60)
         host.awaitJoin { it.phase is JoinPhase.Detailed }
         assertEquals(2, loads.size)
     }

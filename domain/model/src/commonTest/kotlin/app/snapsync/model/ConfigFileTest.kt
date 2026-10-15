@@ -5,6 +5,8 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.TimestampText
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals

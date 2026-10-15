@@ -4,20 +4,21 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.invite.InviteKey
+import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.Direction
+import app.snapsync.format.EventKeyText
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UserCommands
-import app.snapsync.model.encodeEventKey
-import app.snapsync.model.encodeEventUrl
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -68,14 +69,16 @@ class KeyLostTest {
             keeps
         },
         cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
+        joinDetails = unanswered,
         diagnostics = testDiagnostics(),
         reduction = Dispatchers.Default,
     )
 
     /** The inert bundle, with [restore] for the reopened invite's key. */
-    private fun restoringCommands(restore: suspend (String) -> Boolean) = object : UserCommands by testCommands() {
-        override suspend fun restoreEventKey(linkKey: String) = restore(linkKey)
-    }
+    private fun restoringCommands(restore: suspend (String) -> Boolean): UserCommands =
+        object : UserCommands by TestCommands() {
+            override suspend fun restoreEventKey(linkKey: String) = restore(linkKey)
+        }
 
     private suspend fun TestScope.driving(host: StatusContainerHost, block: suspend () -> Unit) =
         host.testWithInternalState(this) {
@@ -116,7 +119,7 @@ class KeyLostTest {
         val restored = mutableListOf<String>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT), key = LINK_KEY)))
+            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), InviteKey(LINK_KEY))))
             runCurrent()
             assertEquals(listOf(LINK_KEY), restored)
             assertEquals(null, (host.screen.value.layer as Layer.Joined).pendingSwitch, "no join screen")
@@ -128,7 +131,7 @@ class KeyLostTest {
         val restored = mutableListOf<String>()
         val host = host(KeyPresence.Lost, restored = restored, keeps = false)
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT), key = LINK_KEY)))
+            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), InviteKey(LINK_KEY))))
             runCurrent()
             assertEquals(listOf(LINK_KEY), restored, "the core is asked, and keeps only the event's own key")
             assertEquals(SyncHealth.KeyLost, host.health())
@@ -140,7 +143,7 @@ class KeyLostTest {
         val restored = mutableListOf<String>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT))))
+            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), null)))
             runCurrent()
             assertEquals(emptyList(), restored)
             assertEquals(SyncHealth.KeyLost, host.health())
@@ -152,7 +155,7 @@ class KeyLostTest {
         val restored = mutableListOf<String>()
         val host = host(KeyPresence.Held, restored = restored)
         driving(host) {
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT), key = LINK_KEY)))
+            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), InviteKey(LINK_KEY))))
             runCurrent()
             assertEquals(emptyList(), restored)
         }
@@ -173,13 +176,14 @@ class KeyLostTest {
             queries = noQueries,
             commands = sharingCommands { url -> shared += url },
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
+            joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         driving(host) {
             val joined = { host.screen.value.layer as Layer.Joined }
             assertEquals(
-                encodeEventUrl(EventLinkPayload(testEventId(EVENT), key = LINK_KEY)),
+                InviteLinkText.format(InviteLink(testEventId(EVENT), InviteKey(LINK_KEY))),
                 joined().inviteUrl,
                 "the whole invite",
             )
@@ -196,12 +200,12 @@ class KeyLostTest {
     }
 
     /** The inert bundle, with [share] for the share sheet. */
-    private fun sharingCommands(share: (String) -> Unit) = testCommands(share = { url, _ -> share(url) })
+    private fun sharingCommands(share: (String) -> Unit) = TestCommands(share = { url, _ -> share(url) })
 
     private companion object {
         const val EVENT = "11111111-1111-4111-8111-111111111111"
         val NOW: Instant = Instant.parse("2026-07-09T12:00:00Z")
-        val LINK_KEY = encodeEventKey(ByteArray(32) { it.toByte() })
+        val LINK_KEY = EventKeyText.encode(ByteArray(32) { it.toByte() })
         val ENCRYPTED = EventConfig(
             testEventId(EVENT),
             "Party",

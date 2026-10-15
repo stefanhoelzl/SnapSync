@@ -1,10 +1,10 @@
 package app.snapsync.services.manifest
 
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.databases.SharedDatabase
 import co.touchlab.kermit.Logger
 
 /**

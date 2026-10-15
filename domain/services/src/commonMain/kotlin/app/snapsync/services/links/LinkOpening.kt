@@ -1,6 +1,6 @@
 package app.snapsync.services.links
 
-import app.snapsync.model.inviteLinkFromInstallReferrer
+import app.snapsync.format.InviteLinkText
 import app.snapsync.model.redactEventKeys
 import app.snapsync.ports.LinkDelivery
 import co.touchlab.kermit.Logger
@@ -17,7 +17,8 @@ class LinkOpening(private val log: Logger) {
     fun urlIn(delivery: LinkDelivery): String? {
         val url = when (delivery) {
             is LinkDelivery.Link -> delivery.url
-            is LinkDelivery.InstallReferrer -> inviteLinkFromInstallReferrer(delivery.referrer)
+            is LinkDelivery.InstallReferrer ->
+                InviteLinkText.fromInstallReferrer(delivery.referrer)?.let(InviteLinkText::format)
             is LinkDelivery.NotALink, is LinkDelivery.NoUrl -> null
         }
         // The device log keeps the link, never an encrypted event's key in it.

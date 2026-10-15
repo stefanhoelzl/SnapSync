@@ -1,6 +1,7 @@
 package app.snapsync.feature.diagnostics
 
 import app.snapsync.data.trust.RefusalFacts
+import app.snapsync.format.TimestampText
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
@@ -13,14 +14,13 @@ import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReportContext
-import app.snapsync.model.TimestampText
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.network.NetworkReadings
 import app.snapsync.services.settings.MobileDataSetting
 import kotlinx.coroutines.async
@@ -56,7 +56,7 @@ class CollectDiagnosticDump(
     private val logs: LogTailService,
     private val ledger: LedgerService,
     private val downloads: DownloadService,
-    private val config: ConfigService,
+    private val config: MembershipProjection,
     private val permission: GalleryAccessState,
     /** The device's network, read fresh for the report — not the screen's notice, which lags by its grace period. */
     private val network: NetworkReadings,

@@ -5,10 +5,13 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.format.EventKeyText
+import app.snapsync.format.TimestampText
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
@@ -21,14 +24,11 @@ import app.snapsync.model.FileResult
 import app.snapsync.model.HeadRead
 import app.snapsync.model.Hmac
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
-import app.snapsync.model.decodeEventKey
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Crypto
@@ -91,7 +91,7 @@ class EncryptedTransfersTest {
         eventId = testEventId(EVENT),
         name = "Secret",
         minPhotoDate = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
         keyId = keyId,
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
@@ -240,11 +240,11 @@ class EncryptedTransfersTest {
         val head = assertIs<HeadRead.Read>(
             EncryptedFileFormat.decodeHead(decodeBase64(target.headers.getValue(EncryptedFileFormat.FILE_HEAD_HEADER))),
         ).head
-        val eventKey = decodeEventKey(minted.linkKey)!!
+        val eventKey = EventKeyText.decode(minted.linkKey)!!
         assertContentEquals(EncryptedFileFormat.keyIdOf(eventKey, Hmac(crypto::hmacSha256)), head.keyId)
         assertContentEquals(
             EncryptedFileFormat.fileKeyOf(eventKey, head.salt, adFor(DEVICE_A), Hmac(crypto::hmacSha256)).bytes,
-            decodeEventKey(target.headers.getValue(EncryptedFileFormat.FILE_KEY_HEADER)),
+            EventKeyText.decode(target.headers.getValue(EncryptedFileFormat.FILE_KEY_HEADER)),
             "the one file's key, bound to this resource — never the event key",
         )
     }
@@ -326,7 +326,7 @@ class EncryptedTransfersTest {
     fun a_file_opens_only_as_the_resource_it_was_sealed_as() = runTest {
         val minted = EventKeys(crypto, inMemorySecureStore()).mint()
         val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
-        val key = decodeEventKey(minted.linkKey)!!
+        val key = EventKeyText.decode(minted.linkKey)!!
         device.files.write(FileArea.SHARED, "p", photo)
         device.cipher.encrypt(key, adFor(DEVICE_A), FileArea.SHARED, "p", "s")
         assertIs<Opened.Damaged>(device.cipher.decrypt(key, adFor(DEVICE_B), FileArea.SHARED, "s", "o"))

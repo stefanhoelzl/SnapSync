@@ -29,6 +29,7 @@ kotlin {
         commonTest.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
+            implementation(project(":domain:format"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
             implementation(project(":domain:data"))

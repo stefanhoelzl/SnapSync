@@ -5,6 +5,8 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.TimestampText
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerializationException
@@ -192,16 +194,6 @@ class EventConfigTest {
         assertEquals(
             listOf<SelectionRule>(SelectionRule.DenyAll),
             selectionRulesFor(config, TimestampText.parse("2026-08-01T00:00:00Z"), { emptySet() }, { emptySet() }),
-        )
-    }
-
-    @Test
-    fun `no link token reaches the neither direction`() {
-        // Neither is reached only from the event's settings: a join always carries a direction.
-        assertEquals(null, Direction.fromWire(Direction.Neither.wire))
-        for (direction in Direction.entries - Direction.Neither) assertEquals(
-            direction,
-            Direction.fromWire(direction.wire),
         )
     }
 

@@ -36,10 +36,10 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.TimestampText
 import app.snapsync.presentation.onIntent
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.LocalReduceMotion

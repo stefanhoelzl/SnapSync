@@ -4,7 +4,6 @@ package app.snapsync.contracts
 
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
@@ -19,9 +18,9 @@ enum class DevControlsState {
     SHIPPED,
 
     /**
-     * A rig build whose controls the channel switched away from a shipped build's: the app's uploader pinned off, invite
-     * hints honoured, new events created encrypted (a shipped build creates plain ones until encrypted creation is
-     * re-enabled, `PENDING_CLEANUPS.md`) — and a reset the channel can deliver ([DevControlsUnderTest.resetFromChannel]).
+     * A rig build whose controls the channel switched away from a shipped build's: the app's uploader pinned off, new
+     * events created encrypted (a shipped build creates plain ones until encrypted creation is re-enabled,
+     * `PENDING_CLEANUPS.md`) — and a reset the channel can deliver ([DevControlsUnderTest.resetFromChannel]).
      */
     SWITCHED,
 }
@@ -31,7 +30,7 @@ class DevControlsUnderTest(val controls: DevControls, val resetFromChannel: (sus
 
 /**
  * What the build's developer controls promise the composition (`docs/architecture.md`): a shipped build answers every
- * control as shipped — no pin, hints ignored, events plain — and a rig build answers what its channel set, and
+ * control as shipped — no pin, events plain — and a rig build answers what its channel set, and
  * delivers the channel's reset to the composition that listened.
  */
 object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("DevControls") {
@@ -48,7 +47,6 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
                 on<DevControls> {
                     answers(DevControls::inbound).returns()
                     answers(DevControls::uploaderPin).with(null)
-                    answers(DevControls::inviteLinkHints).with(InviteLinkHints.Ignored)
                     answers(DevControls::createsPlainEvents).with(true)
                 }
             },
@@ -57,7 +55,6 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
                 DevHandlers(onReset = backgroundOf { _, _ -> error("a shipped build resets nothing") }),
             )
             assertNull(subject.controls.uploaderPin(), "both uploaders, as a shipped build runs them")
-            assertEquals(InviteLinkHints.Ignored, subject.controls.inviteLinkHints(), "a link is an ordinary invite")
             assertTrue(subject.controls.createsPlainEvents(), "every event is created plain")
         }
 
@@ -68,7 +65,6 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
                 on<DevControls> {
                     answers(DevControls::inbound).returns()
                     answers(DevControls::uploaderPin).returns()
-                    answers(DevControls::inviteLinkHints).with(InviteLinkHints.Honoured)
                     answers(DevControls::createsPlainEvents).with(false)
                     calls(DevHandlers::onReset, Completion::class)
                     handle<Completion>().answers(Completion::complete).returns()
@@ -86,7 +82,6 @@ object DevControlsContract : Contract<DevControlsState, DevControlsUnderTest>("D
                 ),
             )
             assertEquals(PINNED, subject.controls.uploaderPin(), "the pin the channel set")
-            assertEquals(InviteLinkHints.Honoured, subject.controls.inviteLinkHints(), "a rig joins headlessly")
             assertFalse(subject.controls.createsPlainEvents(), "the channel switched encryption on")
             reset()
             assertEquals(1, resets, "the channel's reset reaches the composition that listened")

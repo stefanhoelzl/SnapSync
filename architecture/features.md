@@ -22,8 +22,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/download`
 
-- files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `StoreDownloadStatusSource.kt`
-- top-level types: `DownloadArm (class)`, `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `StoreDownloadStatusSource (class)`
+- files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `ReceivedReport.kt`, `StoreDownloadStatusSource.kt`
+- top-level types: `DownloadArm (class)`, `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `ReceivedReport (class)`, `StoreDownloadStatusSource (class)`
 
 ## `feature/links`
 
@@ -32,8 +32,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `EventCompletion.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `JoinUnion.kt`, `LeaveEvent.kt`, `MembershipEntry.kt`, `MembershipRefresh.kt`, `QuietSwitch.kt`, `ReceivedPhotoAdoption.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `ShareSetLoad.kt`, `Steps.kt`, `SwitchDecision.kt`
-- top-level types: `CompletionOutcome (class)`, `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventCompletion (class)`, `JoinEvent (class)`, `JoinOutcome (interface)`, `JoinUnion (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipEntry (class)`, `MembershipRefresh (class)`, `QuietSwitch (class)`, `ReceivedPhotoAdoption (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `ResetDeviceState (class)`, `ShareSetLoad (class)`, `Steps (class)`, `SwitchDecision (interface)`
+- files: `DeviceManifestProducer.kt`, `JoinUnion.kt`, `ReceivedPhotoAdoption.kt`, `ShareSetLoad.kt`
+- top-level types: `DeviceManifestProducer (class)`, `JoinUnion (class)`, `ReceivedPhotoAdoption (class)`, `ShareSetLoad (class)`
 
 ## `feature/push`
 
@@ -47,6 +47,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `OwnUploads.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WakeRearm.kt`
-- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OwnUploads (class)`, `PushTailGuard (class)`, `SelectionScopedDiscovery (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WakeRearm (class)`, `WalkOutcome (class)`
+- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `OwnUploads.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `ShareSettlement.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WakeRearm.kt`
+- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OwnUploads (class)`, `PushTailGuard (class)`, `SelectionScopedDiscovery (class)`, `ShareSettlement (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WakeRearm (class)`, `WalkOutcome (class)`
 

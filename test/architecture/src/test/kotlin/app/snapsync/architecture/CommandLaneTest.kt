@@ -14,11 +14,12 @@ import kotlin.test.fail
  * (synchronous PhotoKit XPC behind a `suspend` signature is exactly that shape) then runs to completion
  * there. So the lane has to be declared where the command is built.
  *
- * Two decorators, **no default**, both on the composition's lane: `awaitingOnCoreLane` (the caller waits on the
- * result) and `detachedOnCoreLane` (fire-and-forget, outcome on a read-model — a hand-off to the platform's UI
- * included: the adapter reaches the main thread itself, and the composition names no main lane). A command
- * built through none of them does not compile — this gate catches the other half, a command built through none of
- * them *because it was written inline*.
+ * Three forms, **no default**, all on the composition's lane: `awaitingOnCoreLane` (the caller waits on the
+ * result), `detachedOnCoreLane` (fire-and-forget, outcome on a read-model — a hand-off to the platform's UI
+ * included: the adapter reaches the main thread itself, and the composition names no main lane) and `handedOff` (the
+ * tap handed to the entry point that runs it — directly, or as a member's `requested` request answered on its
+ * status — whose runtime runs the work on the composition lane). A command built through none of them does not
+ * compile — this gate catches the other half, a command built through none of them *because it was written inline*.
  *
  * It also keeps the manually-verified surface small. The platform-UI commands cannot be exercised by any
  * automated test available to this project — they are fakes on desktop, and driving them on device needs
@@ -27,7 +28,7 @@ import kotlin.test.fail
  */
 class CommandLaneTest {
 
-    private val decorators = listOf("awaitingOnCoreLane", "detachedOnCoreLane")
+    private val decorators = listOf("awaitingOnCoreLane", "detachedOnCoreLane", "handedOff", "requested")
 
     /**
      * The query bundle's ONE admissible decorator (law "Queries cross a lane-gated door"): a query returns a

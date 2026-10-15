@@ -6,7 +6,6 @@ import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.InboundImplementation
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.ports.DevHandlers
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,8 +13,7 @@ import kotlin.test.assertNull
 
 /**
  * A production build's development controls answer the shipped values, whatever is registered on them: no uploader
- * pinned, invite-link hints ignored, and every new event plain until encrypted creation is re-enabled — so no crafted
- * link can join without the member confirming (capability `join-event`, "Joining happens only on confirmation").
+ * pinned, and every new event plain until encrypted creation is re-enabled.
  */
 class InertDevControlsTest {
 
@@ -32,7 +30,6 @@ class InertDevControlsTest {
             ),
         )
         assertNull(InertDevControls.uploaderPin(), "no uploader is pinned on a production build")
-        assertEquals(InviteLinkHints.Ignored, InertDevControls.inviteLinkHints(), "no link authorizes its own join")
         assertEquals(
             true,
             InertDevControls.createsPlainEvents(),

@@ -2,7 +2,6 @@ package app.snapsync.compose
 
 import app.snapsync.entrypoints.HostAssembly
 import app.snapsync.entrypoints.OnBackground
-import app.snapsync.entrypoints.OnDevReset
 import app.snapsync.entrypoints.OnDownloadCompleted
 import app.snapsync.entrypoints.OnDownloadFinished
 import app.snapsync.entrypoints.OnDownloadSessionEvents
@@ -70,7 +69,7 @@ fun AppCore.inbound(host: HostAssembly) {
         ),
     )
     ports.pushNotifications.inbound(pushHandlers())
-    ports.devControls.inbound(DevHandlers(OnDevReset(runtime, resetDeviceState)))
+    ports.devControls.inbound(DevHandlers(work.devReset))
     ports.links.inbound(LinkHandlers(OnLink(runtime, linkOpening, openedLinks)))
 }
 

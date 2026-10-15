@@ -173,8 +173,9 @@ Leaving and later rejoining the same event SHALL be possible until the event's p
 A membership SHALL persist across app updates, the app being closed or killed, and phone restarts. The
 app SHALL NOT treat a membership it temporarily cannot read — for example while the phone is locked or
 has not been unlocked since it restarted — as having left: it SHALL neither end the membership nor show
-the create screen because of it, and sharing resumes once the phone is unlocked. Restoring the phone
-from a backup SHALL bring the membership back.
+the create screen because of it, and sharing resumes once the phone is unlocked. On iPhone, restoring the
+phone from a backup SHALL bring the membership back; an Android phone backs nothing of SnapSync up, so a
+restored or transferred Android phone starts in no event, as after a reinstall.
 
 #### Scenario: An app update keeps the event
 - **WHEN** the app is updated while the device is in an event

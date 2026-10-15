@@ -2,10 +2,10 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.PhotoGrant
-import app.snapsync.model.Direction
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming

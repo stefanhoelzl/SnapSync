@@ -45,10 +45,11 @@ interface BackendLevers {
 
     /**
      * The next [times] requests (omitted: one) to [operation] — an `operationId` of `api/openapi.yaml` — are answered
-     * with [fault] before the route runs: nothing they ask for happens. An operation the device API does not declare is
-     * refused.
+     * with [fault] before the route runs: nothing they ask for happens. With [after], that many requests are answered as
+     * usual first — how a test fails one read of several the app makes in a row. An operation the device API does not
+     * declare is refused.
      */
-    suspend fun fail(operation: String, fault: BackendFault, times: Int? = null)
+    suspend fun fail(operation: String, fault: BackendFault, times: Int? = null, after: Int? = null)
 
     /**
      * The faults [fail] set for [operation] — for every operation when omitted — are lifted before they ran out: the

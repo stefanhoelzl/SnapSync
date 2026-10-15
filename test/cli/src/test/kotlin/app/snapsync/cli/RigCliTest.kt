@@ -55,12 +55,14 @@ class RigCliTest {
     fun flags_decode_by_the_parameters_types() {
         val fail = method("backend", "fail")
         assertEquals(
-            listOf("createEvent", BackendFault.SERVER_ERROR, 2),
-            fail.arguments(listOf("--operation", "createEvent", "--fault", "server-error", "--times=2")).toList(),
+            listOf("createEvent", BackendFault.SERVER_ERROR, 2, 1),
+            fail.arguments(
+                listOf("--operation", "createEvent", "--fault", "server-error", "--times=2", "--after", "1"),
+            ).toList(),
         )
         // An enum by its name in any case, or its serial name; an omitted nullable is null.
         assertEquals(
-            listOf("x", BackendFault.MAINTENANCE, null),
+            listOf("x", BackendFault.MAINTENANCE, null, null),
             fail.arguments(listOf("--operation", "x", "--fault", "MAINTENANCE")).toList(),
         )
         assertEquals(listOf(BackendCall.EVENT), method("backend", "hold").arguments(listOf("--call", "event")).toList())

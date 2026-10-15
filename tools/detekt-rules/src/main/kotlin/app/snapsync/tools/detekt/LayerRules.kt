@@ -53,7 +53,8 @@ abstract class BranchShape(config: Config, private val layer: String, private va
 
 /**
  * An entry point orders steps and decides nothing (`docs/patterns.md`, "Entry points"): [BranchShape]. A decision that
- * needs more is a feature's.
+ * needs more is a feature's. A `membership { }` block names at least one of its branches — one that names none would
+ * read the membership and do nothing with it.
  */
 class EntryPointShape(config: Config = Config.empty) : BranchShape(config, "an entry point", "a feature") {
     override val issue = Issue(
@@ -62,6 +63,20 @@ class EntryPointShape(config: Config = Config.empty) : BranchShape(config, "an e
         "An entry point orders steps; a decision belongs in a feature.",
         Debt.TWENTY_MINS,
     )
+
+    override fun visitCallExpression(expression: KtCallExpression) {
+        super.visitCallExpression(expression)
+        if (expression.calleeExpression?.text != "membership") return
+        val body = expression.lambdaArguments.singleOrNull()?.getLambdaExpression()?.bodyExpression ?: return
+        val named = body.statements.any { (it as? KtCallExpression)?.calleeExpression?.text in MEMBERSHIP_BRANCHES }
+        if (!named) {
+            report(CodeSmell(issue, Entity.from(expression), "A `membership { }` block names at least one branch."))
+        }
+    }
+
+    private companion object {
+        val MEMBERSHIP_BRANCHES = setOf("active", "deleted", "notJoined")
+    }
 }
 
 /**

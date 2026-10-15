@@ -6,21 +6,21 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.Recognised
 import app.snapsync.feature.support.configService
+import app.snapsync.format.TimestampText
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
 import app.snapsync.model.CandidateScope
-import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.TimestampText
 import app.snapsync.model.selectionRulesFor
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
@@ -49,7 +49,7 @@ class StatusRefreshTest {
         name = "Event",
         direction = Direction.Both,
         minPhotoDate = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-12-31T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
@@ -267,4 +267,4 @@ class StatusRefreshTest {
 }
 
 /** The real membership service, holding a fixed answer. */
-private fun membership(config: EventConfig?): ConfigService = configService(config)
+private fun membership(config: EventConfig?): MembershipProjection = configService(config)

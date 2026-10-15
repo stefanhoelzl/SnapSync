@@ -27,7 +27,10 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 class StepsTest {
-    private class OnSteps(world: World, val body: suspend Steps.() -> Unit) : EntryPoint<Unit>(world.runtime) {
+    private class OnSteps(
+        world: World,
+        val body: suspend Steps.() -> Unit,
+    ) : BackgroundEntryPoint<Unit>(world.runtime) {
         override suspend fun run(arg: Unit) = steps { body() }
     }
 
@@ -139,7 +142,7 @@ class StepsTest {
     fun `an observed flow hands each emission to its entry point - one run at a time`() = runTest {
         val world = World(this)
         val seen = mutableListOf<String>()
-        class OnChange : EntryPoint<Int>(world.runtime) {
+        class OnChange : BackgroundEntryPoint<Int>(world.runtime) {
             override suspend fun run(arg: Int) {
                 seen += "start $arg"
                 yield()
@@ -154,7 +157,7 @@ class StepsTest {
     @Test
     fun `work nobody awaits that fails reaches the process scope's handler`() = runTest {
         val world = World(this)
-        class OnChange : EntryPoint<Int>(world.runtime) {
+        class OnChange : BackgroundEntryPoint<Int>(world.runtime) {
             override suspend fun run(arg: Int) = Unit
         }
         Observation(world.runtime).follow(flow<Int> { error("the source failed") }, OnChange())
@@ -187,7 +190,7 @@ class StepsTest {
                 1.seconds,
             )
         val completion = CountingCompletion()
-        class OnPlain : EntryPoint<Unit>(runtime) {
+        class OnPlain : BackgroundEntryPoint<Unit>(runtime) {
             override suspend fun run(arg: Unit) = Unit
         }
         OnPlain().handle(Unit, completion)

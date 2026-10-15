@@ -1,16 +1,18 @@
 package app.snapsync.services.ledger
 
+import app.snapsync.data.store.LEDGER_DB_NAME
+import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.PendingResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.DbOpen
+import app.snapsync.services.databases.driver
 import app.snapsync.services.databases.sharedOver
-import app.snapsync.services.ledger.db.LedgerDatabase
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -175,7 +177,7 @@ class LedgerServiceTest {
         // with a trigger — the real SQLite's rollback — and assert the first never landed.
         val driver = assertIs<DbOpen.Opened>(
             databases.open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = false),
-        ).driver
+        ).database.driver()
         driver.execute(
             null,
             "CREATE TRIGGER boom BEFORE INSERT ON ledgerRow WHEN NEW.key = 'X-live.mov' BEGIN SELECT RAISE(ABORT, 'boom'); END",

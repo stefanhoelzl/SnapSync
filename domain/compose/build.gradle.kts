@@ -19,6 +19,8 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
+            implementation(project(":domain:query"))
+            implementation(project(":domain:format"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
             // MIGRATING: the layers phase 4 moves the work into — composed here like everything else.

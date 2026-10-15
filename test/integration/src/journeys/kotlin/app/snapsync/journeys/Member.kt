@@ -1,5 +1,6 @@
 package app.snapsync.journeys
 
+import app.snapsync.format.EventKeyText
 import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.contracts.attest.SoftwareKeyAttestation
 import app.snapsync.domain.asset.AssetId
@@ -12,7 +13,6 @@ import app.snapsync.model.FileHead
 import app.snapsync.model.Hmac
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.decodeEventKey
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
 import app.snapsync.wire.api.Limits
@@ -55,7 +55,7 @@ class Member(private val http: HttpClient, backend: String) {
 
     /** Joins [eventId], keeping [linkKey] — the key its invite carries — to seal every upload with, as a device does. */
     suspend fun join(eventId: String, linkKey: String?) {
-        eventKey = linkKey?.let { checkNotNull(decodeEventKey(it)) { "the invite's key is not a key" } }
+        eventKey = linkKey?.let { checkNotNull(EventKeyText.decode(it)) { "the invite's key is not a key" } }
         val token = token()
         checked("join $deviceId", http.put("$backend/events/$eventId/devices/$deviceId") { served(token) })
     }

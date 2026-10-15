@@ -4,19 +4,21 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.membership.RenameResult
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.feature.membership.readmodel.RenameFailureReason
-import app.snapsync.feature.membership.readmodel.RenameStatus
-import app.snapsync.model.Direction
+import app.snapsync.format.EventKeyText
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
-import app.snapsync.model.decodeEventUrl
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
@@ -30,6 +32,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -38,6 +42,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private const val EVENT_ID = "44444444-4444-4444-8444-444444444444"
@@ -76,7 +81,7 @@ class JoinedLayerTest {
         snapshot: SyncStatus = SETTLED,
         download: DownloadProgress = DownloadProgress(0, 0),
         permission: GalleryAccess = GalleryAccess.GRANTED,
-        rename: RenameStatus = RenameStatus.Idle,
+        commands: TestCommands = TestCommands(),
         inviteKey: String? = null,
         configFlow: MutableStateFlow<EventConfig?> = MutableStateFlow(config),
     ) = StatusContainerHost(
@@ -84,14 +89,15 @@ class JoinedLayerTest {
             FixedSync(snapshot),
             MutableStateFlow(permission),
             configFlow,
-            rename = MutableStateFlow(rename),
+            requests = commands.requests.flows,
             download = MutableStateFlow(download),
             eventKey = EventKeyView(inviteKey = MutableStateFlow(inviteKey)),
         ),
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-        commands = testCommands(),
+        commands = commands,
         queries = noQueries,
+        joinDetails = unanswered,
         diagnostics = testDiagnostics(),
         reduction = Dispatchers.Default,
     )
@@ -199,16 +205,23 @@ class JoinedLayerTest {
     // ---- the rename dialog -------------------------------------------------------------------------
 
     @Test
-    fun `the rename dialog reads every rename status and names why one failed`() = runTest {
+    fun `the rename dialog reads every rename answer and names why one failed`() = runTest {
+        assertEquals(RenameState.Idle, joined(backgroundScope).layer().renameState, "before any rename")
         val expected = mapOf(
-            RenameStatus.Idle to RenameState.Idle,
-            RenameStatus.InFlight to RenameState.InFlight,
-            RenameStatus.Succeeded to RenameState.Succeeded,
-            RenameStatus.Failed(RenameFailureReason.INVALID_NAME) to RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED),
-            RenameStatus.Failed(RenameFailureReason.SERVER) to RenameState.Failed(ScreenMessage.RENAME_FAILED),
+            null to RenameState.InFlight,
+            RenameResult.Renamed to RenameState.Succeeded,
+            RenameResult.InvalidName to RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED),
+            RenameResult.Failed() to RenameState.Failed(ScreenMessage.RENAME_FAILED),
+            // A failing service is told as what it is (decision record `changes/tell-service-faults`).
+            RenameResult.Failed(ServiceFault.UPDATING) to RenameState.Failed(ScreenMessage.SERVICE_UPDATING),
+            RenameResult.EventOver to RenameState.Failed(ScreenMessage.EVENT_OVER),
         )
-        for ((status, state) in expected) {
-            assertEquals(state, joined(backgroundScope, rename = status).layer().renameState, "$status")
+        for ((answer, state) in expected) {
+            val host = joined(backgroundScope, commands = TestCommands(rename = { _, _ -> answer }))
+            host.onRenameEvent(MEMBERSHIP.eventId.value, "Lake week")
+            withContext(Dispatchers.Default) {
+                withTimeout(5.seconds) { host.screen.first { (it.layer as? Layer.Joined)?.renameState == state } }
+            }
         }
     }
 
@@ -306,9 +319,9 @@ class JoinedLayerTest {
     }
 
     private fun decodedKey(url: String): String? =
-        assertIs<app.snapsync.model.ConfigDecodeResult.Success>(decodeEventUrl(url)).payload.key
+        assertIs<InviteLinkVerdict.Invite>(InviteLinkText.parse(url)).link.key?.text
 
     private companion object {
-        val INVITE_KEY = app.snapsync.model.encodeEventKey(ByteArray(32) { (it * 7).toByte() })
+        val INVITE_KEY = EventKeyText.encode(ByteArray(32) { (it * 7).toByte() })
     }
 }

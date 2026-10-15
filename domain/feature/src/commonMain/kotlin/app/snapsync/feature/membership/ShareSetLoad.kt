@@ -2,8 +2,8 @@ package app.snapsync.feature.membership
 
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
 import app.snapsync.services.identity.requireDeviceId

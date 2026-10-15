@@ -162,15 +162,17 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
         state.locked { state.holds.remove(call) }?.release()
     }
 
-    override suspend fun fail(operation: String, fault: BackendFault, times: Int?) {
+    override suspend fun fail(operation: String, fault: BackendFault, times: Int?, after: Int?) {
         require(operation in OPERATIONS) {
             "operation must be one of the device API's operationIds (${OPERATIONS.sorted().joinToString(
                 "|",
             )}), was '$operation'"
         }
         val count = times ?: 1
+        val skipped = after ?: 0
         require(count > 0) { "times must be positive, was $count" }
-        state.locked { state.faults[operation] = fault to count }
+        require(skipped >= 0) { "after must not be negative, was $skipped" }
+        state.locked { state.faults[operation] = OperationFault(fault, count, skipped) }
     }
 
     override suspend fun recover(operation: String?) {
@@ -407,14 +409,19 @@ internal class BackendState(
     @Volatile var refuseAttestationDetail: String? = null
     val holds = mutableMapOf<BackendCall, OperatorHold>()
 
-    /** The fault each operation answers with, and how many more requests it answers so. */
-    val faults = mutableMapOf<String, Pair<BackendFault, Int>>()
+    /** The fault each operation answers with, and for which of its next requests. */
+    val faults = mutableMapOf<String, OperationFault>()
 
     /** The fault an operator set for [operationId]'s next request, taken — or `null`. */
     fun takeFault(operationId: String): BackendFault? {
-        val (fault, left) = faults[operationId] ?: return null
-        if (left <= 1) faults.remove(operationId) else faults[operationId] = fault to left - 1
-        return fault
+        val set = faults[operationId] ?: return null
+        val next = when {
+            set.skipped > 0 -> set.copy(skipped = set.skipped - 1)
+            set.left > 1 -> set.copy(left = set.left - 1)
+            else -> null
+        }
+        if (next == null) faults.remove(operationId) else faults[operationId] = next
+        return set.fault.takeIf { set.skipped == 0 }
     }
 
     /** A read of the event's details reached the backend — counted before an operator's hold answers it. */
@@ -572,8 +579,12 @@ internal class BackendState(
     }
 
     private fun logChanges(eventId: String, deviceId: String, before: Set<AssetId>, after: Set<AssetId>) {
-        (after - before).sorted().forEach { changes += Change(nextSeq++, eventId, deviceId, it, gained = true) }
-        (before - after).sorted().forEach { changes += Change(nextSeq++, eventId, deviceId, it, gained = false) }
+        fun log(asset: AssetId, gained: Boolean) {
+            changes += Change(nextSeq++, eventId, deviceId, asset, gained)
+            watcher.told(WorldEvent.UnionChanged(eventId, deviceId, asset.value, gained))
+        }
+        (after - before).sorted().forEach { log(it, gained = true) }
+        (before - after).sorted().forEach { log(it, gained = false) }
     }
 
     /** Every member's complete assets — an asset is served once every resource it declares has landed. */
@@ -788,3 +799,6 @@ fun interface BackendWatcher {
  */
 internal fun BackendState.authorizes(token: String): Boolean =
     token in minted && (token.split('.').getOrNull(1)?.toLongOrNull() ?: 0) >= now().epochSeconds
+
+/** An operator's [fault] for one operation: answered to its next [left] requests, once [skipped] more have passed. */
+internal data class OperationFault(val fault: BackendFault, val left: Int, val skipped: Int)

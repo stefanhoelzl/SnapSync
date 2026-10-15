@@ -6,9 +6,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.inboundOf
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.format.InviteLinkText
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.encodeEventUrl
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.testids.testEventId
@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
  * reachable before the listing is public; the seam leaves only that library's own behaviour untested.
  */
 class AndroidInstallReferrerTest {
-    private val invite = encodeEventUrl(EventLinkPayload(eventId = testEventId("11111111-1111-4111-8111-111111111111")))
+    private val invite = InviteLinkText.format(InviteLink(testEventId("11111111-1111-4111-8111-111111111111"), null))
     private val delivered = mutableListOf<LinkDelivery>()
     private val links = AndroidLinks(
         Logger.withTag("test"),

@@ -2,7 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
-import app.snapsync.model.Direction
+import app.snapsync.domain.sharing.Direction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

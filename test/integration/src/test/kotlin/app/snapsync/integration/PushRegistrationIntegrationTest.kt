@@ -18,8 +18,9 @@ import kotlin.test.Test
 class PushRegistrationIntegrationTest {
 
     /**
-     * A JOIN re-registers the push token: committing a join runs the real `flow/Provision`, whose `registerPush`
-     * re-PUTs the delivered token — closing the warm-rejoin window the nightly sweep's device-record collection opens.
+     * A JOIN re-registers the push token: committing a join runs the real join steps (`AfterJoin`), whose push step
+     * re-PUTs the delivered token — closing the warm-rejoin window the
+     * nightly sweep's device-record collection opens.
      *
      * The config is last-write-wins, so the document cannot tell one registration from two; the backend's record of
      * each stored registration can. The delivery registered once, before the join; the join registers again.

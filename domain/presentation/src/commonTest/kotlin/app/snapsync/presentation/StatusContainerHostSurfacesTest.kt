@@ -3,25 +3,27 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.RenameResult
+import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.AlbumContents
 import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.JoinLoad
-import app.snapsync.model.ReconfigureOutcome
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.TimestampText
 import app.snapsync.model.UserQueries
-import app.snapsync.model.encodeEventUrl
+import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
@@ -30,6 +32,7 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.RangeView
+import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.UiState
@@ -83,9 +86,9 @@ private data class Reconfigure(
 
 private class Spy {
     val renames = mutableListOf<Pair<String, String>>()
-    var renameResets = 0
+    var renameAnswer: RenameResult? = null
     val reconfigures = mutableListOf<Reconfigure>()
-    var reconfigureOutcome = ReconfigureOutcome.Saved
+    var reconfigureOutcome = SettingsResult.Saved
 
     /** Whether a landed save is seen in the membership read at once — false plays a read that lags the write. */
     var configFollows = true
@@ -117,36 +120,58 @@ class StatusContainerHostSurfacesTest {
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
         sendDiagnostics: suspend (String, ReportContext) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
         queries: UserQueries = noQueries,
+        joinDetails: JoinDetailsQuery = unanswered,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
         albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
-    ) = StatusContainerHost(
-        StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config),
-        scope,
-        commands = testCommands(
-            reconfigure = { id, direction, from, until, album ->
-                spy.reconfigures += Reconfigure(id, direction, from, until, album)
+    ): StatusContainerHost {
+        val commands = TestCommands(
+            reconfigure = { choice ->
+                spy.reconfigures += Reconfigure(
+                    choice.event.value, choice.direction, choice.from, choice.until, choice.saveToAlbum,
+                )
                 // A save that lands rewrites the membership, as the use-case does (its clamp is not under test here).
-                if (spy.reconfigureOutcome == ReconfigureOutcome.Saved && spy.configFollows) {
+                if (spy.reconfigureOutcome == SettingsResult.Saved && spy.configFollows) {
                     config.value = config.value?.copy(
-                        direction = direction, minPhotoDate = from, maxPhotoDate = until, saveToAlbum = album,
+                        direction = choice.direction,
+                        minPhotoDate = choice.from,
+                        maxPhotoDate = choice.until,
+                        saveToAlbum = choice.saveToAlbum,
                     )
                 }
                 spy.reconfigureOutcome
             },
-            rename = { id, name -> spy.renames += id to name },
-            resetRename = { spy.renameResets++ },
+            rename = { id, name ->
+                spy.renames += id.value to name
+                spy.renameAnswer
+            },
             sendDiagnostics = sendDiagnostics,
             commitJoin = { join ->
-                onCommitJoin(join.eventId.value)
-                app.snapsync.model.JoinCommit.Committed
+                onCommitJoin(join.event.id.value)
+                JoinCommit.Committed
             },
-        ),
+        )
+        return host(scope, config, commands, queries, joinDetails, reportDestination, albumContents)
+    }
+
+    private fun host(
+        scope: CoroutineScope,
+        config: MutableStateFlow<EventConfig?>,
+        commands: TestCommands,
+        queries: UserQueries,
+        joinDetails: JoinDetailsQuery,
+        reportDestination: ReportDestination,
+        albumContents: AlbumContents,
+    ) = StatusContainerHost(
+        StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config, requests = commands.requests.flows),
+        scope,
+        commands = commands,
         cutoffFormatter = CutoffFormatter(
             now = { Instant.parse("2026-07-09T12:00:00Z") },
             zone = TimeZone.UTC,
         ),
         queries = queries,
+        joinDetails = joinDetails,
         diagnostics = testDiagnostics(),
         reportDestination = reportDestination,
         albumContents = albumContents,
@@ -178,6 +203,7 @@ class StatusContainerHostSurfacesTest {
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
         sendDiagnostics: suspend (String, ReportContext) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
         queries: UserQueries = noQueries,
+        joinDetails: JoinDetailsQuery = unanswered,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
         albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
@@ -186,7 +212,9 @@ class StatusContainerHostSurfacesTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
-                body(host(scope, spy, config, sendDiagnostics, queries, onCommitJoin, reportDestination, albumContents))
+                body(
+                    host(scope, spy, config, sendDiagnostics, queries, joinDetails, onCommitJoin, reportDestination, albumContents),
+                )
             } finally {
                 scope.cancel()
             }
@@ -221,19 +249,19 @@ class StatusContainerHostSurfacesTest {
         // the rejoin of one event can conflate in the StateFlow into A → A.
         val config = MutableStateFlow<EventConfig?>(CONFIG)
         val details = joinDetails {
-            JoinLoad.Found(
+            found(
                 CONFIG.name,
                 CONFIG.startsAt,
                 CONFIG.endsAt,
                 DeletesAt(TimestampText.parse("2026-08-05T14:32:11Z")),
             )
         }
-        return onHost(config = config, queries = details, onCommitJoin = { config.value = CONFIG }) { host ->
+        return onHost(config = config, joinDetails = details, onCommitJoin = { config.value = CONFIG }) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the settings surface") { it.onSettings() }
 
             config.value = null
-            host.onOpenUrl(encodeEventUrl(EventLinkPayload(testEventId(EVENT_ID))))
+            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
             host.stateWhere("the join surface, ready") {
                 ((it.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready
             }
@@ -497,16 +525,35 @@ class StatusContainerHostSurfacesTest {
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
             host.form.onShareOn(true)
-            host.form.onReceiveOn(true)
+            host.form.onReceiveOn(false)
             awaitReconfigures(spy, 2)
-            assertEquals(listOf(Direction.Both, Direction.Both), spy.reconfigures.map { it.direction })
+            // Built on the stale read, the second would be "share nothing, receive nothing".
+            assertEquals(listOf(Direction.Both, Direction.UploadOnly), spy.reconfigures.map { it.direction })
+        }
+    }
+
+    @Test
+    fun `a switch set to what it shows saves nothing`() {
+        val spy = Spy()
+        return onHost(spy) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.reconfigureForm()
+            host.form.onShareOn(true)
+            host.form.onSaveToAlbum(CONFIG.saveToAlbum)
+            host.form.onReceiveOn(false)
+            awaitReconfigures(spy, 1)
+            assertEquals(
+                listOf(Direction.UploadOnly),
+                spy.reconfigures.map { it.direction },
+                "only the change is saved",
+            )
         }
     }
 
     @Test
     fun `a change that did not land shows the setting in effect and says so`() {
         // The controls never hold a value that is not saved: the album goes back off, and the settings say why.
-        val spy = Spy().apply { reconfigureOutcome = ReconfigureOutcome.SaveFailed }
+        val spy = Spy().apply { reconfigureOutcome = SettingsResult.SaveFailed }
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
@@ -617,7 +664,7 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `a change for a membership no longer current closes the settings`() {
-        val spy = Spy().apply { reconfigureOutcome = ReconfigureOutcome.NotCurrent }
+        val spy = Spy().apply { reconfigureOutcome = SettingsResult.NotCurrent }
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
@@ -750,16 +797,13 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `consuming the rename status clears the latch`() {
-        // Suspending on the far side: the screen may start the next rename immediately, so the clear has
-        // to have happened by the time the call returns or a second rename begins with the previous
-        // Succeeded still latched.
-        val spy = Spy()
+        // The sheet closes itself on a success and consumes it: the next edit begins with nothing answered.
+        val spy = Spy().apply { renameAnswer = RenameResult.Renamed }
         return onHost(spy) { host ->
+            host.onRenameEvent(EVENT_ID, "Anna's Wedding")
+            host.stateWhere("the rename answered") { (it.layer as? Layer.Joined)?.renameState == RenameState.Succeeded }
             host.onRenameStatusConsumed()
-            withTimeout(5.seconds) {
-                while (spy.renameResets == 0) kotlinx.coroutines.yield()
-            }
-            assertEquals(1, spy.renameResets)
+            host.stateWhere("the answer consumed") { (it.layer as? Layer.Joined)?.renameState == RenameState.Idle }
         }
     }
 

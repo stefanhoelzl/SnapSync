@@ -1,6 +1,7 @@
 package app.snapsync.gallery
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.id
 import app.snapsync.mock.inMemoryGallery
@@ -9,7 +10,6 @@ import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.TimestampText
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader

@@ -21,7 +21,7 @@ class ZoneFeatureBlindnessTest {
             val own = ZoneGates.featureOfFile(file)
             ZoneGates.projectRefs(file).mapNotNull { (line, ref) ->
                 when (ZoneGates.zoneOf(ref)) {
-                    "model", "domain", "data", "ports", "services", "scheduling" -> null
+                    "model", "domain", "data", "format", "ports", "services", "scheduling" -> null
                     "feature" ->
                         if (ZoneGates.featureOfRef(ref) == own) {
                             null
@@ -37,7 +37,7 @@ class ZoneFeatureBlindnessTest {
                         file,
                         line,
                         ref,
-                        "features reference only model/, domain/, data/, ports/, services/ and scheduling/",
+                        "features reference only model/, domain/, data/, format/, ports/, services/ and scheduling/",
                     )
                 }
             }

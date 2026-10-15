@@ -21,6 +21,7 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
+            implementation(project(":domain:format"))
             // The shared capabilities features stand on: the storage, gallery, transfer and backend services.
             implementation(project(":domain:services"))
             // MIGRATING: the trust concept the features read — the device identity, the refusal's facts — lives in

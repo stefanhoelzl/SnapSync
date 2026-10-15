@@ -2,6 +2,8 @@ package app.snapsync.compose
 
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -18,11 +20,9 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.backend.BackendUploadRequests
 import app.snapsync.services.backend.ManifestPublisher
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.UploadSealing
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.gallery.UploadDiscovery
@@ -30,6 +30,7 @@ import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.upload.TransferSetup
 import app.snapsync.services.upload.Uploader
@@ -68,8 +69,10 @@ sealed interface UploaderProcess {
 internal class UploadServices(
     /** The shared database the records below live in — asked first whether they can be read here. */
     val records: SharedDatabase,
+    /** The membership, re-read at every invocation of the extension. */
+    val membership: MembershipRepository,
     /** The three-state membership read. Read fresh once per cycle. */
-    val config: ConfigService,
+    val config: MembershipProjection,
     /** The device's mobile-data choice, read as each upload job is created. */
     val mobileData: MobileDataSetting,
     /**

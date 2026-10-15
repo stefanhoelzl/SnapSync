@@ -2,6 +2,7 @@ package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.format.TimestampText
 
 /**
  * One asset as **neutral facts** — the only thing the selection policy decides on.

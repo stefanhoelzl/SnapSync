@@ -28,7 +28,6 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.inbound.Completion
-import app.snapsync.model.InviteLinkHints
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ui.state.AppLink
@@ -129,7 +128,6 @@ class EntryMockContractBindingsTest {
                 return Entered.Ready(DevControlsUnderTest(mock.port().recorded(log)))
             }
             mock.pin = DevControlsContract.PINNED
-            mock.hints = InviteLinkHints.Honoured
             mock.encrypts = true
             return Entered.Ready(DevControlsUnderTest(mock.port().recorded(log)) { mock.reset() })
         }

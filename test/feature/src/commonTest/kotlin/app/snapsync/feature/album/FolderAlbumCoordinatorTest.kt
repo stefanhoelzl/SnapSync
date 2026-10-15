@@ -9,13 +9,13 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.inboundOf
 import app.snapsync.feature.support.testShared
+import app.snapsync.format.TimestampText
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
-import app.snapsync.model.TimestampText
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImportRequest

@@ -5,6 +5,8 @@ package app.snapsync.feature.upload
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
+import app.snapsync.data.store.LEDGER_DB_NAME
+import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -19,6 +21,7 @@ import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testShared
 import app.snapsync.feature.support.unreadableIdentity
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemorySecureStore
@@ -26,15 +29,12 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.PauseReason
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.SuppressionReadiness
-import app.snapsync.model.TimestampText
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.crypto.EventKeys
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
-import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -75,7 +75,7 @@ class CycleGateReadTest {
         testEventId(eventId),
         "E",
         cutoff,
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-01-01T00:00:00Z")),
+        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-01-31T00:00:00Z")),
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         saveToAlbum = saveToAlbum,

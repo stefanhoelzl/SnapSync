@@ -6,7 +6,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **A shipped migration is never edited** (capability `photo-sharing`; `domain/services/build.gradle.kts`).
+ * **A shipped migration is never edited** (capability `photo-sharing`; `domain/data/build.gradle.kts`,
+ * `domain/services/build.gradle.kts`).
  *
  * Each database's schema is its migration chain and nothing else (`deriveSchemaFromMigrations`). A phone that already
  * ran a migration keeps what that migration did; a fresh install runs whatever the file says now. Editing a migration
@@ -20,9 +21,16 @@ import kotlin.test.assertEquals
  */
 class MigrationPinTest {
 
-    private val chains = File(SourceScan.repoRoot, "domain/services/src/commonMain/sqldelight")
+    /**
+     * The migration chains' roots: `ledger.db`'s in the data layer, `downloads.db`'s in the services zone. A file's pin
+     * is keyed by its path under its root, so moving a chain between modules keeps its pins.
+     */
+    private val chains = listOf(
+        File(SourceScan.repoRoot, "domain/data/src/commonMain/sqldelight"),
+        File(SourceScan.repoRoot, "domain/services/src/commonMain/sqldelight"),
+    )
 
-    /** Every migration, by its path under [chains], and the SHA-256 of its bytes. */
+    /** Every migration, by its path under its root in [chains], and the SHA-256 of its bytes. */
     private val pins = mapOf(
         "download/app/snapsync/services/downloads/db/4.sqm" to
             "7aac4e93ed9dd1aa515699afd8f8f7ff8598183f653a5b9be77481bce169ffd8",
@@ -38,22 +46,28 @@ class MigrationPinTest {
             "e25008999997ccaeaa0492557716948217f15127c85b7d7ffb4abb8097658237",
         "download/app/snapsync/services/downloads/db/9.sqm" to
             "acb19f0657a61342cd3c48e4f10cf4c2f9662270705ac4cfdb487cd4286f1791",
-        "ledger/app/snapsync/services/ledger/db/11.sqm" to
+        "ledger/app/snapsync/data/store/db/11.sqm" to
             "bc378a8aecf83363863d1742286af7021f0c4d3ba591d09c194e010963763548",
-        "ledger/app/snapsync/services/ledger/db/12.sqm" to
+        "ledger/app/snapsync/data/store/db/12.sqm" to
             "124dfb8345efa5745dff8df5a584933f86cb9bb0f6c8700d0b61ed7d2c5321b5",
-        "ledger/app/snapsync/services/ledger/db/13.sqm" to
+        "ledger/app/snapsync/data/store/db/13.sqm" to
             "495f541590bff52cefbffc96817800604ccef42c95a8fbcbf1800e8a131b1bcf",
-        "ledger/app/snapsync/services/ledger/db/14.sqm" to
+        "ledger/app/snapsync/data/store/db/14.sqm" to
             "39642ee5a2d20528e9c65c2b3798927d9b6cbb62633443438672c12704835ab3",
-        "ledger/app/snapsync/services/ledger/db/15.sqm" to
+        "ledger/app/snapsync/data/store/db/15.sqm" to
             "47cb425ef439827ece704c3cad4dcbf205a6d8ef523142de8feddf47c19786e6",
+        // Not merged yet: phase 4.2 (membership) re-types `ledgerRow` and `membership`, drops `membership.closed` and
+        // `pendingLeave.received`.
+        "ledger/app/snapsync/data/store/db/16.sqm" to
+            "f365d5ba59fd34eb695a684b7fec94130f399573f7a3ab8e598d24100a1fd15f",
     )
 
     @Test
     fun `every migration is pinned and none has changed`() {
-        val found = chains.walkTopDown().filter { it.isFile && it.extension == "sqm" }
-            .associate { it.relativeTo(chains).invariantSeparatorsPath to sha256(it) }
+        val found = chains.flatMap { root ->
+            root.walkTopDown().filter { it.isFile && it.extension == "sqm" }
+                .map { it.relativeTo(root).invariantSeparatorsPath to sha256(it) }.toList()
+        }.toMap()
         assertEquals(
             pins.keys.sorted(),
             found.keys.sorted(),

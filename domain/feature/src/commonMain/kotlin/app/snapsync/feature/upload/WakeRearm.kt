@@ -3,8 +3,8 @@ package app.snapsync.feature.upload
 import app.snapsync.model.CycleResult
 import app.snapsync.model.GalleryAccess
 import app.snapsync.scheduling.Pass
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.wake.Heartbeat
 import co.touchlab.kermit.Logger
@@ -59,7 +59,7 @@ class WakeRearm(
  * is allowed says nothing about whether it happened.
  */
 fun cadenceFacts(
-    config: ConfigService,
+    config: MembershipProjection,
     permission: GalleryAccess,
     osUploaderRegistrable: Boolean,
     registration: ExtensionRegistration,

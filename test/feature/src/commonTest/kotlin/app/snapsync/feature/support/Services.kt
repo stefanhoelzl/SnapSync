@@ -3,7 +3,14 @@
 package app.snapsync.feature.support
 
 import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.store.LEDGER_DB_NAME
+import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.data.store.db.MembershipQueries
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
@@ -21,21 +28,20 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.ports.Clock
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.PlatformDeviceId
-import app.snapsync.services.config.ConfigService
-import app.snapsync.services.config.saveMembership
-import app.snapsync.services.config.toConfig
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.SharedDatabase
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.ledger.LEDGER_DB_NAME
 import app.snapsync.services.ledger.LedgerService
-import app.snapsync.services.ledger.db.LedgerDatabase
+import app.snapsync.services.membership.MembershipProjection
+import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
 
 // The feature tests' services: the REAL services, over the ports' in-memory mocks (`docs/testing.md`, "Feature tests
@@ -47,6 +53,12 @@ val TEST_NOW: Instant = Instant.parse("2026-06-15T12:00:00Z")
 
 /** A clock pinned at [now], in UTC. */
 fun testClock(now: Instant = TEST_NOW): Clock = fixedClock(now)
+
+/** A clock reading [now] at each call — a test that moves time. */
+fun clockOf(now: () -> Instant): Clock = object : Clock {
+    override fun now(): Instant = now()
+    override fun timeZone(): TimeZone = TimeZone.UTC
+}
 
 /**
  * [Files] over in-memory areas that records what was written and deleted, in order, and fails on demand — the
@@ -163,7 +175,7 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
             if (config == null) {
                 database.membershipQueries.clearMembership()
             } else {
-                database.membershipQueries.saveMembership(config)
+                database.membershipQueries.saveRow(config)
             }
         }
         databases.lock(locked)
@@ -173,7 +185,7 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
 
     /** What the membership row holds now, or `null` when there is none. */
     fun persistedConfig(): EventConfig? =
-        inspected.use { it.membershipQueries.selectMembership().executeAsOneOrNull()?.toConfig() }
+        (MembershipRepository(inspected).read() as? MembershipRead.Joined)?.membership?.asConfig()
 
     /** The membership's writes that reached the database since it was seeded. */
     val configSaves: Int get() = saves
@@ -190,23 +202,44 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
     /** Lever: every database is unreadable — a device locked since boot. */
     fun membershipUnreadable() = databases.lock()
 
-    private fun driver() =
-        (databases.port().open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = true) as DbOpen.Opened).driver
+    private fun driver(): SqlDriver {
+        val opened = databases.port().open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = true)
+        return (opened as DbOpen.Opened).database.driver()
+    }
 }
 
 /** The shared database over [databases], its legacy homes empty — every record lives in the database from the start. */
 fun testShared(databases: Databases = inMemoryDatabases()): SharedDatabase =
     SharedDatabase(databases, LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
 
-/** The real membership service over [store], seeded with [initial]. */
+/** The membership as the old zones read it, over the real repository of [store], seeded with [initial]. */
 fun configService(
     initial: EventConfig? = null,
     store: SharedStore = SharedStore(),
     clock: Clock = testClock(),
-): ConfigService {
+): MembershipProjection {
     store.persist(initial)
-    return ConfigService(store.db, clock)
+    return MembershipProjection(MembershipRepository(store.db), clock)
 }
+
+/** [config] as the one membership row, written raw — how a test seeds what a join would have written. */
+internal fun MembershipQueries.saveRow(config: EventConfig) = saveMembership(
+    eventId = config.eventId,
+    name = config.name,
+    minPhotoDate = config.minPhotoDate,
+    startsAt = config.startsAt,
+    endsAt = config.endsAt,
+    maxPhotoDate = config.maxPhotoDate,
+    deletesAt = config.deletesAt,
+    direction = config.direction,
+    saveToAlbum = config.saveToAlbum,
+    membersActive = config.members?.active?.toLong(),
+    membersSettled = config.members?.settled?.toLong(),
+    membersWaiting = config.members?.waiting?.toLong(),
+    keyId = config.keyId,
+    openUntil = config.openUntil,
+    deleted = config.deleted,
+)
 
 /**
  * A device identity that resolves to the fixture device [id] stands for ([testDeviceId]) — the app's, minting the
@@ -255,7 +288,7 @@ class TestLedger(val databases: Databases = inMemoryDatabases(), var joined: Str
 
     private fun column(sql: String): List<String> {
         val opened = databases.open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = true)
-        val driver = (opened as? DbOpen.Opened)?.driver ?: return emptyList()
+        val driver = (opened as? DbOpen.Opened)?.database?.driver() ?: return emptyList()
         return driver.executeQuery(null, sql, { cursor ->
             val out = mutableListOf<String>()
             while (cursor.next().value) out += cursor.getString(0)!!
@@ -263,3 +296,6 @@ class TestLedger(val databases: Databases = inMemoryDatabases(), var joined: Str
         }, 0).value
     }
 }
+
+/** The open database's driver, held outside an execute — a test's own reach, for what no query exposes. */
+fun OpenDatabase.driver(): SqlDriver = (execute { it } as DbResult.Ok).value

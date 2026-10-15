@@ -7,21 +7,22 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.support.LEDGER_EVENT
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.feature.support.testShared
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.LedgerState
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.TimestampText
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
@@ -32,11 +33,11 @@ import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.config.ConfigService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred
@@ -106,7 +107,8 @@ class AlbumGatherTest {
         granted: Boolean,
         scope: CoroutineScope,
     ) {
-        val config: ConfigService = configService(cfg)
+        val store = SharedStore()
+        val config: MembershipProjection = configService(cfg, store)
         private val databases = inMemoryDatabases()
         val ledger = LedgerService(testShared(databases)) { testEventId(LEDGER_EVENT) }
         val downloads = DownloadService(databases)
@@ -274,7 +276,8 @@ class AlbumGatherTest {
         val second = async { r.gather.gather(testEventId("E2")) }
         yield()
         // Opt out while the first gather holds the lock: the queued one must see it.
-        r.config.save(config(saveToAlbum = false))
+        r.store.persist(config(saveToAlbum = false))
+        r.config.reload()
         gate.complete(Unit)
         first.await()
         second.await()

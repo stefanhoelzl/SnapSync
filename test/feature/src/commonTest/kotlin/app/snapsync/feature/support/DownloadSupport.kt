@@ -16,9 +16,11 @@ import app.snapsync.model.FileResult
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.Files
+import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.services.downloads.DownloadJobs
@@ -138,9 +140,15 @@ class RecordingDatabases(private val inner: Databases = inMemoryDatabases()) : D
 
     override fun open(name: String, schema: SqlSchema<QueryResult.Value<Unit>>, readOnly: Boolean): DbOpen =
         when (val opened = inner.open(name, schema, readOnly)) {
-            is DbOpen.Opened -> DbOpen.Opened(Recording(opened.driver))
+            is DbOpen.Opened -> DbOpen.Opened(RecordingDatabase(opened.database))
             else -> opened
         }
+
+    /** The open database as the store sees it: every execute's driver is [Recording]'s. */
+    private inner class RecordingDatabase(private val inner: OpenDatabase) : OpenDatabase {
+        override fun <T> execute(statements: (SqlDriver) -> T): DbResult<T> =
+            inner.execute { statements(Recording(it)) }
+    }
 
     private inner class Recording(private val driver: SqlDriver) : SqlDriver by driver {
         override fun <R> executeQuery(

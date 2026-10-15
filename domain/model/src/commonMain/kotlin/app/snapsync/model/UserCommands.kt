@@ -4,41 +4,10 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
-import app.snapsync.domain.service.ServiceFault
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
-
-/**
- * What a join commit did.
- *
- * A named outcome rather than a Boolean, because the two ways to fail need DIFFERENT screens and a
- * Boolean cannot carry the difference. [Failed] is transient — the network, the backend, the moment —
- * and the surface it produces offers a Retry that genuinely may work. [Closed] is not: the event admits
- * nobody any more, retrying fails identically, and a Retry button there is an invitation to press it
- * forever.
- */
-sealed interface JoinCommit {
-    /** The membership is committed (a re-join of the same event counts — it is already committed). */
-    data object Committed : JoinCommit
-
-    /** The event has closed; no retry can change that. */
-    data object Closed : JoinCommit
-
-    /**
-     * The commit did not land, for a reason that may not hold next time; [fault] is how the service failed, when it
-     * did — `null` for a failure on this device.
-     */
-    data class Failed(val fault: ServiceFault? = null) : JoinCommit
-
-    /**
-     * The service did not accept this phone's credential; the attestation's refusal says why. A Retry may heal it —
-     * it tries to verify the phone again first — but it is never shown as a failure "that may not hold next time".
-     */
-    data object Unverified : JoinCommit
-
-    /** The invite link does not open this event — no key, or another one; only the whole invite can. */
-    data object WrongLink : JoinCommit
-}
+import app.snapsync.domain.membership.InviteFact
+import app.snapsync.domain.membership.JoinChoice
+import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.request.RequestId
 
 /**
  * The **user-tap command bundle** (`docs/architecture.md`, "Commands cross one door"): the
@@ -51,24 +20,21 @@ sealed interface JoinCommit {
  * feature command (or an entry point) directly, which is what the presentation gate enforces.
  *
  * Reads do NOT ride here: presentation observes feature read-model StateFlows directly (config,
- * permission, sync status, creation status, download progress), and the join gate's details fetch
- * (`StatusContainerHost`'s `loadJoinDetails`) stays an injected read — it returns a value the gate
- * reduces on, so it is a query, not a command.
+ * permission, sync status, creation status, download progress), and the join gate's details fetch is the query
+ * layer's `JoinDetailsQuery` — it returns a value the gate reduces on, so it is a query, not a command.
  *
  * No command has a default body (law "Function-typed parameters have no defaults in production",
  * `docs/architecture.md`): an implementation states every command, so one it forgets does not compile — an
  * inert default is how a hand-built bundle ships a "Choose more photos" button that does nothing.
  *
- * - [leave] — leave the configured event: cancel in-flight downloads, stop the producer, clear the
- *   config, notify the backend.
+ * - [leave] — leave the joined event. Returns at once: the membership turning "not joined" is its outcome, and staying
+ *   joined is a leave that could not be written.
  * - [create] — mint a new event with a name and canonical UTC date **range** (`startsAt`, `endsAt`) — and, for an
  *   event created after its end, the day guests may join until (`openUntil`, `null` otherwise) — then
  *   route it into the join gate. Fire-and-forget; outcomes arrive via
  *   the creation status read-model.
- * - [commitJoin] — join (a bodyless membership write, no manifest) then provision the membership's
- *   capture-date **range** (`minPhotoDate`..`maxPhotoDate`, held to the share-range rule against the event's
- *   `startsAt`..`endsAt`), answering a [JoinCommit]: committed (incl. the already-joined no-op), closed,
- *   or failed — a range breaking the rule is a failed join.
+ * - [commitJoin] — join the event the member confirmed ([JoinChoice]). Returns at once with the request's id; what it came
+ *   to is answered on the join status under that id.
  * - [share] — hand the invite URL to the platform share surface, titled with the event's name (fire-and-forget,
  *   `UiState` unaffected).
  * - [requestAccess] — raise the system photo-access dialog: returns
@@ -83,19 +49,13 @@ sealed interface JoinCommit {
  * - [choosePhotos] — present the platform's limited-library picker: the joined layer's
  *   "Choose more photos" affordance under a partial
  *   grant. Fire-and-forget; the resulting selection change arrives via the selection-change seam.
- * - [reconfigure] — change the joined membership's participation settings in place (direction, cutoff,
- *   album opt-in) without leaving. [eventId] is the event the
- *   settings surface was opened for; the use-case no-ops if the current membership no longer matches.
- *   Awaited: it answers a [ReconfigureOutcome], so a save that did not land is told to the member rather than
- *   closing the surface as if it had; the change itself lands via the config read-model.
- * - [rename] — rename the joined event for **every** member. [eventId] is
- *   the event the heading affordance was opened for; the use-case no-ops if the current membership no
- *   longer matches. Fire-and-forget; the outcome arrives via the rename status read-model, and the new name
- *   lands via the config read-model. Unlike [reconfigure], which changes only this device's settings,
- *   this writes the shared event — but it is still just a command through the one door.
- * - [resetRename] — clear the rename status latch back to `Idle` once the screen has consumed a
- *   terminal value. Needed because `RenameStatus` carries a success value where `CreationStatus`
- *   deliberately does not: a rename changes no layer, so nothing else would clear it.
+ * - [reconfigure] — change the joined membership's share in place ([ShareChoice]: range, direction, album) without
+ *   leaving. Returns at once with the request's id; what it came to is answered on the settings status.
+ * - [rename] — rename the joined event for **every** member. [eventId] is the event the heading affordance was opened
+ *   for; nothing happens if the membership no longer is. Returns at once with the request's id; what it came to is
+ *   answered on the rename status, and the new name lands via the membership.
+ * - [switch] — another event's invite has loaded while joined: whether leaving the joined one may happen without
+ *   asking. Returns at once with the request's id; the verdict is answered on the switch status.
  * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel, or keep it on
  *   the device on a build that reports nowhere, fired from the report sheet
  *   once the user has written what went wrong, and answering what became of it ([ReportOutcome]) so the app
@@ -110,11 +70,11 @@ sealed interface JoinCommit {
  *   only the event's own key, only while it is lost — and sharing and receiving resume at once.
  */
 interface UserCommands {
-    suspend fun leave()
+    fun leave()
 
     fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?)
 
-    suspend fun commitJoin(choice: JoinChoice): JoinCommit
+    fun commitJoin(choice: JoinChoice): RequestId
 
     fun share(url: String, title: String)
 
@@ -126,23 +86,11 @@ interface UserCommands {
 
     fun choosePhotos()
 
-    suspend fun reconfigure(
-        eventId: EventId,
-        direction: Direction,
-        minPhotoDate: CaptureCutoff,
-        maxPhotoDate: CaptureCeiling,
-        saveToAlbum: Boolean,
-    ): ReconfigureOutcome
+    fun reconfigure(choice: ShareChoice): RequestId
 
-    fun rename(eventId: EventId, name: String)
+    fun rename(eventId: EventId, name: String): RequestId
 
-    /**
-     * Suspending, unlike the other latch-driven commands: the screen fires this **after** consuming a
-     * terminal status and may start the next rename immediately, so the clear has to have happened by
-     * the time the call returns. Detaching it opened a window where a second rename began with the
-     * previous `Succeeded` still latched.
-     */
-    suspend fun resetRename()
+    fun switch(invite: InviteFact): RequestId
 
     suspend fun sendDiagnostics(note: String, context: ReportContext): ReportOutcome
 

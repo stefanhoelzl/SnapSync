@@ -62,11 +62,15 @@ kotlin {
             // The storage services' contracts run through the services over these adapters.
             implementation(project(":domain:services"))
             implementation(libs.kotlinx.datetime)
+            // The tour spells the dates it sets (`TimestampText`).
+            implementation(project(":domain:format"))
             implementation(libs.coroutines.test)
             implementation(libs.androidx.work.testing)
             // The Ui contract's binding: the real screen over a real status container, tapped through a Compose UI
             // test hosted in the manifest artifact's `ComponentActivity`.
             implementation(project(":domain:presentation"))
+            // The membership's request statuses the tour's commands answer on.
+            implementation(project(":domain:query"))
             implementation(project(":domain:feature"))
             implementation(project(":ui:state"))
             implementation(project(":ui:screens"))

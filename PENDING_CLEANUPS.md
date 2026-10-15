@@ -155,8 +155,10 @@ such membership is live.
 
 ### Leave without `?received` (api, optional)
 - **What:** `api/src/routes/shared.ts` reads an absent `received` as "no", so a 0.4 leave always records `left`,
-  never `done`.
-- **Value:** the default is harmless. Making the parameter required is optional.
+  never `done`. From the release built from phase 4.2 ("membership") on, no app sends it: a leave owes the backend
+  only the event, and what this device received is reported by the end of a wake while it is still a member.
+- **Value:** the default is harmless. Once the floor is at or above that release, the parameter can be dropped from
+  `api/openapi.yaml` and `shared.ts` — optional.
 
 ## Re-enable encrypted creation
 
@@ -234,7 +236,7 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
     `device-manifest/last-uploaded.json`, `membership/pending-leaves.txt`, the Preferences keys
     `app.snapsync.album.map` / `.filled` and `app.snapsync.check.*`.
   - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
-    membership read's "still in its legacy file" answer (`ConfigService.read`).
+    membership read's "still in its legacy file" answer (`MembershipRepository.read`, `domain/data/.../membership/`).
   - `PauseReason.LEGACY_RECORDS` and its check at the head of `CycleGateRead.read`.
   - `PushRegistrationRecord.fromLegacyFile` (`push-registration/last-registered.txt` into the Preferences key) and
     its `files` parameter.
@@ -245,8 +247,8 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   (`PauseReason.LEGACY_RECORDS`) until the app's first open copies every record, then shares; nothing is shared twice,
   the album is kept, the pending leave reaches the backend. Their state is `OlderInstalls.kt`'s `writeLegacyRecords`
   (0.4's formats, each citing its source) and `forgetLegacyRecords` (what 0.6's copy left).
-- **Remove:** `LegacyRecords` and `LegacyRecordsTest`; `SharedDatabase`'s `legacy` parameter, `imported` and
-  `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
+- **Remove:** `LegacyRecords` and `LegacyRecordsTest`; `SharedDatabase`'s `legacy` parameter (and the `LegacyCopy`
+  interface beside it, `domain/data/.../store/SharedDatabase.kt`), `imported` and `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
   copy and its two tests; `ConfigFile.kt`; `writeLegacyRecords`, `forgetLegacyRecords` and the `RECORDS_MOVED` layer
   in `OlderInstalls.kt`. Squash the ledger chain to a v14 baseline, or the update test's v12–v13 cases lose their
   membership. Add a migration that drops `legacyImport`. Then the `Files` adapter's
@@ -346,16 +348,15 @@ also carries the stamp, and keeps it).
 - **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
 
 ### What stands in for the old close in the app and its mocks (app)
-- **What:** the app and its mocks still know an event can have closed.
-  - `domain/model/.../EventConfig.kt`: `EventConfig.closed`, which only a membership persisted by an earlier build
-    carries (the `closed` column of ledger.db's `membership` row, `13.sqm`), and what reads it.
+- **What:** the mocks still know an event can have closed. (The app's `EventConfig.closed` and the `closed` column of
+  ledger.db's `membership` row are gone since phase 4.2: migration `16.sqm` drops the column, and a membership that
+  carried it reads as open.)
   - `adapter/generic/mock/.../BackendMock.kt`: `BackendState.Event.closed`, which only a state saved by an earlier mock
     carries, and its branches in `join`, `publish` and `BackendRouter.change`.
   - `test/contracts/.../BackendContract.kt`: the wire-fixture state `CLOSED_BEFORE_OPEN_UNTIL` and its clause.
 - **Why:** a member joined to an event that closed before this release must not be shown it as open while the
   backend still refuses its rename.
-- **Remove:** the field and its readers (a migration drops the column), the mock's branches and the fixture state, with
-  the api entry above.
+- **Remove:** the mock's branches and the fixture state, with the api entry above.
 - **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
 
 ## As the core's concepts move into its layers (phase 4)
@@ -366,16 +367,44 @@ version or op gates these — each phase deletes its own uses, and the last one 
 ### The old zones' throwing device-id read (app)
 - **What:** `DeviceIdentity.requireDeviceId()` (`domain/services/…/services/identity/RequireDeviceId.kt`): the device
   id as the old zones read it before trust moved into its layers (4.1) — thrown as `SecureStoreUnavailable` or
-  `DeviceIdentityAbsent` out of the step that asked. Its callers: membership's `JoinEvent`, `ShareSetLoad` and
-  `ReceivedPhotoAdoption` (4.2, 4.5); upload's `StoredUploadSettle`, `CycleGateRead`, `UploadStandings`,
-  `UploadSealing` and the cycle's assembly in `compose/UploadCore.kt` (4.4); downloads' `myDeviceId` in
-  `compose/SnapSyncApp.kt` (4.5); push's `PushRegistration` and `BackendPushTokenPublisher` (4.8);
-  `BackendLeaveNotifier` and `BackendReceivedReporter` in `services/backend/Membership.kt` (4.2).
+  `DeviceIdentityAbsent` out of the step that asked. Its callers: `ShareSetLoad` and `ReceivedPhotoAdoption` (4.4b,
+  4.5); upload's `StoredUploadSettle`, `CycleGateRead`, `UploadStandings`, `UploadSealing` and the cycle's assembly in
+  `compose/UploadCore.kt` (4.4); downloads' `myDeviceId` in `compose/SnapSyncApp.kt` and `BackendReceivedReporter` in
+  `services/backend/Membership.kt` (4.5); push's `PushRegistration` and `BackendPushTokenPublisher` (4.8).
 - **Why:** converting every caller to the sealed `DeviceIdRead` in 4.1 would have rewritten the error handling of four
   concepts 4.1 does not own, each to be rewritten again as a use case in its own phase.
 - **Remove:** each phase moves its callers onto `DeviceIdentity.id()`'s sealed read — a use case answering its
   outcome — and deletes their `requireDeviceId` calls. The phase that removes the last one deletes the file, this
   entry, and `DeviceIdentityAbsent` from `model/SecureStoreFailures.kt` (its only thrower).
+
+### The membership as the old zones read it (app)
+- **What:** the old zones still read the membership as an `EventConfig` flow, and still stop what a failed leave left
+  behind themselves.
+  - `domain/services/.../membership/MembershipProjection.kt`: `MembershipProjection` over the data layer's
+    `MembershipRepository` — `config` (a hand-written `StateFlow`, its opt-in pinned in `OptInPinsTest`), `read`,
+    `reload`, `joinedOrRead`, the clock's reads, and `markOver` — the one write: the shared set's publish heard the
+    event's photos were deleted (`BackendManifestPublisher`'s `eventOver`, wired in `compose/SnapSyncApp.kt`) — and
+    `Membership.asConfig()`. Its readers: upload's
+    `UploadTransitions`, `CycleGateRead`, `PushTailGuard`, `WakeRearm`, `ShareSettlement` and `UploadSealing`, the
+    ledger's scope in `compose/AppServices.kt` and the cycle's assembly in `compose/UploadCore.kt` and
+    `compose/ExtensionCore.kt` (4.4); downloads' `DownloadPushReceiver`, `ReceivedReport` and `DownloadOpening`, with
+    the adoption's input in `OnSelectionChanged` and the held-everything read in `OnInviteForOtherEvent` (4.5);
+    `AlbumGather` (4.6); `StatusRefresh` and `CollectDiagnosticDump` (4.7); presentation's `config` source (4.9).
+  - `domain/services/.../membership/MembershipTransition.kt`: the join-in-progress guard a sweep of leftovers waits
+    out, held by `UploadTransitions.stopLeftovers`, `DownloadController.stopLeftovers` and `EventKeys.forgetLeftover`.
+- **Why:** phase 4.2 moved the membership into the layers; the concepts that read it move in their own phases.
+- **Remove:** each phase moves its readers onto `MembershipRead` (the query's `MembershipQuery`, or a use case's
+  answer) and its leftover sweep into a use case — 4.4 moves the publisher and with it `markOver`, into a use case
+  over the data layer's `markDeleted`; the phase that removes the last reader deletes both files and this entry.
+
+### The rig's reset in production (app)
+- **What:** `OnDevReset` (`domain/entrypoints/.../AppEntryPoints.kt`) and `ForgetMembership`
+  (`domain/application/.../membership/`), delivered through `DevControls`' reset — production code only a rig build's
+  control channel reaches (`POST /device/reset`).
+- **Why:** the reset was rebuilt over the layers in phase 4.2 rather than moved into `:test:rig`, so the control channel
+  kept working while the membership moved.
+- **Remove:** the rig's reset calls the data layer's operations from `:test:rig` (`RigReset`); then delete
+  `OnDevReset`, `ForgetMembership`, `MembershipRepository.forget` and the `DevControls` reset delivery.
 
 ## One-off ops
 

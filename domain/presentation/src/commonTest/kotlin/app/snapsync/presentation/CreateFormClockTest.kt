@@ -81,23 +81,27 @@ class CreateFormClockTest {
         now: () -> Instant,
         creation: CreationStatus = CreationStatus.Idle,
         foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
-    ) = StatusContainerHost(
-        StatusSources(
-            object : SyncStatusSource {
-                override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
-            },
-            MutableStateFlow(GalleryAccess.GRANTED),
-            MutableStateFlow(null),
-            creation = MutableStateFlow(creation),
-            foreground = foreground,
-        ),
-        scope,
-        commands = testCommands(),
-        cutoffFormatter = CutoffFormatter(now = now, zone = TimeZone.UTC),
-        queries = noQueries,
-        diagnostics = testDiagnostics(),
-        reduction = Dispatchers.Default,
-    )
+    ) = TestCommands().let { commands ->
+        StatusContainerHost(
+            StatusSources(
+                object : SyncStatusSource {
+                    override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
+                },
+                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(null),
+                creation = MutableStateFlow(creation),
+                foreground = foreground,
+                requests = commands.requests.flows,
+            ),
+            scope,
+            commands = commands,
+            cutoffFormatter = CutoffFormatter(now = now, zone = TimeZone.UTC),
+            queries = noQueries,
+            joinDetails = unanswered,
+            diagnostics = testDiagnostics(),
+            reduction = Dispatchers.Default,
+        )
+    }
 
     private companion object {
         val NOON: Instant = Instant.parse("2026-07-09T12:00:00Z")

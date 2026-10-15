@@ -2,11 +2,11 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.levers.AlbumKind
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
-import app.snapsync.model.Direction
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.Layer

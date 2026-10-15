@@ -77,6 +77,7 @@ kotlin {
         // deleted `:domain:gallery` / `:domain:download-store` / `:capability:attest` modules at
         // migration step 10; commonTest runs on the JVM only — `docs/testing.md`, "Where each test runs").
         commonTest.dependencies {
+            implementation(project(":domain:format"))
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
             // The fakes' own contract bindings (`docs/architecture.md`): only this module's test

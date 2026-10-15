@@ -1,7 +1,7 @@
 package app.snapsync.services.links
 
-import app.snapsync.model.EventLinkPayload
-import app.snapsync.model.encodeEventUrl
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.format.InviteLinkText
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
@@ -22,7 +22,7 @@ class LinkOpeningTest {
 
     @Test
     fun `an install referrer that carries an invite opens it - and one that carries none opens nothing`() {
-        val invite = encodeEventUrl(EventLinkPayload(eventId = testEventId("11111111-1111-4111-8111-111111111111")))
+        val invite = InviteLinkText.format(InviteLink(testEventId("11111111-1111-4111-8111-111111111111"), null))
         assertEquals(invite, opening.urlIn(LinkDelivery.InstallReferrer("installReferrer", invite.substringAfter('#'))))
         assertNull(
             opening.urlIn(LinkDelivery.InstallReferrer("installReferrer", "utm_source=google-play&utm_medium=organic")),

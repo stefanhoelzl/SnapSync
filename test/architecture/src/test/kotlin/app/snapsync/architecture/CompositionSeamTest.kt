@@ -109,9 +109,6 @@ class CompositionSeamTest {
      * only through the sibling's own ports.
      */
     private val constructorPins: Map<String, String> = mapOf(
-        "RenameEvent.eventOver" to
-            "the service's word that an event's photos were deleted, answering a rename: bound to AppCore's " +
-            "MembershipRefresh.confirmedDeleted — a callback into the core's own machinery, the membership refresh",
         "App.admit" to
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
             "scope and rig pin, all in-process state. The extension's variant reads the GalleryReader PORT's grant",
@@ -143,67 +140,29 @@ class CompositionSeamTest {
             "refusalFacts) — read for a report offered from \"Report this\" (capability `privacy-security`)",
         "DownloadArm.enabled" to
             "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
-            "the ConfigService the composition already reads",
+            "the MembershipProjection the composition already reads",
         "DownloadArm.keyHeld" to
-            "whether the joined event's key is not LOST — EventKeys.lostFor over the ConfigService's membership, read " +
+            "whether the joined event's key is not LOST — EventKeys.lostFor over the MembershipProjection's membership, read " +
             "fresh per reconcile (capability `sync-status`); a secure-store read the services already make, nothing leaves",
         "DownloadController.readyToImport" to
             "this core's photo permission and the sibling ReceivedPhotoAdoption.ensureAdopted — feature-blindness " +
             "(capability `receiving-photos`: nothing imports before a usable grant has recognised the received photos)",
         "DownloadController.eventAlbum" to
             "the current membership's event album — the album feature's AlbumCoordinator.albumIdFor over the " +
-            "ConfigService, a sibling feature this one may not name; read from the in-process map, nothing leaves",
+            "MembershipProjection, a sibling feature this one may not name; read from the in-process map, nothing leaves",
         "DownloadController.onImportedIntoAlbum" to
             "tells the album feature's AlbumCoordinator.onImportedInto that an import landed in the event album, so a " +
             "folder album is marked filled (`android-event-album` D4) — a sibling feature this one may not name; " +
             "writes the in-process album map, nothing leaves",
         "StoreDownloadStatusSource.currentEvent" to
-            "the joined membership's event id, read in compose/ off the ConfigService the composition already " +
+            "the joined membership's event id, read in compose/ off the MembershipProjection the composition already " +
             "holds, so the received count is scoped to it (capability `sync-status`) — null with no membership",
         "StoreDownloadStatusSource.receives" to
-            "whether the membership receives — the same three-valued ConfigService.downloadsEnabled the download arm " +
+            "whether the membership receives — the same three-valued MembershipProjection.downloadsEnabled the download arm " +
             "reads, so the others' declared photos count only for a member who fetches them; nothing leaves",
-        "JoinEvent.provision" to
-            "runs the provision the composition owns (the Provision flow under its entry label, then the album " +
-            "gather start) — core machinery the join use-case may not name",
-        "LeaveEvent.stopUploads" to
-            "the sibling UploadTransitions.onLeave() — feature-blindness; its platform touches are the " +
-            "uploaders' own adapters",
-        "LeaveEvent.notifyLeave" to
-            "compose/'s best-effort wrapper over the LeaveNotifier PORT, which logs a failed Result rather " +
-            "than failing the leave — the port is where the network crossing is declared",
-        "LeaveEvent.everythingReceived" to
-            "the sibling DownloadController.holdsEverythingFor (its union read is the EventUnionSource service), " +
-            "asked of the snapshotted membership since the config is cleared by then — feature-blindness",
-        "QuietSwitch.holdsEverything" to
-            "the sibling DownloadController.holdsEverythingFor (its union read is the EventUnionSource service), " +
-            "asked of the joined membership when another invite opens — feature-blindness",
-        "MembershipEntry.stopUploads" to "the sibling UploadTransitions.onLeave() — feature-blindness",
-        "MembershipEntry.notifyLeave" to "the same best-effort wrapper as LeaveEvent.notifyLeave, over the LeaveNotifier port",
-        "MembershipEntry.loadShareSet" to
-            "the sibling ShareSetLoad feature (its listing crosses the DeviceFilesSource port) — feature-blindness",
-        "MembershipEntry.adoptReceived" to
-            "the sibling ReceivedPhotoAdoption feature (its union read crosses the EventUnionSource port, its library " +
-            "read the GalleryReader port) — feature-blindness",
         "ReceivedPhotoAdoption.record" to
             "the sibling DownloadController.settleAdopted — its locked write over the DownloadStore port — " +
             "feature-blindness",
-        "MembershipEntry.saveConfig" to
-            "the ConfigStore port's save, handed in so the entry's ordered steps are recorded by its tests " +
-            "exactly as they run",
-        "MembershipEntry.startUploads" to "the sibling UploadTransitions.onJoin() — feature-blindness",
-        "ReconfigureEvent.refreshStatus" to
-            "this core's own status refresh (AppCore.statusRefresh) — feature-blindness",
-        "ReconfigureEvent.armUpload" to "the sibling UploadTransitions.onReconfigure() — feature-blindness",
-        "ReconfigureEvent.ensureAlbum" to
-            "the sibling AlbumCoordinator's ensure (its PhotoKit touches are the AlbumManager port's)",
-        "ReconfigureEvent.gatherAlbum" to "the sibling AlbumGather.start — feature-blindness",
-        "ReconfigureEvent.startDownloads" to "the sibling DownloadController.reconcile — feature-blindness",
-        "ReconfigureEvent.cancelDownloads" to "the sibling DownloadController.onLeaveOrSwitch() — feature-blindness",
-        "ReconfigureEvent.bumpManifestVersion" to
-            "the ledger's manifest-version bump, invoked from compose/ where ledger writes are confined " +
-            "(capability `photo-sharing`); the store is the LedgerStore port",
-        "ResetDeviceState.resetDownloads" to "the sibling DownloadController.onDurableStateReset() — feature-blindness",
         "ReadingLedgerCountsSource.read" to
             "a read-only LedgerStore.assetProgress() mapped to LedgerCounts in compose/, so ledger types never " +
             "reach feature/status (stated at the class); the store is the LedgerStore port",
@@ -220,14 +179,8 @@ class CompositionSeamTest {
             "this core's own facts for the heartbeat's cadence (cadenceFactsOf): the membership and grant already " +
             "held in memory, and the extension registration SERVICE's answer over its port — reads the re-arm may " +
             "not name",
-        "EventCompletion.publishFinal" to
+        "ShareSettlement.publishFinal" to
             "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
-        "EventCompletion.receivedPosition" to
-            "the sibling DownloadController.receivedPosition (its union read is the EventUnionSource service) — " +
-            "feature-blindness",
-        "MembershipRefresh.stopTransfers" to
-            "the siblings DownloadController.onLeaveOrSwitch() and UploadTransitions.onLeave(), as a leave stops them — " +
-            "feature-blindness; their platform touches are the transfer adapters' own",
         "SelectionScopedDiscovery.selectionScope" to "UploadServices.selectionScope, forwarded — a pure core read",
         "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
         "UploadCycle.readGate" to "uploadCycle's own entry-gate translation over the services (readGate in UploadCore.kt)",

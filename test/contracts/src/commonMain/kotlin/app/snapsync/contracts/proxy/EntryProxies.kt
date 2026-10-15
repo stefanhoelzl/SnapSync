@@ -63,7 +63,6 @@ internal class DevControlsProxy(private val inner: DevControls, log: CallLog) : 
     private val r = log.recorder("DevControls")
 
     override fun uploaderPin() = r.returns("uploaderPin", inner.uploaderPin())
-    override fun inviteLinkHints() = r.answer("inviteLinkHints", inner.inviteLinkHints())
     override fun createsPlainEvents() = r.answer("createsPlainEvents", inner.createsPlainEvents())
 
     @CompositionOnly

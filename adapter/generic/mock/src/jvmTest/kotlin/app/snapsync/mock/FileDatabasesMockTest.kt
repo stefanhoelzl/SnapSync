@@ -11,6 +11,7 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.ports.DbOpen
+import app.snapsync.services.databases.driver
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -72,7 +73,7 @@ class FileDatabasesMockTest {
         val next = DatabasesMock(directory = dir).port()
         val opened =
             assertIs<DbOpen.Opened>(next.open(DatabasesContract.NAME, DatabasesContract.Current, readOnly = true))
-        val kept = opened.driver.executeQuery(null, "SELECT v FROM probe WHERE id = 1", { c ->
+        val kept = opened.database.driver().executeQuery(null, "SELECT v FROM probe WHERE id = 1", { c ->
             app.cash.sqldelight.db.QueryResult.Value(if (c.next().value) c.getString(0) else null)
         }, 0).value
         assertEquals(DatabasesContract.KEPT, kept)

@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
  * download reconcile, so a join reads the union once. Both run inside one provision,
  * seconds apart, and ask the same question: a second read would only repeat the answer.
  *
- * Held only [during] a provision, and only for the event it provisions: outside one, an offer is dropped and a take
+ * Held only while a join is [open], and only for the event it provisions: outside one, an offer is dropped and a take
  * answers `null`, so no later trigger — a push, an opening — ever plans from a union it did not read. A take answers
  * the union once. Nothing offered (the adoption's read failed or timed out, or a re-provision of the joined event ran
  * no adoption) leaves the reconcile to read its own.
@@ -21,13 +21,14 @@ class JoinUnion {
 
     private val held = MutableStateFlow<Held?>(null)
 
-    suspend fun <T> during(eventId: EventId, provision: suspend () -> T): T {
+    /** A join of [eventId] began: an offer of its union is held from now on. */
+    fun open(eventId: EventId) {
         held.value = Held(eventId)
-        try {
-            return provision()
-        } finally {
-            held.value = null
-        }
+    }
+
+    /** The join ended, however it did: nothing is held any more. */
+    fun close() {
+        held.value = null
     }
 
     fun offer(eventId: EventId, page: UnionPage) =

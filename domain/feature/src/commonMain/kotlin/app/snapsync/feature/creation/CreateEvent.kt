@@ -4,9 +4,9 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.format.TimestampText
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.EventCreator
-import app.snapsync.model.TimestampText
 import app.snapsync.services.backend.EventCreation
 import app.snapsync.services.crypto.EventKeyMinting
 import co.touchlab.kermit.Logger

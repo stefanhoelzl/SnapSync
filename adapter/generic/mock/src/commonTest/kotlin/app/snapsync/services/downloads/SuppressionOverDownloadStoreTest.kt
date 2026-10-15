@@ -1,13 +1,13 @@
 package app.snapsync.services.downloads
 
 import app.snapsync.contracts.at
+import app.snapsync.data.store.DatabaseUnavailable
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.DbOpen
-import app.snapsync.services.databases.DatabaseUnavailable
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.testids.testDeviceId

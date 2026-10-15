@@ -1,30 +1,34 @@
 package app.snapsync.services.databases
 
+import app.snapsync.data.membership.EventCheck
+import app.snapsync.data.membership.EventCheckRecord
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.membership.PendingLeaves
+import app.snapsync.data.membership.PendingLeavesRead
+import app.snapsync.data.store.LegacySource
+import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.SharedRecordsReadiness
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
-import app.snapsync.domain.event.EventId
+import app.snapsync.domain.membership.CheckedAt
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.DatabasesMock
-import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.model.ConfigRead
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.SharedRecordsReadiness
-import app.snapsync.model.TimestampText
+import app.snapsync.model.MemberCounts
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.Files
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.backend.LeaveNotifier
-import app.snapsync.services.config.ConfigService
-import app.snapsync.services.leave.PendingLeaves
 import app.snapsync.services.manifest.DeviceManifestService
-import app.snapsync.services.wake.EventCheck
-import app.snapsync.services.wake.EventChecks
+import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -60,14 +64,18 @@ class LegacyRecordsTest {
     /** The shared database as the EXTENSION opens it: it never copies. */
     private fun extension(): SharedDatabase = SharedDatabase(databases.port(), legacy = null)
 
-    private fun membershipOf(db: SharedDatabase) = ConfigService(db, fixedClock(NOW))
+    private fun membershipOf(db: SharedDatabase) = MembershipRepository(db)
+
+    /** The membership [db] holds, in the old zones' shape — `null` unless it reads as joined. */
+    private fun joinedIn(db: SharedDatabase): EventConfig? =
+        (membershipOf(db).read() as? MembershipRead.Joined)?.membership?.asConfig()
 
     // ---- the whole copy -----------------------------------------------------------------------------------------
 
     @Test
     fun `a device with no legacy home is ready at the app's first open`() {
         assertEquals(SharedRecordsReadiness.Ready, app().readiness())
-        assertEquals(ConfigRead.None, membershipOf(app()).read(), "nothing copied is definitively not joined")
+        assertIs<MembershipRead.NotJoined>(membershipOf(app()).read(), "nothing copied is definitively not joined")
     }
 
     @Test
@@ -75,11 +83,11 @@ class LegacyRecordsTest {
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
 
         assertEquals(SharedRecordsReadiness.LegacyPending, extension().readiness())
-        assertIs<ConfigRead.Unavailable>(membershipOf(extension()).read(), "never read as not joined")
+        assertIs<MembershipRead.Unavailable>(membershipOf(extension()).read(), "never read as not joined")
 
         app().readiness()
         assertEquals(SharedRecordsReadiness.Ready, extension().readiness())
-        assertEquals(ConfigRead.Joined(JOINED), membershipOf(extension()).read())
+        assertEquals(JOINED, joinedIn(extension()))
     }
 
     @Test
@@ -94,8 +102,22 @@ class LegacyRecordsTest {
     fun `the membership file becomes the membership row and is deleted`() {
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
 
-        assertEquals(ConfigRead.Joined(JOINED), membershipOf(app()).read())
+        assertEquals(JOINED, joinedIn(app()))
         assertFalse(CONFIG_FILE_NAME in shared, "the legacy file is gone")
+    }
+
+    @Test
+    fun `a membership's member counts are copied, the waiting one only when it was recorded`() {
+        for (counts in listOf(MemberCounts(3, 1, waiting = 2), MemberCounts(3, 1))) {
+            val legacy = JOINED.copy(members = counts)
+            shared[CONFIG_FILE_NAME] = encodeConfigFile(legacy).encodeToByteArray()
+            val db =
+                SharedDatabase(
+                    DatabasesMock().port(),
+                    LegacyRecords(inMemoryFiles(shared = shared), inMemoryPreferences()),
+                )
+            assertEquals(counts, joinedIn(db)?.members, "$counts")
+        }
     }
 
     @Test
@@ -104,29 +126,29 @@ class LegacyRecordsTest {
         denied += FileArea.SHARED to CONFIG_FILE_NAME
 
         val read = membershipOf(app()).read()
-        assertIs<ConfigRead.Unavailable>(read, "a membership that could not be copied is never a leave")
+        assertIs<MembershipRead.Unavailable>(read, "a membership that could not be copied is never a leave")
         assertEquals(SharedRecordsReadiness.LegacyPending, app().readiness())
 
         denied.clear()
-        assertEquals(ConfigRead.Joined(JOINED), membershipOf(app()).read(), "the next open copies it")
+        assertEquals(JOINED, joinedIn(app()), "the next open copies it")
     }
 
     @Test
     fun `a membership file that does not decode is left in place and never read as a leave`() {
         shared[CONFIG_FILE_NAME] = """{"v":2,"payload":{"eventId":"from-a-later-build"}}""".encodeToByteArray()
 
-        assertIs<ConfigRead.Unavailable>(membershipOf(app()).read())
+        assertIs<MembershipRead.Unavailable>(membershipOf(app()).read())
         assertTrue(CONFIG_FILE_NAME in shared)
     }
 
     @Test
     fun `a copied source is never copied again - its leftover is deleted at the next open`() = runTest {
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
-        membershipOf(app()).clear() // copied, then left
+        membershipOf(app()).forget() // copied, then forgotten
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray() // a delete the crash never made
         values[ALBUM_MAP] = "{}" // and a key the same crash left
 
-        assertEquals(ConfigRead.None, membershipOf(app()).read(), "the mark outranks the leftover")
+        assertIs<MembershipRead.NotJoined>(membershipOf(app()).read(), "the mark outranks the leftover")
         assertFalse(CONFIG_FILE_NAME in shared, "the leftover file is gone")
         assertTrue(values.isEmpty(), "the leftover key is gone")
     }
@@ -135,7 +157,7 @@ class LegacyRecordsTest {
     fun `a membership file that is not text stays pending`() {
         shared[CONFIG_FILE_NAME] = byteArrayOf(0xC3.toByte(), 0x28)
 
-        assertIs<ConfigRead.Unavailable>(membershipOf(app()).read())
+        assertIs<MembershipRead.Unavailable>(membershipOf(app()).read())
         assertTrue(CONFIG_FILE_NAME in shared)
     }
 
@@ -147,7 +169,7 @@ class LegacyRecordsTest {
         }
         val db = SharedDatabase(databases.port(), LegacyRecords(keeping, inMemoryPreferences(values)))
 
-        assertEquals(ConfigRead.Joined(JOINED), membershipOf(db).read())
+        assertEquals(JOINED, joinedIn(db))
         assertTrue(CONFIG_FILE_NAME in shared, "left behind, for a later open to delete")
     }
 
@@ -167,15 +189,13 @@ class LegacyRecordsTest {
         shared[MANIFEST_FILE] = "E1 {\"deviceId\":\"D\",\"assets\":[],\"version\":7}".encodeToByteArray()
         shared[LEAVES_FILE] = "E1\n${testEventId("F").value} received\n".encodeToByteArray()
         values[ALBUM_MAP] = """{"E1":"album-1","${testEventId("E2").value}":"album-2"}"""
-        val answers = mutableListOf<Pair<EventId, Boolean>>()
-        val leaves = PendingLeaves(
-            app(),
-            LeaveNotifier { id, received -> Result.success(Unit).also { answers += id to received } },
-        )
 
         assertNull(DeviceManifestService(app()).loadLastUploaded(), "the manifest record named no event")
-        leaves.deliverAll()
-        assertEquals(listOf(testEventId("F") to true), answers, "only the line naming an event is a leave")
+        assertEquals(
+            PendingLeavesRead.Ok(setOf(testEventId("F"))),
+            PendingLeaves(app()).outstanding(),
+            "only the line naming an event is a leave",
+        )
         assertEquals(
             "album-2",
             AlbumMapService(app()).get(testEventId("E2")),
@@ -210,20 +230,13 @@ class LegacyRecordsTest {
     // ---- the pending leaves -------------------------------------------------------------------------------------
 
     @Test
-    fun `every pending leave is copied with whether it received everything`() = runTest {
+    fun `every pending leave is copied, a received marker read and dropped`() {
         shared[LEAVES_FILE] = "${testEventId("E").value}\n${testEventId("F").value} received\n".encodeToByteArray()
-        val answers = mutableListOf<Pair<EventId, Boolean>>()
-        val leaves = PendingLeaves(
-            app(),
-            LeaveNotifier { id, received -> Result.success(Unit).also { answers += id to received } },
-        )
-
-        leaves.deliverAll()
 
         assertEquals(
-            listOf(testEventId("E") to false, testEventId("F") to true),
-            answers,
-            "a line without the marker did not receive",
+            PendingLeavesRead.Ok(setOf(testEventId("E"), testEventId("F"))),
+            PendingLeaves(app()).outstanding(),
+            "every leave owed",
         )
         assertFalse(LEAVES_FILE in shared)
     }
@@ -277,10 +290,14 @@ class LegacyRecordsTest {
         values["app.snapsync.check.photos.${JOINED.eventId}"] = asked.toEpochMilliseconds().toString()
         values["app.snapsync.check.close.${JOINED.eventId}"] = "yesterday" // garbled: not copied, so due
 
-        val checks = EventChecks(app(), now = { NOW })
+        val checks = EventCheckRecord(app())
 
-        assertFalse(checks.due(EventCheck.PHOTOS, JOINED.eventId), "asked ten minutes ago: not due")
-        assertTrue(checks.due(EventCheck.CLOSE, JOINED.eventId), "never asked: due")
+        assertEquals(
+            CheckedAt.At(Timestamp.of(asked)),
+            checks.last(EventCheck.PHOTOS, JOINED.eventId),
+            "asked ten minutes ago",
+        )
+        assertEquals(CheckedAt.Never, checks.last(EventCheck.STATE, JOINED.eventId), "garbled: never asked")
         assertTrue(values.isEmpty())
     }
 
