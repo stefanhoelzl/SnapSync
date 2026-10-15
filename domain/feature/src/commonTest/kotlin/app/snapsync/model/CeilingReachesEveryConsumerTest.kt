@@ -110,7 +110,7 @@ class CeilingReachesEveryConsumerTest {
         }
         val source = object : CandidateSource {
             override suspend fun candidates(policy: SelectionPolicy) =
-                CandidateRead.Readable(candidatesFromFacts(facts))
+                CandidateRead.Readable(candidatesFromFacts(facts), CandidateScope.Library)
         }
         val count = ShareableCountSource(
             source,

@@ -251,29 +251,29 @@ class FullStackIntegrationTest {
     )
     @Verifies(
         spec = "photo-sharing",
-        requirement = "Media that is certainly not an event photo is excluded",
-        scenario = "A screenshot is never shared",
+        requirement = "Under limited access the member's selection decides what a photo is",
     )
-    fun the_policy_applies_unchanged_to_a_limited_selection() = rigTest {
-        // Cutoff and origin exclusions filter hand-picked photos exactly as a full-library walk: picking a
-        // pre-cutoff photo or a screenshot does not smuggle it past the policy.
+    fun the_range_filters_a_limited_selection_and_the_origin_rules_do_not() = rigTest {
+        // The cutoff filters hand-picked photos as it filters a library walk — picking a pre-cutoff photo does not
+        // smuggle it past the range — while the rules about what a photo is stand down: the member picked the
+        // screenshot (decision record `changes/archive/2026-10-15-limited-selection-decides`).
         permission(PhotoGrant.LIMITED)
         createAndJoin()
         addPhoto("OK")
         addPhoto("OLD", date = "2001-01-01T00:00:00Z") // pre-cutoff
-        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT) // origin-excluded by subtype
+        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT) // a screenshot, which a library walk excludes
 
         library.changeSelection(listOf("OK", "OLD", "SHOT"))
         awaitHealth { it is SyncHealth.Syncing }
 
         // Under a partial grant only the app's uploader creates (the extension withholds by its own admission): its
         // transfers are created from the selection change's tail, and the operating system lands them.
-        awaitAppUploads(1)
+        awaitAppUploads(2)
         completeAppUploads()
 
         val landed = objects()
-        assertEquals(setOf(primaryKey("OK")), landed, "only the policy-admitted pick uploads")
-        assertEquals(1, appUploads().created)
+        assertEquals(setOf(primaryKey("OK"), primaryKey("SHOT")), landed, "every pick inside the range uploads")
+        assertEquals(2, appUploads().created)
     }
 
     @Test

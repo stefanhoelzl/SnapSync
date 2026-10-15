@@ -27,6 +27,7 @@ class AppMenuTest {
             today = LocalDate(2026, 7, 6),
             commitEnabled = true,
             shareCount = ShareCount.Unavailable,
+            sharesSelection = false,
         )
         fun phase(step: JoinPhase.Detailed.Step) = JoinPhase.Detailed("Anna's Birthday", step)
         val offered = listOf(

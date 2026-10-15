@@ -9,6 +9,7 @@ import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -134,6 +135,8 @@ class UploadCycleTest {
         // Not authoritative by default, so a test that is not about deletion is not affected by it: a row
         // seeded without a matching `discovered` resource would otherwise be deleted as departed.
         private val fullEnumeration: Boolean = false,
+        // A walk of the library by default; a partial grant's selection snapshot is judged by fewer rules.
+        private val scope: CandidateScope = CandidateScope.Library,
     ) : BackgroundTransfer, UploadDiscovery {
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
@@ -199,7 +202,7 @@ class UploadCycleTest {
                     override suspend fun resources() = held.resources().also { readAssets += held.facts.assetId }
                 }
             }
-            return Discovery(candidates, fullEnumeration)
+            return Discovery(candidates, fullEnumeration, scope)
         }
         override suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome {
             createAttempts++
@@ -1788,26 +1791,56 @@ class UploadCycleTest {
 
         originCycle(TestLedger().service, platform).run()
 
-        assertTrue(platform.created.isEmpty(), "excluded on a selection snapshot exactly as on a full walk")
+        assertTrue(platform.created.isEmpty(), "a library walk excludes it whether or not the platform narrowed")
     }
 
     @Test
-    fun the_projection_re_applies_only_the_rules_a_ledger_row_can_answer() = runTest {
-        // The original leak stays closed: the manifest hook is handed the POLICY, not raw discovery, so it
-        // can never list bytes that were never uploaded (rows are COMPLETED or they are not there).
-        //
-        // What this now pins is the boundary of what the projection can re-decide. A ledger row carries an
-        // assetId and a capture date — nothing about the asset's ORIGIN — and `AssetFacts` defaults land on
-        // the admitted side of every rule. So the projection re-applies the capture-date bounds and the two
-        // id-set exclusions (echo, denylisted album — both supplied per cycle), and cannot re-apply the
-        // origin rules, which were decided at upload time.
-        //
-        // Consequence, accepted deliberately (capability `photo-sharing`): a row whose asset an origin rule
-        // would NOW reject keeps its listing. Reaching that state needs a row written before that rule
-        // existed, and every origin rule predates any event that can still be live (≤30-day lifetime).
-        // It also lands on the harmless side of this capability's asymmetry — a stray visible photo, not
-        // an invisible failure. Previously `retainAssets` swept such rows, at the cost of also discarding
-        // rows for photos merely outside the current capture window.
+    fun a_selected_photo_reaches_the_engine_whatever_it_is() = runTest {
+        // Under a partial grant the member hand-picked each photo, so the rules that judge what a photo is stand
+        // down (capability `photo-sharing`, "Under limited access the member's selection decides what a photo is"):
+        // a screenshot and a small image are uploaded; the capture range still holds. (No album set here: under a
+        // partial grant the derivation never reads one — `denylistedAlbumMembers` asks only under a full grant.)
+        val platform = FakePlatform(
+            discovered = listOf(
+                originResource("shot.png", "shot", isScreenshot = true),
+                originResource("small.jpg", "small", width = 1600, height = 1200),
+                datedResource("old.heic", "2020-01-01T00:00:00Z", "old"),
+            ),
+            fullEnumeration = true,
+            scope = CandidateScope.Selection,
+        )
+
+        originCycle(TestLedger().service, platform).run()
+
+        assertEquals(listOf("shot.png", "small.jpg"), platform.created.map { it.filename }.sorted())
+    }
+
+    @Test
+    fun a_received_photo_in_the_selection_is_never_shared_back() = runTest {
+        // Imports join a partial grant's selection — on iPhone as they are created, on Android as the app's own rows,
+        // wherever they were saved — and the selection is judged without the rules about what a photo is. Echo
+        // suppression is not one of them: a received photo stays out (capability `receiving-photos`).
+        val platform = FakePlatform(
+            discovered = listOf(originResource("recv.heic", "recv"), originResource("cam.heic", "cam")),
+            fullEnumeration = true,
+            scope = CandidateScope.Selection,
+        )
+
+        cycle(TestLedger().service, platform, policy = admittingWith(echo = setOf(AssetId("recv")))).run()
+
+        assertEquals(listOf("cam.heic"), platform.created.map { it.filename })
+    }
+
+    @Test
+    fun a_full_walk_withdraws_a_row_the_policy_refuses_for_what_it_is() = runTest {
+        // The manifest hook is handed the POLICY, not raw discovery, so it can never list bytes that were never
+        // uploaded (rows are COMPLETED or they are not there). A ledger row carries an assetId and a capture date —
+        // nothing about what the asset IS — so the projection can re-apply the capture-date bounds and the two id-set
+        // exclusions (echo, denylisted album), and not the screenshot or size rules. Those are answered by the walk
+        // instead: a full walk that sees the screenshot and refuses it withdraws its row, as it would a deleted
+        // photo's (decision record `changes/archive/2026-10-15-limited-selection-decides`, D2) — the case a
+        // screenshot shared under a partial grant reaches once access widens (capability `photo-access`). The album
+        // member keeps its row: the row's own admission refuses it, so it comes back with no second upload.
         val manifestSaw = mutableListOf<AssetId>()
         val platform = FakePlatform(
             discovered = listOf(
@@ -1824,12 +1857,27 @@ class UploadCycleTest {
         completing(backend, platform)
         originCycle(backend, platform, albumExcluded = setOf(AssetId("wa")), manifestSaw = manifestSaw).run()
 
-        assertEquals(
-            listOf(AssetId("cam"), AssetId("shot")),
-            manifestSaw.sorted(),
-            "the album denylist IS re-applied (its id set is supplied per cycle); the screenshot rule is " +
-                "NOT (the row carries no origin facts)",
+        assertEquals(listOf(AssetId("cam")), manifestSaw, "the screenshot is withdrawn, the album member excluded")
+        assertNull(backend.get("shot.png"), "the screenshot's row is forgotten, as a deleted photo's is")
+        assertEquals(LedgerState.COMPLETED, backend.get("wa.heic")?.state, "the album member's row is kept")
+    }
+
+    @Test
+    fun a_selection_walk_keeps_a_row_it_shares_whatever_it_is() = runTest {
+        // The same screenshot read from a partial grant's selection is the member's own pick: admitted, listed, kept.
+        val manifestSaw = mutableListOf<AssetId>()
+        val platform = FakePlatform(
+            discovered = listOf(originResource("shot.png", "shot", isScreenshot = true)),
+            fullEnumeration = true,
+            scope = CandidateScope.Selection,
         )
+        val backend = TestLedger().service
+        completing(backend, platform)
+
+        originCycle(backend, platform, manifestSaw = manifestSaw).run()
+
+        assertEquals(listOf(AssetId("shot")), manifestSaw)
+        assertEquals(LedgerState.COMPLETED, backend.get("shot.png")?.state)
     }
 
     @Test
@@ -1855,21 +1903,18 @@ class UploadCycleTest {
         originCycle(backend, platform, manifestSaw = manifestSaw).run()
 
         // The capture-date bound IS re-applied at projection — the row carries its creation date — so the
-        // pre-cutoff asset is not listed. The screenshot is, for the reason given in the test above.
-        assertEquals(listOf(AssetId("shot")), manifestSaw, "the pre-cutoff asset is excluded by the date bound")
+        // pre-cutoff asset is not listed, and its row is kept (outside the window, it comes back without an upload).
+        // The screenshot is withdrawn by the walk, as in the test above.
+        assertEquals(emptyList(), manifestSaw, "the pre-cutoff asset is excluded by the date bound")
+        assertNotNull(backend.get("old.heic"), "a row outside the window is kept")
         assertTrue(platform.created.isEmpty(), "and neither is uploaded")
     }
 
     @Test
-    fun an_origin_excluded_row_is_no_longer_swept_by_a_full_enumeration() = runTest {
-        // The retroactive cleanup is GONE, deliberately. A full enumeration used to prune every row outside
-        // the ADMITTED set, which swept a previously-uploaded screenshot — but the same sweep discarded
-        // rows for photos that were merely outside the current capture window, and those rows are what
-        // suppress re-upload. Narrowing therefore became irreversible, and a download-only membership would
-        // have lost the event's rows entirely (capability `photo-sharing`).
-        //
-        // What is lost is only the sweep. Reaching this state needs a row written before the screenshot
-        // rule existed, and that rule predates any event that can still be live.
+    fun a_bare_origin_excluded_row_is_not_swept_by_a_full_enumeration() = runTest {
+        // A row with no capture date — a join-time load's — is outside every window, so even a walk that sees a
+        // screenshot behind it deletes nothing: only a row the manifest would list is the walk's to judge. The walk
+        // dates such a row only for an asset it admits.
         val backend = TestLedger().service
         backend.recordUnlessSettled(
             LedgerEntry(key = "shot.png", assetId = AssetId("shot"), state = LedgerState.COMPLETED),
@@ -1884,12 +1929,7 @@ class UploadCycleTest {
 
         originCycle(backend, platform).run()
 
-        assertEquals(
-            LedgerState.COMPLETED,
-            backend.get("shot.png")?.state,
-            "the row survives a full enumeration — its absence from the admitted set is not evidence " +
-                "that the asset left the library",
-        )
+        assertEquals(LedgerState.COMPLETED, backend.get("shot.png")?.state, "a bare row is never judged")
         assertTrue(backend.get("cam.heic") != null, "the admitted asset keeps its row")
     }
 

@@ -67,7 +67,7 @@ class AlbumIntegrationTest {
     )
     @Verifies(
         spec = "photo-sharing",
-        requirement = "On Android, only photos in the DCIM folder are shared",
+        requirement = "On Android under full access, only photos in the DCIM folder are shared",
         scenario = "The event album's photos are not shared",
     )
     fun an_android_phone_is_offered_the_album_and_it_collects_received_photos_only() = rigTest {

@@ -22,6 +22,7 @@ import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.id
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventPhotoSet
@@ -470,7 +471,16 @@ class WorldInspectorController(
             is CandidateRead.Readable -> read.candidates
             CandidateRead.NotReadable -> emptyList()
         }
-        val admitted = EventPhotoSet(policy) { candidates }.assets().mapTo(mutableSetOf()) { it.facts.assetId }
+        // The app reads a partial grant's selection from its snapshot and judges it as one (`SelectionPolicy.over`);
+        // this read is a walk of the same mock library, which under a partial grant answers that selection, so the
+        // badge judges it the way the app does.
+        val scope = if (mocks.library.grant.value == LibraryGrant.LIMITED) {
+            CandidateScope.Selection
+        } else {
+            CandidateScope.Library
+        }
+        val admitted = EventPhotoSet(policy.over(scope)) { candidates }.assets()
+            .mapTo(mutableSetOf()) { it.facts.assetId }
         val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted
         val galleryRows = mocks.library.contents.value.map {
             GalleryRow(

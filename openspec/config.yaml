@@ -134,9 +134,11 @@ context: |
   App Attest/APNs are the iOS bindings of platform-neutral seams, Keystore key
   attestation/FCM the Android ones. What a member shares is decided by one
   selection policy over the member's DEFAULT GALLERY, which the platform
-  defines: the photo library (or the limited selection) on iPhone, DCIM and its
-  subfolders on Android — an explicit Android exception to "when in doubt, a
-  photo is shared".
+  defines: the photo library on iPhone, DCIM and its subfolders on Android — an
+  explicit Android exception to "when in doubt, a photo is shared" — and, under
+  limited access on both, the member's hand-picked selection, which the capture
+  range and echo suppression judge and no origin exclusion does (decision
+  record: changes/archive/2026-10-15-limited-selection-decides).
 
   Named future directions (not commitments; do not build for them, but do not
   deepen assumptions against them without naming it in the change): concurrent multi-event

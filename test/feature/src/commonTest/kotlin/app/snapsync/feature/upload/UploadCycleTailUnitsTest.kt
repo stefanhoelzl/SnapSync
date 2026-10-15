@@ -5,6 +5,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PauseReason
@@ -68,7 +69,7 @@ class UploadCycleTailUnitsTest {
             walks++
             onWalk()
             val candidates: List<Candidate> = candidatesFromResources(resources)
-            return Discovery(candidates, fullEnumeration = true)
+            return Discovery(candidates, fullEnumeration = true, scope = CandidateScope.Library)
         }
 
         override suspend fun resourcesFor(keys: Set<String>): List<Resource> {

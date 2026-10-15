@@ -1,5 +1,6 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -24,13 +25,19 @@ class GalleryDiscovery(private val gallery: GalleryReader) : UploadDiscovery {
     override suspend fun discover(policy: SelectionPolicy): Discovery {
         val authoritative = gallery.access().galleryAccess() == GalleryAccess.GRANTED
         // A policy that admits nothing reads nothing: its empty answer is as authoritative as a read would have been.
-        val filter = policy.assetFilter() ?: return Discovery(candidates = emptyList(), fullEnumeration = authoritative)
+        val filter = policy.assetFilter() ?: return Discovery(
+            candidates = emptyList(),
+            fullEnumeration = authoritative,
+            scope = CandidateScope.Library,
+        )
         return when (val read = gallery.assets(filter)) {
-            GalleryRead.NotReadable -> Discovery(candidates = emptyList(), fullEnumeration = false)
+            GalleryRead.NotReadable ->
+                Discovery(candidates = emptyList(), fullEnumeration = false, scope = CandidateScope.Library)
             is GalleryRead.Read ->
                 Discovery(
                     candidatesFromFacts(read.value.map { it.facts() }, resourceBatch(gallery)),
                     fullEnumeration = authoritative,
+                    scope = CandidateScope.Library,
                 )
         }
     }

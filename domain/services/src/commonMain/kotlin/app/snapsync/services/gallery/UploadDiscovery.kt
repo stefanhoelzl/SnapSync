@@ -1,6 +1,7 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.model.Candidate
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 
@@ -73,4 +74,10 @@ class Discovery(
      * authoritative deletes nothing.
      */
     val fullEnumeration: Boolean,
+    /**
+     * Where [candidates] came from, which decides the rules the cycle judges them by ([SelectionPolicy.over]): a
+     * platform walk is [CandidateScope.Library], and only a partial grant's selection snapshot is
+     * [CandidateScope.Selection].
+     */
+    val scope: CandidateScope,
 )

@@ -12,6 +12,7 @@ import app.snapsync.feature.support.configService
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.Candidate
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Resource
@@ -73,6 +74,7 @@ class StatusRefreshTest {
                     override suspend fun resources(): List<Resource> = emptyList()
                 },
             ),
+            CandidateScope.Library,
         )
     }
 

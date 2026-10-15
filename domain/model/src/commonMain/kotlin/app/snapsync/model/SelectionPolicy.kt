@@ -65,10 +65,13 @@ import app.snapsync.domain.time.Timestamp
  * can neither widen nor narrow the admitted set — [admits] stays authoritative.
  *
  * What the policy decides OVER is the member's **default gallery**, and that the platform defines: its gallery
- * adapter returns only assets there — the library (or the partial grant's selection) on iOS, `DCIM` and its
- * subfolders on Android. That scope is not a rule and not an optimization: an asset outside it is never a
- * candidate at any consumer, because every consumer reads through the same port. The platform defines the
+ * adapter returns only assets there — the library on iOS, `DCIM` and its subfolders on Android, and on both the
+ * hand-picked selection under a partial grant. That scope is not a rule and not an optimization: an asset outside it
+ * is never a candidate at any consumer, because every consumer reads through the same port. The platform defines the
  * default gallery; the policy is the one decision over it.
+ *
+ * A selection is judged by fewer rules than a library ([over]): the member chose each photo, so the rules that judge
+ * what a photo is stand down, and only the capture range, echo suppression and the direction remain.
  *
  * ## One value, one derivation
  *
@@ -117,6 +120,26 @@ class SelectionPolicy(val rules: List<SelectionRule>) {
      * ([SelectionRule.deniesEverything]).
      */
     val contributes: Boolean get() = rules.none { it.deniesEverything }
+
+    /**
+     * This policy as it judges candidates read from [scope] — the one place a partial grant changes what is admitted.
+     *
+     * [CandidateScope.Library] is this policy unchanged. [CandidateScope.Selection] drops every rule that judges **what
+     * a photo is** ([SelectionRule.judgesWhatItIs]): the member picked each selected photo for SnapSync, so none is
+     * excluded for being a screenshot, a screen recording, small, or in a messaging app's album — while the capture
+     * range, echo suppression and a non-contributing direction still apply in full, because the phone keeps the
+     * selection across events and it is no choice made for this one (decision record
+     * `changes/archive/2026-10-15-limited-selection-decides`).
+     *
+     * The scope comes from the read that produced the candidates ([CandidateRead.Readable.scope], `Discovery.scope`),
+     * never from a separate look at the grant: a library walk judged without these rules would upload a whole
+     * library's screenshots, and an upload cannot be recalled. Tying the rules to the read makes that pairing
+     * unbuildable rather than avoided.
+     */
+    fun over(scope: CandidateScope): SelectionPolicy = when (scope) {
+        CandidateScope.Library -> this
+        CandidateScope.Selection -> SelectionPolicy(rules.filterNot { it.judgesWhatItIs })
+    }
 
     /**
      * Value equality over the rules, written out rather than taken from a `data class`, whose `copy` would be a
@@ -276,6 +299,13 @@ sealed interface SelectionRule {
     val deniesEverything: Boolean
 
     /**
+     * Whether this rule judges **what a photo is** — its origin — rather than when it was taken, whose it is, or
+     * whether the membership shares at all. Exactly these rules stand down for a partial grant's hand-picked selection
+     * ([SelectionPolicy.over]). No default, so a new rule has to say which kind it is.
+     */
+    val judgesWhatItIs: Boolean
+
+    /**
      * The membership contributes **nothing** — its participation direction excludes upload
      * (`DownloadOnly`), or a surface is previewing a candidate with sharing off.
      *
@@ -290,6 +320,7 @@ sealed interface SelectionRule {
     data object DenyAll : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = false
         override val deniesEverything: Boolean get() = true
+        override val judgesWhatItIs: Boolean get() = false
     }
 
     /**
@@ -303,6 +334,7 @@ sealed interface SelectionRule {
             is CaptureDate.Dated -> date.at >= cutoff.at
         }
         override val deniesEverything: Boolean get() = false
+        override val judgesWhatItIs: Boolean get() = false
     }
 
     /**
@@ -316,17 +348,20 @@ sealed interface SelectionRule {
             is CaptureDate.Dated -> date.at <= ceiling.at
         }
         override val deniesEverything: Boolean get() = false
+        override val judgesWhatItIs: Boolean get() = false
     }
 
     /** Exact, perfect recall, and the highest-frequency exclusion. */
     data object ExcludeScreenshots : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = !facts.isScreenshot
         override val deniesEverything: Boolean get() = false
+        override val judgesWhatItIs: Boolean get() = true
     }
 
     data object ExcludeScreenRecordings : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = !facts.isScreenRecording
         override val deniesEverything: Boolean get() = false
+        override val judgesWhatItIs: Boolean get() = true
     }
 
     /**
@@ -337,6 +372,7 @@ sealed interface SelectionRule {
     data class MinImageArea(val minArea: Long) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.isVideo || admitsByArea(facts, minArea)
         override val deniesEverything: Boolean get() = false
+        override val judgesWhatItIs: Boolean get() = true
     }
 
     /**
@@ -347,6 +383,7 @@ sealed interface SelectionRule {
     data class MinVideoArea(val minArea: Long) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = !facts.isVideo || admitsByArea(facts, minArea)
         override val deniesEverything: Boolean get() = false
+        override val judgesWhatItIs: Boolean get() = true
     }
 
     /**
@@ -357,6 +394,7 @@ sealed interface SelectionRule {
     data class NotEcho(val suppressedAssetIds: Set<AssetId>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in suppressedAssetIds
         override val deniesEverything: Boolean get() = false
+        override val judgesWhatItIs: Boolean get() = false
     }
 
     /**
@@ -368,6 +406,7 @@ sealed interface SelectionRule {
     data class NotInDenylistedAlbum(val excludedAssetIds: Set<AssetId>) : SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = facts.assetId !in excludedAssetIds
         override val deniesEverything: Boolean get() = false
+        override val judgesWhatItIs: Boolean get() = true
     }
 }
 

@@ -1,6 +1,7 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.model.CandidateRead
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -17,8 +18,9 @@ import kotlinx.coroutines.flow.StateFlow
  * restated the grant distinction — and it is the restatement, not the reading, that lets two paths drift.
  *
  * - **`GRANTED`** → [walk], the platform's bounded library walk.
- * - **`LIMITED`** → the user's hand-picked [selection], which the admission then filters exactly as it
- *   would a walk. The snapshot arrives **already read, with resources**, from the sanctioned read points
+ * - **`LIMITED`** → the user's hand-picked [selection], labelled [CandidateScope.Selection] so the admission judges
+ *   it by the capture range and echo suppression alone (the member chose each photo). The snapshot arrives
+ *   **already read, with resources**, from the sanctioned read points
  *   (the start's baseline and the photo-selection-change observer). That eagerness is the mechanism
  *   keeping every library *fetch* in-flow: a deferred read would have to re-fetch by local identifier at
  *   upload time, and holding the resources means no later library read is needed at all. (Not an alert
@@ -67,7 +69,7 @@ class PermissionAwareCandidateSource(
             GalleryAccess.GRANTED -> walk.candidates(policy)
             GalleryAccess.LIMITED ->
                 selection.value
-                    ?.let { CandidateRead.Readable(candidatesFromResources(it)) }
+                    ?.let { CandidateRead.Readable(candidatesFromResources(it), CandidateScope.Selection) }
                     ?: CandidateRead.NotReadable
             GalleryAccess.DENIED, GalleryAccess.NOT_DETERMINED -> CandidateRead.NotReadable
         }

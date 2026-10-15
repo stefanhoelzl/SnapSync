@@ -75,6 +75,7 @@ class StatusContainerHostMenuTest {
 
         /** The device's mobile-data choice, as the setting service holds it; [saves] plays a write that lands or not. */
         val mobileData = MutableStateFlow(true)
+        val permission = MutableStateFlow(GalleryAccess.GRANTED)
         var saves = true
     }
 
@@ -85,7 +86,7 @@ class StatusContainerHostMenuTest {
                 val host = StatusContainerHost(
                     StatusSources(
                         MenuTestSync(),
-                        MutableStateFlow(GalleryAccess.GRANTED),
+                        world.permission,
                         world.config,
                         creation = world.creation,
                         mobileData = world.mobileData,
@@ -207,6 +208,19 @@ class StatusContainerHostMenuTest {
         host.onIntent(UiIntent.OpenReconfigure)
         host.stateWhere("settings open, menu masked") {
             (it.layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure && !it.overlays.menuOpen
+        }
+    }
+
+    @Test
+    fun `the settings surface under a partial grant says the selected photos are shared`() {
+        // capability `join-event`, "Limited access is told what is shared" — the settings surface renders the same
+        // participation sections as the join gate, so it says the same.
+        val world = World().apply { permission.value = GalleryAccess.LIMITED }
+        onHost(world) { host, _ ->
+            host.onIntent(UiIntent.OpenReconfigure)
+            host.stateWhere("settings open, sharing the selection") {
+                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.range?.sharesSelection == true
+            }
         }
     }
 

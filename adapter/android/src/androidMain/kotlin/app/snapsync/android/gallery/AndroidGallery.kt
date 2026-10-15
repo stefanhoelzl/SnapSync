@@ -40,7 +40,9 @@ import kotlinx.coroutines.withContext
  *
  * - **The selection observer** watches the image and video collections while [observeChanges] is on **and** the grant
  *   is partial — a baseline snapshot when it opens and one per change — and closes when the grant moves away. Under a
- *   partial grant MediaStore answers the selection, so a snapshot is the default gallery's whole readable content.
+ *   partial grant MediaStore answers the selection, so a snapshot is the whole selection, wherever on the phone each
+ *   photo is stored: under a partial grant the selection is the member's gallery, not `DCIM`. A snapshot read while the
+ *   grant stopped being partial is discarded — MediaStore would have answered an unscoped query with the whole library.
  *   Android raises no prompt for a read, so nothing here rations them.
  * - **The change token** is each external volume's MediaStore version and generation: the generation moves on every
  *   change to the volume's media, and the version on a rebuild of its database.
@@ -70,8 +72,15 @@ class AndroidGallery(
         scope.launch {
             reads.receiveAsFlow().collect {
                 if (observer == null) return@collect
-                val snapshot = readable { items(Query()).map { it.withResources() } }
-                if (snapshot is GalleryRead.Read) read.value = SelectionSnapshot(snapshot.value)
+                val snapshot = readable { selectedItems().map { it.withResources() } }
+                // Checked AFTER the query: a grant widened while it ran made it a read of the whole library, which must
+                // never be published as the member's selection. The next emission, if any, reads afresh.
+                when {
+                    snapshot !is GalleryRead.Read -> Unit
+                    access() != LibraryGrant.LIMITED ->
+                        log.i { "selection read discarded: the grant is no longer partial" }
+                    else -> read.value = SelectionSnapshot(snapshot.value)
+                }
             }
         }
         scope.launch { permission.grant.collect { reconcile() } }

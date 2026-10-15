@@ -298,7 +298,11 @@ class UploadCycle(
         // selection snapshot takes no predicate at all), and this is what makes that optimization
         // unable to change the admitted set. `resources()` pays the per-asset round-trip ONLY for the
         // assets it kept.
-        val admitted = EventPhotoSet(ready.policy) { discovery.candidates }.assets()
+        //
+        // Judged by the rules for where the discovery says its candidates came from: a partial grant's selection stands
+        // down the rules that judge what a photo is (`SelectionPolicy.over`).
+        val judgedBy = ready.policy.over(discovery.scope)
+        val admitted = EventPhotoSet(judgedBy) { discovery.candidates }.assets()
 
         // …and of those, only for the assets the ledger does not fully know. Every walk is a full enumeration, so
         // without this each cycle would repeat one synchronous platform round-trip per photo already recorded — the
@@ -323,13 +327,13 @@ class UploadCycle(
                         "→ ${it.size} resource(s)"
                 }
             }
-        val presentAssetIds = discovery.candidates.mapTo(mutableSetOf()) { it.facts.assetId }
+        val admittedIds = admitted.mapTo(mutableSetOf()) { it.facts.assetId }
         return CyclePlan(
             liveResources,
             skipped = admitted.size - toRead.size,
             healing = healing,
             departedKeys = if (discovery.fullEnumeration) {
-                departedKeys(rows, presentAssetIds, ready.policy)
+                departedKeys(rows, admittedIds, ready.policy)
             } else {
                 // A library the platform could not read is no evidence that anything left it. A read selection
                 // snapshot IS authoritative — under a partial grant the selection is the gallery — and an unread one
@@ -340,18 +344,23 @@ class UploadCycle(
     }
 
     /**
-     * The rows an **authoritative** walk shows are gone — deletion is a presence diff over an authoritative walk: every
-     * row whose asset is inside the policy's window and that the walk did not return, whatever its state.
-     *
-     * **Presence is the walk's whole candidate set**, never the admitted set. The retired retain-live
-     * reconcile was fed the admitted set, so raising a capture cutoff discarded the `COMPLETED` rows of
-     * photos still in the library; being in the library is not a question of scope.
+     * The rows an **authoritative** walk shows are no longer shared: every row the manifest would still list — its
+     * asset inside the rows' own admission — whose asset walk + policy did not admit, whatever its state. From the
+     * event's side a photo that left the library and a photo the policy refuses are the same: both are withdrawn.
      *
      * **The window is the rows' own admission** ([admittedAssetIds]) — the derivation the manifest and the
-     * enqueue already take. The ledger is device-global and the walk is bounded by the capture range, so a
-     * row outside that range is no evidence either way; a raised cutoff moves rows OUT of the set this may
-     * delete. A bare row's empty date sorts before every cutoff, so it is never judged here. Deciding by
-     * this derivation rather than by comparing dates keeps the capture-date rule in one place.
+     * enqueue already take — and it is what makes this safe. The ledger is device-global and the walk is bounded by
+     * the capture range, so a row outside that range is no evidence either way; a raised cutoff, a receive-only
+     * membership, the album denylist and echo suppression all refuse the ROW too, so their rows sit outside the window
+     * and are kept, and the photo comes back with no second upload. The retired retain-live reconcile pruned to the
+     * admitted set WITHOUT this window, which is how a raised cutoff discarded the `COMPLETED` rows of photos still in
+     * the library. A bare row's empty date sorts before every cutoff, so it is never judged here.
+     *
+     * What remains for this to delete is therefore exactly what a row cannot answer: the asset left the library (or,
+     * under a partial grant, the selection), or the walk shows it is a screenshot, a screen recording or below the
+     * resolution floors — rules a row carries no facts for, which is why a screenshot shared under a partial grant
+     * would otherwise stay listed after access widens. Such a photo is forgotten like a deleted one: if it comes back
+     * it is uploaded again (decision record `changes/archive/2026-10-15-limited-selection-decides`, D2).
      *
      * **Whatever the row's state** — an in-flight (`REQUESTED`) row included. The photo left the library or,
      * under a partial grant, the selection, so it leaves the manifest this cycle rather than when its job
@@ -362,12 +371,12 @@ class UploadCycle(
     private suspend fun departedKeys(
         // Every row the ledger holds; after the absence sweep none is excluded.
         rows: List<LedgerEntry>,
-        present: Set<AssetId>,
+        admitted: Set<AssetId>,
         policy: SelectionPolicy,
     ): List<String> {
         val inWindow = admittedAssetIds(rows, policy)
         return rows
-            .filter { it.assetId in inWindow && it.assetId !in present }
+            .filter { it.assetId in inWindow && it.assetId !in admitted }
             .map { it.key }
     }
 
@@ -384,7 +393,10 @@ class UploadCycle(
         // is recorded, and long before `publish` projects the manifest, so a departed photo is never listed by the
         // cycle that saw it leave.
         if (plan.departedKeys.isNotEmpty()) {
-            log.i { "${plan.departedKeys.size} row(s) of assets the walk no longer returns — deleting them" }
+            log.i {
+                "${plan.departedKeys.size} row(s) of assets the walk no longer returns or the policy refuses — " +
+                    "deleting them"
+            }
             ledger.deleteKeys(plan.departedKeys)
         }
 

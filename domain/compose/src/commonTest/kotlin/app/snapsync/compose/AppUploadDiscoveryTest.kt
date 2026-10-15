@@ -3,6 +3,7 @@
 package app.snapsync.compose
 
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.noContribution
@@ -43,7 +44,7 @@ class AppUploadDiscoveryTest {
         val walk = object : UploadDiscovery {
             override suspend fun discover(policy: SelectionPolicy): Discovery {
                 walks++
-                return Discovery(emptyList(), fullEnumeration = true)
+                return Discovery(emptyList(), fullEnumeration = true, scope = CandidateScope.Library)
             }
 
             override suspend fun resourcesFor(keys: Set<String>): List<Resource> = emptyList()

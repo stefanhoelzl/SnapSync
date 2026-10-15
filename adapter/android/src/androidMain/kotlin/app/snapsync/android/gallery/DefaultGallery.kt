@@ -1,9 +1,11 @@
 package app.snapsync.android.gallery
 
 /**
- * The member's **default gallery** on Android: the `DCIM` folder and every folder under
+ * The member's **default gallery** on Android under a full grant: the `DCIM` folder and every folder under
  * it, on every storage volume — where camera apps save. Every read of the gallery is scoped to it, and the selection
- * policy is the one decision over what it returns (`docs/architecture.md`).
+ * policy is the one decision over what it returns (`docs/architecture.md`). The one exception is a partial grant's
+ * selection ([AndroidGalleryReader.selectedItems]): there the member's hand-picked selection is the gallery, wherever
+ * a selected photo is stored (`changes/archive/2026-10-15-limited-selection-decides`).
  *
  * It is ONE scope ([SQL]), the event albums' folders in [ALBUM_ROOT] included: a received photo filed there is kept out
  * of the member's share as every received photo is — by the record of its import, or its mark after a reinstall —

@@ -40,6 +40,7 @@ class UiStateFieldContractTest {
         today = at.date,
         commitEnabled = true,
         shareCount = ShareCount.Ready(3),
+        sharesSelection = true,
     )
 
     private val detailed = JoinPhase.Detailed(

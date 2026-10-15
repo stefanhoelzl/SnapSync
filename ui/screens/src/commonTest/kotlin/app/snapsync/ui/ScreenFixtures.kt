@@ -62,6 +62,8 @@ internal data class Choices(
             start = start,
             end = end,
         ),
+        // A full grant: the surface lists what is never shared. A test under a partial grant copies it in.
+        sharesSelection = false,
     )
 }
 

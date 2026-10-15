@@ -1,6 +1,7 @@
 package app.snapsync.services.upload
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.model.CandidateScope
 import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileLocation
@@ -64,7 +65,8 @@ internal fun rowA(state: LedgerState = LedgerState.REQUESTED) =
 
 /** The live resources the cycle's by-key resolve finds. */
 internal class Resources(val live: Map<String, Resource> = emptyMap()) : UploadDiscovery {
-    override suspend fun discover(policy: SelectionPolicy) = Discovery(emptyList(), fullEnumeration = false)
+    override suspend fun discover(policy: SelectionPolicy) =
+        Discovery(emptyList(), fullEnumeration = false, scope = CandidateScope.Library)
     override suspend fun resourcesFor(keys: Set<String>) = keys.mapNotNull(live::get)
 }
 

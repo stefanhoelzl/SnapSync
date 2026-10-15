@@ -57,7 +57,9 @@ internal class PartialGrantRun {
         override fun create(state: GalleryState, clauseId: String, log: CallLog): Entered<GalleryChange> {
             if (state !in reaches) return Entered.Unreachable("this APK holds a partial grant, and only that")
             check(holds(SELECTION) && !holds(Manifest.permission.READ_MEDIA_IMAGES)) { "this APK holds no partial grant" }
-            val selection = setOf(seedOwnPhoto(clauseId))
+            // One in the camera's folder and one outside `DCIM`: under a partial grant the selection is the member's
+            // gallery wherever a photo is stored, so the observer must report both.
+            val selection = setOf(seedOwnPhoto(clauseId), seedOwnPhoto(clauseId, folder = "Pictures/SnapSyncContract/"))
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             val adapter = AndroidGallery(context, permission(), scope).recorded(log)
             return Entered.Ready(GalleryChange(adapter, selection) {}) {}
@@ -109,12 +111,12 @@ internal class PartialGrantRun {
 
     private fun holds(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
-    /** A photo this APK saves itself into the default gallery — its own, so a partial grant always shows it. */
-    private fun seedOwnPhoto(clauseId: String): PlatformAssetId {
+    /** A photo this APK saves itself into [folder] — its own, so a partial grant always shows it. */
+    private fun seedOwnPhoto(clauseId: String, folder: String = "DCIM/Camera/"): PlatformAssetId {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "partial-${System.nanoTime()}.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Camera/")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val resolver = context.contentResolver

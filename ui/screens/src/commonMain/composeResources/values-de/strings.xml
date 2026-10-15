@@ -118,6 +118,7 @@
     <string name="share_off_note">Nichts von dir verlässt dieses Handy.</string>
     <string name="share_zero_note">Neue Fotos, die du aufnimmst, werden laufend geteilt.</string>
     <string name="share_exclusions_note">Screenshots, Bildschirmaufnahmen, GIFs und aus Chat-Apps gespeicherte Fotos werden nie geteilt.</string>
+    <string name="share_selection_note">Die Fotos, die du aus diesem Zeitraum ausgewählt hast, werden geteilt.</string>
     <string name="share_outside_before">Auch Fotos von vor dem Event.</string>
     <string name="share_outside_after">Auch Fotos von nach dem Event.</string>
     <string name="share_outside_both">Auch Fotos von vor und nach dem Event.</string>

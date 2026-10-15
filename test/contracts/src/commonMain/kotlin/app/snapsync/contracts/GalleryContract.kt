@@ -51,7 +51,10 @@ enum class GalleryState {
  */
 class GalleryChange(
     val gallery: Gallery,
-    /** The assets a [GalleryState.PARTIAL] selection holds. */
+    /**
+     * The assets a [GalleryState.PARTIAL] selection holds — on a platform whose default gallery is narrower than its
+     * library (Android: `DCIM`), one of them outside it, which the selection still reports.
+     */
     val selection: Set<PlatformAssetId> = emptySet(),
     val change: suspend () -> Unit,
 )
@@ -142,7 +145,8 @@ object GalleryContract : Contract<GalleryState, GalleryChange>("Gallery") {
                 val selected = subject.gallery.selection.value!!.assets.map { it.asset.id }.toSet()
                 assertTrue(
                     selected.containsAll(subject.selection),
-                    "the baseline is the selection: missing ${subject.selection - selected}",
+                    "the baseline is the selection, wherever a photo is stored: " +
+                        "missing ${subject.selection - selected}",
                 )
             } finally {
                 subject.gallery.observeChanges(false)

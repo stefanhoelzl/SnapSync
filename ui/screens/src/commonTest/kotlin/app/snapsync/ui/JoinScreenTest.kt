@@ -73,10 +73,12 @@ import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.share_detail_count
 import app.snapsync.ui.resources.share_detail_counting
+import app.snapsync.ui.resources.share_exclusions_note
 import app.snapsync.ui.resources.share_off_note
 import app.snapsync.ui.resources.share_outside_after
 import app.snapsync.ui.resources.share_outside_before
 import app.snapsync.ui.resources.share_outside_both
+import app.snapsync.ui.resources.share_selection_note
 import app.snapsync.ui.resources.share_toggle
 import app.snapsync.ui.resources.share_zero_note
 import app.snapsync.ui.resources.switch_body
@@ -134,6 +136,8 @@ class JoinScreenTest {
         end: LocalDateTime = EVENT_END,
         // The range calendar is open over the surface — on the window, complete — as the app opens it.
         picking: Boolean = false,
+        // Photo access is limited to a selection.
+        selection: Boolean = false,
     ) = UiState(
         Layer.JoiningEvent(
             eventId = "11111111-1111-4111-8111-111111111111",
@@ -142,7 +146,7 @@ class JoinScreenTest {
                     phase,
                     form.over(start, end, NOW, count).let { range ->
                         if (picking) range.copy(picker = calendarOver(range.from, range.until, start, end)) else range
-                    },
+                    }.copy(sharesSelection = selection),
                 )
                 is JoinPhase.Eventless -> JoinStage.Unloaded(phase)
             },
@@ -401,6 +405,16 @@ class JoinScreenTest {
         onNodeWithText(
             "Screenshots, screen recordings, GIFs and photos saved from chat apps are never shared.",
         ).assertExists()
+        onNodeWithText(str(Res.string.share_selection_note)).assertDoesNotExist()
+    }
+
+    @Test
+    fun `under limited access share on states that the selected photos are shared`() = runComposeUiTest {
+        // capability `join-event`, "Limited access is told what is shared": none of the exclusions applies to a
+        // photo the member selected, so the surface names none of them.
+        setScreen { TestStatusScreen(joining(ready(), selection = true)) }
+        onNodeWithText("The photos you selected from this range are shared.").assertExists()
+        onNodeWithText(str(Res.string.share_exclusions_note)).assertDoesNotExist()
     }
 
     @Test
