@@ -18,7 +18,7 @@ enum class MockedSystem(val key: String, val what: String) {
     KEYCHAIN("keychain", "the protected small-value store (the Keychain; the Keystore-sealed store)"),
     INTEGRITY("integrity", "the device-integrity service (App Attest; Keystore key attestation)"),
     CRASH_REPORTER("crash-reporter", "the crash reporter's channel"),
-    PROCESS_INFO("process-info", "the protected-data availability"),
+    PROCESS_INFO("process-info", "the process's memory footprint"),
     NETWORK("network", "the device's network as the operating system reports it to the app"),
     DEVICE_CONDITIONS(
         "device-conditions",

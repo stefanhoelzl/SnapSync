@@ -17,7 +17,6 @@ import app.snapsync.contracts.ThreadLabelState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.Availability
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
@@ -62,17 +61,10 @@ class AttestContractBindingsTest {
         override val host = currentHost
         override val kind = BindingKind.Fake
         override val adapter = InMemoryProcessInfo::class
-        override val reaches = setOf(
-            ProcessInfoState.UNLOCKED,
-            ProcessInfoState.MEMORY_ACCOUNTED,
-            ProcessInfoState.MEMORY_NOT_ACCOUNTED,
-            ProcessInfoState.LOCKED,
-        )
+        override val reaches = setOf(ProcessInfoState.MEMORY_ACCOUNTED, ProcessInfoState.MEMORY_NOT_ACCOUNTED)
 
         override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> {
-            val mock = ProcessInfoMock(
-                if (state == ProcessInfoState.LOCKED) Availability.UNAVAILABLE else Availability.AVAILABLE,
-            )
+            val mock = ProcessInfoMock()
             if (state == ProcessInfoState.MEMORY_NOT_ACCOUNTED) mock.memory = null
             return Entered.Ready(mock.port().recorded(log))
         }

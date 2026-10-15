@@ -374,12 +374,6 @@ class SimAppLivePhotoImportBinding : Binding<LivePhotoImportState, StagedLiveImp
     }
 }
 
-/**
- * `UIApplication.isProtectedDataAvailable` in a running app — the one host with a `UIApplication` a CI job
- * reaches (a test executable has none). The app is running and the simulator implements no data protection, so
- * this host presents `UNLOCKED` and never the locked state, which no host presents (`ProcessInfoContract`); and the
- * simulator's kernel accounts the app's memory as a device's does, so it presents `MEMORY_ACCOUNTED` too.
- */
 /** The real [IosBuildInfo] in the simulator app: a bundle of its own, on iOS. */
 class SimAppBuildInfoBinding : Binding<BuildInfoState, BuildInfo> {
     override val host = Host.IOS_SIM_APP
@@ -395,17 +389,18 @@ class SimAppBuildInfoBinding : Binding<BuildInfoState, BuildInfo> {
         }
 }
 
+/** The real [IosProcessInfo] in a running app: the simulator's kernel accounts the app's memory as a device's does. */
 class SimAppProcessInfoBinding : Binding<ProcessInfoState, ProcessInfo> {
     override val host = Host.IOS_SIM_APP
     override val kind = BindingKind.Live
     override val adapter = IosProcessInfo::class
-    override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_ACCOUNTED)
+    override val reaches = setOf(ProcessInfoState.MEMORY_ACCOUNTED)
 
     override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> =
         if (state in reaches) {
             Entered.Ready(IosProcessInfo().recorded(log))
         } else {
-            Entered.Unreachable("$state: iOS accounts the footprint, and the simulator implements no data protection")
+            Entered.Unreachable("$state: iOS accounts the footprint")
         }
 }
 

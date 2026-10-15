@@ -20,7 +20,6 @@ import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.LinkOpenerContract
 import app.snapsync.contracts.LinkOpenerState
 import app.snapsync.contracts.NetworkMonitorContract
-import app.snapsync.contracts.ProcessInfoContract
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.SharePresenterState
@@ -166,7 +165,6 @@ fun appDeviceContracts(refusal: () -> String? = { null }): List<InAppContract> =
     },
     InAppContract(ExtensionRegistryContract.name, Host.IOS_DEVICE_APP) { recordRegistry(refusal) },
     InAppContract(NetworkMonitorContract.name, Host.IOS_DEVICE_APP) { params -> recordNetwork(params) },
-    InAppContract(ProcessInfoContract.name, Host.IOS_DEVICE_APP) { recordProcessInfoLocked() },
     InAppContract(BackgroundTimeContract.name, Host.IOS_DEVICE_APP) { recordBackgroundTimeExpiry() },
 ) + relaunchContracts() + downloadRelaunchContracts() + metricsContracts()
 

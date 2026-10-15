@@ -7,7 +7,6 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.UnionFetch
-import app.snapsync.model.Availability
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.Crumb
@@ -84,8 +83,8 @@ private fun scalars(write: (MockDevice) -> Map<String, String>, read: (MockDevic
     codec(StringsDto.serializer(), { StringsDto(write(it)) }, { device, dto -> read(device, dto.values) })
 
 /**
- * Every system that keeps something — the databases (files), the background-time holds, the links and the screen (a
- * process's own) keep nothing here.
+ * Every system that keeps something — the databases (files), the background-time holds, the links, the screen and the
+ * process information (a process's own) keep nothing here.
  */
 private val CODECS: Map<MockedSystem, Codec> = mapOf(
     MockedSystem.BACKEND to codec(
@@ -124,10 +123,6 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
             device.crashReporter.dumps.cell.value = dto.dumps.map { it.event() }
             device.crashReporter.events.cell.value = dto.events.map { it.event() }
         },
-    ),
-    MockedSystem.PROCESS_INFO to scalars(
-        { mapOf(PROTECTED to it.processInfo.cell.value.name) },
-        { device, values -> values[PROTECTED]?.let { device.processInfo.cell.value = Availability.valueOf(it) } },
     ),
     MockedSystem.NETWORK to scalars(
         { mapOf(ACCESS to accessName(it.connectivity.cell.value)) },
@@ -206,7 +201,6 @@ private val CODECS: Map<MockedSystem, Codec> = mapOf(
     ),
 )
 
-private const val PROTECTED = "protectedData"
 private const val ACCESS = "access"
 private const val CARRIED = "carried"
 private const val REGISTERED = "registered"

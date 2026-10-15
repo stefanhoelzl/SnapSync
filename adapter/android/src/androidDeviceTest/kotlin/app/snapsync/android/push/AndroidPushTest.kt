@@ -66,18 +66,16 @@ class AndroidPushTest {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
         override val adapter = AndroidProcessInfo::class
-        override val reaches = setOf(ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_NOT_ACCOUNTED)
+        override val reaches = setOf(ProcessInfoState.MEMORY_NOT_ACCOUNTED)
 
         override fun create(state: ProcessInfoState, clauseId: String, log: CallLog): Entered<ProcessInfo> = when (state) {
-            ProcessInfoState.UNLOCKED, ProcessInfoState.MEMORY_NOT_ACCOUNTED -> Entered.Ready(
+            ProcessInfoState.MEMORY_NOT_ACCOUNTED -> Entered.Ready(
                 AndroidProcessInfo().recorded(log),
             )
             ProcessInfoState.MEMORY_ACCOUNTED ->
                 Entered.Unreachable(
                     "Android accounts no footprint to the process: no process-metric provider reads one",
                 )
-            ProcessInfoState.LOCKED ->
-                Entered.Unreachable("a device test runs on an emulator unlocked since boot, its user's storage open")
         }
     }
 

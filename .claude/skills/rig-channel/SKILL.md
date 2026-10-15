@@ -218,8 +218,6 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   state, for the person to put the phone there — so START the run first (in the background, `--timeout 0`), confirm
   `→ contract.run` in `host logs`, and only then ask for the step. Every run also keeps its recording in the
   app's `Documents/contracts/<file>.rec`: when the connection drops (it does on a lock), pull it with `apps pull`.
-  - **`ProcessInfo`** (`…LOCKED.rec`): lock the phone. Needs a passcode with **Require Passcode: Immediately** — with a
-    delay iOS keeps the data readable past the ~30 s of background time and the run never sees it sealed (measured).
   - **`BackgroundTime`**: go to the home screen; iOS's expiry comes ~30 s later and is recorded as an event line.
   - **`TransferSession` (device app) + `SharePresenter`** — the relaunch, two steps: `--params '{"step":"arm"}'` prepares a transfer to
     `https://snapsync.stho.net/contract-relaunch` (a 404 path of our own domain — a transfer whose connection fails is
@@ -770,7 +768,7 @@ What the operating system tells the app about the device, and what the app hands
   From `rig`, a map or a structure is its JSON: `$R --url $B device-conditions set --fields '{"power_saving":"true"}'`.
 - `clock` (`ClockLevers`) — `set(at)` (an ISO instant), read `now()`. **Refused on the JVM host**, whose loop owns the
   clock: there `world.advanceTo(at)` moves it, with every timer due on the way.
-- `process-info` (`ProcessInfoLevers`) — `protectedData(available)`, `footprint(footprint?)`, read `info()`.
+- `process-info` (`ProcessInfoLevers`) — `footprint(footprint?)`, read `info()`.
 - `crash-reporter` (`CrashReporterLevers`) — reads `started()`, `sent()` (each dump the reporter's backend received:
   note, state, ledger, both logs, their bytes).
 - `system-ui` (`SystemUiLevers`) — read `record()` (what the share sheet was handed, the URLs opened, the Settings page

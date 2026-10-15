@@ -96,12 +96,9 @@ interface ClockLevers {
     )
 }
 
-/** **What the operating system says of the app's own process**: whether protected data is readable, and its memory. */
+/** **What the operating system says of the app's own process**: its memory. */
 @Rpc
 interface ProcessInfoLevers {
-    /** Whether the device's protected data is readable — `false` plays a phone locked since it restarted. */
-    suspend fun protectedData(available: Boolean)
-
     /** The process's memory footprint, as the app reads it when it records one; `null` answers none. */
     suspend fun footprint(footprint: Footprint?)
 
@@ -123,7 +120,7 @@ data class Footprint(val bytes: Long, val peakBytes: Long? = null, val headroomB
 
 /** What the operating system says of the process now. */
 @Serializable
-data class ProcessInfoView(val protectedDataAvailable: Boolean, val footprint: Footprint?)
+data class ProcessInfoView(val footprint: Footprint?)
 
 /**
  * **The platform's reports on the app's own process**: how its earlier runs ended and how long it froze — MetricKit's

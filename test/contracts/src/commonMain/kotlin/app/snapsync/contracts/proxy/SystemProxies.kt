@@ -89,7 +89,6 @@ fun ProcessInfo.recorded(log: CallLog): ProcessInfo = ProcessInfoProxy(log.wraps
 internal class ProcessInfoProxy(private val inner: ProcessInfo, log: CallLog) : ProcessInfo {
     private val r = log.recorder("ProcessInfo")
 
-    override suspend fun protectedDataAvailable() = r.answer("protectedDataAvailable", inner.protectedDataAvailable())
     override fun memoryFootprint() = r.returns("memoryFootprint", inner.memoryFootprint())
 }
 

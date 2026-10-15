@@ -2,7 +2,6 @@
 
 package app.snapsync.protection
 
-import app.snapsync.model.Availability
 import app.snapsync.model.MemoryFootprint
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
@@ -15,9 +14,6 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.value
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import platform.UIKit.UIApplication
 import platform.darwin.KERN_SUCCESS
 import platform.darwin.TASK_VM_INFO
 import platform.darwin.TASK_VM_INFO_COUNT
@@ -29,32 +25,8 @@ import platform.darwin.task_info
 import platform.darwin.task_vm_info
 
 /**
- * The operating-system boundary of [IosProcessInfo]'s protected-data read — `UIApplication.isProtectedDataAvailable` and
- * nothing else — so the locked device's answer, recorded on a phone, replays on every build.
- */
-internal interface ProtectedDataApi {
-    suspend fun available(): Boolean
-}
-
-/** The real one, on the main lane `UIApplication` requires. */
-internal object SystemProtectedDataApi : ProtectedDataApi {
-    override suspend fun available(): Boolean =
-        withContext(Dispatchers.Main) { UIApplication.sharedApplication.isProtectedDataAvailable() }
-}
-
-/**
- * The iOS [ProcessInfo] of the app process: `UIApplication.isProtectedDataAvailable`. App-only, because
- * `UIApplication` is unavailable to app extensions — the extension records the status of each protected read it
- * makes instead: background entry points record protected-data state.
- *
- * `UIApplication` is main-thread-only and the entry points that ask run on the composition lane (law "Dispatcher
- * lanes are fixed by the composition"), so the read names the main lane itself. It is a property read, not work:
- * nothing blocking follows it onto main.
- *
- * WHAT IS CONTRACTED. `ProcessInfoContract` runs live on the simulator app — the one CI host with a `UIApplication` —
- * and holds that an unlocked device reads available, through the main-lane hop above. The unavailable answer is
- * recorded on the SE2 with its screen locked, the app held running in the background, at the [ProtectedDataApi] seam
- * (`ProcessInfo@IOS_DEVICE_APP.LOCKED.rec`), and replayed on every build: the simulator implements no data protection.
+ * The iOS [ProcessInfo] of the app process: its memory footprint. App-only: the extension composes no [ProcessInfo].
+ * `ProcessInfoContract` runs live on the simulator app.
  *
  * THE FOOTPRINT is the kernel's own accounting of this task (`task_info(TASK_VM_INFO)`): `phys_footprint` is the
  * figure the system's memory-pressure exits are decided on, `ledger_phys_footprint_peak` the highest it has been, and
@@ -67,15 +39,7 @@ internal object SystemProtectedDataApi : ProtectedDataApi {
 @NeverAnswers(
     Never(member = "memoryFootprint", answer = "null"),
 )
-class IosProcessInfo internal constructor(
-    // The operating-system boundary; production always passes the real one.
-    private val protectedData: ProtectedDataApi,
-) : ProcessInfo {
-
-    constructor() : this(SystemProtectedDataApi)
-
-    override suspend fun protectedDataAvailable(): Availability =
-        if (protectedData.available()) Availability.AVAILABLE else Availability.UNAVAILABLE
+class IosProcessInfo : ProcessInfo {
 
     override fun memoryFootprint(): MemoryFootprint = memScoped {
         val info = alloc<task_vm_info>()
