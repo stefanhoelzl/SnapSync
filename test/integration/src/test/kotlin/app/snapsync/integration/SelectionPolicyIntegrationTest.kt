@@ -1,12 +1,15 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Acts
+import app.snapsync.control.behaviour.Expectations
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.LibraryPhotoKind
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * The selection policy over the **real** stack: the real `UploadCycle`, engine, ledger and device-manifest producer
@@ -27,24 +30,22 @@ class SelectionPolicyIntegrationTest {
         requirement = "Media that is certainly not an event photo is excluded",
         scenario = "A screenshot is never shared",
     )
-    fun a_screenshot_is_neither_uploaded_nor_shared() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        addPhoto("CAM") // an ordinary camera photo
-        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT) // …and a screenshot taken at the same event
-
-        cycle()
+    fun a_screenshot_is_neither_uploaded_nor_shared() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("CAM") // an ordinary camera photo
+            photoTaken("SHOT", LibraryPhotoKind.SCREENSHOT) // …and a screenshot taken at the same event
+        }
 
         // 1. No bytes: only the camera photo got a job.
-        assertEquals(listOf(primaryJob("CAM")), jobs().live)
-        assertEquals(1, jobs().created)
-        // 2. Not in the manifest → never in the event union, so no other member ever sees it. The manifest lists
-        //    what landed once the cycle that records the completion re-projects: complete the admitted job and
-        //    invoke again.
-        completeJobs(primaryJob("CAM"))
-        cycle()
-        assertEquals(setOf("CAM"), manifest(event)?.keys, "only the camera photo reaches the device manifest")
-        assertEquals(setOf("CAM"), union(event).keys)
+        whenever { cycle() }
+        then { onlyCameraJob(excluded = "SHOT") }
+
+        // 2. Not in the manifest → never in the event union, so no other member ever sees it. The manifest lists what
+        //    landed once the cycle that records the completion re-projects: complete the admitted job and invoke again.
+        whenever { cameraPhotoLanded() }
+        then { onlyCameraShared(excluded = "SHOT") } // only the camera photo reaches the device manifest and the union
     }
 
     @Test
@@ -53,20 +54,22 @@ class SelectionPolicyIntegrationTest {
         requirement = "Media that is certainly not an event photo is excluded",
         scenario = "A photo in a WhatsApp album is excluded",
     )
-    fun a_whatsapp_album_photo_is_neither_uploaded_nor_shared() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        addPhoto("CAM")
-        addPhoto("WA")
-        library.placeIn("WhatsApp", "WA") // saved by WhatsApp, not taken here
+    fun a_whatsapp_album_photo_is_neither_uploaded_nor_shared() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("CAM")
+            photoTaken("WA")
+            step("WA saved by WhatsApp, not taken here", act = { library.placeIn("WhatsApp", "WA") }, until = {
+                settled { true }
+            })
+        }
 
-        cycle()
+        whenever { cycle() }
+        then { onlyCameraJob(excluded = "WA") }
 
-        assertEquals(listOf(primaryJob("CAM")), jobs().live)
-        assertEquals(1, jobs().created)
-        completeJobs(primaryJob("CAM"))
-        cycle()
-        assertEquals(setOf("CAM"), manifest(event)?.keys)
+        whenever { cameraPhotoLanded() }
+        then { onlyCameraShared(excluded = "WA") }
     }
 
     @Test
@@ -80,19 +83,22 @@ class SelectionPolicyIntegrationTest {
         requirement = "Media that is certainly not an event photo is excluded",
         scenario = "A 1080p video is shared",
     )
-    fun a_compressed_received_image_is_excluded_but_a_1080p_recording_is_not() = rigTest {
-        extensionUploadsOnly()
+    fun a_compressed_received_image_is_excluded_but_a_1080p_recording_is_not() = behaviour {
         // The single most dangerous line in this policy: 1080p video is 2.07 MP, BELOW the 3 MP image floor.
         // If the floors were shared, every video anyone recorded at the event would silently disappear.
-        createAndJoin()
-        addPhoto("WA", kind = LibraryPhotoKind.LOW_RES) // 1600x1200 = 1.9 MP → excluded
-        addPhoto("CLIP", kind = LibraryPhotoKind.HD_VIDEO) // 1920x1080 = 2.07 MP → ADMITTED
-        addPhoto("CAM")
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("WA", LibraryPhotoKind.LOW_RES) // 1600x1200 = 1.9 MP → excluded
+            photoTaken("CLIP", LibraryPhotoKind.HD_VIDEO) // 1920x1080 = 2.07 MP → ADMITTED
+            photoTaken("CAM")
+        }
 
-        cycle()
-
-        assertEquals(setOf(AssetId("CAM"), AssetId("CLIP")), jobs().live.mapTo(mutableSetOf(), ::assetIdOfJob))
-        assertEquals(2, jobs().created)
+        whenever { cycle() }
+        then {
+            times(2) { event<WorldEvent.UploadJobCreated>() }
+            settled { it.state.inFlight?.jobs?.mapTo(mutableSetOf(), ::assetIdOfJob) == setOf(AssetId("CAM"), AssetId("CLIP")) }
+        }
     }
 
     @Test
@@ -102,26 +108,64 @@ class SelectionPolicyIntegrationTest {
         requirement = "Progress counts only what this membership shares",
         scenario = "An excluded screenshot does not hold the status open",
     )
-    fun the_status_total_excludes_what_the_cycle_refuses_so_the_screen_reaches_in_sync() = rigTest {
-        extensionUploadsOnly()
+    fun the_status_total_excludes_what_the_cycle_refuses_so_the_screen_reaches_in_sync() = behaviour {
         // The two components enumerate INDEPENDENTLY. If the total counted the screenshot the cycle will never
         // upload, completeness would peg below 100% and the joined screen would say "pending" forever — so the
         // screen reaching In sync once the one admitted photo lands IS the total excluding the other two.
-        val event = createAndJoin()
-        addPhoto("CAM")
-        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT)
-        addPhoto("WA", kind = LibraryPhotoKind.LOW_RES)
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("CAM")
+            photoTaken("SHOT", LibraryPhotoKind.SCREENSHOT)
+            photoTaken("WA", LibraryPhotoKind.LOW_RES)
+        }
 
-        refresh()
-        awaitHealth { it is SyncHealth.Syncing } // the admitted photo is outstanding
+        whenever { os.foreground() }
+        then { screen<Layer.Joined> { it.health is SyncHealth.Syncing } } // the admitted photo is outstanding
 
         // Drive the admitted photo all the way to landed, and the screen reports fully in sync.
-        uploadAll()
-        refresh()
-        awaitInSync()
+        whenever {
+            cycle()
+            uploadQueue.completeJob()
+            cycle()
+            os.foreground()
+        }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.InSync }
+            event<WorldEvent.ManifestPublished> { "CAM" in it.added }
+            onlyCameraShared(excluded = "SHOT")
+            never<WorldEvent.ManifestPublished> { "WA" in it.added }
+            never<WorldEvent.BytesStored> { it.asset == "WA" }
+        }
+    }
 
-        val union = union(event)
-        assertTrue("CAM" in union, "$union")
-        assertTrue("SHOT" !in union && "WA" !in union, "$union")
+    // ---- helpers --------------------------------------------------------------------------------
+
+    /**
+     * The camera photo's is the one job created, and the device manifest declares it as it goes — [excluded] is
+     * declared nowhere.
+     */
+    private fun Expectations.onlyCameraJob(excluded: String) {
+        times(1) { event<WorldEvent.UploadJobCreated>() }
+        event<WorldEvent.ManifestPublished> { "CAM" in it.added }
+        never<WorldEvent.ManifestPublished> { excluded in it.added }
+        settled { it.state.inFlight?.jobs == listOf(primaryJob("CAM")) }
+    }
+
+    /** The OS lands the camera photo's job, and the next cycle records the completion and publishes. */
+    private suspend fun Acts.cameraPhotoLanded() {
+        uploadQueue.completeJob(primaryJob("CAM"))
+        cycle()
+    }
+
+    /**
+     * The camera photo's bytes are stored and the device manifest keeps declaring it, so the event's union serves it;
+     * [excluded] reaches neither.
+     */
+    private fun Expectations.onlyCameraShared(excluded: String) {
+        event<WorldEvent.BytesStored> { it.asset == "CAM" }
+        never<WorldEvent.ManifestPublished> { "CAM" in it.withdrawn }
+        never<WorldEvent.BytesStored> { it.asset == excluded }
+        never<WorldEvent.ManifestPublished> { excluded in it.added }
     }
 }

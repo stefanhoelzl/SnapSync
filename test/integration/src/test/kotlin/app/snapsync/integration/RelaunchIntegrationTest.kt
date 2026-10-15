@@ -1,10 +1,11 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * `/device/relaunch` is process death and a cold launch (`docs/testing.md`, "The JVM root"): what the device keeps
@@ -18,32 +19,54 @@ class RelaunchIntegrationTest {
 
     @Test
     @Verifies(spec = "delivery", requirement = "A photo is never lost on the way")
-    fun the_upload_ledger_survives_so_a_relaunched_app_uploads_nothing_twice() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("A")
-        uploadAll()
-        val created = jobs().created
+    fun the_upload_ledger_survives_so_a_relaunched_app_uploads_nothing_twice() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("A")
+            step("A uploaded", act = {
+                cycle()
+                uploadQueue.completeJob()
+                cycle()
+            }, until = {
+                event<WorldEvent.ManifestPublished> { "A" in it.added }
+                settled { true }
+            })
+        }
 
-        host.relaunch()
-        cycle()
+        // The ledger (an App-Group database) survives: A is not uploaded again.
+        whenever {
+            host.relaunch()
+            cycle()
+        }
+        then { never<WorldEvent.UploadJobCreated>() }
 
-        assertEquals(created, jobs().created, "the ledger (an App-Group database) survives: A is not uploaded again")
-        foreground() // the launch's foreground: its status read counts A as shared
-        awaitInSync()
+        // The launch's foreground: its status read counts A as shared.
+        whenever { os.foreground() }
+        then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
 
     @Test
-    fun the_version_gates_refusal_is_process_memory() = rigTest {
-        createAndJoin()
-        backend.minAppVersion("0.4")
-        build.declare("0.3")
-        foreground() // any backend call: the gate precedes every route
-        awaitState { it.ui.layer is Layer.UpdateRequired }
+    fun the_version_gates_refusal_is_process_memory() = behaviour {
+        given {
+            joinedEvent()
+            step("an outdated build", act = {
+                backend.minAppVersion("0.4")
+                build.declare("0.3")
+            }, until = {})
+            // Any backend call: the gate precedes every route.
+            step("refused", act = { os.foreground() }, until = {
+                screen<Layer.UpdateRequired>()
+                settled { true }
+            })
+            // The gate is lifted, and nothing asks the backend again.
+            step("the gate lifted", act = { backend.minAppVersion() }, until = {})
+        }
 
-        backend.minAppVersion() // the gate is lifted, and nothing asks the backend again
-        host.relaunch()
-
-        assertTrue(state().ui.layer is Layer.Joined, "a new process starts with no refusal in memory")
+        whenever { host.relaunch() }
+        then {
+            screen<Layer.Joined>()
+            neverScreen<Layer.UpdateRequired>() // a new process starts with no refusal in memory
+        }
     }
 }

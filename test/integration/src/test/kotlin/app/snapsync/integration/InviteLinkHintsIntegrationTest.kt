@@ -1,12 +1,16 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Acts
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.format.InviteLinkText
 import app.snapsync.format.LINK_ORIGIN
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
 
 /**
  * No invite link, however it is crafted, joins, switches or starts sharing without the member confirming on the join
@@ -22,7 +26,7 @@ import kotlin.test.assertNull
 class InviteLinkHintsIntegrationTest {
 
     /** Every hint links once carried, set to its most damaging value, on the event's whole invite. */
-    private suspend fun Rig.craftedLink(eventId: String) =
+    private suspend fun Acts.craftedLink(eventId: String) =
         "$LINK_ORIGIN/join/$eventId#" + listOfNotNull(
             keyOf(eventId)?.let { "k=$it" },
             "autoJoin=true",
@@ -32,33 +36,44 @@ class InviteLinkHintsIntegrationTest {
             "saveToAlbum=true",
         ).joinToString("&")
 
+    /** [eventId]'s key as its invite carries it, or `null` for a plain event. */
+    private suspend fun Acts.keyOf(eventId: String): String? =
+        (InviteLinkText.parse(host.invite(eventId)) as InviteLinkVerdict.Invite).link.key?.text
+
     @Test
-    fun an_autoJoin_link_shows_the_join_screen_and_joins_nothing() = rigTest {
-        val invited = registerEvent(name = "Anna's Wedding")
+    fun an_autoJoin_link_shows_the_join_screen_and_joins_nothing() = behaviour {
+        val invited = given { registeredEvent(name = "Anna's Wedding") }
 
-        openLink(craftedLink(invited))
-
-        val joining = awaitState { it.ui.layer is Layer.JoiningEvent }.ui.layer as Layer.JoiningEvent
-        assertEquals(invited, joining.eventId, "the ordinary confirmation — the member decides")
-        neverWithin(what = "the link joined without a tap") { it.ready.configResolved }
-        assertNull(manifest(invited), "no enrolment without a tap")
+        lateinit var joining: Seen<Layer.JoiningEvent>
+        whenever { openLink(craftedLink(invited)) }
+        then {
+            joining = screen<Layer.JoiningEvent>()
+            neverScreen<Layer.Joined>() // the link joined without a tap
+            never<WorldEvent.MemberJoined>() // no enrolment without a tap
+        }
+        assertEquals(invited, joining.value.eventId, "the ordinary confirmation — the member decides")
     }
 
     @Test
-    fun an_autoJoin_link_never_leaves_the_current_event() = rigTest {
-        val invited = registerEvent(name = "Anna's Wedding")
-        val current = createAndJoin(name = "Trip")
+    fun an_autoJoin_link_never_leaves_the_current_event() = behaviour {
+        val (invited, current) = given {
+            val invited = registeredEvent(name = "Anna's Wedding")
+            invited to joinedEvent()
+        }
 
-        openLink(craftedLink(invited))
-
-        val joined = awaitState { it.joined?.pendingSwitch != null }.joined!!
+        lateinit var asked: Seen<Layer.Joined>
+        whenever { openLink(craftedLink(invited)) }
+        then {
+            asked = screen<Layer.Joined> { it.pendingSwitch != null }
+            never<WorldEvent.MemberLeft>() // the current event was not left
+            never<WorldEvent.MemberJoined>() // no enrolment without a tap
+            neverScreen<Layer.Joined> { it.membership.eventId != current }
+        }
         assertEquals(
             invited,
-            joined.pendingSwitch?.eventId,
+            asked.value.pendingSwitch?.eventId,
             "the switch confirmation, exactly as for an unhinted invite",
         )
-        assertEquals(current, joined.membership.eventId, "the current event was not left")
-        assertFalse(state().ready.eventId == invited)
-        assertNull(manifest(invited), "no enrolment without a tap")
+        assertEquals(current, asked.value.membership.eventId, "the current event was not left")
     }
 }

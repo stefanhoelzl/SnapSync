@@ -1,12 +1,17 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.JoinedEvent
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 
 /**
  * Seam ↔ UI-state integration for the event rename, driven through the control protocol's rename tap (`Person.rename`) over the
@@ -21,19 +26,20 @@ class RenameIntegrationTest {
         spec = "manage-membership",
         requirement = "Any member renames the event for everyone until its photos are deleted",
     )
-    fun a_rename_rewrites_the_backend_marker_and_the_heading_follows() = rigTest {
-        val event = createAndJoin(name = "Weekend")
-        assertEquals("Weekend", heading(), "the heading starts at the joined name")
+    fun a_rename_rewrites_the_backend_marker_and_the_heading_follows() = behaviour {
+        val (event, _) = given { joinedWeekend() } // the heading starts at the joined name
 
-        rename("Ana's 30th")
-        awaitRename { it == RenameState.Succeeded }
-
-        // The backend outcome: the shared marker the OTHER members read is what changed.
-        assertEquals("Ana's 30th", backendName(event), "the backend marker carries the new name")
-        // The membership outcome: this device's membership followed, and nothing else moved. Its name IS the
-        // heading the status screen renders.
-        val membership = awaitState { it.joined?.membership?.name == "Ana's 30th" }.joined!!.membership
-        assertEquals(event, membership.eventId, "same membership — a rename never re-joins")
+        lateinit var renamed: Seen<Layer.Joined>
+        whenever { rename("Ana's 30th") }
+        then {
+            screen<Layer.Joined> { it.renameState == RenameState.Succeeded }
+            // The backend outcome: the shared marker the OTHER members read is what changed.
+            event<WorldEvent.EventRenamed> { it.event == event && it.name == "Ana's 30th" }
+            // The membership outcome: this device's membership followed, and nothing else moved. Its name IS the
+            // heading the status screen renders.
+            renamed = screen<Layer.Joined> { it.membership.name == "Ana's 30th" }
+        }
+        assertEquals(event, renamed.value.membership.eventId, "same membership — a rename never re-joins")
     }
 
     @Test
@@ -41,15 +47,17 @@ class RenameIntegrationTest {
         spec = "manage-membership",
         requirement = "Any member renames the event for everyone until its photos are deleted",
     )
-    fun the_backend_TRIMMED_name_is_what_lands_everywhere() = rigTest {
-        val event = createAndJoin(name = "Weekend")
-
-        rename("   Ana's 30th   ")
-        awaitRename { it == RenameState.Succeeded }
+    fun the_backend_TRIMMED_name_is_what_lands_everywhere() = behaviour {
+        val (event, _) = given { joinedWeekend() }
 
         // One value, both places, no whitespace anywhere: the echo is the single source.
-        assertEquals("Ana's 30th", backendName(event))
-        awaitState { it.joined?.membership?.name == "Ana's 30th" }
+        whenever { rename("   Ana's 30th   ") }
+        then {
+            screen<Layer.Joined> { it.renameState == RenameState.Succeeded }
+            event<WorldEvent.EventRenamed> { it.event == event && it.name == "Ana's 30th" }
+            never<WorldEvent.EventRenamed> { it.name != "Ana's 30th" }
+            screen<Layer.Joined> { it.membership.name == "Ana's 30th" }
+        }
     }
 
     @Test
@@ -58,16 +66,18 @@ class RenameIntegrationTest {
         requirement = "A failed rename keeps the dialog and never ends the membership",
         scenario = "A rejected name",
     )
-    fun a_rejected_name_fails_and_changes_nothing() = rigTest {
-        val event = createAndJoin(name = "Weekend")
+    fun a_rejected_name_fails_and_changes_nothing() = behaviour {
+        given { joinedWeekend() }
 
         // Over the backend mock's (and the real backend's) 100-character bound.
-        rename("x".repeat(101))
-        val status = awaitRename { it is RenameState.Failed }
-
-        assertEquals(RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED), status)
-        assertEquals("Weekend", backendName(event), "the marker is untouched")
-        assertEquals("Weekend", heading(), "the membership is untouched")
+        lateinit var failed: Seen<Layer.Joined>
+        whenever { rename("x".repeat(101)) }
+        then {
+            failed = screen<Layer.Joined> { it.renameState is RenameState.Failed }
+            never<WorldEvent.EventRenamed>() // the marker is untouched
+            neverScreen<Layer.Joined> { it.membership.name != "Weekend" } // the membership is untouched
+        }
+        assertEquals(RenameState.Failed(ScreenMessage.RENAME_NAME_REFUSED), failed.value.renameState)
     }
 
     @Test
@@ -76,53 +86,61 @@ class RenameIntegrationTest {
         requirement = "A failed rename keeps the dialog and never ends the membership",
         scenario = "A rename that meets a missing event keeps the member joined",
     )
-    fun a_rename_of_a_SWEPT_event_leaves_the_membership_joined_and_intact() = rigTest {
-        val event = createAndJoin(name = "Weekend")
-        val before = assertNotNull(state().joined).membership
+    fun a_rename_of_a_SWEPT_event_leaves_the_membership_joined_and_intact() = behaviour {
+        val before = given {
+            val (event, membership) = joinedWeekend()
+            // The nightly sweep deleted the event — every subsequent request 404s.
+            step("the event swept", act = { backend.sweep(event) }, until = { event<WorldEvent.EventDeleted>() })
+            membership
+        }
 
-        // The nightly sweep deleted the event — every subsequent request 404s.
-        backend.sweep(event)
-
-        rename("Ana's 30th")
-        val status = awaitRename { it is RenameState.Failed }
-
+        lateinit var failed: Seen<Layer.Joined>
+        whenever { rename("Ana's 30th") }
+        then {
+            failed = screen<Layer.Joined> { it.renameState is RenameState.Failed }
+            // THE INVARIANT: a 404 is ONE witness, and the self-leave needs two. The membership must survive a rename
+            // against a swept event byte for byte — the config is the only record of the join, and losing it is
+            // unrecoverable. Its name is the heading, so that survives too.
+            neverScreen<Layer.Joined> { it.membership != before }
+            neverScreen<Layer.CreateEvent>()
+        }
         // A 404 arrives as the GENERIC failure — it has no distinct meaning here by design.
-        assertEquals(
-            RenameState.Failed(ScreenMessage.RENAME_FAILED),
-            status,
-        )
-        // THE INVARIANT: a 404 is ONE witness, and the self-leave needs two. The membership must survive a rename
-        // against a swept event byte for byte — the config is the only record of the join, and losing it is
-        // unrecoverable.
-        assertEquals(before, state().joined?.membership, "the membership survives the 404 unchanged")
-        assertEquals("Weekend", heading(), "…and so does the heading")
+        assertEquals(RenameState.Failed(ScreenMessage.RENAME_FAILED), failed.value.renameState)
+        assertEquals(before, failed.value.membership, "the membership survives the 404 unchanged")
     }
 
     @Test
-    fun the_reset_command_clears_the_latch_so_a_second_rename_starts_clean() = rigTest {
-        val event = createAndJoin(name = "Weekend")
+    fun the_reset_command_clears_the_latch_so_a_second_rename_starts_clean() = behaviour {
+        val (event, _) = given {
+            joinedWeekend().also {
+                step("renamed", act = { rename("First") }, until = {
+                    screen<Layer.Joined> { it.renameState == RenameState.Succeeded }
+                    settled { true }
+                })
+            }
+        }
 
-        rename("First")
-        awaitRename { it == RenameState.Succeeded }
-        // A user command is an intent: `/user` answers before the reset lands, so the cleared latch is awaited.
-        tap(UiIntent.RenameStatusConsumed)
-        awaitRename { it == RenameState.Idle }
+        whenever { tap(UiIntent.RenameStatusConsumed) }
+        then { screen<Layer.Joined> { it.renameState == RenameState.Idle } }
 
-        rename("Second")
-        awaitRename { it == RenameState.Succeeded }
-        assertEquals("Second", backendName(event))
-        awaitState { it.joined?.membership?.name == "Second" }
+        whenever { rename("Second") }
+        then {
+            screen<Layer.Joined> { it.renameState == RenameState.Succeeded }
+            event<WorldEvent.EventRenamed> { it.event == event && it.name == "Second" }
+            screen<Layer.Joined> { it.membership.name == "Second" }
+        }
     }
 
     // ---- helpers --------------------------------------------------------------------------------
 
-    /** The heading the joined screen renders: the membership's name. */
-    private suspend fun Rig.heading(): String? = state().joined?.membership?.name
-
-    private suspend fun Rig.awaitRename(until: (RenameState) -> Boolean): RenameState =
-        awaitState { s -> s.joined?.renameState?.let(until) == true }.joined!!.renameState
-
-    /** The name the backend serves for [event]. */
-    private suspend fun Rig.backendName(event: String): String? =
-        publicBackend.event(event).name
+    /** An event created as "Weekend" and joined, its heading shown. Answers its id and the membership the screen shows. */
+    private suspend fun Given.joinedWeekend(): Pair<String, JoinedEvent> {
+        val event = createdEvent(name = "Weekend")
+        lateinit var joined: Seen<Layer.Joined>
+        step("joined", act = { confirmJoin() }, until = {
+            joined = screen<Layer.Joined> { it.membership.name == "Weekend" }
+            settled { true }
+        })
+        return event to joined.value.membership
+    }
 }

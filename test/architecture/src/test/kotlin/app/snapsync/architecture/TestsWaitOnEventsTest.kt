@@ -160,21 +160,18 @@ class TestsWaitOnEventsTest {
          * 3g-b empties the list and deletes the polls.
          */
         val STILL_POLLING = setOf(
-            "AdmittedSetIntegrationTest", "AlbumIntegrationTest", "BackDatedEventIntegrationTest",
-            "BoundedStatusStalenessIntegrationTest", "BoundedTopUpIntegrationTest", "CapTruncatedPublishIntegrationTest",
-            "ColdDownloadRelaunchIntegrationTest", "CycleEntryGateIntegrationTest", "DeclaredIntentIntegrationTest",
-            "DeclaredPhotosIntegrationTest", "DeviceRefusalIntegrationTest", "DiagnosticDumpIntegrationTest",
-            "DownloadLeaveIntegrationTest", "EncryptedEventIntegrationTest", "EntryIntegrationTest",
-            "EventChecksIntegrationTest", "EventCompletionIntegrationTest", "FlexibleShareRangeIntegrationTest",
-            "FullStackIntegrationTest", "HandOffIntegrationTest", "IncrementalUnionIntegrationTest",
-            "InterruptedImportIntegrationTest", "InviteLinkHintsIntegrationTest", "JoinGateIntegrationTest",
+            "AlbumIntegrationTest", "BackDatedEventIntegrationTest", "BoundedTopUpIntegrationTest",
+            "CapTruncatedPublishIntegrationTest", "ColdDownloadRelaunchIntegrationTest",
+            "CycleEntryGateIntegrationTest", "DeclaredIntentIntegrationTest", "DeviceRefusalIntegrationTest",
+            "DiagnosticDumpIntegrationTest", "DownloadLeaveIntegrationTest", "EncryptedEventIntegrationTest",
+            "EntryIntegrationTest", "EventChecksIntegrationTest", "EventCompletionIntegrationTest",
+            "FlexibleShareRangeIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest",
+            "IncrementalUnionIntegrationTest", "InterruptedImportIntegrationTest", "JoinGateIntegrationTest",
             "LostUploadAckIntegrationTest", "ManifestVersionIntegrationTest", "MobileDataIntegrationTest",
-            "NarrowedScopeIntegrationTest", "OsCompletionIntegrationTest", "PathFormLinkIntegrationTest",
-            "ReconfigureIntegrationTest", "ReinstallIntegrationTest", "RelaunchIntegrationTest", "RenameIntegrationTest",
-            "Rig", "RigEvents", "RigOs", "RigTraffic", "RigUploaders", "SelectionIsTheWalkIntegrationTest",
-            "SelectionPolicyIntegrationTest", "ShareSetIntegrationTest", "ShareableCountIntegrationTest", "Shots",
-            "ShotsTest", "StagedByteReclaimIntegrationTest", "TrustIntegrationTest", "UploadCycleIntegrationTest",
-            "VersionGateIntegrationTest",
+            "NarrowedScopeIntegrationTest", "OsCompletionIntegrationTest", "ReconfigureIntegrationTest",
+            "ReinstallIntegrationTest", "Rig", "RigEvents", "RigOs", "RigTraffic", "RigUploaders",
+            "SelectionIsTheWalkIntegrationTest", "ShareSetIntegrationTest", "Shots", "ShotsTest",
+            "StagedByteReclaimIntegrationTest", "TrustIntegrationTest", "UploadCycleIntegrationTest",
         )
 
         /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */

@@ -2,13 +2,15 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Acts
+import app.snapsync.control.behaviour.Expectations
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.PhotoGrant
+import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ShareCount
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.fail
 
 /**
  * The join-time **shareable-count preview** over the **real** stack: the count the join surface shows must equal
@@ -25,21 +27,30 @@ class ShareableCountIntegrationTest {
         requirement = "What the member is told is shared is exactly what is shared",
         scenario = "The preview matches the upload",
     )
-    fun the_preview_count_equals_the_set_the_cycle_uploads() = rigTest {
-        extensionUploadsOnly()
-        addPhoto("CAM") // an ordinary camera photo — admitted
-        addPhoto("SHOT", kind = LibraryPhotoKind.SCREENSHOT) // excluded by subtype
-        addPhoto("WA", kind = LibraryPhotoKind.LOW_RES) // 1.9 MP → below the 3 MP floor, excluded
+    fun the_preview_count_equals_the_set_the_cycle_uploads() = behaviour {
+        given {
+            extensionUploadsOnly()
+            photoTaken("CAM") // an ordinary camera photo — admitted
+            photoTaken("SHOT", LibraryPhotoKind.SCREENSHOT) // excluded by subtype
+            photoTaken("WA", LibraryPhotoKind.LOW_RES) // 1.9 MP → below the 3 MP floor, excluded
+        }
 
         // The preview for the same cutoff the cycle applies: exactly the camera photo.
-        create()
-        awaitShareCount(ShareCount.Ready(1), "the preview counts only the admitted photo")
-        join()
+        whenever { create() }
+        then { shareCount(ShareCount.Ready(1)) } // the preview counts only the admitted photo
+
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined>()
+            settled { true }
+        }
 
         // …and the cycle uploads exactly that set — the count is not a separate, looser rule.
-        cycle()
-        assertEquals(listOf(primaryJob("CAM")), jobs().live)
-        assertEquals(1, jobs().created)
+        whenever { cycle() }
+        then {
+            times(1) { event<WorldEvent.UploadJobCreated>() }
+            settled { it.state.inFlight?.jobs == listOf(primaryJob("CAM")) }
+        }
     }
 
     @Test
@@ -48,18 +59,20 @@ class ShareableCountIntegrationTest {
         requirement = "The join screen shows how many photos will be shared",
         scenario = "The count follows the range",
     )
-    fun a_later_candidate_cutoff_previews_fewer_photos() = rigTest {
-        addPhoto("OLD", date = "2026-05-20T00:00:00Z")
-        addPhoto("NEW", date = "2026-06-10T00:00:00Z")
-        create()
+    fun a_later_candidate_cutoff_previews_fewer_photos() = behaviour {
+        given {
+            photoTaken("OLD", date = "2026-05-20T00:00:00Z")
+            photoTaken("NEW", date = "2026-06-10T00:00:00Z")
+            createdEvent()
+        }
 
         // A candidate cutoff between the two dates admits only NEW — the preview tracks the chosen cutoff.
-        setRange(Choices(cutoff = "2026-05-16T00:00:00Z"))
-        awaitShareCount(ShareCount.Ready(2))
-        setRange(Choices(cutoff = "2026-06-01T00:00:00Z"))
-        awaitShareCount(ShareCount.Ready(1))
-        setRange(Choices(cutoff = "2026-06-12T00:00:00Z"))
-        awaitShareCount(ShareCount.Ready(0))
+        whenever { setRange(Choices(cutoff = "2026-05-16T00:00:00Z")) }
+        then { shareCount(ShareCount.Ready(2)) }
+        whenever { setRange(Choices(cutoff = "2026-06-01T00:00:00Z")) }
+        then { shareCount(ShareCount.Ready(1)) }
+        whenever { setRange(Choices(cutoff = "2026-06-12T00:00:00Z")) }
+        then { shareCount(ShareCount.Ready(0)) }
     }
 
     @Test
@@ -68,26 +81,26 @@ class ShareableCountIntegrationTest {
         requirement = "The join screen shows how many photos will be shared",
         scenario = "No count without access",
     )
-    fun no_count_without_a_usable_grant() = rigTest {
-        addPhoto("CAM")
-        create()
-        awaitShareCount(ShareCount.Ready(1)) // counted under the grant — so an absent count below is the grant's doing
+    fun no_count_without_a_usable_grant() = behaviour {
+        given { photos("CAM") }
 
-        permission(PhotoGrant.DENIED)
-        awaitShareCount(ShareCount.Unavailable, "a denied grant yields no count")
+        // Counted under the grant — so an absent count below is the grant's doing.
+        whenever { create() }
+        then { shareCount(ShareCount.Ready(1)) }
 
-        permission(PhotoGrant.GRANTED)
-        awaitShareCount(ShareCount.Ready(1))
-        permission(PhotoGrant.NOT_DETERMINED)
-        awaitShareCount(ShareCount.Unavailable, "an unresolved grant yields no count")
+        whenever { library.permission(PhotoGrant.DENIED) }
+        then { shareCount(ShareCount.Unavailable) } // a denied grant yields no count
+
+        whenever { library.permission(PhotoGrant.GRANTED) }
+        then { shareCount(ShareCount.Ready(1)) }
+        whenever { library.permission(PhotoGrant.NOT_DETERMINED) }
+        then { shareCount(ShareCount.Unavailable) } // an unresolved grant yields no count
     }
+
+    /** The create form for the default event, filled and confirmed: the join gate opens on it. */
+    private suspend fun Acts.create() = createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
 }
 
-/** Wait until the open join gate's shareable-count preview reads [expected]. */
-private suspend fun Rig.awaitShareCount(expected: ShareCount, what: String = "the preview reads $expected") {
-    try {
-        awaitState { s -> (s.ui.layer as? Layer.JoiningEvent)?.range?.shareCount == expected }
-    } catch (e: IllegalStateException) {
-        fail("$what — last: ${(state().ui.layer as? Layer.JoiningEvent)?.range?.shareCount}", e)
-    }
-}
+/** The open join gate's shareable-count preview reads [expected]. */
+private fun Expectations.shareCount(expected: ShareCount) =
+    screen<Layer.JoiningEvent> { it.range?.shareCount == expected }

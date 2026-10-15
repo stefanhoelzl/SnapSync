@@ -1,9 +1,12 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
-import kotlin.test.assertIs
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The **bounded staleness** pins, over the real composed stack, driven through the
@@ -33,45 +36,60 @@ import kotlin.test.assertIs
 class BoundedStatusStalenessIntegrationTest {
 
     @Test
-    fun a_burst_discovered_after_the_entry_read_does_not_leave_the_screen_settled() = rigTest {
-        createAndJoin()
+    fun a_burst_discovered_after_the_entry_read_does_not_leave_the_screen_settled() = behaviour {
+        given {
+            joinedEvent()
+            // The foreground entry read: counted zeros on both arms, so the screen legitimately settles. The entry
+            // also starts the foreground-gated poll.
+            step("in front, in sync", act = { os.foreground() }, until = {
+                screen<Layer.Joined> { it.health == SyncHealth.InSync }
+                settled { true }
+            })
+        }
 
-        // The foreground entry read: counted zeros on both arms, so the screen legitimately settles. The entry
-        // also starts the foreground-gated poll.
-        os.foreground()
-        awaitInSync()
-
-        // Discovery lands AFTER that read — the order `Foreground` actually produces, since the status refresh
-        // does not wait for the reconcile's union fetch. A fellow member's photo appears, and a reconcile plans
-        // its download.
-        foreignDevice(DEV_F, "FA")
-        reconcile()
-
-        // From here NOTHING reads the status: no refresh, no trigger. The poll is the only thing running,
-        // exactly as it is while a member watches the screen. Before this change it ticked the ledger arm alone
-        // and this stayed "In sync" for the rest of the session. The wait exceeds the poll's cadence on purpose:
-        // what is asserted is that the screen corrects itself ON A TICK.
-        assertIs<SyncHealth.Syncing>(awaitHealth { it is SyncHealth.Syncing })
-
-        os.background() // the poll stops with the foreground
+        // Discovery lands AFTER that read — the order `Foreground` actually produces, since the status refresh does not
+        // wait for the reconcile's union fetch. A fellow member's photo appears, and a reconcile plans its download.
+        //
+        // From there NOTHING reads the status: no refresh, no trigger. The poll is the only thing running, exactly as
+        // it is while a member watches the screen. Before this change it ticked the ledger arm alone and this stayed
+        // "In sync" for the rest of the session. The clock moves past the poll's cadence on purpose: what is asserted
+        // is that the screen corrects itself ON A TICK.
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("FA"))
+            os.foreground()
+            advance(COUNTS_POLL)
+        }
+        then { screen<Layer.Joined> { it.health is SyncHealth.Syncing } }
     }
 
     @Test
-    fun an_import_that_lands_mid_foreground_reaches_the_screen_within_the_bound() = rigTest {
-        createAndJoin()
-        foreignDevice(DEV_F, "FA")
+    fun an_import_that_lands_mid_foreground_reaches_the_screen_within_the_bound() = behaviour {
+        given {
+            joinedEvent()
+            fellowMember(DEV_F, "FA")
+            // A read while the burst is outstanding: the download arm holds the screen at "Syncing". The foreground
+            // entry reads the status, plans the download, and starts the poll, whose next tick reads it again.
+            step("in front, its download planned", act = {
+                os.foreground()
+                advance(COUNTS_POLL)
+            }, until = {
+                screen<Layer.Joined> { it.health is SyncHealth.Syncing }
+                event<WorldEvent.DownloadStarted>()
+                settled { true }
+            })
+        }
 
-        // A read while the burst is outstanding: the download arm holds the screen at "Syncing". The foreground
-        // entry reads the status, plans the download, and starts the poll.
-        os.foreground()
-        awaitHealth { it is SyncHealth.Syncing }
+        // The asset arrives. This is the download arm's own progress — no ledger change, no upload, nothing the other
+        // arm's poll would ever have noticed — and nothing reads the status but the poll.
+        whenever {
+            downloadSession.finish()
+            advance(COUNTS_POLL)
+        }
+        then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
+    }
 
-        // The asset arrives. This is the download arm's own progress — no ledger change, no upload, nothing the
-        // other arm's poll would ever have noticed.
-        stage()
-
-        assertIs<SyncHealth.InSync>(awaitHealth { it is SyncHealth.InSync })
-
-        os.background()
+    private companion object {
+        /** Past the joined screen's next read of the counts. */
+        val COUNTS_POLL = 5.seconds
     }
 }

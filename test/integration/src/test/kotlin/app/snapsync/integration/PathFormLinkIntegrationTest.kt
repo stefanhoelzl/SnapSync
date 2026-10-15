@@ -1,6 +1,9 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Seen
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.WorldEvent
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -22,26 +25,31 @@ class PathFormLinkIntegrationTest {
         requirement = "Every invite form opens in every future version",
         scenario = "A path-form link opens the join screen",
     )
-    fun a_path_form_link_opens_the_join_screen_for_its_event() = rigTest {
-        // The bare path form names a PLAIN event; an encrypted one's carries its key (`EncryptedEventIntegrationTest`).
-        devControls.encryptNewEvents(false)
-        val event = registerEvent(name = "Anna's 40th")
+    fun a_path_form_link_opens_the_join_screen_for_its_event() = behaviour {
+        val event = given {
+            // The bare path form names a PLAIN event; an encrypted one's carries its key (`EncryptedEventIntegrationTest`).
+            step("plain events", act = { devControls.encryptNewEvents(false) }, until = {})
+            registeredEvent(name = "Anna's 40th")
+        }
 
-        openLink("$LINK_ORIGIN/join/$event")
-
-        val gate = awaitState { ((it.ui.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed) != null }
-            .ui.layer as Layer.JoiningEvent
-        assertEquals(event, gate.eventId)
-        assertEquals("Anna's 40th", (gate.phase as JoinPhase.Detailed).eventName)
+        lateinit var gate: Seen<Layer.JoiningEvent>
+        whenever { openLink("$LINK_ORIGIN/join/$event") }
+        then { gate = screen<Layer.JoiningEvent> { it.phase is JoinPhase.Detailed } }
+        assertEquals(event, gate.value.eventId)
+        assertEquals("Anna's 40th", (gate.value.phase as JoinPhase.Detailed).eventName)
     }
 
     @Test
     @Verifies(spec = "invite-link", requirement = "A damaged invite is reported and changes nothing")
-    fun a_malformed_path_form_link_is_reported_and_changes_nothing() = rigTest {
-        openLink("$LINK_ORIGIN/join/not-an-event")
-
-        val create = awaitState { (it.ui.layer as? Layer.CreateEvent)?.error != null }.ui.layer as Layer.CreateEvent
-        assertEquals(ScreenMessage.INVALID_LINK, create.error)
-        assertEquals(null, state().joined, "a damaged invite joins nothing")
+    fun a_malformed_path_form_link_is_reported_and_changes_nothing() = behaviour {
+        lateinit var create: Seen<Layer.CreateEvent>
+        whenever { openLink("$LINK_ORIGIN/join/not-an-event") }
+        then {
+            create = screen<Layer.CreateEvent> { it.error != null }
+            // A damaged invite joins nothing.
+            neverScreen<Layer.Joined>()
+            never<WorldEvent.MemberJoined>()
+        }
+        assertEquals(ScreenMessage.INVALID_LINK, create.value.error)
     }
 }
