@@ -323,13 +323,19 @@ class PhotoAccessIntegrationTest {
             step("A shared", act = { uploadSession.complete() }, until = { settled { true } })
         }
 
+        // The app's uploader first, settled before the extension runs: the extension's `process()` answers on the
+        // operating system's own thread, outside the host's loop, so one act holding both would race them for B.
         whenever {
             library.permission(PhotoGrant.GRANTED)
             os.foreground()
-            cycle()
         }
         then {
             event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("B") }
+            never<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
+        }
+
+        whenever { cycle() }
+        then {
             never<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
             never<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") }
         }
