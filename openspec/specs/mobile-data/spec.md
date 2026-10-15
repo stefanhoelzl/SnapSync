@@ -19,7 +19,9 @@ choice. It SHALL be made in the app menu (capability `app-experience`), with or 
 soon as it is switched, without a Save; it SHALL work offline. It SHALL keep its value when the member leaves an
 event, joins another and when the app is updated; a new installation of the app SHALL start with it on. It SHALL
 apply the same way to sharing and to receiving. If the choice cannot be saved, the switch SHALL return to the
-choice still in effect and say that the change could not be saved, and no transfer SHALL follow the change.
+choice still in effect and say that the change could not be saved, and no transfer SHALL follow the change. If the
+phone cannot read the choice, it SHALL be treated as off: the menu SHALL show it off, and every photo SHALL wait for
+an unrestricted Wi-Fi, so a doubt never spends the member's mobile data.
 
 #### Scenario: Untouched, photos use any network
 - **WHEN** a member joins without ever changing the mobile-data choice and takes a photo while on mobile data
@@ -36,6 +38,10 @@ choice still in effect and say that the change could not be saved, and no transf
 #### Scenario: A change that cannot be saved
 - **WHEN** the member flips the mobile-data switch and the change cannot be saved
 - **THEN** the switch returns to the choice in effect, the menu says the change could not be saved, and transfers keep the rule they had
+
+#### Scenario: A choice the phone cannot read
+- **WHEN** the phone cannot read the member's mobile-data choice
+- **THEN** the menu shows mobile data off, and photos are sent and received only over an unrestricted Wi-Fi
 
 ### Requirement: With mobile data off, photos wait for an unrestricted Wi-Fi
 With the choice off, the member's photos SHALL NOT be uploaded or downloaded over mobile data, over

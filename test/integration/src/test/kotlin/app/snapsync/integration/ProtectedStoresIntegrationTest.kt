@@ -17,7 +17,7 @@ import kotlin.test.Test
 /**
  * **The device's protected stores, unreadable or refusing** — a phone not unlocked since it restarted, a phone restored
  * without the event's key, a Keychain or a preference that refuses a call — and what the member sees of each
- * (`changes/unavailable-keychain-and-preferences`).
+ * (`changes/archive/2026-10-15-unavailable-keychain-and-preferences`).
  *
  * The locked phone is ONE device fact (`device.lock()`): the Keychain, the databases and the files sealed at once, as
  * Apple documents the classes the app writes, before the first unlock since a restart. A running phone cannot enter

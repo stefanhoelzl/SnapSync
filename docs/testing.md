@@ -979,7 +979,7 @@ too):
   app running in that window cannot write its own log. The preferences are left alone, their sealed answer being
   unmeasured too. A running phone cannot enter the state, so a test plays the restart — `device.lock()`, then the
   host's cold background relaunch — and a phone locked after a first unlock is no state at all here: every store the
-  app writes stays readable in it (`changes/unavailable-keychain-and-preferences`).
+  app writes stays readable in it (`changes/archive/2026-10-15-unavailable-keychain-and-preferences`).
 
 **Plumbing stays on the mock, never the face**: what the channel and the other mocks need of a system — the disk's
 read, write and list, the databases' opens and their deletion — is a member of the mock class, which the face gate

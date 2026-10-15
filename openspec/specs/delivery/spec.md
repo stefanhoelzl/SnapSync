@@ -234,6 +234,11 @@ member as having left, SHALL NOT change the device's identity, and SHALL resume 
 - **WHEN** iOS wakes the app in the background after a restart, before the member has unlocked the phone
 - **THEN** nothing is uploaded, the member is still joined, and uploading resumes after the unlock
 
+#### Scenario: A wake before the first unlock does not make the phone a new member
+- **WHEN** iOS wakes the app in the background after a restart, before the member has unlocked the phone, and the
+  member later unlocks it and opens the app
+- **THEN** the phone is still the same member of the event, and the event's members do not count a new device
+
 ### Requirement: Losing photo access stops new uploads but lets in-flight ones finish
 
 When photo access is revoked (capability `photo-access`), no new upload SHALL start; uploads already in
