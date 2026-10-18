@@ -160,9 +160,8 @@ class TestsWaitOnEventsTest {
          * 3g-b empties the list and deletes the polls.
          */
         val STILL_POLLING = setOf(
-            "AlbumIntegrationTest", "EntryIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest",
-            "MobileDataIntegrationTest", "OsCompletionIntegrationTest", "ReinstallIntegrationTest", "Rig", "RigEvents",
-            "RigOs", "RigTraffic", "RigUploaders", "SelectionIsTheWalkIntegrationTest", "Shots", "ShotsTest",
+            "AlbumIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest", "OsCompletionIntegrationTest",
+            "ReinstallIntegrationTest", "Rig", "RigEvents", "RigOs", "RigTraffic", "RigUploaders", "Shots", "ShotsTest",
             "UploadCycleIntegrationTest",
         )
 

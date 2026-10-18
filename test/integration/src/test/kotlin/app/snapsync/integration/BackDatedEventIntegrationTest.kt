@@ -34,7 +34,7 @@ class BackDatedEventIntegrationTest {
         val event = given { hostOfTheWeekend() }
 
         whenever { uploadAll() }
-        then { event<WorldEvent.UnionChanged> { it.asset == "HOST-1" && it.served } }
+        then { event<WorldEvent.UnionChanged> { it.asset == "HOST-1" && it.gained } }
 
         // Day 2: a guest scans the invite, joins and shares the photo they took that weekend.
         whenever {
@@ -43,7 +43,7 @@ class BackDatedEventIntegrationTest {
             os.foreground()
         }
         then {
-            event<WorldEvent.UnionChanged> { it.asset == "GUEST-1" && it.served } // both members' photos are in the event
+            event<WorldEvent.UnionChanged> { it.asset == "GUEST-1" && it.gained } // both members' photos are in the event
             event<WorldEvent.DownloadStarted>()
             settled { true }
         }

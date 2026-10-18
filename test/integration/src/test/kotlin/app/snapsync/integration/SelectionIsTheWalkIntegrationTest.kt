@@ -1,11 +1,13 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Under a partial grant the selection is the walk (decision record `changes/selection-is-the-walk`), over the REAL
@@ -26,66 +28,95 @@ class SelectionIsTheWalkIntegrationTest {
         requirement = "Switching between full and limited access never re-uploads",
         scenario = "Narrowing to a selection",
     )
-    fun a_downgrade_withdraws_the_unselected_and_the_foreground_settles_the_selected() = rigTest {
+    fun a_downgrade_withdraws_the_unselected_and_the_foreground_settles_the_selected() = behaviour {
         val all = listOf("A", "B", "C", "D")
-        // The OS-driven cycle alone under the full grant: its four jobs are the ones the downgrade strands.
-        extensionUploadsOnly()
-        permission(PhotoGrant.GRANTED)
-        val event = createAndJoin()
-        for (id in all) addPhoto(id)
-
-        // Four jobs in flight under the full grant.
-        cycle()
-        assertEquals(all.map(::primaryJob).toSet(), jobs().live.toSet(), "all four in flight")
-
-        // The network returns: every object lands, and no acknowledgement ever reaches the app.
-        uploadQueue.completeJob() // the OS finishes all four jobs; the extension is never invoked
+        given {
+            // The OS-driven cycle alone under the full grant: its four jobs are the ones the downgrade strands.
+            extensionUploadsOnly()
+            photoAccess(PhotoGrant.GRANTED)
+            joinedEvent()
+            photos(*all.toTypedArray())
+            step("four jobs in flight under the full grant", act = { cycle() }, until = {
+                all.forEach { id -> event<WorldEvent.ManifestPublished> { id in it.added } }
+                settled { it.state.inFlight?.jobs?.toSet() == all.map(::primaryJob).toSet() }
+            })
+            // The network returns: every object lands, and no acknowledgement ever reaches the app — the OS finishes
+            // all four jobs, and the extension is never invoked.
+            step("every object landed, unacknowledged", act = { uploadQueue.completeJob() }, until = {
+                all.forEach { id -> event<WorldEvent.BytesStored> { it.asset == id } }
+                never<WorldEvent.UploadJobEnded>()
+                settled { true }
+            })
+        }
 
         // Access narrows to two of the four, and the selection is read. Under a partial grant the extension withholds,
         // so the app's uploader is the one that runs: its selection change walks the read selection.
-        permission(PhotoGrant.LIMITED)
-        devControls.pin(app = true, extension = true)
-        library.changeSelection(listOf("A", "B"))
-        awaitSelection("A", "B")
-
-        // The de-selected photos leave the manifest, in flight or not.
-        eventually(read = { manifest(event)?.keys }) { it == setOf("A", "B") }
-        // Still unacknowledged: the selected two are outstanding on the screen (a state read is the screen's pull).
-        awaitHealth { it is SyncHealth.Syncing }
+        whenever {
+            library.permission(PhotoGrant.LIMITED)
+            devControls.pin(app = true, extension = true)
+            library.changeSelection(listOf("A", "B"))
+            advance(5.seconds) // the screen's status poll
+        }
+        then {
+            // The de-selected photos leave the manifest, in flight or not.
+            event<WorldEvent.ManifestPublished> { "C" in it.withdrawn }
+            event<WorldEvent.ManifestPublished> { "D" in it.withdrawn }
+            never<WorldEvent.ManifestPublished> { "A" in it.withdrawn || "B" in it.withdrawn }
+            // Still unacknowledged: the selected two are outstanding on the screen.
+            screen<Layer.Joined> { it.health is SyncHealth.Syncing }
+        }
 
         // Foreground: the backend is asked, and the selected uploads whose bytes it holds settle — and the screen
         // reaches In sync over the selection, instead of Syncing until access returns.
-        foreground()
-        awaitInSync()
-        assertEquals(setOf("A", "B"), manifest(event)?.keys, "the settle lists no withdrawn photo")
+        whenever {
+            os.foreground()
+            advance(5.seconds)
+        }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.InSync }
+            // the settle lists no withdrawn photo
+            never<WorldEvent.ManifestPublished> { "C" in it.added || "D" in it.added }
+            never<WorldEvent.ManifestPublished> { "A" in it.withdrawn || "B" in it.withdrawn }
+        }
     }
 
     @Test
     @Verifies(spec = "photo-access", requirement = "A selection the app has not yet looked at withdraws nothing")
-    fun an_unread_selection_withholds_the_cycle_and_deletes_nothing() = rigTest {
+    fun an_unread_selection_withholds_the_cycle_and_deletes_nothing() = behaviour {
         // A cold launch under a partial grant: the selection has not been read yet. Collapsed to an empty
         // selection, the enqueue resolved every waiting row against it and deleted each one as gone.
-        extensionUploadsOnly() // the full-grant cycle that declares the row is the OS-driven one
-        permission(PhotoGrant.GRANTED)
-        val event = createAndJoin()
-        addPhoto("A")
-        uploadQueue.jobLimit(0) // discovered and declared, no job: the row the old collapse deleted
-        cycle()
-        assertEquals(setOf("A"), manifest(event)?.keys, "declared on discovery")
-        assertEquals(0, jobs().created)
+        given {
+            extensionUploadsOnly() // the full-grant cycle that declares the row is the OS-driven one
+            photoAccess(PhotoGrant.GRANTED)
+            joinedEvent()
+            photos("A")
+            // discovered and declared, no job: the row the old collapse deleted
+            step("the queue takes no job", act = { uploadQueue.jobLimit(0) }, until = {})
+            step("A declared on discovery", act = { cycle() }, until = {
+                event<WorldEvent.ManifestPublished> { "A" in it.added }
+                never<WorldEvent.UploadJobCreated>()
+                settled { true }
+            })
+        }
 
-        // No selection read yet — and under a partial grant only the app's uploader may create.
-        permission(PhotoGrant.LIMITED)
-        devControls.pin(app = true, extension = true)
-        foreground() // the foreground's tail runs the app's uploader, whose admission withholds on an unread selection
-
-        assertEquals(setOf("A"), manifest(event)?.keys, "no row is deleted: the declaration stands")
-        assertEquals(0, appUploads().created, "and nothing is created while the selection is unread")
+        // No selection read yet — and under a partial grant only the app's uploader may create. The foreground's tail
+        // runs the app's uploader, whose admission withholds on an unread selection.
+        whenever {
+            library.permission(PhotoGrant.LIMITED)
+            devControls.pin(app = true, extension = true)
+            os.foreground()
+        }
+        then {
+            never<WorldEvent.ManifestPublished> { "A" in it.withdrawn } // no row is deleted: the declaration stands
+            never<WorldEvent.SessionTransferCreated>() // and nothing is created while the selection is unread
+        }
 
         // Once the selection is read the app's uploader runs over it.
-        library.changeSelection(listOf("A"))
-        awaitSelection("A")
-        assertEquals(listOf(primaryKey("A")), awaitAppUploads(1).live)
+        whenever { library.changeSelection(listOf("A")) }
+        then {
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
+            settled { it.state.inFlight?.sessionTransfers == listOf(primaryKey("A")) }
+        }
     }
 
     @Test
@@ -94,37 +125,39 @@ class SelectionIsTheWalkIntegrationTest {
         requirement = "Deleting or no longer sharing a photo withdraws it",
         scenario = "Deselecting under limited access withdraws",
     )
-    fun re_selecting_a_withdrawn_photo_shares_it_again() = rigTest {
+    fun re_selecting_a_withdrawn_photo_shares_it_again() = behaviour {
         // Under a partial grant the app's uploader is the one that runs (the extension withholds), each selection
         // change's tail walking the read selection.
-        permission(PhotoGrant.LIMITED)
-        val event = createAndJoin()
-        addPhoto("A")
-        addPhoto("B")
+        given {
+            photoAccess(PhotoGrant.LIMITED)
+            joinedEvent()
+            photos("A", "B")
+            step("A and B selected", act = { library.changeSelection(listOf("A", "B")) }, until = {
+                times(2) { event<WorldEvent.SessionTransferCreated>() }
+                settled { true }
+            })
+            step("both uploaded", act = { uploadSession.complete() }, until = {
+                event<WorldEvent.BytesStored> { it.asset == "A" }
+                event<WorldEvent.BytesStored> { it.asset == "B" }
+                never<WorldEvent.SessionTransferCreated>()
+                settled { true }
+            })
+        }
 
-        library.changeSelection(listOf("A", "B"))
-        awaitSelection("A", "B")
-        awaitAppUploads(2)
-        completeAppUploads()
-        assertTrue(primaryKey("B") in objects())
-        assertEquals(2, appUploads().created)
+        whenever { library.changeSelection(listOf("A")) }
+        then {
+            event<WorldEvent.ManifestPublished> { "B" in it.withdrawn }
+            never<WorldEvent.ManifestPublished> { "A" in it.withdrawn }
+        }
 
-        library.changeSelection(listOf("A"))
-        awaitSelection("A")
-        eventually(read = { manifest(event)?.keys }) { it == setOf("A") }
-
-        library.changeSelection(listOf("A", "B"))
-        awaitSelection("A", "B")
-        assertEquals(listOf(primaryKey("B")), awaitAppUploads(1).live, "uploaded again")
-        assertEquals(3, appUploads().created)
-        eventually<Set<String>?>(read = { manifest(event)?.keys }) { it == setOf("A", "B") }
+        whenever { library.changeSelection(listOf("A", "B")) }
+        then {
+            // uploaded again — one transfer more, and declared again beside A
+            times(1) { event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("B") } }
+            never<WorldEvent.SessionTransferCreated> { it.key != primaryKey("B") }
+            event<WorldEvent.ManifestPublished> { "B" in it.added }
+            never<WorldEvent.ManifestPublished> { "A" in it.withdrawn }
+            settled { it.state.inFlight?.sessionTransfers == listOf(primaryKey("B")) }
+        }
     }
-}
-
-/**
- * Wait until the app's own candidate read answers exactly [ids] — the selection snapshot has landed, so the next
- * cycle's discovery is fed it.
- */
-private suspend fun Rig.awaitSelection(vararg ids: String) {
-    eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == ids.toSet() }
 }
