@@ -74,10 +74,9 @@ class TestsWaitOnEventsTest {
         val reading = integration.filter { source -> LOG_READ.containsMatchIn(ZoneGates.stripComments(source.text)) }
             .map { it.file.nameWithoutExtension }.toSet()
         assertEquals(
-            STILL_READING_LOGS.toSortedSet(),
+            emptySet(),
             reading.toSortedSet(),
-            "an integration test observes the screen and what a system outside the app records — never the app's log. A " +
-                "class leaves the list once it reads none; no class joins it.",
+            "an integration test observes the screen and what a system outside the app records — never the app's log.",
         )
     }
 
@@ -151,18 +150,14 @@ class TestsWaitOnEventsTest {
             "VersionGateIntegrationTest",
         )
 
-        /** May only shrink: classes that still read the app's log to learn what it did. */
-        val STILL_READING_LOGS = setOf("HandOffIntegrationTest", "ReinstallIntegrationTest")
-
         /**
          * May only shrink: sources that still poll — the legacy helpers' (`Rig`, `RigEvents`, `RigOs`, `RigTraffic`,
          * `RigUploaders`, `Shots`) among them. Phase 31 converts the tests waiting on outcomes it gives events to; phase
          * 3g-b empties the list and deletes the polls.
          */
         val STILL_POLLING = setOf(
-            "AlbumIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest", "OsCompletionIntegrationTest",
-            "ReinstallIntegrationTest", "Rig", "RigEvents", "RigOs", "RigTraffic", "RigUploaders", "Shots", "ShotsTest",
-            "UploadCycleIntegrationTest",
+            "FullStackIntegrationTest", "OsCompletionIntegrationTest", "Rig", "RigEvents", "RigOs", "RigTraffic",
+            "RigUploaders", "Shots", "ShotsTest", "UploadCycleIntegrationTest",
         )
 
         /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */
