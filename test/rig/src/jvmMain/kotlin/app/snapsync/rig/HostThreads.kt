@@ -210,7 +210,7 @@ private class CheckedThreadLabel(private val loop: LaneLoop) : ThreadLabel {
 private fun JvmMocks.settledState(backendMocked: Boolean) = SettledState(
     appStorageBytes = disk.appStorageBytes(),
     libraryPhotos = library.photoIds,
-    albums = library.operator.appAlbums().map { SettledAlbum(it.id, it.title, it.photos) },
+    albums = library.appAlbums.map { SettledAlbum(it.id, it.title, it.photos) },
     inFlight = InFlight(
         jobs = uploadQueue.view().live,
         sessionTransfers = uploadSession.view().live,
