@@ -2,18 +2,20 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Behaviour
+import app.snapsync.control.behaviour.Expectations
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.status.NetworkWatch
-import app.snapsync.levers.AlbumKind
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
-import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Deleting the app and installing it again: the download record goes with the app, and the SnapSync mark on each
@@ -35,23 +37,32 @@ class ReinstallIntegrationTest {
         requirement = "Received photos are never shared back",
         scenario = "A reinstall does not share received photos back",
     )
-    fun a_rejoin_after_a_reinstall_neither_receives_nor_shares_back_what_the_library_still_holds() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        foreignDevice(OTHER, "FA", "FB")
-        downloadAll()
-        val received = libraryTotal()
-        val deleted = receivedAssetIds().first()
-        library.remove(deleted)
+    fun a_rejoin_after_a_reinstall_neither_receives_nor_shares_back_what_the_library_still_holds() = behaviour {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent().also { received("FA", "FB") }
+        }
+        given {
+            step("FA deleted from the library", act = { library.remove(imported("FA", OTHER)) }, until = {
+                settled { it.state.libraryPhotos == listOf(imported("FB", OTHER)) }
+            })
+            reinstalled()
+            rejoined(event)
+        }
 
-        host.reinstall()
-        rejoin(event)
-        downloadAll()
+        // The photo still held is not received again; the deleted one may be.
+        downloadsAll {
+            never<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(imported("FB", OTHER)) }
+            settled { it.state.libraryPhotos?.size == 2 }
+        }
 
-        assertEquals(received, libraryTotal(), "the photo still held is not received again; the deleted one may be")
-        cycle()
-        assertEquals(0, jobs().created, "no received photo is shared back as the member's own")
-        assertTrue(objects().isEmpty(), "and nothing of them lands on the backend")
+        // No received photo is shared back as the member's own, and nothing of them lands on the backend.
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.BytesStored>()
+            settled { true }
+        }
     }
 
     @Test
@@ -60,18 +71,21 @@ class ReinstallIntegrationTest {
         requirement = "Received photos are never shared back",
         scenario = "A share-only rejoin does not share received photos back",
     )
-    fun a_share_only_rejoin_after_a_reinstall_does_not_share_received_photos_back() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        foreignDevice(OTHER, "FA", "FB")
-        downloadAll()
+    fun a_share_only_rejoin_after_a_reinstall_does_not_share_received_photos_back() = behaviour {
+        given {
+            extensionUploadsOnly()
+            val event = joinedEvent().also { received("FA", "FB") }
+            reinstalled()
+            rejoined(event, Choices(direction = Direction.UploadOnly))
+        }
 
-        host.reinstall()
-        rejoin(event, Choices(direction = Direction.UploadOnly))
-
-        cycle()
-        assertEquals(0, jobs().created, "a share-only member shares none of the photos it received")
-        assertTrue(objects().isEmpty())
+        // A share-only member shares none of the photos it received.
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.BytesStored>()
+            settled { true }
+        }
     }
 
     @Test
@@ -80,23 +94,22 @@ class ReinstallIntegrationTest {
         requirement = "A deleted received photo never comes back",
         scenario = "A reinstall recognises received photos",
     )
-    fun an_android_rejoin_recognises_the_received_photos_filed_into_the_event_album() = rigTest {
+    fun an_android_rejoin_recognises_the_received_photos_filed_into_the_event_album() = behaviour {
         // An Android phone's albums are folders, and its event album's folder is no sharing candidate — so the
         // library read that recognises received photos must reach into it.
-        library.albumKind(AlbumKind.FOLDER)
-        host.relaunch()
-        val event = createAndJoin(Choices(saveToAlbum = true))
-        awaitAlbum() // a download imports into the album only once it exists
-        foreignDevice(OTHER, "FA", "FB")
-        downloadAll()
-        eventually(read = { albums().singleOrNull()?.assets?.size }) { it == 2 }
-        val received = libraryTotal()
+        given {
+            androidLibrary()
+            val (event, _) = joinedSavingToAlbum()
+            received("FA", "FB")
+            reinstalled()
+            rejoined(event, Choices(saveToAlbum = true))
+        }
 
-        host.reinstall()
-        rejoin(event, Choices(saveToAlbum = true))
-        downloadAll()
-
-        assertEquals(received, libraryTotal(), "the album's received photos are recognised, not received again")
+        // The album's received photos are recognised, not received again.
+        downloadsAll {
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { it.state.libraryPhotos?.size == 2 }
+        }
     }
 
     @Test
@@ -110,26 +123,32 @@ class ReinstallIntegrationTest {
         requirement = "On Android under full access, only photos in the DCIM folder are shared",
         scenario = "An own photo moved into the event album is shared",
     )
-    fun an_android_reinstall_shares_no_received_album_photo_back_but_an_own_photo_put_there() = rigTest {
+    fun an_android_reinstall_shares_no_received_album_photo_back_but_an_own_photo_put_there() = behaviour {
         // The event album's folder is a folder of the default gallery like any other (capability `photo-sharing`): a
         // received photo there is kept out by its mark after a reinstall, as on iPhone — not by its folder — and a photo
         // the member put there themselves is shared.
-        extensionUploadsOnly()
-        library.albumKind(AlbumKind.FOLDER)
-        host.relaunch()
-        val event = createAndJoin(Choices(saveToAlbum = true))
-        awaitAlbum()
-        foreignDevice(OTHER, "FA", "FB")
-        downloadAll()
-        val album = eventually(read = { albums().singleOrNull() }) { it?.assets?.size == 2 }!!
+        given {
+            extensionUploadsOnly()
+            androidLibrary()
+            val (event, album) = joinedSavingToAlbum()
+            received("FA", "FB")
+            step("both in the album", act = { os.foreground() }, until = {
+                settled { it.state.albums?.singleOrNull()?.photos?.size == 2 }
+            })
+            reinstalled()
+            step("an own photo put in the album", act = {
+                takePhoto("OWN")
+                library.placeIn(album, "OWN")
+            }, until = { settled { true } })
+            rejoined(event, Choices(saveToAlbum = true))
+        }
 
-        host.reinstall()
-        addPhoto("OWN")
-        library.placeIn(album.id, "OWN")
-        rejoin(event, Choices(saveToAlbum = true))
-        uploadAll()
-
-        assertEquals(setOf("OWN"), objects().mapTo(mutableSetOf()) { assetIdFromUploadKey(it).value })
+        whenever { uploadAll() }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "OWN" }
+            never<WorldEvent.BytesStored> { it.asset != "OWN" }
+            settled { true }
+        }
     }
 
     @Test
@@ -138,31 +157,49 @@ class ReinstallIntegrationTest {
         requirement = "Received photos are never shared back",
         scenario = "A rejoin that cannot reach the event shares nothing yet",
     )
-    fun a_rejoin_that_cannot_read_the_event_shares_nothing_until_it_can() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        foreignDevice(OTHER, "FA", "FB")
-        downloadAll()
+    fun a_rejoin_that_cannot_read_the_event_shares_nothing_until_it_can() = behaviour {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent().also {
+                received("FA", "FB")
+                reinstalled()
+                step("an own photo taken, and the event's photos unreadable", act = {
+                    takePhoto("OWN")
+                    backend.failUnion(true)
+                }, until = { settled { true } })
+                rejoinedUnrecognised(it)
+            }
+        }
 
-        host.reinstall()
-        addPhoto("OWN")
-        backend.failUnion(true)
-        rejoinUnrecognised(event)
+        // Nothing is shared before the event's photos have been read, nothing is announced to the others, and the
+        // status stays on its neutral line.
+        whenever {
+            cycle()
+            advance(STATUS_POLL)
+        }
+        then {
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.ManifestPublished> { it.device != OTHER && it.added.isNotEmpty() }
+            neverScreen<Layer.Joined> { it.health != SyncHealth.Loading }
+            settled { true }
+        }
 
-        cycle()
-        assertEquals(0, jobs().created, "nothing is shared before the event's photos have been read")
-        assertTrue(manifest(event).isNullOrEmpty(), "and nothing is announced to the others")
-        assertEquals(SyncHealth.Loading, state().joined?.health, "the status stays on its neutral line")
+        whenever {
+            backend.failUnion(false)
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.BackendReceived> { it.operation == UNION }
+            settled { true }
+        }
 
-        backend.failUnion(false)
-        recognisedAfter { os.foreground() }
-        uploadAll()
-
-        assertEquals(
-            setOf("OWN"),
-            objects().mapTo(mutableSetOf()) { assetIdFromUploadKey(it).value },
-            "only the own photo",
-        )
+        // Only the own photo.
+        whenever { uploadAll() }
+        then {
+            event<WorldEvent.BytesStored> { it.event == event && it.asset == "OWN" }
+            never<WorldEvent.BytesStored> { it.asset != "OWN" }
+            settled { true }
+        }
     }
 
     @Test
@@ -171,21 +208,32 @@ class ReinstallIntegrationTest {
         requirement = "Received photos are never shared back",
         scenario = "A rejoin that cannot reach the event shares nothing yet",
     )
-    fun a_background_wake_retries_the_read_a_rejoin_could_not_make() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        foreignDevice(OTHER, "FA")
-        downloadAll()
+    fun a_background_wake_retries_the_read_a_rejoin_could_not_make() = behaviour {
+        given {
+            extensionUploadsOnly()
+            val event = joinedEvent().also { received("FA") }
+            reinstalled()
+            step("the event's photos unreadable", act = { backend.failUnion(true) }, until = {})
+            rejoinedUnrecognised(event)
+            step("in the background, and the event readable again", act = {
+                os.background()
+                backend.failUnion(false)
+            }, until = { settled { true } })
+        }
 
-        host.reinstall()
-        backend.failUnion(true)
-        rejoinUnrecognised(event)
-        os.background()
-        backend.failUnion(false)
+        whenever { heartbeat() }
+        then {
+            event<WorldEvent.BackendReceived> { it.operation == UNION }
+            event<WorldEvent.CompletionReleased>()
+            settled { true }
+        }
 
-        recognisedAfter { os.backgroundTask(HEARTBEAT, awaitRelease = true) }
-        cycle()
-        assertEquals(0, jobs().created, "the received photo is recognised, not shared")
+        // The received photo is recognised, not shared.
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>()
+            settled { true }
+        }
     }
 
     @Test
@@ -194,23 +242,34 @@ class ReinstallIntegrationTest {
         requirement = "Received photos are never shared back",
         scenario = "A rejoin that cannot reach the event shares nothing yet",
     )
-    fun the_network_returning_retries_the_read_a_rejoin_could_not_make() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        foreignDevice(OTHER, "FA")
-        downloadAll()
+    fun the_network_returning_retries_the_read_a_rejoin_could_not_make() = behaviour {
+        given {
+            extensionUploadsOnly()
+            val event = joinedEvent().also { received("FA") }
+            reinstalled()
+            step("the event's photos unreadable", act = { backend.failUnion(true) }, until = {})
+            rejoinedUnrecognised(event)
+            step("offline", act = { network.set(NetworkState.OFFLINE) }, until = {})
+            // A missing network is published only once it has lasted the watch's grace.
+            step("told so", act = { advance(NetworkWatch.DEFAULT_GRACE) }, until = {
+                screen<Layer.Joined> { it.health is SyncHealth.NoNetwork }
+                settled { true }
+            })
+            step("the event readable again", act = { backend.failUnion(false) }, until = {})
+        }
 
-        host.reinstall()
-        backend.failUnion(true)
-        rejoinUnrecognised(event)
-        network.set(NetworkState.OFFLINE)
-        // A missing network is published only once it has lasted the watch's grace — real time on this host.
-        awaitHealth(timeout = NetworkWatch.DEFAULT_GRACE * 3) { it is SyncHealth.NoNetwork }
-        backend.failUnion(false)
+        whenever { network.set(NetworkState.ONLINE) }
+        then {
+            event<WorldEvent.BackendReceived> { it.operation == UNION }
+            settled { true }
+        }
 
-        recognisedAfter { network.set(NetworkState.ONLINE) }
-        cycle()
-        assertEquals(0, jobs().created, "the received photo is recognised, not shared")
+        // The received photo is recognised, not shared.
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>()
+            settled { true }
+        }
     }
 
     @Test
@@ -219,61 +278,74 @@ class ReinstallIntegrationTest {
         requirement = "Received photos are never shared back",
         scenario = "Received photos added to a limited selection are not shared back",
     )
-    fun received_photos_added_to_a_limited_selection_later_are_recognised_not_shared() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin()
-        foreignDevice(OTHER, "FA", "FB")
-        downloadAll()
-        val received = receivedAssetIds()
+    fun received_photos_added_to_a_limited_selection_later_are_recognised_not_shared() = behaviour {
+        given {
+            val event = joinedEvent().also { received("FA", "FB") }
+            // Reinstalled, and rejoined under a partial grant that selects only the member's own photo.
+            reinstalled()
+            step("an own photo taken", act = { takePhoto("OWN") }, until = { settled { true } })
+            gateOpenOn(event)
+            step("rejoined", act = { confirmJoin() }, until = {
+                screen<Layer.Joined>()
+                settled { true }
+            })
+            step("a partial grant, both uploaders on", act = {
+                library.permission(PhotoGrant.LIMITED)
+                devControls.pin(app = true, extension = true)
+            }, until = { settled { true } })
+            step("OWN selected, and the app in front", act = {
+                library.changeSelection(listOf("OWN"))
+                os.foreground()
+            }, until = {
+                event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("OWN") }
+                event<WorldEvent.ManifestPublished> { "OWN" in it.added }
+                settled { true }
+            })
+        }
 
-        // Reinstalled, and rejoined under a partial grant that selects only the member's own photo.
-        host.reinstall()
-        addPhoto("OWN")
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
-        join()
-        permission(PhotoGrant.LIMITED)
-        devControls.pin(app = true, extension = true)
-        selected("OWN")
-        foreground()
-        awaitAppUploads(1)
+        // Later the member adds the received photos — still carrying their mark — to the selection, and the app reads it.
+        whenever { library.changeSelection(listOf("OWN", imported("FA", OTHER), imported("FB", OTHER))) }
+        then {
+            never<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.ManifestPublished> { it.added.isNotEmpty() }
+            settled { true }
+        }
 
-        // Later the member adds the received photos — still carrying their mark — to the selection.
-        val before = adoptions()
-        selected("OWN", *received.toTypedArray())
-        eventually(read = { adoptions() }) { it > before }
-        foreground()
-
-        assertEquals(listOf(primaryKey("OWN")), appUploads().live, "only the own photo is shared")
-        assertEquals(1, appUploads().created, "no received photo became a transfer")
-        assertEquals(setOf("OWN"), manifest(event)?.keys, "and none is announced to the others")
+        // Only the own photo is shared: no received photo became a transfer, and none is announced to the others.
+        whenever { os.foreground() }
+        then {
+            never<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.ManifestPublished> { it.added.isNotEmpty() }
+            settled { it.state.inFlight?.sessionTransfers == listOf(primaryKey("OWN")) }
+        }
     }
 
-    /** The member's selection becomes exactly [ids], and the app has read it. */
-    private suspend fun Rig.selected(vararg ids: String) {
-        library.changeSelection(ids.toList())
-        eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == ids.toSet() }
+    /** The app's files deleted, what outlives it kept, and the app launched again, unjoined. */
+    private suspend fun Given.reinstalled() =
+        step("reinstalled", act = { host.reinstall() }, until = { settled { true } })
+
+    /** [OTHER] shares [assets], and each arrives in the library: downloaded, staged and imported. */
+    private suspend fun Given.received(vararg assets: String) {
+        step("$OTHER shares ${assets.joinToString()}", act = {
+            publicBackend.foreignDevice(OTHER, assets.toList())
+            os.foreground()
+        }, until = {
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        })
+        step("${assets.joinToString()} arrived", act = { downloadSession.finish() }, until = {
+            assets.forEach { asset -> event<WorldEvent.LibraryAssetCreated> { it.asset == imported(asset, OTHER) } }
+            settled { true }
+        })
     }
 
-    /**
-     * The rejoin of [rejoin], when its recognition cannot read the event. The foreground's tail is awaited: its import
-     * asks for recognition too, and one still running when a test lets the event be read again would recognise the
-     * photos itself — leaving the pass the test triggers next nothing to do.
-     */
-    private suspend fun Rig.rejoinUnrecognised(event: String) {
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
-        join()
-        permission(PhotoGrant.GRANTED)
-        foreground()
-        eventually(read = { UNRECOGNISED.findAll(host.logs()).count() }) { it >= 1 }
-    }
-
-    /** Run [trigger], then wait until a recognition pass has read the event and recorded what it found. */
-    private suspend fun Rig.recognisedAfter(trigger: suspend Rig.() -> Unit) {
-        val before = adoptions()
-        trigger()
-        eventually(read = { adoptions() }) { it > before }
+    /** The join gate open on [event], through its invite, ready to join. */
+    private suspend fun Given.gateOpenOn(event: String) {
+        val link = inviteFor(event)
+        step("its join gate open", act = { openLink(link) }, until = {
+            screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed }
+        })
     }
 
     /**
@@ -281,36 +353,63 @@ class ReinstallIntegrationTest {
      * confirm raises the photo-access dialog (the reinstall reset the grant), the join goes ahead without waiting for
      * it, and the member answers it only afterwards — the order measured on the SE2.
      */
-    private suspend fun Rig.rejoin(event: String, choices: Choices = Choices()) {
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
-        join(choices)
+    private suspend fun Given.rejoined(event: String, choices: Choices = Choices()) {
+        gateOpenOn(event)
+        step("rejoined", act = { confirmJoin(choices) }, until = {
+            screen<Layer.Joined>()
+            settled { true }
+        })
         // The downloads the rejoin planned finish while the dialog is still open, as they did on the phone.
-        downloadSession.finish()
-        val before = adoptions()
+        step("the rejoin's downloads finished", act = { downloadSession.finish() }, until = { settled { true } })
         // Closing the dialog makes the app active: iOS delivers the foreground right after the grant, and on the SE2
         // its import ran while the grant's adoption was still reading names (2026-10-01). Every import drain now waits
-        // for the membership's adoption (`DownloadControllerTest` pins that order; here the mock's reads are instant).
-        permission(PhotoGrant.GRANTED)
-        os.foreground()
-        // The grant's adoption is the app's answer to it, and it runs before the uploads are armed; a cycle forced
-        // here directly (as a test may) must not overtake it, as none can on a phone.
-        eventually(read = { adoptions() }) { it > before }
+        // for the membership's adoption (`DownloadControllerTest` pins that order). The grant's adoption is the app's
+        // answer to it, and it runs before the uploads are armed: the settle is that pass done, so a cycle forced next
+        // (as a test may) cannot overtake it, as none can on a phone.
+        step("photo access granted, and the app in front", act = {
+            library.permission(PhotoGrant.GRANTED)
+            os.foreground()
+        }, until = { settled { true } })
     }
 
-    /** How many adoption passes the app has logged — each join's, and each usable grant's. */
-    private suspend fun Rig.adoptions(): Int = ADOPTION.findAll(host.logs()).count()
+    /**
+     * The rejoin of [rejoined], when its recognition cannot read the event: nothing announced, and the status on its
+     * neutral line. The foreground's tail is settled: its import asks for recognition too, and one still running when a
+     * test lets the event be read again would recognise the photos itself — leaving the pass the test triggers next
+     * nothing to do.
+     */
+    private suspend fun Given.rejoinedUnrecognised(event: String) {
+        gateOpenOn(event)
+        step("rejoined", act = { confirmJoin() }, until = {
+            screen<Layer.Joined>()
+            settled { true }
+        })
+        step("photo access granted, and the app in front", act = {
+            library.permission(PhotoGrant.GRANTED)
+            os.foreground()
+        }, until = {
+            event<WorldEvent.BackendReceived> { it.operation == UNION }
+            screen<Layer.Joined> { it.health == SyncHealth.Loading }
+            never<WorldEvent.ManifestPublished> { it.device != OTHER && it.added.isNotEmpty() }
+            settled { true }
+        })
+    }
 
-    /** The library's photos whose names carry the SnapSync mark — every received photo, by asset id. */
-    private suspend fun Rig.receivedAssetIds(): List<String> =
-        gallery(resources = true).policy?.assets.orEmpty()
-            .filter { a -> a.originalFilenames.orEmpty().any { ReceivedPhotoName.tokenOf(it) != null } }
-            .map { it.assetId }
+    /** The foreground's reconcile, and then every download it started finished: [outcome] is what that led to. */
+    private suspend fun Behaviour.downloadsAll(outcome: Expectations.() -> Unit) {
+        whenever { os.foreground() }
+        then { settled { true } }
+        whenever { downloadSession.finish() }
+        then(outcome)
+    }
 
     private companion object {
         const val OTHER = DEV_F
-        val ADOPTION = Regex("""adopted \d+ received photo|recognised: nothing open""")
-        val UNRECOGNISED = Regex("""union unavailable — nothing recognised""")
-        const val HEARTBEAT = "app.snapsync.upload.heartbeat"
+
+        /** The event's union read (its OpenAPI `operationId`). */
+        const val UNION = "eventFiles"
+
+        /** Long enough for the joined screen's status poll (every 2 s) to read again. */
+        val STATUS_POLL = 5.seconds
     }
 }

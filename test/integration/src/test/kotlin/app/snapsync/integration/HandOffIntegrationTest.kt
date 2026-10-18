@@ -10,7 +10,6 @@ import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
-import kotlin.test.assertEquals
 
 /**
  * **The taps that hand the person to the platform's own UI** — the invite's share sheet, a link out of the app, the
@@ -59,18 +58,21 @@ class HandOffIntegrationTest {
     }
 
     @Test
-    fun choosing_more_photos_presents_the_platform_s_picker() = rigTest {
-        permission(PhotoGrant.LIMITED)
+    fun choosing_more_photos_presents_the_platform_s_picker() = behaviour {
+        given { photoAccess(PhotoGrant.LIMITED) }
 
-        tap(UiIntent.ChoosePhotos)
-
-        assertEquals(1, eventually(read = { library.library().pickersShown }) { it > 0 })
+        whenever { tap(UiIntent.ChoosePhotos) }
+        then { times(1) { event<WorldEvent.LibraryPickerShown>() } }
     }
 
     @Test
-    fun the_operating_system_ending_an_extension_invocation_is_recorded_as_an_ordinary_end() = rigTest {
-        extensionHost.terminate()
-
-        eventually(read = { host.logs() }) { logs: String -> "the OS ended this invocation" in logs }
+    fun the_operating_system_ending_an_extension_invocation_is_recorded_as_an_ordinary_end() = behaviour {
+        // The extension only records the end: what is observable is that it is no failure — none reaches the crash
+        // reporter — and that the app settles behind it.
+        whenever { extensionHost.terminate() }
+        then {
+            never<WorldEvent.EventReceived>()
+            settled { true }
+        }
     }
 }

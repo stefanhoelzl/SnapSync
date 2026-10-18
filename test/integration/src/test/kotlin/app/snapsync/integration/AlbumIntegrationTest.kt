@@ -2,16 +2,17 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Expectations
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.levers.AlbumKind
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.ui.state.AlbumHolds
+import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * The event album over the real stack, read back off the photo library: an opted-in
@@ -68,30 +69,57 @@ class AlbumIntegrationTest {
         requirement = "On Android under full access, only photos in the DCIM folder are shared",
         scenario = "The event album's photos are not shared",
     )
-    fun an_android_phone_is_offered_the_album_and_it_collects_received_photos_only() = rigTest {
+    fun an_android_phone_is_offered_the_album_and_it_collects_received_photos_only() = behaviour {
         // An Android album is the folder received photos are saved into, so the join screen
         // offers it on, and it holds what arrives — never the member's own camera photo.
-        androidLibrary()
-        create(name = "Party")
-        val gate = state().ui.layer as Layer.JoiningEvent
-        assertEquals(AlbumHolds.RECEIVED, gate.range?.albumHolds)
-        assertEquals(true, gate.range?.saveToAlbum, "the album is on by default, as on iPhone")
+        given { androidLibrary() }
 
-        join()
-        awaitAlbum() // a download imports into the album only once it exists
-        addPhoto("A")
-        cycle()
-        foreignDevice(DEV_F, "FQ")
-        downloadAll()
+        whenever { createEvent("Party", Rig.WINDOW_START, Rig.WINDOW_END) }
+        then {
+            screen<Layer.JoiningEvent> { gate ->
+                gate.phase is JoinPhase.Detailed &&
+                    gate.range?.albumHolds == AlbumHolds.RECEIVED &&
+                    gate.range?.saveToAlbum == true // the album is on by default, as on iPhone
+            }
+        }
 
-        assertEquals(
-            listOf(RECEIVED),
-            albums().single().assets,
-            "the received photo is in the album; the own one is not",
-        )
-        uploadAll()
-        val shared = objects().mapTo(mutableSetOf()) { assetIdFromUploadKey(it).value }
-        assertEquals(setOf("A"), shared, "the received photo in the album is not shared back, as on iPhone")
+        // A download imports into the album only once it exists.
+        lateinit var album: Seen<WorldEvent.LibraryAlbumCreated>
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined>()
+            album = event<WorldEvent.LibraryAlbumCreated>()
+            settled { true }
+        }
+
+        whenever {
+            takePhoto("A")
+            cycle()
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.DownloadStarted>()
+            never<WorldEvent.LibraryJoinedAlbum>()
+            settled { true }
+        }
+
+        // The received photo is in the album; the own one is not.
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.LibraryJoinedAlbum> { it.album == album.value.album && it.asset == RECEIVED }
+            settled { it.state.albums?.singleOrNull()?.photos == listOf(RECEIVED) }
+        }
+
+        // The received photo in the album is not shared back, as on iPhone.
+        whenever { uploadAll() }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "A" }
+            never<WorldEvent.BytesStored> { it.asset != "A" }
+            never<WorldEvent.UploadJobCreated> { it.job.startsWith(RECEIVED) }
+            never<WorldEvent.ManifestPublished> { RECEIVED in it.added }
+            settled { true }
+        }
     }
 
     @Test
@@ -100,45 +128,67 @@ class AlbumIntegrationTest {
         requirement = "Turning the album on gathers what is already there",
         scenario = "On Android, turning the album on later moves received photos into it",
     )
-    fun on_android_a_photo_received_with_the_album_off_is_gathered_when_it_is_turned_on() = rigTest {
-        androidLibrary()
-        createAndJoin(Choices(saveToAlbum = false))
-        addPhoto("A")
-        foreignDevice(DEV_F, "FQ")
-        downloadAll()
-        assertTrue(albums().isEmpty(), "no album while it is off: the photo is in the camera folder")
+    fun on_android_a_photo_received_with_the_album_off_is_gathered_when_it_is_turned_on() = behaviour {
+        given {
+            androidLibrary()
+            joinedEvent(Choices(saveToAlbum = false))
+            photos("A")
+            // No album while it is off: the photo is in the camera folder.
+            receivedFrom(DEV_F, "FQ", into = { settled { it.state.albums.orEmpty().isEmpty() } })
+        }
 
-        reconfigure(Choices(saveToAlbum = true))
-        awaitState { it.joined?.membership?.savesToAlbum == true }
-
-        eventually<List<String>?>(read = { albums().singleOrNull()?.assets }) { it == listOf(RECEIVED) }
+        whenever { reconfigure(Choices(saveToAlbum = true)) }
+        then {
+            screen<Layer.Joined> { it.membership.savesToAlbum }
+            event<WorldEvent.LibraryJoinedAlbum> { it.asset == RECEIVED }
+            settled { it.state.albums?.singleOrNull()?.photos == listOf(RECEIVED) }
+        }
     }
 
     @Test
     @Verifies(spec = "event-album", requirement = "A deleted album is recreated only when the member asks")
-    fun on_android_a_deleted_album_stays_deleted_until_the_member_turns_it_on_again() = rigTest {
-        androidLibrary()
-        createAndJoin(Choices(saveToAlbum = true), name = "Party")
-        awaitAlbum()
-        foreignDevice(DEV_F, "FQ")
-        downloadAll()
-        val first = albums().single()
-        assertEquals(listOf(RECEIVED), first.assets)
+    fun on_android_a_deleted_album_stays_deleted_until_the_member_turns_it_on_again() = behaviour {
+        val first = given {
+            androidLibrary()
+            val (_, album) = joinedSavingToAlbum(name = "Party")
+            receivedFrom(DEV_F, "FQ", into = {
+                event<WorldEvent.LibraryJoinedAlbum> { it.album == album && it.asset == RECEIVED }
+            })
+            album
+        }
 
-        library.deleteAlbum(first.id) // the gallery app deletes the folder, and its photo with it
-        foreignDevice(DEV_F, "FR")
-        downloadAll()
-        assertEquals(listOf(first.id), albums().map { it.id }, "no album was brought back")
-        assertTrue(albums().single().assets.isEmpty(), "the later photo arrived in the camera folder")
+        // The gallery app deletes the folder, and its photo with it; a later photo arrives in the camera folder.
+        whenever {
+            library.deleteAlbum(first)
+            publicBackend.foreignDevice(DEV_F, listOf("FR"))
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
 
-        reconfigure(Choices(saveToAlbum = false))
-        awaitState { it.joined?.membership?.savesToAlbum == false }
-        reconfigure(Choices(saveToAlbum = true))
-        awaitState { it.joined?.membership?.savesToAlbum == true }
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.LibraryAssetCreated> { it.asset == LATER }
+            never<WorldEvent.LibraryAlbumCreated>() // no album was brought back
+            never<WorldEvent.LibraryJoinedAlbum>()
+            settled { it.state.albums.orEmpty().all { album -> album.id == first && album.photos.isEmpty() } }
+        }
 
-        eventually<List<String>?>(read = {
-            albums().firstOrNull { it.id != first.id }?.assets
-        }) { it == listOf("imported-$DEV_F-FR") }
+        whenever { reconfigure(Choices(saveToAlbum = false)) }
+        then {
+            screen<Layer.Joined> { !it.membership.savesToAlbum }
+            settled { true }
+        }
+
+        whenever { reconfigure(Choices(saveToAlbum = true)) }
+        then {
+            screen<Layer.Joined> { it.membership.savesToAlbum }
+            event<WorldEvent.LibraryAlbumCreated> { it.album != first }
+            event<WorldEvent.LibraryJoinedAlbum> { it.album != first && it.asset == LATER }
+            settled { it.state.albums?.firstOrNull { album -> album.id != first }?.photos == listOf(LATER) }
+        }
     }
 
     @Test
@@ -163,36 +213,79 @@ class AlbumIntegrationTest {
 
     @Test
     @Verifies(spec = "event-album", requirement = "Turning the album on gathers what is already there")
-    fun neither_a_save_nor_a_join_waits_for_the_gather_it_starts() = rigTest {
-        extensionUploadsOnly()
-        val event = createAndJoin(Choices(saveToAlbum = false))
-        addPhoto("A")
-        uploadAll()
-        library.holdAdds(on = true)
+    fun neither_a_save_nor_a_join_waits_for_the_gather_it_starts() = behaviour {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent(Choices(saveToAlbum = false)).also {
+                photos("A")
+                uploaded("A")
+                step("every add to an album held", act = { library.holdAdds(on = true) }, until = {})
+            }
+        }
 
         // If the Save awaited the gather, it would never land: every add is held.
-        reconfigure(Choices(saveToAlbum = true))
-        awaitState { it.joined?.membership?.savesToAlbum == true }
-        assertTrue(awaitAlbum().single().assets.isEmpty(), "the Save landed with its gather still held")
-        library.holdAdds(on = false)
-        eventually(read = { albums().single().assets }) { it == listOf("A") }
+        whenever { reconfigure(Choices(saveToAlbum = true)) }
+        then {
+            screen<Layer.Joined> { it.membership.savesToAlbum }
+            event<WorldEvent.LibraryAddHeld>()
+            never<WorldEvent.LibraryJoinedAlbum>()
+            settled { it.state.albums?.singleOrNull()?.photos?.isEmpty() == true } // landed with its gather still held
+        }
+
+        whenever { library.holdAdds(on = false) }
+        then {
+            event<WorldEvent.LibraryJoinedAlbum> { it.asset == "A" }
+            settled { it.state.albums?.singleOrNull()?.photos == listOf("A") }
+        }
 
         // A join's gather: a photo received in this event, whose import is permanent across a leave.
-        reconfigure(Choices(saveToAlbum = false))
-        awaitState { it.joined?.membership?.savesToAlbum == false }
-        foreignDevice(DEV_F, "FQ")
-        downloadAll()
-        leave()
-        library.holdAdds(on = true)
-        val placed = albums().single().assets.size
+        whenever { reconfigure(Choices(saveToAlbum = false)) }
+        then {
+            screen<Layer.Joined> { !it.membership.savesToAlbum }
+            settled { true }
+        }
 
-        openLink(inviteLink(event))
-        awaitState { (it.ui.layer as? Layer.JoiningEvent)?.eventId == event }
-        join(Choices(saveToAlbum = true)) // returns once joined
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
 
-        assertEquals(placed, albums().single().assets.size, "the join landed with its gather still held")
-        library.holdAdds(on = false)
-        eventually<Int>(read = { albums().single().assets.size }) { it > placed }
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED }
+            never<WorldEvent.LibraryJoinedAlbum>()
+            settled { true }
+        }
+
+        whenever { tap(UiIntent.LeaveEvent) }
+        then {
+            event<WorldEvent.MemberLeft>()
+            settled { true }
+        }
+
+        whenever {
+            library.holdAdds(on = true)
+            openLink(inviteLink(event))
+        }
+        then { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } }
+
+        whenever { confirmJoin(Choices(saveToAlbum = true)) }
+        then {
+            screen<Layer.Joined>()
+            event<WorldEvent.LibraryAddHeld>()
+            never<WorldEvent.LibraryJoinedAlbum>()
+            settled { it.state.albums?.singleOrNull()?.photos == listOf("A") } // landed with its gather still held
+        }
+
+        whenever { library.holdAdds(on = false) }
+        then {
+            event<WorldEvent.LibraryJoinedAlbum> { it.asset == RECEIVED }
+            settled { it.state.albums?.singleOrNull()?.photos?.toSet() == setOf("A", RECEIVED) }
+        }
     }
 
     @Test
@@ -268,14 +361,37 @@ class AlbumIntegrationTest {
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
 
-    /** The photo library plays an Android phone's, whose albums are folders — read once at host assembly. */
-    private suspend fun Rig.androidLibrary() {
-        library.albumKind(AlbumKind.FOLDER)
-        host.relaunch()
+    /** This device leaves its event. */
+    private suspend fun Given.left() = step("left", act = { tap(UiIntent.LeaveEvent) }, until = { settled { true } })
+
+    /** The join gate open on [event], through its invite, ready to join. */
+    private suspend fun Given.gateOpenOn(event: String) {
+        val link = inviteFor(event)
+        step(
+            "its join gate open",
+            act = { openLink(link) },
+            until = { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } },
+        )
+    }
+
+    /**
+     * [device] shares [asset], the app in front starts its download, and the photo arrives in the library — and [into]
+     * holds of where it arrived.
+     */
+    private suspend fun Given.receivedFrom(device: String, asset: String, into: Expectations.() -> Unit) {
+        downloadStarted(device, asset)
+        step("$asset arrived", act = { downloadSession.finish() }, until = {
+            event<WorldEvent.LibraryAssetCreated> { it.asset == imported(asset, device) }
+            into()
+            settled { true }
+        })
     }
 
     private companion object {
         /** The id the photo library gives the photo [DEV_F] shared as FQ. */
         const val RECEIVED = "imported-$DEV_F-FQ"
+
+        /** The id the photo library gives the photo [DEV_F] shared later, as FR. */
+        const val LATER = "imported-$DEV_F-FR"
     }
 }
