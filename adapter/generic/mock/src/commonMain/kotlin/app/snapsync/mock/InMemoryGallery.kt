@@ -131,7 +131,7 @@ internal class InMemoryGallery(private val state: LibraryState) : Gallery {
                 LibraryAlbumKind.COLLECTION -> album?.also { state.created.getValue(it).members += createdLocalId }
             }
         }
-        state.watcher.told(WorldEvent.LibraryAssetCreated(createdLocalId.value))
+        state.watcher.told(WorldEvent.LibraryAssetCreated(createdLocalId.value, request.files.map { it.name }))
         filedInto?.let { state.watcher.told(WorldEvent.LibraryJoinedAlbum(it, createdLocalId.value)) }
         state.answers.afterCommit(correlation)?.let {
             return settle(ImportOutcome.Failed(it, placeholder = createdLocalId))

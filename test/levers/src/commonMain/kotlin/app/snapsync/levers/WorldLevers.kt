@@ -176,10 +176,10 @@ sealed interface WorldEvent {
     @SerialName("library-import-parked")
     data class LibraryImportParked(val device: String, val asset: String) : Library
 
-    /** An import created the photo [asset] in the library. */
+    /** An import created the photo [asset] in the library, its files under [names] — the names the app handed it. */
     @Serializable
     @SerialName("library-asset-created")
-    data class LibraryAssetCreated(val asset: String) : Library
+    data class LibraryAssetCreated(val asset: String, val names: List<String> = emptyList()) : Library
 
     /** The app made the album [album], titled [title]. */
     @Serializable

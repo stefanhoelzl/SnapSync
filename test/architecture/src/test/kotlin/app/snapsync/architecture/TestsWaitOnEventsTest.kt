@@ -151,13 +151,19 @@ class TestsWaitOnEventsTest {
         )
 
         /**
-         * May only shrink: sources that still poll — the legacy helpers' (`Rig`, `RigEvents`, `RigOs`, `RigTraffic`,
-         * `RigUploaders`, `Shots`) among them. Phase 31 converts the tests waiting on outcomes it gives events to; phase
-         * 3g-b empties the list and deletes the polls.
+         * May only shrink: sources that still poll. Phase 31 converted every test that waits on an outcome a system
+         * outside the app records; what remains is
+         * - the legacy helpers `Rig`, `RigEvents`, `RigOs`, `RigTraffic` and `RigUploaders`, which the tests below still
+         *   call, and which phase 3g-b deletes with the polls;
+         * - `Shots` and `ShotsTest`: the marketing scenarios, shared with the simulator capture, whose device host has no
+         *   event stream yet;
+         * - `OsCompletionIntegrationTest` (one test) and `UploadCycleIntegrationTest` (two): what each pins — the
+         *   stagings in the app's own staging directory, which databases a wake opens — is the app's private state,
+         *   which nothing outside the app records, so no event can stand in for it.
          */
         val STILL_POLLING = setOf(
-            "FullStackIntegrationTest", "OsCompletionIntegrationTest", "Rig", "RigEvents", "RigOs", "RigTraffic",
-            "RigUploaders", "Shots", "ShotsTest", "UploadCycleIntegrationTest",
+            "OsCompletionIntegrationTest", "Rig", "RigEvents", "RigOs", "RigTraffic", "RigUploaders", "Shots",
+            "ShotsTest", "UploadCycleIntegrationTest",
         )
 
         /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */
