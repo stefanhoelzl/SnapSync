@@ -57,12 +57,17 @@ class AndroidRigLaunch internal constructor(
     val ui: RigUi,
     /** What the operator levers move: the mocked device. */
     val world: MockWorld,
+    /** What the world service serves of this launch: its mocked systems' events and its screen's. */
+    events: WorldEvents,
     /** The real files adapter the adapter choice lives on. */
     internal val files: Files,
     /** The real api's base, the build's resolved one. */
     realBase: String,
 ) {
     /** Where this launch's backend is: the mock's synthetic base, or the real api's. */
+    /** The world the channel serves its callers' acts in: the events, from the last act on. */
+    val hostWorld: HostWorld = HostWorld.onADevice(events)
+
     val uploadBase: String = if (MockedSystem.BACKEND in launch.choice.mocked) MOCK_BASE else realBase
 
     /** This launch's choice, in one line — `/health` reports it. */
@@ -95,7 +100,9 @@ fun androidRigLaunch(real: AppDevicePorts, uploadBase: String): AndroidRigLaunch
     val ports = launch.portsFor(real)
     val controls = RigDevControls()
     val world = launchWorld(device, mocked, ports, controls, mockBase = MOCK_BASE, realBackend = REAL_BACKEND)
-    return AndroidRigLaunch(launch, ports, controls, RigUi(ports.ui), world, real.files.value, uploadBase)
+    val events = deviceEvents(world)
+    val ui = RigUi(ports.ui, screenShown(events))
+    return AndroidRigLaunch(launch, ports, controls, ui, world, events, real.files.value, uploadBase)
 }
 
 /**
@@ -165,8 +172,9 @@ private fun AndroidRigLaunch.hooks(
     servicesOf = { hooks ->
         world.servedServices(
             androidHostServices(world, lifecycle, links),
+            hooks.world.acts,
             reconcileUploads = { core().uploadTransitions.onOverrideChanged() },
-        ) + world.servedHostServices(hostServices(hooks, core, host, context))
+        ) + world.servedHostServices(hostServices(hooks, core, host, context), hooks.world.acts)
     },
     publishBoundPort = { bound ->
         rigPortFilePath(
@@ -176,6 +184,7 @@ private fun AndroidRigLaunch.hooks(
     refusals = androidRefusals(world, androidHostServices(world, lifecycle, links)),
     osExtensionNotApplicable = "Android has no upload extension: its uploader runs in the app's own process",
     adapters = description,
+    world = hostWorld,
 )
 
 /**

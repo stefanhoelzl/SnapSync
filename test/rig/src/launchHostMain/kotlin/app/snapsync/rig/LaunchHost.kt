@@ -11,6 +11,7 @@ import app.snapsync.levers.AdaptersLevers
 import app.snapsync.levers.AdaptersWritten
 import app.snapsync.levers.CurrentAdapters
 import app.snapsync.levers.LeverRefused
+import app.snapsync.levers.WorldEvent
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 import app.snapsync.model.ConfigRead
@@ -20,6 +21,7 @@ import app.snapsync.ports.Files
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.services.config.ConfigService
 import app.snapsync.services.databases.SharedDatabase
+import app.snapsync.ui.state.UiState
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +78,20 @@ internal fun launchWorld(
     },
     controls = controls.levers,
 )
+
+/**
+ * The events a launch's world serves (`docs/testing.md`, "How a test waits"): what its mocked systems and its played
+ * operating system record, from the last act on. The screen's states are told by the launch's [RigUi] ([screenShown]).
+ */
+internal fun deviceEvents(
+    world: MockWorld,
+): WorldEvents = WorldEvents(WorldEvents.Serving.FROM_THE_LAST_ACT).also { events ->
+    world.device.tellInto(events, screen = false)
+    world.os.watch { events.tell(it) }
+}
+
+/** What the launch's decorated screen hands [events] of each state it is shown. */
+internal fun screenShown(events: WorldEvents): (UiState) -> Unit = { events.tell(WorldEvent.UiChanged(it)) }
 
 /**
  * Write the mocked systems' state every [SAVE_INTERVAL], for the life of the process: the app is the one writer (an

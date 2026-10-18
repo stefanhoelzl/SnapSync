@@ -38,6 +38,7 @@ import app.snapsync.levers.ThisDevice
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.WakeLevers
+import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockedSystem
@@ -159,22 +160,61 @@ internal fun servedRig(advertise: () -> DeviceAdvertisement): ServedService =
     )
 
 /**
- * The world's events and clock, served by a host that can say when its app is settled — or refused, with [refusal], by
- * one that cannot. Never an act itself: a call that moves the world ([WorldLevers.advance]) runs its own.
+ * The world's events and clock, served by a host — each method its [implementation]'s, bar the ones in
+ * [methodRefusals] — or the whole service refused, with [refusal]. Never an act itself: a call that moves the world
+ * ([WorldLevers.advance]) runs its own.
  */
-fun servedWorld(implementation: WorldLevers?, refusal: String?): ServedService =
+fun servedWorld(
+    implementation: WorldLevers?,
+    refusal: String?,
+    methodRefusals: Map<String, String> = emptyMap(),
+): ServedService =
     served(
         WorldLevers,
         implementation,
         refusal ?: "no world is served".takeIf { implementation == null },
         RigActs.Direct,
         null,
+        methodRefusals,
     )
 
-/** Why a device host refuses the world's events: its operating system runs work the channel cannot see. */
-const val WORLD_REFUSED_ON_A_DEVICE: String =
-    "this host's operating system runs work the channel cannot see, so it cannot say when the app is settled — the " +
-        "event stream is the JVM host's (`docs/testing.md`, \"How a test waits\")"
+/** Why a device host cannot say when its app is settled: its operating system runs work the channel cannot see. */
+const val SETTLING_REFUSED_ON_A_DEVICE: String =
+    "this host's operating system runs work the channel cannot see, so it cannot say when the app is settled or what " +
+        "keeps it busy — settling is the JVM host's (`docs/testing.md`, \"How a test waits\")"
+
+/** Why a device host moves no clock through the world: it has no loop to fire the app's timers at their instants. */
+const val CLOCK_REFUSED_ON_A_DEVICE: String =
+    "this host has no loop to fire the app's timers at their instants: the app's timers run on the operating system's " +
+        "clock — where the launch mocks the clock, the `clock` service moves the time the app reads"
+
+/** What a device host refuses of the world service: settling and the clock. Its events it serves. */
+val DEVICE_WORLD_REFUSALS: Map<String, String> = mapOf(
+    "advance" to CLOCK_REFUSED_ON_A_DEVICE,
+    "advanceTo" to CLOCK_REFUSED_ON_A_DEVICE,
+    "whyNotSettled" to SETTLING_REFUSED_ON_A_DEVICE,
+)
+
+/**
+ * The world service a device host serves: the events of its mocked systems and its screen, from the last act on, and
+ * the act tags. Its clock and settling are refused ([DEVICE_WORLD_REFUSALS]) and never reach it.
+ */
+internal class DeviceWorld(private val events: WorldEvents) : WorldLevers {
+    override fun events(): Flow<WorldEvent> = events.flow()
+
+    override suspend fun tagActs(tag: String?) = events.tagActs(tag)
+
+    override suspend fun actsTagged(tag: String): Int = events.actsTagged(tag)
+
+    override suspend fun advance(millis: Long) = refused("advance")
+
+    override suspend fun advanceTo(at: String) = refused("advanceTo")
+
+    override suspend fun whyNotSettled(): String = refused("whyNotSettled")
+
+    private fun refused(method: String): Nothing =
+        throw LeverRefused("world.$method is refused here: ${DEVICE_WORLD_REFUSALS.getValue(method)}")
+}
 
 /** Every typed service's methods, as a host's advertisement names them (`<service>.<method>`). */
 internal val SERVICE_ENTRIES: List<String> = LEVER_SERVICES.filter { it !== RigLevers }.flatMap { it.entries }

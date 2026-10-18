@@ -134,23 +134,7 @@ internal class HostThreads private constructor(
                     events.tell(WorldEvent.LaneViolation(it))
                 },
             )
-            mocks.backend.watch { events.tell(it) }
-            mocks.library.watch { events.tell(it) }
-            mocks.screen.watch { events.tell(WorldEvent.UiChanged(it)) }
-            mocks.uploadQueue.watch { events.tell(it) }
-            mocks.uploadSession.watch { events.tell(it) }
-            mocks.downloads.watch { events.tell(it) }
-            mocks.systemUi.watch { events.tell(it) }
-            mocks.crashReporter.watch { events.tell(it) }
-            mocks.databases.watch { events.tell(it) }
-            mocks.keychain.watch { events.tell(it) }
-            mocks.preferences.watch { events.tell(it) }
-            // What the operating system records of the app: its wakes, holds, push registrations and extension
-            // registration (the completion handlers are the played OS's own, told where it is made).
-            mocks.wakes.watch { events.tell(it) }
-            mocks.backgroundTime.watch { events.tell(it) }
-            mocks.pushService.watch { events.tell(it) }
-            mocks.extensionRegistry.watch { events.tell(it) }
+            mocks.tellInto(events, screen = true)
             return HostThreads(
                 time,
                 mocks,

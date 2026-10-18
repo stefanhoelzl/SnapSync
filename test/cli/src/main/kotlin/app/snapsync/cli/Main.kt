@@ -4,6 +4,7 @@ import app.snapsync.levers.LeverRefused
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.rpc.RpcCall
@@ -28,11 +29,16 @@ import kotlin.time.Duration.Companion.seconds
 fun main(args: Array<String>) {
     // Ktor's client logs through SLF4J, which has no provider here and says so on every call.
     System.setProperty("slf4j.internal.verbosity", "ERROR")
-    exitProcess(rig(args.toList(), System.out, System.err))
+    // Into a pipe, a stream probes it for a reader that has gone (`Stream.kt`); onto a terminal, a person reads it.
+    val probe = System.console()?.isTerminal != true
+    exitProcess(rig(args.toList(), System.out, System.err, probe))
 }
 
-/** Runs one command line, printing to [out] and [err]; answers the exit code. */
-internal fun rig(args: List<String>, out: PrintStream, err: PrintStream): Int = try {
+/**
+ * Runs one command line, printing to [out] and [err]; answers the exit code. [probe]: a stream writes a bare newline to
+ * [out] every second while it waits, so a reader that has gone is noticed within one (`Stream.kt`).
+ */
+internal fun rig(args: List<String>, out: PrintStream, err: PrintStream, probe: Boolean = false): Int = try {
     val options = Options.parse(args)
     when {
         options.help -> out.print(help(options.command)).let { EXIT_OK }
@@ -44,7 +50,7 @@ internal fun rig(args: List<String>, out: PrintStream, err: PrintStream): Int = 
                 err,
             )
         }
-        else -> options.connected { call(options.command, options.json, out, err) }
+        else -> options.connected { call(options.command, options.json, out, err, probe) }
     }
 } catch (e: UsageError) {
     err.println("rig: ${e.message}")
@@ -57,12 +63,14 @@ private class Options(
     val json: Boolean,
     val help: Boolean,
     val command: List<String>,
-    /** How long one call may take before it fails; `null`: as long as it takes. */
-    val timeout: Duration?,
+    /** `--timeout`'s bound, `null` for none — or [Bound.Default] where it was not given. */
+    val timeout: Bound,
 ) {
     fun connected(block: suspend Connection.() -> Int): Int {
         val base = url ?: usage("--url <base> is required, e.g. --url http://127.0.0.1:18101 (see rig --help)")
-        return Connection(base, timeout).use { runBlocking { it.block() } }
+        val call = if (timeout is Bound.Given) timeout.bound else CALL_TIMEOUT
+        val stream = if (timeout is Bound.Given) timeout.bound else STREAM_TIMEOUT
+        return Connection(base, call, stream).use { runBlocking { it.block() } }
     }
 
     companion object {
@@ -70,14 +78,14 @@ private class Options(
             var url: String? = null
             var json = false
             var help = false
-            var timeout: Duration? = CALL_TIMEOUT
+            var timeout: Bound = Bound.Default
             val command = mutableListOf<String>()
             var i = 0
             while (i < args.size) {
                 when (val arg = args[i]) {
                     "--url" -> url = args.getOrNull(++i) ?: usage("--url needs a value")
                     "--json" -> json = true
-                    "--timeout" -> timeout = seconds(args.getOrNull(++i) ?: usage("--timeout needs a value"))
+                    "--timeout" -> timeout = Bound.Given(seconds(args.getOrNull(++i) ?: usage("--timeout needs a value")))
                     "--help", "-h" -> help = true
                     "help" -> if (command.isEmpty()) help = true else command += arg
                     else -> if (arg.startsWith("--url=")) url = arg.removePrefix("--url=") else command += arg
@@ -96,17 +104,33 @@ private fun help(command: List<String>): String {
     return (commands.method(method) ?: unknownMethod(commands, method)).help()
 }
 
-/** `--timeout`'s seconds as the bound of one call; `0` lifts it. */
+/** How long a command may take: as `--timeout` gave it (`null`: as long as it takes), or each kind's default. */
+private sealed interface Bound {
+    data object Default : Bound
+
+    data class Given(val bound: Duration?) : Bound
+}
+
+/** `--timeout`'s seconds as the bound of one call or one stream; `0` lifts it. */
 internal fun seconds(text: String): Duration? {
     val n = text.toLongOrNull()?.takeIf { it >= 0 } ?: usage("--timeout: '$text' is no number of seconds (0: none)")
     return if (n == 0L) null else n.seconds
 }
 
-/** One WebSocket to the host's kRPC route, every call of a run over it. */
-private class Connection(base: String, private val timeout: Duration?) : AutoCloseable {
+/**
+ * One WebSocket to the host's kRPC route, every call of a run over it — until [reconnect] opens another. [timeout] bounds
+ * a call, [streamTimeout] a stream; `null`: as long as it takes.
+ */
+internal class Connection(
+    base: String,
+    private val timeout: Duration?,
+    val streamTimeout: Duration?,
+) : AutoCloseable {
     val url = "ws${base.trimEnd('/').removePrefix("http")}$RPC_PATH"
     private val http = HttpClient(CIO) { installKrpc() }
-    private val client: KtorRpcClient by lazy { http.rpc(url) { rpcConfig { serialization { json() } } } }
+    private var opened: KtorRpcClient? = null
+    private val client: KtorRpcClient
+        get() = opened ?: http.rpc(url) { rpcConfig { serialization { json() } } }.also { opened = it }
     private var calls = 0L
 
     suspend fun send(method: MethodCommand, arguments: Array<Any?>): Any? {
@@ -114,19 +138,53 @@ private class Connection(base: String, private val timeout: Duration?) : AutoClo
         return if (timeout == null) client.call<Any?>(call) else withTimeout(timeout) { client.call<Any?>(call) }
     }
 
+    /** A stream's elements, as the host sends them; unbounded — the caller bounds it. */
+    fun stream(method: MethodCommand, arguments: Array<Any?>): Flow<Any?> =
+        client.callServerStreaming(RpcCall(method.service.descriptor, method.declared, arguments, ++calls))
+
+    /** Drops this WebSocket: the next call or stream opens a new one. */
+    fun reconnect() {
+        opened?.let { runCatching { it.close() } }
+        opened = null
+    }
+
     override fun close() {
-        runCatching { client.close() }
+        reconnect()
         http.close()
     }
 }
 
-/** `<service> <method> [flags]`: the call, its answer printed. */
-private suspend fun Connection.call(command: List<String>, json: Boolean, out: PrintStream, err: PrintStream): Int {
+/**
+ * `<service> <method> [flags]`: the call, its answer printed — or a stream, its elements printed as they come
+ * ([probe]: see [rig]). A stream has no place in a batch, which never ends one ([inBatch]).
+ */
+private suspend fun Connection.call(
+    command: List<String>,
+    json: Boolean,
+    out: PrintStream,
+    err: PrintStream,
+    probe: Boolean,
+    inBatch: Boolean = false,
+): Int {
     if (command.isEmpty()) usage("no command (see rig --help)")
     val commands = serviceCommands(command[0]) ?: unknownService(command[0])
     val name = command.getOrNull(1) ?: usage("${commands.name}: no method\n\n${commands.help()}")
     val method = commands.method(name) ?: unknownMethod(commands, name)
     val arguments = method.arguments(command.drop(2))
+    if (method.streams && inBatch) {
+        usage("run: ${method.usage()} is a stream, which a batch never gets past — run it on its own")
+    }
+    return if (method.streams) stream(method, arguments, out, err, probe) else answer(method, arguments, json, out, err)
+}
+
+/** A one-shot call: its answer printed, or why there is none. */
+private suspend fun Connection.answer(
+    method: MethodCommand,
+    arguments: Array<Any?>,
+    json: Boolean,
+    out: PrintStream,
+    err: PrintStream,
+): Int {
     val answer = try {
         send(method, arguments)
     } catch (e: LeverRefused) {
@@ -154,7 +212,7 @@ private suspend fun Connection.batch(args: List<String>, json: Boolean, out: Pri
     lines.map(String::trim).filter { it.isNotEmpty() && !it.startsWith("#") }.forEach { line ->
         err.println("> $line")
         val code = try {
-            call(tokens(line), json, out, err)
+            call(tokens(line), json, out, err, probe = false, inBatch = true)
         } catch (e: UsageError) {
             err.println("rig: ${e.message}")
             EXIT_USAGE
@@ -190,12 +248,15 @@ private fun unknownMethod(commands: ServiceCommands, name: String): Nothing =
     usage("${commands.name}: no method '$name' — methods: ${commands.methods.joinToString { it.name }}")
 
 // Every field, a default's included: a reader of the answer (a script's `python3 -c`) finds what the value holds.
-private val ONE_LINE = Json { encodeDefaults = true }
+internal val ONE_LINE = Json { encodeDefaults = true }
 private val PRETTY = Json {
     prettyPrint = true
     encodeDefaults = true
 }
 private val CALL_TIMEOUT = 60.seconds
+
+/** A stream waits for what an app does in the background — an upload landing, a wake — so longer than a call. */
+private val STREAM_TIMEOUT = 300.seconds
 private const val RPC_PATH = "/rpc"
 
 internal const val EXIT_OK = 0

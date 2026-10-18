@@ -156,6 +156,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     recordLanded = ::recordLanded,
     adapters = launch.description,
     uncomposed = launch.uncomposed,
+    world = launch.hostWorld,
 )
 
 /**

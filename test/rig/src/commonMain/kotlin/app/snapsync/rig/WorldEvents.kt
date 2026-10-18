@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.levers.WorldEvent
+import app.snapsync.mock.MockDevice
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -9,18 +10,55 @@ import kotlin.concurrent.Volatile
 
 /**
  * The world's events, in the order they happened (`docs/testing.md`, "How a test waits") — what the world service's
- * `events()` serves. Every event is kept: a host lives for one test, and a caller that subscribes after its first act
- * must still find its act's marker. Told from any thread; the order is the order [tell] was called in.
+ * `events()` serves. Told from any thread; the order is the order [tell] was called in.
+ *
+ * Where a stream starts, and so what is kept, is the host's:
+ * - [Serving.FROM_THE_START] (the JVM host): every event is kept and every stream starts at the first. A host lives for
+ *   one test, and a caller that subscribes after its first act must still find its act's marker.
+ * - [Serving.FROM_THE_LAST_ACT] (a device host): every stream starts where the latest act began ([acted]), and each act
+ *   lets go of what came before the act preceding it. A device's app outlives any one caller, so keeping everything
+ *   would grow without end and replay all of it to every wait. An act that is followed by a wait therefore misses
+ *   nothing, and a wait never replays an earlier act's events.
+ *
+ * Where an act begins is marked when the host runs it, not found by looking for its [WorldEvent.Acted]: the record an
+ * act leaves may change, and the mark does not depend on it.
  */
-class WorldEvents {
-    private val history = MutableStateFlow<List<WorldEvent>>(emptyList())
+class WorldEvents(private val serving: Serving = Serving.FROM_THE_START) {
+    /** Where a stream starts. */
+    enum class Serving { FROM_THE_START, FROM_THE_LAST_ACT }
+
+    /** What is kept: [events], the first of them the [base]-th ever told; [mark], where the latest act began. */
+    private data class Kept(val base: Long = 0, val events: List<WorldEvent> = emptyList(), val mark: Long = 0) {
+        val end: Long get() = base + events.size
+
+        fun appended(event: WorldEvent): Kept = copy(events = events + event).capped()
+
+        /** Lets go of everything before [mark], and marks the end as where the next act begins. */
+        fun markedAtEnd(): Kept = copy(base = mark, events = events.drop((mark - base).toInt()), mark = end)
+
+        /** At most [KEPT_AT_MOST] events: a device that is not acted on for long still holds a bounded history. */
+        private fun capped(): Kept {
+            val over = events.size - KEPT_AT_MOST
+            return if (over <= 0) {
+                this
+            } else {
+                copy(
+                    base = base + over,
+                    events = events.drop(over),
+                    mark = maxOf(mark, base + over),
+                )
+            }
+        }
+    }
+
+    private val history = MutableStateFlow(Kept())
 
     /** The tag every act carries until it is changed, set by its caller just before it acts. */
     @Volatile private var tag: String? = null
 
     /** Appends [event]. */
     fun tell(event: WorldEvent) {
-        history.update { it + event }
+        history.update { it.appended(event) }
     }
 
     /** Marks every act from now on with [tag], or none. */
@@ -28,24 +66,74 @@ class WorldEvents {
         this.tag = tag
     }
 
-    /** How many acts marked with [tag] were announced. */
-    fun actsTagged(tag: String): Int = history.value.count { it is WorldEvent.Acted && it.tag == tag }
+    /** How many acts marked with [tag] were announced, of those still kept. */
+    fun actsTagged(tag: String): Int = history.value.events.count { it is WorldEvent.Acted && it.tag == tag }
 
-    /** Announces an act named [name], carrying the tag its caller set, if any. */
+    /**
+     * An act named [name] begins: where it begins is marked — on a host serving from the last act, everything before
+     * the previous act's mark is let go — and the act is announced, carrying the tag its caller set, if any.
+     */
     fun acted(name: String) {
-        tell(WorldEvent.Acted(name, tag))
-    }
-
-    /** Every event so far, then each one as it is told. */
-    fun flow(): Flow<WorldEvent> = flow {
-        var sent = 0
-        history.collect { events ->
-            while (sent < events.size) emit(events[sent++])
+        val act = WorldEvent.Acted(name, tag)
+        history.update { kept ->
+            when (serving) {
+                Serving.FROM_THE_START -> kept.appended(act)
+                Serving.FROM_THE_LAST_ACT -> kept.markedAtEnd().appended(act)
+            }
         }
     }
 
-    /** Every event so far. */
-    fun snapshot(): List<WorldEvent> = history.value
+    /**
+     * Every event kept from where a stream starts — the first ([Serving.FROM_THE_START]) or the latest act's
+     * ([Serving.FROM_THE_LAST_ACT]) — then each one as it is told. A stream that falls behind more than is kept
+     * resumes at the oldest event kept.
+     */
+    fun flow(): Flow<WorldEvent> = flow {
+        var next = -1L
+        history.collect { kept ->
+            if (next < 0) {
+                next = when (serving) {
+                    Serving.FROM_THE_START -> kept.base
+                    Serving.FROM_THE_LAST_ACT -> kept.mark
+                }
+            }
+            next = maxOf(next, kept.base)
+            while (next < kept.end) emit(kept.events[(next++ - kept.base).toInt()])
+        }
+    }
+
+    /** Every event kept. */
+    fun snapshot(): List<WorldEvent> = history.value.events
+
+    companion object {
+        /** The most events a host keeps. */
+        const val KEPT_AT_MOST: Int = 5_000
+    }
+}
+
+/**
+ * Tells [events] what each of this device's mocked systems records, as the app hands it over — the screen's states
+ * where [screen] is set; a device host tells those from its decorated screen ([RigUi]), which sees the real one too.
+ * A system the launch left real is never reached, so its mock tells nothing.
+ */
+fun MockDevice.tellInto(events: WorldEvents, screen: Boolean) {
+    backend.watch { events.tell(it) }
+    library.watch { events.tell(it) }
+    if (screen) this.screen.watch { events.tell(WorldEvent.UiChanged(it)) }
+    uploadQueue.watch { events.tell(it) }
+    uploadSession.watch { events.tell(it) }
+    downloads.watch { events.tell(it) }
+    systemUi.watch { events.tell(it) }
+    crashReporter.watch { events.tell(it) }
+    databases.watch { events.tell(it) }
+    keychain.watch { events.tell(it) }
+    preferences.watch { events.tell(it) }
+    // What the operating system records of the app: its wakes, holds, push registrations and extension registration
+    // (the completion handlers are the played OS's own, told where it is made).
+    wakes.watch { events.tell(it) }
+    backgroundTime.watch { events.tell(it) }
+    pushService.watch { events.tell(it) }
+    extensionRegistry.watch { events.tell(it) }
 }
 
 /**
@@ -62,21 +150,41 @@ interface RigActs {
      */
     suspend fun <T> read(block: suspend () -> T): T
 
-    /** A host with no loop: the act runs where its request arrived. */
+    /** A host with no loop and no events: the act runs where its request arrived. */
     data object Direct : RigActs {
         override suspend fun <T> act(name: String, block: suspend () -> T): T = block()
+
+        override suspend fun <T> read(block: suspend () -> T): T = block()
+    }
+
+    /**
+     * A device host: no loop — the act runs where its request arrived — but announced to [events] first, so a wait that
+     * follows it starts where it began.
+     */
+    class Announced(private val events: WorldEvents) : RigActs {
+        override suspend fun <T> act(name: String, block: suspend () -> T): T {
+            events.acted(name)
+            return block()
+        }
 
         override suspend fun <T> read(block: suspend () -> T): T = block()
     }
 }
 
 /**
- * The world a host serves its callers' acts in: the world service — its events and clock, served by a host whose loop
- * knows when the app is settled, refused by one that cannot — and how each act runs.
+ * The world a host serves its callers' acts in: the world service — its events, and its clock and settling where its
+ * loop runs the app — and how each act runs.
  */
 class HostWorld(val service: ServedService, val acts: RigActs) {
     companion object {
-        /** A device host: the world's events refused, every act run where its request arrived. */
-        val ON_A_DEVICE = HostWorld(servedWorld(null, WORLD_REFUSED_ON_A_DEVICE), RigActs.Direct)
+        /**
+         * A device host's world: the events of its mocked systems and its screen ([events]), served from the last act;
+         * the clock and settling refused, its operating system running work the channel cannot see.
+         */
+        fun onADevice(events: WorldEvents): HostWorld =
+            HostWorld(
+                servedWorld(DeviceWorld(events), refusal = null, DEVICE_WORLD_REFUSALS),
+                RigActs.Announced(events),
+            )
     }
 }

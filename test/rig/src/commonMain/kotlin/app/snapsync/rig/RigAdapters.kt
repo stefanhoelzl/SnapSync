@@ -25,9 +25,13 @@ import kotlinx.coroutines.CompletableDeferred
  * root builds this set before the scene it decorates can be built — and is an adapter choice's screen mock where one mocks
  * it (`docs/testing.md`, "Launch-time adapters"). Forwarding
  * [inbound] to [inner] is the one registration the composition makes (a rig decorator's forwarding `inbound` counts as
- * the composition's single one).
+ * the composition's single one). Every state it is shown, it also hands [shown] — a device host's world tells it as
+ * [app.snapsync.levers.WorldEvent.UiChanged], the screen being real there.
  */
-class RigUi(private val inner: Lazy<Ui<UiState, UiIntent>>) : Ui<UiState, UiIntent> {
+class RigUi(
+    private val inner: Lazy<Ui<UiState, UiIntent>>,
+    private val shown: (UiState) -> Unit = {},
+) : Ui<UiState, UiIntent> {
     private var handlers: UiHandlers<UiState, UiIntent>? = null
 
     @CompositionOnly
@@ -36,7 +40,10 @@ class RigUi(private val inner: Lazy<Ui<UiState, UiIntent>>) : Ui<UiState, UiInte
         inner.value.inbound(handlers)
     }
 
-    override fun show(state: UiState) = inner.value.show(state)
+    override fun show(state: UiState) {
+        inner.value.show(state)
+        shown(state)
+    }
 
     /** A `/user` verb: [intent], as the screen would have handed it over. */
     fun dispatch(intent: UiIntent) =

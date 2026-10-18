@@ -332,10 +332,15 @@ $R --url $B os continue-link --url "https://snapsync.stho.net/join#v=3&d=<payloa
 $R run - <<'EOF'
 screen tap --intent '{"type":"CreateName","name":"Trip"}'
 screen tap --intent '{"type":"RangeSweep","anchor":"2026-08-23","day":"2026-08-30"}'
+screen tap --intent '{"type":"RangeFromHour","value":9}'
+screen tap --intent '{"type":"RangeFromMinute","value":0}'
+screen tap --intent '{"type":"RangeUntilHour","value":18}'
+screen tap --intent '{"type":"RangeUntilMinute","value":0}'
 screen tap --intent '{"type":"ConfirmCreate"}'
 screen tap --intent '{"type":"KeepOpenFor","days":7}'
 EOF
-$R --json host state | jq '.ui.layer'      # wait for JoiningEvent(eventId, Detailed)
+$R --url $B world events | jq -cn 'first(inputs | select(.type == "ui" and (.ui.layer.type | endswith("JoiningEvent"))))'
+                                           # waits for the join gate (see "Waiting on what happens", below)
 $R run - <<'EOF'
 screen tap --intent '{"type":"ShareOn","on":true}'
 screen tap --intent '{"type":"ReceiveOn","on":false}'
@@ -501,6 +506,53 @@ $R adapters clear                         # back to all real; exits
 - On the phone only the verb can write the choice (the App Group is not USB-reachable); on a simulator a script may
   write it before a launch into the `folder` that `adapters current` names (`ios-simulator`).
 
+## Waiting on what happens — `rig world events`
+
+**Wait on an event, never by re-running `host state` until it changes.** Every host serves the `world` service's
+event stream (`docs/testing.md`, "The world's events"); `rig world events` prints it, one line of JSON per event, and
+`jq` picks the one you wait for:
+
+```bash
+$R --url $B <the act>                                         # a tap, a delivery, a lever
+$R --url $B world events | jq -cn 'first(inputs | select(<the event>))'
+```
+
+- **It starts where your last act began.** A device host serves from the latest act (any typed call that
+  is no read) and keeps only what came since the act before it — so the wait that follows your act misses nothing of
+  it, even what happened before the wait started, and replays nothing older. Reading it twice reads the same. The JVM
+  host serves from its start instead (its tests need the whole run), so there a wait sees older events too: pick by a
+  field only your act's event carries.
+- **`jq -n 'first(inputs | select(…))'` is the form.** `first` makes `jq` leave the moment it has the event, and the
+  stream notices within a second (into a pipe it writes a bare newline every second, which `jq` reads past) and exits
+  `0`. With a plain `jq 'select(…)' | head -1`, `jq` stays until the NEXT matching event, and so does the wait. Pick
+  several kinds at once with `or` — the event you expect, or the one that means it will not come — and read which
+  arrived.
+- **Its bound is `--timeout` (default 300 s; `0`: none).** Passing it exits `1` (`timed out: …` on stderr) and `jq`
+  prints nothing; add `jq -e` (or `set -o pipefail`) where the script must tell the two apart. A refused stream exits `3`.
+- **A dropped connection is opened again** until the bound — an app the OS suspended in the background can come back
+  with its sockets gone — and the lines it printed before the drop are not printed again.
+- An event's `type` is its serial name: `ui` (with the whole `UiState`; a layer's `type` is its class's full name, so
+  match with `endswith`), `acted`, `backend-received`, `upload-job-created`, `session-transfer-created`,
+  `download-started`, `library-asset-created`, `wake-scheduled`, `completion-released`, … (`WorldEvent` in
+  `:test:levers`). There is no `settled` on a device: its OS runs work the channel cannot see.
+
+**What has an event:** what the screen shows (on every host — the decorated screen sees the real one), and what a
+**mocked** system records (launch-time adapters, above). **What has none: a REAL system's outcome** — a photo in the
+real library, an upload landing on the real backend, a real push. Wait for those with a state read (`host state`,
+`gallery read`, the backend's own read), re-run until it holds — say so where you do.
+
+```bash
+# A screen state: the join gate, after the create taps.
+$R --url $B world events | jq -cn 'first(inputs | select(.type == "ui" and (.ui.layer.type | endswith("JoiningEvent"))))'
+
+# A mocked system's event: with the library and transfers mocked, the upload a cycle starts for a photo taken. A
+# mocked library's add wakes nothing by itself, so deliver what runs a cycle; the wait starts at that last act. A
+# mocked clock starts at 1970, where every event is still to come and nothing uploads: `clock set --at` into it first.
+$R --url $B library add --id A1 --date <an instant inside the event, by the app's clock>
+$R --url $B os foreground
+$R --url $B world events | jq -cn 'first(inputs | select(.type == "upload-job-created" or .type == "session-transfer-created"))'
+```
+
 ## Triggers return what the PLATFORM returns
 
 The app root's entries are the **`os` typed service** (`OsLevers`; `rig os <method>`, below), which every host serves
@@ -515,7 +567,8 @@ $R --url $B os background-transfers --identifier app.snapsync.upload.session --a
 ```
 
 ⚠️ **`foreground` answers at once and does NOT wait** — and it is the delivery you will reach for most.
-The platform hands it no completion handler, so neither does the rig. **Poll `host state`.**
+The platform hands it no completion handler, so neither does the rig. **Wait on what it causes** (`rig world events`,
+"Waiting on what happens" above) — or, for a real system's outcome, read `host state`.
 
 The three entries the OS *does* hand a completion handler — `silent-push`, `background-task`,
 `background-transfers` — answer once delivered; with `--await-release` they block until the app releases the handler
@@ -523,8 +576,8 @@ and answer `heldMs` and `atRelease` — the files staged and the upload session'
 thread, each `null` where its system is real (on the JVM host, a test waits on the world's `CompletionReleased`
 instead). A push and a transfer
 wake release after their **own work** (the push's union read and enqueue; the session's staging and drain report) and
-run the rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; poll
-`host state` for its effects. The heartbeat releases after its tail. The last two take the identifier the OS would
+run the rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; wait on the
+tail's effects (`rig world events`), or read `host state` for a real system's. The heartbeat releases after its tail. The last two take the identifier the OS would
 deliver: `app.snapsync.upload.heartbeat` (the busy heartbeat) or `app.snapsync.heartbeat.idle` (the idle heartbeat, an
 app refresh) — the same wake to the core; the download backstop is deleted — and `app.snapsync.upload.session` for the
 app uploader's session (any other channel routes to the downloads). An unknown task identifier is completed at once
@@ -541,13 +594,14 @@ Excluded members answer with **the reason they are excluded**, not a bare 404 �
 test (reset is a relaunch), and `onRequestPermission` raises a system alert only a finger can answer.
 
 ⚠️ **A tap answers once it is handed over, exactly as a screen's does.** It starts work and does not wait for it,
-because the UI itself has no completion signal to expose. Poll `host state`.
+because the UI itself has no completion signal to expose. Wait on the screen it leads to (`rig world events`).
 
 ## Ordering trap
 
 `onForeground` fires **before** the membership config resolves — measured at 17:53:25.23 against
 17:53:27.45. A caller that triggers and then asserts reads a membership-less state and concludes
-nothing happened. Poll `host state`'s `ready.configResolved` instead of sleeping.
+nothing happened. Wait on the screen the resolved membership shows (`rig world events`), or read `host state`'s
+`ready.configResolved` — never sleep.
 
 ## If it does not answer
 
@@ -597,7 +651,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
   whose cycle creates jobs on the upload-queue mock.
 - Every lever and read below is a mock's operator face — what the OS, the photo library or the backend does or
   recorded, never the composed app. A lever answers at once; what the app makes of it is **observed, not awaited**
-  (poll `host state`, the backend, the library, the OS's reads). The download reconcile and the status read are
+  (`rig world events`, or the backend's, the library's and the OS's reads). The download reconcile and the status read are
   the foreground's: `os foreground`. `gallery read` is the library's answer under the person's grant.
 - **The OS is played, its expiry and its record included** (the app host only for what its adapter choice mocks —
   `played-os` needs `background-time` mocked): see "The operating system's typed services" below.
@@ -859,7 +913,7 @@ Gone with the move: `device/os-record`'s completions, `heartbeatsScheduled`, `pe
 (`screenShown`, the transfer sessions: `screen shown`, `download-session downloads`, `upload-session session`), the
 `/os/app/*` verbs (`os`), `/os/app/onExpiry` (`played-os`) and `/os/photokit-ext/*` (`extension-host`).
 
-### The world's events — waiting without polling (JVM host only)
+### The world's events — the JVM host's loop, clock and settling
 
 The JVM host runs the app on **one loop** (`LaneLoop`): every lane of both processes, and the channel's own, is a lane
 of it, so the loop knows when the app is **settled** — nothing running or runnable, nothing outside the app in flight
@@ -874,7 +928,7 @@ typed call is an **act**, announced first; a `GET` runs there unannounced. Two c
   the lanes take turns. A dispatch onto an app lane from a thread the loop does not own is a **lane violation**: told on
   the stream, and a test fails on it.
 
-The `world` service (`WorldLevers`, kRPC, refused by a device host):
+The `world` service (`WorldLevers`, kRPC; a device host serves its events and refuses the clock and settling):
 
 ```kotlin
 RigClient("http://127.0.0.1:$PORT").use { client ->
@@ -897,5 +951,6 @@ The library's events: a walk, an add or an import parked on a hold (`LibraryEnum
 
 `tagActs(tag)` / `actsTagged(tag)` mark a caller's acts so it finds where they begin in the stream — the behaviour DSL's
 own bookkeeping. A test never reads the stream by hand: it states a `behaviour { given / whenever / then }`
-(`:test:control`'s `app.snapsync.control.behaviour`). Phase 14's `rig await` is to wait on the same stream.
+(`:test:control`'s `app.snapsync.control.behaviour`). From a shell, `rig world events` reads it ("Waiting on what
+happens", above).
 

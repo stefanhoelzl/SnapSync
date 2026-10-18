@@ -49,9 +49,14 @@ class RigLaunch internal constructor(
     val ui: RigUi,
     /** What the operator levers move: the mocked device — an idle one, for a launch that mocks nothing. */
     val world: MockWorld,
+    /** What the world service serves of this launch: its mocked systems' events and its screen's. */
+    events: WorldEvents,
     /** The real files adapter the adapter choice lives on. */
     internal val files: app.snapsync.ports.Files,
 ) {
+    /** The world the channel serves its callers' acts in: the events, from the last act on. */
+    val hostWorld: HostWorld = HostWorld.onADevice(events)
+
     private val chosen: LaunchAdapters.Chosen? = launch as? LaunchAdapters.Chosen
 
     /** Why this launch composed nothing, or `null` for one that composed. */
@@ -102,7 +107,8 @@ fun rigLaunch(platform: AppDevicePorts): RigLaunch {
     val controls = RigDevControls()
     val device = chosen?.device ?: MockDevice()
     val world = launchWorld(device, mocked, ports, controls, mockBase = bakedUploadBase(), realBackend = REAL_BACKEND)
-    return RigLaunch(launch, ports, controls, RigUi(ports.ui), world, real.files.value)
+    val events = deviceEvents(world)
+    return RigLaunch(launch, ports, controls, RigUi(ports.ui, screenShown(events)), world, events, real.files.value)
 }
 
 /**
