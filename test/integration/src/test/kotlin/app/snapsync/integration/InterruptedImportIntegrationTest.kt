@@ -1,15 +1,19 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Acts
+import app.snapsync.control.behaviour.Given
+import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.levers.DownloadView
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The duplicate-import defect, end to end over the real stack, driven through the control protocol (Bugsink
@@ -27,9 +31,8 @@ import kotlin.test.assertTrue
  * **no upload job and no object** for the orphan. A fix that stopped the duplicate but left the first copy
  * unsuppressed would still send someone else's photo back into the event.
  *
- * The "next pass" that must adjudicate an inherited row is a **relaunch** (`/device/relaunch`): the startup
- * interrupted-import sweep runs at host assembly, which the relaunched app performs when its host is first
- * touched — the next `host.state()` read.
+ * The "next pass" that must adjudicate an inherited row is a **relaunch**: the startup interrupted-import sweep
+ * runs at host assembly, which the relaunched app performs when the operating system first brings it to the front.
  */
 class InterruptedImportIntegrationTest {
 
@@ -38,38 +41,47 @@ class InterruptedImportIntegrationTest {
 
     @Test
     @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
-    fun an_interrupted_import_is_not_repeated_on_the_next_pass() = rigTest {
-        val before = stageWithAbandonedImport()
-
-        // Precondition: the asset really was created, and the import really is unconfirmed. Without both,
+    fun an_interrupted_import_is_not_repeated_on_the_next_pass() = behaviour {
+        // Precondition, in the step: the asset really was created, and the import really is unconfirmed. Without both,
         // this test would pass for the wrong reason.
-        assertEquals(before + 1, libraryTotal(), "the asset was created")
-        assertUnsettled(downloadProgress(), "but the import was never confirmed")
+        val abandoned = given {
+            joinedEvent()
+            abandonedImport()
+        }
 
-        // The next pass — a relaunch, then a foreground and a download wake. It must adjudicate the row,
-        // not import it again.
-        relaunchAndAssemble()
-        os.foreground()
-        downloadAll()
-
-        awaitDownloadSettled() // the row settles against the asset that exists
-        assertEquals(before + 1, libraryTotal(), "exactly one asset created for this photo — no second copy")
+        // The next pass — a relaunch, then a foreground and a download wake. It must adjudicate the row, not import it
+        // again.
+        whenever {
+            host.relaunch()
+            os.foreground()
+            downloadSession.finish()
+            advance(STATUS_POLL)
+        }
+        then {
+            screen<Layer.Joined> { it.received() == SETTLED } // the row settles against the asset that exists
+            never<WorldEvent.LibraryAssetCreated>()
+            // exactly one asset created for this photo — no second copy
+            settled { it.photos() == abandoned.photos + 1 }
+        }
     }
 
     @Test
     @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
-    fun the_first_copy_is_never_uploaded_back_into_the_event() = rigTest {
-        extensionUploadsOnly()
-        stageWithAbandonedImport()
-
-        relaunchAndAssemble()
-        awaitDownloadSettled()
-        cycle()
+    fun the_first_copy_is_never_uploaded_back_into_the_event() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            abandonedImport()
+            relaunchedAndSettled()
+        }
 
         // The reported harm. `SNAPSYNC-6` uploaded key `BB4F7765-…-primary.heic` — the orphaned first copy —
         // and every other member imported it as a photo they had never seen.
-        assertEquals(0, jobs().created, "the first copy stays suppressed and creates no upload job")
-        assertTrue(objects().isEmpty(), "and nothing of it lands on the backend")
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>() // the first copy stays suppressed and creates no upload job
+            never<WorldEvent.BytesStored>() // and nothing of it lands on the backend
+        }
     }
 
     /**
@@ -83,62 +95,102 @@ class InterruptedImportIntegrationTest {
         requirement = "Received photos do not take up space twice",
         scenario = "Space is released after saving",
     )
-    fun staged_bytes_survive_an_unconfirmed_import_and_are_released_once_it_settles() = rigTest {
-        val base = storage()
-        stageWithAbandonedImport()
+    fun staged_bytes_survive_an_unconfirmed_import_and_are_released_once_it_settles() = behaviour {
+        val abandoned = given {
+            joinedEvent()
+            abandonedImport()
+        }
+        assertTrue(abandoned.staged > abandoned.base, "the transfer staged bytes")
 
-        val staged = storage()
-        assertTrue(staged > base, "the transfer staged bytes")
         // A full trigger cycle against the unconfirmed row leaves them where they are.
-        reconcile()
-        os.backgroundTask(HEARTBEAT, awaitRelease = true)
-        assertTrue(storage() >= staged, "unconfirmed → the bytes stay; the retry needs them")
+        whenever {
+            os.foreground()
+            heartbeat()
+        }
+        then {
+            event<WorldEvent.CompletionReleased> { !it.again }
+            settled { it.storage() >= abandoned.staged } // unconfirmed → the bytes stay; the retry needs them
+        }
 
-        relaunchAndAssemble() // the startup sweep adjudicates → present → settles the row
-
-        eventually<Long>(read = { storage() }) { it <= base }
-        assertTrue(downloadProgress().settled(), "confirmed → the bytes are redundant and released")
+        // The startup sweep adjudicates → present → settles the row.
+        whenever { relaunched() }
+        then {
+            screen<Layer.Joined> { it.received() == SETTLED }
+            settled { it.storage() <= abandoned.base } // confirmed → the bytes are redundant and released
+        }
     }
 
     @Test
     @Verifies(spec = "delivery", requirement = "Download problems delay photos, never corrupt or lose them")
-    fun a_failed_import_keeps_its_bytes_for_the_retry() = rigTest {
-        createAndJoin()
-        foreignDevice(foreignDevice, foreignAsset)
-        val before = libraryTotal()
-        library.failNextImport()
-        downloadAll()
+    fun a_failed_import_keeps_its_bytes_for_the_retry() = behaviour {
+        // The first import fails, and the pass its staging requested ends with it — so the retry below is a pass of its
+        // own, never one the staging's pass is joined by. What the bytes are for is: every retry — here the next wake's
+        // tail, whose first unit is the import drain — imports off those same bytes, and would fail had the failure
+        // taken them (DownloadControllerTest pins the failure keeping them, step by step).
+        val before = given {
+            joinedEvent()
+            downloadStarted(foreignDevice, foreignAsset).also {
+                step("the first import fails", act = {
+                    library.failNextImport()
+                    downloadSession.finish()
+                }, until = {
+                    never<WorldEvent.LibraryAssetCreated>()
+                    settled { true }
+                })
+            }
+        }
 
-        // The first import fails. Whether its retry has already run is a race between the tail pass the staging
-        // requested and the one a later request joins (each pass's ① retries what is importable), so the state right
-        // after the failure is not asserted here. What the bytes are for is: every retry — here the next wake's tail,
-        // whose first unit is the import drain — imports off those same bytes, and would fail had the failure taken
-        // them (DownloadControllerTest pins the failure keeping them, step by step).
-        os.backgroundTask(HEARTBEAT, awaitRelease = true)
-        eventually(read = { libraryTotal() }) { it == before + 1 } // the photo still arrives
-        awaitDownloadSettled()
+        whenever {
+            heartbeat()
+            advance(STATUS_POLL)
+        }
+        then {
+            // the failed attempt's id is spent, so the photo arrives under the library's next one
+            val photo = imported(foreignAsset, foreignDevice)
+            times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(photo) } }
+            screen<Layer.Joined> { it.received() == SETTLED }
+            settled { it.photos() == before.photos() + 1 } // the photo still arrives
+        }
     }
 
     /** The full leave/switch shape: the row survives, adjudicates correctly afterwards, and never echoes. */
     @Test
     @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
     @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
-    fun after_a_leave_the_interrupted_import_still_settles_without_a_duplicate() = rigTest {
-        extensionUploadsOnly()
-        val base = storage()
-        val before = stageWithAbandonedImport()
-        assertTrue(storage() > base, "precondition: the transfer staged bytes")
+    fun after_a_leave_the_interrupted_import_still_settles_without_a_duplicate() = behaviour {
+        val abandoned = given {
+            extensionUploadsOnly()
+            joinedEvent()
+            abandonedImport().also {
+                step("left", act = { tap(UiIntent.LeaveEvent) }, until = {
+                    screen<Layer.CreateEvent>()
+                    settled { true }
+                })
+                createdEvent(name = "Second Event")
+                step("joined the second event", act = { confirmJoin() }, until = {
+                    screen<Layer.Joined>()
+                    settled { true }
+                })
+            }
+        }
+        assertTrue(abandoned.staged > abandoned.base, "precondition: the transfer staged bytes")
 
-        leave()
-        createAndJoin(name = "Second Event")
-        relaunchAndAssemble()
         // The sweep settled the inherited row: its now-redundant bytes are released.
-        eventually<Long>(read = { storage() }) { it <= base }
-        cycle()
+        whenever {
+            host.relaunch()
+            os.foreground()
+        }
+        then {
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { it.storage() <= abandoned.base }
+        }
 
-        assertEquals(before + 1, libraryTotal(), "still exactly one asset created for this photo")
-        assertEquals(0, jobs().created, "and nothing echoed into the new event either")
-        assertTrue(objects().isEmpty())
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>() // and nothing echoed into the new event either
+            never<WorldEvent.BytesStored>()
+            settled { it.photos() == abandoned.photos + 1 } // still exactly one asset created for this photo
+        }
     }
 
     /**
@@ -148,13 +200,14 @@ class InterruptedImportIntegrationTest {
      */
     @Test
     @Verifies(spec = "sync-status", requirement = "The joined screen counts what was shared and received")
-    fun download_progress_settles_after_an_interrupted_import() = rigTest {
-        stageWithAbandonedImport()
-        assertUnsettled(downloadProgress(), "precondition: unconfirmed, so progress is genuinely short")
+    fun download_progress_settles_after_an_interrupted_import() = behaviour {
+        given {
+            joinedEvent()
+            abandonedImport() // unconfirmed, so progress is genuinely short
+        }
 
-        relaunchAndAssemble()
-
-        awaitDownloadSettled() // imported reaches total — not left stuck
+        whenever { relaunched() }
+        then { screen<Layer.Joined> { it.received() == SETTLED } } // imported reaches total — not left stuck
     }
 
     /**
@@ -165,47 +218,64 @@ class InterruptedImportIntegrationTest {
      * it, nothing may act on that *absent* answer, and when the import finally lands there must be exactly
      * ONE asset, and it must never echo back into the event.
      *
-     * Asserted on how many assets EXIST: creating the second asset is the harm.
+     * Judged on how many assets EXIST: creating the second asset is the harm.
      */
     @Test
     @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
     @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
-    fun a_live_transaction_survives_a_full_trigger_cycle_without_a_duplicate() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        foreignDevice(foreignDevice, foreignAsset)
-        val galleryBefore = libraryTotal()
-        // Park BEFORE the commit: the library will answer *absent* about a transaction that is alive.
-        library.suspendNextImport()
-        reconcile()
-        awaitDownloadQueued()
-        stage(wait = false)
-        awaitImportParked()
-        assertEquals(galleryBefore, libraryTotal(), "precondition: the commit has not landed")
+    fun a_live_transaction_survives_a_full_trigger_cycle_without_a_duplicate() = behaviour {
+        val before = given {
+            extensionUploadsOnly()
+            joinedEvent()
+            downloadStarted(foreignDevice, foreignAsset).also {
+                // Park BEFORE the commit: the library will answer *absent* about a transaction that is alive.
+                step(
+                    "its bytes staged, the import parked before the library commits it",
+                    act = {
+                        library.suspendNextImport()
+                        downloadSession.finish()
+                    },
+                    until = {
+                        event<WorldEvent.LibraryImportParked>()
+                        never<WorldEvent.LibraryAssetCreated>() // the commit has not landed
+                        settled { true }
+                    },
+                )
+            }
+        }
 
-        // A full cycle of triggers against the live transaction. None may block, and none may act on the
-        // library's honest "absent" about it.
-        reconcile()
-        os.backgroundTask(HEARTBEAT, awaitRelease = true)
-
-        assertEquals(
-            galleryBefore,
-            libraryTotal(),
-            "no second asset was created while the first transaction was still open",
-        )
+        // A full cycle of triggers against the live transaction. None may block, and none may act on the library's honest
+        // "absent" about it.
+        whenever {
+            os.foreground()
+            heartbeat()
+        }
+        then {
+            event<WorldEvent.CompletionReleased> { !it.again }
+            // no second asset was created while the first transaction was still open
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { it.photos() == before.photos() }
+        }
 
         // The commit finally lands and reports.
-        library.resumeImport(succeeded = true)
+        whenever {
+            library.resumeImport(succeeded = true)
+            advance(STATUS_POLL)
+        }
+        then {
+            times(1) { event<WorldEvent.LibraryAssetCreated>() }
+            screen<Layer.Joined> { it.received() == SETTLED } // the row settles
+            settled { it.photos() == before.photos() + 1 } // exactly one asset for this photo
+        }
 
-        awaitDownloadSettled() // the row settles
-        assertEquals(galleryBefore + 1, libraryTotal(), "exactly one asset for this photo")
-
-        // The REPORTED harm, asserted rather than inferred: run the real upload cycle and require that the
-        // downloaded photo produces no upload job. A suppression handle that exists but is not consulted
-        // would still send someone else's photo back into their event.
-        cycle()
-        assertEquals(0, jobs().created, "the downloaded photo creates no upload job")
-        assertTrue(objects().isEmpty())
+        // The REPORTED harm, judged rather than inferred: run the real upload cycle and require that the downloaded
+        // photo produces no upload job. A suppression handle that exists but is not consulted would still send someone
+        // else's photo back into their event.
+        whenever { cycle() }
+        then {
+            never<WorldEvent.UploadJobCreated>() // the downloaded photo creates no upload job
+            never<WorldEvent.BytesStored>()
+        }
     }
 
     /**
@@ -218,25 +288,35 @@ class InterruptedImportIntegrationTest {
     @Test
     @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
     @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
-    fun the_composition_startup_sweep_settles_what_a_dead_process_left() = rigTest {
-        extensionUploadsOnly()
-        val before = stageWithAbandonedImport()
-        // Exactly what a killed process leaves: an asset in the library, a row that does not know it. No
-        // trigger will settle this — that is the point.
-        reconcile()
-        os.backgroundTask(HEARTBEAT, awaitRelease = true)
-        assertUnsettled(
-            downloadProgress(),
-            "a full trigger cycle leaves it alone — triggers do not adjudicate any more",
-        )
+    fun the_composition_startup_sweep_settles_what_a_dead_process_left() = behaviour {
+        val abandoned = given {
+            extensionUploadsOnly()
+            joinedEvent()
+            abandonedImport()
+        }
+        // Exactly what a killed process leaves: an asset in the library, a row that does not know it. No trigger will
+        // settle this — that is the point.
+        whenever {
+            os.foreground()
+            heartbeat()
+            advance(STATUS_POLL)
+        }
+        then {
+            event<WorldEvent.CompletionReleased> { !it.again }
+            // a full trigger cycle leaves it alone — triggers do not adjudicate any more
+            neverScreen<Layer.Joined> { it.received() == SETTLED }
+            settled { true }
+        }
 
-        // Host assembly is what runs the sweep: the relaunched app assembles its host when first touched.
-        relaunchAndAssemble()
-
-        awaitDownloadSettled() // the startup sweep settled it
-        assertEquals(before + 1, libraryTotal(), "against the asset that exists — no second copy")
-        cycle()
-        assertEquals(0, jobs().created, "and the FIRST copy is suppressed")
+        // Host assembly is what runs the sweep: the relaunched app assembles its host when first brought to the front.
+        whenever { relaunched() }
+        then {
+            screen<Layer.Joined> { it.received() == SETTLED } // the startup sweep settled it
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { it.photos() == abandoned.photos + 1 } // against the asset that exists — no second copy
+        }
+        whenever { cycle() }
+        then { never<WorldEvent.UploadJobCreated>() } // and the FIRST copy is suppressed
     }
 
     /**
@@ -302,55 +382,67 @@ class InterruptedImportIntegrationTest {
     // ---- helpers --------------------------------------------------------------------------------
 
     /**
-     * Drive a foreign asset all the way to staged, with its import abandoned after the library commit —
-     * the state a killed process leaves: the asset exists, the row does not know it. The import stays parked
-     * inside the library, so the transaction is genuinely open while the rest of the test runs against it;
-     * awaiting the park rather than assuming a delay keeps that deterministic. Answers the library's size
-     * before the import.
+     * A foreign asset driven all the way to staged, with its import abandoned after the library commit — the state a
+     * killed process leaves: the asset exists, the row does not know it. The import stays parked inside the library, so
+     * the transaction is genuinely open while the rest of the test runs against it; the park is awaited, and the joined
+     * screen shows the photo genuinely short of received.
      */
-    private suspend fun Rig.stageWithAbandonedImport(joined: Boolean = false): Long {
-        if (!joined) createAndJoin()
-        foreignDevice(foreignDevice, foreignAsset)
-        val before = libraryTotal()
-        library.suspendNextImport(afterCommit = true)
-        reconcile()
-        awaitDownloadQueued()
+    private suspend fun Given.abandonedImport(): Abandoned {
+        val before = downloadStarted(foreignDevice, foreignAsset)
+        lateinit var parked: Seen<WorldEvent.Settled>
         // The import fires from the staged-resource callback, so THAT is what parks.
-        stage(wait = false)
-        awaitImportParked()
-        return before
+        step(
+            "its bytes staged, its import abandoned once the library created the asset",
+            act = {
+                library.suspendNextImport(afterCommit = true)
+                downloadSession.finish()
+                advance(STATUS_POLL)
+            },
+            until = {
+                event<WorldEvent.LibraryImportParked>()
+                event<WorldEvent.LibraryAssetCreated> { it.asset == imported(foreignAsset, foreignDevice) }
+                screen<Layer.Joined> { it.received() == SHORT } // but the import was never confirmed
+                parked = settled { true }
+            },
+        )
+        assertEquals(before.photos() + 1, parked.value.photos(), "the asset was created")
+        return Abandoned(photos = before.photos(), base = before.storage(), staged = parked.value.storage())
     }
 
-    /** Process death and a cold launch, then the first touch of the new app's host — which assembles it. */
-    private suspend fun Rig.relaunchAndAssemble() {
+    /**
+     * What an abandoned import left: the library's [photos] before it, the storage the app took before its bytes
+     * arrived ([base]) and with them staged ([staged]).
+     */
+    private class Abandoned(val photos: Int, val base: Long, val staged: Long)
+
+    /** Process death and a cold launch, then the operating system brings the new app to the front — which assembles it. */
+    private suspend fun Acts.relaunched() {
         host.relaunch()
-        state()
+        os.foreground()
     }
 
-    /** The joined screen's download progress, freshly read. */
-    private suspend fun Rig.downloadProgress(): DownloadView {
-        refresh()
-        return state().download
-    }
-
-    private fun DownloadView.settled() = total > 0 && downloaded == total
-
-    /** Wait until every planned foreign photo is imported: the download progress reaches its total. */
-    private suspend fun Rig.awaitDownloadSettled() {
-        eventually(read = { downloadProgress() }) { it.settled() }
-    }
-
-    private fun assertUnsettled(progress: DownloadView, what: String) =
-        assertTrue(progress.total > 0 && progress.downloaded < progress.total, "$what: $progress")
-
-    /** The storage the app takes, as the device's storage page shows it. */
-    private suspend fun Rig.storage(): Long = files.appStorageBytes()
+    /** The app relaunched and in front, the row the dead process left settled by its startup sweep. */
+    private suspend fun Given.relaunchedAndSettled() = step("relaunched", act = { relaunched() }, until = {
+        screen<Layer.Joined> { it.received() == SETTLED }
+        settled { true }
+    })
 
     /** What the joined screen counts as received. */
     private fun Layer.Joined.received() = counts?.received
 
+    private fun WorldEvent.Settled.photos(): Int = state.libraryPhotos.orEmpty().size
+
+    /** The storage the app takes, as the device's storage page shows it. */
+    private fun WorldEvent.Settled.storage(): Long = checkNotNull(state.appStorageBytes)
+
     private companion object {
-        /** Any wake runs the tail, whose first unit is the import drain; the heartbeat is the one a test can force. */
-        const val HEARTBEAT = "app.snapsync.upload.heartbeat"
+        /** The one photo planned, not yet imported. */
+        val SHORT = DirectionCount.Progress(0, 1)
+
+        /** The one photo planned, imported. */
+        val SETTLED = DirectionCount.Progress(1, 1)
+
+        /** Longer than the screen's status poll, on mocked time. */
+        val STATUS_POLL = 5.seconds
     }
 }

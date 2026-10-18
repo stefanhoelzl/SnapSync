@@ -160,17 +160,13 @@ class TestsWaitOnEventsTest {
          * 3g-b empties the list and deletes the polls.
          */
         val STILL_POLLING = setOf(
-            "AlbumIntegrationTest", "ColdDownloadRelaunchIntegrationTest", "EntryIntegrationTest",
-            "FullStackIntegrationTest", "HandOffIntegrationTest", "InterruptedImportIntegrationTest",
+            "AlbumIntegrationTest", "EntryIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest",
             "MobileDataIntegrationTest", "OsCompletionIntegrationTest", "ReinstallIntegrationTest", "Rig", "RigEvents",
             "RigOs", "RigTraffic", "RigUploaders", "SelectionIsTheWalkIntegrationTest", "Shots", "ShotsTest",
-            "StagedByteReclaimIntegrationTest", "UploadCycleIntegrationTest",
+            "UploadCycleIntegrationTest",
         )
 
         /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */
-        val STILL_WAITING_BY_TIME = setOf(
-            "OsCompletionIntegrationTest",
-            "Rig",
-        )
+        val STILL_WAITING_BY_TIME = setOf("Rig")
     }
 }
