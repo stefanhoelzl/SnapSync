@@ -92,10 +92,10 @@ class EncryptedEventIntegrationTest {
 
     @Test
     @Verifies(spec = "invite-link", requirement = "An incomplete invite never joins an encrypted event")
-    fun a_key_never_opens_a_plain_event() = behaviour {
-        val plain = given { registeredEvent() }
+    fun a_wrong_key_never_opens_an_encrypted_event() = behaviour {
+        val event = given { registeredEvent() }
 
-        whenever { openLink("$LINK_ORIGIN/join/$plain#k=" + "A".repeat(42) + "E") }
+        whenever { openLink("$LINK_ORIGIN/join/$event#k=" + "A".repeat(42) + "E") }
         then {
             screen<Layer.JoiningEvent> { it.phase == JoinPhase.WrongLink }
             never<WorldEvent.MemberJoined>() // no enrolment
