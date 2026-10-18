@@ -22,12 +22,10 @@ internal class ServiceCommands(val service: LeverService<*>) {
     val name: String get() = service.name
 
     /**
-     * Every one-shot method: a stream (`world`'s events — kRPC's one kind of non-suspend method) has no answer a shell
-     * could print and exit on.
+     * Every method: a one-shot one prints its answer, a stream (`world`'s events — kRPC's one kind of non-suspend
+     * method) one line per element.
      */
-    val methods: List<MethodCommand> = service.descriptor.callables.values
-        .filterNot { it.isNonSuspendFunction }
-        .map { MethodCommand(service, it) }
+    val methods: List<MethodCommand> = service.descriptor.callables.values.map { MethodCommand(service, it) }
 
     /** A method by its declared name (`failListing`) or its spelling as a command (`fail-listing`). */
     fun method(name: String): MethodCommand? = methods.firstOrNull { it.name == name || it.declared == name }
@@ -42,6 +40,9 @@ internal class MethodCommand(val service: LeverService<*>, val callable: RpcCall
     val name: String get() = commandSpelling(declared)
 
     val parameters: List<ParameterFlag> = callable.parameters.map(::ParameterFlag)
+
+    /** A stream (`Flow<…>`): printed element by element, one line of JSON each, until its bound or a closed pipe. */
+    val streams: Boolean get() = callable.isNonSuspendFunction
 }
 
 /** A parameter as a flag: `--<name> <value>`. */

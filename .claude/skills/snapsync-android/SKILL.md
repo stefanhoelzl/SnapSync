@@ -171,12 +171,17 @@ $A -s $S shell am start -W -n app.snapsync/app.snapsync.android.MainActivity
 $A -s $S forward tcp:$H tcp:18099                                         # the device's host port → the app's
 curl -sS localhost:$H/health ; curl -sS localhost:$H/device               # host ANDROID_EMU; 409 = refused verb
 test/cli/build/install/rig/bin/rig --url http://127.0.0.1:$H host state   # the app's state (`rig-channel`)
+test/cli/build/install/rig/bin/rig --url http://127.0.0.1:$H world events \
+  | jq -cn 'first(inputs | select(.type == "ui"))'                       # wait on an event, never a re-read
 $A -s $S exec-out screencap -p > shot.png                                 # then Read it
 $A -s $S logcat -s SnapSync:V AndroidRuntime:E                            # the whole app log (LogcatSink)
 $A -s $S exec-out run-as app.snapsync cat files/private/debug.log > debug.log # the same log as a file (FileLogSink) — a bug report's app_log
 ```
 
-Everything past the port is `rig-channel`'s protocol; load it for the verbs, with `B=http://127.0.0.1:$H`. The `os` service's foreground and background
+Everything past the port is `rig-channel`'s protocol; load it for the verbs, with `B=http://127.0.0.1:$H`. **Wait with
+`rig world events`** ("Waiting on what happens" there): every system but the screen and lifecycle is mocked here, so
+almost everything the app does tells an event — the screen's states, the backend's requests, the transfers, the
+library's — and the stream starts at your last act, through the forward. The `os` service's foreground and background
 go through the REAL lifecycle adapter (`AndroidLifecycle.deliverForeground`); every other delivery through its mock.
 The `extension-host` service is refused: Android has no upload extension. `host relaunch` is refused: force-stop and start.
 

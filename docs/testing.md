@@ -1089,9 +1089,21 @@ The **`world` service** (`WorldLevers`) is the channel's own, beside the adverti
 (`events()`, a `Flow` over kRPC, served from the host's start so a late subscriber misses nothing), the acts' tags
 (`tagActs`, `actsTagged`: a caller finds where its own acts begin and end), the clock (`advance` by a duration and
 `advanceTo` an instant, each an act; under the legacy real-time loop `advanceTo` moves only the clock the app reads) and
-`whyNotSettled()`. Only a host that can say when its app is settled serves it — the JVM host, whose loop runs every
-task (section 7, "How a test waits"). A device host refuses every method: its operating system runs work the channel
-cannot see. The journeys keep condition waits until they convert (a later phase).
+`whyNotSettled()`. Every host serves the events; only the JVM host, whose loop runs every task (section 7, "How a test
+waits"), serves the clock and settling.
+
+**A device host** (the iOS app host, the Android app host) serves `events()`, `tagActs` and `actsTagged`, and refuses
+`advance`, `advanceTo` and `whyNotSettled` with their reasons: its operating system runs work the channel cannot see, so
+it cannot say when the app is settled, and it has no loop to fire the app's timers at their instants (where the launch
+mocks the clock, the `clock` service moves the time the app reads). Its stream carries what its **mocked** systems
+record — the same mocks, telling the same events as on the JVM host — and each state the screen shows, told by the
+decorated screen (`RigUi`), which sees the real screen too; a system the launch leaves real tells nothing, so a wait for
+a real system's outcome stays a read of its state. There is no `Settled`. Each act (a typed service's call
+that is no read) is announced (`Acted`) and run where its request arrived, and **a stream starts where the latest act
+began**: a device's app outlives any one caller, so the host keeps only what came since the act before the latest (at
+most `WorldEvents.KEPT_AT_MOST` events) — a wait that follows its caller's act misses nothing of it and replays nothing
+older, and the same wait read twice reads the same. A shell waits on it with `rig world events` (the `rig-channel`
+skill). The journeys keep condition waits until they convert (a later phase).
 
 **On the JVM host every request is a task of the loop**, on the channel's own lane: a `POST` and a typed service's call
 are **acts**, announced (`Acted`) before they do anything; a `GET` is a read, run there unannounced, because a read can

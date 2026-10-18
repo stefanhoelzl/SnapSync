@@ -112,7 +112,7 @@ class RigHooks(
      */
     private val servicesOf: (RigHooks) -> List<ServedService> = { emptyList() },
     /** The world this host serves its callers' acts in (`docs/testing.md`, "How a test waits"). */
-    val world: HostWorld = HostWorld.ON_A_DEVICE,
+    val world: HostWorld,
 ) {
     /** Every typed service this host serves ([servicesOf]). */
     val services: List<ServedService> by lazy { servicesOf(this) }

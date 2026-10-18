@@ -9,6 +9,8 @@ import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.rig.JvmRigHost
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.OutputStream
 import java.io.PrintStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,11 +26,10 @@ import kotlin.time.Duration.Companion.seconds
 class RigCliTest {
 
     @Test
-    fun every_declared_one_shot_method_is_a_command() {
+    fun every_declared_method_is_a_command() {
         LEVER_SERVICES.forEach { service ->
             val commands = checkNotNull(serviceCommands(service.name)) { "no command group for ${service.name}" }
-            val oneShot = service.descriptor.callables.values.filterNot { it.isNonSuspendFunction }.map { it.name }
-            assertEquals(oneShot, commands.methods.map { it.declared })
+            assertEquals(service.descriptor.callables.values.map { it.name }, commands.methods.map { it.declared })
             commands.methods.forEach { assertEquals(it, commands.method(it.name)) }
         }
     }
@@ -138,7 +139,73 @@ class RigCliTest {
         assertEquals(EXIT_USAGE, method.code)
         assertMentions(method.err, "methods: offline, fail-listing")
         assertEquals(EXIT_USAGE, rig("backend", "offline", "--on").code, "a call names its host")
-        assertEquals(EXIT_USAGE, rig("--url", "http://127.0.0.1:1", "world", "events").code, "a stream is no command")
+    }
+
+    /** A stream prints one line of JSON per event, and ends with exit 0 when its reader has gone. */
+    @Test
+    fun a_stream_ends_when_its_reader_goes() = onHost("mock") { url ->
+        val reader = Reader(lines = 1)
+        val code = PrintStream(
+            reader,
+            true,
+        ).use { out -> rig(listOf("--url", url, "world", "events"), out, System.err, probe = true) }
+        assertEquals(EXIT_OK, code)
+        assertTrue(reader.text.lines().first().startsWith("{\"type\":"), reader.text)
+    }
+
+    /** Its bound passing is a failure: no reader took what it waited for. */
+    @Test
+    fun a_stream_fails_when_its_bound_passes() = onHost("mock") { url ->
+        val run = rigOn(url, "--timeout", "2", "world", "events")
+        assertEquals(EXIT_FAILED, run.code)
+        assertTrue(run.err.startsWith("timed out: the stream's bound (2 s) passed"), run.err)
+        assertTrue(run.out.lines().all { it.startsWith("{\"type\":") }, run.out)
+    }
+
+    /**
+     * A dropped connection is opened again until the bound — a device's app the operating system suspended comes back
+     * with its sockets gone — and the stream goes on with what the host serves once it is back.
+     */
+    @Test
+    fun a_stream_outlives_a_dropped_connection() {
+        val port = java.net.ServerSocket(0).use { it.localPort }
+        val url = "http://127.0.0.1:$port"
+        val reader = Reader(until = "\"name\":\"backend.offline\"")
+        val stream = Thread {
+            PrintStream(reader, true).use {
+                rig(listOf("--url", url, "--timeout", "60", "world", "events"), it, System.err, probe = true)
+            }
+        }.apply { start() }
+        val first = runBlocking { JvmRigHost.start("mock", port) }
+        try {
+            reader.awaitLines(1)
+        } finally {
+            first.close()
+        }
+        val second = runBlocking { JvmRigHost.start("mock", port) }
+        try {
+            // Acted on until the stream shows it: its first lines are skipped as the ones printed before the drop.
+            val deadline = System.currentTimeMillis() + STREAM_JOIN_MS
+            while (!reader.done && System.currentTimeMillis() < deadline) {
+                assertEquals(EXIT_OK, rigOn(url, "backend", "offline", "--on").code)
+                Thread.sleep(ACT_EVERY_MS)
+            }
+            stream.join(STREAM_JOIN_MS)
+        } finally {
+            second.close()
+        }
+        assertTrue(reader.done, "the act on the host that came back never reached the stream:\n${reader.text}")
+    }
+
+    @Test
+    fun a_stream_has_no_place_in_a_batch() {
+        val steps = kotlin.io.path.createTempFile().toFile().apply {
+            writeText("world events\n")
+            deleteOnExit()
+        }
+        val run = rig("--url", "http://127.0.0.1:1", "run", steps.path)
+        assertEquals(EXIT_USAGE, run.code)
+        assertMentions(run.err, "is a stream")
     }
 
     @Test
@@ -150,6 +217,33 @@ class RigCliTest {
     }
 
     private data class Run(val code: Int, val out: String, val err: String)
+
+    /**
+     * A stream's reader: it goes — every write after fails — once it holds [lines] lines, or a line containing [until].
+     */
+    private class Reader(private val lines: Int = Int.MAX_VALUE, private val until: String? = null) : OutputStream() {
+        private val buffer = StringBuilder()
+
+        @Volatile var done = false
+            private set
+
+        val text: String get() = synchronized(buffer) { buffer.toString() }
+
+        override fun write(b: Int) {
+            if (done) throw IOException("the reader has gone")
+            synchronized(buffer) {
+                buffer.append(b.toChar())
+                // Whole lines only: a line is the reader's once its newline arrived.
+                val held = buffer.split('\n').dropLast(1).filter { it.isNotBlank() }
+                if (held.size >= lines || (until != null && held.any { until in it })) done = true
+            }
+        }
+
+        fun awaitLines(n: Int) {
+            val deadline = System.currentTimeMillis() + STREAM_JOIN_MS
+            while (text.lines().count { it.isNotBlank() } < n && System.currentTimeMillis() < deadline) Thread.sleep(50)
+        }
+    }
 
     private fun rig(vararg args: String): Run {
         val out = ByteArrayOutputStream()
@@ -179,6 +273,9 @@ class RigCliTest {
     )
 
     private companion object {
+        const val STREAM_JOIN_MS = 30_000L
+        const val ACT_EVERY_MS = 300L
+
         init {
             // Both services this suite drives are declared; a rename fails here before it fails a shell.
             check(BackendLevers.name == "backend" && PublicBackendLevers.name == "public-backend")

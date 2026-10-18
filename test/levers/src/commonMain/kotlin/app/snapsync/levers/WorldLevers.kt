@@ -10,15 +10,16 @@ import kotlinx.serialization.Serializable
 
 /**
  * **The world the app runs in, as a test waits on it** (`docs/testing.md`, "How a test waits"): every event in the order
- * it happened, and the clock. A host that cannot say when its app is settled — a device, whose operating system runs
- * work the channel cannot see — refuses it.
+ * it happened, and the clock. Every host serves the events; a host that cannot say when its app is settled — a device,
+ * whose operating system runs work the channel cannot see — refuses the clock and [whyNotSettled].
  */
 @Rpc
 interface WorldLevers {
     /**
-     * Every event since the host started, then every event as it happens: what the app showed, what the systems outside
-     * it recorded, each act a caller made, and each time the app settled. From the start, so a caller that subscribes
-     * after its first act misses nothing; a caller reads from its own act's [WorldEvent.Acted] on.
+     * Every event kept, then every event as it happens: what the app showed, what the systems outside it recorded, each
+     * act a caller made, and each time the app settled. The JVM host keeps every event since it started, so a caller
+     * that subscribes after its first act misses nothing and reads from its own act's [WorldEvent.Acted] on; a device
+     * host, whose app outlives any one caller, serves from where its latest act began.
      */
     fun events(): Flow<WorldEvent>
 

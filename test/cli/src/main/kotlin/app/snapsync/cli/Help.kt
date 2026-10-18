@@ -16,12 +16,19 @@ internal fun topHelp(): String = buildString {
     appendLine(
         "  --timeout <s>  how long one call may take, in seconds (default 60; 0: as long as it takes — a contract",
     )
-    appendLine("                 run, a big seed, a wipe the device's owner must confirm)")
+    appendLine("                 run, a big seed, a wipe the device's owner must confirm); a stream's, default 300")
+    appendLine()
+    appendLine("a stream (world events) prints one line of JSON per element until its reader goes or its bound passes;")
+    appendLine("a device host serves the world's events from its last act on — wait on one with jq:")
+    appendLine("  rig --url <base> world events | jq -cn 'first(inputs | select(.type == \"ui\"))'")
     appendLine()
     appendLine("services:")
     SERVICE_COMMANDS.forEach { appendLine("  ${it.name.padEnd(SERVICE_COLUMN)}${it.needsLine()}") }
     appendLine()
-    appendLine("exit: 0 answered · 1 failed (the host's message) · 2 usage · 3 refused by this host (its reason)")
+    appendLine(
+        "exit: 0 answered (a stream: its reader went) · 1 failed (the host's message; a stream: its bound passed) · " +
+            "2 usage · 3 refused by this host (its reason)",
+    )
 }
 
 internal fun ServiceCommands.help(): String = buildString {
@@ -38,9 +45,9 @@ internal fun MethodCommand.help(): String = buildString {
     appendLine(usage())
     appendLine()
     appendLine(
-        "${service.type.qualifiedName}.$declared — answers ${callable.returnType.kType.toString().removePrefix(
-            "kotlin.",
-        )}",
+        "${service.type.qualifiedName}.$declared — ${if (streams) "streams" else "answers"} ${
+            callable.returnType.kType.toString().removePrefix("kotlin.")
+        }" + if (streams) ": one line of JSON per element" else "",
     )
     parameters.forEach { flag ->
         val omitted = flag.omittedMeans?.let { "  (omitted: $it)" } ?: "  (required)"

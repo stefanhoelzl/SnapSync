@@ -91,7 +91,9 @@ State these before writing a scenario against this host, or you will write one t
 
   ⚠️ **Do not assert success on the state read's `download` view** (`host state`). It is a *progress* read-model and
   returns to `{downloaded:0,total:0}` the moment the queue drains — transfers finish about a second after
-  the trigger, so a poll 25 s later reads 0/0 and looks exactly like a failure. Assert on the device log's
+  the trigger, so a read 25 s later reads 0/0 and looks exactly like a failure. With the transfers mocked, wait on
+  their events instead (`rig world events`: `download-started`, and the library's `library-asset-created` where it is
+  mocked); over the real ones, which tell no event, assert on the device log's
   `transfer finished: status=… expected=… received=…` and `imported foreign asset … as …` lines. The
   gallery census is not clean proof either: a simulator ships with stock photos, so a device that imported
   3 reads `total: 9`.
@@ -381,10 +383,15 @@ R="test/cli/build/install/rig/bin/rig --url http://127.0.0.1:$P"
 $R run - <<'EOF'
 screen tap --intent '{"type":"CreateName","name":"SimRig"}'
 screen tap --intent '{"type":"RangeSweep","anchor":"2026-08-24","day":"2026-08-30"}'
+screen tap --intent '{"type":"RangeFromHour","value":9}'
+screen tap --intent '{"type":"RangeFromMinute","value":0}'
+screen tap --intent '{"type":"RangeUntilHour","value":18}'
+screen tap --intent '{"type":"RangeUntilMinute","value":0}'
 screen tap --intent '{"type":"ConfirmCreate"}'
 screen tap --intent '{"type":"KeepOpenFor","days":7}'
 EOF
-$R --json host state | jq '.ui.layer'                   # wait for JoiningEvent(eventId, Detailed)
+# wait for the join gate — an event, not a re-read (`rig-channel`, "Waiting on what happens")
+$R world events | jq -cn 'first(inputs | select(.type == "ui" and (.ui.layer.type | endswith("JoiningEvent"))))'
 # JOIN: share only, no album, over the event's own dates
 $R run - <<'EOF'
 screen tap --intent '{"type":"ShareOn","on":true}'

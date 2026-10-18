@@ -54,7 +54,11 @@ fun rigServices(
     contracts: List<InAppContract>,
 ): (RigHooks) -> List<ServedService> = { hooks ->
     val world = launch.world
-    world.servedServices(osServices, reconcileUploads = { core().uploadTransitions.onOverrideChanged() }) +
+    world.servedServices(
+        osServices,
+        hooks.world.acts,
+        reconcileUploads = { core().uploadTransitions.onOverrideChanged() },
+    ) +
         world.servedHostServices(
             listOf(
                 world.screenService(Dispatchers.Main, launch.ui, shown = { host().screen.value }),
@@ -90,6 +94,7 @@ fun rigServices(
                 contractService(contracts, refusal = null),
                 uploadJobService(world, processExtension),
             ),
+            hooks.world.acts,
         )
 }
 
