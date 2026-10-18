@@ -104,6 +104,30 @@ class EncryptedEventIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "invite-link", requirement = "An incomplete invite never joins an encrypted event")
+    fun a_key_never_opens_a_plain_event() = behaviour {
+        val plain = given {
+            creatingPlain()
+            val event = registeredEvent()
+            // Plain, as only a plain event is: its keyless link opens the join screen.
+            step(
+                "its keyless link opens it",
+                act = { openLink("$LINK_ORIGIN/join/$event") },
+                until = { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } },
+            )
+            step("the join screen left", act = { tap(UiIntent.CancelJoin) }, until = { screen<Layer.CreateEvent>() })
+            event
+        }
+
+        whenever { openLink("$LINK_ORIGIN/join/$plain#k=" + "A".repeat(42) + "E") }
+        then {
+            screen<Layer.JoiningEvent> { it.eventId == plain && it.phase == JoinPhase.WrongLink }
+            never<WorldEvent.MemberJoined>() // no enrolment
+            settled { true }
+        }
+    }
+
+    @Test
     @Verifies(spec = "sync-status", requirement = "A device that lost the event's key asks for its invite")
     @Verifies(spec = "invite-link", requirement = "Reopening the current event's invite changes nothing")
     @Verifies(
