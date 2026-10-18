@@ -110,14 +110,16 @@ coverage {
         // membership's codec. → 76/45 in phase 4.2 (membership), for the same reason as the 2c drop: `Direction`,
         // `LedgerState` and the membership's vocabulary the suite covered (the join's choices and loads, the outcomes)
         // left for the domain and the layers.
-        integration(instructions = 76, branches = 45)
+        // → 77/47 in phase 31, once the polling tests waited on outcome events instead.
+        integration(instructions = 77, branches = 47)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
     ":domain:ports" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        // → 90 with the update test (`AppUpdateIntegrationTest`), and 91 since.
-        integration(instructions = 91, branches = 85) // no branches: any branch target is met
+        // → 90 with the update test (`AppUpdateIntegrationTest`), and 91 since; → 92 in phase 31, once the polling
+        // tests waited on outcome events instead.
+        integration(instructions = 92, branches = 85) // no branches: any branch target is met
     }
     ":domain:services" {
         skipped(
@@ -132,7 +134,8 @@ coverage {
         // shared records' legacy copy, the older databases' migrations, a 0.4 transfer's tag. Held with the locked
         // phone and the refusing Keychain and preferences (`unavailable-keychain-and-preferences`). → 84/63 in phase
         // 4.2 (membership): the config service the suite covered left for the data layer.
-        integration(instructions = 84, branches = 63)
+        // → 86/65 in phase 31, once the polling tests waited on outcome events instead.
+        integration(instructions = 86, branches = 65)
     }
     ":domain:wire" {
         skipped(
@@ -147,7 +150,8 @@ coverage {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
         // 90/73 → 91/74 with the update test (`AppUpdateIntegrationTest`): the upload gate's pause for legacy records.
         // Held with the locked phone and the refusing Keychain (`unavailable-keychain-and-preferences`).
-        integration(instructions = 91, branches = 74)
+        // → 93/79 in phase 31, once the polling tests waited on outcome events instead.
+        integration(instructions = 93, branches = 79)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.
@@ -162,7 +166,8 @@ coverage {
         // member's day takes.
         // 79/53 → 81/58 with the locked phone and the refusing Keychain (`unavailable-keychain-and-preferences`): the
         // identity that never mints while the Keychain cannot be looked in.
-        integration(instructions = 81, branches = 58)
+        // → 85/61 in phase 31, once the polling tests waited on outcome events instead.
+        integration(instructions = 85, branches = 61)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -170,7 +175,8 @@ coverage {
         // refusal no screen can produce (a range or a key the join screen already refused), a write another road
         // superseded — are their unit suites' (`:test:data`, zero gate), not the integration surface's. → 86 when the
         // service's faults reached the use cases: each failure's own outcome, told apart there.
-        integration(instructions = 86, branches = 61)
+        // → 87/65 in phase 31, once the polling tests waited on outcome events instead.
+        integration(instructions = 87, branches = 65)
     }
     ":domain:query" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -191,7 +197,8 @@ coverage {
         unit()
         // Branches 64 → 62 in phase 4.1 (trust): the trust verdicts arrived, and their rare answers — a stale
         // challenge, each refusal reason — are their unit suites', not the integration surface's.
-        integration(instructions = 87, branches = 75)
+        // → 90/76 in phase 31, once the polling tests waited on outcome events instead.
+        integration(instructions = 90, branches = 76)
     }
     // Integration-skipped until phase 3g: what the polling tests reach of these two moves with the machine's timing.
     // Their SingleFlight yield/withdraw and expiry paths run only when a process dies in the few dispatches between a
@@ -222,7 +229,8 @@ coverage {
     }
     ":domain:presentation" {
         unit(alsoCoveredBy = listOf(":ui:screens"))
-        integration(instructions = 87, branches = 77)
+        // → 90/80 in phase 31, once the polling tests waited on outcome events instead.
+        integration(instructions = 90, branches = 80)
     }
     ":app:jvm" {
         unit(alsoCoveredBy = listOf(":test:integration"))
@@ -230,7 +238,8 @@ coverage {
     }
     ":ui:state" {
         unit()
-        integration(instructions = 90, branches = 62)
+        // → 91/68 in phase 31, once the polling tests waited on outcome events instead.
+        integration(instructions = 91, branches = 68)
     }
     // `:ui:screens`' Compose tests render the real screens, and with them these components.
     ":ui:components" {
