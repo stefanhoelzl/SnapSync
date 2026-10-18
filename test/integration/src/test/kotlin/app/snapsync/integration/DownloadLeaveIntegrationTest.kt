@@ -112,7 +112,7 @@ class DownloadLeaveIntegrationTest {
             event<WorldEvent.MemberLeft> { it.event == event }
             never<WorldEvent.EventDeleted>()
             // the union still serves the departed member's photos, its bytes kept
-            never<WorldEvent.UnionChanged> { !it.served }
+            never<WorldEvent.UnionChanged> { !it.gained }
             settled { event in it.state.backendEvents.orEmpty() } // the event lives on
         }
     }

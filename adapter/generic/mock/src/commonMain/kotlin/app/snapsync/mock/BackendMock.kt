@@ -197,7 +197,14 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
 
     override suspend fun wipeBytes(device: String?) {
         val id = resolved(device)
-        state.locked { state.storedFiles.keys.removeAll { it.second == id } }
+        // Each asset the union served of it is no longer served: its loss is logged, as the union's change log records it.
+        state.locked {
+            state.storedFiles.keys.filter { it.second == id }.forEach { key ->
+                val was = state.servable(key.first, id)
+                state.storedFiles.remove(key)
+                state.logChanges(key.first, id, was, state.servable(key.first, id))
+            }
+        }
     }
 
     override suspend fun refuseNextCredential() {
@@ -602,7 +609,7 @@ internal class BackendState(
         return page to position
     }
 
-    private fun logChanges(eventId: String, deviceId: String, before: Set<AssetId>, after: Set<AssetId>) {
+    internal fun logChanges(eventId: String, deviceId: String, before: Set<AssetId>, after: Set<AssetId>) {
         fun log(asset: AssetId, gained: Boolean) {
             changes += Change(nextSeq++, eventId, deviceId, asset, gained)
             watcher.told(WorldEvent.UnionChanged(eventId, deviceId, asset.value, gained))
@@ -694,7 +701,7 @@ internal class BackendState(
     private fun isPresent(eventId: String, deviceId: String): Boolean =
         memberships[eventId to deviceId]?.departed == false && events[eventId]?.completed == false
 
-    private fun servable(eventId: String, deviceId: String): Set<AssetId> =
+    internal fun servable(eventId: String, deviceId: String): Set<AssetId> =
         union(eventId).orEmpty().filter { it.first == deviceId }.mapTo(mutableSetOf()) { it.second.assetId }
 
     /**

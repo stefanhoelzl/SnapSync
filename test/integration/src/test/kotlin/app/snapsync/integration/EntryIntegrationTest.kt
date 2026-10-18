@@ -8,10 +8,6 @@ import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * The app's entry points, as the operating system delivers them (`docs/architecture.md`, "Events arrive through
@@ -48,25 +44,24 @@ class EntryIntegrationTest {
 
     // ---- Lifecycle ------------------------------------------------------------------------------------------------
 
-    // Waits on the download the reconcile starts, which only the transfer sessions' read sees until their events reach
-    // the world stream.
     @Test
-    fun foreground_builds_the_screen_reconciles_then_runs_the_tail_and_re_arms() = rigTest {
-        createAndJoin()
-        foreignDevice(DEV_F, "FQ")
-        host.relaunch(scene = false)
-        val startedBefore = downloadSession.downloads().started.size
-        val armed = wake.wakes().heartbeatsScheduled
-        assertNull(screen.shown(), "precondition: a background launch builds no screen")
+    fun foreground_builds_the_screen_reconciles_then_runs_the_tail_and_re_arms() = behaviour {
+        given {
+            joinedEvent()
+            fellowMember(DEV_F, "FQ")
+            step("a background launch, which builds no screen", act = { host.relaunch(scene = false) }, until = {
+                never<WorldEvent.UiChanged>()
+                settled { true }
+            })
+        }
 
-        foreground() // awaited: the foreground's background time is held until its tail is done
-
-        assertNotNull(screen.shown(), "the foreground handler assembles the host first")
-        assertTrue(
-            downloadSession.downloads().started.size > startedBefore,
-            "the foreground reconcile starts the photo's transfer",
-        )
-        assertTrue(wake.wakes().heartbeatsScheduled > armed, "foreground entry re-arms the heartbeat")
+        whenever { os.foreground() }
+        then {
+            screen<Layer.Joined>() // the foreground handler assembles the host first
+            event<WorldEvent.DownloadStarted>() // the foreground reconcile starts the photo's transfer
+            event<WorldEvent.WakeScheduled> { it.wake.wake == "heartbeat" } // and the entry re-arms the heartbeat
+            event<WorldEvent.HoldEnded> { it.name == FOREGROUND_HOLD } // its background time held until the tail is done
+        }
     }
 
     @Test
@@ -206,33 +201,40 @@ class EntryIntegrationTest {
         }
     }
 
-    // Parks a staged photo's import, which only the photo library's own reads see until its events reach the world
-    // stream.
     @Test
-    fun the_operating_systems_expiry_ends_every_hold_at_once_without_awaiting_the_work_in_flight() = rigTest {
-        createAndJoin()
-        foreignDevice(DEV_F, "FQ")
-        reconcile()
-        awaitDownloadQueued()
-        library.suspendNextImport()
-        stage(wait = false) // the staging requests the tail, whose import parks
-        awaitImportParked()
-        assertTrue(backgroundTime.holds().any { it == "OnDownloadStaged" }, "precondition: the import holds time")
+    fun the_operating_systems_expiry_ends_every_hold_at_once_without_awaiting_the_work_in_flight() = behaviour {
+        given {
+            joinedEvent()
+            downloadStarted()
+            step("the next import parks in the library", act = { library.suspendNextImport() }, until = {})
+        }
 
-        playedOs.expire()
+        // The staging requests the tail, whose import parks — holding background time.
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.HoldBegun> { it.name == DOWNLOAD_STAGED_HOLD }
+            event<WorldEvent.LibraryImportParked>()
+            never<WorldEvent.HoldEnded> { it.name == DOWNLOAD_STAGED_HOLD }
+        }
 
         // At once — while the import is still parked: Apple's recipe, never the watchdog's.
-        awaitNoHolds()
-        library.resumeImport()
+        whenever { playedOs.expire() }
+        then {
+            event<WorldEvent.HoldEnded> { it.name == DOWNLOAD_STAGED_HOLD }
+            never<WorldEvent.LibraryAssetCreated>()
+        }
+
+        whenever { library.resumeImport() }
+        then { settled { true } }
     }
 
     // ---- DevControls ----------------------------------------------------------------------------------------------
 
     @Test
-    fun the_dev_reset_voids_the_membership() = rigTest {
-        createAndJoin()
-        devControls.reset()
-        awaitState { !it.ready.configResolved }
+    fun the_dev_reset_voids_the_membership() = behaviour {
+        given { joinedEvent() }
+        whenever { devControls.reset() }
+        then { screen<Layer.CreateEvent>() }
     }
 
     // ---- The selection observer -----------------------------------------------------------------------------------
@@ -250,28 +252,36 @@ class EntryIntegrationTest {
         scenario = "Uploads work under limited access",
     )
     @Verifies(spec = "app-experience", requirement = "Background wakes do their work without showing anything")
-    fun a_background_start_reads_the_selection_and_shares_what_waits() = rigTest {
-        permission(PhotoGrant.LIMITED)
-        createAndJoin()
-        addPhoto("A")
-        // The member picks A while the app's uploader is held back: selected, nothing created — the work a cold start
-        // inherits. (Under a partial grant the extension withholds by its own admission; only the app's uploader runs.)
-        devControls.pin(app = false, extension = true)
-        library.changeSelection(listOf("A"))
-        eventually(read = { gallery().policy?.assets?.mapTo(mutableSetOf()) { it.assetId } }) { it == setOf("A") }
-        // The selection change's own tail holds background time until it ends; it must end while the uploader is off,
-        // or its top-up — running after the switch below — creates what this precondition says was not created.
-        awaitNoHolds()
-        // Back on, with A never discovered: under a partial grant only the selection's own read discovers.
-        devControls.pin(app = true, extension = true)
-        assertEquals(0, appUploads().created, "precondition: nothing was created")
+    fun a_background_start_reads_the_selection_and_shares_what_waits() = behaviour {
+        given {
+            photoAccess(PhotoGrant.LIMITED)
+            joinedEvent()
+            photos("A")
+            // The member picks A while the app's uploader is held back: selected, nothing created — the work a cold
+            // start inherits. (Under a partial grant the extension withholds by its own admission; only the app's
+            // uploader runs.) The selection change's own tail ends while the uploader is off: settled.
+            step("the app's uploader off", act = { devControls.pin(app = false, extension = true) }, until = {
+                settled { true }
+            })
+            step("A selected", act = { library.changeSelection(listOf("A")) }, until = {
+                never<WorldEvent.SessionTransferCreated>()
+                settled { true }
+            })
+            // Back on, with A never discovered: under a partial grant only the selection's own read discovers.
+            step("the app's uploader back on", act = { devControls.pin(app = true, extension = true) }, until = {
+                never<WorldEvent.SessionTransferCreated>()
+                settled { true }
+            })
+        }
 
-        host.relaunch(scene = false)
-        assertTrue(library.library().observing, "composition opens the observer, a background start included")
-
-        // The start's own baseline read discovers A and creates it: a start that never read its selection withholds.
-        assertEquals(listOf(primaryKey("A")), awaitAppUploads(1).live)
-        assertNull(screen.shown(), "and the start built no screen")
+        // Composition opens the observer, a background start included: the start's own baseline read discovers A and
+        // creates it — a start that never read its selection withholds.
+        whenever { host.relaunch(scene = false) }
+        then {
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
+            never<WorldEvent.UiChanged>() // and the start built no screen
+            settled { it.state.inFlight?.sessionTransfers == listOf(primaryKey("A")) }
+        }
     }
 
     @Test
@@ -329,6 +339,9 @@ class EntryIntegrationTest {
         const val SESSION_CAP = 4
         const val TOKEN = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
         const val OTHER_EVENT = "33333333-3333-4333-8333-333333333333"
+
+        /** The name a staged download's tail begins its background time under (its entry point). */
+        const val DOWNLOAD_STAGED_HOLD = "OnDownloadStaged"
 
         /** The union read: the device API's `eventFiles`. */
         const val UNION = "eventFiles"
