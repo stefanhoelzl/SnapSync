@@ -2,7 +2,9 @@
 
 package app.snapsync.ui
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.test.ComposeUiTest
@@ -190,13 +192,29 @@ internal class ContainerRig(
     )
 
     val state: UiState get() = host.screen.value
+
+    private val composedCell = MutableStateFlow<UiState?>(null)
+
+    /**
+     * The state the screen last composed — what a tap lands on. It trails [state]: the reduction publishes on
+     * another thread, and the screen catches up only once its collector is resumed and a frame composes.
+     */
+    val composed: UiState? get() = composedCell.value
+
+    /** The container's screen state, collected for a screen to compose — each one it composes recorded as [composed]. */
+    @Composable
+    fun collectScreen(): UiState {
+        val state by host.screen.collectAsState()
+        SideEffect { composedCell.value = state }
+        return state
+    }
 }
 
 /** Compose [rig]'s real screen with the shared factory's bundle, as every host does. */
 internal fun ComposeUiTest.show(rig: ContainerRig) {
     setContent {
         CompositionLocalProvider(LocalReduceMotion provides true) {
-            val state by rig.host.screen.collectAsState()
+            val state = rig.collectScreen()
             WithoutKeyboardInsets {
                 StatusScreen(state = state, dateFormats = testDates, actions = statusActions(rig.host::onIntent))
             }
@@ -214,9 +232,13 @@ internal fun rigTest(rig: ContainerRig, block: ComposeUiTest.(ContainerRig) -> U
     }
 }
 
-/** Wait for the container to reduce to a state matching [predicate], then for the screen to catch up. */
+/**
+ * Wait for the screen to compose a state matching [predicate], then for it to settle. The screen's state, not the
+ * container's: the container publishes on another thread, so a state it has reduced may not be on screen yet, and a
+ * tap that follows would look for a node the screen has not drawn.
+ */
 internal fun ComposeUiTest.awaitState(rig: ContainerRig, predicate: (UiState) -> Boolean) {
-    waitUntil(timeoutMillis = 5_000) { predicate(rig.state) }
+    waitUntil(timeoutMillis = 5_000) { rig.composed?.let(predicate) == true }
     waitForIdle()
 }
 
