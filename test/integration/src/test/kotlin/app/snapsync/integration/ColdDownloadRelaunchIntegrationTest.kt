@@ -1,11 +1,10 @@
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.TransferEnd
+import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * A process the OS relaunches **only** to deliver download-session events.
@@ -17,52 +16,39 @@ import kotlin.test.assertTrue
  * released at once with nothing to wait for.
  *
  * Over the protocol: the first app starts the transfers the way a foreground reconcile does, so the transfers
- * and the planned rows are the real ones. `/device/relaunch` is its death; the relaunched app inherits the
- * durable rows and the operating system's download session, and receives the completions for transfers it
- * never started — through `onBackgroundTransfers` on the download session, with nothing reading its state (so
- * nothing touching its host) until the assertions.
+ * and the planned rows are the real ones. A background launch is its death and a relaunch with no scene; the
+ * relaunched app inherits the durable rows and the operating system's download session, and receives the
+ * completions for transfers it never started — through `onBackgroundTransfers` on the download session, with
+ * nothing touching its host.
  */
 @Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
 class ColdDownloadRelaunchIntegrationTest {
     @Test
-    fun a_download_relaunch_imports_what_the_session_staged() = rigTest {
-        // The process that started the transfers, then died.
-        createAndJoin()
-        foreignDevice(DEV_F, "FQ")
-        val before = libraryTotal()
-        val storage = files.appStorageBytes()
-        reconcile()
-
-        host.relaunch()
-
-        // The relaunched process: nothing built but what the shell's relaunch entry point touches. The OS hands
-        // it the download session's events. The entry holds the OS's completion handler until the session reports
-        // its events drained, so it is answered concurrently with the OS delivering the transfers — which reach
-        // the relaunched app once the entry has realized its transport (until then a delivery finds no session
-        // to deliver into, and is simply repeated).
-        coroutineScope {
-            val wake = async { os.backgroundTransfers(DOWNLOAD_SESSION, awaitRelease = true) }
-            eventually(
-                read = {
-                    stage(wait = false)
-                    libraryTotal()
-                },
-            ) { it == before + 1 } // the staged asset was imported
-            // The world's session never reports its events drained, so its handler would be held until the
-            // background time's expiry;
-            // the OS's side of the wake is not what this test is about.
-            wake.cancel()
+    fun a_download_relaunch_imports_what_the_session_staged() = behaviour {
+        // The process that started the transfers, then died; the OS relaunches it with no scene.
+        val before = given {
+            joinedEvent()
+            downloadStarted().also { backgroundLaunch() }
         }
+        val photos = before.state.libraryPhotos.orEmpty().size
+        val storage = checkNotNull(before.state.appStorageBytes)
 
-        assertEquals(before + 1, libraryTotal(), "the staged asset was imported into the library, once")
-        assertTrue(
-            files.appStorageBytes() <= storage,
-            "every resource the session delivered was staged, imported and released: the app holds no more than before",
-        )
-    }
-
-    private companion object {
-        /** Any transfer channel that is not the upload session's is the download session's. */
-        const val DOWNLOAD_SESSION = "app.snapsync.download.session"
+        // The relaunched process: nothing built but what the shell's relaunch entry point touches. The OS hands it the
+        // download session's events, which bring the session up, and delivers the transfer it never started. The world's
+        // session never reports its events drained, so the OS's side of the wake is not what this test is about.
+        whenever {
+            os.backgroundTransfers(DOWNLOAD_SESSION)
+            downloadSession.finish()
+        }
+        then {
+            event<WorldEvent.DownloadEnded> { it.outcome.how == TransferEnd.How.DELIVERED }
+            // the staged asset was imported into the library, once
+            times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset == imported() } }
+            never<WorldEvent.UiChanged>() // nothing touched its host
+            // every resource the session delivered was staged, imported and released: the app holds no more than before
+            settled {
+                it.state.libraryPhotos.orEmpty().size == photos + 1 && checkNotNull(it.state.appStorageBytes) <= storage
+            }
+        }
     }
 }
