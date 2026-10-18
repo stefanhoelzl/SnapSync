@@ -5,8 +5,6 @@ package app.snapsync.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.SoftwareKeyboardController
@@ -431,7 +429,7 @@ class CreateFlowTest {
     ) = runComposeUiTest {
         try {
             setContent {
-                val state by rig.host.screen.collectAsState()
+                val state = rig.collectScreen()
                 val screen = @androidx.compose.runtime.Composable {
                     CompositionLocalProvider(LocalReduceMotion provides true) {
                         WithoutKeyboardInsets {
