@@ -69,6 +69,9 @@ class AndroidRigLaunch internal constructor(
     /** The world the channel serves its callers' acts in: the events, from the last act on. */
     val hostWorld: HostWorld = HostWorld.onADevice(events)
 
+    /** Where the app's runtime tells its entry points' work: the mocked device's, which feeds [hostWorld]'s events. */
+    val entryEvents: EntryEvents = world.device.entryEvents.port()
+
     val uploadBase: String = if (MockedSystem.BACKEND in launch.choice.mocked) MOCK_BASE else realBase
 
     /** This launch's choice, in one line — `/health` reports it. */
