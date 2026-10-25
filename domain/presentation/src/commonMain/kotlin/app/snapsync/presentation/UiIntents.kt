@@ -69,3 +69,6 @@ fun StatusContainerHost.onIntent(intent: UiIntent) {
         is UiIntent.SendDiagnostics -> onSendDiagnostics(intent.note, intent.screen)
     }
 }
+
+/** A tap, as the UI port's entry point hands it over: [intent]'s meaning, handled as [run] — the tap's work. */
+fun StatusContainerHost.onTap(intent: UiIntent, run: TapRun) = tapped(run) { onIntent(intent) }

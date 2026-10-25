@@ -65,6 +65,7 @@ import app.snapsync.services.upload.uploadStagingPath
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -214,7 +215,6 @@ class EncryptedTransfersTest {
         receiver.files.write(FileArea.SHARED, "os-tmp/1", sealed)
         val staged = mutableListOf<String>()
         val jobs = DownloadJobs(
-            scope = this,
             staging = StagingService(receiver.files),
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
@@ -222,7 +222,11 @@ class EncryptedTransfersTest {
             headers = { emptyMap() },
             opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
         )
-        jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY\n$EVENT", HEALTHY, "mem:/shared/os-tmp/1")
+        jobs.onFinished(
+            "$DEVICE_A\n$ASSET\n$KEY\n$EVENT",
+            HEALTHY,
+            "mem:/shared/os-tmp/1",
+        ) { body -> launch { body() } }
         advanceUntilIdle()
         val path = staged.single()
         assertContentEquals(photo, assertIs<FileResult.Ok<ByteArray>>(receiver.files.read(FileArea.SHARED, path)).value)
@@ -279,7 +283,6 @@ class EncryptedTransfersTest {
         val receiver = Device(DEVICE_B, minted.linkKey, minted.keyId)
         val staged = mutableListOf<String>()
         val jobs = DownloadJobs(
-            scope = this,
             staging = StagingService(receiver.files),
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
@@ -290,7 +293,11 @@ class EncryptedTransfersTest {
         // Plaintext, as a build predating encryption would have stored it — or anything else that is not a file of this key.
         repeat(5) { attempt ->
             receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
-            jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY\n$EVENT", HEALTHY, "mem:/shared/os-tmp/$attempt")
+            jobs.onFinished(
+                "$DEVICE_A\n$ASSET\n$KEY\n$EVENT",
+                HEALTHY,
+                "mem:/shared/os-tmp/$attempt",
+            ) { body -> launch { body() } }
         }
         advanceUntilIdle()
         assertTrue(staged.isEmpty())
@@ -399,7 +406,6 @@ class EncryptedTransfersTest {
         val receiver = Device(DEVICE_B, linkKey = null, keyId = null)
         val staged = mutableListOf<String>()
         val jobs = DownloadJobs(
-            scope = this,
             staging = StagingService(receiver.files),
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
@@ -408,7 +414,11 @@ class EncryptedTransfersTest {
             opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
         )
         receiver.files.write(FileArea.SHARED, "os-tmp/0", photo)
-        jobs.onFinished("$DEVICE_A\n$ASSET\n$KEY\n$EVENT", HEALTHY, "mem:/shared/os-tmp/0")
+        jobs.onFinished(
+            "$DEVICE_A\n$ASSET\n$KEY\n$EVENT",
+            HEALTHY,
+            "mem:/shared/os-tmp/0",
+        ) { body -> launch { body() } }
         advanceUntilIdle()
         assertEquals(1, staged.size, "nothing to open: the bytes are the photo")
     }

@@ -81,6 +81,7 @@ import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
+import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crypto.DownloadOpening
@@ -442,7 +443,6 @@ class AppCore internal constructor(
         // Staging is the port that also releases those bytes, so the two never name different directories;
         // the jobs record relative paths.
         DownloadJobs(
-            scope = scope,
             staging = services.stagedBytes,
             download = ports.download,
             // Deliver each staged resource back to the controller — a compose-built lambda whose body is one call (law
@@ -871,6 +871,10 @@ class AppCore internal constructor(
  * [lane] is the composition lane [scope] runs on, named by the root ([AppCore.coreLane]).
  */
 fun snapSyncApp(scope: CoroutineScope, lane: CoroutineDispatcher, ports: AppPorts): AppCore {
-    val runtime = Runtime(scope.coroutineContext[Job], lane, ports.backgroundTime, ports.process.threadLabel)
+    val runtime = Runtime(
+        scope.coroutineContext[Job],
+        lane,
+        RuntimePorts(ports.backgroundTime, ports.process.threadLabel, ports.process.entryEvents),
+    )
     return AppCore(runtime, lane, snapSyncProcess(ports.process, runtime), ports)
 }

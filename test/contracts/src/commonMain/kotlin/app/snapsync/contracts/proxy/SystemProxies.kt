@@ -6,6 +6,8 @@ import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.DeviceConditions
+import app.snapsync.ports.EntryEvent
+import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.LogSink
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.ProcessInfo
@@ -60,6 +62,15 @@ internal class ThreadLabelProxy(private val inner: ThreadLabel, log: CallLog) : 
 
     override fun swap(label: String?) = r.returns("swap", inner.swap(label))
     override fun current() = r.returns("current", inner.current())
+}
+
+/** [EntryEvents] as its clause's [CallLog] sees it. */
+fun EntryEvents.recorded(log: CallLog): EntryEvents = EntryEventsProxy(log.wraps(this), log)
+
+internal class EntryEventsProxy(private val inner: EntryEvents, log: CallLog) : EntryEvents {
+    private val r = log.recorder("EntryEvents")
+
+    override fun tell(event: EntryEvent) = r.returns("tell", inner.tell(event))
 }
 
 /** [LogSink] as its clause's [CallLog] sees it. */

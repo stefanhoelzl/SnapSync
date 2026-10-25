@@ -227,7 +227,6 @@ class DownloadControllerTest {
         return DownloadController(
             union, store,
             downloadJobs(
-                backgroundScope,
                 download,
                 staging,
             ),

@@ -3,6 +3,7 @@ package app.snapsync.android
 import app.snapsync.android.link.AndroidInstallReferrer
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.dev.InertDevControls
+import app.snapsync.entry.NoEntryEvents
 import co.touchlab.kermit.Logger
 
 /**
@@ -16,6 +17,7 @@ internal fun platformAdapters(root: SnapSyncRoot, real: AppDevicePorts): Platfor
     devControls = InertDevControls,
     ui = real.ui,
     ports = real,
+    entryEvents = NoEntryEvents,
     bootLines = listOf("[boot] adapters = all real"),
     afterLaunch = {},
     installReferrer = {

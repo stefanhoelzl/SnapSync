@@ -3,6 +3,7 @@ package app.snapsync.ios
 import app.snapsync.background.IosWake
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.dev.InertDevControls
+import app.snapsync.entry.NoEntryEvents
 import co.touchlab.kermit.Logger
 
 /**
@@ -14,6 +15,7 @@ internal fun platformAdapters(real: AppDevicePorts): PlatformAdapters = Platform
     devControls = InertDevControls,
     ui = real.ui,
     ports = real,
+    entryEvents = NoEntryEvents,
     launch = { compose -> compose() },
     bootLines = emptyList(),
 )

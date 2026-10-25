@@ -10,6 +10,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * Runs [block] as a list of steps (`docs/patterns.md`, "Steps"), under the [Runtime] of the run it is part of. Each
@@ -19,7 +20,7 @@ suspend fun <T> steps(block: suspend Steps.() -> T): T {
     val context = currentCoroutineContext()
     val trigger = checkNotNull(context[Trigger]) { "steps run for a trigger: inside an entry point or a sequence" }
     val runtime = checkNotNull(context[RuntimeElement]) { "steps run under the process's runtime" }.runtime
-    val steps = Steps(runtime, trigger)
+    val steps = Steps(runtime, trigger, context[WorkElement]?.work)
     try {
         return steps.block()
     } finally {
@@ -37,11 +38,23 @@ suspend fun <T> outliving(block: suspend () -> T): T {
         "outliving work runs under the process's runtime"
     }.runtime
     val trigger = currentCoroutineContext()[Trigger]
-    return runtime.scope.async(trigger ?: Trigger.of("outliving")) { block() }.await()
+    // The entry point's work it outlives its caller for is still that work's: its `done` waits for it.
+    val joined = currentCoroutineContext()[WorkElement]
+    val work = if (joined == null) null else joined.work.opened()
+    val outlived = runtime.scope.async((trigger ?: Trigger.of("outliving")) + (joined ?: EmptyCoroutineContext)) {
+        block()
+    }
+    work?.let { outlived.invokeOnCompletion { cause -> it.closed(endedAs(cause)) } }
+    return outlived.await()
 }
 
 /** The steps of one run. */
-class Steps internal constructor(private val runtime: Runtime, private val trigger: Trigger) {
+class Steps internal constructor(
+    private val runtime: Runtime,
+    private val trigger: Trigger,
+    /** The entry point's work this run is part of, which what it detaches joins. */
+    private val work: EntryWork?,
+) {
     private val log = Log("Steps")
     private val ensured = mutableListOf<Pair<String, suspend () -> Unit>>()
 
@@ -67,9 +80,11 @@ class Steps internal constructor(private val runtime: Runtime, private val trigg
 
     /**
      * Work this run starts and does not await: it continues in the process scope, under its own background-time
-     * hold, labelled with this run's trigger.
+     * hold, labelled with this run's trigger — and its entry point's `done` waits for it.
      */
-    fun detached(block: suspend () -> Unit) = runtime.detached(trigger, block)
+    fun detached(block: suspend () -> Unit) {
+        runtime.detached(trigger, work, block)
+    }
 
     /** A pass of [sequence], single-flight across the process. */
     suspend fun <R> run(sequence: Sequence<R>): Pass<R> = runtime.flights.run(sequence)

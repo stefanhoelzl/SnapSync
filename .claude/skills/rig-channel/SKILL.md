@@ -532,14 +532,20 @@ $R --url $B world events | jq -cn 'first(inputs | select(<the event>))'
 - **A dropped connection is opened again** until the bound — an app the OS suspended in the background can come back
   with its sockets gone — and the lines it printed before the drop are not printed again.
 - An event's `type` is its serial name: `ui` (with the whole `UiState`; a layer's `type` is its class's full name, so
-  match with `endswith`), `acted`, `backend-received`, `upload-job-created`, `session-transfer-created`,
+  match with `endswith`), `acted`, `delivered` / `answered` / `done` (below), `backend-received`, `upload-job-created`, `session-transfer-created`,
   `download-started`, `library-asset-created`, `wake-scheduled`, `completion-released`, … (`WorldEvent` in
   `:test:levers`). There is no `settled` on a device: its OS runs work the channel cannot see.
 
-**What has an event:** what the screen shows (on every host — the decorated screen sees the real one), and what a
-**mocked** system records (launch-time adapters, above). **What has none: a REAL system's outcome** — a photo in the
-real library, an upload landing on the real backend, a real push. Wait for those with a state read (`host state`,
-`gallery read`, the backend's own read), re-run until it holds — say so where you do.
+**What has an event:** what the screen shows (on every host — the decorated screen sees the real one), what a
+**mocked** system records (launch-time adapters, above), and **the app's own work**: every entry point — each `os`
+delivery, each tap (`OnTap`, with the intent as `about`), each upload finishing — tells `delivered`, `answered` (the OS
+got its answer) and `done` (its run AND everything it started have ended; `outcome`: `completed`, `expired`, `failed`),
+whichever adapter delivered it, real or mocked (`docs/patterns.md`, "Entry events"). **Wait on `done`, never on
+`answered`**: a silent push and a session's relaunch answer the OS first and run the wake after. **What has none: a REAL
+system's outcome** — a photo in the real library, an upload landing on the real backend, a real push. Once the app's
+`done` says its work ended, read those with a state read (`host state`, `gallery read`, the backend's own read) — say
+so where you do. The upload extension's work (`OnProcess`) runs in its own process on a phone and tells only its own
+log: wait on what it caused.
 
 ```bash
 # A screen state: the join gate, after the create taps.
@@ -551,6 +557,15 @@ $R --url $B world events | jq -cn 'first(inputs | select(.type == "ui" and (.ui.
 $R --url $B library add --id A1 --date <an instant inside the event, by the app's clock>
 $R --url $B os foreground
 $R --url $B world events | jq -cn 'first(inputs | select(.type == "upload-job-created" or .type == "session-transfer-created"))'
+
+# An entry's work, done: the silent push AND the wake it runs after answering. Read `outcome` — `completed`, or
+# `expired` / `failed` — and then a real system's state if that is what you came for.
+$R --url $B os silent-push --event <id>
+$R --url $B world events | jq -cn 'first(inputs | select(.type == "done" and .entry == "OnSilentPush"))'
+
+# A tap's work, done: everything the intent started — here the create's mint and the join gate it routes to.
+$R --url $B screen tap --intent '{"type":"ConfirmCreate"}'
+$R --url $B world events | jq -cn 'first(inputs | select(.type == "done" and .entry == "OnTap" and .about == "ConfirmCreate"))'
 ```
 
 ## Triggers return what the PLATFORM returns
@@ -567,8 +582,9 @@ $R --url $B os background-transfers --identifier app.snapsync.upload.session --a
 ```
 
 ⚠️ **`foreground` answers at once and does NOT wait** — and it is the delivery you will reach for most.
-The platform hands it no completion handler, so neither does the rig. **Wait on what it causes** (`rig world events`,
-"Waiting on what happens" above) — or, for a real system's outcome, read `host state`.
+The platform hands it no completion handler, so neither does the rig. **Wait on its `done`** (`rig world events`,
+`select(.type == "done" and .entry == "OnForeground")`, "Waiting on what happens" above) or on what it causes — or,
+for a real system's outcome, read `host state` once it is done.
 
 The three entries the OS *does* hand a completion handler — `silent-push`, `background-task`,
 `background-transfers` — answer once delivered; with `--await-release` they block until the app releases the handler
@@ -577,7 +593,7 @@ thread, each `null` where its system is real (on the JVM host, a test waits on t
 instead). A push and a transfer
 wake release after their **own work** (the push's union read and enqueue; the session's staging and drain report) and
 run the rest — import, top-up, walk — as the tail afterwards, so `heldMs` does not include the tail; wait on the
-tail's effects (`rig world events`), or read `host state` for a real system's. The heartbeat releases after its tail. The last two take the identifier the OS would
+entry's `done` (`rig world events`), which comes after the tail, then read `host state` for a real system's. The heartbeat releases after its tail. The last two take the identifier the OS would
 deliver: `app.snapsync.upload.heartbeat` (the busy heartbeat) or `app.snapsync.heartbeat.idle` (the idle heartbeat, an
 app refresh) — the same wake to the core; the download backstop is deleted — and `app.snapsync.upload.session` for the
 app uploader's session (any other channel routes to the downloads). An unknown task identifier is completed at once

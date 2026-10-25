@@ -2,6 +2,7 @@ package app.snapsync.ios
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.ports.DevControls
+import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.Ui
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
@@ -25,6 +26,11 @@ internal class PlatformAdapters(
     val ports: AppDevicePorts,
     /** Compose the graph at launch — [compose] itself in production; nothing on a rig launch whose adapter choice was refused. */
     val launch: (compose: () -> Unit) -> Unit,
+    /**
+     * Where the runtime tells each entry point's work: nowhere in production, where its log line is the diagnostic;
+     * the control channel's event stream on a rig build.
+     */
+    val entryEvents: EntryEvents,
     /** What only this build's adapter set knows, logged right after the boot banner: nothing in production. */
     val bootLines: List<String>,
 )

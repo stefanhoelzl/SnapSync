@@ -10,6 +10,7 @@ import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.crypto.IosCrypto
 import app.snapsync.databases.IosDatabases
+import app.snapsync.entry.NoEntryEvents
 import app.snapsync.extension.IosExtensionHost
 import app.snapsync.files.IosFiles
 import app.snapsync.gallery.IosGalleryReader
@@ -130,6 +131,8 @@ object UploadExtensionRoot {
                 clock = device.clock.value,
                 crypto = device.crypto.value,
                 threadLabel = IosThreadLabel,
+                // Its own process: no control channel there hears it, and its log line is the diagnostic.
+                entryEvents = NoEntryEvents,
                 build = IosBuildInfo(),
             ),
             host = extensionHost(host),

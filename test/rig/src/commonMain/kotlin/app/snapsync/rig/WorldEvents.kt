@@ -56,9 +56,30 @@ class WorldEvents(private val serving: Serving = Serving.FROM_THE_START) {
     /** The tag every act carries until it is changed, set by its caller just before it acts. */
     @Volatile private var tag: String? = null
 
-    /** Appends [event]. */
+    /** The act each delivery belongs to, by its run, until its work is done. */
+    private val actOf = MutableStateFlow<Map<Long, String>>(emptyMap())
+
+    /**
+     * Appends [event]. An entry point's event carries the act it belongs to: a delivery made while a tagged act runs
+     * is that act's, and so are its answer and its `done`.
+     */
     fun tell(event: WorldEvent) {
-        history.update { it.appended(event) }
+        val stamped = (event as? WorldEvent.Entry)?.let(::stamped) ?: event
+        history.update { it.appended(stamped) }
+    }
+
+    private fun stamped(event: WorldEvent.Entry): WorldEvent {
+        if (event is WorldEvent.Delivered) {
+            val act = tag ?: return event
+            actOf.update { it + (event.run to act) }
+            return event.copy(tag = act)
+        }
+        val act = actOf.value[event.run] ?: return event
+        return when (event) {
+            is WorldEvent.Answered -> event.copy(tag = act)
+            is WorldEvent.Done -> event.copy(tag = act).also { actOf.update { it - event.run } }
+            is WorldEvent.Delivered -> event
+        }
     }
 
     /** Marks every act from now on with [tag], or none. */
@@ -125,6 +146,8 @@ fun MockDevice.tellInto(events: WorldEvents, screen: Boolean) {
     downloads.watch { events.tell(it) }
     systemUi.watch { events.tell(it) }
     crashReporter.watch { events.tell(it) }
+    // What the app's runtime tells of its entry points' work: delivered, answered, done.
+    entryEvents.watch { events.tell(it) }
     databases.watch { events.tell(it) }
     keychain.watch { events.tell(it) }
     preferences.watch { events.tell(it) }

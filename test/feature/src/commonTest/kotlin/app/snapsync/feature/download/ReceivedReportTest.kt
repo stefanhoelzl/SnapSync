@@ -89,7 +89,7 @@ class ReceivedReportTest {
         val reports = mutableListOf<Pair<EventId, Long>>()
         private val staging = StagingService(RecordingFiles())
         private val downloads = DownloadController(
-            union, DownloadService(inMemoryDatabases()), downloadJobs(scope.backgroundScope, staging = staging),
+            union, DownloadService(inMemoryDatabases()), downloadJobs(staging = staging),
             GalleryImporter(NoImports(), staging), InMemoryAssetPresence(),
             eventAlbum = { null },
             onImportedIntoAlbum = {},

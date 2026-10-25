@@ -298,19 +298,19 @@ abstract class StatusScreenTour {
                     this@Rig.config.value = null
                 }
 
-                override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) = Unit
+                override suspend fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) = Unit
 
                 override fun commitJoin(choice: JoinChoice) = answered(statuses.join, JoinCommit.Failed())
 
-                override fun share(url: String, title: String) = Unit
+                override suspend fun share(url: String, title: String) = Unit
 
-                override fun requestAccess() = Unit
+                override suspend fun requestAccess() = Unit
 
-                override fun openSettings() = Unit
+                override suspend fun openSettings() = Unit
 
-                override fun openLink(url: String) = Unit
+                override suspend fun openLink(url: String) = Unit
 
-                override fun choosePhotos() = Unit
+                override suspend fun choosePhotos() = Unit
 
                 override fun reconfigure(choice: ShareChoice) = answered(statuses.settings, SettingsResult.Saved)
 

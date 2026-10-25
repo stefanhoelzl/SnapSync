@@ -44,6 +44,7 @@ class PortBundleTest {
 
     /** Interfaces in `:domain:ports` that are NOT ports — each a handle or a value a port hands over. */
     private val notPorts = mapOf(
+        "EntryEvent" to "what the runtime tells of an entry point's work — a sealed value the EntryEvents port is handed",
         "BackgroundTimeHold" to "one hold on the process's background time, answered by the BackgroundTime port",
         "LibraryChangeToken" to "an opaque value the gallery answers and is later handed back — a value, not a seam",
         "DbOpen" to "the result of opening a database — a sealed answer the Databases port returns",

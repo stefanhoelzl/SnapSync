@@ -8,6 +8,8 @@ import app.snapsync.contracts.DeviceConditionsState
 import app.snapsync.contracts.DeviceIntegrityContract
 import app.snapsync.contracts.DeviceIntegrityState
 import app.snapsync.contracts.Entered
+import app.snapsync.contracts.EntryEventsContract
+import app.snapsync.contracts.EntryEventsState
 import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.ProcessInfoContract
@@ -20,6 +22,7 @@ import app.snapsync.contracts.verify
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.ThreadLabel
@@ -86,6 +89,19 @@ class AttestContractBindingsTest {
 
     @Test
     fun `the label mock satisfies the ThreadLabel contract`() = verify(ThreadLabelContract, threadLabel)
+
+    private val entryEvents = object : Binding<EntryEventsState, EntryEvents> {
+        override val host = currentHost
+        override val kind = BindingKind.Fake
+        override val adapter = TellingEntryEvents::class
+        override val reaches = setOf(EntryEventsState.FRESH)
+
+        override fun create(state: EntryEventsState, clauseId: String, log: CallLog): Entered<EntryEvents> =
+            Entered.Ready(EntryEventsMock().port().recorded(log))
+    }
+
+    @Test
+    fun `the entry-event mock satisfies the EntryEvents contract`() = verify(EntryEventsContract, entryEvents)
 
     private val network = object : Binding<NetworkState, NetworkMonitor> {
         override val host = currentHost

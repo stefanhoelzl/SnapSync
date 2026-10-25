@@ -15,9 +15,12 @@ import app.snapsync.entrypoints.OnPushTokenFailure
 import app.snapsync.entrypoints.OnScheduledWake
 import app.snapsync.entrypoints.OnSessionDrained
 import app.snapsync.entrypoints.OnSilentPush
+import app.snapsync.entrypoints.OnTap
 import app.snapsync.entrypoints.OnUploadFinished
 import app.snapsync.entrypoints.OnUploadSessionEvents
+import app.snapsync.entrypoints.Screen
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.GalleryHandlers
@@ -27,6 +30,8 @@ import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.services.push.PushTokenRequest
+import kotlinx.coroutines.Job
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Hands every app entry point to its port (`docs/patterns.md`, "Composition") — the graph is built, so each port may
@@ -91,3 +96,17 @@ fun AppCore.pushHandlers(): PushHandlers = PushHandlers(
 @CompositionOnly
 fun AppCore.followNetworkReturns() =
     observation.follow(network.status.returned, OnNetworkReturned(runtime, work.foregroundWork, work.wakeWork))
+
+/**
+ * The screen's taps, as the UI port delivers them: each an [OnTap] over [table] — the status host's intent table,
+ * which the host zone holds and this zone cannot see — handed the tap's context and its joining for the work it starts.
+ */
+@CompositionOnly
+fun <I : Any> AppCore.taps(table: (I, CoroutineContext, (Job) -> Unit) -> Unit): Inbound<I, Unit> =
+    OnTap(
+        runtime,
+        object : Screen<I> {
+            override fun tapped(intent: I, context: CoroutineContext, joining: (Job) -> Unit) =
+                table(intent, context, joining)
+        },
+    )

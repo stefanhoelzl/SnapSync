@@ -14,6 +14,7 @@ import app.snapsync.format.TimestampText
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.mock.BackendMock
 import app.snapsync.mock.BuildInfoMock
+import app.snapsync.mock.EntryEventsMock
 import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.mock.ThreadLabelMock
@@ -141,6 +142,7 @@ class ExtensionEntryTest {
             clock = clock,
             crypto = fakeCrypto(),
             threadLabel = ThreadLabelMock(),
+            entryEvents = EntryEventsMock().port(),
             build = BuildInfoMock().port(),
         ),
         databases = databases,

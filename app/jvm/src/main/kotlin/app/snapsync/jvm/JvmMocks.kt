@@ -55,6 +55,7 @@ class JvmMocks(
                 ui = screen.port(),
                 devControls = devControls.port(),
                 extensionHost = extensionHost.port(),
+                entryEvents = entryEvents.port(),
             ),
             systems = JvmSystems(
                 http = eventKeys.recording(http),

@@ -66,7 +66,8 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
 ```
 
 - **Pick the base by the interface the delivery comes through:** each base is named for the one it implements —
-  `InboundEntryPoint` (`Inbound`, runs on the delivering thread and persists before it returns),
+  `InboundEntryPoint` (`Inbound`, runs on the delivering thread and persists before it returns — its `run` is an
+  extension of the `Delivery`, whose `detached { }` starts work the delivery does not await),
   `BackgroundEntryPoint` (`Background`), `GrantedEntryPoint` (`Granted`), `AnsweredEntryPoint` (`Answered`, with the
   answer a failure gives).
 - **`run` orders and never decides.** Each step makes one call; what the step does is that call's. A `when` over a
@@ -78,7 +79,13 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
 - Work several entry points share is a plain class beside them (`Prelude`, `ForegroundWork`, `WakeWork`, `Joining`,
   `Leaving`, `EndOfWake`), written in steps too. Work started from inside the process for a trigger that is not the platform's
   (a staged download, a restored key, a transition's arm) is a small class whose `requested()` starts it
-  `detached` under that name (`OnDownloadStaged`, `OnKeyRestored`, `OnArm`).
+  `detached` under that name (`OnDownloadStaged`, `OnKeyRestored`, `OnArm`). Started inside an entry point's work,
+  it is that work's; started outside any, it is its own.
+- A person's tap is an entry point too: `OnTap`, on the UI port, hands the intent to the status host's intent table,
+  and every intent that launches — and every command it runs — is the tap's work. A fire-and-forget command starts
+  through `Runtime.alongside`: detached, with no background-time hold of its own (the app is in front). A request a
+  tap hands to an entry point of its own — a join, a leave, a settings change, a rename, a switch — is that entry
+  point's delivery, with its own `done`; the tap's ends with the hand-off.
 - State whose change starts work is **followed**, not polled: `Observation.follow(flow, entryPoint)` hands each
   emission to an entry point as a delivery, and the next waits for that run (`OnSelectionChanged`,
   `OnNetworkReturned`).
@@ -112,7 +119,7 @@ background-time holds, and the expiry. Nothing else launches.
 | `required { }` | the run cannot go on without it: a failure ends the run |
 | `isolated("name") { }` | a failure is logged as an `Error` line and the run goes on |
 | `concurrently { child("a") { }; child("b") { } }` | children run at once, each isolated; the step ends when all have |
-| `detached { }` | work this run does not await: it runs in the process scope under its own background-time hold, labelled with this run's trigger |
+| `detached { }` | work this run does not await: it runs in the process scope under its own background-time hold, labelled with this run's trigger — and its entry point's `done` waits for it |
 | `run(sequence)` | a pass of a single-flight `Sequence`, answering `Pass.Completed(result)` or `Pass.Cut` |
 | `ensure("name") { }` | runs when the other steps are done **however they ended** — failed, or cancelled because time is up — before the run answers the OS (the heartbeat's re-arm) |
 
@@ -134,6 +141,33 @@ create it again (both uploaders create through the one cycle, so the app session
 pair); the top-up checks cancellation **between** creations. A manifest publish and its record are a pair too: a
 snapshot the backend took is recorded before the pass ends. A walk is cancelled outright and records nothing; an
 import runs on, `outliving` its pass, and its own settlement (`OnImportSettled`) records what it did.
+
+### Entry events
+
+`Runtime` tells what happens to each entry point's work, in every build, through the `EntryEvents` port and a `Log`
+line beside each (`Info`; a `done` that failed or expired is a `Warn`):
+
+| event | when | line |
+|---|---|---|
+| `delivered` | the operating system handed the delivery over — told before its hold is begun | `entry` (and `about`: a tap's intent) |
+| `answered` | the operating system got its answer: the completion, or the delivering call's return | `entry`, `after` |
+| `done` | the delivery's run **and every run it started without awaiting, transitively** have ended | `entry`, `after`, `outcome` (`COMPLETED`, `EXPIRED`, `FAILED` — the worst of its runs) |
+
+`done`, not `answered`, means "finished": a silent push and a session's relaunch answer after their prelude and then
+run the wake detached, and an upload's finish answers at once and tops up detached. The work of a delivery is every
+run started inside it — `detached` steps, a `Delivery`'s `detached`, `Runtime.detached(name)` and `alongside` called
+from inside it, `outliving` work (which runs on after its caller is cancelled), and what a tap's intents start — carried
+in the coroutine context. Work started for no delivery (`OnArm` from a grant change) is its own: a `done` with nothing
+before it. A sequence's pass runs in the process scope, never in a waiter's: what it detaches is its own, named by the
+pass's trigger, and a waiter's `done` covers the pass only while it waits for it.
+
+What `done` does not see yet: work the old zones still launch on `Runtime.scope` — a leave's backend notice, the
+album gather, a reconfigure's download reconcile, the permission and push subscriptions. Phase 4 moves them under
+entry points, and their work joins its entry's `done` then.
+
+A shipped build's adapter keeps nothing (`NoEntryEvents`): the log line is the diagnostic. A rig build and the JVM feed
+the control channel's event stream (`docs/testing.md`, "How a test waits"). The iOS upload extension, its own process
+on a device, keeps nothing either: its events reach only its own log (`ext-debug.log`).
 
 ---
 

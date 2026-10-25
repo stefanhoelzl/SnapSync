@@ -6,6 +6,7 @@ import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.followNetworkReturns
 import app.snapsync.compose.inbound
 import app.snapsync.compose.snapSyncApp
+import app.snapsync.compose.taps
 import app.snapsync.entrypoints.HostAssembly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
@@ -19,9 +20,9 @@ import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
-import app.snapsync.presentation.onIntent
+import app.snapsync.presentation.TapRun
+import app.snapsync.presentation.onTap
 import app.snapsync.query.membership.MembershipStatuses
-import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -143,7 +144,13 @@ fun snapSyncHost(
     // status host first — a person reached the app — and so does a live screen; nothing else builds it, so a cold
     // background start installs no permission-grant subscription.
     core.inbound(HostFirst(composed))
-    ports.ui.inbound(UiHandlers(Intents(composed), LiveScreen(composed)))
+    // A person's taps: each an entry point of its own, whose work is everything the intent table starts for it.
+    ports.ui.inbound(
+        UiHandlers(
+            core.taps { intent, context, joining -> composed.host.onTap(intent, TapRun(context, joining)) },
+            LiveScreen(composed),
+        ),
+    )
     // Asked at every launch, a background one included: the answer arrives through the push handlers just registered,
     // and asking is how a rotated token is learned.
     ports.pushNotifications.register()
@@ -155,12 +162,6 @@ private class HostFirst(private val composed: ComposedApp) : HostAssembly {
     override fun assemble() {
         composed.host
     }
-}
-
-/** A person's intent on the screen: the status host's intent table decides what it means. */
-@OptIn(InboundImplementation::class)
-private class Intents(private val composed: ComposedApp) : Inbound<UiIntent, Unit> {
-    override fun deliver(arg: UiIntent) = composed.host.onIntent(arg)
 }
 
 /**

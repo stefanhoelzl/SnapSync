@@ -185,8 +185,7 @@ class StepsTest {
             Runtime(
                 backgroundScope.coroutineContext[kotlinx.coroutines.Job],
                 plain,
-                FakeBackgroundTime(),
-                label,
+                RuntimePorts(FakeBackgroundTime(), label, RecordingEntryEvents()),
                 1.seconds,
             )
         val completion = CountingCompletion()
