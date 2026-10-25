@@ -225,9 +225,11 @@ class FullStackIntegrationTest {
             downloadStarted(DEV_F, "FQ").state.libraryPhotos.orEmpty().size
         }
 
+        // The foreground's status read may run before the import lands; the status poll is what catches the line up.
         whenever {
             downloadSession.finish()
             os.foreground()
+            advance(STATUS_POLL)
         }
         then {
             event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FQ", DEV_F) } // the foreign photo imported
