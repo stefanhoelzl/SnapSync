@@ -1,0 +1,30 @@
+#!/bin/sh
+# Builds what a device run needs, then stops every Gradle and Kotlin daemon — the shell part of the `journeys
+# (ios|android)` CI jobs, and their reproduction on a Mac or this box. The run itself is the `journeys` program
+# (`:test:journeys`), started only once this has returned (`docs/testing.md`, "All-real journeys are the contracts'
+# safety net"):
+#
+#   scripts/journeys-build android      # then: test/journeys/build/install/journeys/bin/journeys run --platform android …
+#
+# Nothing overlaps the builds: a Gradle daemon and a test JVM beside the live simulator pushed the 7 GB macOS runner
+# into swap (decision record `changes/archive/2026-09-25-one-simulator-journeys`, D5), and the same holds beside the
+# emulator. So the program is installed in the same Gradle call as the app, and the daemons go before any device boots.
+set -eu
+
+platform="${1:-}"
+case "$platform" in
+    android)
+        # The rig RELEASE build (R8 as the store build runs it, signed with the debug key), baked for the local backend.
+        ./gradlew :app:android:assembleRelease :test:journeys:installDist -Psnapsync.rig=true -Psnapsync.deployment=local
+        ;;
+    *)
+        echo "usage: scripts/journeys-build android" >&2
+        exit 2
+        ;;
+esac
+
+# On CI only: elsewhere the daemons are every workspace's on the machine, and a dev box has the memory to spare.
+if [ "${CI:-}" = true ]; then
+    ./gradlew --stop
+    pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' 2>/dev/null || true
+fi

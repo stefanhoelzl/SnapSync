@@ -18,6 +18,10 @@ plugins {
 //   that runs them in the program's own JVM through JUnit. Compiled by `build`, run only by the program.
 // - `test`: the program's own tests, run by `build`.
 //
+// Install it with the app's `-Psnapsync.deployment` (`local`), in the same Gradle call as the app, as
+// `scripts/journeys-build` does: the journeys read A's invite with the link origin `:domain:model` generates from the
+// deployment, and a program installed for another one cannot decode the invite the app shares.
+//
 // Support group (`docs/architecture.md`, "The module set withholds; packages organize"): it links into no
 // shipped-format binary.
 kotlin {
@@ -34,6 +38,7 @@ configurations[journeys.runtimeOnlyConfigurationName].extendsFrom(configurations
 dependencies {
     implementation(project(":test:client"))
     implementation(libs.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
 
     "journeysImplementation"(project(":test:control"))
     "journeysImplementation"(project(":domain:model"))
@@ -47,7 +52,6 @@ dependencies {
     "journeysImplementation"(project(":domain:feature"))
     "journeysImplementation"(libs.kotlinx.datetime)
     "journeysImplementation"(kotlin("test-junit"))
-    "journeysImplementation"(libs.kotlinx.serialization.json)
     "journeysImplementation"(libs.ktor.client.cio)
     // The member attests as a device does, with the software key the local backend's `any` trust accepts.
     "journeysImplementation"(project(":test:contracts"))

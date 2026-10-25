@@ -90,9 +90,14 @@ create, and `$A -s $S shell pm clear app.snapsync` after trying it. Its push ser
 Firebase project (`deployments/components/android.json`); without one it logs "gets no push" and runs on.
 
 **Seeding a real library:** `rig gallery seed --n <n> --kind policy|bulk|noise` inserts the app's OWN photos into `DCIM/Camera` (same
-kinds as iOS). Never `adb push` a photo to test with: MediaStore hides a shell-owned photo from every other app, so
-the app never sees it (measured 2026-09-29). A shell write does still fire the library-change wake, which is how to
-cold-start the process through WorkManager. The emulator's AOSP camera saves to `Pictures/` (outside `DCIM`) and
+kinds as iOS). A photo `adb push`ed into `DCIM` is **pending** — MediaStore has its row (`is_pending=1`, no
+`datetaken`, no size) and the app never sees it — until it is SCANNED; then the app reads it like any other, shell-owned
+or not (measured 2026-10-25, API 36: read with its EXIF capture date and admitted). Scan it synchronously:
+`$A -s $S shell content call --uri content://media --method scan_file --arg /sdcard/DCIM/Camera/<name>` answers once
+the row is published (`content query --uri content://media/external/images/media --where "_display_name='<name>'"`
+shows it); after an `rm`, the same call removes the row. MediaStore dates the photo from its EXIF — write
+`DateTimeOriginal` (and its offset), not only `DateTime`. A shell write fires the library-change wake as well, which is
+how to cold-start the process through WorkManager. The emulator's AOSP camera saves to `Pictures/` (outside `DCIM`) and
 writes no location; the A40's Samsung camera is a real one, saving to `DCIM/Camera` — so its own photos ARE the member's
 default gallery, and a `library=real` choice there shares them. Do not "fix" that by composing mocks into it —
 `MockContainmentTest` fails the build.
@@ -162,7 +167,7 @@ What differs from the emulator — none of it measured yet, so check before rely
 ./gradlew :app:android:assembleDebug -Psnapsync.rig=true
 ```
 
-Then install and drive it by hand (`scripts/android-journeys` does the same end to end, over a local api — below):
+Then install and drive it by hand (`journeys run --platform android` does the same end to end, over a local api — below):
 
 ```bash
 A=$ANDROID_HOME/platform-tools/adb; S=emulator-5554; H=18199              # the A40: its serial and 18103
@@ -212,19 +217,20 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :adapter:android:connectedAndroidDeviceTe
 # reports: adapter/android/build/reports/androidTests/ ; either way the build serves scripts/transfer-fixture.py
 # on the host (build/transfer-fixture.log), reached from the emulator as http://10.0.2.2:<a port each build chooses>
 
-./gradlew :app:android:assembleRelease :test:journeys:installDist :test:cli:installDist \
-    -Psnapsync.rig=true -Psnapsync.deployment=local && ./gradlew --stop
-ANDROID_SERIAL=emulator-5554 JAVA_HOME=<a JDK 25> ADB=$ANDROID_HOME/platform-tools/adb scripts/android-journeys
-# evidence: build/android-journeys/
+scripts/journeys-build android            # the rig release APK (local deployment) and the `journeys` program
+test/journeys/build/install/journeys/bin/journeys run --platform android --serial emulator-5554 \
+    --adb $ANDROID_HOME/platform-tools/adb
+# evidence: build/android-journeys/ (stages, resources.log, backend.log, logcat.txt, result)
 ```
 
-`androidPlatformTest` needs no emulator of yours — stop yours first, the two together are heavy. The journeys script
-needs JDK 25 on `JAVA_HOME` (the journeys compile to 25) and deno; it starts the local api itself. `ANDROID_SERIAL` is
-not optional: the guard fences `android-journeys` and denies it without one, and adb itself reads it, so every bare
-`$ADB` inside reaches that device. Give `scripts/android-force-stop-check` the same prefix — the guard does not see
-inside it, but with a phone attached its bare `adb` fails "more than one device". Both scripts forward the host's 18099 itself — the emulator's
-convention is 18199 — and are written for the emulator: they uninstall the app and change grants, and have not been
-run on the A40.
+`androidPlatformTest` needs no emulator of yours — stop yours first, the two together are heavy. The run expects the
+emulator BOOTED (CI's `android-emulator` action boots it) and deno on PATH; it starts the local api itself, installs
+the release build (uninstalling the app first) and changes its grants, forwards the host's 18099 itself — the
+emulator's convention is 18199 — and ends with the force-stop journey, which force-stops the app and puts one dated
+photo into `DCIM/Camera`. Every adb command it runs names `--serial`. Written for the emulator; never run it on the
+A40. On this box the build script leaves the Gradle daemons running (they are every workspace's); CI stops them.
+Reinstalling the program by hand? Pass the app's `-Psnapsync.deployment=local` too: the journeys decode A's invite with
+the link origin the deployment generates, and a program installed for `prod` fails "not a snapsync event link".
 
 - The backtick test names' spaces dex only from DEX 040 (API 30) — one reason minSdk is 30. Never lower it below 30
   without renaming every test.

@@ -13,7 +13,7 @@ The rest stay CI-only BY DECISION, not by oversight:
 
 - `ios-build` / `journeys (ios)` — macOS-only; no Linux machine can run them
 - `android-build` / `journeys (android)` — minutes of emulator and R8 per ship; CI runs them
-  (`./gradlew androidPlatformTest`, `scripts/android-journeys`)
+  (`./gradlew androidPlatformTest`, `journeys run --platform android`)
 - `check-label` — `/ship` applies the label as it opens the PR
 - `metadata`'s other steps — `scripts/resolve_deployment_test.py`,
   `scripts/await_photo_migration_test.py`, and the listing validation, which needs the pinned `asc`
