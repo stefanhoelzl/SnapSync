@@ -66,6 +66,35 @@ class TestsWaitOnEventsTest {
     }
 
     /**
+     * The all-real journeys (`:test:journeys`) wait the same way — on the events the device host serves — and then read
+     * the real system once; they claim requirements and read no log, as the suite does, with no list of exceptions. The
+     * wall-clock rule is not theirs: a device runs on real time, the journeys date their events and photos from today,
+     * and their bounds are the client's waits (`RigClient.awaitScreen`), not their own.
+     */
+    @Test
+    fun `the journeys verify requirements, do not poll and read no log`() {
+        val journeys = SourceScan.kotlinFiles()
+            .filter { it.path.startsWith("/test/journeys/src/journeys/kotlin/") }
+            .also { assertTrue(it.isNotEmpty(), "the journeys' sources moved") }
+        fun breaking(rule: (String) -> Boolean) = journeys.filter { rule(it.text) }.map { it.file.nameWithoutExtension }
+        assertEquals(
+            emptyList(),
+            breaking { unclaimedTests(it).isNotEmpty() },
+            "a journey with no @Verifies is a journey of nothing the contract promises",
+        )
+        assertEquals(
+            emptyList(),
+            breaking { POLL.containsMatchIn(ZoneGates.stripComments(it)) },
+            "a journey waits on the screen's events (`awaitScreen`), then reads the real system once — it never polls",
+        )
+        assertEquals(
+            emptyList(),
+            breaking { LOG_READ.containsMatchIn(ZoneGates.stripComments(it)) },
+            "a journey observes the screen and what a system outside the app records — never the app's log",
+        )
+    }
+
+    /**
      * Log text is no outcome a person observes (`docs/testing.md`, "The rules"): the host's log read (`HostLevers.logs`)
      * is an agent's, through the `rig` CLI, never a test's.
      */

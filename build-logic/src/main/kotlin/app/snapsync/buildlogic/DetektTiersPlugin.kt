@@ -263,6 +263,7 @@ class DetektTiersPlugin : Plugin<Project> {
             ":test:client" to "harness",
             ":test:control" to "harness",
             ":test:cli" to "harness",
+            ":test:journeys" to "harness",
             ":test:levers" to "harness",
             ":tools:diagrams" to "harness",
             ":tools:detekt-rules" to "harness",

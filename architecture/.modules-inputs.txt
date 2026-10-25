@@ -40,6 +40,7 @@ module :test:edge
 module :test:feature
 module :test:harness-driver
 module :test:integration
+module :test:journeys
 module :test:launch-adapters
 module :test:levers
 module :test:no-grant
@@ -307,17 +308,25 @@ edge :test:feature :domain:ports
 edge :test:feature :domain:scheduling
 edge :test:feature :domain:services
 edge :test:harness-driver :app:desktop
-edge :test:integration :adapter:generic:app
 edge :test:integration :domain:domain
 edge :test:integration :domain:feature
 edge :test:integration :domain:format
 edge :test:integration :domain:model
-edge :test:integration :domain:ports
 edge :test:integration :domain:presentation
-edge :test:integration :domain:wire
-edge :test:integration :test:contracts
 edge :test:integration :test:control
 edge :test:integration :ui:state
+edge :test:journeys :adapter:generic:app
+edge :test:journeys :domain:domain
+edge :test:journeys :domain:feature
+edge :test:journeys :domain:format
+edge :test:journeys :domain:model
+edge :test:journeys :domain:ports
+edge :test:journeys :domain:presentation
+edge :test:journeys :domain:wire
+edge :test:journeys :test:client
+edge :test:journeys :test:contracts
+edge :test:journeys :test:control
+edge :test:journeys :ui:state
 edge :test:launch-adapters :adapter:generic:mock
 edge :test:launch-adapters :domain:compose
 edge :test:launch-adapters :domain:inbound

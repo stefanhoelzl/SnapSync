@@ -22,14 +22,14 @@ await_backend() {
 }
 
 # Run the journeys against the app whose control channel answers on $1 and the local backend, logging to
-# $OUT/journeys.log; returns JUnit's exit code. A bare JVM on the classpath written at compile time, NOT Gradle: a Gradle
-# daemon and a test JVM starting next to the live simulator pushed the runner into swap, and the app missed its 5 s HTTP
-# timeout on a request the backend had answered in 132 ms (run 36173548419) — the same holds beside the emulator.
+# $OUT/journeys.log; returns their exit code. The installed `journeys` program (`:test:journeys:installDist`), a bare
+# JVM, NOT Gradle: a Gradle daemon and a test JVM starting next to the live simulator pushed the runner into swap, and
+# the app missed its 5 s HTTP timeout on a request the backend had answered in 132 ms (run 36173548419) — the same
+# holds beside the emulator.
+JOURNEYS=test/journeys/build/install/journeys/bin/journeys
 run_journeys() {
     stage "journeys: starting"
-    "${JAVA_HOME:+$JAVA_HOME/bin/}java" -Xmx512m -cp "$(cat test/integration/build/journeys-classpath.txt)" \
-        -Dsnapsync.journey.appA="$1" -Dsnapsync.journey.backend="$BACKEND" \
-        org.junit.runner.JUnitCore app.snapsync.journeys.Journeys > "$OUT/journeys.log" 2>&1
+    "$JOURNEYS" journeys-only --app "$1" --backend "$BACKEND" > "$OUT/journeys.log" 2>&1
     journeys_status=$?
     stage "journeys: done"
     return $journeys_status
