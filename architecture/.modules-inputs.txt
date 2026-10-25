@@ -32,6 +32,7 @@ module :domain:services
 module :domain:wire
 module :test:architecture
 module :test:cli
+module :test:client
 module :test:contracts
 module :test:control
 module :test:data
@@ -261,8 +262,11 @@ edge :test:architecture :domain:wire
 edge :test:architecture :test:contracts
 edge :test:architecture :test:levers
 edge :test:architecture :ui:state
+edge :test:cli :test:client
 edge :test:cli :test:levers
 edge :test:cli :test:rig
+edge :test:client :test:levers
+edge :test:client :test:rig
 edge :test:contracts :adapter:generic:motionphoto
 edge :test:contracts :domain:data
 edge :test:contracts :domain:domain
@@ -276,6 +280,7 @@ edge :test:control :domain:domain
 edge :test:control :domain:feature
 edge :test:control :domain:model
 edge :test:control :domain:presentation
+edge :test:control :test:client
 edge :test:control :test:levers
 edge :test:control :test:rig
 edge :test:control :ui:state

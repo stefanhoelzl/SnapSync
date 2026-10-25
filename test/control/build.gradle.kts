@@ -4,8 +4,9 @@ plugins {
     id("snapsync.live-edge")
 }
 
-// `:test:control` — the typed JVM client of the control channel's protocol (`docs/testing.md`,
-// "One control protocol, served by two hosts"), and the home of the JVM host's tests.
+// `:test:control` — what a test says over the control channel's typed client (`:test:client`; `docs/testing.md`,
+// "One control protocol, served by two hosts"): a person's forms (`Person`), the behaviour DSL, `@Verifies` — and the
+// home of the JVM host's tests.
 //
 // Support group (`docs/architecture.md`, "The module set withholds; packages organize"): it links into no
 // shipped-format binary. JVM-only because every caller of the protocol is: a test drives the simulator app over
@@ -26,7 +27,8 @@ kotlin {
 dependencies {
     // The wire types (and, for the tests, the JVM host they start).
     api(project(":test:rig"))
-    // The typed services (`RigClient.levers`): what a test calls instead of a string verb.
+    // The client (`RigClient`, `:test:client`) and the typed services it calls instead of a string verb.
+    api(project(":test:client"))
     api(project(":test:levers"))
     // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
     api(project(":domain:model"))
@@ -36,10 +38,6 @@ dependencies {
     api(project(":domain:presentation"))
     api(project(":domain:feature"))
     api(libs.ktor.client.core)
-    implementation(libs.ktor.client.cio)
-    // The typed services' transport: kRPC's generated client over a Ktor WebSocket.
-    implementation(libs.kotlinx.rpc.krpc.ktor.client)
-    implementation(libs.kotlinx.rpc.krpc.serialization.json)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coroutines.core)
 

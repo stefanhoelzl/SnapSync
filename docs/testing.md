@@ -170,7 +170,8 @@ module.** The one exception is a source set that a build script adds only under 
 |---|---|
 | `:test:contracts` | the contract mechanism and every port contract (section 4). The only module whose **main** code depends on `kotlin-test`. Links into the app only under the rig property. |
 | `:test:rig` | the control channel: one HTTP protocol served by an iOS app host and a JVM host (section 6). The only module allowed `ktor-server-*`. |
-| `:test:control` | the typed JVM client of that protocol (`RigClient`, and `levers(…)` — kRPC's generated client — for the typed services), plus the JVM host's own tests. |
+| `:test:client` | the typed JVM client of that protocol (`RigClient`, and `levers(…)` — kRPC's generated client — for the typed services), its connection, replaced when it drops, and the waits on a host's events (`awaitEvent`, `awaitScreen`). `rig` (`:test:cli`) sends over the same connection. |
+| `:test:control` | what a test says over that client: a person's forms (`Person`), the behaviour DSL, `@Verifies`, plus the JVM host's own tests. |
 | `:test:levers` | the operator faces' typed interfaces and their value types (section 6, "Typed services"). The mocks implement them and a test calls them; neither sees the other. The only module the kotlinx-rpc compiler plugin runs on. Links into the app only through the mocks and the rig, so only under the rig property. |
 | `:test:integration` | the seam → UI-state integration suite, driven only over the protocol (section 7). Also the `journeys` source set. |
 | `:test:edge` | `LiveEdge`: the real `api/` as a local Deno process, one per test JVM. Used by the backend contracts' Live bindings and the rig's JVM host's second backend. |
@@ -876,7 +877,11 @@ There are **no click, semantics or pixel verbs**. Taps and pixels belong to the 
   keeps the attestation credential, because a foreign token heals itself through a `401`. It is
   best-effort per step. An upload cycle already running may write rows back afterwards, and a second reset
   clears them. The runbook is in `rig-channel` (`changes/archive/2026-08-24-retire-launch-env-triggers`).
-- `:test:control` holds `RigClient` (a typed method's refusal a `LeverRefused`), `Person`, and the JVM host's tests. Those tests run over **both** backends and prove the protocol is
+- `:test:client` holds `RigClient` (a typed method's refusal a `LeverRefused`). Its one connection is replaced when it
+  drops: a call whose connection never opened is sent once it opens, a call that may have reached the host is never
+  sent again, and a wait on the host's events (`awaitScreen`) follows the stream again until its bound — an app a caller
+  stopped and started, or one the operating system suspended, comes back with its sockets gone.
+- `:test:control` holds `Person`, the behaviour DSL and the JVM host's tests. Those tests run over **both** backends and prove the protocol is
   faithful to the application: routes, state encoding, the vocabulary advertisement, refusals. The only untested code
   in the channel is the iOS gallery seeder and wiper, for the reason its build file gives.
 

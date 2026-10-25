@@ -1,6 +1,6 @@
 package app.snapsync.screenshots
 
-import app.snapsync.control.RigClient
+import app.snapsync.client.RigClient
 import app.snapsync.integration.Rig
 import app.snapsync.integration.Shot
 import app.snapsync.integration.reach

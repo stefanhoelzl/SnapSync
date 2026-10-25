@@ -1,7 +1,7 @@
 package app.snapsync.integration
 
+import app.snapsync.client.RigClient
 import app.snapsync.control.Person
-import app.snapsync.control.RigClient
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BackgroundTimeLevers

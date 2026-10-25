@@ -1,5 +1,6 @@
 package app.snapsync.control
 
+import app.snapsync.client.RigClient
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.ScreenLevers
 import app.snapsync.ui.state.JoinedSurface

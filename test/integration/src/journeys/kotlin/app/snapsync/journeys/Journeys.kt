@@ -1,10 +1,10 @@
 package app.snapsync.journeys
 
-import app.snapsync.domain.sharing.Direction
+import app.snapsync.client.RigClient
 import app.snapsync.control.Choices
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.format.InviteLinkText
-import app.snapsync.control.RigClient
 import app.snapsync.control.Verifies
 import app.snapsync.control.person
 import app.snapsync.domain.asset.AssetId

@@ -692,7 +692,7 @@ curl -s localhost:<port>/device            # honoured + refused (reasons) for TH
     **typed services**, below.
 - The app's private files are no fact a test reads: what the outside sees of them is `appStorageBytes`.
 - `contract` is refused on this host (naming `JVM`): JVM contract bindings run under Gradle.
-- Typed client for tests: `:test:control`'s `RigClient` and
+- Typed client for tests: `:test:client`'s `RigClient` and
   `client.levers(<Service>)` for every typed service, over kRPC (a refusal throws `LeverRefused`); `client.person()`
   taps the forms.
 - Stop it by killing the JavaExec process. Don't `pkill -f runJvmHost` from a shell whose own command line
@@ -732,7 +732,7 @@ $R --url $B run steps.txt                 # one command per line ('#' comments; 
   JSON (`--intent '{"type":"LeaveEvent"}'`; a list of structures one flag each, or as a JSON array).
 - **A foreign `device` must be a canonical UUID.** Each call starts a JVM: about 0.6 s; a `run` file pays it once.
 
-From Kotlin, `:test:control`'s typed client calls the same interfaces:
+From Kotlin, `:test:client`'s typed client calls the same interfaces:
 
 ```kotlin
 RigClient("http://127.0.0.1:$PORT").use { client ->

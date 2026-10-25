@@ -10,7 +10,7 @@ plugins {
 // their parameters and types — so a service or method added there is a command here with no edit.
 //
 // Support group (`docs/architecture.md`, "The module set withholds; packages organize"): it links into no
-// shipped-format binary. Its own module, not `:test:control`'s, so a call starts on the levers and kRPC's client alone
+// shipped-format binary. On `:test:client`, not `:test:control`, so a call starts on the levers and kRPC's client alone
 // rather than on the domain `:test:control` compiles against.
 //
 // Installed with `./gradlew :test:cli:installDist`, as `test/cli/build/install/rig/bin/rig` (`rig-channel` skill).
@@ -28,10 +28,8 @@ application {
 dependencies {
     // The services the commands are derived from, and their value types the arguments decode into.
     implementation(project(":test:levers"))
-    // The transport the tests' client uses: kRPC over a Ktor WebSocket.
-    implementation(libs.ktor.client.cio)
-    implementation(libs.kotlinx.rpc.krpc.ktor.client)
-    implementation(libs.kotlinx.rpc.krpc.serialization.json)
+    // The connection the tests' client uses — kRPC over a Ktor WebSocket, replaced when it drops (`:test:client`).
+    implementation(project(":test:client"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coroutines.core)
 

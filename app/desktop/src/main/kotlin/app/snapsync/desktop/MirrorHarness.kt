@@ -18,7 +18,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.control.RigClient
+import app.snapsync.client.RigClient
 import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.RigLevers

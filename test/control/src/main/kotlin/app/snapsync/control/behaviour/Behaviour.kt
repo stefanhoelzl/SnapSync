@@ -1,7 +1,7 @@
 package app.snapsync.control.behaviour
 
+import app.snapsync.client.RigClient
 import app.snapsync.control.Person
-import app.snapsync.control.RigClient
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BuildLevers
 import app.snapsync.levers.DatabasesLevers

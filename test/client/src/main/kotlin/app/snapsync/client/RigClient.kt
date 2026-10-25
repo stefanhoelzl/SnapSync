@@ -1,9 +1,12 @@
-package app.snapsync.control
+package app.snapsync.client
 
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.HostLevers
 import app.snapsync.levers.LeverService
 import app.snapsync.levers.RigState
+import app.snapsync.levers.WorldEvent
+import app.snapsync.levers.WorldLevers
+import app.snapsync.ui.state.UiState
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -11,10 +14,6 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.rpc.krpc.ktor.client.installKrpc
-import kotlinx.rpc.krpc.ktor.client.rpc
-import kotlinx.rpc.krpc.ktor.client.rpcConfig
-import kotlinx.rpc.krpc.serialization.json.json
 import kotlinx.rpc.withService
 import kotlinx.serialization.json.Json
 import kotlin.time.Duration
@@ -26,7 +25,8 @@ import kotlin.time.Duration.Companion.seconds
  * at [baseUrl] (for example `http://127.0.0.1:18099`).
  *
  * It is written against the wire types the rig itself encodes ([RigState] embeds the real `UiState`), so there is
- * no second rendering of the state here that could disagree with the screen.
+ * no second rendering of the state here that could disagree with the screen. Its calls go over one [RpcConnection],
+ * replaced when it drops (which calls are sent again, and which never are, is said there).
  */
 class RigClient(
     baseUrl: String,
@@ -43,19 +43,17 @@ class RigClient(
 
     private val base = baseUrl.trimEnd('/')
 
-    /** The typed services' kRPC session (`docs/testing.md`, "Typed services") — opened by the first call, on its own client. */
-    private val rpcHttp = lazy { HttpClient(CIO) { installKrpc() } }
-    private val rpc = lazy {
-        rpcHttp.value.rpc("ws${base.removePrefix("http")}$RPC_PATH") { rpcConfig { serialization { json() } } }
-    }
+    /** The typed services' kRPC connection (`docs/testing.md`, "Typed services") — opened by the first call. */
+    private val connection = lazy { RpcConnection(base) }
 
     /**
      * A typed service — `client.levers(BackendLevers).offline(true)` — through the client kotlinx-rpc generates from its
      * interface, over the host's kRPC route. A method answers its value, or throws: `LeverRefused` when this host
      * refuses the service, with its reason; otherwise the exception the implementation threw — rebuilt as its own class
-     * from a JVM or Android host, as kRPC's stand-in carrying its message from an iOS host.
+     * from a JVM or Android host, as kRPC's stand-in carrying its message from an iOS host. Each call goes out on the
+     * connection live when it is made, so a service held across a dropped connection still answers.
      */
-    fun <T : Any> levers(service: LeverService<T>): T = rpc.value.withService(service.type)
+    fun <T : Any> levers(service: LeverService<T>): T = connection.value.service(service.type)
 
     /** `GET /health`. */
     suspend fun health(): String = http.get("$base/health").bodyAsText()
@@ -85,17 +83,57 @@ class RigClient(
         return reached ?: error("the state did not reach the condition within $timeout; last seen: $last")
     }
 
+    /**
+     * Waits on the host's events ([WorldLevers.events]) for the first that [match] answers a value for, and answers it —
+     * or fails once [within] passed, naming [what] it waited for, the last screen it saw and why its connection last
+     * dropped. A dropped connection is opened again, and the stream followed again, until then.
+     *
+     * Where the stream starts is the host's: a device host serves from where its latest act began, so a wait that
+     * follows its act misses nothing of it; the JVM host serves from its start, so there the first match may be from
+     * before the act — a JVM test waits through `behaviour { … }` instead.
+     */
+    suspend fun <T : Any> awaitEvent(within: Duration, what: String, match: (WorldEvent) -> T?): T {
+        var screen: UiState? = null
+        var drop: String? = null
+        var found: T? = null
+        withTimeoutOrNull(within) {
+            while (found == null) {
+                val ended = connection.value.follow(
+                    open = { it.withService(WorldLevers::class).events() },
+                    dropped = { drop = it },
+                ) { event ->
+                    if (event is WorldEvent.UiChanged) screen = event.ui
+                    found = match(event)
+                    found != null
+                }
+                // The host ended the stream before the event came: follow it again.
+                if (!ended) delay(FOLLOW_AGAIN_AFTER)
+            }
+        }
+        return found ?: throw AssertionError(
+            "$what: not within $within. The last screen seen: ${screen ?: "none"}" +
+                drop?.let { ". The connection last dropped: $it" }.orEmpty(),
+        )
+    }
+
+    /**
+     * The screen shown now if it [holds]; otherwise the first that does ([WorldEvent.UiChanged]), as [awaitEvent] waits.
+     * The screen is read first because what an act causes may come before a later act of the same caller — a form's
+     * last tap after the one that opened the next screen — and a device host serves its stream only from the latest
+     * act on. Read then followed, nothing falls between: the stream starts before the read, at that latest act.
+     */
+    suspend fun awaitScreen(within: Duration, what: String, holds: (UiState) -> Boolean): UiState =
+        state().ui.takeIf(holds)
+            ?: awaitEvent(within, what) { event -> (event as? WorldEvent.UiChanged)?.ui?.takeIf(holds) }
+
     override fun close() {
-        if (rpc.isInitialized()) rpc.value.close()
-        if (rpcHttp.isInitialized()) rpcHttp.value.close()
+        if (connection.isInitialized()) connection.value.close()
         http.close()
     }
 
     private companion object {
         val json = Json { ignoreUnknownKeys = false }
         val POLL = 50.milliseconds
+        val FOLLOW_AGAIN_AFTER = 500.milliseconds
     }
 }
-
-/** The rig's kRPC route (`RigServer`). */
-private const val RPC_PATH = "/rpc"
