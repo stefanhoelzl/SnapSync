@@ -1,5 +1,6 @@
 package app.snapsync.control
 
+import app.snapsync.client.RigClient
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.BackendCall

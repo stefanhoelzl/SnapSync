@@ -260,6 +260,7 @@ class DetektTiersPlugin : Plugin<Project> {
             ":test:launch-adapters" to "harness",
             ":test:contracts" to "harness",
             ":test:edge" to "harness",
+            ":test:client" to "harness",
             ":test:control" to "harness",
             ":test:cli" to "harness",
             ":test:levers" to "harness",

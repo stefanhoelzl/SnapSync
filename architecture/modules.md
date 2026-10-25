@@ -40,6 +40,7 @@ flowchart LR
   domain_wire[":domain:wire"]
   test_architecture[":test:architecture"]
   test_cli[":test:cli"]
+  test_client[":test:client"]
   test_contracts[":test:contracts"]
   test_control[":test:control"]
   test_data[":test:data"]
@@ -269,8 +270,11 @@ flowchart LR
   test_architecture --> test_contracts
   test_architecture --> test_levers
   test_architecture --> ui_state
+  test_cli --> test_client
   test_cli --> test_levers
   test_cli --> test_rig
+  test_client --> test_levers
+  test_client --> test_rig
   test_contracts --> adapter_generic_motionphoto
   test_contracts --> domain_data
   test_contracts --> domain_domain
@@ -284,6 +288,7 @@ flowchart LR
   test_control --> domain_feature
   test_control --> domain_model
   test_control --> domain_presentation
+  test_control --> test_client
   test_control --> test_levers
   test_control --> test_rig
   test_control --> ui_state

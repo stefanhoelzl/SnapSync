@@ -1,18 +1,11 @@
 package app.snapsync.cli
 
+import app.snapsync.client.RpcConnection
 import app.snapsync.levers.LeverRefused
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.rpc.RpcCall
-import kotlinx.rpc.krpc.ktor.client.KtorRpcClient
-import kotlinx.rpc.krpc.ktor.client.installKrpc
-import kotlinx.rpc.krpc.ktor.client.rpc
-import kotlinx.rpc.krpc.ktor.client.rpcConfig
-import kotlinx.rpc.krpc.serialization.json.json
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 import java.io.File
@@ -118,40 +111,43 @@ internal fun seconds(text: String): Duration? {
 }
 
 /**
- * One WebSocket to the host's kRPC route, every call of a run over it — until [reconnect] opens another. [timeout] bounds
- * a call, [streamTimeout] a stream; `null`: as long as it takes.
+ * The host's kRPC route, every call of a run over one connection — replaced when it drops ([RpcConnection] says which
+ * calls are sent again, and which never are). [timeout] bounds a call, [streamTimeout] a stream; `null`: as long as it
+ * takes.
  */
 internal class Connection(
     base: String,
     private val timeout: Duration?,
     val streamTimeout: Duration?,
 ) : AutoCloseable {
-    val url = "ws${base.trimEnd('/').removePrefix("http")}$RPC_PATH"
-    private val http = HttpClient(CIO) { installKrpc() }
-    private var opened: KtorRpcClient? = null
-    private val client: KtorRpcClient
-        get() = opened ?: http.rpc(url) { rpcConfig { serialization { json() } } }.also { opened = it }
+    private val rpc = RpcConnection(base)
+    val url = rpc.url
     private var calls = 0L
 
     suspend fun send(method: MethodCommand, arguments: Array<Any?>): Any? {
-        val call = RpcCall(method.service.descriptor, method.declared, arguments, ++calls)
-        return if (timeout == null) client.call<Any?>(call) else withTimeout(timeout) { client.call<Any?>(call) }
+        val call = suspend { rpc.sending { client -> client.call<Any?>(rpcCall(method, arguments)) } }
+        return if (timeout == null) call() else withTimeout(timeout) { call() }
     }
 
-    /** A stream's elements, as the host sends them; unbounded — the caller bounds it. */
-    fun stream(method: MethodCommand, arguments: Array<Any?>): Flow<Any?> =
-        client.callServerStreaming(RpcCall(method.service.descriptor, method.declared, arguments, ++calls))
+    /**
+     * Follows the stream [method] serves, opened again on every dropped connection ([dropped] hearing why), handing each
+     * element to [each] until it answers `true`; unbounded — the caller bounds it. Answers `false` when the host ended it.
+     */
+    suspend fun follow(
+        method: MethodCommand,
+        arguments: Array<Any?>,
+        dropped: (String) -> Unit,
+        each: suspend (Any?) -> Boolean,
+    ): Boolean = rpc.follow(
+        open = { client -> client.callServerStreaming(rpcCall(method, arguments)) },
+        dropped = dropped,
+        each = each,
+    )
 
-    /** Drops this WebSocket: the next call or stream opens a new one. */
-    fun reconnect() {
-        opened?.let { runCatching { it.close() } }
-        opened = null
-    }
+    override fun close() = rpc.close()
 
-    override fun close() {
-        reconnect()
-        http.close()
-    }
+    private fun rpcCall(method: MethodCommand, arguments: Array<Any?>) =
+        RpcCall(method.service.descriptor, method.declared, arguments, ++calls)
 }
 
 /**
@@ -257,7 +253,6 @@ private val CALL_TIMEOUT = 60.seconds
 
 /** A stream waits for what an app does in the background — an upload landing, a wake — so longer than a call. */
 private val STREAM_TIMEOUT = 300.seconds
-private const val RPC_PATH = "/rpc"
 
 internal const val EXIT_OK = 0
 internal const val EXIT_FAILED = 1

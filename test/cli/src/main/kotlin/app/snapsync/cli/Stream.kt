@@ -1,17 +1,13 @@
 package app.snapsync.cli
 
 import app.snapsync.levers.LeverRefused
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.serializer
 import java.io.PrintStream
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 // A stream from a shell (`rig world events`): what a wait in a skill reads, with no matcher of its own — `jq` picks the
@@ -40,9 +36,8 @@ internal suspend fun Connection.stream(
             coroutineScope {
                 val prober = launch { if (probe) printing.probe() }
                 try {
-                    var ended: Ended? = null
-                    while (ended == null) ended = follow(method, arguments, printing)
-                    ended
+                    follow(method, arguments, printing)
+                    Ended.BY_THE_HOST
                 } finally {
                     prober.cancel()
                 }
@@ -64,25 +59,23 @@ internal suspend fun Connection.stream(
 }
 
 /**
- * Follows the stream over one connection: [Ended.BY_THE_HOST] when the host ended it, `null` when the connection
- * dropped — then reconnected, to be followed again. The reader going or the host refusing ends the stream.
+ * Follows the stream until the host ends it, across dropped connections. A device host serves from its last act, so the
+ * stream it serves again begins with what was already printed: that many are skipped.
  */
-private suspend fun Connection.follow(method: MethodCommand, arguments: Array<Any?>, printing: Printing): Ended? =
-    try {
-        var seen = 0
-        stream(method, arguments).collect { value -> if (seen++ >= printing.printed) printing.print(value) }
-        Ended.BY_THE_HOST
-    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-        if (e is ReaderGone || e is LeverRefused) throw e
-        // The bound passed, or the reader went: this stream is over.
-        if (e is CancellationException) currentCoroutineContext().ensureActive()
-        // The connection dropped — kRPC cancels a stream whose socket closed — or the host could not be reached: open
-        // another, until the bound.
-        printing.dropped = e.message ?: e::class.simpleName
-        reconnect()
-        delay(RECONNECT_AFTER)
-        null
+private suspend fun Connection.follow(method: MethodCommand, arguments: Array<Any?>, printing: Printing) {
+    var seen = 0
+    follow(
+        method,
+        arguments,
+        dropped = { reason ->
+            printing.dropped = reason
+            seen = 0
+        },
+    ) { value ->
+        if (seen++ >= printing.printed) printing.print(value)
+        false
     }
+}
 
 /** What a stream printed to [out]: one line of JSON per element; a write that fails means its reader has gone. */
 private class Printing(method: MethodCommand, private val out: PrintStream) {
@@ -123,6 +116,3 @@ private class ReaderGone : Exception("the reader has gone")
 
 /** How often a stream into a pipe probes it for a reader that has gone. */
 private val PROBE_EVERY = 1.seconds
-
-/** How long a stream waits before opening a dropped connection again. */
-private val RECONNECT_AFTER = 500.milliseconds
