@@ -1191,7 +1191,7 @@ another `real`, or omitting it, refuses the launch, which then composes nothing)
 state beside the file, as on iOS, because a real store then outlives the process. It refuses `host.relaunch`, `host.reinstall` and the
 `extension-host` service (Android has no upload extension), and is contract host `ANDROID_EMU` in `GET /device` — the host the
 device tests run on too. The `journeys (android)` CI job drives it over every real adapter Android has
-(`scripts/android-journeys`). A build without the property composes every real adapter and starts; its crash reporter
+(`journeys run --platform android`, `:test:journeys`). A build without the property composes every real adapter and starts; its crash reporter
 starts only on a distributed build, which carries a DSN.
 
 The Android adapters' contract bindings (`:adapter:android`'s `src/androidDeviceTest`) are device tests, never host
@@ -1204,18 +1204,22 @@ address an emulator reaches it at (`http://10.0.2.2:<port>`) as the `fixture` in
 contract needs. The port is a free one each build chooses, never a fixed one: every checkout on a host shares its
 loopback, and a fixed port let one build's device tests exchange with another build's fixture until that build ended.
 
-**A force-stop is checked from outside the process** (`scripts/android-force-stop-check`, non-gating — no CI job runs
-it): a contract clause runs inside the app, and a force-stop kills the process that would observe it. The script
-installs the rig build, chooses the real WorkManager wake, joins a receive-only event over the mocked backend and reads
-JobScheduler's own record (`dumpsys jobscheduler`): the idle heartbeat pending, gone after `am force-stop`, pending again
-once the app is opened. The iOS force-quit has no such check: only a person's swipe records one, so it rests on Apple's
+**A force-stop is checked from outside the process** (`ForceStopJourney`, the last journey `journeys (android)` runs
+on every push): a contract clause runs inside the app, and a force-stop kills the process that would observe it. Over
+every real adapter and the local backend, with A joined, it reads JobScheduler's own record (`dumpsys jobscheduler`):
+the heartbeat pending, gone after `am force-stop`; then a photo is taken while the app is stopped (pushed into
+`DCIM/Camera` and published by a synchronous MediaStore scan), and once the app is opened the photo is shared — the
+screen's count, then the event's union — and the heartbeat is pending again. The iOS force-quit has no such check: only a person's swipe records one, so it rests on Apple's
 documented behaviour. Decision record: `changes/timely-background-receiving` (D8).
 
-**Photos on the emulator are seeded by the process that reads them** (measured 2026-09-29): MediaStore hides a photo
-the SHELL owns (`adb push`, `UiAutomation`) from every other app, so a photo-library contract inserts its own fixture —
+**Photos on the emulator are seeded by the process that reads them**: a photo-library contract inserts its own fixture —
 which it reads with no grant and deletes with no confirmation — with the capture date in the file's EXIF as well as
-`DATE_TAKEN`, since publishing re-derives it. For the same reason an end-to-end run seeds through the rig's
-`gallery.seed`, which inserts the app's own photos into `DCIM/Camera` where the library is real. The grant is the
+`DATE_TAKEN`, since publishing re-derives it. An end-to-end run seeds through the rig's `gallery.seed`, which inserts
+the app's own photos into `DCIM/Camera` where the library is real. A photo `adb push`ed there is PENDING — unseen by
+every app — until MediaStore scans it, and then the app reads it like its own (measured 2026-10-25, API 36; the
+2026-09-29 reading that a shell-owned photo stays hidden was of an unscanned one): `content call --uri content://media
+--method scan_file --arg <path>` scans it synchronously, as the force-stop journey does for the photo it takes while
+the app is stopped. The grant is the
 test process's own and revoking one kills it, so `NO_GRANT` clauses stay the iOS test executable's; the album writes
 are iOS's too (Android files no photo into an album — `GRANTED_SEEDED_ALBUMS_WRITABLE`). The mocks'
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
@@ -1403,7 +1407,7 @@ fresh simulator's first-boot work swamped the hosted runner (it tripled the job 
 - Source set `journeys` in `:test:journeys`. `build` compiles it and never runs it: the module's program runs it
   (`journeys`, its `main`, installed by `:test:journeys:installDist`), in its own JVM through JUnit.
 - They run in the `journeys (ios)` CI job (`scripts/sim-contracts` boots the simulator and the backend, after the
-  simulator app's contracts) and the `journeys (android)` one (`scripts/android-journeys`, on an emulator the job
+  simulator app's contracts) and the `journeys (android)` one (`journeys run --platform android`, on an emulator the job
   boots, over every real adapter Android has — only the crash reporter is mocked, and the iOS-only upload-job queue
   and extension registration). There they run on a bare JVM, `journeys journeys-only --app <url> --backend <url>`.
   No Gradle is alive next to the simulator: a Gradle daemon and a test JVM starting there pushed the runner into

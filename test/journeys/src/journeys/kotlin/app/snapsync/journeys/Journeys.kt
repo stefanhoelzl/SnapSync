@@ -16,17 +16,10 @@ import app.snapsync.levers.OsLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.SeedKind
 import app.snapsync.model.ResourceRole
-import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
-import app.snapsync.ui.state.SyncCounts
-import app.snapsync.ui.state.UiState
-import app.snapsync.wire.api.Limits
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
@@ -35,7 +28,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atTime
 import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -285,32 +277,10 @@ class Journeys {
 
     private fun base64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
 
-    /** The event's union — the backend's public surface, read as a member reads it. */
-    private suspend fun union(http: HttpClient, event: String): List<JsonObject> {
-        val body = http.get(
-            "$backend/events/$event/files",
-        ) { header(Limits.VERSION_HEADER, SERVED_VERSION) }.bodyAsText()
-        return runCatching { Json.parseToJsonElement(body).jsonArray.map { it.jsonObject } }.getOrDefault(emptyList())
-    }
+    private suspend fun union(http: HttpClient, event: String): List<JsonObject> = union(http, backend, event)
 
-    /** The asset ids the event's union serves — the backend's public surface, read as a member reads it. */
     private suspend fun unionAssetIds(http: HttpClient, event: String): Set<AssetId> =
         union(http, event).mapTo(mutableSetOf()) { AssetId(it.getValue("assetId").jsonPrimitive.content) }
-
-    /** The event the joined screen shows, or `null` off it. */
-    private fun joinedTo(ui: UiState): String? = (ui.layer as? Layer.Joined)?.membership?.eventId
-
-    /** The joined screen's shared count — nothing counted where the screen shows none. */
-    private fun sharedCount(ui: UiState): DirectionCount.Progress = counts(ui) { it.shared }
-
-    /** The joined screen's received count — nothing counted where the screen shows none. */
-    private fun receivedCount(ui: UiState): DirectionCount.Progress = counts(ui) { it.received }
-
-    private fun counts(ui: UiState, direction: (SyncCounts) -> DirectionCount): DirectionCount.Progress =
-        (ui.layer as? Layer.Joined)?.counts?.let(direction) as? DirectionCount.Progress ?: DirectionCount.Progress(0, 0)
-
-    /** At least [n] through, and nothing left: the count the journey's act should end in. */
-    private fun DirectionCount.Progress.reached(n: Int): Boolean = done >= n && complete
 
     private fun local(value: LocalDateTime): String = value.toString()
 
@@ -318,7 +288,6 @@ class Journeys {
         val JOIN = 60.seconds
         val UPLOAD = 180.seconds
         val DOWNLOAD = 180.seconds
-        const val SERVED_VERSION = "99.0"
         const val WHOLE_LIBRARY = "1970-01-01T00:00:00Z"
         const val MEMBER_PHOTOS = 2
 
@@ -333,8 +302,5 @@ class Journeys {
             "samsung-one-ui-6.jpg",
             "samsung-one-ui-6.heic",
         ).map { "motionphoto/$it" }
-
-        fun address(name: String): String = System.getProperty("snapsync.journey.$name")
-            ?: fail("snapsync.journey.$name is not set — the journeys run only against the addresses their script passes")
     }
 }

@@ -268,4 +268,21 @@ class DeletionLedgerTest {
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
     }
+
+    /**
+     * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
+     * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
+     * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop
+     * (`scripts/journeys-build`).
+     */
+    @Test
+    fun `the device runs' shell scripts stay dead`() {
+        val retired = listOf(
+            "scripts/android" + "-journeys" to "the Android run is `journeys run --platform android`",
+            "scripts/android" + "-force-stop-check" to "the force-stop check is `ForceStopJourney`, run on every push",
+        )
+        val resurrections = retired.filter { (path, _) -> File(repoRoot, path).exists() }
+            .map { (path, now) -> "$path ($now — phase 13)" }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
 }

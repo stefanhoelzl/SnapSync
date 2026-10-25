@@ -1,6 +1,6 @@
 # shellcheck shell=sh
-# What the two all-real journey runners share — `scripts/sim-contracts` (the iOS simulator) and
-# `scripts/android-journeys` (the Android emulator). Sourced from the repository root, never run, and POSIX sh, because
+# What `scripts/sim-contracts` (the iOS simulator's run) sources until the `journeys` program runs it too — Android's
+# already does (`journeys run --platform android`). Sourced from the repository root, never run, and POSIX sh, because
 # sim-contracts is:
 #
 #   . scripts/lib/journeys.sh
