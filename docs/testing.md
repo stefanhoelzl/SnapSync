@@ -583,7 +583,7 @@ item is never read as absent).
 - **`ANDROID_EMU`:** every module's `connectedAndroidDeviceTest` on one emulator in the `android-build` job
   (`androidPlatformTest`, a Gradle-managed emulator per module, locally).
 - **`IOS_SIM_APP`: live on every push.** The `journeys (ios)` job builds the app under
-  `-Psnapsync.rig=true`, applies the declared grant, launches it, and `scripts/sim-contracts` runs every
+  `-Psnapsync.rig=true`, applies the declared grant, launches it, and `journeys run --platform ios` runs every
   entry of the host's in-app registry (`contract.list`) through the rig's typed `contract` service. It fails on any
   run-failing outcome, any refusal, or an empty registry. Each run starts from a fresh simulator. A host CI
   can run is **never** recorded.
@@ -1406,13 +1406,13 @@ fresh simulator's first-boot work swamped the hosted runner (it tripled the job 
 
 - Source set `journeys` in `:test:journeys`. `build` compiles it and never runs it: the module's program runs it
   (`journeys`, its `main`, installed by `:test:journeys:installDist`), in its own JVM through JUnit.
-- They run in the `journeys (ios)` CI job (`scripts/sim-contracts` boots the simulator and the backend, after the
+- They run in the `journeys (ios)` CI job (`journeys run --platform ios` boots the simulator and the backend, after the
   simulator app's contracts) and the `journeys (android)` one (`journeys run --platform android`, on an emulator the job
   boots, over every real adapter Android has — only the crash reporter is mocked, and the iOS-only upload-job queue
-  and extension registration). There they run on a bare JVM, `journeys journeys-only --app <url> --backend <url>`.
-  No Gradle is alive next to the simulator: a Gradle daemon and a test JVM starting there pushed the runner into
-  swap, and the app timed out a response the backend had sent 9 s earlier (run 36173548419). Locally, the same
-  command runs them against an app and a backend already up. They gate merges. On a failure the job prints the
+  and extension registration). There they run in the program's own bare JVM, started once the builds are done
+  (`scripts/journeys-build`). No Gradle is alive next to the simulator: a Gradle daemon and a test JVM starting there
+  pushed the runner into swap, and the app timed out a response the backend had sent 9 s earlier (run 36173548419).
+  Locally, the same two commands reproduce a job. They gate merges. On a failure the job prints the
   failing assertion's message in its log.
 - They **wait on what the screen shows** (`RigClient.awaitScreen`, on the device host's events), then read the real
   system once — the backend's union, the photo library — and never poll. The real systems have no event; a read
