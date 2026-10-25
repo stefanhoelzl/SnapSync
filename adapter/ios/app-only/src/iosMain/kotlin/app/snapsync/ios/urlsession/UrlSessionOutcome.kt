@@ -11,7 +11,7 @@ import platform.Foundation.NSError
  *
  * Tier asymmetry is this project's recurring failure mode: the rejoin reconciliation, the direction
  * gate and the membership read each shipped on one upload tier and not the other (see
- * `app/ios/CLAUDE.md`). A decision that is tested on the PhotoKit tier and welded to a delegate
+ * `docs/architecture.md` §11). A decision that is tested on the PhotoKit tier and welded to a delegate
  * callback on this one is the same asymmetry in a smaller form, so both tiers' decisions move out
  * together.
  *

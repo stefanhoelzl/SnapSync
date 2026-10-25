@@ -46,7 +46,7 @@ import kotlin.system.exitProcess
  * real buttons of the real control panel, and pixels come out of the real render — the caller sees what
  * an operator would see, not a reconstruction.
  *
- * Dev infrastructure, non-gating, no spec. Runbook: see CLAUDE.md.
+ * Dev infrastructure, non-gating, no spec. Runbook: the `ui-harness` skill.
  *
  * ## Threading
  * Compose's test API is single-threaded: every interaction must run on the thread inside

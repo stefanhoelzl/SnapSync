@@ -151,7 +151,7 @@ What differs from the emulator — none of it measured yet, so check before rely
 - **Android version.** The A40 tops out at Android 11 (API 30) — exactly our minSdk. So **no partial photo access**
   (that is Android 14+): the grant is full or none. Read it: `$A -s $S shell getprop ro.build.version.sdk`.
 - **The library is real and personal.** Seeding (`gallery seed`) writes to a real phone's `DCIM`, and the
-  channel wipes nothing there (`gallery wipe` is refused: remove what you seeded through MediaStore yourself). 🚫 Never join an event you did not create (CLAUDE.md).
+  channel wipes nothing there (`gallery wipe` is refused: remove what you seeded through MediaStore yourself). 🚫 Never join an event you did not create (AGENTS.md).
 - **Samsung**: a locked screen lets `am start` succeed behind the lock screen (`ask` the user to unlock, or
   `$A -s $S shell svc power stayon usb`), and its battery management may defer WorkManager work more than the
   emulator does.

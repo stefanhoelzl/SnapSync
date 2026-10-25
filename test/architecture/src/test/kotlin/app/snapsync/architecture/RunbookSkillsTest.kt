@@ -9,9 +9,9 @@ import kotlin.test.fail
  * **The runbook pointers resolve, and the launch-trigger index agrees with source**
  * (`docs/architecture.md`; decision record: `move-runbooks-behind-skills`).
  *
- * The operator runbooks moved out of CLAUDE.md into `.claude/skills/`, leaving one imperative
- * pointer line per skill. That buys ~15k tokens off every session and costs two new ways to rot,
- * both of which this guard closes.
+ * The operator runbooks moved out of the root agent file (`AGENTS.md`, then `CLAUDE.md`) into `.claude/skills/`,
+ * leaving one imperative pointer line per skill. That buys ~15k tokens off every session and costs two new ways
+ * to rot, both of which this guard closes.
  *
  * 1. **A pointer that reaches nothing.** An agent reads "load the `snapsync-device` skill", finds no such
  *    skill, and proceeds **without** it — executing the very procedure the skill exists to make
@@ -46,18 +46,18 @@ class RunbookSkillsTest {
     // ---------------------------------------------------------------- pointer integrity
 
     /**
-     * The skills CLAUDE.md's runbook block tells an agent to load. Derived from the file at runtime
+     * The skills AGENTS.md's runbook block tells an agent to load. Derived from the file at runtime
      * rather than compared against a maintained list ("Gates fail closed on novelty"): a sixth
      * pointer is covered with zero guard edits.
      */
     private val pointedSkills: Set<String> = run {
-        val claudeMd = read("CLAUDE.md")
-        val start = claudeMd.indexOf(RUNBOOK_HEADING)
+        val agentsMd = read("AGENTS.md")
+        val start = agentsMd.indexOf(RUNBOOK_HEADING)
         assertTrue(
             start >= 0,
-            "CLAUDE.md has no `$RUNBOOK_HEADING` section — the pointers agents load skills from are gone",
+            "AGENTS.md has no `$RUNBOOK_HEADING` section — the pointers agents load skills from are gone",
         )
-        val section = claudeMd.substring(start).substringAfter('\n').substringBefore("\n## ")
+        val section = agentsMd.substring(start).substringAfter('\n').substringBefore("\n## ")
         Regex("""load \*\*`([a-z0-9-]+)`\*\*""")
             .findAll(section)
             .map { it.groupValues[1] }
@@ -80,7 +80,7 @@ class RunbookSkillsTest {
         if (dangling.isEmpty()) return
         fail(
             buildString {
-                appendLine("CLAUDE.md points at ${dangling.size} skill(s) that do not exist: $dangling")
+                appendLine("AGENTS.md points at ${dangling.size} skill(s) that do not exist: $dangling")
                 dangling.forEach { appendLine("  expected: ${skillPath(it)}") }
                 appendLine(
                     "A dangling pointer does not raise anywhere: the agent looks for the skill, does not " +

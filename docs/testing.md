@@ -568,7 +568,7 @@ backend state stays the real `api/`'s or the backend mock's.
 
 No host can enter "protected data unavailable before first unlock", and the reason is mechanical rather
 than a gap in the fleet: before first unlock the App-Group file the launch-time adapters read sits in a
-class the OS will not decrypt, so `LaunchMix` refuses and a rig build composes nothing — the observer is
+class the OS will not decrypt, so the choice reads `LaunchAdapters.Refused` and a rig build composes nothing — the observer is
 disabled by the very condition it would observe. A clause conditioned on it has no real host, so it is
 not written. What that state would prove is covered where a host CAN enter it: `SecureStoreContract`'s
 `INACCESSIBLE` clauses, reached on `IOS_SIM_KEXE`, where every `SecItem*` call answers `-25291` — the
@@ -1541,5 +1541,5 @@ fixture. Instead:
 - A remaining smoke test is allowed only for a device-only surface no contract binds yet, and it names the
   change expected to replace it.
 - What an Apple API *declares* (enum cases, nullability) is read from the Kotlin/Native platform klibs
-  and pinned by `PlatformVocabularyPinTest`. Do not use a copy of the constants. See CLAUDE.md, "Reading
+  and pinned by `PlatformVocabularyPinTest`. Do not use a copy of the constants. See `adapter/ios/AGENTS.md`, "Reading
   the Apple SDK from Linux".

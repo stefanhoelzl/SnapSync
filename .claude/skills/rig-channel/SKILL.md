@@ -411,7 +411,7 @@ what is accepted (`all|assets|albums`) before anything reaches the phone — a m
 "no window" and delete the whole library.
 
 🏃 **Run it under `ch bg`, backgrounded, and end your turn.** This is the one call in this channel where
-that is right, and it is not the usual `ch bg` rule (CLAUDE.md: don't wrap work the workspace is genuinely
+that is right, and it is not the usual `ch bg` rule (AGENTS.md: don't wrap work the workspace is genuinely
 doing). The wipe is not waiting on a machine — it is waiting for **a person to walk to the phone and tap**.
 That is the definition of idle: the workspace should go idle so CodeHydra *notifies* the operator they are
 needed, instead of reading busy while nothing happens and nobody is told. Foreground is not an option

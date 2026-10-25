@@ -3,7 +3,7 @@
 //
 // WHY THIS EXISTS. `api/` has one deploy target and one storage zone, and `src/config.ts` names that zone
 // as a source constant — so a plain local `deno run src/main.ts` writes into `snap-sync-dev`, the zone that
-// holds real TestFlight/App-Store users' photos. `CLAUDE.md` is explicit that there is deliberately no
+// holds real TestFlight/App-Store users' photos. `AGENTS.md` is explicit that there is deliberately no
 // whole-zone reset tool for exactly that reason. The consequence was that a backend change could only be
 // exercised by unit tests whose bunny responses we wrote ourselves, and then deployed.
 //

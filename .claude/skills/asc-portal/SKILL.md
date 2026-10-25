@@ -62,7 +62,7 @@ profiles, bundle-ids + capabilities, and App Store / TestFlight **text** metadat
 
 **Gap:** screenshot upload (reserve→chunk→commit) has no subcommand — drop to raw REST when a real App
 Store listing needs it. (Routine listing screenshots are uploaded by the release workflow; see
-CLAUDE.md's App Store section.)
+`docs/deployment.md` §6.)
 
 The CI key is **Admin** (needed for cloud signing); if an agent should not reach app metadata / user
 management, mint a narrower **App Manager** or **Developer** key for agent use and inject that one

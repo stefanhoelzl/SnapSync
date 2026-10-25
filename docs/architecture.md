@@ -54,7 +54,7 @@ Key placements:
   `compose/`, the host or the mocks. Within `feature/`, `ReadModelImportsTest` confines them to the
   `readmodel` packages. The compile boundary and that gate are the integration surface's read-model rule.
 
-The per-module one-liners are in `CLAUDE.md` ("Modules"). The live graph is `architecture/modules.md`.
+There is no per-module prose inventory: each module's build file and its code's KDoc say what it is. The live graph is `architecture/modules.md`.
 
 ### The core and its zones
 
@@ -97,7 +97,7 @@ neither reaches an old zone — `data`'s only edges are the domain, the format, 
 | `inbound/` | how work **enters** the core: the four inbound kinds an event port delivers through (`Inbound`, `Background`, `Granted`, `Answered`), the handles they carry (`Completion`, `Running`), the `Trigger` that names the work, the structured `Log`, and the opt-in markers (`@InboundImplementation`, `@CompositionOnly`, `@AppProcessOnly`) — `docs/patterns.md` | nothing project-internal |
 | `ports/` | every port interface — outbound, and the event ports the platform delivers through (`EventPort<H>`, registered with `inbound(handlers)`), with their `*Handlers` bundles typed by the inbound kinds — and nothing else (`PortsHoldInterfacesOnlyTest`). Every port extends the `Port` marker (`PortBundleTest`), `BuildInfo` among them: what the running build is | `model/`, `inbound/` |
 | `scheduling/` | how work **runs**: the process's `Runtime` (the supervised scope, the background-time holds, the expiry), the entry-point bases, `steps { }`, single-flight `Sequence`s, `outliving`, `Observation` — `docs/patterns.md` | `inbound/`, `ports/` (`BackgroundTime`, `ThreadLabel`) |
-| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means — each a **concrete** class a feature takes as it is, with an interface only where there are several implementations or a decorator. The storage services (`LedgerService`, `DownloadService`, `SuppressionService`, `StagingService`, `DeviceManifestService`, `LogTailService`, `AlbumMapService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them); the gallery services (`GalleryAccessState` — what the grant means; `GalleryDiscovery`, `WalkMemo`, `GalleryAssetPresence`, `GalleryCandidateSource`, the permission-aware decorators, `GalleryAlbums`, `GalleryImporter`); the transfer services (`OsQueueTransfer` and `SessionTransfer`, `ExtensionRegistration`, `DownloadJobs`, `SessionDrains`); the push record (`PushRegistrationRecord`, `PushTokenSource`); the app's foreground facts (`AppForeground`); the backend services; and the process's crash reporting (`CrashReporting`, `ProcessAccount`) and log writers (`SinkLogWriter` for Kermit lines, `SinkLines` for the structured `Log`) | `model/`, `ports/`, `inbound/` |
+| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means — each a **concrete** class a feature takes as it is, with an interface only where there are several implementations or a decorator. The storage services (`LedgerService`, `DownloadService`, `SuppressionService`, `StagingService`, `DeviceManifestService`, `LogTailService`, `AlbumMapService`) and their SQLDelight databases (the `.sq` files and generated code live here, so the zone's compile boundary covers them); the gallery services (`GalleryAccessState` — what the grant means; `GalleryDiscovery`, `WalkMemo`, `GalleryAssetPresence`, `GalleryCandidateSource`, the permission-aware decorators, `GalleryAlbums`, `GalleryImporter`); the transfer services (`OsQueueTransfer` and `SessionTransfer`, `ExtensionRegistration`, `DownloadJobs`, `SessionDrains`); the push record (`PushRegistrationRecord`, `PushTokenSource`); the app's foreground facts (`AppForeground`); the backend services; and the process's crash reporting (`CrashReporting`, `ProcessAccount`) and log writers (`SinkLogWriter` for Kermit lines, `SinkLines` for the structured `Log`) | `model/`, `domain/`, `format/`, `ports/`, `inbound/`, `wire/`, and `data/` (migrating) |
 | `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model. **Features see services, never ports**: the compiler holds it, since the zone does not depend on `ports/` | `model/`, `services/`, `scheduling/` |
 | `presentation/` | the UI-state reduction: `StatusContainerHost` reduces the facts its taps act on into a `ScreenModel` (the `UiState` it shows plus the facts behind it, `Shown`) and shows only its `UiState`; the create draft and the range calendar's rules are presentation's, so the screen states what it is told | `model/`, `domain/`, `:domain:format`, `query/`, `feature/` read-model packages only, and `:ui:state` |
 | `entrypoints/` | one **entry point** per operating-system trigger, named for it (`OnSilentPush`), each a short list of steps that orders and never decides (`AppEntryPoints.kt`, `ExtensionEntryPoints.kt`), the work several share (`WakeWork`, `ForegroundWork`, `Prelude`, `UploadEngine`), the membership's requests and the steps they share (`MembershipEntryPoints.kt`) and the wake's sequences (`ImportReceived`, `TopUp`, `UploadOwn`) | `inbound/`, `scheduling/`, `model/`, `domain/`, `application/`, `data/`, `query/`, `ports/` (the deliveries' vocabulary — it calls no port), `feature/` and `services/` (migrating) |
@@ -323,7 +323,7 @@ received-photo recognition withholds what it must) and, once the host is assembl
 | The Swift shell keeps both event-link delivery paths (`.onOpenURL` and the scene delegate's cold and warm halves) | `EventLinkDeliveryTest` (its failure message carries the device evidence) |
 | A build-time-only module is contained **by compilation**: without its property, a build contains none of its source. There are no runtime flags or inert stubs. A needed shell call site is contributed by the module under the same property | the build scripts + CI's gated compile (`docs/testing.md` section 1). Shape is **review** |
 | Production Kotlin declares no `"SNAPSYNC_*"` literal (no launch triggers) | `RunbookSkillsTest` |
-| Every runbook skill `CLAUDE.md` points at exists, with a matching frontmatter name | `RunbookSkillsTest` |
+| Every runbook skill `AGENTS.md` points at exists, with a matching frontmatter name | `RunbookSkillsTest` |
 | The control channel binds the loopback address only | `ControlChannelLoopbackTest` |
 | Client and backend event-name caps agree, and no screen states the cap as a literal | `EventNameLimitTest` |
 | The client's gated-route predicate matches the backend's closed list in `api/src/app.ts` | `GatedPathPinTest` |
@@ -362,7 +362,7 @@ claims and which none does (`build/reports/verifies.md`, non-gating, never commi
   A gate that pins an exception carries the proof in its failure message.
 - **A capability claim is settled by a compile, not a symbol table.** A klib records what ships, not
   what is callable (`Dispatchers.IO` is in the Native klib and is `internal`). To learn what an Apple API
-  *declares* (enum sets, nullability), read the klib (`CLAUDE.md`, "Reading the Apple SDK from Linux").
+  *declares* (enum sets, nullability), read the klib (`adapter/ios/AGENTS.md`, "Reading the Apple SDK from Linux").
   What the *device* does needs a measurement.
 - **Expiry of the lane reasoning.** The three-lane argument is iOS-shaped (two processes). A platform
   whose background work runs in-process (Android) re-derives it rather than inheriting it.
@@ -477,8 +477,11 @@ integration measurement's exceptions are one.
   entry it would measure the fact's size, not a decision. `inbound/` sits in `core`.
 - **`detektAppShell` is not a tier** and must never be folded into one. It is the shells' decision-free
   proof, and its value comes from the number being 2.
-- Compose trades `LongMethod` against `LongParameterList`. Extracting composables can raise tier totals
-  (`CLAUDE.md` explains why `ui.yml` still holds three).
+- Compose trades `LongMethod` against `LongParameterList`, which is why `ui.yml` still holds three. A long
+  parameter list is fixed by bundling, and a bundle is a constructor whose fields are counted; a long method is
+  fixed by extracting composables, and each extraction is a new function with a new parameter list. Measured: two
+  genuine extractions took `StatusScreen` from 138 statements to 71 while the tier's totals rose. Those two numbers
+  are not debt to grind down.
 - `api/`: cyclomatic complexity only, via the project-local `deno lint` plugin
   `api/src/lint/complexity.ts` (tested by `lint-complexity.test.ts`). Length, parameter and nesting
   rules are deliberately not mirrored. Swift has no ceiling (it is pinned by `SwiftShellGuardTest`), and
@@ -672,6 +675,8 @@ Cupertino) or a swap of the QR library changes one module.
 - **Semantic-only signatures**: an `App*` parameter carries data and meaning (text, fractions, sealed
   semantic values, callbacks, `@Composable` slots). It never carries appearance: no color, text style,
   shape, elevation, `Modifier`, or Material 3 type. **review** (ungated).
+- **Components decide nothing**: an `App*` component shows what it is told. Which state is shown, and what a tap
+  means, are presentation's (`StatusContainerHost`). **review** (ungated).
 - **Design-time variants are distinct components** (`PrimaryButton` vs `SecondaryButton`,
   `AppConfirmDialog` vs `AppDestructiveConfirmDialog`), never a role or flag parameter. **Runtime-data
   variants are sealed values** (`StatusIndicator`). **review**
@@ -1147,6 +1152,11 @@ event as the server last served it and the member's own share of it. The concept
   what an earlier install received → enter → what follows a join; a leave ends the membership first and then stops
   what it held, and a leave that cannot be written tells the backend nothing; another event's invite loads first and
   only then asks whether to switch, so an invite that cannot be joined never leaves the joined event.
+
+**What has not moved yet stays in `feature/membership/`**, each piece until its phase moves it into the layers: the
+join-time share-set load (`ShareSetLoad`, 4.4b), the device manifest (`DeviceManifestProducer`, 4.4c), and the
+received-photo adoption with the join's union (`ReceivedPhotoAdoption`, `JoinUnion`, 4.5). The membership itself (its
+row, its use cases, its queries) is already the layers'.
 
 **A member's request answers on its status** (`docs/patterns.md`, "Queries and requests"): the join, a settings
 change, a rename and a switch's question cross the door with a `RequestId` and are answered on `MembershipStatuses`;
@@ -1707,3 +1717,283 @@ store of record.
 timer (SIGKILL), `notifyTermination` follows only normal returns, `performExpiringActivity` never fires, and its
 memory limit is 32 MB (an overrun is a jetsam kill loop). A `process()` measured 0.6–1.4 s, and every unit is a
 safe retry. It walks afresh every call and holds no memo.
+
+---
+
+## 11. The iOS platform layer (`:app:ios`, `:app:ios:extension`, `iosApp/`)
+
+The iOS composition roots and the Xcode host are **wiring only and untested**: all testable logic, shared or
+iOS-specific, lives in tested modules, and nothing testable is parked here. This section explains the structure; the
+rules an agent must not break while editing are in `app/ios/AGENTS.md`, `iosApp/AGENTS.md` and
+`adapter/ios/AGENTS.md`. On-device work is the `snapsync-device` skill, builds and signing `ssh-mac-build`, portal
+chores `asc-portal`.
+
+### Two processes, two frameworks
+
+The app and the background-upload extension are **separate iOS processes**, each a separate Gradle
+module exporting its own **static** framework that the Xcode project links:
+
+```
+:app:ios            → framework "SnapSyncKit"        ← app process (UI + ledger reader)
+:app:ios:extension  → framework "SnapSyncUploadKit"  ← extension process (discover→upload)
+```
+
+(A third, the forge binary for the marketing screenshots, was deleted in phase 12: the raws come from the rig build
+of the real app on a simulator — `screenshots.yml`.)
+
+Two frameworks, not one, for two real reasons: the **extension-safety line** (app-only API —
+UIKit/BGTask/URLSession adapters — must be structurally un-linkable from the appex, and
+Kotlin/Native links whole modules) and the **appex footprint** (Compose/Skiko has no business in a
+memory-capped extension). Both images DO embed the shared domain code, each privately — that is
+fine; no Kotlin type ever crosses the process boundary. The app framework carries Compose/UI + the
+full `domain` stack; the extension framework is lean (`:domain`'s feature/upload UploadCycle
+orchestration over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic:app`). Both are
+`isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
+Skiko/Compose native libs).
+
+### The Gradle ↔ Xcode boundary
+
+`iosApp/` (repo root, **not** under this module, **not** a Gradle project) is the Xcode host: app
+target + `BackgroundUploadExtension` target. Each target has a run-script phase that calls
+`./gradlew :app:ios[:extension]:embedAndSignAppleFrameworkForXcode` to build + embed the
+Kotlin framework, and each links `-lsqlite3` in `OTHER_LDFLAGS` (SQLDelight's native driver needs
+the system SQLite — without it the device app fails to link). Shared build settings live in
+`iosApp/Configuration/Config.xcconfig`; export configs in `iosApp/ExportOptions*.plist`.
+
+You cannot build or run any of this on Linux. Use the proxy:
+
+- `./gradlew compileIosMainKotlinMetadata` — **Linux-runnable** compile of `iosMain`/`commonMain`
+  (+ cinterop) for both modules; catches iOS-only Kotlin breakage without a Mac.
+- The Swift shells and the Xcode project compile **only on macOS CI** (`macos-26`); there is no
+  Swift toolchain locally, so they cannot be built or run on this machine. The extension shell is
+  verified on device (real-s3-upload, build 70) — keep edits to it minimal and lean on CI.
+
+### The Swift ↔ Kotlin seam (Swift is a pure transcriber)
+
+Swift shells forward raw, ObjC-visible OS inputs **whole**; every decision is Kotlin (migration
+step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`switch` at zero, one `??`).
+
+- **App entry** (`iosApp/iosApp/iOSApp.swift`): UIKit `@main` app delegate + scene delegate. The scene
+  delegate forwards every delivered `NSUserActivity` whole, under its own entry name per half —
+  `onLaunchActivity` (cold) / `onSceneContinueActivity` (warm), so a dump says WHICH hook the platform
+  invoked — `IosLinks` tells a browsing-web activity with its raw `absoluteString` (fragment included) from one with
+  no URL and from any other activity, and the core's `LinkOpening` routes a link on to `onOpenUrl`. A silent push forwards its `userInfo` dictionary whole
+  (`onSilentPush(userInfo:completion:)`; the `eventId` extraction is the tested payload codec).
+  Foreground/background are **not** a Swift split any more: `SnapSyncRoot.onLaunch()` (called from
+  `didFinishLaunchingWithOptions`) installs Kotlin-side `NSNotificationCenter` observers for
+  `didBecomeActive`/`willResignActive`. `ContentView.swift` bridges
+  `MainViewControllerKt.MainViewController()` (Compose) into SwiftUI — **gated on activation**: it binds
+  Kotlin's scene generation (0 before any activation, 1 after) to `.id(…)`, so the Compose view is built
+  once, at the first `didBecomeActive`, and never rebuilt. Until then `MainViewController()` returns a bare
+  placeholder. WHICH it returns is Kotlin's tested decision (`resolveScene`), never Swift's. Why: iOS
+  connects UI scenes in the BACKGROUND, so a silent-push wake would otherwise stand up a Compose runtime
+  and Metal renderer in a process that cannot draw and present it hours later drawing dead textures
+  (capability `app-experience`; mitigation for CMP-5978 — delete when fixed upstream). ⚠️ Key on the
+  APP-level notification, not `sceneDidBecomeActive`: `dvt launch` foregrounds the process WITHOUT
+  connecting a scene session, so a scene-level hook gives a black screen and kills the headless
+  screenshot loop (measured 2026-08-06).
+- **Extension principal** (`iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift`):
+  `@main` class conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension`; its `process()`
+  constructs `PHBackgroundResourceUploadProcessingResult(rawValue:)` from the raw `Int` Kotlin's
+  core decided — the `ProcessingAnswer` it returned, through `processingResultRawValue()` (`?? .failure` — the one remaining Swift
+  pin; the system type is Swift-only, so the construction cannot leave the shell).
+
+### Composition roots (manual DI — no expect/actual; both call the SHARED composition)
+
+Both roots are wiring only: each constructs its process's platform adapters and hands them to the
+shared composition functions in `:domain`'s `compose/` zone (law "One shared composition") — there
+is no per-root cycle or feature assembly any more.
+
+- **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
+  `SupervisorJob` scope on its own composition lane (outlives Compose recomposition). Builds `AppPorts` —
+  ports and nothing else (`PortBundleTest`): the process's `ProcessPorts` with its `IosBuildInfo`, the App-Group
+  storage ports, PhotoKit, the generic HTTP backend, the entry ports — and calls `snapSyncHost(scope, lane, ports,
+  formatter)` (the lane its scope runs on), whose first act sets the process up (crash reporting first) and which builds every service over the
+  ports; the lazily composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
+  into `StatusContainerHost`. **The scope carries a `CoroutineExceptionHandler`** — its one
+  non-negotiable member: a `SupervisorJob` isolates siblings from each other but does **nothing**
+  for a throwable no child handles, which on Kotlin/Native hits the default terminate → `SIGABRT`.
+  Without the handler an uncaught launch-path failure (a platform-API call, an App-Group read, a
+  deprecated PhotoKit selector on a newer iOS) aborts the whole app before first paint. The handler
+  logs the throwable to `debug.log` (the un-redacted channel) and lets the app live — the
+  "errors reduce into state, never crash the shell" rule, applied to the one seam Compose reduction
+  cannot reach. Every feature still reduces its own domain errors into `UiState`; this is the last
+  resort for what nothing else did, and it is what makes an otherwise-invisible launch crash
+  self-diagnosing (the exception text lands in `debug.log` instead of an opaque abort).
+- **Extension**: `app/ios/extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
+  `ExtensionPorts` (its `ProcessPorts`, the App-Group databases, files and protected store, the PhotoKit library
+  reader and upload-job queue — from `:adapter:ios:ext-safe`, where the platform adapter lives — the
+  `:adapter:generic:app` HTTP backend, its `IosExtensionHost`) and calls `snapSyncExtension(ports)`, which builds the
+  extension's services (READ_ONLY identity, read-only suppression view, drop-only credential) and registers on the
+  host; `process()` runs one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING`
+  requeue and the raw-value handoff through the tested `ports/` rules.
+- The app-driven tier's uploader (`compose/AppUploader.kt`) runs the same cycle assembly (`uploadCycle`) over the
+  app's own services and `TransferSession` port (the background-`URLSession` adapter); the app's `TailRunner` drives it.
+
+**Neither is the direction gate** (capability `delivery`). Whether a membership uploads **at all** is
+decided inside `UploadCycle`, from a required `Contribution` (`:domain` `model/`) carrying the membership's
+direction *and* its cutoff: `None` → the cycle returns `CycleResult.SKIPPED` before any walk, job, manifest, or
+notify, and the tail then re-arms no heartbeat `BGProcessingTask`. The roots only pass **facts** —
+`Contribution.of(direction.includesUpload, minPhotoDate)` — and never the branch.
+That gate sits at the **choke point every trigger funnels through**, not at the arm's invoker, because an
+invoker-gate is only as good as its enumeration of invokers. It used to be one: a download-only membership was
+handled by simply not enabling the producer, on the reasoning that "the OS never invokes the extension" — true
+on ≥26.1, false here, where the *app* invokes its own cycle. `onForeground` walked straight past it and
+uploaded the camera roll of a member who had been promised "you won't share yours".
+
+**The upload lifecycle is NOT decided here** either (same capability). `SnapSyncRoot` supplies only
+**facts** — the app-driven engine, the OS-driven registration where this OS carries it, whether it does, and
+the rig's per-uploader switch source. What each membership transition does (join · re-provision · reconfigure ·
+permission change · launch · leave) is decided by the tested, stateless `UploadTransitions` in `:domain`'s
+feature/upload, from `model/`'s `extensionRegistrable` read fresh at that moment. It calls five verbs: the
+extension's `register()` (the disable → enable ritual — never a bare enable) and `deregister()`, and the app
+engine's `arm()`, `disarm()` (the heartbeat only) and `cancelTransfers()` (a leave only). **None of them clears
+the ledger**: only a leave clears it and only a join loads it, as the membership use-cases' own steps
+(`delivery`, `join-event`). And **no transition but a leave stops in-flight work**: the registration spans
+the membership (never removed by a reconfigure or a permission change), a revoke stops only new creation, and a
+re-provision of the joined event does nothing — so nothing is ever orphaned, and nothing needs repair
+(decision record `openspec/changes/both-uploaders-active`).
+
+**Both uploaders run, and that is by design.** Every app-side trigger goes to the app engine unconditionally; its
+cycle's entry gate withholds only without usable access (or when the rig switched it off), and the extension's
+withholds without a full grant. On ≥26.1 under a full grant both create, over the one App-Group ledger: a cycle
+picks only `DISCOVERED` rows and records `REQUESTED` only after its job exists, so an overlap is at worst a
+duplicate upload of the same object, and the guarded terminal write converges the row. The launch reconcile is
+called explicitly from host assembly — the permission `StateFlow`'s replay is no longer a transition — and it
+*compares* against the OS's registration, registering only a record the OS reads absent, so a launch never
+wipes the extension's in-flight jobs; only a join forces the ritual.
+
+This structure is load-bearing, not tidiness. The lifecycle *used* to live here as a pile of
+`if (useAppDrivenUpload)` branches, and because this module is wiring-only and untested, nothing caught
+that `provisionEvent` → `enableBackgroundUpload()` → `disableExtension()` resolved, on the app-driven tier,
+to a **full leave** (cancel transfers, cancel the heartbeat, wipe ledger + cursor) followed by a no-op
+enable. Joining an event tore the upload arm down and started nothing. `ProducerExclusivityTest` guards what
+the compiler cannot — that the extension is never registrable below 26.1, and that no transition sequence
+deregisters or cancels anywhere but at a leave.
+
+**Ledger writers are owned by code, not by a process** (`photo-sharing`). The app holds a `LedgerWriter` on every
+OS version — constructed in the app's uploader (`compose/AppUploader.kt`) through `uploadCycle` — and on **iOS ≥26.1** the
+**extension** holds one too. Every write is one guarded transaction owned by named code: the cycle's record
+family, a transport's guarded terminal write, and the membership reset family. Outside that uploader,
+`:app:ios` constructs no writer.
+
+### Entitlements & Info.plist (the cross-process glue)
+
+- **App Group `group.app.snapsync`** (both `*.entitlements`): the shared on-disk container for the
+  shared database both processes write (`ledger.db`, `SharedDatabase` over `IosDatabases`): the ledger rows and the
+  membership of record (`MembershipRepository`; its `membership` row is the only membership there is, so the
+  container's lifetime IS the membership's: **reinstall = left the event**). An updated device's app copies the membership's
+  legacy file (`eventconfig.json`) into it once; until it has, the not-found classification (`isFileAbsence`,
+  behind `IosFiles`) is what stands between a misread error and a silent logout. **Must be registered in the
+  Developer portal** and enabled on both App IDs, or signed builds fail to provision.
+- **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
+  extension read the shared Keychain items the app writes — the device id
+  (`PersistedDeviceIdentity`) and the attestation token (`AttestState`). The legacy config
+  item used to be a third; the Stage-2 change deleted its reader, so nothing addresses it any more
+  and an already-migrated device simply carries it as an inert orphan (purging it would mean keeping
+  the seat, its runtime-identity pin, and a Keychain call on the leave path alive to delete data no
+  code path can observe). Keychain groups need **no** portal step. ⚠️ The **device id names this group explicitly**
+  (`kSecAttrAccessGroup`); declaring the entitlement is *not* sufficient. This entry used to read
+  "…all of which omit `kSecAttrAccessGroup` and rely on this default group", and that was false: with
+  no group named, the platform picks one **at write time** from the writing build's entitlements, so a
+  dev-signed build (whose profile grants the wildcard `<TEAM>.*`) writes into each process's own
+  `application-identifier` group instead. On 2026-07-20 the app and the extension therefore held two
+  different device ids — both reads succeeding — and the app re-imported every photo it had uploaded
+  as if a stranger had sent it. The attest pair remains unscoped deliberately (the token is
+  demonstrably read cross-process); the config reader and the album map were unscoped seats too, until
+  their readers were deleted, and their entries left the inventory with them. That inventory
+  is pinned in `:test:architecture` — a *new* unscoped seat fails the build, including a
+  reconstructed config one.
+- **Associated domain `applinks:snapsync.stho.net`** (app entitlements only, via
+  `$(ASSOCIATED_DOMAIN)`): claims the event link's Universal Link (capability `invite-link`), which is
+  how a Camera-scanned QR opens the app. Like App Groups (and unlike keychain groups) **it must be
+  enabled on the app.snapsync App ID in the portal**, or signed builds fail to provision — and
+  enabling it *invalidates existing profiles*, so the dev build loop's baked secret needs refreshing
+  (the `ssh-mac-build` skill). The **extension declares none**: it never handles URLs.
+- **App `Info.plist`**: registers **no** `CFBundleURLTypes` — the `snapsync` scheme is retired, and a
+  scheme re-added here would route links the one authoritative codec no longer accepts.
+  `CADisableMinimumFrameDurationOnPhone = true` is **mandatory** — Compose MP ≥1.7
+  hard-aborts at launch without it. Portrait-only, iPhone-only.
+- **`BackgroundUploadURLBase` — in BOTH `Info.plist`s, and it is the one deployment value that lives
+  there.** `assetsd` reads it out of a **bundle's own `Info.plist`** to validate the background-upload
+  registration insert; it can see no resource we bundle, so `Deployment.plist` cannot stand in. Absent,
+  `setUploadJobExtensionEnabled(true)` fails with a bare `PHPhotosErrorDomain -1` and **empty**
+  `userInfo`, the OS launches the extension never, and nothing uploads on that tier — which is exactly
+  what shipped in builds 675/687 when a config change moved the key out (measured A/B on device,
+  SE2/26.6, 2026-08-28; Bugsink `SNAPSYNC-37`). The daemon's **matching rule is not established** — do
+  not assert one. ⏰ Re-measure at the next iOS major.
+  Written as `$(UPLOAD_SCHEME)://$(UPLOAD_HOST)/api/v2`, **composed** rather than carried: an
+  `Info.plist` substitution can only read a build setting and `//` opens a comment anywhere on an
+  xcconfig line, so the resolver emits a scheme enum and a bare host and the URL is assembled in the
+  plist, where `//` is data. CI's `ios-build` asserts it equals that bundle's `Deployment.plist` `uploadBase`.
+  It must be an HTTPS endpoint: default ATS (HTTPS-only) applies, no `NSAllowsLocalNetworking`
+  exception. (A user-configurable upload host is impossible with this API.)
+- **Extension `Info.plist`** also declares `EXExtensionPointIdentifier =
+  com.apple.photos.background-upload` (under `EXAppExtensionAttributes`, the ExtensionKit iOS 26
+  model).
+
+### iOS-version deviation & the two uploaders
+
+App deploys **min iOS 18**. There are two uploaders, and **both run** where both exist (decision record
+`openspec/changes/both-uploaders-active`): each decides at its own entry gate whether it may create, and an
+overlap is a duplicate upload of the same object, never a loss. `SnapSyncRoot`'s one switch decides only
+**presence** — whether this OS carries the OS-driven uploader at all (`isOperatingSystemAtLeastVersion(26.1)`).
+Whether the extension may be **registered** is `model/`'s pure `extensionRegistrable` over that fact, the current
+photo permission, and the rig's per-uploader switch (always `null` on a production build — its only writer is the
+rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
+
+- **iOS ≥26.1 — PhotoKit (`delivery`).** The OS-driven upload extension, using the
+  **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
+  devices). `setUploadJobExtensionEnabled` is confined to `PhotoKitExtensionRegistry` (`:adapter:ios:app-only`), the
+  sole caller of that selector and of its read-back, reached through the `UploadExtensionRegistry` port by
+  `OsDrivenRegistration` (`:domain` `feature/upload`), which is only
+  constructed where the OS carries this uploader (≥26.1) — so it can never trap on a lower system. The
+  registration spans the membership: registered at the join wherever the OS allows it (a full grant),
+  download-only included, and removed only at a leave. Under a partial grant no registration write is
+  attempted (every one is refused — 3311); a surviving record is invoked by the OS, and its extension withholds
+  at its own gate — it records and acknowledges, and creates nothing. A later move to the iOS 27 async
+  `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target.
+- **app-driven `URLSession` (`delivery`) — every iOS version, whenever access is usable.** The
+  **main app process** uploads over a background `URLSession` + `BGProcessingTask`, via
+  `IosUrlSessionUploadPlatform` / `IosWake` (`:adapter:ios:app-only`) driving the same `:domain`
+  feature/upload `UploadCycle`, whose units (`topUp`, `walkAndPublish`) run in the app's one `TailRunner`. Below 26.1 it is the only uploader; from 26.1
+  it runs beside the extension, both writing the one App-Group ledger (every write a guarded single transaction).
+
+**Exercising one uploader alone on a device works through the rig**: `rig dev-controls pin --app true|false --extension true|false`
+(`rig-channel`). `extension=off` deregisters the extension; `app=off` makes the app's uploader withhold.
+
+There is **no host axis** any more: nothing reads `SIMULATOR_DEVICE_NAME`, and there is no
+simulator-specific session. The transport used to be downgraded to a foreground session on the
+simulator, on an unmeasured belief that a background one could not run there; measured 2026-08-09 on
+`iosSimulatorArm64`, it runs — `getAllTasks` answers and an upload task completes. ⚠️ That covers the
+**transport** only: whether the OS relaunches a terminated app to deliver
+`handleEventsForBackgroundURLSession` on a simulator is still unproven.
+
+⚠️ The OS's upload-job registration lives in the **system**, not the app, and survives relaunch and
+reinstall. To exercise the app's uploader alone on a ≥26.1 device, switch the extension off with `rig-channel`'s
+`rig dev-controls pin --app true --extension false`. The on-device loop is in the **`snapsync-device`** skill . Irrelevant on a real 18–26.0 device, where no appex can exist at all.
+
+### Gotchas
+
+- **Device logs:** both composition roots hand their composition the sinks `PublicNSLogSink()` and
+  `FileLogSink(<destination>)` — they live in `:adapter:ios:ext-safe` (capability `privacy-security`) — and it
+  (`snapSyncProcess`, the composition's first act) installs the Kermit writers and logs the boot banner. The file
+  sink takes its **destination**: the app passes `appLogDestination()`
+  (its own `Documents/debug.log`, pullable as before), the extension `extensionLogDestination()`
+  (`ext-debug.log` in the **App Group**, so the app can read it for a diagnostic dump; it falls back
+  to its own Documents when the container is unavailable and says so in the boot banner). Verbatim,
+  10 MB roll. The os_log `PublicNSLogSink` is redacted `<private>` on current iOS. The extension's log
+  lives in the App Group, which is not USB-pullable; read it through the control channel
+  (`GET /device/logs?process=extension`, load `rig-channel`) — the copy-into-Documents launch trigger that
+  used to serve this is gone, along with every other one. The banner is the composition's (`snapSyncProcess`,
+  from `BuildInfo`'s facts); a root logs only what it alone knows (the adapter choice, the extension's log
+  destination) right after composing, and wraps its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
+  entry points wrapped, or their downstream lines lose the trigger prefix.
+- **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above) for any target linking SQLDelight's
+  native driver — check any new target; the symbol resolves at link time, not
+  at call time, so the failure is a link error rather than a crash.
+- **In-memory SQLite on Native:** `NativeSqliteDriver` shares an in-memory DB across connections via
+  shared-cache — give each backend a **unique db name** to avoid cross-test/instance leakage.
+- **Compose scope ownership:** `SnapSyncRoot` deliberately uses a process-lifetime `SupervisorJob`,
+  not `rememberCoroutineScope` (which dies with the view). Move ownership to Swift only if
+  scene-aware lifecycle (multi-window, reset/logout) is ever needed.

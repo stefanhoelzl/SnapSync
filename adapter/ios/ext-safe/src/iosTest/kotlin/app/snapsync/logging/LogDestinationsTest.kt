@@ -28,7 +28,7 @@ class LogDestinationsTest {
 
     /**
      * These two names are an interface with the operator runbook, not internal detail: every
-     * `pymobiledevice3 apps pull app.snapsync Documents/<name>` in `CLAUDE.md` names them literally,
+     * `pymobiledevice3 apps pull app.snapsync Documents/<name>` in the `snapsync-device` skill names them literally,
      * and a rename makes every one of those commands fail while the app looks perfectly healthy.
      */
     @Test

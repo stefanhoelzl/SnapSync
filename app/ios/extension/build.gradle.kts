@@ -19,8 +19,8 @@ kotlin {
         }
     }
 
-    // This module has NO test sources, by rule: `:app:*` is wiring-only and untested (root
-    // `CLAUDE.md`), and the one test that used to sit here — the PhotoKit smoke test — moved to
+    // This module has NO test sources, by rule: `:app:*` is wiring-only and untested
+    // (`app/ios/AGENTS.md`), and the one test that used to sit here — the PhotoKit smoke test — moved to
     // `:adapter:ios:ext-safe`, beside the adapter it actually smoke-tests.
     //
     // The Sentry test-link provisioning that used to live here went with it. With no test sources

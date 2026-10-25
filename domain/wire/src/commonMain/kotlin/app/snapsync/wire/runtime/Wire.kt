@@ -4,7 +4,7 @@ import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
 
 /**
- * One request of the device API, as the generated routes (`app.snapsync.wire.Routes`) build it: [path] relative to
+ * One request of the device API, as the generated routes (`app.snapsync.wire.api.Routes`) build it: [path] relative to
  * the API's base, its query included; the [headers] the operation itself declares; a JSON [body] or none. The token
  * and the version header are not here — the gateway adds them, and only it.
  */

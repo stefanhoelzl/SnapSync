@@ -1,7 +1,7 @@
 # Pending cleanups
 
 Backwards-compatibility and legacy shims that are still here, and what lets each one go. Entries are grouped
-by the condition that unlocks them. Any PR that adds a shim adds its entry here (`CLAUDE.md`, "Workflow"). The
+by the condition that unlocks them. Any PR that adds a shim adds its entry here (`AGENTS.md`, "Workflow"). The
 PR that removes a shim deletes its entry. Anchors name files and symbols rather than line numbers.
 
 **An app shim that reads what an older build left on the device is unlocked by the nightly sweep, not by the floor
@@ -181,7 +181,7 @@ such membership is live.
     event".
   - The Privacy Policy in `site/src/pages/index.astro` ("What we process, and why", "Photos you share") lost its
     encryption paragraph.
-  - `docs/architecture.md` ("The encrypted file format"), `CLAUDE.md` (the `:domain` entry's Crypto line),
+  - `docs/architecture.md` ("The encrypted file format"),
     `.claude/skills/rig-channel/SKILL.md` (`device/encrypt-new-events`), the comment at `encrypt-new-events` in
     `test/rig/.../MockLevers.kt`, and the KDoc of `EncryptedEventIntegrationTest`.
 - **Why:** 0.4 cannot open an encrypted event's invite, and the floor could not rise before the 0.6 promote.
@@ -252,7 +252,7 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   copy and its two tests; `ConfigFile.kt`; `writeLegacyRecords`, `forgetLegacyRecords` and the `RECORDS_MOVED` layer
   in `OlderInstalls.kt`. Squash the ledger chain to a v14 baseline, or the update test's v12–v13 cases lose their
   membership. Add a migration that drops `legacyImport`. Then the `Files` adapter's
-  not-found classification is no longer load-bearing for the leave decision (`FileAbsence.kt`, `CLAUDE.md`).
+  not-found classification is no longer load-bearing for the leave decision (`FileAbsence.kt`, `docs/architecture.md` §11, "Entitlements & Info.plist").
 - **Record:** this file's PR (phase 2b, "ports: sql + shared records").
 
 ### Derived `closedAt` for builds that predate open-until dates (api)
