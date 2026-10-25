@@ -45,7 +45,7 @@
 # WHY macos-26: only a macOS runner boots iOS simulators, and only the simulator gives authentic iOS
 # chrome (a real status bar, system fonts) at exact device resolution. The real device is unreachable
 # from a GitHub runner (it is USB-bridged into the codehydra sandbox), so an authentic on-device pass is
-# an out-of-band operator runbook (see CLAUDE.md `dvt screenshot`), not this CI stage.
+# an out-of-band operator runbook (the `snapsync-device` skill), not this CI stage.
 
 name: screenshots
 

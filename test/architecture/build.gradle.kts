@@ -165,9 +165,9 @@ tasks.test {
             include("api/src/config.ts")
             // GatedPathPinTest reads the backend gate's closed ungated list, so a route the backend opens re-runs it.
             include("api/src/app.ts")
-            // `CLAUDE.md` is declared for `RunbookSkillsTest` (below), its ONLY reader here: the runbook
+            // `AGENTS.md` is declared for `RunbookSkillsTest` (below), its ONLY reader here: the runbook
             // pointers depend on it.
-            include("CLAUDE.md")
+            include("AGENTS.md")
             // The specs: `VerifiesGateTest` holds every `@Verifies` to a heading here, and `NoSpecCitationTest`
             // derives the capability names it forbids from the directory. Without them a requirement renamed by an
             // OpenSpec change leaves this task UP-TO-DATE, and the claims that now point nowhere pass.
@@ -179,7 +179,7 @@ tasks.test {
             // edge-only edit leaves this task UP-TO-DATE.
             include("settings.gradle.kts")
             include("domain/*/build.gradle.kts")
-            // `RunbookSkillsTest`'s subjects (`docs/architecture.md`): CLAUDE.md's runbook
+            // `RunbookSkillsTest`'s subjects (`docs/architecture.md`): AGENTS.md's runbook
             // pointers must resolve to these files. Without them declared, renaming or
             // deleting a skill leaves this task UP-TO-DATE — a dangling pointer is invisible by
             // construction, so a guard that stops re-running is the same as no guard at all.

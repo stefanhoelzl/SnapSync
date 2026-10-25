@@ -59,7 +59,7 @@ Everything the build needs is already in the job (see `.ssh-runner.yml`): JDK 25
 `~/.konan`. Read that file rather than re-deriving it; it carries the reasoning for each.
 
 Do **not** wrap `start` in `ch bg`: it is the workspace genuinely waiting on its own build, so it
-*should* read as busy (CLAUDE.md, *Agent harness limits*).
+*should* read as busy (AGENTS.md, *Agent harness limits*).
 
 ### Per-session properties go in the RUNNER's `~/.gradle`, never in the tree
 

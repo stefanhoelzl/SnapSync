@@ -3,7 +3,7 @@
 // rows are reported to the error tracker — the Bugsink project the apps and the edge already report to.
 //
 // ANY 5xx IS REPORTED. A day's report carries every 5xx row as its console line, newest first, cut at a byte
-// budget so the event stays well under Bugsink's 1 MiB event cap (CLAUDE.md, "Logging & errors": an
+// budget so the event stays well under Bugsink's 1 MiB event cap (docs/deployment.md, "Crash reports and the diagnostic dump": an
 // oversized event is not dropped but cached and resent, blocking every report behind it); what the budget
 // cut is counted in `omitted`, and the table keeps every row for 30 days. Every report carries ONE fixed
 // fingerprint and ONE fixed message, so a run of bad days is one issue: Bugsink alerts on its first event,

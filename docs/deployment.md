@@ -630,6 +630,34 @@ never reaches the internal track (below).
   = the event's `dist`, 90 days); `/bugsink` retraces against it with R8's own `retrace`, and fails loudly once it
   has expired.
 
+### Crash reports and the diagnostic dump
+
+- **What reports** (capability `privacy-security`): production builds report crashes and `Error`/`Assert`-severity
+  lines (lower severities ride as breadcrumbs), in **both** iOS processes, through the `CrashReporter` port that
+  `snapSyncProcess` starts as every composition's first act. Every UUID-shaped token is scrubbed before sending (an
+  event id IS the upload capability). The SDK's random per-install `user.id` is the one deliberate exception; do not
+  "fix" it into the scrub. Triage is the `/bugsink` skill.
+- **The diagnostic dump**: double-tap the "SnapSync" label at the top of any screen → a confirm dialog → one dump
+  reaches Bugsink: state, counts and the tail of BOTH processes' logs (~700 KB), sent **verbatim**, ids intact. It is
+  deliberately invisible: no button, no semantics. On a build with no DSN the sheet says so, and **Save** keeps the
+  report on the phone instead: `diagnostic-report.json` in the app's Documents, replaced by each report and pulled
+  like `debug.log`. To exercise the sending path, dispatch the branch (§5). Dumps group as one issue
+  (`diagnostic dump`).
+- **The DSN lives in `Deployment.plist`, never `Deployment.xcconfig`**: in an xcconfig `//` opens a comment, which
+  silently truncated the DSN to `https:` and shipped four mute TestFlight builds (644–673). `ios-build` reads all four
+  deployment values back out of the app **and** the `.appex` after archiving, so a truncated value or a resource that
+  missed a bundle fails the run.
+- **Bugsink's limits, measured against the hosted instance (2026-07-29)**: it **drops attachments entirely**, caps
+  an event at `MAX_EVENT_SIZE` = 1 MiB judged on the decoded body (the gzip wire size says nothing), and stores 340 KB
+  context strings byte-identical.
+- ⚠️ **An over-cap event is not dropped; it blocks the queue.** sentry-cocoa deletes a cached envelope only on a
+  `200` and sends the oldest first, so a rejected one stays in the process's `Caches/io.sentry`, is re-sent on every
+  trigger, and blocks every report behind it, across launches, until `maxCacheItems` (30) newer envelopes evict it.
+  Nothing on screen says so (`SentryHttpTransport.m` at 8.58.2; M7 in
+  `changes/archive/2026-09-23-diagnostics-reporter-contracts`). So every outgoing event is bounded **by
+  construction** (the caps sit in `model/EventBounds.kt`), and the `CrashReporter` contract's
+  `WIRE_WORST_CASE_DUMP_ARRIVES` clause fails `ios-build`'s platform tests if they stop fitting.
+
 Decision records: `changes/archive/2026-07-14-gate-testflight-on-tests`,
 `changes/archive/2026-07-19-remove-alpha-testflight-promotion`,
 `changes/archive/2026-07-21-restore-testflight-build-note`,

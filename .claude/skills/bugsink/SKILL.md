@@ -225,8 +225,8 @@ symbols (inlined frames included). It prints a clear per-frame line and degrades
 
 **When `dsyms-<build>` is gone (build > 90 days old → artifact expired): fail loud.**
 Show the raw frames (from `stacktrace_md`), state the build number and that its
-`dsyms-<build>` artifact has expired, and point at the CLAUDE.md runbook note
-("park longer-lived versions' dSYMs elsewhere at promote time"). Never symbolicate against
+`dsyms-<build>` artifact has expired, and point at `docs/deployment.md` §5
+("Copy dSYMs somewhere permanent at promote time"). Never symbolicate against
 a *different* build's dSYMs — that produces subtly-wrong frames.
 
 ### 3b. Android: retrace against the build's R8 mapping

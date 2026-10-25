@@ -95,7 +95,7 @@ object LiveEdge {
         } catch (e: IOException) {
             throw IllegalStateException(
                 "the backend contracts' live binding needs `deno` on PATH — `./gradlew build` requires it " +
-                    "(CLAUDE.md, Build & test). Could not start it: ${e.message}",
+                    "(AGENTS.md, Build & test). Could not start it: ${e.message}",
                 e,
             )
         }

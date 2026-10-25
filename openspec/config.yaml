@@ -11,7 +11,7 @@ context: |
   testing, deployment — app and api) lives in docs/architecture.md,
   docs/testing.md and docs/deployment.md, which are explanation, not contract;
   the gates in the build are the authority for engineering rules. Project rules
-  live in CLAUDE.md. Read them rather than restating them here.
+  live in AGENTS.md. Read them rather than restating them here.
 
   ARCHIVING — two gates, both BEFORE reporting success. They live here rather
   than in .claude/ because `openspec update` regenerates that directory and
@@ -95,7 +95,7 @@ context: |
   instead of restating it. There is no size budget; the swap test is the budget.
 
   A change to an observable outcome still goes through the OpenSpec flow (user-driven,
-  see CLAUDE.md). A change no user could observe — a refactor, a new mechanism, a
+  see AGENTS.md). A change no user could observe — a refactor, a new mechanism, a
   platform workaround — touches no spec and needs no delta.
 
   MISSION (decision record: changes/archive/2026-07-21-align-specs-with-mission;

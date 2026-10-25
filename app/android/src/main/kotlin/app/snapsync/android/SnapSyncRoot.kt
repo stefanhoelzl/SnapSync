@@ -57,7 +57,7 @@ import kotlinx.coroutines.SupervisorJob
  * **The Android composition root** (`docs/architecture.md`, "One shared composition"): ONE per process, built in
  * `Application.onCreate` — the shared host composition (`snapSyncHost`, whose first act sets the process up) over the
  * ports this build's adapter set hands back ([platformAdapters]) and nothing else. Android runs the activity,
- * and in later phases the workers and the push service, in this one process, so they are all entry ports on this one
+ * the workers and the push service in this one process, so they are all entry ports on this one
  * composition; there is no second root.
  *
  * Nothing is forced at construction that a background start must not build: the core and every service are lazy, and
