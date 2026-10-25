@@ -181,7 +181,9 @@ $A -s $S exec-out run-as app.snapsync cat files/private/debug.log > debug.log # 
 Everything past the port is `rig-channel`'s protocol; load it for the verbs, with `B=http://127.0.0.1:$H`. **Wait with
 `rig world events`** ("Waiting on what happens" there): every system but the screen and lifecycle is mocked here, so
 almost everything the app does tells an event — the screen's states, the backend's requests, the transfers, the
-library's — and the stream starts at your last act, through the forward. The `os` service's foreground and background
+library's — and every entry point's work tells `done` once it and all it started have ended (`select(.type == "done"
+and .entry == "OnForeground")`, the real lifecycle's delivery included) — and the stream starts at your last act,
+through the forward. The `os` service's foreground and background
 go through the REAL lifecycle adapter (`AndroidLifecycle.deliverForeground`); every other delivery through its mock.
 The `extension-host` service is refused: Android has no upload extension. `host relaunch` is refused: force-stop and start.
 

@@ -9,6 +9,7 @@ import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.Files
 import app.snapsync.ports.LogSink
 import app.snapsync.ports.MetricHandlers
@@ -50,6 +51,11 @@ class ProcessPorts(
     val crypto: Crypto,
     /** The label each thread's log lines carry — the run it is working for; the crash channel's `entry_point` tag. */
     val threadLabel: ThreadLabel,
+    /**
+     * Where the runtime tells each entry point's work — delivered, answered, done — beside its log line: nowhere on a
+     * shipped build, the control channel's event stream on a rig build and the JVM.
+     */
+    val entryEvents: EntryEvents,
     /**
      * What the running build is: where it reports to ([BuildInfo.dsn]), what the boot banner names, and the constants
      * every composition over this process reads.

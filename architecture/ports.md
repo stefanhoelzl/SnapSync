@@ -67,6 +67,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EnrollOutcome` | `:domain:application` | `:domain:application` Enrolled | no |
 | `EnterOutcome` | `:domain:application` | `:domain:application` Entered | no |
 | `EnterResult` | `:domain:data` | `:domain:data` AlreadyJoined, Entered, Failed, JoinedElsewhere | no |
+| `EntryEvent` | `:domain:ports` | `:domain:ports` Answered, Delivered, Done | no |
+| `EntryEvents` | `:domain:ports` | `:adapter:generic:app` NoEntryEvents; `:adapter:generic:mock` TellingEntryEvents; `:domain:scheduling` RecordingEntryEvents; `:test:contracts` EntryEventsProxy | no |
 | `EventCreation` | `:domain:services` | `:domain:feature` FakeClient; `:domain:services` BackendEventCreation | yes |
 | `EventCreator` | `:domain:model` | `:domain:feature` CreateEvent; `:domain:presentation` SpyCreator | no |
 | `EventLookupFact` | `:domain:domain` | `:domain:domain` Found, NotFound, Unanswered | no |
@@ -99,7 +101,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportOutcome` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
 | `ImportResult` | `:domain:model` | `:domain:model` Failed, Imported | no |
 | `ImportedAssetPresence` | `:domain:services` | `:domain:services` GalleryAssetPresence, PermissionAwareAssetPresence, RecordingLibrary; `:test:feature` CountingPresence, InMemoryAssetPresence | yes |
-| `Inbound` | `:domain:inbound` | `:domain:host` Intents, LiveScreen; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
+| `Inbound` | `:domain:inbound` | `:domain:host` LiveScreen; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
 | `InviteKeyCheck` | `:domain:data` | `:test:data` KeyIsItsId | yes |
 | `InviteLinkVerdict` | `:domain:domain` | `:domain:domain` Invite, KeyUnreadable, NotAnInvite | no |
 | `Items` | `:domain:ports` | — | no |
@@ -176,6 +178,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RetryVerdict` | `:domain:domain` | `:domain:domain` Retry, Stands | no |
 | `Running` | `:domain:inbound` | `:domain:scheduling` Run; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
+| `Screen` | `:domain:entrypoints` | — | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:data` RecordingSecureStore; `:test:feature` LockableSecureStore | yes |
 | `SecureStoreRead` | `:domain:ports` | `:domain:ports` Absent, Found, Unavailable | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |

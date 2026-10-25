@@ -28,6 +28,7 @@ import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 import app.snapsync.scheduling.Runtime
+import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crypto.EventKeys
@@ -116,7 +117,12 @@ fun snapSyncExtension(
 ): ComposedExtension {
     // The extension's own runtime: no scope of its root's to live under, and no background time to hold — it answers on
     // the invoking thread.
-    val runtime = Runtime(parent = null, lane, backgroundTime = null, ports.process.threadLabel, answerOn = answerOn)
+    val runtime = Runtime(
+        parent = null,
+        lane,
+        RuntimePorts(backgroundTime = null, ports.process.threadLabel, ports.process.entryEvents),
+        answerOn = answerOn,
+    )
     val process = snapSyncProcess(ports.process, runtime)
     // The device token, read from the shared protected store the app writes. Held in
     // memory between re-reads ([CachedCredentialStore]): every request reads it, and a store read each time was

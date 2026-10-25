@@ -11,7 +11,7 @@ package app.snapsync.compose
 internal suspend fun AppCore.restoreEventKey(linkKey: String): Boolean =
     services.eventKeys.restoreLost(linkKey, services.config.config.value, log, onRestored = ::resumeAfterRestore)
 
-private fun AppCore.resumeAfterRestore() {
+private suspend fun AppCore.resumeAfterRestore() {
     eventKeyReads.reread()
     work.keyRestored.requested()
 }

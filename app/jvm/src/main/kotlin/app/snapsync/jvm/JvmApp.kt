@@ -181,6 +181,7 @@ class JvmApp<D>(
             clock = clock.value,
             crypto = crypto.value,
             threadLabel = lanes.threadLabel(),
+            entryEvents = ports.entries.entryEvents,
             build = ports.build.port(),
         )
 

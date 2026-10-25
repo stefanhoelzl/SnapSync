@@ -93,7 +93,8 @@ State these before writing a scenario against this host, or you will write one t
   returns to `{downloaded:0,total:0}` the moment the queue drains — transfers finish about a second after
   the trigger, so a read 25 s later reads 0/0 and looks exactly like a failure. With the transfers mocked, wait on
   their events instead (`rig world events`: `download-started`, and the library's `library-asset-created` where it is
-  mocked); over the real ones, which tell no event, assert on the device log's
+  mocked); over the real ones, wait on the delivery's `done` (`select(.type == "done" and .entry == "OnSilentPush")`,
+  `rig-channel`) — the app's work over, the import included — and then, assert on the device log's
   `transfer finished: status=… expected=… received=…` and `imported foreign asset … as …` lines. The
   gallery census is not clean proof either: a simulator ships with stock photos, so a device that imported
   3 reads `total: 9`.

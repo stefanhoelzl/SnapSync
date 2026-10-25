@@ -6,6 +6,7 @@ import app.snapsync.compose.snapSyncProcess
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.LogLine
 import app.snapsync.mock.BuildInfoMock
+import app.snapsync.mock.EntryEventsMock
 import app.snapsync.mock.ThreadLabelMock
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
@@ -24,6 +25,7 @@ import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.scheduling.Runtime
+import app.snapsync.scheduling.RuntimePorts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -69,11 +71,16 @@ class ProcessCompositionTest {
         clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(0)),
         crypto = fakeCrypto(),
         threadLabel = ThreadLabelMock(),
+        entryEvents = EntryEventsMock().port(),
         build = BuildInfoMock(dsn = dsn).port(),
     )
 
     /** The process's runtime, as its composition builds it: nothing here holds background time. */
-    private fun runtime() = Runtime(null, Dispatchers.Unconfined, backgroundTime = null, ThreadLabelMock())
+    private fun runtime() = Runtime(
+        null,
+        Dispatchers.Unconfined,
+        RuntimePorts(backgroundTime = null, ThreadLabelMock(), EntryEventsMock().port()),
+    )
 
     private fun dump() = DiagnosticDump("stuck on $id", mapOf("screen" to "Joined"), emptyMap(), "app\n", "ext\n")
 

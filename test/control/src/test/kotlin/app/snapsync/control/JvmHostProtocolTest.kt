@@ -9,6 +9,7 @@ import app.snapsync.levers.BackgroundTimeLevers
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.ContractLevers
 import app.snapsync.levers.DevControlsLevers
+import app.snapsync.levers.EntryOutcomeKind
 import app.snapsync.levers.ExtensionAnswer
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.ExtensionRegistryLevers
@@ -28,6 +29,7 @@ import app.snapsync.levers.SeedKind
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WipeScope
+import app.snapsync.levers.WorldEvent
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import app.snapsync.rig.UPLOAD_HEARTBEAT_TASK
@@ -161,6 +163,33 @@ class JvmHostProtocolTest {
         then { screen<Layer.CreateEvent> { it.network == NetworkNotice.BLOCKED } }
         whenever { network.set(NetworkState.ONLINE) }
         then { screen<Layer.CreateEvent> { it.network == null } }
+    }
+
+    /**
+     * The app's runtime tells each entry point's work on the world stream (`docs/testing.md`, "How a test waits"): a tap
+     * and an operating-system delivery the channel plays are each delivered, answered and done — every one tagged with
+     * the act that made it, so a test waits on its own act's `done`.
+     */
+    @Test
+    fun every_entry_point_s_work_reaches_the_stream_tagged_with_its_act() = behaviour {
+        given { step("in front", act = { os.foreground() }, until = { settled { true } }) }
+        whenever { tap(UiIntent.MenuOpen) }
+        then {
+            inOrder {
+                event<WorldEvent.Delivered> { it.entry == "OnTap" && it.about == "MenuOpen" && it.tag != null }
+                event<WorldEvent.Answered> { it.entry == "OnTap" && it.tag != null }
+                event<WorldEvent.Done> {
+                    it.entry == "OnTap" && it.outcome == EntryOutcomeKind.COMPLETED && it.tag != null
+                }
+            }
+        }
+        whenever { os.silentPush() }
+        then {
+            inOrder {
+                event<WorldEvent.Delivered> { it.entry == "OnSilentPush" && it.tag != null }
+                event<WorldEvent.Done> { it.entry == "OnSilentPush" && it.tag != null }
+            }
+        }
     }
 
     /**

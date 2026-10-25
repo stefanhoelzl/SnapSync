@@ -4,10 +4,12 @@ package app.snapsync.feature.support
 
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.inbound.Running
+import app.snapsync.mock.EntryEventsMock
 import app.snapsync.mock.ThreadLabelMock
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.scheduling.Runtime
+import app.snapsync.scheduling.RuntimePorts
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -22,7 +24,11 @@ import kotlin.coroutines.ContinuationInterceptor
  */
 suspend fun <T> underRuntime(block: suspend () -> T): T {
     val scheduler = checkNotNull(currentCoroutineContext()[TestCoroutineScheduler]) { "under a test's scheduler only" }
-    val runtime = Runtime(null, StandardTestDispatcher(scheduler), NoTime, ThreadLabelMock())
+    val runtime = Runtime(
+        null,
+        StandardTestDispatcher(scheduler),
+        RuntimePorts(NoTime, ThreadLabelMock(), EntryEventsMock().port()),
+    )
     return withContext(runtime.scope.coroutineContext.minusKey(Job).minusKey(ContinuationInterceptor)) { block() }
 }
 

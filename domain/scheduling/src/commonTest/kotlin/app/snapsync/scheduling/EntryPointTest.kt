@@ -153,7 +153,7 @@ class EntryPointTest {
         val world = World(this)
         var seen: String? = null
         class OnDelivery : InboundEntryPoint<Int>(world.runtime) {
-            override fun run(arg: Int) {
+            override fun Delivery.run(arg: Int) {
                 seen = world.label.current()
                 check(arg > 0) { "refused" }
             }
@@ -164,7 +164,22 @@ class EntryPointTest {
         assertEquals("OnDelivery", seen)
         entry.deliver(0)
         assertEquals("outer", world.label.current(), "the thread's own label was not restored")
-        assertEquals("delivery failed", world.log.lines.single().event)
+        assertEquals(
+            listOf("delivered", "answered", "done", "delivered", "delivery failed", "answered", "done"),
+            world.log.events(),
+        )
+        assertEquals(
+            listOf(
+                "delivered OnDelivery",
+                "answered OnDelivery",
+                "done OnDelivery COMPLETED",
+                "delivered OnDelivery",
+                "answered OnDelivery",
+                "done OnDelivery FAILED",
+            ),
+            world.entries.seen(),
+        )
+        assertEquals(Severity.Warn, world.log.lines.last().severity, "a failed delivery's done is a warning")
     }
 
     @Test
@@ -179,7 +194,18 @@ class EntryPointTest {
             }
             assertEquals("OnAsk:4", OnAsk(fail = false).answer(2))
             assertEquals("FAILED", OnAsk(fail = true).answer(2))
-            assertEquals(Severity.Error, world.log.lines.single().severity)
+            assertEquals(Severity.Error, world.log.lines.single { it.event == "delivery failed" }.severity)
+            assertEquals(
+                listOf(
+                    "delivered OnAsk",
+                    "answered OnAsk",
+                    "done OnAsk COMPLETED",
+                    "delivered OnAsk",
+                    "answered OnAsk",
+                    "done OnAsk FAILED",
+                ),
+                world.entries.seen(),
+            )
         }
     }
 
@@ -191,7 +217,13 @@ class EntryPointTest {
         try {
             val lane = RecordingLane(thread)
             val label = FakeThreadLabel()
-            val runtime = Runtime(parent = null, lane, backgroundTime = null, label, answerOn = lane)
+            val runtime =
+                Runtime(
+                    parent = null,
+                    lane,
+                    RuntimePorts(backgroundTime = null, label, RecordingEntryEvents()),
+                    answerOn = lane,
+                )
             class OnAsk : AnsweredEntryPoint<Unit, String>(runtime, onFailure = "FAILED") {
                 override suspend fun run(arg: Unit): String = "${label.current()}:${lane.dispatched}"
             }

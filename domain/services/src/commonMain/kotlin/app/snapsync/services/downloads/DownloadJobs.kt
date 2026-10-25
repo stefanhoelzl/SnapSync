@@ -13,12 +13,10 @@ import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.crypto.SEALED_SUFFIX
 import app.snapsync.services.staging.StagingService
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /** Bounded in-flight window (Apple: keep background tasks in the low hundreds; we stay well under). */
 internal const val MAX_IN_FLIGHT = 24
@@ -112,7 +110,6 @@ internal fun isFetchableUrl(url: String): Boolean {
  * reconcile after a leave/switch enqueues normally.
  */
 class DownloadJobs(
-    private val scope: CoroutineScope,
     /**
      * Where staged bytes live: a relative root, and the move that keeps a finished body there. The staged path this
      * class reports is the RELATIVE one, so the download store never holds an absolute container path (a restored
@@ -185,9 +182,10 @@ class DownloadJobs(
      * the error body. So it is judged first ([mayBeStaged]) — staging is what makes these bytes the store's truth, and a
      * staged error body would be imported, fail, and be retried forever, never re-downloaded. Then it is moved to the
      * staging path derived from [tag] alone — a relaunched process never started the transfer and remembers nothing
-     * of it — before this returns, because the platform deletes the file when it does.
+     * of it — before this returns, because the platform deletes the file when it does. The store write it causes is
+     * started through [start] — the delivering entry point's, so its `done` waits for the write and what follows it.
      */
-    fun onFinished(tag: String, facts: TransferOutcome, tempPath: String) {
+    fun onFinished(tag: String, facts: TransferOutcome, tempPath: String, start: (suspend () -> Unit) -> Job) {
         val staged = facts.mayBeStaged()
         // Logged for EVERY finished transfer, not only rejections: `expected=-1` means
         // the server sent no `Content-Length`, so the length check is inert and the body is admitted on status alone.
@@ -211,18 +209,21 @@ class DownloadJobs(
         // Launched here, and REMEMBERED: this runs on the session's delegate queue, which must not wait for a store
         // write, but the write has to stay reachable so the wake's OS handler can wait for it. Pruning completed jobs
         // keeps the list from growing across a long session.
-        val recording = scope.launch {
+        val recording = start {
             // A file that does not open stays unstaged, so the next reconcile downloads it again.
-            if (sealed != null && !sealed.open(decoded.ref, decoded.resourceKey, decoded.eventId, landed, relative)) return@launch
+            if (sealed != null && !sealed.open(decoded.ref, decoded.resourceKey, decoded.eventId, landed, relative)) return@start
             onStaged(decoded.ref, decoded.resourceKey, relative)
         }
         outstandingStagings.update { held -> held.filterNot { it.isCompleted } + recording }
     }
 
-    /** [tag]'s transfer ended — finished, failed or cancelled. Its slot is free. */
-    fun onCompleted(tag: String, error: String?) {
+    /**
+     * [tag]'s transfer ended — finished, failed or cancelled. Its slot is free, and the next transfer is started through
+     * [start] — the delivering entry point's, so its `done` waits for it.
+     */
+    fun onCompleted(tag: String, error: String?, start: (suspend () -> Unit) -> Job) {
         if (error != null) log.w { "download task failed (will retry): $error" }
-        scope.launch {
+        start {
             inFlight.remove(tag)
             pump()
         }

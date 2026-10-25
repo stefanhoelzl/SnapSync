@@ -294,6 +294,7 @@ object SnapSyncRoot {
             clock = ports.clock.value,
             crypto = ports.crypto.value,
             threadLabel = IosThreadLabel,
+            entryEvents = adapters.entryEvents,
             build = IosBuildInfo(),
         )
     }

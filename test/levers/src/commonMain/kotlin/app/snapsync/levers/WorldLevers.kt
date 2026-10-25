@@ -60,6 +60,53 @@ sealed interface WorldEvent {
     @SerialName("acted")
     data class Acted(val name: String, val tag: String? = null) : WorldEvent
 
+    /**
+     * What the app's runtime told of an entry point's work (`docs/testing.md`, "How a test waits"): [entry] is the entry
+     * point's name, [run] tells one delivery from another, and [tag] is the act it belongs to — the act running when it
+     * was delivered — or `null`.
+     */
+    @Serializable
+    sealed interface Entry : WorldEvent {
+        val entry: String
+        val run: Long
+        val tag: String?
+    }
+
+    /** The operating system handed the app [entry] — [about] which of its kind, a tap's intent. */
+    @Serializable
+    @SerialName("delivered")
+    data class Delivered(
+        override val entry: String,
+        override val run: Long,
+        val about: String? = null,
+        override val tag: String? = null,
+    ) : Entry
+
+    /** The operating system got [entry]'s answer back, [afterMillis] after delivering it. */
+    @Serializable
+    @SerialName("answered")
+    data class Answered(
+        override val entry: String,
+        override val run: Long,
+        val afterMillis: Long,
+        override val tag: String? = null,
+    ) : Entry
+
+    /**
+     * [entry]'s work and everything it started have ended, [afterMillis] after it began, as [outcome] says — what a test
+     * waits on for "the app finished what this delivery caused". Work started inside the app for no delivery (`OnArm`)
+     * has a `done` and nothing before it.
+     */
+    @Serializable
+    @SerialName("done")
+    data class Done(
+        override val entry: String,
+        override val run: Long,
+        val afterMillis: Long,
+        val outcome: EntryOutcomeKind,
+        override val tag: String? = null,
+    ) : Entry
+
     /** The app showed [ui] on its screen. */
     @Serializable
     @SerialName("ui")
@@ -407,4 +454,18 @@ data class TransferEnd(val how: How, val failure: String? = null) {
 
         fun failed(failure: String) = TransferEnd(How.FAILED, failure)
     }
+}
+
+/** How an entry point's work ended: the worst of its runs. */
+@Serializable
+enum class EntryOutcomeKind {
+    @SerialName("completed")
+    COMPLETED,
+
+    /** A run's time was up, or it was cancelled before it ended. */
+    @SerialName("expired")
+    EXPIRED,
+
+    @SerialName("failed")
+    FAILED,
 }

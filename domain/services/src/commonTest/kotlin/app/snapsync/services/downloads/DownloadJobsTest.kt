@@ -22,6 +22,7 @@ import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
@@ -66,6 +67,9 @@ class DownloadJobsTest {
     private class FakeDownload : Download {
         lateinit var jobs: DownloadJobs
 
+        /** How a delivery starts the work a report causes — in the test's scope, as the entry point's detached run. */
+        lateinit var starter: (suspend () -> Unit) -> Job
+
         class Started(val url: String, val description: String, val network: TransferNetwork = TransferNetwork.ANY) {
             var cancelled = false
         }
@@ -90,12 +94,12 @@ class DownloadJobsTest {
         override suspend fun cancelAll() {
             started.filterNot { it.cancelled }.forEach {
                 it.cancelled = true
-                jobs.onCompleted(it.description, "cancelled")
+                jobs.onCompleted(it.description, "cancelled", starter)
             }
         }
 
         /** Only the finish half of [finish]: what the delegate queue does for one finished transfer's bytes. */
-        fun stage(description: String) = jobs.onFinished(description, OK, "temp:/$description")
+        fun stage(description: String) = jobs.onFinished(description, OK, "temp:/$description", starter)
 
         /**
          * The system invalidated the session — the only way one ever dies: every transfer it held reports completed
@@ -105,7 +109,7 @@ class DownloadJobsTest {
             sessions++
             started.filterNot { it.cancelled }.forEach {
                 it.cancelled = true
-                jobs.onCompleted(it.description, "the session was invalidated by the system")
+                jobs.onCompleted(it.description, "the session was invalidated by the system", starter)
             }
         }
 
@@ -115,8 +119,8 @@ class DownloadJobsTest {
          * what frees the window slot. The default outcome is a plain `200` with no declared length.
          */
         fun finish(description: String, outcome: TransferOutcome = OK) {
-            jobs.onFinished(description, outcome, "temp:/$description")
-            jobs.onCompleted(description, null)
+            jobs.onFinished(description, outcome, "temp:/$description", starter)
+            jobs.onCompleted(description, null, starter)
         }
     }
 
@@ -131,13 +135,15 @@ class DownloadJobsTest {
         var network: TransferNetwork = TransferNetwork.ANY
 
         val jobs = DownloadJobs(
-            scope = scope,
             staging = StagingService(AcceptingFiles(adopts)),
             download = transport,
             onStaged = { ref, key, path -> deliver(ref, key, path) },
             network = { network },
             headers = { emptyMap() },
-        ).also { transport.jobs = it }
+        ).also {
+            transport.jobs = it
+            transport.starter = { body -> scope.launch { body() } }
+        }
     }
 
     private fun pending(assetId: String, key: String, url: String = "https://cdn.example/$assetId/$key") =

@@ -143,7 +143,7 @@ internal class TestCommands(
 
     override fun leave() = leave.invoke()
 
-    override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) =
+    override suspend fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) =
         create.invoke(name, startsAt, endsAt, openUntil)
 
     override fun commitJoin(choice: JoinChoice) = requests.ask(
@@ -151,16 +151,16 @@ internal class TestCommands(
         JoinCommit.Failed(),
     ) { commitJoin.invoke(choice) }
 
-    override fun share(url: String, title: String) = share.invoke(url, title)
+    override suspend fun share(url: String, title: String) = share.invoke(url, title)
 
-    override fun requestAccess() = requestAccess.invoke()
+    override suspend fun requestAccess() = requestAccess.invoke()
 
-    override fun openSettings() = openSettings.invoke()
+    override suspend fun openSettings() = openSettings.invoke()
 
-    override fun openLink(url: String) = openLink.invoke(url)
+    override suspend fun openLink(url: String) = openLink.invoke(url)
 
     // No presentation test is about the picker; its binding is the shells' and compose/'s.
-    override fun choosePhotos() = Unit
+    override suspend fun choosePhotos() = Unit
 
     override fun reconfigure(choice: ShareChoice) = requests.ask(
         requests.statuses.settings,

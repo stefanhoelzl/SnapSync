@@ -152,7 +152,7 @@ internal class ContainerRig(
                 this@ContainerRig.config.value = null
             }
 
-            override fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) {
+            override suspend fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) {
                 record("create:$name${openUntil?.let { ":open-until:${TimestampText.format(it.at)}" }.orEmpty()}")
                 createdCell.update { it + Triple(name, startsAt, endsAt) }
             }
@@ -162,15 +162,15 @@ internal class ContainerRig(
                 return answered(statuses.join, JoinCommit.Failed())
             }
 
-            override fun share(url: String, title: String) = record("share:$url")
+            override suspend fun share(url: String, title: String) = record("share:$url")
 
-            override fun requestAccess() = record("requestAccess")
+            override suspend fun requestAccess() = record("requestAccess")
 
-            override fun openSettings() = record("openSettings")
+            override suspend fun openSettings() = record("openSettings")
 
-            override fun openLink(url: String) = record("openLink:$url")
+            override suspend fun openLink(url: String) = record("openLink:$url")
 
-            override fun choosePhotos() = record("choosePhotos")
+            override suspend fun choosePhotos() = record("choosePhotos")
 
             override fun reconfigure(choice: ShareChoice): RequestId {
                 record("reconfigure:${choice.event}:${choice.direction}")

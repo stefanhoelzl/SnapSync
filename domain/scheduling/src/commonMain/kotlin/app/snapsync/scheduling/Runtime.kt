@@ -9,6 +9,8 @@ import app.snapsync.inbound.Trigger
 import app.snapsync.inbound.of
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
+import app.snapsync.ports.EntryEvents
+import app.snapsync.ports.EntryOutcome
 import app.snapsync.ports.ThreadLabel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -20,6 +22,7 @@ import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -42,7 +45,13 @@ import kotlin.time.TimeSource
  * itself a grant of time — a scheduled wake, which the operating system keeps open until its completion — and
  * holding more would only cost (on Android 11 a hold is a foreground service with a notification).
  */
-internal enum class OsTime { HELD, GRANTED }
+internal enum class OsTime {
+    HELD,
+    GRANTED,
+
+    /** A person's work, started while the app is in front — which keeps it running: no hold of its own. */
+    IN_FRONT,
+}
 
 /**
  * The process's runtime (`docs/patterns.md`, "Entry points"): the supervised scope every run is launched in, the
@@ -64,12 +73,8 @@ class Runtime(
     parent: Job?,
     /** The composition lane every run is dispatched on. */
     lane: CoroutineDispatcher,
-    /**
-     * The process's background time, which every held run begins a hold on — `null` in a process that has none to hold
-     * (the upload extension: the operating system keeps it alive for exactly the one delivery it answers).
-     */
-    private val backgroundTime: BackgroundTime?,
-    private val threadLabel: ThreadLabel,
+    /** What the runtime reaches outside the process through. */
+    ports: RuntimePorts,
     private val grace: Duration = EXPIRY_GRACE,
     /**
      * Where an [Answered][app.snapsync.inbound.Answered] delivery's work runs while its delivering thread waits for the
@@ -79,6 +84,9 @@ class Runtime(
     private val answerOn: CoroutineDispatcher? = null,
 ) {
     private val log = Log("Runtime")
+    private val backgroundTime = ports.backgroundTime
+    private val threadLabel = ports.threadLabel
+    private val entryEvents = ports.entryEvents
 
     /**
      * The process scope every run is launched in: supervised, on the composition lane, labelling each task with its
@@ -95,12 +103,105 @@ class Runtime(
     internal val flights = SingleFlight(this)
 
     /**
-     * Starts [body] as the run of [trigger], answering [completion] when it ends. The run holds background time when
-     * [time] says so. Answers the [Running] the delivering adapter expires.
+     * Starts [body] as the run of the delivery [trigger], answering [completion] when it ends. The run holds background
+     * time when [time] says so. Answers the [Running] the delivering adapter expires.
      */
-    internal fun start(trigger: Trigger, time: OsTime, completion: Completion, body: suspend () -> Unit): Running {
-        val run = Run(trigger.label, completion)
-        val job = scope.launch(trigger, start = CoroutineStart.LAZY) { contained(trigger.label) { body() } }
+    internal fun start(trigger: Trigger, time: OsTime, completion: Completion, body: suspend () -> Unit): Running =
+        launch(trigger, time, delivered(trigger.label), completion, body)
+
+    /**
+     * Work nobody awaits, started from inside a run of [work] — or, with none, for no delivery: it runs in the process
+     * scope under its own background-time hold, labelled [trigger] — the caller's, so the lines of what a trigger
+     * started still name it — and belongs to [work], whose `done` waits for it.
+     */
+    internal fun detached(
+        trigger: Trigger,
+        work: EntryWork?,
+        body: suspend () -> Unit,
+        time: OsTime = OsTime.HELD,
+    ): Job {
+        val owner = if (work == null) EntryWork.started(trigger.label, entryEvents, log) else work.opened()
+        return launch(trigger, time, owner, completion = null, body).job
+    }
+
+    /**
+     * Starts [body] detached for a caller outside any entry point's steps — a membership transition arming its uploads,
+     * a staged download's import — labelled as the entry point [name]. Inside a run it is that run's work; outside any,
+     * its own.
+     */
+    suspend fun detached(name: String, body: suspend () -> Unit) {
+        detached(Trigger.of(name), currentCoroutineContext()[WorkElement]?.work, body)
+    }
+
+    /**
+     * Starts [body] without awaiting it and without a background-time hold of its own — a person's command, which the
+     * app being in front keeps running — labelled [name]. Inside an entry point's work (a tap's) it is that work's.
+     */
+    suspend fun alongside(name: String, body: suspend () -> Unit) {
+        detached(Trigger.of(name), currentCoroutineContext()[WorkElement]?.work, body, OsTime.IN_FRONT)
+    }
+
+    /**
+     * Runs [body] on the delivering thread, labelled [name], contained; what it starts is the delivery's work. [about]
+     * says which of its kind the delivery is — a tap's intent — on its `delivered`.
+     */
+    internal fun inline(name: String, about: String?, body: (Delivery) -> Unit) {
+        val work = delivered(name, about)
+        val replaced = threadLabel.swap(name)
+        val failed = try {
+            body(Delivery(this, Trigger.of(name), work))
+            null
+        } catch (failure: Throwable) {
+            log.unlabelled.e("delivery failed", "trigger" of name, cause = failure)
+            failure
+        } finally {
+            threadLabel.swap(replaced)
+        }
+        work.answered()
+        work.closed(failedAs(failed))
+    }
+
+    /**
+     * Blocks the delivering thread until [body] answers. Any throwable answers [onFailure] — a cancellation included:
+     * the caller is the platform's synchronous call, an Objective-C boundary any Kotlin throwable aborts the process
+     * across, and nothing above it could act on a cancellation.
+     */
+    internal fun <R> blocking(name: String, onFailure: R, body: suspend () -> R): R {
+        val work = delivered(name)
+        val replaced = threadLabel.swap(name)
+        var failed: Throwable? = null
+        val answer = try {
+            val on: CoroutineContext = if (answerOn == null) EmptyCoroutineContext else labelling(answerOn, threadLabel)
+            runBlocking(on + Trigger.of(name) + RuntimeElement(this) + WorkElement(work)) { body() }
+        } catch (failure: Throwable) {
+            log.unlabelled.e("delivery failed", "trigger" of name, cause = failure)
+            failed = failure
+            onFailure
+        } finally {
+            threadLabel.swap(replaced)
+        }
+        work.answered()
+        work.closed(failedAs(failed))
+        return answer
+    }
+
+    /** The operating system handed [entry] over. */
+    private fun delivered(entry: String, about: String? = null): EntryWork =
+        EntryWork.delivered(entry, about, entryEvents, log)
+
+    /**
+     * Launches one run of [work]: the delivery's own when it answers a [completion], whose answer is told `answered`;
+     * a run it detached when there is none.
+     */
+    private fun launch(
+        trigger: Trigger,
+        time: OsTime,
+        work: EntryWork,
+        completion: Completion?,
+        body: suspend () -> Unit,
+    ): Run {
+        val run = Run(trigger.label, completion, work)
+        val job = scope.launch(trigger + WorkElement(work), start = CoroutineStart.LAZY) { run.contained { body() } }
         // The hold is begun on the delivering thread, before it returns: the operating system may suspend the process
         // the moment its callback returns, so time asked for later, from the lane, may never be asked for at all.
         run.attach(job)
@@ -110,71 +211,34 @@ class Runtime(
     }
 
     /**
-     * Work nobody awaits, started from inside the process: it runs in the process scope under its own background-time
-     * hold, labelled [trigger] — the caller's, so the lines of what a trigger started still name it.
-     */
-    internal fun detached(trigger: Trigger, body: suspend () -> Unit) {
-        start(trigger, OsTime.HELD, Completion.None, body)
-    }
-
-    /**
-     * Starts [body] detached for a caller outside any run — a membership transition arming its uploads — labelled as
-     * the entry point [name].
-     */
-    fun detached(name: String, body: suspend () -> Unit) = detached(Trigger.of(name), body)
-
-    /** Runs [body] on the delivering thread, labelled [name], contained. */
-    internal fun inline(name: String, body: () -> Unit) {
-        val replaced = threadLabel.swap(name)
-        try {
-            body()
-        } catch (failure: Throwable) {
-            log.unlabelled.e("delivery failed", "trigger" of name, cause = failure)
-        } finally {
-            threadLabel.swap(replaced)
-        }
-    }
-
-    /**
-     * Blocks the delivering thread until [body] answers. Any throwable answers [onFailure] — a cancellation included:
-     * the caller is the platform's synchronous call, an Objective-C boundary any Kotlin throwable aborts the process
-     * across, and nothing above it could act on a cancellation.
-     */
-    internal fun <R> blocking(name: String, onFailure: R, body: suspend () -> R): R {
-        val replaced = threadLabel.swap(name)
-        return try {
-            val on: CoroutineContext = if (answerOn == null) EmptyCoroutineContext else labelling(answerOn, threadLabel)
-            runBlocking(on + Trigger.of(name) + RuntimeElement(this)) { body() }
-        } catch (failure: Throwable) {
-            log.unlabelled.e("delivery failed", "trigger" of name, cause = failure)
-            onFailure
-        } finally {
-            threadLabel.swap(replaced)
-        }
-    }
-
-    /** The first of the three containment sites: a run's failure is reported, never rethrown. */
-    private suspend fun contained(label: String, body: suspend () -> Unit) {
-        try {
-            body()
-        } catch (failure: CancellationException) {
-            throw failure
-        } catch (failure: Throwable) {
-            log.e("run failed", "trigger" of label, cause = failure)
-        }
-    }
-
-    /**
      * One run as its delivering adapter sees it: expired by the operating system, answered exactly once — its hold,
      * when it took one, ended with the answer.
      */
-    private inner class Run(private val label: String, private val completion: Completion) : Running {
+    private inner class Run(
+        private val label: String,
+        /** What the operating system is answered — `null` for a run a delivery detached, which answers no one. */
+        private val completion: Completion?,
+        private val work: EntryWork,
+    ) : Running {
         private val answered = AtomicBoolean(false)
-        private lateinit var job: Job
+        private val failed = AtomicBoolean(false)
+        lateinit var job: Job
         private val held = AtomicReference<BackgroundTimeHold?>(null)
 
         /** When the operating system expired the run — what its unwind is measured from (`EXPIRY_GRACE`'s evidence). */
         private val expiredAt = AtomicReference<TimeMark?>(null)
+
+        /** The first of the three containment sites: a run's failure is reported, never rethrown. */
+        suspend fun contained(body: suspend () -> Unit) {
+            try {
+                body()
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (failure: Throwable) {
+                failed.store(true)
+                log.e("run failed", "trigger" of label, cause = failure)
+            }
+        }
 
         /** The run's hold — ended at once when the run was answered while it was being begun (time up on arrival). */
         fun hold(hold: BackgroundTimeHold) {
@@ -189,11 +253,12 @@ class Runtime(
 
         fun attach(job: Job) {
             this.job = job
-            job.invokeOnCompletion {
+            job.invokeOnCompletion { cause ->
                 expiredAt.load()?.let {
                     log.unlabelled.i("expired run unwound", "trigger" of label, "after" of it.elapsedNow())
                 }
                 answer()
+                work.closed(if (failed.load()) EntryOutcome.FAILED else endedAs(cause))
             }
         }
 
@@ -213,8 +278,55 @@ class Runtime(
         private fun answer() {
             if (!answered.compareAndSet(expectedValue = false, newValue = true)) return
             release()
+            if (completion == null) return
             completion.complete()
+            work.answered()
         }
+    }
+}
+
+/** What the [Runtime] reaches outside the process through — the process's own ports. */
+class RuntimePorts(
+    /**
+     * The process's background time, which every held run begins a hold on — `null` in a process that has none to hold
+     * (the upload extension: the operating system keeps it alive for exactly the one delivery it answers).
+     */
+    val backgroundTime: BackgroundTime?,
+    /** The per-thread label each task's thread carries — its run's trigger. */
+    val threadLabel: ThreadLabel,
+    /** Where each entry point's `delivered`, `answered` and `done` is told, beside its log line. */
+    val entryEvents: EntryEvents,
+)
+
+/** How a delivery made on its own thread ended: a throwable is a failure, whatever it is. */
+private fun failedAs(failure: Throwable?): EntryOutcome =
+    if (failure == null) EntryOutcome.COMPLETED else EntryOutcome.FAILED
+
+/**
+ * One inline delivery, as its entry point's run sees it: what it starts and does not await is its work, which its
+ * `done` waits for.
+ */
+class Delivery internal constructor(
+    private val runtime: Runtime,
+    private val trigger: Trigger,
+    private val work: EntryWork,
+) {
+    /**
+     * Work this delivery starts and does not await: it continues in the process scope, under its own background-time
+     * hold, labelled with this delivery's trigger. Answers its job, for a caller that must be able to wait for it.
+     */
+    fun detached(block: suspend () -> Unit): Job = runtime.detached(trigger, work, block)
+
+    /**
+     * Where work this delivery's handling starts elsewhere runs — a tap's intents, on the screen's container: labelled
+     * with this delivery's trigger, and what it starts in turn is this delivery's work.
+     */
+    val context: CoroutineContext get() = trigger + WorkElement(work) + RuntimeElement(runtime)
+
+    /** Counts [job] — started by this delivery's handling, elsewhere — as this delivery's work until it ends. */
+    fun joining(job: Job) {
+        work.opened()
+        job.invokeOnCompletion { work.closed(endedAs(it)) }
     }
 }
 

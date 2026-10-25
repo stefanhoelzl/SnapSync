@@ -22,6 +22,7 @@ internal fun platformAdapters(root: SnapSyncRoot, real: AppDevicePorts): Platfor
         devControls = launch.controls,
         ui = lazyOf(launch.ui),
         ports = launch.ports,
+        entryEvents = launch.world.device.entryEvents.port(),
         bootLines = launch.bootLines,
         afterLaunch = {
             launch.start(

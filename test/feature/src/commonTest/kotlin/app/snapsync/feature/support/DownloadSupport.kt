@@ -27,7 +27,6 @@ import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.staging.StagingService
 import app.snapsync.testids.testDeviceId
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -99,11 +98,10 @@ class RecordingDownload(var accept: Boolean = true) : Download {
 
 /** The real download jobs over [download] and [staging]; nothing is staged through them unless a test finishes one. */
 fun downloadJobs(
-    scope: CoroutineScope,
     download: Download = RecordingDownload(),
     staging: StagingService = StagingService(RecordingFiles()),
     network: () -> TransferNetwork = { TransferNetwork.ANY },
-): DownloadJobs = DownloadJobs(scope, staging, download, onStaged = { _, _, _ -> }, network = network, headers = {
+): DownloadJobs = DownloadJobs(staging, download, onStaged = { _, _, _ -> }, network = network, headers = {
     emptyMap()
 })
 

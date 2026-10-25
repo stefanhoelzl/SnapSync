@@ -65,7 +65,7 @@ class DownloadPushReceiverTest {
     private fun TestScope.controller(union: RecordingUnion): DownloadController {
         val staging = StagingService(RecordingFiles())
         return DownloadController(
-            union, DownloadService(inMemoryDatabases()), downloadJobs(backgroundScope, staging = staging),
+            union, DownloadService(inMemoryDatabases()), downloadJobs(staging = staging),
             GalleryImporter(NoopImporter(), staging), InMemoryAssetPresence(),
             eventAlbum = { null },
             onImportedIntoAlbum = {},

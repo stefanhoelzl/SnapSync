@@ -108,7 +108,7 @@ class KeyPresenceTest {
     }
 
     @Test
-    fun a_reopened_invite_restores_only_the_lost_key_of_the_joined_event() {
+    fun a_reopened_invite_restores_only_the_lost_key_of_the_joined_event() = runTest {
         val keys = EventKeys(crypto, inMemorySecureStore())
         val minted = keys.mint()
         var restored = 0
@@ -128,7 +128,7 @@ class KeyPresenceTest {
     }
 
     @Test
-    fun a_lost_key_the_store_refuses_to_keep_is_not_restored() {
+    fun a_lost_key_the_store_refuses_to_keep_is_not_restored() = runTest {
         val refusing = object : SecureStore by inMemorySecureStore() {
             override fun write(slot: SecureSlot, value: String): WriteOutcome = WriteOutcome.Failed("locked")
         }

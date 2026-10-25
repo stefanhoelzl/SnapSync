@@ -161,6 +161,7 @@ class SnapSyncRoot(internal val application: Application) {
             clock = ports.clock.value,
             crypto = ports.crypto.value,
             threadLabel = AndroidThreadLabel(),
+            entryEvents = adapters.entryEvents,
             build = AndroidBuildInfo(
                 appVersion = BuildConfig.APP_VERSION,
                 buildNumber = BuildConfig.VERSION_CODE.toString(),

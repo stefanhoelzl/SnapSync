@@ -7,6 +7,7 @@ import app.snapsync.feature.upload.answer
 import app.snapsync.inbound.Log
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.scheduling.AnsweredEntryPoint
+import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.steps
@@ -49,7 +50,7 @@ class OnProcess(
 class OnTerminate(runtime: Runtime) : InboundEntryPoint<Unit>(runtime) {
     private val log = Log("OnTerminate")
 
-    override fun run(arg: Unit) =
+    override fun Delivery.run(arg: Unit) =
         log.unlabelled.i(
             "the OS ended this invocation — notifyTermination follows a normal return; a killed call gets none",
         )

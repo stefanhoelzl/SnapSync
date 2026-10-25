@@ -34,6 +34,7 @@ import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.SessionDrain
 import app.snapsync.ports.SessionRelaunch
 import app.snapsync.scheduling.BackgroundEntryPoint
+import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.GrantedEntryPoint
 import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Pass
@@ -55,6 +56,8 @@ import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.upload.SessionTransfer
 import app.snapsync.services.wake.Heartbeat
+import kotlinx.coroutines.Job
+import kotlin.coroutines.CoroutineContext
 
 // ── What happens on each trigger of the app process ─────────────────────────────────────────────────────────────────
 //
@@ -93,7 +96,7 @@ class OnBackground(
 ) : InboundEntryPoint<Unit>(runtime) {
     private val log = Log("OnBackground")
 
-    override fun run(arg: Unit) {
+    override fun Delivery.run(arg: Unit) {
         foreground.left()
         watches.stop()
         log.unlabelled.i("app entering background")
@@ -169,20 +172,20 @@ class OnDownloadSessionEvents(
 
 /** A transfer session delivered every event it held: a relaunch waiting for them goes on. */
 class OnSessionDrained(runtime: Runtime, private val drains: SessionDrains) : InboundEntryPoint<SessionDrain>(runtime) {
-    override fun run(arg: SessionDrain) = drains.reported(arg.drains)
+    override fun Delivery.run(arg: SessionDrain) = drains.reported(arg.drains)
 }
 
 /** An upload ended: recorded at once — the platform tells it once — and its freed slot filled. */
 class OnUploadFinished(
-    private val runtime: Runtime,
+    runtime: Runtime,
     private val transfer: SessionTransfer,
     private val uploads: OwnUploads,
     private val topUp: TopUp,
 ) : InboundEntryPoint<FinishedTransfer>(runtime) {
-    override fun run(arg: FinishedTransfer) {
+    override fun Delivery.run(arg: FinishedTransfer) {
         transfer.recordFinished(arg.tag, arg.failure)
         when (uploads.mayFillSlot()) {
-            true -> runtime.detached("OnUploadFinished") { steps { run(topUp) } }
+            true -> detached { steps { run(topUp) } }
             false -> Unit
         }
     }
@@ -192,24 +195,24 @@ class OnUploadFinished(
 class OnDownloadFinished(runtime: Runtime, private val jobs: DownloadJobs) : InboundEntryPoint<FinishedDownload>(
     runtime,
 ) {
-    override fun run(arg: FinishedDownload) = jobs.onFinished(arg.tag, arg.facts, arg.tempPath)
+    override fun Delivery.run(arg: FinishedDownload) = jobs.onFinished(arg.tag, arg.facts, arg.tempPath, ::detached)
 }
 
 /** A download ended — finished, failed or cancelled: its slot is free. */
 class OnDownloadCompleted(runtime: Runtime, private val jobs: DownloadJobs) : InboundEntryPoint<CompletedDownload>(
     runtime,
 ) {
-    override fun run(arg: CompletedDownload) = jobs.onCompleted(arg.tag, arg.error)
+    override fun Delivery.run(arg: CompletedDownload) = jobs.onCompleted(arg.tag, arg.error, ::detached)
 }
 
 /** A received photo was staged in a running process: it is imported, and nothing else is due for it. */
 class OnDownloadStaged(private val runtime: Runtime, private val importReceived: ImportReceived) {
-    fun requested() = runtime.detached("OnDownloadStaged") { steps { run(importReceived) } }
+    suspend fun requested() = runtime.detached("OnDownloadStaged") { steps { run(importReceived) } }
 }
 
 /** A lost event key was kept from a reopened invite: sharing and receiving resume without waiting for the next wake. */
 class OnKeyRestored(private val runtime: Runtime, private val work: ForegroundWork, private val wake: WakeWork) {
-    fun requested() = runtime.detached("OnKeyRestored") {
+    suspend fun requested() = runtime.detached("OnKeyRestored") {
         steps {
             isolated("own work") { work.run() }
             required { wake.full(WakeKind.FOREGROUND) }
@@ -220,33 +223,48 @@ class OnKeyRestored(private val runtime: Runtime, private val work: ForegroundWo
 /** The library is creating an import's asset, inside its change block: the marker that keeps it from going back up. */
 class OnImportPlaceholder(runtime: Runtime, private val markers: ImportMarkers) :
     InboundEntryPoint<ImportPlaceholder>(runtime) {
-    override fun run(arg: ImportPlaceholder) = markers.placeholder(arg.correlation, arg.created)
+    override fun Delivery.run(arg: ImportPlaceholder) = markers.placeholder(arg.correlation, arg.created)
 }
 
 /** An import came out: persisted here — the library reports it once, even when its requester is gone. */
 class OnImportSettled(runtime: Runtime, private val markers: ImportMarkers) : InboundEntryPoint<ImportSettled>(
     runtime,
 ) {
-    override fun run(arg: ImportSettled) = markers.settled(arg.correlation, arg.outcome)
+    override fun Delivery.run(arg: ImportSettled) = markers.settled(arg.correlation, arg.outcome)
 }
 
 /** The platform issued, re-delivered or rotated this device's push token. */
 class OnPushToken(runtime: Runtime, private val tokens: PushTokenSource) : InboundEntryPoint<PushToken>(runtime) {
-    override fun run(arg: PushToken) = tokens.deliver(arg.value)
+    override fun Delivery.run(arg: PushToken) = tokens.deliver(arg.value)
 }
 
 /** The platform could not issue a push token: no silent push arrives until it can. */
 class OnPushTokenFailure(runtime: Runtime) : InboundEntryPoint<PlatformError>(runtime) {
     private val log = Log("OnPushTokenFailure")
 
-    override fun run(arg: PlatformError) =
+    override fun Delivery.run(arg: PlatformError) =
         log.unlabelled.w("push registration failed — no silent pushes will arrive", "error" of arg.description)
+}
+
+/**
+ * A person tapped the screen: what the tap means is the status host's, and everything its handling starts is the tap's
+ * work, so its `done` waits for it. [about] names the intent on its `delivered`.
+ */
+class OnTap<I : Any>(runtime: Runtime, private val screen: Screen<I>) : InboundEntryPoint<I>(runtime) {
+    override fun about(arg: I): String? = arg::class.simpleName
+
+    override fun Delivery.run(arg: I) = screen.tapped(arg, context, ::joining)
+}
+
+/** The status host's intent table, as a tap reaches it: the tap's [context] and its [joining], for what it starts. */
+interface Screen<I> {
+    fun tapped(intent: I, context: CoroutineContext, joining: (Job) -> Unit)
 }
 
 /** The app was opened with a link: kept until the screen opens it. */
 class OnLink(runtime: Runtime, private val opening: LinkOpening, private val links: OpenedLinks) :
     InboundEntryPoint<LinkDelivery>(runtime) {
-    override fun run(arg: LinkDelivery) = links.offer(opening.urlIn(arg))
+    override fun Delivery.run(arg: LinkDelivery) = links.offer(opening.urlIn(arg))
 }
 
 /**
@@ -292,7 +310,7 @@ class OnSelectionChanged(
 /** A process-metric report: accounted for before the platform's callback returns — it may be delivered once. */
 class OnMetricReport(runtime: Runtime, private val account: ProcessAccount) :
     InboundEntryPoint<ProcessMetricPayload>(runtime) {
-    override fun run(arg: ProcessMetricPayload) = account.handle(arg)
+    override fun Delivery.run(arg: ProcessMetricPayload) = account.handle(arg)
 }
 
 // ── What the entry points share ──────────────────────────────────────────────────────────────────────────────────────

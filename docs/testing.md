@@ -1098,7 +1098,10 @@ it cannot say when the app is settled, and it has no loop to fire the app's time
 mocks the clock, the `clock` service moves the time the app reads). Its stream carries what its **mocked** systems
 record — the same mocks, telling the same events as on the JVM host — and each state the screen shows, told by the
 decorated screen (`RigUi`), which sees the real screen too; a system the launch leaves real tells nothing, so a wait for
-a real system's outcome stays a read of its state. There is no `Settled`. Each act (a typed service's call
+a real system's outcome stays a read of its state. Its app's runtime tells every entry point's work too (`Delivered`,
+`Answered`, `Done`), whichever adapter delivered it, real or mocked — so on a device, where nothing settles, an act's
+tagged `Done` is "the app finished what this caused". The upload extension, its own process, tells only its own log.
+There is no `Settled`. Each act (a typed service's call
 that is no read) is announced (`Acted`) and run where its request arrived, and **a stream starts where the latest act
 began**: a device's app outlives any one caller, so the host keeps only what came since the act before the latest (at
 most `WorldEvents.KEPT_AT_MOST` events) — a wait that follows its caller's act misses nothing of it and replays nothing
@@ -1271,7 +1274,8 @@ backend's request, or the extension's `process()` on the operating system's own 
 until it answers.
 
 The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
-(`Acted`), each state the app showed (`UiChanged`), what the outside systems recorded (the backend's
+(`Acted`), what the app's runtime tells of each entry point's work — `Delivered`, `Answered`, `Done` (`docs/patterns.md`,
+"Entry events") — each state the app showed (`UiChanged`), what the outside systems recorded (the backend's
 `BackendReceived`, `BackendHeld`, `DeviceRegistered` and `PushSent`, and `UnionChanged` — a photo that became, or
 stopped being, what the event offers its members — and what it STORED — one event per stored change, each naming
 exactly what changed: `EventCreated`, `MemberJoined`, `MemberLeft`, `ManifestPublished` (every applied publish, with
@@ -1297,6 +1301,15 @@ exactly that settle, so `settled { … }` judges it and hands it on (`given` han
 `then` the world as it left it). A field joins only if a system outside the app records it, it is cheap to read at
 every settle, and some test asserts it at a settle. Every request a caller makes runs as a task of the loop — an act announced first, a read
 not — so everything after an act's announcement is the act's or later.
+
+**An act's own work ends at its `done`.** A delivery made while a tagged act runs carries the act's tag, and so do its
+`Answered` and its `Done` — a tap's `OnTap`, the `os` service's deliveries, and a mock's own (a landed transfer's
+`OnUploadFinished`). `Done` comes once the delivery's run and everything it started have ended, so `event<Done> { it.tag
+== … }` is "the app finished what my act caused" on every host — a device too, where nothing settles. `Answered` is
+only the operating system's answer: several entries answer and then work on. `Acted` stays the act's own record: an
+act that delivers nothing still has one, and a delivery the act caused only indirectly — a session's
+`OnUploadFinished` after `OnUploadSessionEvents` — carries no tag. On a device the upload extension's events stay in
+its own process (its log), so a test that needs its work waits on what that work caused.
 
 Under mocked time the clock moves only when a test moves it: `advance(d)` — or `advanceTo(instant)`, which may also move
 it back and then fires nothing — fires each timer due on the way at its own instant, settling between them, and reports

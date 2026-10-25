@@ -31,7 +31,6 @@ import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.JoinDetailsQuery
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -73,21 +72,23 @@ internal suspend fun <T> AppCore.awaitingOnCoreLane(
 
 /**
  * A fire-and-forget command, run on the composition lane ([AppCore.coreLane]). The tap returns at once and the
- * outcome rides a read-model. That includes a hand-off to the platform's UI — a sheet, a prompt, the Settings page:
- * the main thread is the ADAPTER's to reach, each platform-UI adapter hopping there itself (`docs/architecture.md`,
- * "Dispatcher lanes are fixed by the composition"), so this graph names no main lane at all. A hand-off's [Handoff]
- * is the one return value, and it is only rendered onto the tap's line by [result] — nothing acts on it.
+ * outcome rides a read-model, while the work runs as the tap's — its `done` waits for it. That includes a hand-off to
+ * the platform's UI — a sheet, a prompt, the Settings page: the main thread is the ADAPTER's to reach, each
+ * platform-UI adapter hopping there itself (`docs/architecture.md`, "Dispatcher lanes are fixed by the composition"),
+ * so this graph names no main lane at all. A hand-off's [Handoff] is the one return value, and it is only rendered onto
+ * the tap's line by [result] — nothing acts on it.
  *
  * The tap's line is written INSIDE the launch deliberately: written by the launcher instead it would report the
  * hand-off rather than the work, which is how `← tap.create (1ms)` came to be logged against a multi-second mint.
  */
-private fun <T> AppCore.detachedOnCoreLane(
+private suspend fun <T> AppCore.detachedOnCoreLane(
     name: String,
     params: String = "",
     result: (T) -> String = { "" },
     block: suspend () -> T,
 ) {
-    scope.launch(Trigger.of(name)) {
+    // Alongside the tap that ran it: a tap's `done` waits for its command, which holds no background time of its own.
+    runtime.alongside(name) {
         val answer = block()
         tapLog.i { "$name($params) = ${result(answer)}" }
     }
@@ -134,7 +135,7 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
 
     // Create: mint via the backend; the use-case routes the minted event into the SAME join
     // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
-    override fun create(
+    override suspend fun create(
         name: String,
         startsAt: EventStart,
         endsAt: EventEnd,
@@ -156,14 +157,14 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     // Share is pure platform (a system sheet over the top view controller). Decorated like the
     // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
     // instrumentation exists to eliminate.
-    override fun share(url: String, title: String) =
+    override suspend fun share(url: String, title: String) =
         detachedOnCoreLane("tap.share", result = { h: Handoff -> "$h" }) {
             ports.systemUi.share(url, title).recordingRefusal(tapLog, "tap.share")
         }
 
     // Leaving the app for the store page — UI lane and
     // instrumented, like every other platform-surface command.
-    override fun openLink(url: String) =
+    override suspend fun openLink(url: String) =
         detachedOnCoreLane("tap.openLink", result = { h: Handoff -> "$h" }) {
             ports.systemUi.openUrl(url).recordingRefusal(tapLog, "tap.openLink")
         }
@@ -171,13 +172,13 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
     // The permission user-taps, bound to the gallery here so presentation
     // never names it. Each tap is fire-and-forget: the screen follows the permission read-model StateFlow,
     // never the gallery's answer.
-    override fun requestAccess() = detachedOnCoreLane("tap.requestAccess") { ports.gallery.requestAccess() }
+    override suspend fun requestAccess() = detachedOnCoreLane("tap.requestAccess") { ports.gallery.requestAccess() }
 
-    override fun openSettings() = detachedOnCoreLane("tap.openSettings") { ports.systemUi.openSettings() }
+    override suspend fun openSettings() = detachedOnCoreLane("tap.openSettings") { ports.systemUi.openSettings() }
 
     // The picker presentation is platform surface; the selection outcome arrives only via
     // the selection-change seam.
-    override fun choosePhotos() = detachedOnCoreLane("tap.choosePhotos") { ports.gallery.widenSelection() }
+    override suspend fun choosePhotos() = detachedOnCoreLane("tap.choosePhotos") { ports.gallery.widenSelection() }
 
     // In-place membership settings: range, direction and album without leaving (`OnSettingsChanged`). Distinct from
     // `openSettings` (the system settings page). Answered on the settings status under the returned id.

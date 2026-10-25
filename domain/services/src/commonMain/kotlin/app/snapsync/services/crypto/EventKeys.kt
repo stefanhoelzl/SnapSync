@@ -103,7 +103,12 @@ class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
      * whether it was kept, running [onRestored] first when it was. A keep the store refuses is logged by [log] and
      * answers `false`.
      */
-    fun restoreLost(linkKey: String, membership: EventConfig?, log: Logger, onRestored: () -> Unit): Boolean {
+    suspend fun restoreLost(
+        linkKey: String,
+        membership: EventConfig?,
+        log: Logger,
+        onRestored: suspend () -> Unit,
+    ): Boolean {
         val opens = lostKeyIdOf(membership)?.let { it == idOf(linkKey) } == true
         val kept = opens && runCatchingCancellable { keep(linkKey) }
             .onFailure { log.w { "the reopened invite's key could not be kept: $it" } }

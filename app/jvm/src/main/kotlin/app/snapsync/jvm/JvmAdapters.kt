@@ -10,6 +10,7 @@ import app.snapsync.ports.DevControls
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Download
+import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Files
@@ -86,6 +87,8 @@ class JvmEntries(
     val ui: Ui<UiState, UiIntent>,
     val devControls: DevControls,
     val extensionHost: ExtensionHost,
+    /** Where both processes' runtimes tell their entry points' work — the control channel's stream, over the mocks. */
+    val entryEvents: EntryEvents,
 )
 
 /** The external systems the app talks to: the backend, the photo library, and the OS's background machinery. */

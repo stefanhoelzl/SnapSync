@@ -10,6 +10,8 @@ import app.snapsync.inbound.LogWriter
 import app.snapsync.inbound.Running
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
+import app.snapsync.ports.EntryEvent
+import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.ThreadLabel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -18,18 +20,23 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /** The operating system's background time, as a test plays it: every hold, and which are still open. */
-class FakeBackgroundTime : BackgroundTime {
+class FakeBackgroundTime(private val entries: RecordingEntryEvents? = null) : BackgroundTime {
     val holds = mutableListOf<Hold>()
 
     /** The next hold is begun with its time already up: its expiry fires before `begin` returns. */
     var upOnArrival = false
 
-    override fun begin(label: String, expiry: Running): BackgroundTimeHold = Hold(label, expiry).also {
+    override fun begin(label: String, expiry: Running): BackgroundTimeHold = Hold(
+        label,
+        expiry,
+        entries?.told?.size,
+    ).also {
         holds += it
         if (upOnArrival) expiry.expire()
     }
 
-    class Hold(val label: String, val expiry: Running) : BackgroundTimeHold {
+    /** [toldBefore]: how many entry events had been told when it was begun. */
+    class Hold(val label: String, val expiry: Running, val toldBefore: Int?) : BackgroundTimeHold {
         var ended = false
 
         override fun end() {
@@ -49,6 +56,24 @@ class FakeThreadLabel : ThreadLabel {
     }
 
     override fun current(): String? = label
+}
+
+/** Every entry event the runtime told, in order. */
+class RecordingEntryEvents : EntryEvents {
+    val told = mutableListOf<EntryEvent>()
+
+    override fun tell(event: EntryEvent) {
+        told += event
+    }
+
+    /** What was told, as `<kind> <entry>[ <outcome>]` — the run ids and durations left out. */
+    fun seen(): List<String> = told.map {
+        when (it) {
+            is EntryEvent.Delivered -> "delivered ${it.entry}"
+            is EntryEvent.Answered -> "answered ${it.entry}"
+            is EntryEvent.Done -> "done ${it.entry} ${it.outcome}"
+        }
+    }
 }
 
 /** Every line the log was handed. */
@@ -75,15 +100,15 @@ class CountingCompletion : Completion {
 
 /** A runtime over the test scheduler, with its fakes. */
 class World(val test: TestScope, grace: Duration = 1.seconds, holdsTime: Boolean = true) {
-    val backgroundTime = FakeBackgroundTime()
+    val entries = RecordingEntryEvents()
+    val backgroundTime = FakeBackgroundTime(entries)
     val label = FakeThreadLabel()
     val log = RecordingLog().also { it.install() }
     private val lane = StandardTestDispatcher(test.testScheduler)
     val runtime = Runtime(
         test.backgroundScope.coroutineContext[kotlinx.coroutines.Job],
         lane,
-        backgroundTime.takeIf { holdsTime },
-        label,
+        RuntimePorts(backgroundTime.takeIf { holdsTime }, label, entries),
         grace,
     )
 }

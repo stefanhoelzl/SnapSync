@@ -48,6 +48,7 @@ open class MockDevice(
     val keychain = SecureStoreMock(mapOf(TrustSlots.DEVICE_ID to ownDeviceId))
     val enclave = DeviceIntegrityMock()
     val crashReporter = CrashReporterMock()
+    val entryEvents = EntryEventsMock()
     val processInfo = ProcessInfoMock()
     val processMetrics = ProcessMetricsMock()
 

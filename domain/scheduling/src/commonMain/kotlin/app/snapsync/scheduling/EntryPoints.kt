@@ -44,13 +44,17 @@ abstract class GrantedEntryPoint<A>(private val runtime: Runtime) : Granted<A> {
 
 /**
  * The entry point of a delivery the platform makes once, synchronously, and does not repeat: [run] executes on the
- * delivering thread, labelled and contained, and **persists what the delivery means before it returns**.
+ * delivering thread, labelled and contained, and **persists what the delivery means before it returns**. What it
+ * starts without awaiting it starts through its [Delivery], so its `done` waits for it.
  */
 @OptIn(InboundImplementation::class)
 abstract class InboundEntryPoint<A>(private val runtime: Runtime) : Inbound<A, Unit> {
-    protected abstract fun run(arg: A)
+    protected abstract fun Delivery.run(arg: A)
 
-    final override fun deliver(arg: A) = runtime.inline(name) { run(arg) }
+    /** Which of its kind [arg] is, told on the delivery's `delivered` — `null`, unless the kind has several. */
+    protected open fun about(arg: A): String? = null
+
+    final override fun deliver(arg: A) = runtime.inline(name, about(arg)) { it.run(arg) }
 
     private val name: String get() = this::class.simpleName.toString()
 }

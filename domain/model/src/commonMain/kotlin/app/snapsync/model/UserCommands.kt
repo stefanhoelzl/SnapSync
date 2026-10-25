@@ -72,19 +72,19 @@ import app.snapsync.domain.request.RequestId
 interface UserCommands {
     fun leave()
 
-    fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?)
+    suspend fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?)
 
     fun commitJoin(choice: JoinChoice): RequestId
 
-    fun share(url: String, title: String)
+    suspend fun share(url: String, title: String)
 
-    fun requestAccess()
+    suspend fun requestAccess()
 
-    fun openSettings()
+    suspend fun openSettings()
 
-    fun openLink(url: String)
+    suspend fun openLink(url: String)
 
-    fun choosePhotos()
+    suspend fun choosePhotos()
 
     fun reconfigure(choice: ShareChoice): RequestId
 
