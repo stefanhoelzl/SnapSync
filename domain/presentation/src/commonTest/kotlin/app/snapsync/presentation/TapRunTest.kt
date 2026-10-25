@@ -20,8 +20,8 @@ import app.snapsync.model.UserCommands
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow

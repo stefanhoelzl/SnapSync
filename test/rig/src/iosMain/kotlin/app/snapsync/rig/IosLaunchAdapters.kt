@@ -58,6 +58,9 @@ class RigLaunch internal constructor(
     /** The world the channel serves its callers' acts in: the events, from the last act on. */
     val hostWorld: HostWorld = HostWorld.onADevice(events)
 
+    /** Where the app's runtime tells its entry points' work: the mocked device's, which feeds [hostWorld]'s events. */
+    val entryEvents: EntryEvents = world.device.entryEvents.port()
+
     private val chosen: LaunchAdapters.Chosen? = launch as? LaunchAdapters.Chosen
 
     /** Why this launch composed nothing, or `null` for one that composed. */
