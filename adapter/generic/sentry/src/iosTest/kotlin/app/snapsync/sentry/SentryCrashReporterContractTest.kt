@@ -60,6 +60,11 @@ class SentryCrashReporterContractTest {
             if (state == CrashReporterState.ACROSS_A_RESTART) {
                 return Entered.Unreachable("sentry-cocoa re-stamps a given build number at send, so iOS is given none")
             }
+            if (state == CrashReporterState.AFTER_A_PROCESS_DEATH) {
+                return Entered.Unreachable(
+                    "a process death is SentryProcessDeathContractTest's: it needs a next launch",
+                )
+            }
             val writers = Logger.config.logWriterList
             resetChannel()
             val ingest = LoopbackIngest()

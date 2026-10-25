@@ -15,6 +15,7 @@ import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -317,7 +318,13 @@ class StatusContainerHost(
             // changes the semantics fails the build rather than quietly restoring the dead container.
             buildSettings = {
                 eventLoopDispatcher = { reduction }
-                exceptionHandler = CoroutineExceptionHandler { _, throwable -> onIntentError(throwable) }
+                exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+                    // Nothing catches an InvalidProgramState: rethrown, it ends the process.
+                    when (throwable) {
+                        is InvalidProgramState -> throw throwable
+                        else -> onIntentError(throwable)
+                    }
+                }
             },
         ) {
             intent {

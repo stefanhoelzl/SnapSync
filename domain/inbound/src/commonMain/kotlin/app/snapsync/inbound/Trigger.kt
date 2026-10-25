@@ -7,13 +7,10 @@ import kotlin.coroutines.CoroutineContext
  * What started a piece of work: the entry points it runs for, by name (`OnHeartbeat`). It rides in the coroutine
  * context, so everything the work does — however far it suspends, hops or launches through scheduling — still knows
  * it, and every log line it writes is labelled `[OnHeartbeat]`. Work shared by several entry points (a single-flight
- * sequence a second trigger joined) carries all of them: `[OnHeartbeat+OnSilentPush]`.
+ * sequence a second trigger joined) carries all of them: `[OnHeartbeat+OnSilentPush]`. [of] and [plus] are the only
+ * ways in, so a trigger names at least one entry point.
  */
-class Trigger(val names: List<String>) : AbstractCoroutineContextElement(Trigger) {
-    init {
-        require(names.isNotEmpty()) { "a trigger names at least one entry point" }
-    }
-
+class Trigger private constructor(val names: List<String>) : AbstractCoroutineContextElement(Trigger) {
     /** How a line shows it. */
     val label: String get() = names.joinToString("+")
 

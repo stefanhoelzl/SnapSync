@@ -1,6 +1,7 @@
 package app.snapsync.services.ledger
 
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.Stored
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.LedgerState
@@ -11,6 +12,8 @@ import app.snapsync.model.NEEDS_JOB_STATES
 import app.snapsync.model.PendingResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
+import app.snapsync.services.databases.held
+import app.snapsync.services.databases.use
 import app.snapsync.services.upload.TransferRecord
 
 /**
@@ -69,7 +72,7 @@ class LedgerService(
     @Suppress("LongParameterList")
     private fun toEntry(
         key: String,
-        assetId: AssetId,
+        assetId: Stored<AssetId>,
         state: LedgerState,
         creationDate: String,
         role: String,
@@ -78,7 +81,7 @@ class LedgerService(
         destinationPath: String?,
     ) = LedgerEntry(
         key,
-        assetId,
+        held(assetId),
         state,
         creationDate = creationDate,
         role = roleOrNull(role),
@@ -95,7 +98,7 @@ class LedgerService(
         val eventId = event() ?: return false
         val applied = queries.transactionWithResult {
             queries.recordUnlessSettled(
-                eventId, entry.key, entry.assetId, entry.state,
+                eventId, entry.key, Stored.Valid(entry.assetId), entry.state,
                 entry.creationDate, wireOf(entry.role), entry.contentType, entry.originalFilename,
                 entry.destinationPath, DONE_STATES,
             )
@@ -115,7 +118,7 @@ class LedgerService(
         val applied = queries.transactionWithResult {
             entries.count { entry ->
                 queries.recordUnlessSettled(
-                    eventId, entry.key, entry.assetId, entry.state,
+                    eventId, entry.key, Stored.Valid(entry.assetId), entry.state,
                     entry.creationDate, wireOf(entry.role), entry.contentType, entry.originalFilename,
                     entry.destinationPath, DONE_STATES,
                 )
@@ -151,7 +154,7 @@ class LedgerService(
         ) { key, assetId, state, creationDate, role, contentType, filename ->
             LedgerEntry(
                 key = key,
-                assetId = assetId,
+                assetId = held(assetId),
                 state = state,
                 creationDate = creationDate,
                 role = roleOrNull(role),
@@ -202,7 +205,7 @@ class LedgerService(
      */
     suspend fun assetProgress(): Map<AssetId, Boolean> =
         queries.assetProgress(doneStates = DONE_STATES, eventId = event() ?: return emptyMap()) { assetId, notDone ->
-            assetId to (notDone == 0L)
+            held(assetId) to (notDone == 0L)
         }
             .executeAsList()
             .toMap()
@@ -216,7 +219,7 @@ class LedgerService(
         queries.selectPending(
             event() ?: return emptyList(),
             DONE_STATES,
-        ) { assetId, key -> PendingResource(assetId, key) }
+        ) { assetId, key -> PendingResource(held(assetId), key) }
             .executeAsList()
 
     /**
@@ -287,7 +290,7 @@ class LedgerService(
             queries.deleteEvent(eventId.value)
             entries.forEach {
                 queries.insert(
-                    eventId.value, it.key, it.assetId, it.state,
+                    eventId.value, it.key, Stored.Valid(it.assetId), it.state,
                     it.creationDate, wireOf(it.role), it.contentType, it.originalFilename,
                     it.destinationPath,
                 )

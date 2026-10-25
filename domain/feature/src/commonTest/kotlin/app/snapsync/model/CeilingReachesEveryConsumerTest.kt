@@ -8,6 +8,7 @@ import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.format.TimestampText
 import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -56,7 +57,7 @@ class CeilingReachesEveryConsumerTest {
 
     private fun resource(assetId: String, creationDate: String) = Resource(
         filename = "$assetId-primary.heic",
-        assetId = AssetId(assetId),
+        assetId = testAssetId(assetId),
         contentType = "public.heic",
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to creationDate,
@@ -82,7 +83,7 @@ class CeilingReachesEveryConsumerTest {
 
     @Test
     fun `the byte upload admits only the in-window asset`() = runTest {
-        assertEquals(setOf(AssetId("IN")), admitted())
+        assertEquals(setOf(testAssetId("IN")), admitted())
     }
 
     @Test
@@ -91,7 +92,7 @@ class CeilingReachesEveryConsumerTest {
         // in `device.json`, entered the event union, and was offered to every other member as bytes that
         // were never uploaded. A 404 for everyone.
         val manifest = projectDeviceManifest(testDeviceId("dev"), ledgerRows(), policyOf())
-        assertEquals(listOf(AssetId("IN")), manifest.assets.map { it.assetId })
+        assertEquals(listOf(testAssetId("IN")), manifest.assets.map { it.assetId })
     }
 
     @Test
@@ -137,7 +138,7 @@ class CeilingReachesEveryConsumerTest {
 
         assertEquals(fromResources, fromFacts)
         assertEquals(fromResources, fromManifest)
-        assertTrue(AssetId("AFTER") !in fromResources, "the post-ceiling asset is admitted by no consumer")
+        assertTrue(testAssetId("AFTER") !in fromResources, "the post-ceiling asset is admitted by no consumer")
     }
 
     @Test
@@ -145,6 +146,6 @@ class CeilingReachesEveryConsumerTest {
         // The control. Without it the tests above would pass just as well against a policy that dropped
         // the asset for some unrelated reason — which is precisely how the original bug hid.
         val unbounded = policyOf(ceiling = null)
-        assertEquals(setOf(AssetId("IN"), AssetId("AFTER")), admitted(unbounded))
+        assertEquals(setOf(testAssetId("IN"), testAssetId("AFTER")), admitted(unbounded))
     }
 }

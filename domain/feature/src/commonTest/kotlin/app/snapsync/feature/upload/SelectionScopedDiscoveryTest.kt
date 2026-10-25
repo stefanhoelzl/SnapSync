@@ -1,6 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
 import app.snapsync.model.CandidateScope
@@ -10,6 +9,7 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -58,7 +58,7 @@ class SelectionScopedDiscoveryTest {
     private fun resource(name: String) =
         Resource(
             filename = name,
-            assetId = AssetId(name),
+            assetId = testAssetId(name),
             contentType = "image/jpeg",
             metadata = emptyMap(),
             data = null,

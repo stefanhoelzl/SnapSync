@@ -624,7 +624,7 @@ private fun Manifest.inApp(deviceId: String): DeviceManifest? = runCatchingCance
         deviceId = deviceIdOf(deviceId),
         assets = assets.map { asset ->
             DeviceManifestAsset(
-                AssetId(asset.assetId),
+                AssetId.parse(asset.assetId)!!,
                 asset.creationDate,
                 asset.resources.map { r ->
                     val role = ResourceRole.entries.first { it.wire == r.role.value }

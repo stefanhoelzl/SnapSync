@@ -1,6 +1,5 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
@@ -9,6 +8,7 @@ import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.services.CapturingLogWriter
 import app.snapsync.services.gallery.correlation
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
@@ -25,9 +25,9 @@ import kotlin.test.assertTrue
  */
 class ImportMarkersTest {
 
-    private val ref = AssetRef(testDeviceId("device-B"), AssetId("remote-1"))
+    private val ref = AssetRef(testDeviceId("device-B"), testAssetId("remote-1"))
     private val created = PlatformAssetId("local-1")
-    private val marker = AssetId("local-1")
+    private val marker = testAssetId("local-1")
     private val downloads = DownloadService(inMemoryDatabases())
     private val log = CapturingLogWriter()
     private val markers = ImportMarkers(downloads, log.logger())

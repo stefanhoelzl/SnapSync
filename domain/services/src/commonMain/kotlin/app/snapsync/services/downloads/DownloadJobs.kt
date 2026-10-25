@@ -36,9 +36,10 @@ internal fun encodeTag(ref: AssetRef, resourceKey: String, eventId: String): Str
 
 internal fun decodeTag(description: String): TaskTag? {
     val parts = description.split(SEP)
-    if (parts.size !in LEGACY_TAG_FIELDS..TAG_FIELDS || !AssetId.isCanonical(parts[1])) return null
+    if (parts.size !in LEGACY_TAG_FIELDS..TAG_FIELDS) return null
     val device = DeviceId.parse(parts[0]) ?: return null
-    return TaskTag(AssetRef(device, AssetId(parts[1])), parts[2], parts.getOrElse(LEGACY_TAG_FIELDS) { "" })
+    val asset = AssetId.parse(parts[1]) ?: return null
+    return TaskTag(AssetRef(device, asset), parts[2], parts.getOrElse(LEGACY_TAG_FIELDS) { "" })
 }
 
 /** A tag's fields: source device, source asset, resource key, event. */

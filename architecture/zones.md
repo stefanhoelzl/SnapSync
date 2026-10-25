@@ -81,8 +81,11 @@ flowchart LR
   adapter_generic_mock --> test_contracts
   adapter_generic_mock --> test_levers
   adapter_generic_mock --> ui_state
+  adapter_generic_sentry --> adapter_generic_app
+  adapter_generic_sentry --> adapter_ios_ext_safe
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
+  adapter_generic_sentry --> domain_scheduling
   adapter_generic_sentry --> test_contracts
   adapter_ios_app_only --> adapter_generic_motionphoto
   adapter_ios_app_only --> adapter_ios_ext_safe
@@ -175,6 +178,7 @@ flowchart LR
   domain_presentation --> ui_state
   domain_query --> domain_data
   domain_query --> domain_domain
+  domain_scheduling --> domain_domain
   domain_scheduling --> domain_inbound
   domain_scheduling --> domain_ports
   domain_services --> domain_data

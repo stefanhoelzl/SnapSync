@@ -24,11 +24,11 @@ class EntryPointTest {
     private class OnWork(world: World, val body: suspend (String) -> Unit) : BackgroundEntryPoint<String>(
         world.runtime,
     ) {
-        override suspend fun run(arg: String) = body(arg)
+        override suspend fun run(arg: String, on: Run) = body(arg)
     }
 
     private class OnWake(world: World, val body: suspend (String) -> Unit) : GrantedEntryPoint<String>(world.runtime) {
-        override suspend fun run(arg: String) = body(arg)
+        override suspend fun run(arg: String, on: Run) = body(arg)
     }
 
     @Test
@@ -187,7 +187,7 @@ class EntryPointTest {
         kotlinx.coroutines.test.runTest {
             val world = World(this)
             class OnAsk(val fail: Boolean) : AnsweredEntryPoint<Int, String>(world.runtime, onFailure = "FAILED") {
-                override suspend fun run(arg: Int): String {
+                override suspend fun run(arg: Int, on: Run): String {
                     check(!fail) { "refused" }
                     return "${currentCoroutineContext()[Trigger]}:${arg * 2}"
                 }
@@ -225,7 +225,7 @@ class EntryPointTest {
                     answerOn = lane,
                 )
             class OnAsk : AnsweredEntryPoint<Unit, String>(runtime, onFailure = "FAILED") {
-                override suspend fun run(arg: Unit): String = "${label.current()}:${lane.dispatched}"
+                override suspend fun run(arg: Unit, on: Run): String = "${label.current()}:${lane.dispatched}"
             }
             assertEquals("OnAsk:1", OnAsk().answer(Unit), "the work ran in the lane's task, labelled with its trigger")
         } finally {

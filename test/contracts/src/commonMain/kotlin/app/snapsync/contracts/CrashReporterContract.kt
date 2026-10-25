@@ -60,6 +60,42 @@ enum class CrashReporterState {
      * not delivered reaches it.
      */
     ACROSS_A_RESTART,
+
+    /**
+     * As [ON_THE_WIRE], in the process that starts after the app's processes ENDED on an uncaught
+     * `InvalidProgramState` ([CrashReporterSubject.death]) — the next launch, for real: the channel was never started in
+     * this process before the clause starts it, so what it delivers is what the dead processes left. Only a binding that
+     * can run and end processes of the app around one that runs the clause reaches it.
+     */
+    AFTER_A_PROCESS_DEATH,
+}
+
+/**
+ * How an `InvalidProgramState` reaches the point where it ends the process (`docs/patterns.md`, "Invalid program
+ * state") — each a road the production code takes, never a stand-in for one.
+ */
+enum class FatalRoute {
+    /** Work nobody awaits: thrown in the process runtime's scope, whose handler ends the process. */
+    UNAWAITED_WORK,
+
+    /** A delivery the platform makes and waits on: thrown while the runtime answers it on the delivering thread. */
+    PLATFORM_DELIVERY,
+
+    /** A block or delegate method Objective-C calls into Kotlin through `objcBoundary` (iOS). */
+    OBJC_CALLBACK,
+}
+
+/**
+ * The app's processes, as far as a clause in [CrashReporterState.AFTER_A_PROCESS_DEATH] can end them: each [endOn] runs
+ * one with the channel started against the clause's destination under the production handlers, until an
+ * `InvalidProgramState` whose `because` is [becauseOf] its route reaches that route — and returns once that process has
+ * ended.
+ */
+interface ProcessDeath {
+    /** The routes this host's processes take. */
+    val routes: List<FatalRoute>
+
+    fun endOn(route: FatalRoute)
 }
 
 /**
@@ -85,6 +121,8 @@ class DeliveredEvent(
     val environment: String? = null,
     /** The build number the event names, as transmitted. */
     val dist: String? = null,
+    /** The text of each exception the event carries, as transmitted — a thrown exception's message. */
+    val exceptionValues: List<String> = emptyList(),
 )
 
 /**
@@ -124,6 +162,8 @@ class CrashReporterSubject(
     val observe: CrashObservation,
     /** How to relaunch the channel — handed only in [CrashReporterState.ACROSS_A_RESTART]. */
     val restart: CrashRestart? = null,
+    /** How to end the app's processes — handed only in [CrashReporterState.AFTER_A_PROCESS_DEATH]. */
+    val death: ProcessDeath? = null,
 )
 
 /**
@@ -146,8 +186,12 @@ class CrashReporterSubject(
  *   verbatim, and the worst-case dump — full log budget, a full set of over-long breadcrumbs — still arrives below
  *   the ingest's maximum size, so a refused one never blocks the queue.
  *
- * **Not a clause**, for want of a host (documented on the adapter): that a context rides a crash delivered on a LATER
- * launch after a real process death — [CrashReporterState.ACROSS_A_RESTART] restarts the channel, not the process.
+ * - A process that ends on an uncaught `InvalidProgramState` — whatever road it took there — leaves a crash report the
+ *   next start delivers, its `because` intact through the production handlers ([CrashReporterState.AFTER_A_PROCESS_DEATH]:
+ *   a real process death and a real next launch).
+ *
+ * **Not a clause**: that a CONTEXT set before such a death rides its report — the death clause asserts the report and
+ * its guarantee, and [CrashReporterState.ACROSS_A_RESTART]'s clauses what a channel restart keeps.
  *
  * Negative outcomes ("exactly one", "nothing") are judged against a **sentinel**: after the stimulus the clause
  * captures a sentinel event and waits for it, then reads only what was delivered before it. Waiting a fixed time and
@@ -170,6 +214,16 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         onEvent = { scrubbedEvent(describedBuildStamped(it)) },
         onBreadcrumb = ::scrubbedCrumb,
     )
+
+    /**
+     * The guarantee a process ended on [route] names — one literal per route, as every `InvalidProgramState`'s is, so
+     * each report is told apart by its text alone.
+     */
+    fun becauseOf(route: FatalRoute): String = when (route) {
+        FatalRoute.UNAWAITED_WORK -> "the contract's unawaited work is guaranteed never to fail"
+        FatalRoute.PLATFORM_DELIVERY -> "the contract's delivery is guaranteed never to fail"
+        FatalRoute.OBJC_CALLBACK -> "the contract's callback is guaranteed never to fail"
+    }
 
     fun dumpFor(clauseId: String): DiagnosticDump = DiagnosticDump(
         note = "$clauseId: upload of ${uuidFor(clauseId)} never finished",
@@ -456,6 +510,35 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             assertEquals("990", event.dist, "the build number it was started with")
             assertEquals("contract-platform", event.tags[PLATFORM_TAG], "the platform tag: ${event.tags}")
             assertEquals("app.snapsync.contract", event.tags[PROCESS_TAG], "the process tag: ${event.tags}")
+        }
+
+        // ---- AFTER_A_PROCESS_DEATH: what the next launch delivers -----------------------------------------------
+
+        clause(
+            "DEATH_INVALID_PROGRAM_STATE_IS_DELIVERED_ON_THE_NEXT_START",
+            CrashReporterState.AFTER_A_PROCESS_DEATH,
+            covers = cells {
+                on<CrashReporter> {
+                    answers(CrashReporter::listen).returns()
+                    answers(CrashReporter::start).returns()
+                }
+            },
+        ) { s ->
+            val death = assertNotNull(s.death, "the state hands the app's processes")
+            assertTrue(death.routes.isNotEmpty(), "a host's processes take at least one road to the end")
+            death.routes.forEach { death.endOn(it) }
+            s.startListening(PRODUCTION)
+            val expected = death.routes.map(::becauseOf)
+            val events = s.observe.delivered { delivered ->
+                expected.all { because -> delivered.any { because in it.exceptionValues } }
+            }
+            expected.forEach { because ->
+                val report = events.first { because in it.exceptionValues }
+                assertTrue(
+                    report.hasException,
+                    "the process that ended on \"$because\" is reported as the exception it threw, its stack with it",
+                )
+            }
         }
 
         // ---- ACROSS_A_RESTART: what a relaunch delivers ------------------------------------------------------------

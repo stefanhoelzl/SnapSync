@@ -1,6 +1,5 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -29,6 +28,7 @@ import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.MarkedPhotoLookup
 import app.snapsync.services.gallery.resourcesFrom
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.awaitCancellation
@@ -58,7 +58,7 @@ class ReceivedPhotoAdoptionTest {
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
-    private fun ref(asset: String, device: String = other) = AssetRef(testDeviceId(device), AssetId(asset))
+    private fun ref(asset: String, device: String = other) = AssetRef(testDeviceId(device), testAssetId(asset))
 
     private fun unionOf(vararg refs: AssetRef, taken: String = date) = refs.map {
         UnionAsset(
@@ -132,7 +132,7 @@ class ReceivedPhotoAdoptionTest {
             world.store.settledAmong(listOf(ref("A"), ref("B"))),
             "only the photo still in the library",
         )
-        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds(), "and it is never shared back")
+        assertEquals(setOf(testAssetId("L-A")), world.store.suppressedLocalIds(), "and it is never shared back")
         assertEquals(1, world.store.counts(testEventId("EVENT-1")).imported, "it counts as received for this event")
     }
 
@@ -148,7 +148,7 @@ class ReceivedPhotoAdoptionTest {
         world.adoption(me).adopt(cfg)
 
         assertEquals(setOf(ref("A")), world.store.settledAmong(listOf(ref("A"))))
-        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("L-A")), world.store.suppressedLocalIds())
     }
 
     @Test
@@ -175,7 +175,7 @@ class ReceivedPhotoAdoptionTest {
             testEventId("EVENT-0"),
             members = listOf(earlier),
         )
-        world.store.markImported(earlier, AssetId("L-EARLIER"))
+        world.store.markImported(earlier, testAssetId("L-EARLIER"))
 
         world.adoption(me).adopt(cfg)
 
@@ -184,7 +184,7 @@ class ReceivedPhotoAdoptionTest {
             "the earlier event's refs are purged",
         )
         assertTrue(world.store.isSettled(earlier), "the photo is still never received twice")
-        assertEquals(setOf(AssetId("L-EARLIER")), world.store.suppressedLocalIds(), "and never shared back")
+        assertEquals(setOf(testAssetId("L-EARLIER")), world.store.suppressedLocalIds(), "and never shared back")
     }
 
     @Test
@@ -196,11 +196,11 @@ class ReceivedPhotoAdoptionTest {
             testEventId("EVENT-0"),
             members = listOf(earlier),
         )
-        world.store.markImported(earlier, AssetId("L-EARLIER"))
+        world.store.markImported(earlier, testAssetId("L-EARLIER"))
 
         world.adoption(me).ensureAdopted(cfg)
 
-        assertEquals(setOf(AssetId("L-EARLIER")), world.store.importedLocalIdsOf(testEventId("EVENT-0")))
+        assertEquals(setOf(testAssetId("L-EARLIER")), world.store.importedLocalIdsOf(testEventId("EVENT-0")))
     }
 
     @Test
@@ -254,7 +254,7 @@ class ReceivedPhotoAdoptionTest {
 
         world.grant.value = LibraryGrant.GRANTED
         adoption.ensureAdopted(cfg)
-        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds(), "the first readable pass adopts")
+        assertEquals(setOf(testAssetId("L-A")), world.store.suppressedLocalIds(), "the first readable pass adopts")
 
         val reads = world.unionReads
         adoption.ensureAdopted(cfg)
@@ -282,7 +282,7 @@ class ReceivedPhotoAdoptionTest {
         )
         world.adoption(me).adopt(cfg)
         assertTrue(world.store.isSettled(ref("A")), "the library already holds it")
-        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("L-A")), world.store.suppressedLocalIds())
     }
 
     @Test
@@ -293,10 +293,10 @@ class ReceivedPhotoAdoptionTest {
             date,
             listOf(PlannedResource("A-primary.heic", "https://e/a", "primary", "image/heic", "IMG.HEIC")),
         )
-        world.store.recordCreatedLocalId(ref("A"), AssetId("L-NEW"))
+        world.store.recordCreatedLocalId(ref("A"), testAssetId("L-NEW"))
         world.adoption(me).adopt(cfg)
         assertFalse(world.store.isSettled(ref("A")), "its import's own confirmation settles it")
-        assertEquals(setOf(AssetId("L-NEW")), world.store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("L-NEW")), world.store.suppressedLocalIds())
     }
 
     @Test
@@ -357,7 +357,7 @@ class ReceivedPhotoAdoptionTest {
             world.store.recognition.isRecognised(cfg.eventId),
             "a pass that read the union recognises the membership",
         )
-        assertEquals(setOf(AssetId("L-A")), world.store.suppressedLocalIds(), "and the received photo is kept out")
+        assertEquals(setOf(testAssetId("L-A")), world.store.suppressedLocalIds(), "and the received photo is kept out")
     }
 
     @Test

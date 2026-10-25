@@ -9,8 +9,8 @@ import app.snapsync.model.ProcessingAnswer
 import app.snapsync.scheduling.AnsweredEntryPoint
 import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.InboundEntryPoint
+import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
-import app.snapsync.scheduling.steps
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.upload.requeueWhilePending
 import co.touchlab.kermit.Logger
@@ -34,7 +34,7 @@ class OnProcess(
 ) : AnsweredEntryPoint<Unit, ProcessingAnswer>(runtime, onFailure = ProcessingAnswer.FAILED) {
     private val log = Logger.withTag("OnProcess")
 
-    override suspend fun run(arg: Unit): ProcessingAnswer = steps {
+    override suspend fun run(arg: Unit, on: Run): ProcessingAnswer = on.steps {
         // The app renews into the shared protected item, which this process's copy cannot see: read it again.
         required { credential.reread() }
         required { membership.reload() }

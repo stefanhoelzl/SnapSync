@@ -4,6 +4,7 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -52,7 +53,7 @@ class EventPhotoSetResourcesTest {
         height: Long = 3024,
     ) = Resource(
         filename = filename,
-        assetId = AssetId(assetId),
+        assetId = testAssetId(assetId),
         contentType = if (isVideo) "public.mpeg-4" else "public.heic",
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to creationDate,
@@ -72,7 +73,7 @@ class EventPhotoSetResourcesTest {
         width: Long = 4032,
         height: Long = 3024,
     ) = AssetFacts(
-        assetId = AssetId(assetId),
+        assetId = testAssetId(assetId),
         captureDate = TimestampText.captureDate(creationDate),
         isScreenshot = isScreenshot,
         pixelArea = width * height,
@@ -106,7 +107,7 @@ class EventPhotoSetResourcesTest {
         val out = EventPhotoSet(policy()) { candidatesFromResources(library) }.resources()
 
         assertEquals(listOf("CAM-primary.heic"), out.map { it.filename })
-        assertTrue(out.none { it.assetId == AssetId("SHOT") }, "an excluded asset leaked a resource: $out")
+        assertTrue(out.none { it.assetId == testAssetId("SHOT") }, "an excluded asset leaked a resource: $out")
     }
 
     @Test
@@ -139,7 +140,7 @@ class EventPhotoSetResourcesTest {
 
         val out = EventPhotoSet(policy()) { candidates }.resources()
 
-        assertEquals(listOf(AssetId("CAM")), fetched, "a resource was read for an asset that was then dropped")
+        assertEquals(listOf(testAssetId("CAM")), fetched, "a resource was read for an asset that was then dropped")
         assertEquals(listOf("CAM.heic"), out.map { it.filename })
     }
 
@@ -160,7 +161,7 @@ class EventPhotoSetResourcesTest {
 
         override suspend fun read(assetIds: Set<AssetId>): Map<AssetId, List<Resource>> {
             requests += assetIds
-            return held.filterKeys { AssetId(it) in assetIds }.mapKeys { AssetId(it.key) }
+            return held.filterKeys { testAssetId(it) in assetIds }.mapKeys { testAssetId(it.key) }
         }
     }
 
@@ -177,9 +178,9 @@ class EventPhotoSetResourcesTest {
         val out = resourcesOf(candidates)
 
         assertEquals(listOf("A.heic", "B.heic", "L.heic", "C.heic"), out.map { it.filename })
-        assertEquals(listOf(setOf(AssetId("A"), AssetId("B"))), first.requests)
+        assertEquals(listOf(setOf(testAssetId("A"), testAssetId("B"))), first.requests)
         assertEquals(
-            listOf(setOf(AssetId("C"), AssetId("GONE"))),
+            listOf(setOf(testAssetId("C"), testAssetId("GONE"))),
             second.requests,
             "an asset the batch lost reads as none",
         )
@@ -192,6 +193,6 @@ class EventPhotoSetResourcesTest {
 
         assertEquals(listOf("A.heic"), held.resources().map { it.filename })
         assertEquals(emptyList(), gone.resources())
-        assertEquals(listOf(setOf(AssetId("A")), setOf(AssetId("GONE"))), batch.requests)
+        assertEquals(listOf(setOf(testAssetId("A")), setOf(testAssetId("GONE"))), batch.requests)
     }
 }

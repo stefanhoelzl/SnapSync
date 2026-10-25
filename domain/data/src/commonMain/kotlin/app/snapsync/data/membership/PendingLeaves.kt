@@ -1,7 +1,10 @@
 package app.snapsync.data.membership
 
+import app.snapsync.data.Parsed
+import app.snapsync.data.parsedAll
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.StoreWrite
+import app.snapsync.data.store.Stored
 import app.snapsync.domain.event.EventId
 import app.snapsync.ports.DbResult
 
@@ -15,15 +18,20 @@ class PendingLeaves(private val db: SharedDatabase) {
 
     /** The leaves still owed. */
     fun outstanding(): PendingLeavesRead =
-        when (val read = db.execute { it.pendingLeaveQueries.selectPendingLeaves().executeAsList().toSet() }) {
-            is DbResult.Ok -> PendingLeavesRead.Ok(read.value)
+        when (val read = db.execute { it.pendingLeaveQueries.selectPendingLeaves().executeAsList() }) {
+            is DbResult.Ok -> owed(parsedAll(read.value, "event id"))
             is DbResult.Failed -> PendingLeavesRead.Unavailable(read.detail)
         }
 
+    private fun owed(events: Parsed<List<EventId>>): PendingLeavesRead = when (events) {
+        is Parsed.Ok -> PendingLeavesRead.Ok(events.value.toSet())
+        is Parsed.Refused -> PendingLeavesRead.Unavailable("a leave owed is unreadable: ${events.detail}")
+    }
+
     /** The backend confirmed the leave of [event]: it is owed no more. */
-    fun confirm(
-        event: EventId,
-    ): StoreWrite = when (val written = db.execute { it.pendingLeaveQueries.confirmPendingLeave(event) }) {
+    fun confirm(event: EventId): StoreWrite = when (
+        val written = db.execute { it.pendingLeaveQueries.confirmPendingLeave(Stored.Valid(event)) }
+    ) {
         is DbResult.Ok -> StoreWrite.Written
         is DbResult.Failed -> StoreWrite.Failed(written.detail)
     }

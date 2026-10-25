@@ -38,9 +38,9 @@ import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.GrantedEntryPoint
 import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Pass
+import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Sequence
-import app.snapsync.scheduling.steps
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.crypto.EventKeys
@@ -75,15 +75,15 @@ class OnForeground(
     private val work: ForegroundWork,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<Unit>(runtime) {
-    override suspend fun run(arg: Unit) = steps {
+    override suspend fun run(arg: Unit, on: Run) = on.steps {
         required { foreground.entered() }
         required { pushTokens.request() }
         // The membership before the screen: a launch before the phone's first unlock since it restarted read it
         // unreadable, and the first frame is drawn from what the device holds, never from that read.
         isolated("membership") { prelude.membership() }
         required { host.assemble() }
-        isolated("own work") { work.run() }
-        required { wake.full(WakeKind.FOREGROUND) }
+        isolated("own work") { work.run(on) }
+        required { wake.full(WakeKind.FOREGROUND, on) }
     }
 }
 
@@ -107,9 +107,9 @@ class OnBackground(
 /** The network came back while the app was in front: what waited for it runs now. */
 class OnNetworkReturned(runtime: Runtime, private val work: ForegroundWork, private val wake: WakeWork) :
     BackgroundEntryPoint<Unit>(runtime) {
-    override suspend fun run(arg: Unit) = steps {
-        isolated("own work") { work.run() }
-        required { wake.full(WakeKind.NETWORK) }
+    override suspend fun run(arg: Unit, on: Run) = on.steps {
+        isolated("own work") { work.run(on) }
+        required { wake.full(WakeKind.NETWORK, on) }
     }
 }
 
@@ -124,11 +124,11 @@ class OnSilentPush(
     private val guard: PushTailGuard,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<PushMessage>(runtime) {
-    override suspend fun run(arg: PushMessage) = steps {
-        required { prelude.run() }
+    override suspend fun run(arg: PushMessage, on: Run) = on.steps {
+        required { prelude.run(on) }
         isolated("receive") { receiver.onSilentPush(arg.payload) }
         when (guard.joinsTail(arg.payload)) {
-            true -> detached { wake.full(WakeKind.SILENT_PUSH) }
+            true -> detached { wake.full(WakeKind.SILENT_PUSH, on) }
             false -> Unit
         }
     }
@@ -136,8 +136,8 @@ class OnSilentPush(
 
 /** The operating system's scheduled wake — the heartbeat, or a change to the library: the wake is the work. */
 class OnScheduledWake(runtime: Runtime, private val wake: WakeWork) : GrantedEntryPoint<WakeId>(runtime) {
-    override suspend fun run(arg: WakeId) = steps {
-        required { wake.afterPrelude(WakeKind.SCHEDULED) }
+    override suspend fun run(arg: WakeId, on: Run) = on.steps {
+        required { wake.afterPrelude(WakeKind.SCHEDULED, on) }
     }
 }
 
@@ -147,9 +147,9 @@ class OnScheduledWake(runtime: Runtime, private val wake: WakeWork) : GrantedEnt
  */
 class OnUploadSessionEvents(runtime: Runtime, private val drains: SessionDrains, private val wake: WakeWork) :
     BackgroundEntryPoint<SessionRelaunch>(runtime) {
-    override suspend fun run(arg: SessionRelaunch) = steps {
+    override suspend fun run(arg: SessionRelaunch, on: Run) = on.steps {
         required { drains.awaitAfter(arg.drainsBefore) }
-        detached { wake.afterPrelude(WakeKind.UPLOAD_SESSION) }
+        detached { wake.afterPrelude(WakeKind.UPLOAD_SESSION, on) }
     }
 }
 
@@ -163,10 +163,10 @@ class OnDownloadSessionEvents(
     private val jobs: DownloadJobs,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<SessionRelaunch>(runtime) {
-    override suspend fun run(arg: SessionRelaunch) = steps {
+    override suspend fun run(arg: SessionRelaunch, on: Run) = on.steps {
         required { drains.awaitAfter(arg.drainsBefore) }
         required { jobs.awaitOutstandingStagings() }
-        detached { wake.afterPrelude(WakeKind.DOWNLOAD_SESSION) }
+        detached { wake.afterPrelude(WakeKind.DOWNLOAD_SESSION, on) }
     }
 }
 
@@ -185,7 +185,7 @@ class OnUploadFinished(
     override fun Delivery.run(arg: FinishedTransfer) {
         transfer.recordFinished(arg.tag, arg.failure)
         when (uploads.mayFillSlot()) {
-            true -> detached { steps { run(topUp) } }
+            true -> detachedSteps { run(topUp) }
             false -> Unit
         }
     }
@@ -207,15 +207,15 @@ class OnDownloadCompleted(runtime: Runtime, private val jobs: DownloadJobs) : In
 
 /** A received photo was staged in a running process: it is imported, and nothing else is due for it. */
 class OnDownloadStaged(private val runtime: Runtime, private val importReceived: ImportReceived) {
-    suspend fun requested() = runtime.detached("OnDownloadStaged") { steps { run(importReceived) } }
+    suspend fun requested() = runtime.detached("OnDownloadStaged") { on -> on.steps { run(importReceived) } }
 }
 
 /** A lost event key was kept from a reopened invite: sharing and receiving resume without waiting for the next wake. */
 class OnKeyRestored(private val runtime: Runtime, private val work: ForegroundWork, private val wake: WakeWork) {
-    suspend fun requested() = runtime.detached("OnKeyRestored") {
-        steps {
-            isolated("own work") { work.run() }
-            required { wake.full(WakeKind.FOREGROUND) }
+    suspend fun requested() = runtime.detached("OnKeyRestored") { on ->
+        on.steps {
+            isolated("own work") { work.run(on) }
+            required { wake.full(WakeKind.FOREGROUND, on) }
         }
     }
 }
@@ -281,7 +281,7 @@ class OnDevReset(
     private val mobileData: MobileDataSetting,
 ) : BackgroundEntryPoint<Unit>(runtime) {
     @OptIn(EntryPointCall::class)
-    override suspend fun run(arg: Unit) = steps {
+    override suspend fun run(arg: Unit, on: Run) = on.steps {
         isolated("ledger") { ledger.clear() }
         isolated("downloads") { downloads.onDurableStateReset() }
         isolated("membership") { forget() }
@@ -299,11 +299,11 @@ class OnSelectionChanged(
     private val uploads: OwnUploads,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<Unit>(runtime) {
-    override suspend fun run(arg: Unit) = steps {
+    override suspend fun run(arg: Unit, on: Run) = on.steps {
         required { adoption.afterSelectionPublished(config.config.value) }
         isolated("total") { statusRefresh.refreshTotal() }
         isolated("selection walk") { uploads.walkSelection() }
-        required { wake.full(WakeKind.SELECTION_CHANGE) }
+        required { wake.full(WakeKind.SELECTION_CHANGE, on) }
     }
 }
 
@@ -327,7 +327,7 @@ class UploadEngine(
     private val heartbeat: Heartbeat,
     private val transfer: SessionTransfer,
 ) : AppUploadEngine {
-    override suspend fun arm() = runtime.detached("OnArm") { wake.full(WakeKind.ARM) }
+    override suspend fun arm() = runtime.detached("OnArm") { on -> wake.full(WakeKind.ARM, on) }
 
     override suspend fun disarm() = heartbeat.cancel()
 
@@ -340,7 +340,7 @@ class UploadEngine(
  */
 class Prelude(private val membership: MembershipRepository, private val refreshAttestation: RefreshAttestation) {
     @OptIn(EntryPointCall::class)
-    suspend fun run() = steps {
+    suspend fun run(on: Run) = on.steps {
         isolated("membership") { membership() }
         isolated("attestation") { refreshAttestation() }
     }
@@ -361,8 +361,8 @@ class ForegroundWork(
     private val stateRefresh: StateRefresh,
     private val leftovers: SweepLeftovers,
 ) {
-    suspend fun run() = steps {
-        required { prelude.run() }
+    suspend fun run(on: Run) = on.steps {
+        required { prelude.run(on) }
         required { watches.start() }
         concurrently {
             child("staging") { transfer.releaseUnclaimedStaging() }
@@ -370,8 +370,8 @@ class ForegroundWork(
             child("status") { statusRefresh.run() }
             child("reconcile") { downloads.reconcileJoined(config.activeEventId(), UnionTrigger.FOREGROUND) }
             child("reclaim") { downloads.releaseSettledBytes() }
-            child("membership") { stateRefresh.run() }
-            child("leftovers") { leftovers.run() }
+            child("membership") { stateRefresh.run(on) }
+            child("leftovers") { leftovers.run(on) }
         }
     }
 }
@@ -388,19 +388,19 @@ class WakeWork(
     private val end: EndOfWake,
     private val footprints: FootprintSampler,
 ) {
-    suspend fun full(kind: WakeKind) = steps {
+    suspend fun full(kind: WakeKind, on: Run) = on.steps {
         var uploads: Pass<CycleResult> = Pass.Cut
         ensure("re-arm") { rearm.after(uploads) }
         ensure("footprint") { footprints.record("after the ${kind.name.lowercase()} wake") }
         run(importReceived)
         uploads = run(uploadOwn)
-        isolated("end of wake") { end.run(kind) }
+        isolated("end of wake") { end.run(kind, on) }
     }
 
     /** [full], after the re-read every wake's own work starts with — for a wake that has no other. */
-    suspend fun afterPrelude(kind: WakeKind) = steps {
-        required { prelude.run() }
-        required { full(kind) }
+    suspend fun afterPrelude(kind: WakeKind, on: Run) = on.steps {
+        required { prelude.run(on) }
+        required { full(kind, on) }
     }
 }
 
@@ -413,7 +413,7 @@ class WakeWork(
  */
 class ImportReceived(private val downloads: DownloadController, private val counts: ForegroundCounts) :
     Sequence<Unit>("import-received", yieldsToJoin = true) {
-    override suspend fun pass() = steps {
+    override suspend fun pass(on: Run) = on.steps {
         required { downloads.importReady() }
         isolated("counts") { counts.refresh() }
     }
@@ -421,7 +421,7 @@ class ImportReceived(private val downloads: DownloadController, private val coun
 
 /** Fill the upload slots from the ledger — what a finished upload's freed slot needs, and nothing more. */
 class TopUp(private val uploads: OwnUploads, private val counts: ForegroundCounts) : Sequence<CycleResult>("top-up") {
-    override suspend fun pass() = steps {
+    override suspend fun pass(on: Run) = on.steps {
         val created = required { uploads.topUp() }
         isolated("counts") { counts.refresh() }
         created
@@ -434,7 +434,7 @@ class TopUp(private val uploads: OwnUploads, private val counts: ForegroundCount
  */
 class UploadOwn(private val uploads: OwnUploads, private val counts: ForegroundCounts) :
     Sequence<CycleResult>("upload-own") {
-    override suspend fun pass() = steps {
+    override suspend fun pass(on: Run) = on.steps {
         val first = required { uploads.topUp() }
         isolated("counts") { counts.refresh() }
         val walked = required { uploads.walk() }

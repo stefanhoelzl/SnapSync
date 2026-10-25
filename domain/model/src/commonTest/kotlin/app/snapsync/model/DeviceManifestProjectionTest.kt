@@ -1,9 +1,9 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.format.TimestampText
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -18,7 +18,7 @@ class DeviceManifestProjectionTest {
 
     private fun row(id: String, key: String) = LedgerEntry(
         key = key,
-        assetId = AssetId(id),
+        assetId = testAssetId(id),
         state = LedgerState.COMPLETED,
         creationDate = "2026-06-01T10:00:00Z",
         role = ResourceRole.PRIMARY,

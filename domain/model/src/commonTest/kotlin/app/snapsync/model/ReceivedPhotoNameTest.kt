@@ -1,6 +1,6 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
 
 class ReceivedPhotoNameTest {
 
-    private val ref = AssetRef(testDeviceId("11111111-2222-3333-4444-555555555555"), AssetId("A"))
+    private val ref = AssetRef(testDeviceId("11111111-2222-3333-4444-555555555555"), testAssetId("A"))
     private val key = "03C741F2-4FFA-4792-B2E3-076266091091_L0_001-primary.heic"
 
     @Test
@@ -26,7 +26,10 @@ class ReceivedPhotoNameTest {
             ReceivedPhotoName.token(ref),
             ReceivedPhotoName.token(ref.copy(sourceDeviceId = testDeviceId("dev-2"))),
         )
-        assertNotEquals(ReceivedPhotoName.token(ref), ReceivedPhotoName.token(ref.copy(sourceAssetId = AssetId("B"))))
+        assertNotEquals(
+            ReceivedPhotoName.token(ref),
+            ReceivedPhotoName.token(ref.copy(sourceAssetId = testAssetId("B"))),
+        )
     }
 
     @Test

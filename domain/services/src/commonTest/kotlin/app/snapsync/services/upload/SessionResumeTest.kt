@@ -1,6 +1,5 @@
 package app.snapsync.services.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AesKey
@@ -26,6 +25,7 @@ import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
+import app.snapsync.testids.testAssetId
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -220,11 +220,11 @@ class SessionResumeTest {
         transfer.createJob(request(), resource)
         transfer.recordFinished(KEY, failure)
         files.held["$UPLOAD_STAGING_DIR/orphan.jpg"] = byteArrayOf(1)
-        record.rows[DESTINATION] = LedgerEntry(key = KEY, assetId = AssetId("A"), state = LedgerState.DISCOVERED)
+        record.rows[DESTINATION] = LedgerEntry(key = KEY, assetId = testAssetId("A"), state = LedgerState.DISCOVERED)
         transfer.releaseUnclaimedStaging()
         assertTrue(staged in files.held && "$staged.sha256" in files.held, "its retry resumes it")
         assertFalse("$UPLOAD_STAGING_DIR/orphan.jpg" in files.held, "nothing will send this one")
-        record.rows[DESTINATION] = LedgerEntry(key = KEY, assetId = AssetId("A"), state = LedgerState.COMPLETED)
+        record.rows[DESTINATION] = LedgerEntry(key = KEY, assetId = testAssetId("A"), state = LedgerState.COMPLETED)
         transfer.releaseUnclaimedStaging()
         assertFalse(staged in files.held || "$staged.sha256" in files.held, "landed: nothing resumes it")
     }

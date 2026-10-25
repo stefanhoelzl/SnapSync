@@ -66,12 +66,9 @@ class SharedDatabase(databases: Databases, legacy: LegacyCopy?) {
     /** Runs [statements] on the database: a failed open or a failed statement is [DbResult.Failed]. */
     fun <T> execute(statements: (LedgerDatabase) -> T): DbResult<T> = owned.execute(statements)
 
-    /** [statements]' answer, a failure thrown as [DatabaseUnavailable] — MIGRATING ([OwnedDatabase.use]). */
-    fun <T> use(statements: (LedgerDatabase) -> T): T = owned.use(statements)
-
     /** Whether [source] lives in this database now, rather than in its legacy file or key. */
-    fun imported(source: LegacySource): Boolean =
-        use { source.key in it.legacyImportQueries.selectImported().executeAsList() }
+    fun imported(source: LegacySource): DbResult<Boolean> =
+        execute { source.key in it.legacyImportQueries.selectImported().executeAsList() }
 
     /**
      * Whether the records can be read here: [SharedRecordsReadiness.LegacyPending]

@@ -1,6 +1,5 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.format.TimestampText
 import app.snapsync.model.ImportResult
@@ -12,6 +11,7 @@ import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
+import app.snapsync.testids.testAssetId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
@@ -22,7 +22,7 @@ class GalleryAssetReadingTest {
     @Test
     fun `an asset's facts are the platform's under the app's id and an undated one carries no date`() {
         val dated = platformPhoto("x/L0/001", created = "2026-06-01T10:00:00.750Z").asset.facts()
-        assertEquals(AssetId("x_L0_001"), dated.assetId)
+        assertEquals(testAssetId("x_L0_001"), dated.assetId)
         assertEquals(
             CaptureDate.Dated(TimestampText.parse("2026-06-01T10:00:00Z")),
             dated.captureDate,
@@ -59,11 +59,11 @@ class GalleryAssetReadingTest {
     @Test
     fun `an import's outcome reads with its assets under their app ids`() {
         assertEquals(
-            ImportResult.Imported(AssetId("a_L0_001")),
+            ImportResult.Imported(testAssetId("a_L0_001")),
             ImportOutcome.Imported(PlatformAssetId("a/L0/001")).importResult(),
         )
         assertEquals(
-            ImportResult.Failed("refused", consumedResources = true, placeholder = AssetId("p")),
+            ImportResult.Failed("refused", consumedResources = true, placeholder = testAssetId("p")),
             ImportOutcome.Failed(
                 "refused",
                 consumedResources = true,

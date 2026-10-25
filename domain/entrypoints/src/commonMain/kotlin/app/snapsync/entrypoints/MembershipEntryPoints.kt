@@ -50,9 +50,9 @@ import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.membership.SwitchLookup
 import app.snapsync.scheduling.BackgroundEntryPoint
+import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Steps
-import app.snapsync.scheduling.steps
 import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.membership.MembershipProjection
@@ -86,7 +86,7 @@ class OnJoinConfirmed(
     private val joining: Joining,
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<JoinRequest>(runtime) {
-    override suspend fun run(arg: JoinRequest) = steps {
+    override suspend fun run(arg: JoinRequest, on: Run) = on.steps {
         ensure("answer") { statuses.join.settle(arg.id, JoinCommit.Failed()) }
         when (val admitted = required { enroll.admit(arg.choice) }) {
             is Admitted -> {
@@ -95,7 +95,7 @@ class OnJoinConfirmed(
                 // the next join, leave or reset replaces it.
                 required { keys.adopt(arg.choice.invite.key) }
                 when (val enrolled = required { enroll(admitted) }) {
-                    is EnrollOutcome.Enrolled -> required { joining.run(arg.id, enrolled.evidence) }
+                    is EnrollOutcome.Enrolled -> required { joining.run(arg.id, enrolled.evidence, on) }
                     is EnrollOutcome.NotEnrolled -> required { statuses.join.done(arg.id, enrolled.answer) }
                 }
             }
@@ -110,9 +110,9 @@ class OnLeaveConfirmed(
     private val leave: LeaveEvent,
     private val leaving: Leaving,
 ) : BackgroundEntryPoint<Unit>(runtime) {
-    override suspend fun run(arg: Unit) = steps {
+    override suspend fun run(arg: Unit, on: Run) = on.steps {
         when (val left = required { leave() }) {
-            is LeaveOutcome.Left -> required { leaving.run(left.evidence) }
+            is LeaveOutcome.Left -> required { leaving.run(left.evidence, on) }
             // Nothing ran: the member is fully joined, or never was.
             is LeaveOutcome.NotLeft -> Unit
         }
@@ -127,7 +127,7 @@ class OnInviteForOtherEvent(
     private val config: MembershipProjection,
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<SwitchRequest>(runtime) {
-    override suspend fun run(arg: SwitchRequest) = steps {
+    override suspend fun run(arg: SwitchRequest, on: Run) = on.steps {
         ensure("answer") { statuses.switch.settle(arg.id, SwitchVerdict.Ask) }
         val facts = required { lookup.facts() }
         val holds = when (facts.needsReceivedCheck) {
@@ -146,12 +146,12 @@ class OnSettingsChanged(
     private val settled: AfterSettings,
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<SettingsRequest>(runtime) {
-    override suspend fun run(arg: SettingsRequest) = steps {
+    override suspend fun run(arg: SettingsRequest, on: Run) = on.steps {
         ensure("answer") { statuses.settings.settle(arg.id, SettingsResult.NotCurrent) }
         membership(membership, Freshness.Cached) {
             active { joined ->
                 when (val saved = required { reconfigure(joined, arg.choice) }) {
-                    is ReconfigureOutcome.Saved -> required { settled.run(arg.id, saved.active) }
+                    is ReconfigureOutcome.Saved -> required { settled.run(arg.id, saved.active, on) }
                     is ReconfigureOutcome.NotSaved -> required { statuses.settings.done(arg.id, saved.answer) }
                 }
             }
@@ -166,7 +166,7 @@ class OnRenameRequested(
     private val rename: RenameEvent,
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<RenameRequest>(runtime) {
-    override suspend fun run(arg: RenameRequest) = steps {
+    override suspend fun run(arg: RenameRequest, on: Run) = on.steps {
         ensure("answer") { statuses.rename.settle(arg.id, RenameResult.Failed()) }
         membership(membership, Freshness.Cached) {
             active { joined ->
@@ -191,7 +191,7 @@ class Joining(
     private val joined: AfterJoin,
     private val statuses: MembershipStatuses,
 ) {
-    suspend fun run(id: RequestId, enrolled: Enrolled) = steps {
+    suspend fun run(id: RequestId, enrolled: Enrolled, on: Run) = on.steps {
         ensure("transition") { transition.end() }
         ensure("join union") { joinUnion.close() }
         required { transition.begin() }
@@ -201,7 +201,7 @@ class Joining(
         // The photos an earlier install received are recognised before any uploader sees the membership.
         required { adoption.adopt(enrolled.membership.asConfig()) }
         when (val entered = required { enter(enrolled) }) {
-            is EnterOutcome.Entered -> required { joined.run(id, entered.active) }
+            is EnterOutcome.Entered -> required { joined.run(id, entered.active, on) }
             // Joined already, or nothing written — the server's enrolment stands: a retry enrols again.
             is EnterOutcome.NotEntered -> required { statuses.join.done(id, entered.answer) }
         }
@@ -219,10 +219,10 @@ class AfterJoin(
     private val tokens: PushTokenSource,
     private val statuses: MembershipStatuses,
 ) {
-    suspend fun run(id: RequestId, joined: Membership.Active) = steps {
+    suspend fun run(id: RequestId, joined: Membership.Active, on: Run) = on.steps {
         isolated("uploads") { uploads.onJoin() }
         isolated("status") { statusRefresh.run() }
-        required { album.run("join", joined) }
+        required { album.run("join", joined, on) }
         // The union the adoption read in this same join, when it did: one union read per join.
         isolated("downloads") {
             downloads.reconcile(joined.event.id, UnionTrigger.JOIN, known = joinUnion.take(joined.event.id))
@@ -241,7 +241,7 @@ class Leaving(
 ) {
     private val log = Log("Leaving")
 
-    suspend fun run(left: LeftMembership) = steps {
+    suspend fun run(left: LeftMembership, on: Run) = on.steps {
         required { log.i("left", "event" of left.event) }
         isolated("stop uploads") { uploads.onLeave() }
         isolated("stop downloads") { downloads.onLeaveOrSwitch() }
@@ -258,11 +258,11 @@ class AfterSettings(
     private val downloads: DownloadController,
     private val statuses: MembershipStatuses,
 ) {
-    suspend fun run(id: RequestId, saved: Membership.Active) = steps {
+    suspend fun run(id: RequestId, saved: Membership.Active, on: Run) = on.steps {
         isolated("status") { statusRefresh.run() }
         // A kick whatever the direction: the cycle's policy decides what uploads; nothing in flight is cancelled.
         isolated("uploads") { uploads.onReconfigure() }
-        required { album.run("reconfigure", saved) }
+        required { album.run("reconfigure", saved, on) }
         when (saved.share.direction.includesDownload) {
             true -> detached { downloads.reconcile(saved.event.id, UnionTrigger.RECONFIGURE) }
             false -> isolated("stop downloads") { downloads.onLeaveOrSwitch() }
@@ -281,7 +281,7 @@ class EventAlbum(
     private val gather: AlbumGather,
     private val access: GalleryAccessState,
 ) {
-    suspend fun run(trigger: String, membership: Membership.Active) = steps {
+    suspend fun run(trigger: String, membership: Membership.Active, on: Run) = on.steps {
         isolated("album") {
             albums.ensureAlbum(
                 membership.event.id,
@@ -305,7 +305,7 @@ class SweepLeftovers(
     private val uploads: UploadTransitions,
     private val transition: MembershipTransition,
 ) {
-    suspend fun run() = steps {
+    suspend fun run(on: Run) = on.steps {
         membership(membership, Freshness.Cached) {
             notJoined { none ->
                 isolated("leftover key") { keys.forgetLeftover(none, transition) }
@@ -402,16 +402,16 @@ private val log = Log("membership")
  * since marking it deleted destroys nothing.
  */
 class StateRefresh(private val membership: MembershipBranch, private val transfers: DeletedTransfers) {
-    suspend fun run() = steps {
+    suspend fun run(on: Run) = on.steps {
         membership(membership, Freshness.Refreshed) {
-            deleted { deleted -> isolated("stop transfers") { transfers.stop(deleted) } }
+            deleted { deleted -> isolated("stop transfers") { transfers.stop(deleted, on) } }
         }
     }
 }
 
 /** What a deleted event's membership stops: every upload and download, as a leave stops them. */
 class DeletedTransfers(private val uploads: UploadTransitions, private val downloads: DownloadController) {
-    suspend fun stop(@Suppress("UNUSED_PARAMETER") deleted: Membership.Deleted) = steps {
+    suspend fun stop(@Suppress("UNUSED_PARAMETER") deleted: Membership.Deleted, on: Run) = on.steps {
         isolated("stop downloads") { downloads.onLeaveOrSwitch() }
         isolated("stop uploads") { uploads.onLeave() }
     }
@@ -432,7 +432,7 @@ class EndOfWake(
     private val stateRefresh: StateRefresh,
     private val received: ReceivedReport,
 ) {
-    suspend fun run(kind: WakeKind) = steps {
+    suspend fun run(kind: WakeKind, on: Run) = on.steps {
         when (kind.checksPhotos) {
             true -> membership(membership, Freshness.Cached) {
                 active { joined -> isolated("photo check") { downloads.reconcileIfDue(joined.event.id) } }
@@ -444,7 +444,7 @@ class EndOfWake(
         membership(membership, Freshness.Cached) {
             active { joined ->
                 when (required { claim(joined, kind.boundsEventRead) }) {
-                    CheckCadence.Due -> required { stateRefresh.run() }
+                    CheckCadence.Due -> required { stateRefresh.run(on) }
                     CheckCadence.NotYet -> Unit
                 }
             }

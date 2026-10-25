@@ -1,8 +1,8 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,7 +38,7 @@ class EventPhotoSetReadableTest {
     )
 
     private fun camera(assetId: String, creationDate: String = inWindow) = candidatesFromFacts(
-        listOf(AssetFacts(assetId = AssetId(assetId), captureDate = TimestampText.captureDate(creationDate))),
+        listOf(AssetFacts(assetId = testAssetId(assetId), captureDate = TimestampText.captureDate(creationDate))),
     )
 
     @Test
@@ -91,8 +91,8 @@ class EventPhotoSetReadableTest {
         // the library do not. The read still receives the whole policy — what the platform narrows on is unchanged.
         val photos = candidatesFromFacts(
             listOf(
-                AssetFacts(AssetId("SHOT"), TimestampText.captureDate(inWindow), isScreenshot = true),
-                AssetFacts(AssetId("SMALL"), TimestampText.captureDate(inWindow), pixelArea = 1600L * 1200L),
+                AssetFacts(testAssetId("SHOT"), TimestampText.captureDate(inWindow), isScreenshot = true),
+                AssetFacts(testAssetId("SMALL"), TimestampText.captureDate(inWindow), pixelArea = 1600L * 1200L),
             ),
         )
         var seen: SelectionPolicy? = null

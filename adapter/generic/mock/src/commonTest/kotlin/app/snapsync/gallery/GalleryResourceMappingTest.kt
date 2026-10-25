@@ -1,6 +1,5 @@
 package app.snapsync.gallery
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.InMemoryResource
@@ -27,6 +26,7 @@ import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.gallery.GalleryCandidateSource
 import app.snapsync.services.gallery.galleryHandle
 import app.snapsync.services.gallery.resourcesFrom
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -83,7 +83,7 @@ class GalleryResourceMappingTest {
 
         assertEquals(2, resources.size)
         val primary = resources.first { it.filename.endsWith("-primary.heic") }
-        assertEquals(AssetId("ABC_L0_001"), primary.assetId, "the app's id of the platform's")
+        assertEquals(testAssetId("ABC_L0_001"), primary.assetId, "the app's id of the platform's")
         assertEquals("ABC_L0_001-primary.heic", primary.filename)
         // The resolved MIME, not a platform type identifier: `contentType` is what the upload provider sends as the
         // `Content-Type` header.
@@ -150,7 +150,7 @@ class GalleryResourceMappingTest {
             resourcesFrom(
                 listOf(LibraryAssets.photo("ABC/L0/001", resources = listOf(LibraryAssets.primaryResource("x.JPG")))),
             )
-        assertEquals(AssetId("ABC_L0_001"), assetIdFromUploadKey(resources.single().filename))
+        assertEquals(testAssetId("ABC_L0_001"), assetIdFromUploadKey(resources.single().filename))
     }
 
     @Test
@@ -198,7 +198,11 @@ class GalleryResourceMappingTest {
         )
 
         val candidates = source.readCandidates(admitting(CUTOFF))
-        assertEquals(listOf(AssetId("NEW")), candidates.map { it.facts.assetId }, "the walk is bounded by the floor")
+        assertEquals(
+            listOf(testAssetId("NEW")),
+            candidates.map { it.facts.assetId },
+            "the walk is bounded by the floor",
+        )
         assertEquals(listOf("NEW-primary.jpg"), candidates.single().resources().map { it.filename })
     }
 

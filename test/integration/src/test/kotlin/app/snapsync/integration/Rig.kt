@@ -35,6 +35,7 @@ import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WorldLevers
 import app.snapsync.rig.JvmRigHost
+import app.snapsync.testids.testAssetId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
@@ -268,7 +269,7 @@ val RigState.health: SyncHealth? get() = joined?.health
 
 /** The primary upload key of an own photo [assetId] with the default capture name — what the backend lists. */
 fun primaryKey(assetId: String, filename: String = "IMG.JPG"): String =
-    app.snapsync.model.uploadKey(AssetId(assetId), app.snapsync.model.ResourceRole.PRIMARY, filename)
+    app.snapsync.model.uploadKey(testAssetId(assetId), app.snapsync.model.ResourceRole.PRIMARY, filename)
 
 /**
  * The OS's upload job for an own photo [assetId]'s primary: named by its destination's last two segments, as the OS
@@ -277,7 +278,7 @@ fun primaryKey(assetId: String, filename: String = "IMG.JPG"): String =
 fun primaryJob(assetId: String): String = "$assetId/primary"
 
 /** The photo an OS upload job ([primaryJob]) sends. */
-fun assetIdOfJob(job: String): AssetId = AssetId(job.substringBefore('/'))
+fun assetIdOfJob(job: String): AssetId = testAssetId(job.substringBefore('/'))
 
 /**
  * The fellow member's device most tests play — `foreignDevice(DEV_F, …)`. A device id, as the backend issues every one:

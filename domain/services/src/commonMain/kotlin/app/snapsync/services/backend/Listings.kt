@@ -75,10 +75,8 @@ class BackendDeviceFilesSource(private val gateway: BackendGateway) : DeviceFile
             is DeviceFilesReply.Listed -> runCatchingCancellable {
                 // A non-canonical id fails the constructor: a listing this build cannot read, never an invented row.
                 reply.items.map {
-                    StoredResource(
-                        uploadKey(AssetId(it.assetId), it.role.inApp(), it.filename),
-                        AssetId(it.assetId),
-                    )
+                    val assetId = requireNotNull(AssetId.parse(it.assetId)) { "not a canonical asset id" }
+                    StoredResource(uploadKey(assetId, it.role.inApp(), it.filename), assetId)
                 }
             }.recoverCatching {
                 throw DeviceListingShapeException(
@@ -125,7 +123,7 @@ class BackendEventUnionSource(private val gateway: BackendGateway) : EventUnionS
     }
 
     private fun asset(eventId: EventId, dto: app.snapsync.wire.models.UnionAsset): UnionAsset {
-        val assetId = AssetId(dto.assetId)
+        val assetId = requireNotNull(AssetId.parse(dto.assetId)) { "not a canonical asset id" }
         // A malformed id refuses the asset, as a malformed asset id always has.
         val deviceId = requireNotNull(DeviceId.parse(dto.deviceId)) { "not a device id: '${dto.deviceId}'" }
         return UnionAsset(

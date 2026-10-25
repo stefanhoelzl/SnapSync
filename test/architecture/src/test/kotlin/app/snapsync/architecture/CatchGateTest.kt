@@ -18,8 +18,13 @@ import kotlin.test.assertTrue
  * first, or where the handler rethrows what it caught (log-and-rethrow). Everything else goes through
  * `runCatchingCancellable` (`model/`) or `Logger.bestEffort` (`ports/`).
  *
- * The allowlist is the helpers themselves and the ObjC boundaries, where NOTHING may escape — a Kotlin throwable,
- * cancellation included, aborts the process there.
+ * **Nothing catches an `InvalidProgramState`** (`docs/patterns.md`, "Invalid program state"): it is an `Error`, so a
+ * catch of `Exception` passes it on, and a catch of `Throwable` must catch it first in the same `try` — to rethrow it,
+ * or to end the process with it — unless the handler rethrows what it caught.
+ *
+ * The allowlist is the helpers themselves and the ObjC boundaries, where no cancellation may escape — a Kotlin
+ * throwable, cancellation included, aborts the process there. It waives the cancellation rule only: an allowlisted
+ * file keeps `InvalidProgramState` like every other.
  *
  * **Text, not a type check, and it says so:** it cannot see a catch of a `typealias` for `Throwable`, and it
  * trusts that a `catch (e: CancellationException)` clause above a broad one in the same `try` rethrows.
@@ -46,8 +51,8 @@ class CatchGateTest {
     private fun isProduction(path: String): Boolean =
         productionRoots.any { path.startsWith(it) } && !Regex("""/src/(\w*[Tt]est)/""").containsMatchIn(path)
 
-    /** Every offending catch site in [code] (comments already stripped). */
-    internal fun offenders(code: String): List<String> {
+    /** Every offending catch site in [code] (comments already stripped); an allowlisted file [mayKeepCancellation]. */
+    internal fun offenders(code: String, mayKeepCancellation: Boolean = false): List<String> {
         val out = mutableListOf<String>()
         fun line(at: Int) = code.take(at).count { it == '\n' } + 1
         Regex("""(?<![\w.])runCatching\s*\{|\.runCatching\s*\{""").findAll(code).forEach {
@@ -57,11 +62,16 @@ class CatchGateTest {
             val variable = m.groupValues[1]
             // The try this catch belongs to: text since the nearest preceding `try {`.
             val tryStart = code.lastIndexOf("try {", m.range.first).coerceAtLeast(0)
-            val precededByCancellation = Regex("""catch\s*\(\s*\w+\s*:\s*[\w.]*CancellationException\s*\)""")
-                .containsMatchIn(code.substring(tryStart, m.range.first))
+            val before = code.substring(tryStart, m.range.first)
+            val precededByCancellation = mayKeepCancellation ||
+                Regex("""catch\s*\(\s*\w+\s*:\s*[\w.]*CancellationException\s*\)""").containsMatchIn(before)
+            val keepsFatal = m.groupValues[2] == "Exception" ||
+                Regex("""catch\s*\(\s*\w+\s*:\s*[\w.]*InvalidProgramState\s*\)""").containsMatchIn(before)
             val body = blockBody(code, m.range.last)
             val rethrows = Regex("""\bthrow\s+$variable\b""").containsMatchIn(body)
-            if (!precededByCancellation && !rethrows) out += "line ${line(m.range.first)}: catch ($variable: ${m.groupValues[2]})"
+            if (!(precededByCancellation && keepsFatal) && !rethrows) {
+                out += "line ${line(m.range.first)}: catch ($variable: ${m.groupValues[2]})"
+            }
         }
         return out
     }
@@ -71,20 +81,23 @@ class CatchGateTest {
         KotlinDecls.closing(code, open)?.let { code.substring(open + 1, it) } ?: code.substring(open + 1)
 
     @Test
-    fun `production catch sites keep cancellation`() {
+    fun `production catch sites keep cancellation and an invalid program state`() {
         val files = SourceScan.kotlinFiles().filter { isProduction(it.path) }
         assertTrue(
             files.size >= 200,
             "the catch gate scanned only ${files.size} production files — the scope is broken",
         )
-        val found = files
-            .filterNot { f -> allowed.keys.any { f.path.endsWith(it) } }
-            .flatMap { f -> offenders(ZoneGates.stripComments(f.text)).map { "  ${f.path} $it" } }
+        val found = files.flatMap { f ->
+            val allowlisted = allowed.keys.any { f.path.endsWith(it) }
+            offenders(ZoneGates.stripComments(f.text), mayKeepCancellation = allowlisted).map { "  ${f.path} $it" }
+        }
         assertTrue(
             found.isEmpty(),
-            "these catch sites can swallow cancellation (law \"Catch sites keep cancellation\"). Use " +
+            "these catch sites can swallow cancellation (law \"Catch sites keep cancellation\") or an " +
+                "InvalidProgramState (`docs/patterns.md`, \"Invalid program state\"). Use " +
                 "`runCatchingCancellable` (model/) or `Logger.bestEffort` (ports/); a handler that must catch " +
-                "broadly either catches `CancellationException` first in the same `try` and rethrows it, or " +
+                "broadly either catches `CancellationException` and `InvalidProgramState` first in the same `try` " +
+                "and rethrows them, or " +
                 "rethrows what it caught. Only an ObjC boundary may catch everything, and it is named in this gate.\n" +
                 found.joinToString("\n"),
         )
@@ -107,10 +120,21 @@ class CatchGateTest {
             fun d() { try { work() } catch (e: CancellationException) { throw e } catch (e: Throwable) { log(e) } }
             fun e() { try { work() } catch (t: Throwable) { log(t); throw t } }
             fun f() { try { work() } catch (e: Exception) { log(e) } }
+            fun g() { try { work() } catch (e: CancellationException) { throw e } catch (e: InvalidProgramState) { throw e } catch (e: Throwable) { log(e) } }
+            fun h() { try { work() } catch (e: CancellationException) { throw e } catch (e: Exception) { log(e) } }
         """.trimIndent()
         assertEquals(
-            listOf("line 1: runCatching", "line 2: runCatching", "line 6: catch (e: Exception)"),
+            listOf(
+                "line 1: runCatching",
+                "line 2: runCatching",
+                "line 4: catch (e: Throwable)",
+                "line 6: catch (e: Exception)",
+            ),
             offenders(sample),
         )
+        val boundary = "fun i() { try { work() } catch (t: Throwable) { log(t) } }"
+        assertEquals(listOf("line 1: catch (t: Throwable)"), offenders(boundary, mayKeepCancellation = true))
+        val keeping = "fun j() { try { work() } catch (f: InvalidProgramState) { end(f) } catch (t: Throwable) { log(t) } }"
+        assertEquals(emptyList(), offenders(keeping, mayKeepCancellation = true))
     }
 }

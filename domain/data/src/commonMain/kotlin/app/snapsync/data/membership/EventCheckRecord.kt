@@ -2,6 +2,7 @@ package app.snapsync.data.membership
 
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.StoreWrite
+import app.snapsync.data.store.Stored
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.CheckedAt
 import app.snapsync.domain.time.Timestamp
@@ -16,16 +17,21 @@ import kotlin.time.Instant
 class EventCheckRecord(private val db: SharedDatabase) {
 
     /** When [kind] of [event] was last read. */
-    fun last(kind: EventCheck, event: EventId): CheckedAt =
-        when (val read = db.execute { it.eventCheckQueries.selectLastCheck(event, kind.key).executeAsList() }) {
+    fun last(kind: EventCheck, event: EventId): CheckedAt {
+        val stored = Stored.Valid(event)
+        return when (val read = db.execute { it.eventCheckQueries.selectLastCheck(stored, kind.key).executeAsList() }) {
             is DbResult.Ok -> read.value.map(::checkedAt).firstOrNull() ?: CheckedAt.Never
             is DbResult.Failed -> CheckedAt.Unreadable
         }
+    }
 
     /** [kind] of [event] was read [at]. */
-    fun stamp(kind: EventCheck, event: EventId, at: Timestamp): StoreWrite = when (
-        val written = db.execute { it.eventCheckQueries.stampCheck(event, kind.key, at.at.toEpochMilliseconds()) }
-    ) {
+    fun stamp(kind: EventCheck, event: EventId, at: Timestamp): StoreWrite {
+        val millis = at.at.toEpochMilliseconds()
+        return written(db.execute { it.eventCheckQueries.stampCheck(Stored.Valid(event), kind.key, millis) })
+    }
+
+    private fun written(written: DbResult<*>): StoreWrite = when (written) {
         is DbResult.Ok -> StoreWrite.Written
         is DbResult.Failed -> StoreWrite.Failed(written.detail)
     }

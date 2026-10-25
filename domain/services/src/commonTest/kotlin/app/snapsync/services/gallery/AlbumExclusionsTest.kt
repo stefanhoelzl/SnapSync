@@ -1,6 +1,5 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
 import app.snapsync.model.GalleryAccess
@@ -17,6 +16,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.WriteOutcome
+import app.snapsync.testids.testAssetId
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -99,7 +99,7 @@ class AlbumExclusionsTest {
         for (onFailure in AlbumLookupFailure.entries) {
             val albums = library()
             val ids = denylistedAlbumMembers(albums, cutoff, GalleryAccess.GRANTED, onFailure, log)
-            assertEquals(setOf(AssetId("wa-1"), AssetId("wa-2")), ids, "$onFailure")
+            assertEquals(setOf(testAssetId("wa-1"), testAssetId("wa-2")), ids, "$onFailure")
             assertEquals(1, albums.lookups, "$onFailure")
         }
     }

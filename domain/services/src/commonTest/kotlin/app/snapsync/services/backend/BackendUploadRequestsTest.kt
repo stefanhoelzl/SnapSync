@@ -6,12 +6,12 @@ import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.data.trust.TokenText
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.Resource
 import app.snapsync.ports.HttpResult
 import app.snapsync.services.identity.MapSecureStore
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Limits
@@ -28,7 +28,7 @@ class BackendUploadRequestsTest {
 
     private fun resource(filename: String, contentType: String = "image/jpeg") = Resource(
         filename = filename,
-        assetId = AssetId("asset-1"),
+        assetId = testAssetId("asset-1"),
         contentType = contentType,
         metadata = mapOf("ignored" to "value"),
         data = null,
@@ -61,7 +61,7 @@ class BackendUploadRequestsTest {
         val req = provider().provide(
             Resource(
                 filename = "ABC123_DEF-primary.jpg",
-                assetId = AssetId("ABC123_DEF"),
+                assetId = testAssetId("ABC123_DEF"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "IMG_0001.JPG"),
                 data = null,
@@ -81,7 +81,7 @@ class BackendUploadRequestsTest {
         val req = provider().provide(
             Resource(
                 filename = "a-primary.jpg",
-                assetId = AssetId("a"),
+                assetId = testAssetId("a"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "a b/ä.jpg"),
                 data = null,
@@ -101,14 +101,14 @@ class BackendUploadRequestsTest {
         val original = provider().provide(
             Resource(
                 filename = "K-primary.jpg",
-                assetId = AssetId("K"),
+                assetId = testAssetId("K"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to "IMG_9.JPG"),
                 data = null,
             ),
         )
         val rebuilt = provider().provide(
-            Resource("K-primary.jpg", AssetId("K"), "image/jpeg", emptyMap(), null),
+            Resource("K-primary.jpg", testAssetId("K"), "image/jpeg", emptyMap(), null),
         )
         // Same identity, so the endpoint composes the same object name; only the recorded capture
         // metadata differs.
@@ -135,7 +135,7 @@ class BackendUploadRequestsTest {
         val req = provider().provide(
             Resource(
                 filename = "K-primary.jpg",
-                assetId = AssetId("K"),
+                assetId = testAssetId("K"),
                 contentType = "image/jpeg",
                 metadata = mapOf(RESOURCE_META_ORIGINAL_FILENAME to " "),
                 data = null,
@@ -169,7 +169,7 @@ class BackendUploadRequestsTest {
         val req = provider().provide(
             Resource(
                 filename = "x.jpg",
-                assetId = AssetId("asset-1"),
+                assetId = testAssetId("asset-1"),
                 contentType = "public.jpeg",
                 metadata = mapOf(RESOURCE_META_MIME to "image/jpeg"),
                 data = null,
@@ -187,7 +187,7 @@ class BackendUploadRequestsTest {
         assertEquals("image/heic", rebuilt.headers["Content-Type"])
 
         val blank = provider().provide(
-            Resource("x.jpg", AssetId("asset-1"), "image/heic", mapOf(RESOURCE_META_MIME to "  "), null),
+            Resource("x.jpg", testAssetId("asset-1"), "image/heic", mapOf(RESOURCE_META_MIME to "  "), null),
         )
         assertEquals("image/heic", blank.headers["Content-Type"])
     }

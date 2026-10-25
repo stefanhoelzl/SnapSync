@@ -1,6 +1,6 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.data.store.DatabaseUnavailable
+import app.snapsync.data.store.Stored
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.SuppressionReadiness
@@ -8,6 +8,8 @@ import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.OpenDatabase
+import app.snapsync.services.databases.DatabaseUnavailable
+import app.snapsync.services.databases.held
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.services.downloads.db.DownloadStoreQueries
 import kotlinx.coroutines.sync.Mutex
@@ -41,7 +43,11 @@ class SuppressionService(private val databases: Databases) : SuppressionSource, 
     }
 
     override suspend fun suppressedLocalIds(): Set<AssetId> = when (val found = open()) {
-        is Found.Open -> found.read { it.suppressedLocalIds().executeAsList().filterNotNull().toSet() }
+        is Found.Open -> found.read {
+            it.suppressedLocalIds().executeAsList().filterNotNull().mapTo(
+                mutableSetOf(),
+            ) { held(it) }
+        }
         Found.Missing -> emptySet()
         // Never "nothing suppressed": either would upload downloaded photos back into the event.
         Found.OldSchema -> throw DatabaseUnavailable(DOWNLOADS_DB_NAME, "older schema than this build's")
@@ -49,7 +55,7 @@ class SuppressionService(private val databases: Databases) : SuppressionSource, 
     }
 
     override suspend fun isRecognised(eventId: EventId): Boolean = when (val found = open()) {
-        is Found.Open -> found.read { it.isRecognised(eventId).executeAsOne() }
+        is Found.Open -> found.read { it.isRecognised(Stored.Valid(eventId)).executeAsOne() }
         // No store: the app has run no recognition on this device, so nothing is recognised.
         Found.Missing -> false
         Found.OldSchema -> throw DatabaseUnavailable(DOWNLOADS_DB_NAME, "older schema than this build's")

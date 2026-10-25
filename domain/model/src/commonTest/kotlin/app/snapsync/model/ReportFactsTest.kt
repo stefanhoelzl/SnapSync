@@ -1,6 +1,6 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
+import app.snapsync.testids.testAssetId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -10,7 +10,7 @@ class ReportFactsTest {
     private fun resource(asset: String, file: String) =
         Resource(
             filename = file,
-            assetId = AssetId(asset),
+            assetId = testAssetId(asset),
             contentType = "image/jpeg",
             metadata = emptyMap(),
             data = null,

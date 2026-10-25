@@ -85,6 +85,9 @@ internal fun JsonObject.toDelivered(): DeliveredEvent {
         release = (this["release"] as? JsonPrimitive)?.content,
         environment = (this["environment"] as? JsonPrimitive)?.content,
         dist = (this["dist"] as? JsonPrimitive)?.content,
+        exceptionValues = values(
+            this["exception"],
+        ).mapNotNull { (it as? JsonObject)?.get("value")?.jsonPrimitive?.content },
     )
 }
 

@@ -21,7 +21,7 @@ import app.snapsync.model.UnconfirmedImport
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.scheduling.outliving
+import app.snapsync.scheduling.Runtime
 import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.crypto.openingFilesOf
 import app.snapsync.services.downloads.DownloadJobs
@@ -43,6 +43,8 @@ import kotlinx.coroutines.sync.withLock
  * exercised in `commonTest` with fakes. Network/union failures keep last-good state (never throw).
  */
 class DownloadController(
+    // Where an import runs on when its drain is cancelled ([importReady]): the process's runtime.
+    private val runtime: Runtime,
     private val union: EventUnionSource,
     private val store: DownloadService,
     private val jobs: DownloadJobs,
@@ -86,8 +88,8 @@ class DownloadController(
     // waits for it, whichever trigger reaches the drain first. Required, and with no default, for the reason
     // [DownloadArm.enabled] has none.
     private val readyToImport: suspend () -> Boolean,
-    private val log: Logger = Logger.withTag("DownloadController"),
 ) {
+    private val log = Logger.withTag("DownloadController")
 
     // Serializes all store-mutating flows. Both join (`provisionEvent`) and foreground fire `reconcile`,
     // and downloads complete on the URLSession delegate.
@@ -397,7 +399,7 @@ class DownloadController(
         while (true) {
             val claimed = mutex.withLock { claimNextImportableLocked(attempted) } ?: break
             attempted += claimed.ref
-            outliving { importOne(claimed) }
+            runtime.outliving { importOne(claimed) }
         }
         log.i { "importReady" }
     }

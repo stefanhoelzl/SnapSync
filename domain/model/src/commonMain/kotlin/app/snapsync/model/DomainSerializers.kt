@@ -47,7 +47,11 @@ internal object DeviceIdAsString : AsString<DeviceId>(
     { it.value },
 )
 
-internal object AssetIdAsString : AsString<AssetId>("app.snapsync.domain.asset.AssetId", ::AssetId, { it.value })
+internal object AssetIdAsString : AsString<AssetId>(
+    "app.snapsync.domain.asset.AssetId",
+    { AssetId.parse(it) ?: throw SerializationException("not an asset id") },
+    { it.value },
+)
 
 internal object CaptureCutoffAsString : AsString<CaptureCutoff>(
     "app.snapsync.domain.sharing.CaptureCutoff",

@@ -3,7 +3,6 @@ package app.snapsync.services.downloads
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
-import app.snapsync.data.store.DatabaseUnavailable
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.DatabaseHandlers
@@ -11,6 +10,7 @@ import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.OpenDatabase
+import app.snapsync.services.databases.DatabaseUnavailable
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

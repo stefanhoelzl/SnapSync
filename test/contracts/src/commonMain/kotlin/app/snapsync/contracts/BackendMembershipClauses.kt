@@ -170,7 +170,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.membershipClau
 
 /** A manifest declaring one asset for [deviceId], version 0. */
 internal fun manifest(deviceId: String): Manifest =
-    manifestOf(deviceId, listOf(SeededAsset(AssetId("asset-1"), listOf(ResourceRole.PRIMARY))))
+    manifestOf(deviceId, listOf(SeededAsset(AssetId.parse("asset-1")!!, listOf(ResourceRole.PRIMARY))))
 
 /** This state's device joining this state's event. */
 internal suspend fun EdgeSubject<BackendClient>.join(): JoinEventReply =

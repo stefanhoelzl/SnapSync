@@ -38,6 +38,8 @@ class CatchSitesTest {
         "Exception",
         "CancellationException",
         "kotlin.coroutines.cancellation.CancellationException",
+        // The rethrow that passes an InvalidProgramState on, as the cancellation one passes cancellation on.
+        "InvalidProgramState",
     )
 
     /** The sites themselves, and why each may catch everything. */

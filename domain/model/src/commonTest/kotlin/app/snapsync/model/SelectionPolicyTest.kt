@@ -1,10 +1,10 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -32,7 +32,7 @@ class SelectionPolicyTest {
     ) = listOf(
         Resource(
             filename = "$id-primary.heic",
-            assetId = AssetId(id),
+            assetId = testAssetId(id),
             contentType = "public.heic",
             metadata = mapOf(
                 RESOURCE_META_CREATION_DATE to "2026-07-01T00:00:00Z",
@@ -117,7 +117,7 @@ class SelectionPolicyTest {
         isVideo: Boolean = false,
         pixelArea: Long? = 4032L * 3024L,
     ) = AssetFacts(
-        AssetId(id),
+        testAssetId(id),
         captureDate = at?.let { CaptureDate.Dated(TimestampText.parse(it)) } ?: CaptureDate.Undated,
         isScreenshot = isScreenshot,
         isScreenRecording = isScreenRecording,
@@ -129,8 +129,8 @@ class SelectionPolicyTest {
         includesUpload = includesUpload,
         cutoff = june,
         ceiling = juneEnd,
-        suppressedAssetIds = { setOf(AssetId("ECHO")) },
-        albumExcludedAssetIds = { setOf(AssetId("CHAT")) },
+        suppressedAssetIds = { setOf(testAssetId("ECHO")) },
+        albumExcludedAssetIds = { setOf(testAssetId("CHAT")) },
     )
 
     private val whatItIs = listOf(
@@ -272,7 +272,7 @@ class SelectionPolicyTest {
         val bare = listOf(
             Resource(
                 filename = "A-primary.heic",
-                assetId = AssetId("A"),
+                assetId = testAssetId("A"),
                 contentType = "public.heic",
                 metadata = mapOf(RESOURCE_META_CREATION_DATE to "2026-07-01T00:00:00Z"),
                 data = null,
@@ -293,8 +293,8 @@ class SelectionPolicyTest {
             RESOURCE_META_PIXEL_AREA to "12192768",
         )
         val both = listOf(
-            Resource("A-primary.heic", AssetId("A"), "public.heic", metadata = meta, data = null),
-            Resource("A-live.mov", AssetId("A"), "com.apple.quicktime-movie", metadata = meta, data = null),
+            Resource("A-primary.heic", testAssetId("A"), "public.heic", metadata = meta, data = null),
+            Resource("A-live.mov", testAssetId("A"), "com.apple.quicktime-movie", metadata = meta, data = null),
         )
         assertEquals(setOf("A"), excluded(both), "the asset is excluded, so both of its resources go")
     }
@@ -308,14 +308,14 @@ class SelectionPolicyTest {
 
     @Test
     fun `an undated asset is in no capture range and a resource with no stored date is undated`() {
-        val undated = AssetFacts(AssetId("U"), captureDate = CaptureDate.Undated)
+        val undated = AssetFacts(testAssetId("U"), captureDate = CaptureDate.Undated)
         assertFalse(
             SelectionRule.CaptureAfter(CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z"))).admits(undated),
         )
         assertFalse(
             SelectionRule.CaptureBefore(CaptureCeiling(TimestampText.parse("2026-12-31T00:00:00Z"))).admits(undated),
         )
-        val resource = Resource("U-primary.jpg", AssetId("U"), "image/jpeg", emptyMap(), null)
+        val resource = Resource("U-primary.jpg", testAssetId("U"), "image/jpeg", emptyMap(), null)
         assertEquals(CaptureDate.Undated, factsFromResources(listOf(resource)).single().captureDate)
     }
 }

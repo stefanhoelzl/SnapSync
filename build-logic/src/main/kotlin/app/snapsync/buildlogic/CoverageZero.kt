@@ -6,8 +6,13 @@ import org.objectweb.asm.tree.AbstractInsnNode
 import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.InsnNode
 import org.objectweb.asm.tree.JumpInsnNode
+import org.objectweb.asm.tree.LabelNode
+import org.objectweb.asm.tree.LdcInsnNode
 import org.objectweb.asm.tree.LineNumberNode
+import org.objectweb.asm.tree.LookupSwitchInsnNode
 import org.objectweb.asm.tree.MethodInsnNode
+import org.objectweb.asm.tree.TableSwitchInsnNode
+import org.objectweb.asm.tree.TypeInsnNode
 import org.objectweb.asm.tree.VarInsnNode
 import org.w3c.dom.Element
 import java.io.File
@@ -16,8 +21,9 @@ import javax.xml.parsers.DocumentBuilderFactory
 /**
  * The ZERO coverage gate's judgement (`docs/architecture.md`, "Coverage"), pure so it is tested without Gradle: given
  * a module's Kover `report.xml` and its main sources, every INSTRUCTION and BRANCH the report counts as missed fails the
- * module — except COMPILER-GENERATED GLUE, recognised by its shape. Each shape is code a compiler emits that no input
- * can reach; nothing a person wrote is ever excused. The shapes:
+ * module — except COMPILER-GENERATED GLUE, recognised by its shape, and the one thing a person writes that no input may
+ * reach: a throw of `InvalidProgramState`. Each glue shape is code a compiler emits that no input can reach; besides
+ * that throw, nothing a person wrote is ever excused. The shapes:
  *
  * - **Compose declaration glue**: the declaration lines of a `@Composable` function, from `fun` through the body's
  *   opening `{` (or an expression body's `=`). The Compose compiler attributes its glue there — restart groups, the
@@ -32,6 +38,11 @@ import javax.xml.parsers.DocumentBuilderFactory
  *   and only those instructions and that one branch are excused: the rest of the class's header line is judged as
  *   ever, and a class with a required field (a mask other than 0) is never excused — its check is real and a test
  *   reaches it by leaving the field out.
+ * - **A throw of `InvalidProgramState`** ([invalidProgramStateGlue]): a state guaranteed never to happen
+ *   (`docs/patterns.md`, "Invalid program state"), so no test can reach it. Recognised in the BYTECODE as exactly
+ *   `new InvalidProgramState; dup; ldc "<because>"; invokespecial <init>(String); athrow` — an elvis's `pop` before it
+ *   included — and the ONE conditional arm that alone leads into it. A block that computes anything else, a block two
+ *   arms lead into, and an exception of any other type are not this shape: the line is judged as ever.
  *
  * The declaration ranges come from a source scan, and the scan is CHECKED against the bytecode: every composable
  * method the report lists (a `Composer` parameter in its descriptor, not a lambda) must match a scanned declaration of
@@ -63,7 +74,14 @@ object CoverageZero {
      * A glue site the BYTECODE shows: [instructions] and [branches] on [line] of [file] (`<package path>/<file name>`,
      * as the report names it) that no input reaches, in [site] (`<class>.<method>`).
      */
-    data class Glue(val file: String, val line: Int, val instructions: Int, val branches: Int, val site: String)
+    data class Glue(
+        val file: String,
+        val line: Int,
+        val instructions: Int,
+        val branches: Int,
+        val site: String,
+        val shape: String = "zero-mask check",
+    )
 
     /** A body line [ComposeGlue] excused: which shape(s), and the misses it held. */
     data class GlueLine(val file: String, val line: Int, val shapes: String, val instructions: Int, val branches: Int)
@@ -91,7 +109,12 @@ object CoverageZero {
         val mismatches = mutableListOf<String>()
         var excused = Tally(0, 0, 0)
         val excusedGlue = mutableListOf<Glue>()
-        val glueAt = glue.associateBy { it.file to it.line }
+        // Two sites on one line (a throw's block on it, and the arm into another throw's) are excused together.
+        val glueAt = glue.groupBy { it.file to it.line }.mapValues { (_, sites) ->
+            sites.reduce { a, b ->
+                a.copy(instructions = a.instructions + b.instructions, branches = a.branches + b.branches, site = "${a.site}, ${b.site}")
+            }
+        }
         for (pkg in root.children("package")) {
             val pkgPath = pkg.getAttribute("name")
             val composables = composableMethods(pkg)
@@ -221,6 +244,98 @@ object CoverageZero {
         val line = code.take(from).filterIsInstance<LineNumberNode>().lastOrNull()?.line ?: return null
         return line to block.size
     }
+
+    private const val INVALID_PROGRAM_STATE = "app/snapsync/domain/program/InvalidProgramState"
+
+    /**
+     * Every throw of `InvalidProgramState` in [classFiles] (the module's compiled classes): its block's instructions on
+     * the line they are attributed to, and — where exactly one conditional arm (a jump's, or a switch case's) leads into
+     * the block — that arm's one branch, on its jump's line. A block entered by plain fall-through or a `goto` is not
+     * this shape and excuses nothing: something else runs on the way in. A block several arms lead into excuses its
+     * instructions only: which arm is the impossible one is not the bytecode's to say.
+     */
+    fun invalidProgramStateGlue(classFiles: Iterable<ByteArray>): List<Glue> = classFiles.flatMap { bytes ->
+        val cls = ClassNode().also { ClassReader(bytes).accept(it, ClassReader.SKIP_FRAMES) }
+        val file = cls.sourceFile ?: return@flatMap emptyList()
+        val pkg = cls.name.substringBeforeLast('/', "")
+        val key = if (pkg.isEmpty()) file else "$pkg/$file"
+        cls.methods.flatMap { method ->
+            val site = "${cls.name.replace('/', '.')}.${method.name}"
+            invalidStateThrows(method.instructions.toArray()).flatMap { t ->
+                listOfNotNull(
+                    Glue(key, t.line, t.instructions, 0, site, "invalid program state"),
+                    t.armLine?.let { Glue(key, it, 0, 1, site, "invalid program state's arm") },
+                )
+            }
+        }
+    }
+
+    /** One recognised throw: its block's line and size, and the line of the one arm into it, when there is one. */
+    private class InvalidStateThrow(val line: Int, val instructions: Int, val armLine: Int?)
+
+    private fun invalidStateThrows(code: Array<AbstractInsnNode>): List<InvalidStateThrow> {
+        val real = code.indices.filter { code[it].opcode >= 0 }
+        return real.indices.mapNotNull { at ->
+            if (!isInvalidStateThrow(real.drop(at).take(THROW_SHAPE).map { code[it] })) return@mapNotNull null
+            val popped = at > 0 && code[real[at - 1]].opcode == Opcodes.POP
+            val start = if (popped) at - 1 else at
+            val arms = armsInto(code, real, start) ?: return@mapNotNull null
+            val line = lineAt(code, real[start]) ?: return@mapNotNull null
+            InvalidStateThrow(line, THROW_SHAPE + if (popped) 1 else 0, arms.singleOrNull()?.let { lineAt(code, it) })
+        }
+    }
+
+    private fun isInvalidStateThrow(shape: List<AbstractInsnNode>): Boolean {
+        if (shape.size != THROW_SHAPE) return false
+        val (new, dup, because, init, athrow) = shape
+        return new is TypeInsnNode && new.opcode == Opcodes.NEW && new.desc == INVALID_PROGRAM_STATE &&
+            dup.opcode == Opcodes.DUP &&
+            because is LdcInsnNode && because.cst is String &&
+            init is MethodInsnNode && init.opcode == Opcodes.INVOKESPECIAL && init.owner == INVALID_PROGRAM_STATE &&
+            init.name == "<init>" && init.desc == "(Ljava/lang/String;)V" &&
+            athrow.opcode == Opcodes.ATHROW
+    }
+
+    /**
+     * The indices of the conditional arms leading into the block that opens at real instruction [start] — a conditional
+     * jump falling through into it or jumping to it, a switch case naming it — or null when it is also entered by plain
+     * fall-through or a `goto`.
+     */
+    private fun armsInto(code: Array<AbstractInsnNode>, real: List<Int>, start: Int): List<Int>? {
+        val first = real[start]
+        val before = real.getOrNull(start - 1)
+        val labels = ((before?.plus(1) ?: 0) until first).map { code[it] }.filterIsInstance<LabelNode>().toSet()
+        val arms = mutableListOf<Int>()
+        if (before != null) {
+            val node = code[before]
+            when {
+                node is JumpInsnNode && node.opcode != Opcodes.GOTO -> arms += before
+                node.opcode !in ENDS_FLOW -> return null
+            }
+        }
+        code.forEachIndexed { index, node ->
+            val targets = when (node) {
+                is JumpInsnNode -> listOf(node.label)
+                is TableSwitchInsnNode -> node.labels + node.dflt
+                is LookupSwitchInsnNode -> node.labels + node.dflt
+                else -> emptyList()
+            }
+            val into = targets.count { it in labels }
+            if (into > 0 && node.opcode == Opcodes.GOTO) return null
+            repeat(into) { arms += index }
+        }
+        return arms
+    }
+
+    private fun lineAt(code: Array<AbstractInsnNode>, index: Int): Int? =
+        code.take(index + 1).filterIsInstance<LineNumberNode>().lastOrNull()?.line
+
+    private const val THROW_SHAPE = 5
+
+    private val ENDS_FLOW = setOf(
+        Opcodes.GOTO, Opcodes.ATHROW, Opcodes.RETURN, Opcodes.ARETURN, Opcodes.IRETURN, Opcodes.LRETURN,
+        Opcodes.FRETURN, Opcodes.DRETURN, Opcodes.TABLESWITCH, Opcodes.LOOKUPSWITCH,
+    )
 
     /**
      * The gate reads per-LINE counts, so it guards the report shape it relies on: a report with no package, or whose

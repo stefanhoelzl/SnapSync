@@ -46,6 +46,9 @@ class MigrationPinTest {
             "e25008999997ccaeaa0492557716948217f15127c85b7d7ffb4abb8097658237",
         "download/app/snapsync/services/downloads/db/9.sqm" to
             "acb19f0657a61342cd3c48e4f10cf4c2f9662270705ac4cfdb487cd4286f1791",
+        // Not merged yet: the id columns read as a `Stored` (the `InvalidProgramState` change).
+        "download/app/snapsync/services/downloads/db/10.sqm" to
+            "c6b3f36f768099f74083ea66155ad3c3273d641cb4ca9a7bb21c46265bec45b7",
         "ledger/app/snapsync/data/store/db/11.sqm" to
             "bc378a8aecf83363863d1742286af7021f0c4d3ba591d09c194e010963763548",
         "ledger/app/snapsync/data/store/db/12.sqm" to
@@ -56,10 +59,13 @@ class MigrationPinTest {
             "39642ee5a2d20528e9c65c2b3798927d9b6cbb62633443438672c12704835ab3",
         "ledger/app/snapsync/data/store/db/15.sqm" to
             "47cb425ef439827ece704c3cad4dcbf205a6d8ef523142de8feddf47c19786e6",
-        // Not merged yet: phase 4.2 (membership) re-types `ledgerRow` and `membership`, drops `membership.closed` and
+        // Phase 4.2 (membership): re-types `ledgerRow` and `membership`, drops `membership.closed` and
         // `pendingLeave.received`.
         "ledger/app/snapsync/data/store/db/16.sqm" to
             "f365d5ba59fd34eb695a684b7fec94130f399573f7a3ab8e598d24100a1fd15f",
+        // Not merged yet: the id columns read as a `Stored` (the `InvalidProgramState` change).
+        "ledger/app/snapsync/data/store/db/17.sqm" to
+            "0e02ac6aa4c4831be3c55745267c54402ed6edd57c2698403aa38b7344caaa03",
     )
 
     @Test

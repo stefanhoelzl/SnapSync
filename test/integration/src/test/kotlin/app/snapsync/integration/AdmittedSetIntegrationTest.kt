@@ -6,9 +6,9 @@ import app.snapsync.control.behaviour.Behaviour
 import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.WorldEvent
+import app.snapsync.testids.testAssetId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SyncHealth
@@ -101,7 +101,9 @@ class AdmittedSetIntegrationTest {
             times(2) { event<WorldEvent.UploadJobCreated>() }
             event<WorldEvent.ManifestPublished> { "IN" in it.added }
             event<WorldEvent.ManifestPublished> { "AFTER" in it.added }
-            settled { it.state.inFlight?.jobs?.mapTo(mutableSetOf(), ::assetIdOfJob) == setOf(AssetId("IN"), AssetId("AFTER")) }
+            settled {
+                it.state.inFlight?.jobs?.mapTo(mutableSetOf(), ::assetIdOfJob) == setOf(testAssetId("IN"), testAssetId("AFTER"))
+            }
         }
 
         whenever { landedAndRecorded() }

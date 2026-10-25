@@ -1,6 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.TestLedger
@@ -23,6 +22,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.services.upload.BackgroundTransfer
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -125,7 +125,7 @@ class UploadCycleTailUnitsTest {
 
     private fun resource(name: String) = Resource(
         filename = name,
-        assetId = AssetId(name),
+        assetId = testAssetId(name),
         contentType = "image/jpeg",
         metadata = mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T10:00:00Z"),
         data = null,

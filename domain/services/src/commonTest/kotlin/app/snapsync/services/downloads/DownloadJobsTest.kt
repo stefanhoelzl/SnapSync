@@ -1,6 +1,5 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AssetRef
 import app.snapsync.model.FileAccess
@@ -18,6 +17,7 @@ import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -148,7 +148,7 @@ class DownloadJobsTest {
 
     private fun pending(assetId: String, key: String, url: String = "https://cdn.example/$assetId/$key") =
         PendingDownload(
-            ref = AssetRef(testDeviceId("DEVICE-A"), AssetId(assetId)),
+            ref = AssetRef(testDeviceId("DEVICE-A"), testAssetId(assetId)),
             resource = PlannedResource(key, url, "primary", "image/heic", "IMG.HEIC"),
             eventId = EVENT,
         )
@@ -461,7 +461,7 @@ class DownloadJobsTest {
 
     @Test
     fun description_round_trips_the_asset_ref_and_resource_key() {
-        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("ASSET-1"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), testAssetId("ASSET-1"))
         val tag = decodeTag(encodeTag(ref, "a-primary.heic", EVENT))
 
         assertNotNull(tag)
@@ -514,7 +514,7 @@ class DownloadJobsTest {
         assertEquals(
             listOf(
                 Triple(
-                    AssetRef(testDeviceId("DEVICE-A"), AssetId("A")),
+                    AssetRef(testDeviceId("DEVICE-A"), testAssetId("A")),
                     "a-primary.heic",
                     "$DOWNLOAD_STAGING_DIR/$EVENT/$DEVICE_A/a-primary.heic",
                 ),
@@ -542,8 +542,8 @@ class DownloadJobsTest {
         }
 
         // Two transfers land, then the relaunch's entry point waits for what they staged.
-        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), AssetId("A")), "a-primary.heic", EVENT))
-        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), AssetId("B")), "b-primary.heic", EVENT))
+        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), testAssetId("A")), "a-primary.heic", EVENT))
+        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), testAssetId("B")), "b-primary.heic", EVENT))
         launch {
             h.jobs.awaitOutstandingStagings()
             released = true
@@ -564,13 +564,13 @@ class DownloadJobsTest {
         // Relaunched by the OS: nothing was enqueued in THIS process.
 
         // The OS hands us a transfer the previous process started.
-        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), AssetId("A")), "a-primary.heic", EVENT))
+        h.transport.finish(encodeTag(AssetRef(testDeviceId("DEVICE-A"), testAssetId("A")), "a-primary.heic", EVENT))
         advanceUntilIdle()
 
         assertEquals(
             listOf(
                 Triple(
-                    AssetRef(testDeviceId("DEVICE-A"), AssetId("A")),
+                    AssetRef(testDeviceId("DEVICE-A"), testAssetId("A")),
                     "a-primary.heic",
                     "$DOWNLOAD_STAGING_DIR/$EVENT/$DEVICE_A/a-primary.heic",
                 ),
@@ -582,7 +582,7 @@ class DownloadJobsTest {
 
     @Test
     fun staging_path_sanitizes_slashes_in_the_event_and_key() {
-        val path = stagingPath("root", "E/1", AssetRef(testDeviceId("DEVICE-A"), AssetId("A")), "a/b.heic")
+        val path = stagingPath("root", "E/1", AssetRef(testDeviceId("DEVICE-A"), testAssetId("A")), "a/b.heic")
         assertEquals("root/E_1/$DEVICE_A/a_b.heic", path)
     }
 
@@ -637,7 +637,7 @@ class DownloadJobsTest {
 
         assertEquals(2, h.transport.sessions, "the port runs on a fresh session after a system invalidation")
         assertEquals(
-            listOf(AssetId("A"), AssetId("B")),
+            listOf(testAssetId("A"), testAssetId("B")),
             h.transport.started.map {
                 decodeTag(it.description)?.ref?.sourceAssetId
             },

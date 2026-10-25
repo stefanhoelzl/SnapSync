@@ -1,8 +1,8 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.format.TimestampText
+import app.snapsync.testids.testAssetId
 import kotlin.test.Test
 import kotlin.test.assertFalse
 
@@ -15,9 +15,9 @@ class AssetIdTest {
 
     @Test
     fun `the echo and album rules match on the one form`() {
-        val facts = AssetFacts(AssetId(CANONICAL), CaptureDate.Dated(TimestampText.parse("2026-07-21T07:46:58Z")))
-        assertFalse(SelectionRule.NotEcho(setOf(AssetId(CANONICAL))).admits(facts))
-        assertFalse(SelectionRule.NotInDenylistedAlbum(setOf(AssetId(CANONICAL))).admits(facts))
+        val facts = AssetFacts(testAssetId(CANONICAL), CaptureDate.Dated(TimestampText.parse("2026-07-21T07:46:58Z")))
+        assertFalse(SelectionRule.NotEcho(setOf(testAssetId(CANONICAL))).admits(facts))
+        assertFalse(SelectionRule.NotInDenylistedAlbum(setOf(testAssetId(CANONICAL))).admits(facts))
     }
 
     private companion object {

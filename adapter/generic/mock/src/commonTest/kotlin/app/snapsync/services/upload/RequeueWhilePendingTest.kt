@@ -1,12 +1,12 @@
 package app.snapsync.services.upload
 
 import app.snapsync.data.store.SharedDatabase
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.test.runTest
@@ -24,7 +24,7 @@ class RequeueWhilePendingTest {
     private val log = Logger.withTag("test")
 
     private suspend fun pending(vararg keys: String) = keys.forEach {
-        ledger.recordUnlessSettled(LedgerEntry("$it.heic", AssetId(it), LedgerState.DISCOVERED))
+        ledger.recordUnlessSettled(LedgerEntry("$it.heic", testAssetId(it), LedgerState.DISCOVERED))
     }
 
     @Test

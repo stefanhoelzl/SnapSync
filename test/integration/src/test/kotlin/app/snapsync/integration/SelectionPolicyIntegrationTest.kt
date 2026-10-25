@@ -4,9 +4,9 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.WorldEvent
+import app.snapsync.testids.testAssetId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
@@ -97,7 +97,9 @@ class SelectionPolicyIntegrationTest {
         whenever { cycle() }
         then {
             times(2) { event<WorldEvent.UploadJobCreated>() }
-            settled { it.state.inFlight?.jobs?.mapTo(mutableSetOf(), ::assetIdOfJob) == setOf(AssetId("CAM"), AssetId("CLIP")) }
+            settled {
+                it.state.inFlight?.jobs?.mapTo(mutableSetOf(), ::assetIdOfJob) == setOf(testAssetId("CAM"), testAssetId("CLIP"))
+            }
         }
     }
 

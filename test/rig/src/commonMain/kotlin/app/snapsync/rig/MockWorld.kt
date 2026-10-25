@@ -135,7 +135,9 @@ class BackendReach(
     suspend fun objectsOf(eventId: String, deviceId: String): Set<String> {
         val reply = send(Routes.DeviceFiles.request(eventId, deviceId))
         val listed = reply as? DeviceFilesReply.Listed ?: refused("the listing", reply)
-        return listed.items.mapTo(mutableSetOf()) { uploadKey(AssetId(it.assetId), it.role.inApp(), it.filename) }
+        return listed.items.mapTo(
+            mutableSetOf(),
+        ) { uploadKey(AssetId.parse(it.assetId)!!, it.role.inApp(), it.filename) }
     }
 
     /**
@@ -151,7 +153,7 @@ class BackendReach(
         return page.items.map { asset ->
             UnionAsset(
                 deviceId = requireNotNull(DeviceId.parse(asset.deviceId)) { "not a device id: '${asset.deviceId}'" },
-                assetId = AssetId(asset.assetId),
+                assetId = AssetId.parse(asset.assetId)!!,
                 creationDate = asset.creationDate,
                 resources = asset.resources.map {
                     UnionResource(it.key, it.url.orEmpty(), it.role.value, it.contentType, it.filename)

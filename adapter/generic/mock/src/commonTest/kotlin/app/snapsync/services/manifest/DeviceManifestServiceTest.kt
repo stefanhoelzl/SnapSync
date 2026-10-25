@@ -1,6 +1,5 @@
 package app.snapsync.services.manifest
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -9,6 +8,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.services.databases.sharedOver
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
@@ -26,7 +26,7 @@ import kotlin.test.assertNull
 class DeviceManifestServiceTest {
 
     private fun asset(id: String) = DeviceManifestAsset(
-        AssetId(id),
+        testAssetId(id),
         "2026-07-01T00:00:00Z",
         listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", "$id-primary", "IMG_$id.HEIC")),
     )

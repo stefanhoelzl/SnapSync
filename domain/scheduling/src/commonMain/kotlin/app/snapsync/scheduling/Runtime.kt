@@ -2,6 +2,7 @@
 
 package app.snapsync.scheduling
 
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
@@ -22,14 +23,15 @@ import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.handleCoroutineException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration
@@ -94,9 +96,12 @@ class Runtime(
      * no new code launches in it (`CoroutinesInScheduling`).
      */
     val scope = CoroutineScope(
-        SupervisorJob(parent) + labelling(lane, threadLabel) + RuntimeElement(this) +
+        SupervisorJob(parent) + labelling(lane, threadLabel) +
             CoroutineExceptionHandler { context, failure ->
-                log.unlabelled.e("unawaited work failed", "trigger" of context[Trigger], cause = failure)
+                when (failure) {
+                    is InvalidProgramState -> endProcess(failure)
+                    else -> log.unlabelled.e("unawaited work failed", "trigger" of context[Trigger], cause = failure)
+                }
             },
     )
 
@@ -106,8 +111,8 @@ class Runtime(
      * Starts [body] as the run of the delivery [trigger], answering [completion] when it ends. The run holds background
      * time when [time] says so. Answers the [Running] the delivering adapter expires.
      */
-    internal fun start(trigger: Trigger, time: OsTime, completion: Completion, body: suspend () -> Unit): Running =
-        launch(trigger, time, delivered(trigger.label), completion, body)
+    internal fun start(trigger: Trigger, time: OsTime, completion: Completion, body: suspend (Run) -> Unit): Running =
+        launch(trigger, time, delivered(trigger.label), completion) { body(Run(this, trigger)) }
 
     /**
      * Work nobody awaits, started from inside a run of [work] — or, with none, for no delivery: it runs in the process
@@ -129,8 +134,24 @@ class Runtime(
      * a staged download's import — labelled as the entry point [name]. Inside a run it is that run's work; outside any,
      * its own.
      */
-    suspend fun detached(name: String, body: suspend () -> Unit) {
-        detached(Trigger.of(name), currentCoroutineContext()[WorkElement]?.work, body)
+    suspend fun detached(name: String, body: suspend (Run) -> Unit) {
+        val trigger = Trigger.of(name)
+        detached(trigger, currentCoroutineContext()[WorkElement]?.work, { body(Run(this, trigger)) })
+    }
+
+    /**
+     * Awaits [block], run in the process scope: if the caller stops waiting — its time is up, or the pass it belongs to
+     * yielded — [block] runs on to its end. For work the platform cannot stop once started, like a photo-library
+     * import, whose own report records what it did. Labelled with the caller's trigger, when it has one; the entry
+     * point's work it outlives its caller for is still that work's: its `done` waits for it.
+     */
+    suspend fun <T> outliving(block: suspend () -> T): T {
+        val trigger = currentCoroutineContext()[Trigger]
+        val joined = currentCoroutineContext()[WorkElement]
+        val work = if (joined == null) null else joined.work.opened()
+        val outlived = scope.async((trigger ?: Trigger.of("outliving")) + (joined ?: EmptyCoroutineContext)) { block() }
+        work?.let { outlived.invokeOnCompletion { cause -> it.closed(endedAs(cause)) } }
+        return outlived.await()
     }
 
     /**
@@ -151,6 +172,8 @@ class Runtime(
         val failed = try {
             body(Delivery(this, Trigger.of(name), work))
             null
+        } catch (fatal: InvalidProgramState) {
+            endProcess(fatal)
         } catch (failure: Throwable) {
             log.unlabelled.e("delivery failed", "trigger" of name, cause = failure)
             failure
@@ -166,13 +189,16 @@ class Runtime(
      * the caller is the platform's synchronous call, an Objective-C boundary any Kotlin throwable aborts the process
      * across, and nothing above it could act on a cancellation.
      */
-    internal fun <R> blocking(name: String, onFailure: R, body: suspend () -> R): R {
+    internal fun <R> blocking(name: String, onFailure: R, body: suspend (Run) -> R): R {
         val work = delivered(name)
         val replaced = threadLabel.swap(name)
         var failed: Throwable? = null
         val answer = try {
             val on: CoroutineContext = if (answerOn == null) EmptyCoroutineContext else labelling(answerOn, threadLabel)
-            runBlocking(on + Trigger.of(name) + RuntimeElement(this) + WorkElement(work)) { body() }
+            val trigger = Trigger.of(name)
+            runBlocking(on + trigger + WorkElement(work)) { body(Run(this@Runtime, trigger)) }
+        } catch (fatal: InvalidProgramState) {
+            endProcess(fatal)
         } catch (failure: Throwable) {
             log.unlabelled.e("delivery failed", "trigger" of name, cause = failure)
             failed = failure
@@ -199,8 +225,8 @@ class Runtime(
         work: EntryWork,
         completion: Completion?,
         body: suspend () -> Unit,
-    ): Run {
-        val run = Run(trigger.label, completion, work)
+    ): Expirable {
+        val run = Expirable(trigger.label, completion, work)
         val job = scope.launch(trigger + WorkElement(work), start = CoroutineStart.LAZY) { run.contained { body() } }
         // The hold is begun on the delivering thread, before it returns: the operating system may suspend the process
         // the moment its callback returns, so time asked for later, from the lane, may never be asked for at all.
@@ -214,7 +240,7 @@ class Runtime(
      * One run as its delivering adapter sees it: expired by the operating system, answered exactly once — its hold,
      * when it took one, ended with the answer.
      */
-    private inner class Run(
+    private inner class Expirable(
         private val label: String,
         /** What the operating system is answered — `null` for a run a delivery detached, which answers no one. */
         private val completion: Completion?,
@@ -234,6 +260,8 @@ class Runtime(
                 body()
             } catch (failure: CancellationException) {
                 throw failure
+            } catch (fatal: InvalidProgramState) {
+                throw fatal
             } catch (failure: Throwable) {
                 failed.store(true)
                 log.e("run failed", "trigger" of label, cause = failure)
@@ -317,11 +345,15 @@ class Delivery internal constructor(
      */
     fun detached(block: suspend () -> Unit): Job = runtime.detached(trigger, work, block)
 
+    /** [detached] work that is a list of steps (`docs/patterns.md`, "Steps"), as a run of this delivery's trigger. */
+    fun detachedSteps(block: suspend Steps.() -> Unit): Job =
+        runtime.detached(trigger, work, { Run(runtime, trigger).steps(block) })
+
     /**
      * Where work this delivery's handling starts elsewhere runs — a tap's intents, on the screen's container: labelled
      * with this delivery's trigger, and what it starts in turn is this delivery's work.
      */
-    val context: CoroutineContext get() = trigger + WorkElement(work) + RuntimeElement(runtime)
+    val context: CoroutineContext get() = trigger + WorkElement(work)
 
     /** Counts [job] — started by this delivery's handling, elsewhere — as this delivery's work until it ends. */
     fun joining(job: Job) {
@@ -339,9 +371,18 @@ class Delivery internal constructor(
  */
 val EXPIRY_GRACE: Duration = 2.seconds
 
-/** The runtime a coroutine runs under, so `steps { }` reaches it without being handed it. */
-internal class RuntimeElement(val runtime: Runtime) : AbstractCoroutineContextElement(RuntimeElement) {
-    companion object Key : CoroutineContext.Key<RuntimeElement>
+/**
+ * Ends the process with [state] as its crash (`docs/patterns.md`, "Invalid program state"): the coroutines library's
+ * last resort, on the calling thread — the thread's uncaught handler on the JVM and Android, Kotlin/Native's
+ * unhandled-exception hook on iOS, whose crash report carries [state]'s guarantee and stack (measured on the
+ * simulator, 2026-10-25). Never a throw into the caller: on iOS that caller is Objective-C or Swift, where a Kotlin
+ * throwable terminates without the hook and the report says only that something threw. [state] is thrown after, for a
+ * runtime whose last resort returns (a JVM host's thread).
+ */
+@OptIn(InternalCoroutinesApi::class)
+internal fun endProcess(state: InvalidProgramState): Nothing {
+    handleCoroutineException(EmptyCoroutineContext, state)
+    throw state
 }
 
 /**

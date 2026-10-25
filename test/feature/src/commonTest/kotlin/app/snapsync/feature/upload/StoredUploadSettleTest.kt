@@ -1,6 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.LedgerState
@@ -14,6 +13,7 @@ import app.snapsync.model.StoredResource
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.awaitCancellation
@@ -45,12 +45,12 @@ class StoredUploadSettleTest {
     }
 
     private fun listing(vararg keys: String) =
-        FakeFiles(Result.success(keys.map { StoredResource(it, AssetId(it.substringBefore('-'))) }))
+        FakeFiles(Result.success(keys.map { StoredResource(it, testAssetId(it.substringBefore('-'))) }))
 
     private suspend fun ledgerHolding(vararg rows: Pair<String, LedgerState>) = TestLedger().service.apply {
         resetTo(
             testEventId(LEDGER_EVENT),
-            rows.map { (key, state) -> LedgerEntry(key, AssetId(key.substringBefore('-')), state) },
+            rows.map { (key, state) -> LedgerEntry(key, testAssetId(key.substringBefore('-')), state) },
         )
     }
 

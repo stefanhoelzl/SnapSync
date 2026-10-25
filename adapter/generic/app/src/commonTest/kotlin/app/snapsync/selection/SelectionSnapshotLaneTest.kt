@@ -1,8 +1,8 @@
 package app.snapsync.selection
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.Resource
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -84,7 +84,7 @@ class SelectionSnapshotLaneTest {
             of.map {
                 Resource(
                     filename = "$it.heic",
-                    assetId = AssetId(it),
+                    assetId = testAssetId(it),
                     contentType = "image/heic",
                     metadata = emptyMap(),
                     data = null,

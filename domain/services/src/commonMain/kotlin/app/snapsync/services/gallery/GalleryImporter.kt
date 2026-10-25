@@ -83,5 +83,5 @@ fun AssetRef.correlation(): String = "$sourceDeviceId/${sourceAssetId.value}"
 fun assetRefOf(correlation: String): AssetRef =
     AssetRef(
         requireNotNull(DeviceId.parse(correlation.substringBeforeLast('/'))) { "not a correlation: '$correlation'" },
-        AssetId(correlation.substringAfterLast('/')),
+        requireNotNull(AssetId.parse(correlation.substringAfterLast('/'))) { "not a canonical asset id" },
     )

@@ -1,6 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -18,6 +17,7 @@ import app.snapsync.model.ResourceRole
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -49,7 +49,7 @@ class ShareSettlementTest {
             deviceId = testDeviceId("D"),
             assets = listOf(
                 DeviceManifestAsset(
-                    AssetId("A_L0_1"),
+                    testAssetId("A_L0_1"),
                     "2026-07-10T00:00:00Z",
                     listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", "k", "IMG.HEIC")),
                 ),

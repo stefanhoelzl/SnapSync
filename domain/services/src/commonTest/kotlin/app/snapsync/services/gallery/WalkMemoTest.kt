@@ -2,7 +2,6 @@
 
 package app.snapsync.services.gallery
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
 import app.snapsync.inbound.AppProcessOnly
@@ -15,6 +14,7 @@ import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryChangeTokenRead
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.CapturingLogWriter
+import app.snapsync.testids.testAssetId
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.cancellation.CancellationException
@@ -114,7 +114,7 @@ class WalkMemoTest {
         val after = memo.discover(policy("2026-01-01T00:00:00Z"))
         val again = memo.discover(policy("2026-01-01T00:00:00Z"))
 
-        assertEquals(listOf(AssetId("A")), ids(after), "B left the library, and the fresh walk says so")
+        assertEquals(listOf(testAssetId("A")), ids(after), "B left the library, and the fresh walk says so")
         assertEquals(2, library.walks, "the changed token walked once, and the replaced entry served the next")
         assertSame(after, again)
     }
@@ -169,7 +169,7 @@ class WalkMemoTest {
         val readable = memo.discover(policy("2026-01-01T00:00:00Z"))
 
         assertEquals(2, library.walks, "an unreadable read is no answer to reuse")
-        assertEquals(listOf(AssetId("A")), ids(readable))
+        assertEquals(listOf(testAssetId("A")), ids(readable))
     }
 
     @Test
@@ -194,7 +194,7 @@ class WalkMemoTest {
         val next = memo.discover(policy("2026-01-01T00:00:00Z"))
 
         assertEquals(2, library.walks, "the entry carries the token read BEFORE the walk, so the next read differs")
-        assertEquals(listOf(AssetId("A"), AssetId("B")), ids(next))
+        assertEquals(listOf(testAssetId("A"), testAssetId("B")), ids(next))
     }
 
     @Test
@@ -275,7 +275,7 @@ class WalkMemoTest {
         fun resource(assetId: String) =
             Resource(
                 filename = "$assetId-primary.jpg",
-                assetId = AssetId(assetId),
+                assetId = testAssetId(assetId),
                 contentType = "image/jpeg",
                 metadata = emptyMap(),
                 data = null,

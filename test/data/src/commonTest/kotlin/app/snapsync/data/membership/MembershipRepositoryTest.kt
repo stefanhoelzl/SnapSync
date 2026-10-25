@@ -2,8 +2,11 @@ package app.snapsync.data.membership
 
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.StoreWrite
+import app.snapsync.data.store.Stored
+import app.snapsync.data.store.use
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.MemberCounts
@@ -58,6 +61,7 @@ class MembershipRepositoryTest {
 
     /** The membership row as written raw, each date as [dates] give it — a row a build of the past may have left. */
     private fun stored(
+        id: Stored<EventId> = Stored.Valid(testEventId(EVENT)),
         name: String = "Lake weekend",
         from: String = START,
         start: String = START,
@@ -66,7 +70,7 @@ class MembershipRepositoryTest {
     ) =
         shared.use {
             it.membershipQueries.saveMembership(
-                eventId = testEventId(EVENT),
+                eventId = id,
                 name = name,
                 minPhotoDate = CaptureCutoff(TimestampText.parse(from)),
                 startsAt = EventStart(TimestampText.parse(start)),
@@ -122,6 +126,15 @@ class MembershipRepositoryTest {
             row()
             assertIs<MembershipRead.Unavailable>(repository.read())
         }
+    }
+
+    @Test
+    fun `a stored event id that spells none is unreadable, and its leave fails and owes nothing`() {
+        stored(id = Stored.Invalid("E1"))
+        assertIs<MembershipRead.Unavailable>(repository.read(), "never a throw, never not joined")
+        assertIs<LeaveResult.Failed>(repository.leave())
+        assertIs<MembershipRead.Unavailable>(repository.read(), "the row stays as it was")
+        assertEquals(PendingLeavesRead.Ok(emptySet()), owed())
     }
 
     @Test

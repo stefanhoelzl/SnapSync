@@ -1,6 +1,5 @@
 package app.snapsync.feature.crypto
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -25,6 +24,7 @@ import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
 import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.crypto.UploadSealing
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.emptyFlow
@@ -46,8 +46,8 @@ import kotlin.test.assertTrue
 class CryptoServicesEdgesTest {
 
     private val crypto = fakeCrypto()
-    private val resource = Resource("ASSET1-primary.heic", AssetId("ASSET1"), "public.heic", emptyMap(), null)
-    private val ref = AssetRef(testDeviceId(DEVICE), AssetId("ASSET1"))
+    private val resource = Resource("ASSET1-primary.heic", testAssetId("ASSET1"), "public.heic", emptyMap(), null)
+    private val ref = AssetRef(testDeviceId(DEVICE), testAssetId("ASSET1"))
 
     private fun config(keyId: String?) = EventConfig(
         eventId = testEventId(EVENT),

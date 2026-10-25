@@ -416,7 +416,7 @@ class WorldInspectorController(
     /** Another member, through the backend's operator: its photo's bytes land, and it joins and publishes its manifest. */
     private fun injectMember(eventId: String, deviceId: String) {
         val backend = mocks.backend.operator
-        val asset = AssetId("$deviceId-a1")
+        val asset = AssetId.parse("$deviceId-a1")!!
         val key = uploadKey(asset, ResourceRole.PRIMARY, FOREIGN_FILENAME)
         backend.deposit(deviceId, asset, ResourceRole.PRIMARY, FOREIGN_FILENAME, eventId)
         backend.seedMember(

@@ -143,6 +143,29 @@ snapsync:
     active: true
     includes:
       - '**/domain/domain/src/commonMain/**'
+  OnlyInvalidProgramStateThrows:
+    # The core's layers throw only an InvalidProgramState (`docs/patterns.md`, "Invalid program state"). The old zones
+    # join as phase 4 moves them underneath.
+    active: true
+    includes:
+      - '**/domain/domain/src/commonMain/**'
+      - '**/domain/format/src/commonMain/**'
+      - '**/domain/data/src/commonMain/**'
+      - '**/domain/application/src/commonMain/**'
+      - '**/domain/query/src/commonMain/**'
+      - '**/domain/entrypoints/src/commonMain/**'
+      - '**/domain/scheduling/src/commonMain/**'
+      - '**/domain/inbound/src/commonMain/**'
+  InvalidProgramStateBecause:
+    # Wherever production throws one, its `because` is a literal: no value reaches the crash report through it. (A
+    # contract's crash child throws with the guarantee its clause names per road.)
+    active: true
+    includes:
+      - '**/src/commonMain/**'
+      - '**/src/iosMain/**'
+      - '**/src/androidMain/**'
+      - '**/src/jvmMain/**'
+      - '**/src/main/**'
 
 # ktlint's formatting rules (`detekt-formatting`), the shape every Kotlin file is written in. A finding is fixed by
 # the tool, not by hand: `./gradlew <tier> -Psnapsync.detektAutoCorrect` rewrites what it flags. Imports follow the

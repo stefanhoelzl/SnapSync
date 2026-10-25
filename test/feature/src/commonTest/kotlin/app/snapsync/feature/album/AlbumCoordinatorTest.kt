@@ -18,6 +18,7 @@ import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -187,15 +188,15 @@ class AlbumCoordinatorTest {
         AlbumCoordinator(
             GalleryAlbums(manager),
             store,
-        ).place(testEventId(event.value), listOf(AssetId("A_L0_1"), AssetId("B_L0_1")))
-        assertEquals(listOf("album-X" to listOf(AssetId("A_L0_1"), AssetId("B_L0_1"))), manager.added)
+        ).place(testEventId(event.value), listOf(testAssetId("A_L0_1"), testAssetId("B_L0_1")))
+        assertEquals(listOf("album-X" to listOf(testAssetId("A_L0_1"), testAssetId("B_L0_1"))), manager.added)
     }
 
     @Test
     fun `place skips when no album exists yet`() = runTest {
         val manager = FakeAlbumManager()
         val store = albumMap() // empty
-        AlbumCoordinator(GalleryAlbums(manager), store).place(testEventId(event.value), listOf(AssetId("A_L0_1")))
+        AlbumCoordinator(GalleryAlbums(manager), store).place(testEventId(event.value), listOf(testAssetId("A_L0_1")))
         assertTrue(manager.added.isEmpty())
     }
 
@@ -214,7 +215,7 @@ class AlbumCoordinatorTest {
         AlbumCoordinator(
             GalleryAlbums(manager),
             store,
-        ).place(testEventId(event.value), listOf(AssetId("A_L0_1"))) // must not throw
+        ).place(testEventId(event.value), listOf(testAssetId("A_L0_1"))) // must not throw
     }
 
     @Test
@@ -224,7 +225,7 @@ class AlbumCoordinatorTest {
         AlbumCoordinator(
             GalleryAlbums(manager),
             store,
-        ).place(testEventId(event.value), listOf(AssetId("A_L0_1"))) // must not throw
+        ).place(testEventId(event.value), listOf(testAssetId("A_L0_1"))) // must not throw
         assertEquals(1, manager.added.size, "the add was asked once, and its refusal ends it")
     }
 
@@ -235,10 +236,10 @@ class AlbumCoordinatorTest {
         val store = albumMap().apply { put(testEventId(event.value), "album-X") }
         val coordinator = AlbumCoordinator(GalleryAlbums(manager), store)
 
-        coordinator.placeReceived(testEventId(event.value), listOf(AssetId("R_L0_1")))
+        coordinator.placeReceived(testEventId(event.value), listOf(testAssetId("R_L0_1")))
         coordinator.onImportedInto(event, "album-X")
 
-        assertEquals(listOf("album-X" to listOf(AssetId("R_L0_1"))), manager.added)
+        assertEquals(listOf("album-X" to listOf(testAssetId("R_L0_1"))), manager.added)
         assertFalse(store.filled(testEventId(event.value)))
     }
 

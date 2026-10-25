@@ -686,7 +686,7 @@ internal class BackendState(
             null -> presentEventOf(deviceId) ?: return CONFLICT
             else -> named.takeIf { isPresent(it, deviceId) } ?: return FORBIDDEN
         }
-        deposit(eventId, deviceId, DeviceFile(AssetId(segments[1]), role, filename))
+        deposit(eventId, deviceId, DeviceFile(AssetId.parse(segments[1])!!, role, filename))
         val key = "$eventId/$deviceId/${segments[1]}/${role.wire}"
         val shaHeader = Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256
         val sha256 = headers.entries.firstOrNull { it.key.equals(shaHeader, ignoreCase = true) }?.value

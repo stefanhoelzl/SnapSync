@@ -2,6 +2,7 @@
 
 package app.snapsync.objc
 
+import app.snapsync.domain.program.InvalidProgramState
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CPointer
@@ -18,6 +19,9 @@ import platform.Foundation.NSError
 import platform.Foundation.NSFileNoSuchFileError
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.processUnhandledException
+import kotlin.native.terminateWithUnhandledException
 
 /**
  * The two helpers every Kotlin/Objective-C crossing goes through (law "ObjC boundaries contain every throw",
@@ -30,7 +34,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * delegate method Kotlin overrides runs its body inside this: a throw is logged at `Error` — a real fault, so it
  * reaches crash reporting — and the ObjC side gets [fallback] and a normal return. This is the one place in
  * production source that catches `Throwable` *including* cancellation, deliberately: nothing may cross, and a
- * cancellation surfacing here has no coroutine above it left to cancel.
+ * cancellation surfacing here has no coroutine above it left to cancel. The one throwable it does not contain is an
+ * [InvalidProgramState], which ends the process ([endProcess]).
  *
  * **Outbound — [checkedObjC].** An ObjC API that reports failure through a `Boolean` result and an `NSError**`
  * out-parameter was being called with `error = null` and its result dropped, so a refused background-task submit
@@ -42,10 +47,25 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 inline fun <R> objcBoundary(log: Logger, name: String, fallback: R, block: () -> R): R =
     try {
         block()
+    } catch (fatal: InvalidProgramState) {
+        endProcess(fatal)
     } catch (t: Throwable) {
         log.e(t) { "$name: a throw reached the Objective-C boundary — contained, returning the fallback" }
         fallback
     }
+
+/**
+ * Ends the process with [state] as its crash, from a thread Objective-C called into (`docs/patterns.md`, "Invalid
+ * program state"): Kotlin/Native's unhandled path, whose hook — the crash reporter's — files [state]'s guarantee and
+ * stack before the process terminates. Never a throw into the Objective-C frames: a Kotlin throwable that unwinds there
+ * terminates WITHOUT the hook, and the report says only that something threw (both measured on the simulator,
+ * sentry-cocoa 8.58.2, 2026-10-25).
+ */
+@OptIn(ExperimentalNativeApi::class)
+fun endProcess(state: InvalidProgramState): Nothing {
+    processUnhandledException(state)
+    terminateWithUnhandledException(state)
+}
 
 /** [objcBoundary] for a block or delegate method that returns nothing. */
 inline fun objcBoundary(log: Logger, name: String, block: () -> Unit) = objcBoundary(log, name, Unit, block)
@@ -94,6 +114,8 @@ class ObjCCallback<T> @PublishedApi internal constructor(
 inline fun <T> objcBoundary(callback: ObjCCallback<T>, answer: () -> T) {
     val outcome = try {
         Result.success(answer())
+    } catch (fatal: InvalidProgramState) {
+        endProcess(fatal)
     } catch (t: Throwable) {
         Result.failure(t)
     }

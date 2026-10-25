@@ -1,15 +1,15 @@
 package app.snapsync.services.downloads
 
 import app.snapsync.contracts.at
-import app.snapsync.data.store.DatabaseUnavailable
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.DbOpen
+import app.snapsync.services.databases.DatabaseUnavailable
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.downloads.db.DownloadDatabase
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
  */
 class SuppressionOverDownloadStoreTest {
 
-    private val ref = AssetRef(sourceDeviceId = testDeviceId("device-b"), sourceAssetId = AssetId("asset-9"))
+    private val ref = AssetRef(sourceDeviceId = testDeviceId("device-b"), sourceAssetId = testAssetId("asset-9"))
     private val resource =
         PlannedResource("photo-9.heic", "https://example.invalid/9", "photo", "image/heic", "photo-9.heic")
 
@@ -40,9 +40,9 @@ class SuppressionOverDownloadStoreTest {
         assertEquals(emptySet(), extension.suppressedLocalIds())
 
         app.plan(ref, creationDate = "2026-08-08T12:00:00Z", resources = listOf(resource))
-        app.recordCreatedLocalId(ref, AssetId("local-1"))
+        app.recordCreatedLocalId(ref, testAssetId("local-1"))
 
-        assertEquals(setOf(AssetId("local-1")), extension.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("local-1")), extension.suppressedLocalIds())
     }
 
     @Test
@@ -75,7 +75,11 @@ class SuppressionOverDownloadStoreTest {
         DownloadService(databases).counts() // the app's first use migrates it
 
         assertEquals(SuppressionReadiness.Ready, extension.readiness())
-        assertEquals(setOf(AssetId("LOCAL-OLD")), extension.suppressedLocalIds(), "the old suppression row survived")
+        assertEquals(
+            setOf(testAssetId("LOCAL-OLD")),
+            extension.suppressedLocalIds(),
+            "the old suppression row survived",
+        )
     }
 
     @Test

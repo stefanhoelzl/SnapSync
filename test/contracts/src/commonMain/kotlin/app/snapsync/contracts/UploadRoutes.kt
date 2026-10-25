@@ -12,7 +12,7 @@ import app.snapsync.ports.UploadTarget
 
 /** The ledger key an upload clause uploads under (`<assetId>-<role>.<ext>`), distinct per clause and per [n]. */
 fun uploadClauseKey(clauseId: String, n: Int = 1): String =
-    uploadKey(AssetId("contract-${clauseId.lowercase()}-$n"), ResourceRole.PRIMARY, "IMG_0001.JPG")
+    uploadKey(AssetId.parse("contract-${clauseId.lowercase()}-$n")!!, ResourceRole.PRIMARY, "IMG_0001.JPG")
 
 /** The route [contract]'s clause [clauseId] sends its upload [n] to. */
 fun uploadClausePath(contract: String, clauseId: String, answer: FixtureAnswer, n: Int = 1): String =

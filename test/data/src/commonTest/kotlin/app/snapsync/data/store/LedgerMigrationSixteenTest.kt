@@ -41,7 +41,7 @@ class LedgerMigrationSixteenTest {
 
         val shared = SharedDatabase(device.port(), legacy = null)
         val membership = shared.use { it.membershipQueries.selectMembership().executeAsOne() }
-        assertEquals(testEventId(JOINED), membership.eventId)
+        assertEquals(Stored.Valid(testEventId(JOINED)), membership.eventId)
         assertEquals(Direction.DownloadOnly, membership.direction)
         assertEquals("k1", membership.keyId)
         assertEquals(2, membership.membersWaiting)
@@ -50,7 +50,11 @@ class LedgerMigrationSixteenTest {
         }
         assertEquals(listOf(LedgerState.COMPLETED), states)
         val owed = shared.use { it.pendingLeaveQueries.selectPendingLeaves().executeAsList() }
-        assertEquals(listOf(testEventId(JOINED), testEventId(LEFT)), owed, "every leave owed, received or not")
+        assertEquals(
+            listOf(Stored.Valid(testEventId(JOINED)), Stored.Valid(testEventId(LEFT))),
+            owed,
+            "every leave owed, received or not",
+        )
     }
 
     private companion object {

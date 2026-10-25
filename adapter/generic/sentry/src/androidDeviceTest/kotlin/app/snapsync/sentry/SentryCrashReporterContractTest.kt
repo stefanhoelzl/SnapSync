@@ -61,6 +61,11 @@ class SentryCrashReporterContractTest {
         )
 
         override fun create(state: CrashReporterState, clauseId: String, log: CallLog): Entered<CrashReporterSubject> {
+            if (state == CrashReporterState.AFTER_A_PROCESS_DEATH) {
+                return Entered.Unreachable(
+                    "a process death is SentryProcessDeathContractTest's: it runs the app's process",
+                )
+            }
             val writers = Logger.config.logWriterList
             resetChannel(wipeCache = true)
             val ingest = LoopbackIngest()

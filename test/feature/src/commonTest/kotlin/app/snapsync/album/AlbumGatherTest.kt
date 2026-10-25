@@ -38,6 +38,7 @@ import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred
@@ -134,20 +135,20 @@ class AlbumGatherTest {
 
         suspend fun own(assetId: String, creationDate: String, eventId: String = "E1") {
             ledger.recordUnlessSettled(
-                LedgerEntry("$assetId.HEIC", AssetId(assetId), LedgerState.COMPLETED, creationDate = creationDate),
+                LedgerEntry("$assetId.HEIC", testAssetId(assetId), LedgerState.COMPLETED, creationDate = creationDate),
             )
         }
 
         /** A received photo, imported; [eventId] is the event whose reconcile tagged it, `null` for none. */
         suspend fun imported(device: String, assetId: String, localId: String, eventId: String? = "E2") {
-            val ref = AssetRef(testDeviceId(device), AssetId(assetId))
+            val ref = AssetRef(testDeviceId(device), testAssetId(assetId))
             val resources = listOf(PlannedResource("$assetId.heic", "u", "primary", "image/heic", "a.heic"))
             downloads.planAll(
                 listOf(PlannedAsset(ref, "2026-09-10T00:00:00Z", resources)),
                 eventId?.let(::testEventId),
                 members = listOf(ref),
             )
-            downloads.markImported(ref, AssetId(localId))
+            downloads.markImported(ref, testAssetId(localId))
         }
     }
 
@@ -165,7 +166,7 @@ class AlbumGatherTest {
         r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z", eventId = "E1")
         r.gather.gather(testEventId("E2"))
         assertEquals(
-            setOf(AssetId("OWN_1_L0_001")),
+            setOf(testAssetId("OWN_1_L0_001")),
             r.manager.added,
             "own and foreign photos reach the album in one id form: the gallery's",
         )
@@ -177,7 +178,7 @@ class AlbumGatherTest {
         r.own("EARLY", "2026-09-10T00:00:00Z")
         r.own("LATE", "2026-09-20T00:00:00Z")
         r.gather.gather(testEventId("E2"))
-        assertEquals(setOf(AssetId("LATE")), r.manager.added)
+        assertEquals(setOf(testAssetId("LATE")), r.manager.added)
     }
 
     @Test
@@ -196,7 +197,7 @@ class AlbumGatherTest {
         r.imported("PEER", "IN_UNION", "LOCAL-IN")
         r.imported("PEER", "OTHER_EVENT", "LOCAL-OTHER", eventId = "E1")
         r.gather.gather(testEventId("E2"))
-        assertEquals(setOf(AssetId("LOCAL-IN")), r.manager.added)
+        assertEquals(setOf(testAssetId("LOCAL-IN")), r.manager.added)
     }
 
     @Test
@@ -212,7 +213,7 @@ class AlbumGatherTest {
         r.gather.gather(testEventId("E2"))
         r.gather.gather(testEventId("E2"))
 
-        assertEquals(setOf(AssetId("LOCAL-IN")), r.manager.added, "a second gather files nothing new")
+        assertEquals(setOf(testAssetId("LOCAL-IN")), r.manager.added, "a second gather files nothing new")
     }
 
     @Test
@@ -221,7 +222,7 @@ class AlbumGatherTest {
         r.own("OWN", "2026-09-10T00:00:00Z")
         r.imported("PEER", "UNTAGGED", "LOCAL-UNTAGGED", eventId = null)
         r.gather.gather(testEventId("E2"))
-        assertEquals(setOf(AssetId("OWN")), r.manager.added)
+        assertEquals(setOf(testAssetId("OWN")), r.manager.added)
     }
 
     @Test
@@ -231,7 +232,10 @@ class AlbumGatherTest {
         r.gather.gather(testEventId("E2"))
         assertEquals(3, r.manager.calls.size)
         assertTrue(r.manager.calls.all { it.size <= 2 })
-        assertEquals(setOf(AssetId("A"), AssetId("B"), AssetId("C"), AssetId("D"), AssetId("E")), r.manager.added)
+        assertEquals(
+            setOf(testAssetId("A"), testAssetId("B"), testAssetId("C"), testAssetId("D"), testAssetId("E")),
+            r.manager.added,
+        )
     }
 
     @Test
@@ -302,7 +306,7 @@ class AlbumGatherTest {
         r.gather.onAccessObserved(usable = false)
         r.gather.onAccessObserved(usable = true)
         advanceUntilIdle()
-        assertEquals(setOf(AssetId("OWN")), r.manager.added)
+        assertEquals(setOf(testAssetId("OWN")), r.manager.added)
     }
 
     @Test
@@ -336,7 +340,7 @@ class AlbumGatherTest {
         advanceUntilIdle()
         assertEquals(listOf("Trip"), r.manager.created, "the album-less membership's album is created once")
         assertEquals("CREATED-Trip", r.albums.get(testEventId("E3")))
-        assertEquals(setOf(AssetId("OWN")), r.manager.added, "access became usable, so a gather ran into it")
+        assertEquals(setOf(testAssetId("OWN")), r.manager.added, "access became usable, so a gather ran into it")
     }
 
     @Test

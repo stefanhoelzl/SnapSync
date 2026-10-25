@@ -2,6 +2,7 @@ package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.LedgerState
+import app.snapsync.testids.testAssetId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -21,7 +22,7 @@ class LedgerEntryEqualityTest {
 
     private val base = LedgerEntry(
         key = "A-primary.jpg",
-        assetId = AssetId("A"),
+        assetId = testAssetId("A"),
         state = LedgerState.COMPLETED,
         creationDate = "2026-08-28T10:00:00Z",
         role = ResourceRole.PRIMARY,
@@ -40,7 +41,7 @@ class LedgerEntryEqualityTest {
     fun a_row_differing_in_any_single_field_is_not_equal() {
         val variants = mapOf(
             "key" to base.copyWith(key = "B-primary.jpg"),
-            "assetId" to base.copyWith(assetId = AssetId("B")),
+            "assetId" to base.copyWith(assetId = testAssetId("B")),
             "state" to base.copyWith(state = LedgerState.REQUESTED),
             "creationDate" to base.copyWith(creationDate = "2026-08-29T10:00:00Z"),
             "role" to base.copyWith(role = ResourceRole.LIVE),

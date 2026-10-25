@@ -2,7 +2,6 @@
 
 package app.snapsync.feature.album
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -29,6 +28,7 @@ import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.assetId
 import app.snapsync.services.gallery.correlation
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -74,7 +74,7 @@ class FolderAlbumCoordinatorTest {
         val file = ImportFile("staged:/$name", "image/jpeg", ResourceKind.PHOTO, "$name.JPG")
         val result = gallery.import(
             GalleryImportRequest(
-                AssetRef(testDeviceId("other"), AssetId(name)).correlation(),
+                AssetRef(testDeviceId("other"), testAssetId(name)).correlation(),
                 listOf(file),
                 Instant.parse("2026-09-30T10:00:00Z"),
                 album?.let(::PlatformAlbumId),
