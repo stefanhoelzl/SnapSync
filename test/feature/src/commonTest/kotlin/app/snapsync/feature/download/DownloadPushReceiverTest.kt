@@ -15,6 +15,7 @@ import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.downloadJobs
 import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.feature.support.testRuntime
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
@@ -65,8 +66,12 @@ class DownloadPushReceiverTest {
     private fun TestScope.controller(union: RecordingUnion): DownloadController {
         val staging = StagingService(RecordingFiles())
         return DownloadController(
-            union, DownloadService(inMemoryDatabases()), downloadJobs(staging = staging),
-            GalleryImporter(NoopImporter(), staging), InMemoryAssetPresence(),
+            testRuntime(),
+            union,
+            DownloadService(inMemoryDatabases()),
+            downloadJobs(staging = staging),
+            GalleryImporter(NoopImporter(), staging),
+            InMemoryAssetPresence(),
             eventAlbum = { null },
             onImportedIntoAlbum = {},
             stagedBytes = staging,

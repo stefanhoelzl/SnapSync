@@ -9,6 +9,7 @@ import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.store.db.MembershipQueries
 import app.snapsync.levers.WriteKind
@@ -34,6 +35,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.databases.LegacyRecords
+import app.snapsync.services.databases.use
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
@@ -224,7 +226,7 @@ fun configService(
 
 /** [config] as the one membership row, written raw — how a test seeds what a join would have written. */
 internal fun MembershipQueries.saveRow(config: EventConfig) = saveMembership(
-    eventId = config.eventId,
+    eventId = Stored.Valid(config.eventId),
     name = config.name,
     minPhotoDate = config.minPhotoDate,
     startsAt = config.startsAt,

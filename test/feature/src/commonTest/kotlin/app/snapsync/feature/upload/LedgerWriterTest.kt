@@ -1,6 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.testShared
 import app.snapsync.model.LedgerEntry
@@ -11,6 +10,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -34,7 +34,7 @@ class LedgerWriterTest {
         assertEquals(
             LedgerEntry(
                 "cloud-1-ios.photo.heic",
-                AssetId("cloud-1"),
+                testAssetId("cloud-1"),
                 LedgerState.REQUESTED,
                 creationDate = CREATION_DATE,
                 role = ResourceRole.PRIMARY,
@@ -54,7 +54,7 @@ class LedgerWriterTest {
         writer.recordFailed(resource("k", "A"))
 
         val row = writer.entry("k")!!
-        assertEquals(AssetId("A"), row.assetId)
+        assertEquals(testAssetId("A"), row.assetId)
         assertEquals(LedgerState.DISCOVERED, row.state)
         assertEquals(listOf("k"), writer.rowsNeedingJob().map { it.key })
     }
@@ -67,7 +67,7 @@ class LedgerWriterTest {
         // exactly when the platform hands its job back.
         writer.recordRequested(resource("cloud-1-ios.photo.heic", "cloud-1"), destinationPath = "/d")
 
-        writer.recordFailed(Resource("cloud-1-ios.photo.heic", AssetId("cloud-1"), "image/heic", emptyMap(), null))
+        writer.recordFailed(Resource("cloud-1-ios.photo.heic", testAssetId("cloud-1"), "image/heic", emptyMap(), null))
 
         val row = writer.entry("cloud-1-ios.photo.heic")!!
         assertEquals(LedgerState.DISCOVERED, row.state)
@@ -104,7 +104,7 @@ class LedgerWriterTest {
 
     @Test
     fun `the backfill and the delete pass through to the ledger`() = runTest {
-        ledger.recordUnlessSettled(LedgerEntry("bare.heic", AssetId("B"), LedgerState.COMPLETED))
+        ledger.recordUnlessSettled(LedgerEntry("bare.heic", testAssetId("B"), LedgerState.COMPLETED))
 
         writer.backfillManifestDetail(resource("bare.heic", "B"))
         assertEquals(CREATION_DATE, writer.entry("bare.heic")?.creationDate)
@@ -118,7 +118,7 @@ private const val CREATION_DATE = "2026-06-27T10:00:00Z"
 
 private fun resource(key: String, assetId: String) = Resource(
     filename = key,
-    assetId = AssetId(assetId),
+    assetId = testAssetId(assetId),
     contentType = "public.heic",
     metadata = mapOf(
         RESOURCE_META_CREATION_DATE to CREATION_DATE,

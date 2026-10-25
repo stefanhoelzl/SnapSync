@@ -14,6 +14,8 @@ kotlin {
             implementation(project(":domain:inbound"))
             // The platform's background time, and the per-thread log label a run's lines carry.
             implementation(project(":domain:ports"))
+            // `InvalidProgramState`: the one failure the runtime's containment passes on, ending the process.
+            implementation(project(":domain:domain"))
             api(libs.coroutines.core)
         }
     }

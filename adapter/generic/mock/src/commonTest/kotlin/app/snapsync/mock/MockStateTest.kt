@@ -1,7 +1,6 @@
 package app.snapsync.mock
 
 import app.snapsync.data.trust.TrustSlots
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.PhotoGrant
@@ -21,6 +20,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadTarget
+import app.snapsync.testids.testAssetId
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.CreateEventReply
 import app.snapsync.wire.api.GetEventReply
@@ -187,7 +187,7 @@ class MockStateTest {
         backend.send(Routes.PublishManifest.request(event, DEVICE, manifestOf(listOf(asset), version = 3)))
         device.backend.operator.deposit(
             DEVICE,
-            AssetId("A1"),
+            testAssetId("A1"),
             app.snapsync.model.ResourceRole.PRIMARY,
             "A1-primary.jpg",
         )

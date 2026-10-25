@@ -69,7 +69,8 @@ abstract class SchemaStatementsTask : DefaultTask() {
 
     private fun render(q: ParsedQueries): String {
         val name = q.className.removeSuffix("Queries") + "Statements"
-        val used = q.statements.flatMap { s -> s.params.map { baseType(it.type) } }.toSet()
+        val used = q.statements.flatMap { s -> s.params.flatMap { NAME.findAll(baseType(it.type)).map { m -> m.value } } }
+            .toSet()
         val imports = (listOf("${q.packageName}.${q.className}") +
             q.imports.filter { it.substringAfterLast('.') in used }).sorted()
         fun calls(of: List<ParsedStatement>, run: String) = of.joinToString("") { s ->
@@ -91,8 +92,10 @@ abstract class SchemaStatementsTask : DefaultTask() {
         }
     }
 
-    private fun baseType(type: String): String =
-        type.removeSuffix("?").removePrefix("Collection<").removeSuffix(">")
+    // A collection's element, nullability dropped; a generic element (`Stored<EventId>`) is its own fixture's key.
+    private fun baseType(type: String): String = type.removeSuffix("?").let {
+        if (it.startsWith("Collection<")) it.removePrefix("Collection<").removeSuffix(">") else it
+    }
 
     private fun fixture(type: String, statement: String): String {
         val collection = type.startsWith("Collection<")
@@ -121,6 +124,7 @@ internal class ParsedParam(val name: String, val type: String)
 private val PACKAGE = Regex("""^package\s+([\w.`]+)""", RegexOption.MULTILINE)
 private val IMPORT = Regex("""^import\s+([\w.`]+)$""", RegexOption.MULTILINE)
 private val CLASS = Regex("""public class (\w+Queries)\(""")
+private val NAME = Regex("""\w+""")
 private val FUN = Regex("""public fun (<[^>]+> )?(`?\w+`?)\(""")
 
 /**

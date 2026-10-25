@@ -1,6 +1,8 @@
 package app.snapsync.data.membership
 
 import app.snapsync.data.store.StoreWrite
+import app.snapsync.data.store.Stored
+import app.snapsync.data.store.use
 import app.snapsync.domain.membership.CheckedAt
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.DatabasesMock
@@ -25,6 +27,12 @@ class PendingLeavesTest {
 
         assertEquals(StoreWrite.Written, leaves.confirm(testEventId(EVENT)))
         assertEquals(PendingLeavesRead.Ok(emptySet()), leaves.outstanding())
+    }
+
+    @Test
+    fun `a leave owed whose stored event id spells none makes the leaves unreadable, never a throw`() {
+        shared.use { it.pendingLeaveQueries.recordPendingLeave(Stored.Invalid("E1")) }
+        assertIs<PendingLeavesRead.Unavailable>(leaves.outstanding())
     }
 
     @Test

@@ -36,6 +36,7 @@ import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
@@ -147,19 +148,19 @@ class CycleGateReadTest {
 
     @Test
     fun `the membership's policy reads the suppressed ids and the album exclusions from the cutoff`() = runTest {
-        val suppression = Suppression(suppressed = setOf(AssetId("echo")))
+        val suppression = Suppression(suppressed = setOf(testAssetId("echo")))
         val askedFrom = mutableListOf<CaptureCutoff>()
 
         val run = assertIs<CycleGate.Run>(
             gate(suppression = suppression, albumExclusions = {
                 askedFrom += it
-                setOf(AssetId("meme"))
+                setOf(testAssetId("meme"))
             }).read(),
         )
         val rules = run.membership.policy().rules
 
-        assertTrue(SelectionRule.NotEcho(setOf(AssetId("echo"))) in rules, "$rules")
-        assertTrue(SelectionRule.NotInDenylistedAlbum(setOf(AssetId("meme"))) in rules, "$rules")
+        assertTrue(SelectionRule.NotEcho(setOf(testAssetId("echo"))) in rules, "$rules")
+        assertTrue(SelectionRule.NotInDenylistedAlbum(setOf(testAssetId("meme"))) in rules, "$rules")
         assertTrue(SelectionRule.CaptureAfter(cutoff) in rules, "the floor is the membership's own cutoff")
         assertEquals(listOf(cutoff), askedFrom)
         assertEquals(1, suppression.idsAsked)

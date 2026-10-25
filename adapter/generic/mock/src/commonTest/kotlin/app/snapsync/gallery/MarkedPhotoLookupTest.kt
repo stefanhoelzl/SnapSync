@@ -1,6 +1,5 @@
 package app.snapsync.gallery
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.id
@@ -18,6 +17,7 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.services.gallery.MarkedPhotoLookup
 import app.snapsync.services.gallery.resourcesFrom
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -31,8 +31,8 @@ class MarkedPhotoLookupTest {
 
     private val start = TimestampText.parse("2026-06-01T00:00:00Z")
     private val end = TimestampText.parse("2026-06-10T00:00:00Z")
-    private val refA = AssetRef(testDeviceId("dev-a"), AssetId("SRC-A"))
-    private val refB = AssetRef(testDeviceId("dev-b"), AssetId("SRC-B"))
+    private val refA = AssetRef(testDeviceId("dev-a"), testAssetId("SRC-A"))
+    private val refB = AssetRef(testDeviceId("dev-b"), testAssetId("SRC-B"))
 
     /** A received photo in the library: its primary (and, for a Live Photo, its video) named with [ref]'s mark. */
     private fun received(
@@ -67,7 +67,7 @@ class MarkedPhotoLookupTest {
         LibraryAssets.photo("L-OWN", creationDate = "2026-06-05T12:00:00Z"), // the member's own capture: unmarked
         received(
             "L-EARLY",
-            AssetRef(testDeviceId("dev-c"), AssetId("SRC-C")),
+            AssetRef(testDeviceId("dev-c"), testAssetId("SRC-C")),
             date = "2026-05-20T12:00:00Z",
         ), // outside the event
     )
@@ -84,7 +84,10 @@ class MarkedPhotoLookupTest {
         val gallery = Recording(inMemoryGallery(MutableStateFlow(library)))
         val found = MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, known = emptySet())
         assertEquals(
-            mapOf(ReceivedPhotoName.token(refA) to AssetId("L-A"), ReceivedPhotoName.token(refB) to AssetId("L-B")),
+            mapOf(
+                ReceivedPhotoName.token(refA) to testAssetId("L-A"),
+                ReceivedPhotoName.token(refB) to testAssetId("L-B"),
+            ),
             found,
         )
         assertTrue(
@@ -100,8 +103,8 @@ class MarkedPhotoLookupTest {
         val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unrestricted }
             .markedIn(TimestampText.parse("2026-05-15T00:00:00Z"), end, known = emptySet())
         assertEquals(
-            AssetId("L-EARLY"),
-            found?.get(ReceivedPhotoName.token(AssetRef(testDeviceId("dev-c"), AssetId("SRC-C")))),
+            testAssetId("L-EARLY"),
+            found?.get(ReceivedPhotoName.token(AssetRef(testDeviceId("dev-c"), testAssetId("SRC-C")))),
         )
     }
 
@@ -110,8 +113,8 @@ class MarkedPhotoLookupTest {
         // The pre-check a selection change makes: no date narrows it, so a received photo from before the event pauses
         // sharing too. The member's own unmarked photo is never a candidate.
         val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unread }
-            .markedAmong(resourcesFrom(library), known = setOf(AssetId("L-A")))
-        assertEquals(setOf(AssetId("L-B"), AssetId("L-EARLY")), found.values.toSet())
+            .markedAmong(resourcesFrom(library), known = setOf(testAssetId("L-A")))
+        assertEquals(setOf(testAssetId("L-B"), testAssetId("L-EARLY")), found.values.toSet())
     }
 
     @Test
@@ -119,8 +122,8 @@ class MarkedPhotoLookupTest {
         val gallery = Recording(inMemoryGallery(MutableStateFlow(library)))
         val found = MarkedPhotoLookup(
             gallery,
-        ) { SelectionScope.Unrestricted }.markedIn(start, end, known = setOf(AssetId("L-A")))
-        assertEquals(mapOf(ReceivedPhotoName.token(refB) to AssetId("L-B")), found)
+        ) { SelectionScope.Unrestricted }.markedIn(start, end, known = setOf(testAssetId("L-A")))
+        assertEquals(mapOf(ReceivedPhotoName.token(refB) to testAssetId("L-B")), found)
         assertTrue(PlatformAssetId("L-A") !in gallery.resourceReads.flatten())
     }
 
@@ -131,7 +134,7 @@ class MarkedPhotoLookupTest {
         val found = MarkedPhotoLookup(
             gallery,
         ) { SelectionScope.Scoped(selection) }.markedIn(start, end, known = emptySet())
-        assertEquals(mapOf(ReceivedPhotoName.token(refA) to AssetId("L-A")), found)
+        assertEquals(mapOf(ReceivedPhotoName.token(refA) to testAssetId("L-A")), found)
         assertTrue(gallery.resourceReads.isEmpty(), "the selection already carries every name")
     }
 
@@ -150,14 +153,14 @@ class MarkedPhotoLookupTest {
         val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.LIMITED))
         val nameless = Resource(
             "L-X-primary.heic",
-            AssetId("L-X"),
+            testAssetId("L-X"),
             "image/heic",
             mapOf(RESOURCE_META_CREATION_DATE to "2026-06-05T12:00:00Z"),
             null,
         )
         val found = MarkedPhotoLookup(gallery) { SelectionScope.Scoped(resourcesFrom(library) + nameless) }
-            .markedIn(start, end, known = setOf(AssetId("L-A")))
-        assertEquals(mapOf(ReceivedPhotoName.token(refB) to AssetId("L-B")), found)
+            .markedIn(start, end, known = setOf(testAssetId("L-A")))
+        assertEquals(mapOf(ReceivedPhotoName.token(refB) to testAssetId("L-B")), found)
     }
 
     @Test

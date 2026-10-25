@@ -12,7 +12,8 @@ package app.snapsync.scheduling
  * pass leaves is what the next pass picks up.
  */
 abstract class Sequence<R>(val key: String, val yieldsToJoin: Boolean = false) {
-    abstract suspend fun pass(): R
+    /** One pass, [on] the [Run] the runtime makes for it — labelled with every trigger that joined it. */
+    abstract suspend fun pass(on: Run): R
 }
 
 /** What a waiter of a [Sequence] gets: the result of the pass that covered its request, or [Cut]. */

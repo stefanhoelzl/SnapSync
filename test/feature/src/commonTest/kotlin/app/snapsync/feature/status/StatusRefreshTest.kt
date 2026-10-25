@@ -1,6 +1,5 @@
 package app.snapsync.feature.status
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -21,6 +20,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.membership.MembershipProjection
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
@@ -70,7 +70,7 @@ class StatusRefreshTest {
             listOf(
                 object : Candidate {
                     override val facts =
-                        AssetFacts(AssetId("A"), CaptureDate.Dated(TimestampText.parse("2026-06-01T00:00:00Z")))
+                        AssetFacts(testAssetId("A"), CaptureDate.Dated(TimestampText.parse("2026-06-01T00:00:00Z")))
                     override suspend fun resources(): List<Resource> = emptyList()
                 },
             ),
@@ -98,7 +98,7 @@ class StatusRefreshTest {
         val refresh = StatusRefresh(
             ledgerCounts = ReadingLedgerCountsSource {
                 steps += "ledger"
-                LedgerCounts(done = setOf(AssetId("d1")), pending = emptySet())
+                LedgerCounts(done = setOf(testAssetId("d1")), pending = emptySet())
             },
             gallery = walked,
             refreshDownloadLine = { steps += "downloads" },
@@ -146,7 +146,10 @@ class StatusRefreshTest {
         val gallery = OwnDeviceGalleryStatusSource(OneAsset())
         val counts =
             ReadingLedgerCountsSource {
-                LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3")), pending = setOf(AssetId("p1")))
+                LedgerCounts(
+                    done = setOf(testAssetId("d1"), testAssetId("d2"), testAssetId("d3")),
+                    pending = setOf(testAssetId("p1")),
+                )
             }
         StatusRefresh(
             ledgerCounts = counts,
@@ -156,9 +159,12 @@ class StatusRefreshTest {
             configSource = membership(config),
             policyFor = { policy() },
         ).run()
-        assertEquals(setOf(AssetId("A")), gallery.admitted.value, "N is the admitted own-asset count")
+        assertEquals(setOf(testAssetId("A")), gallery.admitted.value, "N is the admitted own-asset count")
         assertEquals(
-            LedgerCounts(done = setOf(AssetId("d1"), AssetId("d2"), AssetId("d3")), pending = setOf(AssetId("p1"))),
+            LedgerCounts(
+                done = setOf(testAssetId("d1"), testAssetId("d2"), testAssetId("d3")),
+                pending = setOf(testAssetId("p1")),
+            ),
             counts.counts.value,
             "and the counts are read",
         )
@@ -239,7 +245,7 @@ class StatusRefreshTest {
         val (steps, refresh) = harness(gallery = gallery)
         refresh.refreshTotal()
         assertEquals(listOf("policy"), steps, "neither cheap read runs")
-        assertEquals(setOf(AssetId("A")), gallery.admitted.value)
+        assertEquals(setOf(testAssetId("A")), gallery.admitted.value)
     }
 
     @Test
@@ -261,7 +267,7 @@ class StatusRefreshTest {
             log = recorder.logger(),
         )
         refresh.refreshTotal() // must NOT throw
-        assertEquals(setOf(AssetId("A")), gallery.admitted.value, "N keeps what it last honestly held")
+        assertEquals(setOf(testAssetId("A")), gallery.admitted.value, "N keeps what it last honestly held")
         assertTrue(recorder.lines.any { (severity, line) -> severity == Severity.Error && "N not refreshed" in line })
     }
 }

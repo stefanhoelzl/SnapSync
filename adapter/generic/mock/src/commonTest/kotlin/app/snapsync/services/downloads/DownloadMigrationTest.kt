@@ -1,10 +1,10 @@
 package app.snapsync.services.downloads
 
 import app.snapsync.contracts.at
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.downloads.db.DownloadDatabase
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -46,8 +46,8 @@ class DownloadMigrationTest {
 
         val store = DownloadService(databases)
 
-        assertEquals(setOf(AssetId("LOCAL-IMP")), store.suppressedLocalIds(), "the import marker survives")
-        assertEquals(setOf(AssetId("LOCAL-IMP")), store.importedLocalIdsOf(testEventId(E1)))
+        assertEquals(setOf(testAssetId("LOCAL-IMP")), store.suppressedLocalIds(), "the import marker survives")
+        assertEquals(setOf(testAssetId("LOCAL-IMP")), store.importedLocalIdsOf(testEventId(E1)))
         assertEquals(1, store.counts(testEventId(E1)).imported)
         assertEquals(2, store.counts(testEventId(E1)).stillArriving, "the untagged row is no event's")
         assertEquals(3, store.counts().stillArriving, "and still the device's")
@@ -57,7 +57,7 @@ class DownloadMigrationTest {
         )
         assertEquals(
             listOf("download-staging/DEV-A/pend-primary.heic"),
-            store.stagedResources(AssetRef(testDeviceId(DEV_A), AssetId("PEND"))).map { it.stagedPath },
+            store.stagedResources(AssetRef(testDeviceId(DEV_A), testAssetId("PEND"))).map { it.stagedPath },
             "a staged path is kept verbatim",
         )
         // v7 → v8 (`changes/archive/2026-10-11-close-share-back-gaps`): recognition starts empty, with no backfill — the next pass decides.

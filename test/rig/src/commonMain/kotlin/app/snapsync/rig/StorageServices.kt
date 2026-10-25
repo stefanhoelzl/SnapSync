@@ -98,7 +98,7 @@ internal class LockedDevice(private val world: MockWorld) : DeviceLevers {
 internal class OlderInstall(private val world: MockWorld) : OlderInstallLevers {
     override suspend fun stagedBacklog(device: String?, asset: String?): Long {
         val who = DeviceId.parse(device ?: LEGACY_DEVICE) ?: throw IllegalArgumentException("device is not a device id")
-        val ref = AssetRef(who, AssetId(asset ?: "LEGACY"))
+        val ref = AssetRef(who, AssetId.parse(asset ?: "LEGACY")!!)
         val downloads = DownloadService(world.device.databases.inspectorPort())
         val root = StagingService(world.device.disk.port()).stagingRoot()
         val primaryKey = "${ref.sourceAssetId}-primary.heic"
@@ -114,7 +114,7 @@ internal class OlderInstall(private val world: MockWorld) : OlderInstallLevers {
         )
         downloads.markStaged(ref, primaryKey, paths[0])
         downloads.markStaged(ref, liveKey, paths[1])
-        downloads.markImported(ref, AssetId("LOCAL-${ref.sourceAssetId}"))
+        downloads.markImported(ref, AssetId.parse("LOCAL-${ref.sourceAssetId}")!!)
         paths.forEach { world.device.disk.write(FileArea.SHARED, it, LEGACY_BYTES) }
         return paths.size.toLong() * LEGACY_BYTES.size
     }

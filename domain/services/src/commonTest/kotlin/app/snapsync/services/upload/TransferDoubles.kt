@@ -1,6 +1,5 @@
 package app.snapsync.services.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.model.CandidateScope
 import app.snapsync.model.FileAccess
@@ -29,6 +28,7 @@ import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.GalleryResourceRef
 import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.testids.testAssetId
 import kotlin.time.Instant
 
 // The doubles both transfers' tests share: a ledger, the library, the shared area — each recording what it was asked.
@@ -59,7 +59,7 @@ internal class Record(val rows: MutableMap<String, LedgerEntry> = mutableMapOf()
 internal fun rowA(state: LedgerState = LedgerState.REQUESTED) =
     Record(
         mutableMapOf(
-            DESTINATION to LedgerEntry(key = KEY, assetId = AssetId("A"), state = state, destinationPath = DESTINATION),
+            DESTINATION to LedgerEntry(key = KEY, assetId = testAssetId("A"), state = state, destinationPath = DESTINATION),
         ),
     )
 
@@ -75,11 +75,11 @@ internal data class KeyHandle(val key: String) : GalleryResourceHandle
 
 /** A photo [key] as the library read it, carrying its own handle, of [contentType]. */
 internal fun libraryResource(key: String = KEY, contentType: String = "image/jpeg") =
-    Resource(key, AssetId(key.substringBefore('-')), contentType, emptyMap(), GalleryResourceRef(KeyHandle(key)))
+    Resource(key, testAssetId(key.substringBefore('-')), contentType, emptyMap(), GalleryResourceRef(KeyHandle(key)))
 
 /** A photo [key] the library did not read: it carries no handle. */
 internal fun unreadResource(key: String = KEY, contentType: String = "image/jpeg") =
-    Resource(key, AssetId(key.substringBefore('-')), contentType, emptyMap(), null)
+    Resource(key, testAssetId(key.substringBefore('-')), contentType, emptyMap(), null)
 
 /** A library that exports only [exportable] keys, recording where it wrote. */
 internal class Library(val exportable: Set<String> = emptySet()) : GalleryReader {

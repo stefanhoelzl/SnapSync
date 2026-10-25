@@ -11,13 +11,11 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.DbResult
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 /**
  * `ledger.db` for a process (`docs/architecture.md`, "Storage"): opened on first use and never at construction, a failed
@@ -41,7 +39,7 @@ class SharedDatabaseTest {
     fun `a failed open is retried by the next use, and only a success is kept`() {
         val shared = SharedDatabase(device.port(), legacy = null)
         device.lock()
-        assertFailsWith<DatabaseUnavailable> { shared.use { } }
+        assertIs<DbResult.Failed>(shared.execute { })
 
         device.lock(on = false)
         shared.use { }
@@ -53,7 +51,7 @@ class SharedDatabaseTest {
     fun `an adapter breaking the read-write contract is unavailable, never guessed around`() {
         listOf(DbOpen.Missing, DbOpen.OldSchema, DbOpen.Failed("refused")).forEach { refusal ->
             val shared = SharedDatabase(DatabasesMock(mapOf(LEDGER_DB_NAME to refusal)).port(), legacy = null)
-            assertFailsWith<DatabaseUnavailable>("$refusal") { shared.use { } }
+            assertIs<DbResult.Failed>(shared.execute { }, "$refusal")
         }
     }
 
@@ -71,11 +69,11 @@ class SharedDatabaseTest {
     fun `the records are ready once every legacy source is in the database`() {
         val shared = SharedDatabase(device.port(), legacy = null)
         assertEquals(SharedRecordsReadiness.LegacyPending, shared.readiness())
-        assertFalse(shared.imported(LegacySource.MEMBERSHIP))
+        assertEquals(DbResult.Ok(false), shared.imported(LegacySource.MEMBERSHIP))
 
         shared.use { db -> LegacySource.entries.forEach { db.legacyImportQueries.markImported(it.key) } }
         assertEquals(SharedRecordsReadiness.Ready, shared.readiness())
-        assertTrue(shared.imported(LegacySource.MEMBERSHIP))
+        assertEquals(DbResult.Ok(true), shared.imported(LegacySource.MEMBERSHIP))
     }
 
     @Test
@@ -91,7 +89,7 @@ class SharedDatabaseTest {
         val event = testEventId("11111111-1111-4111-8111-111111111111")
         shared.use { db ->
             db.membershipQueries.saveMembership(
-                eventId = event,
+                eventId = Stored.Valid(event),
                 name = "Picnic",
                 minPhotoDate = CaptureCutoff(TimestampText.parse(FROM)),
                 startsAt = EventStart(TimestampText.parse(FROM)),
@@ -109,7 +107,7 @@ class SharedDatabaseTest {
             )
         }
         val row = shared.use { it.membershipQueries.selectMembership().executeAsOne() }
-        assertEquals(event, row.eventId)
+        assertEquals(Stored.Valid(event), row.eventId)
         assertEquals(CaptureCutoff(TimestampText.parse(FROM)), row.minPhotoDate)
         assertEquals(EventStart(TimestampText.parse(FROM)), row.startsAt)
         assertEquals(EventEnd(TimestampText.parse(UNTIL)), row.endsAt)

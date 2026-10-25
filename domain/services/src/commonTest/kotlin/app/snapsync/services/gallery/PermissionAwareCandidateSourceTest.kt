@@ -1,6 +1,5 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
@@ -12,6 +11,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.selectionRulesFor
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -49,7 +49,7 @@ class PermissionAwareCandidateSourceTest {
                 ids.map { id ->
                     object : Candidate {
                         override val facts =
-                            AssetFacts(AssetId(id), CaptureDate.Dated(TimestampText.parse("2026-06-01T00:00:00Z")))
+                            AssetFacts(testAssetId(id), CaptureDate.Dated(TimestampText.parse("2026-06-01T00:00:00Z")))
                         override suspend fun resources(): List<Resource> = emptyList()
                     }
                 },
@@ -75,7 +75,7 @@ class PermissionAwareCandidateSourceTest {
     @Test
     fun `GRANTED walks the library`() = runTest {
         val (walk, source) = source(GalleryAccess.GRANTED)
-        assertEquals(listOf(AssetId("W")), source.readable(policy()).map { it.facts.assetId })
+        assertEquals(listOf(testAssetId("W")), source.readable(policy()).map { it.facts.assetId })
         assertEquals(1, walk.walks)
     }
 
@@ -86,7 +86,7 @@ class PermissionAwareCandidateSourceTest {
         // wrong universe — it could surface photos the member never chose to share. (Not an alert
         // argument: reads of an unchanged library raise no limited-access prompt — `photo-access`.)
         val (walk, source) = source(GalleryAccess.LIMITED, snapshot = snapshotOf("S1", "S2"))
-        assertEquals(listOf(AssetId("S1"), AssetId("S2")), source.readable(policy()).map { it.facts.assetId })
+        assertEquals(listOf(testAssetId("S1"), testAssetId("S2")), source.readable(policy()).map { it.facts.assetId })
         assertEquals(0, walk.walks, "no autonomous library read under a partial grant")
     }
 

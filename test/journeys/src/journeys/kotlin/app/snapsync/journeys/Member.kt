@@ -77,7 +77,7 @@ class Member(private val http: HttpClient, backend: String) {
     suspend fun share(eventId: String, photos: List<List<Part>>, creationDate: String): List<AssetId> {
         val assets = photos.map { parts ->
             // The canonical id an iOS device mints for a PhotoKit local identifier.
-            val assetId = AssetId("${UUID.randomUUID().toString().uppercase()}_L0_001")
+            val assetId = AssetId.parse("${UUID.randomUUID().toString().uppercase()}_L0_001")!!
             parts.forEach { upload(eventId, assetId, it) }
             DeviceManifestAsset(assetId, creationDate, parts.map { it.resource(assetId) })
         }

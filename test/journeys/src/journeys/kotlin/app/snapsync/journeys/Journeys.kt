@@ -152,7 +152,7 @@ class Journeys {
         a.levers(GalleryLevers).seed(4, SeedKind.POLICY)
         val cutoff = a.state().ready.minPhotoDate ?: fail("A's membership carries no cutoff")
         val admitted = a.levers(GalleryLevers).read(cutoff = cutoff).policy?.assets.orEmpty()
-            .filter { it.admitted }.mapTo(mutableSetOf()) { AssetId(it.assetId) }
+            .filter { it.admitted }.mapTo(mutableSetOf()) { AssetId.parse(it.assetId)!! }
         assertTrue(admitted.size >= 2, "the policy seed admits its above-floor half: $admitted")
 
         a.levers(OsLevers).foreground()
@@ -280,7 +280,7 @@ class Journeys {
     private suspend fun union(http: HttpClient, event: String): List<JsonObject> = union(http, backend, event)
 
     private suspend fun unionAssetIds(http: HttpClient, event: String): Set<AssetId> =
-        union(http, event).mapTo(mutableSetOf()) { AssetId(it.getValue("assetId").jsonPrimitive.content) }
+        union(http, event).mapTo(mutableSetOf()) { AssetId.parse(it.getValue("assetId").jsonPrimitive.content)!! }
 
     private fun local(value: LocalDateTime): String = value.toString()
 

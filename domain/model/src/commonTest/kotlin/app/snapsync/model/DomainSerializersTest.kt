@@ -1,6 +1,5 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -10,6 +9,7 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
+import app.snapsync.testids.testAssetId
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -35,13 +35,14 @@ class DomainSerializersTest {
         assertBare(EventEndAsString, EventEnd(at), INSTANT)
         assertBare(OpenUntilAsString, OpenUntil(at), INSTANT)
         assertBare(DeletesAtAsString, DeletesAt(at), INSTANT)
-        assertBare(AssetIdAsString, AssetId("IMG_0001"), "IMG_0001")
+        assertBare(AssetIdAsString, testAssetId("IMG_0001"), "IMG_0001")
     }
 
     @Test
     fun `an id that is no event or device id does not decode`() {
         assertFailsWith<SerializationException> { Json.decodeFromString(EventIdAsString, "\"E1\"") }
         assertFailsWith<SerializationException> { Json.decodeFromString(DeviceIdAsString, "\"D1\"") }
+        assertFailsWith<SerializationException> { Json.decodeFromString(AssetIdAsString, "\"a/b\"") }
         assertBare(EventIdAsString, EventId.parse(UUID)!!, UUID)
         assertBare(DeviceIdAsString, DeviceId.parse(UUID)!!, UUID)
     }

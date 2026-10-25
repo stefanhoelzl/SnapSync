@@ -17,12 +17,10 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -31,7 +29,7 @@ class StepsTest {
         world: World,
         val body: suspend Steps.() -> Unit,
     ) : BackgroundEntryPoint<Unit>(world.runtime) {
-        override suspend fun run(arg: Unit) = steps { body() }
+        override suspend fun run(arg: Unit, on: Run) = on.steps { body() }
     }
 
     @Test
@@ -101,7 +99,7 @@ class StepsTest {
     fun `a sequence runs single-flight from inside the steps`() = runTest {
         val world = World(this)
         val sequence = object : Sequence<String>("s") {
-            override suspend fun pass() = "ran"
+            override suspend fun pass(on: Run) = "ran"
         }
         var result: Pass<String>? = null
         OnSteps(world) { result = run(sequence) }.handle(Unit, CountingCompletion())
@@ -110,19 +108,12 @@ class StepsTest {
     }
 
     @Test
-    fun `steps and outliving work run only under the runtime`() = runTest {
-        assertFailsWith<IllegalStateException> { steps { } }
-        withContext(Trigger.of("OnSomething")) { assertFailsWith<IllegalStateException> { steps { } } }
-        assertFailsWith<IllegalStateException> { outliving { } }
-    }
-
-    @Test
     fun `outliving work runs on when its caller stops waiting`() = runTest {
         val world = World(this)
         var finished: String? = null
         OnSteps(world) {
             required {
-                outliving {
+                world.runtime.outliving {
                     delay(5.seconds)
                     finished = currentCoroutineContext()[Trigger]?.label
                 }
@@ -132,8 +123,8 @@ class StepsTest {
         world.backgroundTime.holds.single().expiry.expire() // the operating system's time is up
         settle()
         assertEquals("OnSteps", finished)
-        val bare = async(RuntimeElement(world.runtime)) {
-            outliving { currentCoroutineContext()[Trigger]?.label }
+        val bare = async {
+            world.runtime.outliving { currentCoroutineContext()[Trigger]?.label }
         }
         assertEquals("outliving", bare.await())
     }
@@ -143,7 +134,7 @@ class StepsTest {
         val world = World(this)
         val seen = mutableListOf<String>()
         class OnChange : BackgroundEntryPoint<Int>(world.runtime) {
-            override suspend fun run(arg: Int) {
+            override suspend fun run(arg: Int, on: Run) {
                 seen += "start $arg"
                 yield()
                 seen += "end $arg"
@@ -158,7 +149,7 @@ class StepsTest {
     fun `work nobody awaits that fails reaches the process scope's handler`() = runTest {
         val world = World(this)
         class OnChange : BackgroundEntryPoint<Int>(world.runtime) {
-            override suspend fun run(arg: Int) = Unit
+            override suspend fun run(arg: Int, on: Run) = Unit
         }
         Observation(world.runtime).follow(flow<Int> { error("the source failed") }, OnChange())
         settle()
@@ -190,7 +181,7 @@ class StepsTest {
             )
         val completion = CountingCompletion()
         class OnPlain : BackgroundEntryPoint<Unit>(runtime) {
-            override suspend fun run(arg: Unit) = Unit
+            override suspend fun run(arg: Unit, on: Run) = Unit
         }
         OnPlain().handle(Unit, completion)
         runCurrent()

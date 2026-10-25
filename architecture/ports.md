@@ -176,7 +176,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ResourceBatch` | `:domain:model` | `:domain:model` RecordingBatch | no |
 | `ResumePoint` | `:domain:services` | `:domain:services` Deferred, From, Landed | no |
 | `RetryVerdict` | `:domain:domain` | `:domain:domain` Retry, Stands | no |
-| `Running` | `:domain:inbound` | `:domain:scheduling` Run; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
+| `Running` | `:domain:inbound` | `:domain:scheduling` Expirable; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
 | `Screen` | `:domain:entrypoints` | — | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:data` RecordingSecureStore; `:test:feature` LockableSecureStore | yes |
@@ -188,6 +188,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Slot` | `:domain:data` | `:domain:data` Kept, Unread | no |
 | `Standings` | `:domain:services` | `:domain:services` UploadStandings | no |
 | `StoreWrite` | `:domain:data` | `:domain:data` Failed, Written | no |
+| `Stored` | `:domain:data` | `:domain:data` Invalid, Valid | no |
 | `SuppressionReadiness` | `:domain:model` | `:domain:model` OldSchema, Ready, Unavailable | no |
 | `SuppressionSource` | `:domain:services` | `:domain:services` DownloadService, SuppressionService; `:test:feature` Suppression | yes |
 | `SwitchFacts` | `:domain:domain` | `:domain:domain` Deleted, EveryoneShared, Undecided | no |
@@ -197,7 +198,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, FixedSync, IdleSync, MenuTestSync, Sync | yes |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosSystemUi; `:test:contracts` SystemUiProxy | no |
-| `ThreadLabel` | `:domain:ports` | `:adapter:android` AndroidThreadLabel; `:adapter:generic:app` JvmThreadLabel; `:adapter:generic:mock` Labelled, ThreadLabelMock; `:adapter:ios:ext-safe` IosThreadLabel; `:domain:scheduling` FakeThreadLabel; `:test:contracts` ThreadLabelProxy; `:test:rig` CheckedThreadLabel | yes |
+| `ThreadLabel` | `:domain:ports` | `:adapter:android` AndroidThreadLabel; `:adapter:generic:app` JvmThreadLabel; `:adapter:generic:mock` Labelled, ThreadLabelMock; `:adapter:generic:sentry` Unlabelled; `:adapter:ios:ext-safe` IosThreadLabel; `:domain:scheduling` FakeThreadLabel, Unlabelled; `:test:contracts` ThreadLabelProxy; `:test:rig` CheckedThreadLabel | yes |
 | `TokenIssuance` | `:domain:domain` | `:domain:domain` ChallengeStale, Minted, NoAnswer, NotAttested, ProofFailed, Refused | no |
 | `TransferHandle` | `:domain:ports` | `:adapter:android` Live; `:adapter:generic:mock` Live; `:domain:services` Handle | no |
 | `TransferRecord` | `:domain:services` | `:domain:services` LedgerService, Record | no |

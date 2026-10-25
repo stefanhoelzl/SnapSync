@@ -1,5 +1,6 @@
 package app.snapsync.scheduling
 
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.inbound.Trigger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -103,7 +104,8 @@ internal class SingleFlight(private val runtime: Runtime) {
         private var waiters = 0
         val outcome = CompletableDeferred<Pass<Any?>>()
         val pass: Deferred<Any?> = runtime.scope.async(start = CoroutineStart.LAZY) {
-            withContext(Trigger(triggers.toList().ifEmpty { listOf(flight.sequence.key) })) { flight.sequence.pass() }
+            val trigger = triggers.map(Trigger::of).reduceOrNull(Trigger::plus) ?: Trigger.of(flight.sequence.key)
+            withContext(trigger) { flight.sequence.pass(Run(runtime, trigger)) }
         }
 
         /** Slots whose pass yielded to this one: answered with this one's outcome. */
@@ -162,6 +164,8 @@ internal class SingleFlight(private val runtime: Runtime) {
 /** A finished pass's result as a value: its answer, its failure, or its cancellation. */
 private suspend fun outcomeOf(pass: Deferred<Any?>): Result<Any?> = try {
     Result.success(pass.await())
+} catch (fatal: InvalidProgramState) {
+    throw fatal
 } catch (failure: Throwable) {
     Result.failure(failure)
 }

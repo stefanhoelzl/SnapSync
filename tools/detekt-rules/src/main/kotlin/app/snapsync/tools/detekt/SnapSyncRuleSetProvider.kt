@@ -20,6 +20,8 @@ class SnapSyncRuleSetProvider : RuleSetProvider {
                 CoroutinesInScheduling(config),
                 NoFunctionTypes(config),
                 DomainPurity(config),
+                OnlyInvalidProgramStateThrows(config),
+                InvalidProgramStateBecause(config),
             ),
         )
 }

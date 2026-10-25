@@ -1,6 +1,5 @@
 package app.snapsync.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.upload.LedgerWriter
@@ -12,6 +11,7 @@ import app.snapsync.model.UploadFailure
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.destinationPathOf
 import app.snapsync.model.toLedgerRow
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -36,7 +36,7 @@ class SyncEngineTest {
         assetId: String = "cloud-1",
     ) = Resource(
         filename = filename,
-        assetId = AssetId(assetId),
+        assetId = testAssetId(assetId),
         contentType = "image/heic",
         metadata = mapOf("asset-id" to "cloud-1", "created" to "2026-06-12T10:00:00Z"),
         data = null,
@@ -271,7 +271,7 @@ class SyncEngineTest {
 
         engine.handle(SyncEvent.UploadStarted(request))
 
-        assertEquals(AssetId("A"), ledger.entry(resource.filename)?.assetId)
+        assertEquals(testAssetId("A"), ledger.entry(resource.filename)?.assetId)
     }
 
     @Test

@@ -27,7 +27,7 @@ class SingleFlightTest {
         var gate = CompletableDeferred<Unit>()
         var fail = false
 
-        override suspend fun pass(): Int {
+        override suspend fun pass(on: Run): Int {
             passes += currentCoroutineContext()[Trigger]?.label
             gate.await()
             check(!fail) { "the pass failed" }
@@ -42,7 +42,7 @@ class SingleFlightTest {
 
     /** A waiter, in a scope of its own: a failing pass fails the waiter, not the test. */
     private fun TestScope.request(world: World, name: String, sequence: Sequence<Int>) =
-        CoroutineScope(coroutineContext + SupervisorJob()).async(Trigger.of(name) + RuntimeElement(world.runtime)) {
+        CoroutineScope(coroutineContext + SupervisorJob()).async(Trigger.of(name)) {
             world.runtime.flights.run(sequence)
         }
 
@@ -183,7 +183,7 @@ class SingleFlightTest {
     fun `a request with no trigger runs under the sequence's own name`() = runTest {
         val world = World(this)
         val gated = Gated()
-        val request = async(RuntimeElement(world.runtime)) { world.runtime.flights.run(gated) }
+        val request = async { world.runtime.flights.run(gated) }
         runCurrent()
         gated.release()
         request.await()
@@ -194,7 +194,7 @@ class SingleFlightTest {
     fun `when the process scope goes away its waiters are told the pass was cut`() = runTest {
         val world = World(this)
         val stuck = object : Sequence<Int>("stuck") {
-            override suspend fun pass(): Int = awaitCancellation()
+            override suspend fun pass(on: Run): Int = awaitCancellation()
         }
         // On the test's scheduler, so both have joined the flight before the scope goes away.
         val a = request(world, "A", stuck)

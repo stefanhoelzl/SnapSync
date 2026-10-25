@@ -6,7 +6,6 @@ import app.snapsync.mock.DatabasesMock
 import app.snapsync.ports.DbResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
 /**
@@ -33,9 +32,6 @@ class OwnedDatabaseTest {
         store.execute { }
         device.lock()
         assertIs<DbResult.Failed>(store.execute { it.legacyImportQueries.selectImported().executeAsList() })
-        assertFailsWith<DatabaseUnavailable>("the old zones' read throws it") {
-            store.use { it.legacyImportQueries.selectImported().executeAsList() }
-        }
 
         device.lock(on = false)
         assertEquals(DbResult.Ok(Unit), store.execute { })

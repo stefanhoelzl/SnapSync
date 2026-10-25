@@ -199,6 +199,108 @@ class CoverageZeroTest {
      * the `SerializationConstructorMarker` unless [marker] is false) opening with `[mask] & seen` on [slot], whose
      * skipped block ends in `throwMissingFieldException` unless [throws] is false — all attributed to line 17.
      */
+    @Test
+    fun `an elvis throwing an InvalidProgramState excuses its block and the one arm into it`() {
+        assertEquals(
+            listOf(
+                CoverageZero.Glue("app/core/Keys.kt", 9, 6, 0, "app.core.Keys.mint", "invalid program state"),
+                CoverageZero.Glue("app/core/Keys.kt", 9, 0, 1, "app.core.Keys.mint", "invalid program state's arm"),
+            ),
+            CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.ELVIS))),
+        )
+    }
+
+    @Test
+    fun `an if throwing one excuses its block and its arm, on their own lines`() {
+        assertEquals(
+            listOf(
+                CoverageZero.Glue("app/core/Keys.kt", 10, 5, 0, "app.core.Keys.mint", "invalid program state"),
+                CoverageZero.Glue("app/core/Keys.kt", 9, 0, 1, "app.core.Keys.mint", "invalid program state's arm"),
+            ),
+            CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.IF))),
+        )
+    }
+
+    @Test
+    fun `a block two arms lead into excuses its instructions only`() {
+        assertEquals(
+            listOf(CoverageZero.Glue("app/core/Keys.kt", 10, 5, 0, "app.core.Keys.mint", "invalid program state")),
+            CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.TWO_ARMS))),
+        )
+    }
+
+    @Test
+    fun `nothing but an InvalidProgramState, entered only by its arm, is excused`() {
+        assertEquals(emptyList(), CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.IF, type = "java/lang/IllegalStateException"))), "another type")
+        assertEquals(emptyList(), CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.FALL_THROUGH))), "something runs first")
+        assertEquals(emptyList(), CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.IF, message = false))), "no literal")
+    }
+
+    @Test
+    fun `the throw's line is judged for the rest of what it holds`() {
+        // The report's one file is `app/ui/Screen.kt`: the sites are moved there.
+        val glue = CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.ELVIS))).map { it.copy(file = "app/ui/Screen.kt") }
+        val sources = mapOf("app/ui/Screen.kt" to listOf(List(12) { "" }))
+        assertTrue(CoverageZero.judge(report(emptyList(), listOf(Line(9, 6, 1))), sources, glue).passes)
+        val more = CoverageZero.judge(report(emptyList(), listOf(Line(9, 8, 1))), sources, glue)
+        assertEquals(listOf(9), more.misses.map { it.line })
+    }
+
+    private enum class Entry { ELVIS, IF, TWO_ARMS, FALL_THROUGH }
+
+    /** A method `mint` in `app/core/Keys.kt` throwing an exception of [type] the way Kotlin compiles [entry]. */
+    private fun throwing(entry: Entry, type: String = "app/snapsync/domain/program/InvalidProgramState", message: Boolean = true): ByteArray {
+        val cw = ClassWriter(ClassWriter.COMPUTE_MAXS)
+        cw.visit(Opcodes.V1_6, Opcodes.ACC_PUBLIC, "app/core/Keys", null, "java/lang/Object", null)
+        cw.visitSource("Keys.kt", null)
+        val mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "mint", "(Ljava/lang/Object;Z)Ljava/lang/Object;", null, null)
+        mv.visitCode()
+        val start = Label()
+        mv.visitLabel(start)
+        mv.visitLineNumber(9, start)
+        val ok = Label()
+        val block = Label()
+        when (entry) {
+            Entry.ELVIS -> {
+                mv.visitVarInsn(Opcodes.ALOAD, 1)
+                mv.visitInsn(Opcodes.DUP)
+                mv.visitJumpInsn(Opcodes.IFNONNULL, ok)
+                mv.visitInsn(Opcodes.POP)
+            }
+            Entry.IF -> {
+                mv.visitVarInsn(Opcodes.ILOAD, 2)
+                mv.visitJumpInsn(Opcodes.IFEQ, ok)
+            }
+            Entry.TWO_ARMS -> {
+                mv.visitVarInsn(Opcodes.ILOAD, 2)
+                mv.visitJumpInsn(Opcodes.IFNE, block)
+                mv.visitVarInsn(Opcodes.ALOAD, 1)
+                mv.visitJumpInsn(Opcodes.IFNONNULL, ok)
+            }
+            Entry.FALL_THROUGH -> {
+                mv.visitVarInsn(Opcodes.ILOAD, 2)
+                mv.visitJumpInsn(Opcodes.IFEQ, ok)
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, "app/core/Log", "warn", "()V", false)
+            }
+        }
+        if (entry != Entry.ELVIS) {
+            mv.visitLabel(block)
+            mv.visitLineNumber(10, block)
+        }
+        mv.visitTypeInsn(Opcodes.NEW, type)
+        mv.visitInsn(Opcodes.DUP)
+        if (message) mv.visitLdcInsn("the mint asks for exactly the count") else mv.visitVarInsn(Opcodes.ALOAD, 1)
+        mv.visitMethodInsn(Opcodes.INVOKESPECIAL, type, "<init>", "(Ljava/lang/String;)V", false)
+        mv.visitInsn(Opcodes.ATHROW)
+        mv.visitLabel(ok)
+        if (entry != Entry.ELVIS) mv.visitVarInsn(Opcodes.ALOAD, 1)
+        mv.visitInsn(Opcodes.ARETURN)
+        mv.visitMaxs(0, 0)
+        mv.visitEnd()
+        cw.visitEnd()
+        return cw.toByteArray()
+    }
+
     private fun deserializingConstructor(mask: Int, slot: Int = 1, throws: Boolean = true, marker: Boolean = true): ByteArray {
         val cw = ClassWriter(ClassWriter.COMPUTE_MAXS)
         cw.visit(Opcodes.V1_6, Opcodes.ACC_PUBLIC, "app/ui/Settings", null, "java/lang/Object", null)

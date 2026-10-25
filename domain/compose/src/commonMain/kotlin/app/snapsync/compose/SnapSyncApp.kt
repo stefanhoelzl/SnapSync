@@ -468,6 +468,7 @@ class AppCore internal constructor(
     // The download orchestrator: union → foreign selection → download → import → suppression.
     val downloadController: DownloadController by lazy {
         DownloadController(
+            runtime = runtime,
             union = backend.union,
             store = services.downloadStore,
             jobs = downloadJobs,

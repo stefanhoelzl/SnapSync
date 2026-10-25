@@ -37,10 +37,12 @@ class CrashReporterContractBindingTest {
         )
 
         override fun create(state: CrashReporterState, clauseId: String, log: CallLog): Entered<CrashReporterSubject> {
-            if (state == CrashReporterState.ON_THE_WIRE || state == CrashReporterState.ACROSS_A_RESTART) {
+            if (state == CrashReporterState.ON_THE_WIRE || state == CrashReporterState.ACROSS_A_RESTART ||
+                state == CrashReporterState.AFTER_A_PROCESS_DEATH
+            ) {
                 return Entered.Unreachable(
                     "the fake does not model the SDK: breadcrumbs riding the next event, the install id, the build " +
-                        "facts, the size caps and a relaunch's cache are its serialization and the adapter's hooks",
+                        "facts, the size caps, a relaunch's cache and a process's death are its serialization and the adapter's hooks",
                 )
             }
             val started = MutableStateFlow(false)

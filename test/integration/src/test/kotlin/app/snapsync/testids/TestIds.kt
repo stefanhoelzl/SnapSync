@@ -1,5 +1,6 @@
 package app.snapsync.testids
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 
@@ -13,6 +14,11 @@ internal fun testEventId(name: String): EventId = EventId.parse(name) ?: EventId
 
 /** The device id fixture [name] stands for. */
 internal fun testDeviceId(name: String): DeviceId = DeviceId.parse(name) ?: DeviceId.parse(uuidOf(name))!!
+
+/** The asset id [text] spells — a fixture's own, so a non-canonical one fails the test that wrote it. */
+internal fun testAssetId(text: String): AssetId = requireNotNull(AssetId.parse(text)) {
+    "not a canonical asset id: '$text'"
+}
 
 private const val SHAPE = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 private const val HEAD_BYTES = 12

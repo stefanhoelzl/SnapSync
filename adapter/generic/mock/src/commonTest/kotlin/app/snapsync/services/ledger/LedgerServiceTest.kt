@@ -2,7 +2,6 @@ package app.snapsync.services.ledger
 
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.db.LedgerDatabase
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.LedgerAggregates
@@ -13,6 +12,7 @@ import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.databases.driver
 import app.snapsync.services.databases.sharedOver
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -109,7 +109,7 @@ class LedgerServiceTest {
     @Test
     fun `a recorded entry round-trips field for field - a missing role included`() = runTest {
         val full = entry(key = "A", state = LedgerState.COMPLETED, destinationPath = "/a")
-        val bare = LedgerEntry("B", AssetId("B"), LedgerState.DISCOVERED)
+        val bare = LedgerEntry("B", testAssetId("B"), LedgerState.DISCOVERED)
 
         assertTrue(ledger.recordUnlessSettled(full), "a new key always applies")
         assertTrue(ledger.recordUnlessSettled(bare))
@@ -187,8 +187,8 @@ class LedgerServiceTest {
         val thrown = runCatching {
             ledger.recordAllUnlessSettled(
                 listOf(
-                    LedgerEntry("X-primary.heic", AssetId("X"), LedgerState.DISCOVERED),
-                    LedgerEntry("X-live.mov", AssetId("X"), LedgerState.DISCOVERED),
+                    LedgerEntry("X-primary.heic", testAssetId("X"), LedgerState.DISCOVERED),
+                    LedgerEntry("X-live.mov", testAssetId("X"), LedgerState.DISCOVERED),
                 ),
             )
         }
@@ -245,20 +245,20 @@ class LedgerServiceTest {
         val progress = ledger.assetProgress()
         assertEquals(
             mapOf(
-                AssetId("a") to false,
-                AssetId("b") to false,
-                AssetId("c") to true,
-                AssetId("A") to true,
-                AssetId("B") to false,
+                testAssetId("a") to false,
+                testAssetId("b") to false,
+                testAssetId("c") to true,
+                testAssetId("A") to true,
+                testAssetId("B") to false,
             ),
             progress,
         )
         assertEquals(ledger.aggregates().completed, progress.count { it.value }, "the two reads agree")
         assertEquals(
             setOf(
-                PendingResource(AssetId("a"), "a"),
-                PendingResource(AssetId("b"), "b"),
-                PendingResource(AssetId("B"), "B-edit.jpg"),
+                PendingResource(testAssetId("a"), "a"),
+                PendingResource(testAssetId("b"), "b"),
+                PendingResource(testAssetId("B"), "B-edit.jpg"),
             ),
             ledger.pendingResources().toSet(),
             "only the resources still outstanding, paired with their photo",
@@ -279,7 +279,7 @@ class LedgerServiceTest {
             ledger.get("a.heic"),
         )
         assertEquals(LedgerAggregates(pending = 0, completed = 1), ledger.aggregates())
-        assertEquals(mapOf(AssetId("A") to true), ledger.assetProgress())
+        assertEquals(mapOf(testAssetId("A") to true), ledger.assetProgress())
         assertEquals(emptyList(), ledger.pendingResources())
         assertEquals(emptyList(), ledger.rowsNeedingJob())
         assertEquals(listOf("a.heic"), ledger.manifestRows().map { it.key }, "and it is still declared")
@@ -320,7 +320,7 @@ class LedgerServiceTest {
         ledger.recordUnlessSettled(entry(key = "found.heic", state = LedgerState.DISCOVERED))
         // A row the join-time load seeded from a stored-file listing: COMPLETED, no capture date, no role. The read
         // does not exclude it — the membership's policy does (capability `photo-sharing`).
-        ledger.recordUnlessSettled(LedgerEntry("seeded.heic", AssetId("C"), LedgerState.COMPLETED))
+        ledger.recordUnlessSettled(LedgerEntry("seeded.heic", testAssetId("C"), LedgerState.COMPLETED))
 
         val rows = ledger.manifestRows()
 
@@ -328,7 +328,7 @@ class LedgerServiceTest {
         assertEquals(
             LedgerEntry(
                 "found.heic",
-                AssetId("found.heic"),
+                testAssetId("found.heic"),
                 LedgerState.DISCOVERED,
                 creationDate = CREATION_DATE,
                 role = ResourceRole.PRIMARY,
@@ -344,7 +344,7 @@ class LedgerServiceTest {
     @Test
     fun `the backfill fills a bare row once and never overwrites detail`() = runTest {
         ledger.recordUnlessSettled(
-            LedgerEntry("seeded.heic", AssetId("C"), LedgerState.COMPLETED, destinationPath = "/s"),
+            LedgerEntry("seeded.heic", testAssetId("C"), LedgerState.COMPLETED, destinationPath = "/s"),
         )
 
         ledger.backfillManifestDetail(entry(key = "seeded.heic", assetId = "C", state = LedgerState.DISCOVERED))
@@ -359,7 +359,7 @@ class LedgerServiceTest {
         assertEquals("/s", filled.destinationPath)
 
         ledger.backfillManifestDetail(
-            LedgerEntry("seeded.heic", AssetId("C"), LedgerState.COMPLETED, creationDate = "2099-01-01T00:00:00Z"),
+            LedgerEntry("seeded.heic", testAssetId("C"), LedgerState.COMPLETED, creationDate = "2099-01-01T00:00:00Z"),
         )
         assertEquals(
             CREATION_DATE,
@@ -472,7 +472,7 @@ class LedgerServiceTest {
         assertTrue(ledger.markTerminal(entry().key, TerminalOutcome.COMPLETED))
         assertEquals(before, ledger.manifestVersion())
 
-        ledger.resetTo(testEventId(JOINED), listOf(LedgerEntry("bare", AssetId("bare"), LedgerState.COMPLETED)))
+        ledger.resetTo(testEventId(JOINED), listOf(LedgerEntry("bare", testAssetId("bare"), LedgerState.COMPLETED)))
         val bare = ledger.manifestVersion()
         ledger.backfillManifestDetail(entry(key = "bare"))
         assertTrue(ledger.manifestVersion() > bare, "a detail backfill changes what is declared")
@@ -482,7 +482,7 @@ class LedgerServiceTest {
         ledger.recordUnlessSettled(
             LedgerEntry(
                 "live",
-                AssetId("live"),
+                testAssetId("live"),
                 LedgerState.DISCOVERED,
                 creationDate = CREATION_DATE,
                 role = ResourceRole.LIVE,
@@ -500,7 +500,12 @@ class LedgerServiceTest {
 
         assertFalse(
             ledger.recordUnlessSettled(
-                LedgerEntry(entry().key, AssetId("B"), LedgerState.DISCOVERED, creationDate = "2020-01-01T00:00:00Z"),
+                LedgerEntry(
+                    entry().key,
+                    testAssetId("B"),
+                    LedgerState.DISCOVERED,
+                    creationDate = "2020-01-01T00:00:00Z",
+                ),
             ),
         )
 
@@ -537,7 +542,7 @@ private fun entry(
     destinationPath: String? = null,
 ) = LedgerEntry(
     key,
-    AssetId(assetId),
+    testAssetId(assetId),
     state,
     creationDate = CREATION_DATE,
     role = ResourceRole.PRIMARY,

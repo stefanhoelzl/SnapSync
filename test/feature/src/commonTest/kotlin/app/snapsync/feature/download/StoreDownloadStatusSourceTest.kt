@@ -1,6 +1,5 @@
 package app.snapsync.feature.download
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.support.testShared
@@ -18,6 +17,7 @@ import app.snapsync.ports.DbOpen
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.manifest.DeviceManifestService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -49,7 +49,7 @@ class StoreDownloadStatusSourceTest {
                         testDeviceId("ME"),
                         (1..ownPublished).map {
                             DeviceManifestAsset(
-                                AssetId("OWN-$it"),
+                                testAssetId("OWN-$it"),
                                 "2026-06-30T10:00:00Z",
                                 listOf(ManifestResource(ResourceRole.PRIMARY, "image/jpeg", "own-$it", "OWN.JPG")),
                             )
@@ -104,8 +104,8 @@ class StoreDownloadStatusSourceTest {
         val store = DownloadService(inMemoryDatabases())
         val source = source(store, currentEvent = { testEventId("E1") })
 
-        val x = AssetRef(testDeviceId("A"), AssetId("X"))
-        val y = AssetRef(testDeviceId("A"), AssetId("Y"))
+        val x = AssetRef(testDeviceId("A"), testAssetId("X"))
+        val y = AssetRef(testDeviceId("A"), testAssetId("Y"))
         store.planAll(
             listOf(
                 PlannedAsset(x, "2026-06-30T10:00:00Z", planned("X")),
@@ -118,8 +118,8 @@ class StoreDownloadStatusSourceTest {
         assertEquals(0, source.progress.value.downloaded)
         assertEquals(2, source.progress.value.total)
 
-        store.markStaged(AssetRef(testDeviceId("A"), AssetId("X")), "X-primary.jpg", "/x")
-        store.markImported(AssetRef(testDeviceId("A"), AssetId("X")), AssetId("LOCAL-X"))
+        store.markStaged(AssetRef(testDeviceId("A"), testAssetId("X")), "X-primary.jpg", "/x")
+        store.markImported(AssetRef(testDeviceId("A"), testAssetId("X")), testAssetId("LOCAL-X"))
         source.refresh()
         assertEquals(1, source.progress.value.downloaded) // downloaded 1 of 2
         assertEquals(2, source.progress.value.total)
@@ -130,28 +130,28 @@ class StoreDownloadStatusSourceTest {
         // Measured on a device: a joined event whose union was EMPTY read "2418 received" — every foreign photo the
         // device had imported for earlier events, kept as suppression handles after each leave.
         val store = DownloadService(inMemoryDatabases())
-        val old = AssetRef(testDeviceId("B"), AssetId("OLD"))
+        val old = AssetRef(testDeviceId("B"), testAssetId("OLD"))
         store.planAll(
             listOf(PlannedAsset(old, "2026-06-01T10:00:00Z", planned("OLD"))),
             eventId = testEventId("EARLIER"),
             members = listOf(old),
         )
         store.markStaged(old, "OLD-primary.jpg", "/old")
-        store.markImported(old, AssetId("LOCAL-OLD"))
+        store.markImported(old, testAssetId("LOCAL-OLD"))
 
         val source = source(store, currentEvent = { testEventId("CURRENT") })
         store.planAll(emptyList(), eventId = testEventId("CURRENT"), members = emptyList()) // its union is empty
         source.refresh()
         assertEquals(0, source.progress.value.downloaded)
         assertEquals(0, source.progress.value.total)
-        assertEquals(setOf(AssetId("LOCAL-OLD")), store.suppressedLocalIds(), "the handle itself is kept")
+        assertEquals(setOf(testAssetId("LOCAL-OLD")), store.suppressedLocalIds(), "the handle itself is kept")
     }
 
     // ---- the others' declared photos (change `count-declared-photos`) ----
 
     /** [count] foreign photos of E1 planned from member B, the union read having answered [declared] at position 1. */
     private suspend fun DownloadService.offered(count: Int, declared: Long?) {
-        val refs = (1..count).map { AssetRef(testDeviceId("B"), AssetId("P$it")) }
+        val refs = (1..count).map { AssetRef(testDeviceId("B"), testAssetId("P$it")) }
         planAll(
             refs.map { PlannedAsset(it, "2026-06-30T10:00:00Z", planned(it.sourceAssetId.value)) },
             eventId = testEventId("E1"),
@@ -166,7 +166,12 @@ class StoreDownloadStatusSourceTest {
         // The sharer's 200, 7 of them offered here: 6 of 200 received, not 6 of 7.
         val store = DownloadService(inMemoryDatabases())
         store.offered(7, declared = 200)
-        (1..6).forEach { store.markImported(AssetRef(testDeviceId("B"), AssetId("P$it")), AssetId("LOCAL-$it")) }
+        (1..6).forEach {
+            store.markImported(
+                AssetRef(testDeviceId("B"), testAssetId("P$it")),
+                testAssetId("LOCAL-$it"),
+            )
+        }
         val source = source(store, currentEvent = { testEventId("E1") })
 
         source.refresh()
@@ -203,7 +208,7 @@ class StoreDownloadStatusSourceTest {
     fun a_photo_given_up_on_is_never_also_awaited() = runTest {
         val store = DownloadService(inMemoryDatabases())
         store.offered(2, declared = 2)
-        assertTrue(store.settleUnimportable(AssetRef(testDeviceId("B"), AssetId("P1"))))
+        assertTrue(store.settleUnimportable(AssetRef(testDeviceId("B"), testAssetId("P1"))))
         val source = source(store, currentEvent = { testEventId("E1") })
 
         source.refresh()

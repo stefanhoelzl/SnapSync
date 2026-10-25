@@ -1,6 +1,6 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
+import app.snapsync.testids.testAssetId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -20,7 +20,7 @@ class SelectionScopeTest {
     private fun snapshotOf(vararg ids: String) = ids.map {
         Resource(
             "$it-primary.jpg",
-            AssetId(it),
+            testAssetId(it),
             "image/jpeg",
             mapOf(RESOURCE_META_CREATION_DATE to "2026-06-01T00:00:00Z"),
             null,
@@ -32,7 +32,7 @@ class SelectionScopeTest {
         val snapshot = snapshotOf("S1", "S2")
         val scope = selectionScope(GalleryAccess.LIMITED, snapshot)
         assertIs<SelectionScope.Scoped>(scope)
-        assertEquals(listOf(AssetId("S1"), AssetId("S2")), scope.resources.map { it.assetId })
+        assertEquals(listOf(testAssetId("S1"), testAssetId("S2")), scope.resources.map { it.assetId })
     }
 
     @Test

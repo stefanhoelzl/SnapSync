@@ -26,6 +26,7 @@ import app.snapsync.ports.TransferNetwork
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.staging.StagingService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,7 +67,7 @@ class RecordingDownload(var accept: Boolean = true) : Download {
     /** One start request: the url and the transfer's opaque tag. */
     data class Start(val url: String, val tag: String, val network: TransferNetwork = TransferNetwork.ANY) {
         /** The asset the tag names — the tag's first two fields (device id, asset id). */
-        val ref: AssetRef get() = tag.split(TAG_SEPARATOR).let { AssetRef(testDeviceId(it[0]), AssetId(it[1])) }
+        val ref: AssetRef get() = tag.split(TAG_SEPARATOR).let { AssetRef(testDeviceId(it[0]), testAssetId(it[1])) }
 
         /** The resource key the tag names — its third field. */
         val resourceKey: String get() = tag.split(TAG_SEPARATOR)[2]

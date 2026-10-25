@@ -192,7 +192,7 @@ internal fun ClauseList<BackendState, EdgeSubject<BackendClient>>.listingClauses
         assertEquals(Role.PRIMARY, listed.role)
         assertEquals(
             asset.key(ResourceRole.PRIMARY),
-            uploadKey(AssetId(listed.assetId), ResourceRole.PRIMARY, listed.filename),
+            uploadKey(AssetId.parse(listed.assetId)!!, ResourceRole.PRIMARY, listed.filename),
             "the key recomposes exactly",
         )
     }

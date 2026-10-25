@@ -167,7 +167,11 @@ coverage {
         // 79/53 → 81/58 with the locked phone and the refusing Keychain (`unavailable-keychain-and-preferences`): the
         // identity that never mints while the Keychain cannot be looked in.
         // → 85/61 in phase 31, once the polling tests waited on outcome events instead.
-        integration(instructions = 85, branches = 61)
+        // → 84/61 with the id columns read as a `Stored` (the `InvalidProgramState` change): what each reader does with
+        // a row that spells no id is reached only by a device's corrupt or foreign rows, which the suite never writes
+        // (it asserts outcomes, never the app's databases); the data suites' (`MembershipRepositoryTest`,
+        // `PendingLeavesTest`). Measured 84.84 %.
+        integration(instructions = 84, branches = 61)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))

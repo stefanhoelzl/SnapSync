@@ -1,6 +1,5 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -22,6 +21,7 @@ import app.snapsync.scheduling.Pass
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.services.wake.Heartbeat
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Logger
@@ -84,7 +84,7 @@ class WakeRearmTest {
 
     @Test
     fun `staged photos still to import keep the heartbeat busy`() = runTest {
-        val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("Q"))
+        val ref = AssetRef(testDeviceId("DEVICE-A"), testAssetId("Q"))
         downloads.plan(
             ref,
             "2026-06-01T10:00:00Z",

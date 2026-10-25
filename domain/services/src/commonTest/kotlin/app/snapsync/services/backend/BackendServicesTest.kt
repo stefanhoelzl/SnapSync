@@ -1,7 +1,6 @@
 package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.model.CreateOutcome
@@ -15,6 +14,7 @@ import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.HttpResult
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.identityOf
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.models.EventCreate
@@ -182,7 +182,7 @@ class BackendServicesTest {
     fun a_publish_sends_the_snapshot_as_the_description_shapes_it() = runTest {
         val transport = ScriptedTransport()
         val asset = DeviceManifestAsset(
-            AssetId("A"),
+            testAssetId("A"),
             "2026-07-01T00:00:00Z",
             listOf(
                 ManifestResource(ResourceRole.PRIMARY, "image/heic", "A-primary.heic", "IMG.HEIC"),
@@ -242,14 +242,14 @@ class BackendServicesTest {
         val listed = servicesAnswering(
             json(200, """[{"assetId":"A","role":"primary","filename":"IMG_1.HEIC"}]"""),
         ).deviceFiles.list(testEventId("E"), testDeviceId("D"))
-        assertEquals(listOf(StoredResource("A-primary.heic", AssetId("A"))), listed.getOrThrow())
+        assertEquals(listOf(StoredResource("A-primary.heic", testAssetId("A"))), listed.getOrThrow())
     }
 
     @Test
     fun a_listed_live_resource_recomposes_its_own_key_and_a_non_canonical_asset_is_a_shape_failure() = runTest {
         val live = servicesAnswering(json(200, """[{"assetId":"A","role":"live","filename":"IMG_1.MOV"}]"""))
         assertEquals(
-            listOf(StoredResource("A-live.mov", AssetId("A"))),
+            listOf(StoredResource("A-live.mov", testAssetId("A"))),
             live.deviceFiles.list(testEventId("E"), testDeviceId("D")).getOrThrow(),
         )
         val odd = servicesAnswering(json(200, """[{"assetId":"a/b","role":"primary","filename":"IMG.JPG"}]"""))
@@ -287,7 +287,7 @@ class BackendServicesTest {
         ) = servicesAnswering(reply).union.union(testEventId("E"), 3, UnionTrigger.PUSH)
         val served = read(page).getOrThrow()
         assertEquals(7, served.cursor)
-        assertEquals(listOf(AssetId("A")), served.assets.map { it.assetId })
+        assertEquals(listOf(testAssetId("A")), served.assets.map { it.assetId })
         assertTrue(read(text(404, "event not found")).isFailure)
         assertTrue(read(offline).isFailure)
         val strangerDevice = json(
@@ -296,6 +296,12 @@ class BackendServicesTest {
             mapOf("SnapSync-Cursor" to "7"),
         )
         assertTrue(read(strangerDevice).isFailure, "an asset of no device is no asset")
+        val strangerAsset = json(
+            200,
+            """[{"deviceId":"${testDeviceId("D2").value}","assetId":"a/b","creationDate":"c","resources":[]}]""",
+            mapOf("SnapSync-Cursor" to "7"),
+        )
+        assertTrue(read(strangerAsset).isFailure, "an asset whose id is not canonical is no asset")
         assertTrue(
             read(json(200, "[]")).isFailure,
             "a page without its position is one the app could not continue from",

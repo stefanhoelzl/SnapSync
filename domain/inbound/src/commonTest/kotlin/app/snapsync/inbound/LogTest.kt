@@ -8,7 +8,6 @@ import kotlinx.coroutines.withContext
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 
@@ -71,8 +70,7 @@ class LogTest {
     fun `the handle of a delivery nobody waits on answers nothing`() = Completion.None.complete()
 
     @Test
-    fun `a trigger names each entry point once and at least one`() {
+    fun `a trigger names each entry point once`() {
         assertEquals("A+B", (Trigger.of("A") + Trigger.of("B") + Trigger.of("A")).toString())
-        assertFailsWith<IllegalArgumentException> { Trigger(emptyList()) }
     }
 }

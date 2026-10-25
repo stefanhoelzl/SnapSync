@@ -1,9 +1,9 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.format.TimestampText
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -31,7 +31,7 @@ class NarrowingRetractionTest {
 
     private fun completedRow(id: String, capturedAt: String) = LedgerEntry(
         key = "$id-primary.jpg",
-        assetId = AssetId(id),
+        assetId = testAssetId(id),
         state = LedgerState.COMPLETED,
         creationDate = capturedAt,
         role = ResourceRole.PRIMARY,
@@ -61,7 +61,7 @@ class NarrowingRetractionTest {
         val uploaded = completedRow("A", capturedAt = "2026-06-01T10:00:00Z")
 
         val before = projectDeviceManifest(testDeviceId("D"), listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
-        assertEquals(listOf(AssetId("A")), before.assets.map { it.assetId }, "shared under the original floor")
+        assertEquals(listOf(testAssetId("A")), before.assets.map { it.assetId }, "shared under the original floor")
 
         val after = projectDeviceManifest(testDeviceId("D"), listOf(uploaded), policyWithFloor("2026-07-01T00:00:00Z"))
 
@@ -105,7 +105,7 @@ class NarrowingRetractionTest {
             projectDeviceManifest(testDeviceId("D"), listOf(uploaded), policyWithFloor("2026-01-01T00:00:00Z"))
 
         assertEquals(
-            listOf(AssetId("A")),
+            listOf(testAssetId("A")),
             widened.assets.map { it.assetId },
             "the ledger row survived the narrowing, so widening re-lists it with no re-upload",
         )

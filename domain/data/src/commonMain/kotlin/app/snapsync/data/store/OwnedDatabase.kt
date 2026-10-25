@@ -23,7 +23,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 @OptIn(ExperimentalAtomicApi::class)
 abstract class OwnedDatabase<D>(
     private val databases: Databases,
-    private val name: String,
+    /** The database's file name, as the store names it. */
+    val name: String,
     private val schema: SqlSchema<QueryResult.Value<Unit>>,
 ) {
     /** The generated database over [driver], its column adapters wired. */
@@ -49,15 +50,6 @@ abstract class OwnedDatabase<D>(
         // Only a read-only open may answer these; an adapter that does breaks the `Databases` contract.
         DbOpen.Missing, DbOpen.OldSchema ->
             DbResult.Failed("a read-write open answered $opened, which only a read-only open may")
-    }
-
-    /**
-     * [statements]' answer, a failure thrown as [DatabaseUnavailable] — MIGRATING: the old zones' reads and writes,
-     * written against a store that throws, until each moves into the data layer and takes the [DbResult] itself.
-     */
-    fun <T> use(statements: (D) -> T): T = when (val result = execute(statements)) {
-        is DbResult.Ok -> result.value
-        is DbResult.Failed -> throw DatabaseUnavailable(name, result.detail)
     }
 
     /** The open database and the generated [database] over its driver, used only inside its [handle]'s execute. */

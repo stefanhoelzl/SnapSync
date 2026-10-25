@@ -2,6 +2,7 @@ package app.snapsync.architecture
 
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.Stored
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -23,6 +24,7 @@ import app.snapsync.model.extensionRegistrable
 import app.snapsync.model.selectionScope
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.databases.LegacyRecords
+import app.snapsync.services.databases.use
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.membership.MembershipProjection
@@ -112,7 +114,7 @@ class ProducerExclusivityTest {
         fun join(joined: EventConfig) {
             held.use {
                 it.membershipQueries.saveMembership(
-                    eventId = joined.eventId,
+                    eventId = Stored.Valid(joined.eventId),
                     name = joined.name,
                     minPhotoDate = joined.minPhotoDate,
                     startsAt = joined.startsAt,

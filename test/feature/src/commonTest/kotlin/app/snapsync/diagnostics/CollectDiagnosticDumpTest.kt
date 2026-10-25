@@ -1,6 +1,5 @@
 package app.snapsync.diagnostics
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -39,6 +38,7 @@ import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.network.NetworkReadings
 import app.snapsync.services.settings.MobileDataSetting
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -450,8 +450,8 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `the ledger section is five labelled counts and no rows`() = runTest {
         val ledger = LedgerService(testShared()) { testEventId(LEDGER_EVENT) }
-        ledger.recordUnlessSettled(LedgerEntry("a.jpg", AssetId("asset-1"), LedgerState.COMPLETED))
-        ledger.recordUnlessSettled(LedgerEntry("b.jpg", AssetId("asset-2"), LedgerState.REQUESTED))
+        ledger.recordUnlessSettled(LedgerEntry("a.jpg", testAssetId("asset-1"), LedgerState.COMPLETED))
+        ledger.recordUnlessSettled(LedgerEntry("b.jpg", testAssetId("asset-2"), LedgerState.REQUESTED))
 
         val dump = collector(ledger = ledger).collect(NOTE, SCREEN)
 

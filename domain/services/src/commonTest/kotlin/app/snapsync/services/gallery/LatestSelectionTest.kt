@@ -5,6 +5,7 @@ import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.SelectionSnapshot
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.consumeAsFlow
@@ -53,9 +54,12 @@ class LatestSelectionTest {
         selection.published(changes.consumeAsFlow(), beforePublish = { yield() })
             .collect { seen += selection.snapshot.value?.map { it.assetId } }
 
-        assertEquals<List<List<AssetId>?>>(listOf(listOf(AssetId("A"), AssetId("B")), listOf(AssetId("C"))), seen)
+        assertEquals<List<List<AssetId>?>>(
+            listOf(listOf(testAssetId("A"), testAssetId("B")), listOf(testAssetId("C"))),
+            seen,
+        )
         val scoped = assertIs<SelectionScope.Scoped>(selection.scopeUnder(GalleryAccess.LIMITED))
-        assertEquals(listOf(AssetId("C")), scoped.resources.map { it.assetId })
+        assertEquals(listOf(testAssetId("C")), scoped.resources.map { it.assetId })
         assertEquals<Fact<Int>>(Fact.Known(1), selection.photosUnder(GalleryAccess.LIMITED))
     }
 

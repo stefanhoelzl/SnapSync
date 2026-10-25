@@ -112,7 +112,10 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
 process scope (supervised, on the composition lane, each task's thread labelled with its trigger), the
 background-time holds, and the expiry. Nothing else launches.
 
-**Steps** (`steps { }`, inside an entry point or a sequence):
+**Steps** (`on.steps { }`, inside an entry point or a sequence). `steps` is a member of the run's `Run` — the runtime
+hands one to an entry point's `run(arg, on)`, a sequence's `pass(on)` and detached work (`{ on -> … }`), and a helper
+the steps call takes it as `on: Run` — so steps written outside a run do not compile. (Not a Kotlin context parameter:
+detekt's parser cannot read one.) `Runtime.outliving` needs no run: it is the process scope's.
 
 | step | means |
 |---|---|
@@ -123,7 +126,7 @@ background-time holds, and the expiry. Nothing else launches.
 | `run(sequence)` | a pass of a single-flight `Sequence`, answering `Pass.Completed(result)` or `Pass.Cut` |
 | `ensure("name") { }` | runs when the other steps are done **however they ended** — failed, or cancelled because time is up — before the run answers the OS (the heartbeat's re-arm) |
 
-`outliving { }` is for work the platform cannot stop once started (a photo-library import): it runs in the process
+`runtime.outliving { }` is for work the platform cannot stop once started (a photo-library import): it runs in the process
 scope, and if its caller stops waiting it runs on to its end, whose own report records what it did.
 
 **Expiry.** Time is up when the OS says so: a `Granted` delivery's `Running.expire()`, or the end of a held
@@ -194,11 +197,13 @@ by its key across the process:
 ## 5. Containment
 
 A run's failure is caught in exactly three places, each logging an `Error` line (which reaches the crash channel),
-and each rethrowing a `CancellationException` — a cancellation is the caller's scope ending, never a failure:
+and each rethrowing a `CancellationException` — a cancellation is the caller's scope ending, never a failure — and
+passing on an `InvalidProgramState`, which ends the process (§15):
 
 1. the `Runtime` entry: a run (`run failed`), an inline delivery (`delivery failed`), and an answered one, which
    answers its declared failure value — the delivering thread is an Objective-C boundary any Kotlin throwable
-   aborts the process across, so there nothing escapes, cancellation included;
+   aborts the process across, so there nothing escapes, cancellation included, and an `InvalidProgramState` ends the
+   process there, on the delivering thread, with its report (`endProcess`);
 2. `isolated` (and each `concurrently` child);
 3. the process scope's `CoroutineExceptionHandler`, for work nobody awaits (`unawaited work failed`).
 
@@ -279,10 +284,12 @@ the inbound log — never an old zone, never `application`.
   with a subject and no `else`, **used as an expression** — its value is the answer, so no case can quietly do nothing
   (`DataShape`). No `if`. Loops, safe calls and typed catches of a library's exceptions pass; the decision a branch
   stands for is a domain verdict (`RenewalVerdict`, `CredentialVerdict`, `VersionVerdict`).
-- **Nothing throws.** A store answers what it read (`TokenRead`, `KeyIdRead`, `DeviceIdRead`, `MembershipRead`: the
-  value, none, or `Unavailable` — never mistaken for absence) and what it wrote (`WriteOutcome`, `StoreWrite`). A
+- **Nothing throws** (§15). A store answers what it read (`TokenRead`, `KeyIdRead`, `DeviceIdRead`, `MembershipRead`:
+  the value, none, or `Unavailable` — never mistaken for absence) and what it wrote (`WriteOutcome`, `StoreWrite`). A
   statement runs through the `Databases` port's `OpenDatabase.execute`, whose adapter catches its platform's SQL
-  exception and answers `DbResult.Failed`.
+  exception and answers `DbResult.Failed`. An id column reads as a `Stored` — the id it spells, or the text when it
+  spells none — since a device's rows were also written by earlier builds and copied in by migrations; each reader says
+  what a row that holds none means (the membership is unreadable, a leave fails), as an exhaustive `when`.
 - **A write is decided for one membership.** Every change after an entry names the membership it was decided for and
   changes the row only while it is still that one (compare-and-set); a change of several records — a leave, a share
   change — is ONE transaction, so it lands whole or not at all.
@@ -401,7 +408,47 @@ subclass cannot cross modules.
 
 ---
 
-## 15. What holds these rules
+## 15. Invalid program state
+
+`InvalidProgramState` (`:domain:domain`, `program/`) is **the one exception the core raises**. It is thrown only where
+something *guarantees* the state can never happen, and it is **fatal**: if it is ever thrown, one of our guarantees is
+wrong, and running on might not be safe.
+
+```kotlin
+// The gallery services' one encoding of a platform id: every character it emits is canonical.
+return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encoding emits only canonical characters")
+```
+
+- **Its `because` names the guarantee, never the symptom:** a port's contract (`randomBytes` answers the count asked),
+  a type, a check just before. It is a string literal with no `$` in it (detekt `InvalidProgramStateBecause`), so it
+  carries no key, no id, no value into the crash report, and every site groups as one crash.
+- **It is not an expected failure.** A state an input from outside can reach — a server's malformed reply, a stored
+  row an earlier build wrote, an OS-held tag — is never impossible: it is a value (`XRead`, `XVerdict`, `Parsed`, an id
+  column's `Stored`). Its supertype is `Error`, not `Exception`, so it cannot be mistaken for one.
+- **Nothing catches it.** A catch of `Exception` passes it on; a catch of `Throwable` catches it first in the same `try`
+  and rethrows it (`CatchGateTest`) — `runCatchingCancellable`, `isolated`, a run's containment and a pass's outcome
+  all do. Where it would otherwise leave Kotlin for the platform, the process ends: the runtime's synchronous
+  boundaries (an inline or answered delivery) and its scope's handler hand it to the coroutines library's last resort
+  (`endProcess`), a root's scope rethrows it (`uncaughtInRootScope`), and on iOS `objcBoundary` runs Kotlin/Native's
+  unhandled path itself (`endProcess` in `objc/`). A Kotlin throwable that unwinds into Objective-C or Swift frames
+  terminates **without** Kotlin/Native's unhandled-exception hook, and the crash report says only that something threw
+  — measured on the simulator, 2026-10-25; through the last resort the report carries the guarantee and the stack.
+- **It ends with a crash report**, in both iOS processes and on Android: the crash reporter writes it as the process
+  dies and delivers it on the next start, through the same scrub and bounds as every event. `CrashReporterContract`'s
+  `AFTER_A_PROCESS_DEATH` clauses prove it on the simulator and the emulator.
+- **No test can reach it**, so the coverage zero gate excuses exactly its throw and the one arm that alone leads there,
+  read from the bytecode (`docs/architecture.md`, "Coverage"); the rest of its line is judged as ever.
+- **The layers throw nothing else** (detekt `OnlyInvalidProgramStateThrows`, over `domain`, `format`, `data`,
+  `application`, `query`, `entrypoints`, `scheduling` and `inbound`): no other `throw` than a rethrow, no `require`,
+  `check`, `error`, `requireNotNull`, `checkNotNull`, `TODO` or `!!`, and none of the standard library's reads that throw
+  on an empty or missing value (`first`, `last`, `single`, `reduce`, `getValue`, `getOrThrow`). A conversion that throws
+  on bad text (`String.toInt()`) is review's: syntax cannot tell it from one that cannot. The old zones join as phase 4
+  moves them; until then their throwing reads live in the old zones (`use`, `held`, `requireDeviceId` —
+  `PENDING_CLEANUPS.md`).
+
+---
+
+## 16. What holds these rules
 
 | rule | gate |
 |---|---|
@@ -427,4 +474,9 @@ subclass cannot cross modules.
 | No OS completion handler is stored in a field | `OsHandlerContainmentTest` |
 | A background entry point never names the membership's teardown | `BackgroundTeardownTest` |
 | `inbound`, `scheduling`, `entrypoints`, `domain`, `data` and `application` have no uncovered line | `coverageZero` (the entry points credited by the integration surface, data and application by `:test:data`) |
+| The layers throw only an `InvalidProgramState`; no `require`, `check`, `!!` or throwing read | detekt `OnlyInvalidProgramStateThrows` (`domain`, `format`, `data`, `application`, `query`, `entrypoints`, `scheduling`, `inbound`) |
+| An `InvalidProgramState`'s `because` is a literal | detekt `InvalidProgramStateBecause` (every production source set) |
+| Nothing catches an `InvalidProgramState` | `CatchGateTest` |
+| An `InvalidProgramState` ends the process with a crash report, delivered on the next start | `CrashReporterContract` (`AFTER_A_PROCESS_DEATH`, on `IOS_SIM_KEXE` and `ANDROID_EMU`) |
+| `steps { }` is written only inside a run | the compiler: it is a member of the `Run` the runtime hands an entry point's run, a sequence's pass and detached work |
 

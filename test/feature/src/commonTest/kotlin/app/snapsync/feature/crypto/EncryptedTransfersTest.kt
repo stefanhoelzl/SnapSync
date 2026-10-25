@@ -1,6 +1,5 @@
 package app.snapsync.feature.crypto
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -62,6 +61,7 @@ import app.snapsync.services.upload.SessionTransfer
 import app.snapsync.services.upload.TransferRecord
 import app.snapsync.services.upload.TransferSetup
 import app.snapsync.services.upload.uploadStagingPath
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -159,7 +159,7 @@ class EncryptedTransfersTest {
         override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
             LedgerEntry(
                 key = KEY,
-                assetId = AssetId(ASSET),
+                assetId = testAssetId(ASSET),
                 state = LedgerState.REQUESTED,
                 destinationPath = destinationPath,
             )
@@ -180,7 +180,7 @@ class EncryptedTransfersTest {
 
     private fun transfer(device: Device, queue: OsUploadQueue) = OsQueueTransfer(queue, setup(device))
 
-    private val resource = Resource(KEY, AssetId(ASSET), "public.heic", emptyMap(), GalleryResourceRef(TestPhoto))
+    private val resource = Resource(KEY, testAssetId(ASSET), "public.heic", emptyMap(), GalleryResourceRef(TestPhoto))
 
     /** The photo library's handle of the one photo these transfers send. */
     private object TestPhoto : GalleryResourceHandle
@@ -318,7 +318,7 @@ class EncryptedTransfersTest {
             receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
             assertFalse(
                 opening.open(
-                    AssetRef(testDeviceId(DEVICE_A), AssetId(ASSET)),
+                    AssetRef(testDeviceId(DEVICE_A), testAssetId(ASSET)),
                     KEY,
                     EVENT,
                     "os-tmp/$attempt",

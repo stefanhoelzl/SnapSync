@@ -1,6 +1,7 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.ports.PlatformAssetId
 
 /**
@@ -25,7 +26,7 @@ fun PlatformAssetId.assetId(): AssetId {
         }
         previous = c
     }
-    return AssetId(encoded.toString())
+    return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encoding emits only canonical characters")
 }
 
 /** The platform's id of the asset the app calls [this]: [assetId] read backwards. */

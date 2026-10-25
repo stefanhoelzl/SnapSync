@@ -1,7 +1,6 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.data.store.LEDGER_DB_NAME
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.LedgerState
@@ -15,6 +14,7 @@ import app.snapsync.model.StoredResource
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.backend.DeviceFilesSource
 import app.snapsync.services.backend.DeviceListingShapeException
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import co.touchlab.kermit.Severity
@@ -54,19 +54,22 @@ class ShareSetLoadTest {
         service.resetTo(
             testEventId(earlierEvent),
             listOf(
-                LedgerEntry("R-primary.heic", AssetId("R"), LedgerState.REQUESTED),
-                LedgerEntry("D-primary.heic", AssetId("D"), LedgerState.DISCOVERED),
-                LedgerEntry("S-primary.heic", AssetId("S"), LedgerState.COMPLETED),
+                LedgerEntry("R-primary.heic", testAssetId("R"), LedgerState.REQUESTED),
+                LedgerEntry("D-primary.heic", testAssetId("D"), LedgerState.DISCOVERED),
+                LedgerEntry("S-primary.heic", testAssetId("S"), LedgerState.COMPLETED),
             ),
         )
-        service.recordUnlessSettled(LedgerEntry("J-primary.heic", AssetId("J"), LedgerState.COMPLETED))
+        service.recordUnlessSettled(LedgerEntry("J-primary.heic", testAssetId("J"), LedgerState.COMPLETED))
     }
 
     @Test
     fun `a confirmed listing becomes exactly the joined event's rows and purges every other event`() = runTest {
         val files = FakeFiles(
             Result.success(
-                listOf(StoredResource("A-primary.heic", AssetId("A")), StoredResource("A-live.mov", AssetId("A"))),
+                listOf(
+                    StoredResource("A-primary.heic", testAssetId("A")),
+                    StoredResource("A-live.mov", testAssetId("A")),
+                ),
             ),
         )
         val ledger = leftovers()
@@ -82,18 +85,18 @@ class ShareSetLoadTest {
 
     @Test
     fun `the seeded assetId is the one the backend reported never parsed from the key`() = runTest {
-        val files = FakeFiles(Result.success(listOf(StoredResource("K-primary.heic", AssetId("reported")))))
+        val files = FakeFiles(Result.success(listOf(StoredResource("K-primary.heic", testAssetId("reported")))))
         val ledger = TestLedger(joined = eventId).service
 
         ShareSetLoad(files, ledger, testIdentity(deviceId)).load(testEventId(eventId))
 
-        assertEquals(AssetId("reported"), ledger.get("K-primary.heic")?.assetId)
+        assertEquals(testAssetId("reported"), ledger.get("K-primary.heic")?.assetId)
     }
 
     @Test
     fun `seeded rows are bare`() = runTest {
         // A listing carries no capture date; the first walk after the join fills the detail.
-        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")))))
+        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", testAssetId("A")))))
         val ledger = TestLedger(joined = eventId).service
 
         ShareSetLoad(files, ledger, testIdentity(deviceId)).load(testEventId(eventId))
@@ -183,7 +186,7 @@ class ShareSetLoadTest {
     fun `a ledger that cannot be opened is an error not a failed join`() = runTest {
         val recorder = CapturingLogWriter()
         val ledger = TestLedger(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked"))), joined = eventId)
-        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", AssetId("A")))))
+        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", testAssetId("A")))))
 
         ShareSetLoad(
             files,

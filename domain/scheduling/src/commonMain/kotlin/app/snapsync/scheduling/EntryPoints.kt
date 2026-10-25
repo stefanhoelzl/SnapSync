@@ -18,10 +18,10 @@ import app.snapsync.inbound.Trigger
  */
 @OptIn(InboundImplementation::class)
 abstract class BackgroundEntryPoint<A>(private val runtime: Runtime) : Background<A> {
-    protected abstract suspend fun run(arg: A)
+    protected abstract suspend fun run(arg: A, on: Run)
 
     final override fun handle(arg: A, completion: Completion) {
-        runtime.start(Trigger.of(name), OsTime.HELD, completion) { run(arg) }
+        runtime.start(Trigger.of(name), OsTime.HELD, completion) { run(arg, it) }
     }
 
     private val name: String get() = this::class.simpleName.toString()
@@ -34,10 +34,10 @@ abstract class BackgroundEntryPoint<A>(private val runtime: Runtime) : Backgroun
  */
 @OptIn(InboundImplementation::class)
 abstract class GrantedEntryPoint<A>(private val runtime: Runtime) : Granted<A> {
-    protected abstract suspend fun run(arg: A)
+    protected abstract suspend fun run(arg: A, on: Run)
 
     final override fun handle(arg: A, completion: Completion): Running =
-        runtime.start(Trigger.of(name), OsTime.GRANTED, completion) { run(arg) }
+        runtime.start(Trigger.of(name), OsTime.GRANTED, completion) { run(arg, it) }
 
     private val name: String get() = this::class.simpleName.toString()
 }
@@ -65,9 +65,9 @@ abstract class InboundEntryPoint<A>(private val runtime: Runtime) : Inbound<A, U
  */
 @OptIn(InboundImplementation::class)
 abstract class AnsweredEntryPoint<A, R>(private val runtime: Runtime, private val onFailure: R) : Answered<A, R> {
-    protected abstract suspend fun run(arg: A): R
+    protected abstract suspend fun run(arg: A, on: Run): R
 
-    final override fun answer(arg: A): R = runtime.blocking(name, onFailure) { run(arg) }
+    final override fun answer(arg: A): R = runtime.blocking(name, onFailure) { run(arg, it) }
 
     private val name: String get() = this::class.simpleName.toString()
 }

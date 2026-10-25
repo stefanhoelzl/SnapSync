@@ -93,4 +93,6 @@ fun roleFromUploadKey(filename: String): ResourceRole {
  * the backend's listing reports. Kept here next to [uploadKey], never duplicated per-consumer.
  */
 fun assetIdFromUploadKey(filename: String): AssetId =
-    AssetId(filename.substringBeforeLast('.').substringBeforeLast('-'))
+    requireNotNull(AssetId.parse(filename.substringBeforeLast('.').substringBeforeLast('-'))) {
+        "not a canonical asset id"
+    }

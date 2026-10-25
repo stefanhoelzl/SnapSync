@@ -4,6 +4,7 @@ import app.snapsync.data.membership.EventCheck
 import app.snapsync.data.store.LegacyCopy
 import app.snapsync.data.store.LegacySource
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.store.db.MembershipQueries
 import app.snapsync.domain.event.EventId
@@ -149,7 +150,7 @@ class LegacyRecords(
         }.getOrElse { return log.w { "the legacy manifest record does not parse — dropped" } }
         val eventId = EventId.parse(text.substringBefore(' '))
             ?: return log.w { "the legacy manifest record names no event — dropped" }
-        db.uploadedManifestQueries.recordUploaded(eventId, version, manifest)
+        db.uploadedManifestQueries.recordUploaded(Stored.Valid(eventId), version, manifest)
     }
 
     /**
@@ -159,7 +160,7 @@ class LegacyRecords(
     private fun copyLeaves(db: LedgerDatabase, text: String) {
         text.lines().map(String::trim).filter { it.isNotEmpty() }.forEach { line ->
             val eventId = EventId.parse(line.substringBefore(' ')) ?: return@forEach
-            db.pendingLeaveQueries.recordPendingLeave(eventId)
+            db.pendingLeaveQueries.recordPendingLeave(Stored.Valid(eventId))
         }
     }
 
@@ -182,7 +183,7 @@ class LegacyRecords(
             // An entry naming no event is dropped: its album is found again by name at the next placement.
             albums.forEach { (key, album) ->
                 val eventId = EventId.parse(key) ?: return@forEach
-                db.eventAlbumQueries.importAlbum(eventId, album, key in filledEvents)
+                db.eventAlbumQueries.importAlbum(Stored.Valid(eventId), album, key in filledEvents)
             }
             db.legacyImportQueries.markImported(LegacySource.ALBUM.key)
         }
@@ -203,10 +204,11 @@ class LegacyRecords(
         if (times.values.any { it is PrefRead.Unavailable }) {
             return log.w { "the legacy check times are unreadable — retried at the next open" }
         }
+        val joined = eventId?.let { Stored.Valid(it) }
         db.transaction {
             times.forEach { (check, read) ->
                 (read as? PrefRead.Value)?.let { it.value.toLongOrNull() }?.let {
-                    db.eventCheckQueries.stampCheck(eventId!!, check.key, it)
+                    db.eventCheckQueries.stampCheck(joined!!, check.key, it)
                 }
             }
             db.legacyImportQueries.markImported(LegacySource.CHECKS.key)
@@ -222,14 +224,14 @@ class LegacyRecords(
     }
 
     private fun joinedEvent(db: LedgerDatabase): EventId? =
-        db.membershipQueries.selectMembership().executeAsOneOrNull()?.eventId
+        db.membershipQueries.selectMembership().executeAsOneOrNull()?.let { held(it.eventId) }
 
     private fun checkKey(check: EventCheck, eventId: EventId) = "app.snapsync.check.${check.key}.$eventId"
 }
 
 /** [config], a legacy file's membership, as the one membership row. */
 private fun MembershipQueries.saveMembership(config: EventConfig) = saveMembership(
-    eventId = config.eventId,
+    eventId = Stored.Valid(config.eventId),
     name = config.name,
     minPhotoDate = config.minPhotoDate,
     startsAt = config.startsAt,

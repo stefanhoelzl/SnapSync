@@ -1,8 +1,10 @@
 package app.snapsync.services.album
 
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.Stored
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.services.databases.use
 import co.touchlab.kermit.Logger
 
 /**
@@ -24,12 +26,12 @@ class AlbumMapService(
      * redundant lookup, never a lost photo.
      */
     fun get(eventId: EventId): String? = runCatchingCancellable {
-        db.use { it.eventAlbumQueries.selectAlbum(eventId).executeAsOneOrNull() }
+        db.use { it.eventAlbumQueries.selectAlbum(Stored.Valid(eventId)).executeAsOneOrNull() }
     }.getOrElse { null.also { _ -> log.w(it) { "event-album map unreadable — no album placement this pass" } } }
 
     /** Remember [albumLocalId] as [eventId]'s album (overwrites any prior mapping). A new album has held nothing yet. */
     fun put(eventId: EventId, albumLocalId: String) {
-        runCatchingCancellable { db.use { it.eventAlbumQueries.rememberAlbum(eventId, albumLocalId) } }
+        runCatchingCancellable { db.use { it.eventAlbumQueries.rememberAlbum(Stored.Valid(eventId), albumLocalId) } }
             .onFailure { log.w(it) { "album=$albumLocalId for event=$eventId not remembered" } }
     }
 
@@ -39,12 +41,12 @@ class AlbumMapService(
      * unreadable store reads as not filled: the album is then used, never wrongly read as deleted.
      */
     fun filled(eventId: EventId): Boolean = runCatchingCancellable {
-        db.use { it.eventAlbumQueries.selectFilled(eventId).executeAsOneOrNull() } == true
+        db.use { it.eventAlbumQueries.selectFilled(Stored.Valid(eventId)).executeAsOneOrNull() } == true
     }.getOrDefault(false)
 
     /** Mark [eventId]'s album as having held a photo. */
     fun markFilled(eventId: EventId) {
-        runCatchingCancellable { db.use { it.eventAlbumQueries.markFilled(eventId) } }
+        runCatchingCancellable { db.use { it.eventAlbumQueries.markFilled(Stored.Valid(eventId)) } }
             .onFailure { log.w(it) { "event=$eventId not marked filled" } }
     }
 }

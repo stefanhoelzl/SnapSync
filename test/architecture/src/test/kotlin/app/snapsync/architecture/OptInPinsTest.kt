@@ -79,7 +79,11 @@ class OptInPinsTest {
             "CompositionOnly" to Pin(1, "installing the structured log's writers, once per process"),
         ),
         "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to mapOf(
-            "InternalCoroutinesApi" to Pin(2, "the supervised scope's handler and job: coroutines' internals, re-read at every bump"),
+            "InternalCoroutinesApi" to Pin(
+                3,
+                "the supervised scope's handler and job, and `endProcess` handing an InvalidProgramState to the library's " +
+                    "last resort: coroutines' internals, re-read at every bump",
+            ),
         ),
         "/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/ScreenModel.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "a hand-written StateFlow over the screen model (4.9)"),

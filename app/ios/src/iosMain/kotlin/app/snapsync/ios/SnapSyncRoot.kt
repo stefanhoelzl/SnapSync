@@ -36,6 +36,7 @@ import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.metrics.MetricKitProcessMetrics
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.uncaughtInRootScope
 import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.ExtensionRegistry
@@ -55,7 +56,6 @@ import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
-import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -313,13 +313,9 @@ object SnapSyncRoot {
     // The `SupervisorJob` already isolates SIBLING coroutines from each other's failures; this makes an
     // otherwise-unhandled failure land in `debug.log` (the un-redacted channel) instead of aborting the
     // process, honouring the rule that errors reduce into state and never crash the shell. Every feature
-    // reduces its own domain errors into `UiState`; this catches only what nothing else did.
-    private val scope = CoroutineScope(
-        SupervisorJob() + compositionLane +
-            CoroutineExceptionHandler { _, t ->
-                log.e(t) { "uncaught in app scope — logged, not fatal" }
-            },
-    )
+    // reduces its own domain errors into `UiState`; this catches only what nothing else did — except an
+    // `InvalidProgramState`, which ends the process with its crash report (`uncaughtInRootScope`).
+    private val scope = CoroutineScope(SupervisorJob() + compositionLane + uncaughtInRootScope(log))
 
     /**
      * The composed app graph (`docs/architecture.md`, "One shared composition"): this root

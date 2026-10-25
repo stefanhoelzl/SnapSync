@@ -558,7 +558,7 @@ private class BackendDto(
         storedFiles.forEach { (key, files) ->
             val event = key.substringBefore('/', missingDelimiterValue = "").ifEmpty { return@forEach }
             state.storedFiles[event to key.substringAfter('/')] = files.mapTo(mutableSetOf()) {
-                DeviceFile(AssetId(it.asset), ResourceRole.entries.first { role -> role.wire == it.role }, it.filename)
+                DeviceFile(AssetId.parse(it.asset)!!, ResourceRole.entries.first { role -> role.wire == it.role }, it.filename)
             }
             files.forEach { file -> file.sha256?.let { state.landedSha256["$key/${file.asset}/${file.role}"] = it } }
         }
@@ -588,7 +588,9 @@ private class BackendDto(
         state.deviceConfigWrites.putAll(deviceConfigWrites)
         publishes.forEach { state.publishes[it.event to it.device] = it.count }
         pushes.forEachIndexed { i, push -> state.pushes += SentPush(push.first, push.second, push.third, pushSeqs.getOrNull(i)) }
-        unionLog.forEach { state.changes += BackendState.Change(it.seq, it.event, it.device, AssetId(it.asset), it.gained) }
+        unionLog.forEach {
+            state.changes += BackendState.Change(it.seq, it.event, it.device, AssetId.parse(it.asset)!!, it.gained)
+        }
         state.nextSeq = nextSeq
         fetches.forEach { (event, list) ->
             state.fetches[event] = list.mapTo(mutableListOf()) { UnionFetch(it.device, it.trigger, it.from, it.to, it.served) }

@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.domain.program.InvalidProgramState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -77,6 +78,8 @@ class StatusCountsPoller(
                     refreshCheapLocalReads()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
+                } catch (fatal: InvalidProgramState) {
+                    throw fatal
                 } catch (_: Throwable) {
                     // Swallowed by contract; the next tick retries at cadence.
                 }

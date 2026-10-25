@@ -2,10 +2,13 @@ package app.snapsync.data.membership
 
 import app.snapsync.data.Parsed
 import app.snapsync.data.eventName
+import app.snapsync.data.parsed
+import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.MembershipQueries
 import app.snapsync.data.store.db.SelectMembership
 import app.snapsync.data.then
 import app.snapsync.domain.event.Event
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventName
 import app.snapsync.domain.event.EventRange
@@ -40,11 +43,12 @@ private fun SelectMembership.typed(event: Event, share: Share): Membership = whe
     false -> Membership.Active(event, share)
 }
 
-private fun SelectMembership.event(): Parsed<Event> =
-    eventName(name).then { name -> range().then { range -> Parsed.Ok(event(name, range)) } }
+private fun SelectMembership.event(): Parsed<Event> = parsed(eventId, "event id").then { id ->
+    eventName(name).then { name -> range().then { range -> Parsed.Ok(event(id, name, range)) } }
+}
 
-private fun SelectMembership.event(name: EventName, range: EventRange): Event =
-    Event(eventId, name, range, openUntil, deletesAt, keyId?.let(::EventKeyId), counts())
+private fun SelectMembership.event(id: EventId, name: EventName, range: EventRange): Event =
+    Event(id, name, range, openUntil, deletesAt, keyId?.let(::EventKeyId), counts())
 
 private fun SelectMembership.range(): Parsed<EventRange> = when (val range = EventRange.of(startsAt, endsAt)) {
     is EventRangeVerdict.Ok -> Parsed.Ok(range.range)
@@ -66,7 +70,7 @@ private fun SelectMembership.counts(): MemberCounts? = listOfNotNull(membersActi
 /** [membership] as the one membership row. */
 internal fun MembershipQueries.save(membership: Membership.Active) = with(membership) {
     saveMembership(
-        eventId = event.id,
+        eventId = Stored.Valid(event.id),
         name = event.name.text,
         minPhotoDate = share.range.from,
         startsAt = event.range.start,

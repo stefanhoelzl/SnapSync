@@ -148,8 +148,9 @@ class ModuleSetTest {
             "inbound" to emptySet<String>(),
             // The deliveries' kinds: an event port's handlers are typed by them.
             "ports" to setOf(":domain:model", ":domain:inbound"),
-            // The runtime runs on the process's background time and labels its threads: two ports, nothing above.
-            "scheduling" to setOf(":domain:inbound", ":domain:ports"),
+            // The runtime runs on the process's background time and labels its threads: two ports, nothing above — and
+            // the domain's `InvalidProgramState`, which its containment never contains.
+            "scheduling" to setOf(":domain:inbound", ":domain:ports", ":domain:domain"),
             // The data layer: the repositories over the ports and the backend's protocol over the transport and the
             // generated wire — translating, never deciding — labelling its lines with the structured log.
             "data" to setOf(":domain:domain", ":domain:ports", ":domain:wire", ":domain:inbound", ":domain:format"),

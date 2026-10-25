@@ -2,7 +2,6 @@ package app.snapsync.feature.download
 
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.time.WallClock
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -15,6 +14,7 @@ import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.downloadJobs
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.feature.support.testRuntime
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.fixedClock
@@ -31,6 +31,7 @@ import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.staging.StagingService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.TestScope
@@ -71,7 +72,7 @@ class ReceivedReportTest {
             reads++
             during()
             if (fails) return Result.failure(IllegalStateException("the union read failed"))
-            val foreign = UnionAsset(testDeviceId("OTHER"), AssetId("A_L0_1"), "2026-07-10T00:00:00Z", emptyList())
+            val foreign = UnionAsset(testDeviceId("OTHER"), testAssetId("A_L0_1"), "2026-07-10T00:00:00Z", emptyList())
             return Result.success(UnionPage(if (missing) listOf(foreign) else emptyList(), position))
         }
     }
@@ -89,7 +90,7 @@ class ReceivedReportTest {
         val reports = mutableListOf<Pair<EventId, Long>>()
         private val staging = StagingService(RecordingFiles())
         private val downloads = DownloadController(
-            union, DownloadService(inMemoryDatabases()), downloadJobs(staging = staging),
+            scope.testRuntime(), union, DownloadService(inMemoryDatabases()), downloadJobs(staging = staging),
             GalleryImporter(NoImports(), staging), InMemoryAssetPresence(),
             eventAlbum = { null },
             onImportedIntoAlbum = {},

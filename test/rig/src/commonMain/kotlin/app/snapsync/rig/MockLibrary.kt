@@ -86,9 +86,9 @@ internal fun foreignAsset(
     filename: String = "IMG.HEIC",
     contentType: String = "image/heic",
 ): DeviceManifestAsset {
-    val key = uploadKey(AssetId(assetId), ResourceRole.PRIMARY, filename)
+    val key = uploadKey(AssetId.parse(assetId)!!, ResourceRole.PRIMARY, filename)
     return DeviceManifestAsset(
-        assetId = AssetId(assetId),
+        assetId = AssetId.parse(assetId)!!,
         creationDate = LibraryAssets.DEFAULT_DATE,
         resources = listOf(ManifestResource(ResourceRole.PRIMARY, contentType, key, filename)),
     )

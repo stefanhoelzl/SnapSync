@@ -397,6 +397,28 @@ version or op gates these — each phase deletes its own uses, and the last one 
   answer) and its leftover sweep into a use case — 4.4 moves the publisher and with it `markOver`, into a use case
   over the data layer's `markDeleted`; the phase that removes the last reader deletes both files and this entry.
 
+### The old zones' throwing database read (app)
+- **What:** `use` and `DatabaseUnavailable` (`domain/services/…/services/databases/DatabaseUnavailable.kt`): a store's
+  statements as the old zones run them — a failed open or statement thrown as `DatabaseUnavailable` out of the step that
+  asked, where the data layer answers a `DbResult`. They moved out of `:domain:data`'s `OwnedDatabase` and
+  `SharedDatabase`, which hold no throw (`docs/patterns.md`, "Invalid program state"). Its callers: `LedgerService`
+  and `DeviceManifestService` (4.4); `DownloadService` and `SuppressionService` (4.5); `AlbumMapService` (4.6).
+- **Why:** converting every caller to the `DbResult` would have rewritten the error handling of four concepts the
+  `InvalidProgramState` change does not own, each to be rewritten again in its own phase.
+- **Remove:** each phase moves its store into the data layer, answering what it read and wrote as values, and deletes
+  its `use` calls; the phase that removes the last one deletes the file and this entry.
+
+### The old zones' throwing read of a stored id (app)
+- **What:** `held` (`domain/services/…/services/databases/StoredIds.kt`): an id column as the old zones read it — the
+  id, or a throw when the column spells none, as the column's adapter threw before it answered a `Stored`
+  (`ledger.db` v18, `downloads.db` v11). Its callers: `LedgerService` and `DeviceManifestService` (4.4);
+  `DownloadService` and `SuppressionService` (4.5); `AlbumMapService` (4.6); `LegacyRecords` (with its legacy copy,
+  `Legacy homes of the shared records`).
+- **Why:** each store decides what a row that spells no id means when it moves into the data layer, as the membership's
+  did (an unreadable membership, a leave that fails); deciding it now would have rewritten stores other phases own.
+- **Remove:** each phase reads its columns as values — a `when` over the `Stored` — and deletes its `held` calls; the
+  phase that removes the last one deletes the file and this entry.
+
 ### The rig's reset in production (app)
 - **What:** `OnDevReset` (`domain/entrypoints/.../AppEntryPoints.kt`) and `ForgetMembership`
   (`domain/application/.../membership/`), delivered through `DevControls`' reset — production code only a rig build's

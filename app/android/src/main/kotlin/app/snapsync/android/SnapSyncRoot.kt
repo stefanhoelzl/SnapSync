@@ -40,6 +40,7 @@ import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.model.PlatformEntry
+import app.snapsync.model.uncaughtInRootScope
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.sentry.SentryCrashReporter
@@ -48,7 +49,6 @@ import app.snapsync.time.SystemClock
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -176,12 +176,8 @@ class SnapSyncRoot(internal val application: Application) {
         )
     }
 
-    // The app-scope error boundary: a throwable no coroutine handled is logged, and the app lives — errors reduce into
-    // state and never crash the shell. The main lane: the composition's, as on iOS.
-    private val scope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Main +
-            CoroutineExceptionHandler { _, t -> log.e(t) { "uncaught in app scope — logged, not fatal" } },
-    )
+    // The app-scope error boundary (`uncaughtInRootScope`). The main lane: the composition's, as on iOS.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + uncaughtInRootScope(log))
 
     /** The core AND the status host over it, from the shared host composition. */
     private val composed: ComposedApp by lazy {

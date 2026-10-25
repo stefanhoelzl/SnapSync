@@ -2,10 +2,10 @@ package app.snapsync.engine
 
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.databases.IosDatabases
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.model.LedgerEntry
 import app.snapsync.services.ledger.LedgerService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
@@ -42,7 +42,7 @@ class IosLedgerStoreTest {
 
     private fun entry(key: String, state: LedgerState = LedgerState.COMPLETED) = LedgerEntry(
         key = key,
-        assetId = AssetId("asset-$key"),
+        assetId = testAssetId("asset-$key"),
         state = state,
         creationDate = "2026-08-08T12:00:00Z",
     )
@@ -70,7 +70,7 @@ class IosLedgerStoreTest {
 
                 val row = assertNotNull(store.get("photo-1.heic"))
                 assertEquals(LedgerState.COMPLETED, row.state)
-                assertEquals(AssetId("asset-photo-1.heic"), row.assetId)
+                assertEquals(testAssetId("asset-photo-1.heic"), row.assetId)
             }
         }
     }

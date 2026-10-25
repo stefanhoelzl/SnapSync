@@ -7,6 +7,9 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.data.store.AssetIdColumnAdapter
+import app.snapsync.data.store.DeviceIdColumnAdapter
+import app.snapsync.data.store.EventIdColumnAdapter
 import app.snapsync.data.store.db.EventAlbum
 import app.snapsync.data.store.db.EventCheck
 import app.snapsync.data.store.db.LedgerDatabase
@@ -14,11 +17,8 @@ import app.snapsync.data.store.db.LedgerRow
 import app.snapsync.data.store.db.Membership
 import app.snapsync.data.store.db.PendingLeave
 import app.snapsync.data.store.db.UploadedManifest
-import app.snapsync.domain.asset.AssetId
-import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
-import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -90,9 +90,10 @@ private class Text<T : Any>(
     override fun encode(value: T) = unwrap(value)
 }
 
-private val AssetIdText = Text(::AssetId, AssetId::value)
-private val EventIdText = Text({ requireNotNull(EventId.parse(it)) }, EventId::value)
-private val DeviceIdText = Text({ requireNotNull(DeviceId.parse(it)) }, DeviceId::value)
+// An id column reads what it held, whatever it held: the production adapters bind and read back any text.
+private val AssetIdText = AssetIdColumnAdapter
+private val EventIdText = EventIdColumnAdapter
+private val DeviceIdText = DeviceIdColumnAdapter
 
 /** A date role's column, as its whole-second instant's epoch text: any instant binds and reads back. */
 private fun <T : Any> dateText(wrap: (Timestamp) -> T, unwrap: (T) -> Timestamp) =

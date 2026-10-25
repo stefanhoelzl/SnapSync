@@ -1,5 +1,6 @@
 package app.snapsync.http
 
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
@@ -50,6 +51,8 @@ class KtorHttpTransport(private val client: HttpClient) : HttpTransport {
             )
         } catch (c: CancellationException) {
             throw c
+        } catch (fatal: InvalidProgramState) {
+            throw fatal
         } catch (t: Throwable) {
             httpLog.w(t) { "${request.method} ${request.url} → FAILED (${start.elapsedNow().inWholeMilliseconds}ms)" }
             HttpResult.Unreachable(t.toString())

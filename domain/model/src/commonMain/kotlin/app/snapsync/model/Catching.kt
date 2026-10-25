@@ -1,11 +1,14 @@
 package app.snapsync.model
 
+import app.snapsync.domain.program.InvalidProgramState
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * [runCatching] that never catches cancellation (law "Catch sites keep cancellation", capability
- * `docs/architecture.md`).
+ * `docs/architecture.md`), nor an [InvalidProgramState], which nothing catches (`docs/patterns.md`, "Invalid program
+ * state").
  *
  * `runCatching` catches every `Throwable`, and a cancelled coroutine signals by throwing
  * [CancellationException]. Wrapped around a suspend call, it turns "my caller gave up" into an ordinary failure
@@ -22,6 +25,8 @@ inline fun <R> runCatchingCancellable(block: () -> R): Result<R> =
         Result.success(block())
     } catch (e: CancellationException) {
         throw e
+    } catch (e: InvalidProgramState) {
+        throw e
     } catch (e: Throwable) {
         Result.failure(e)
     }
@@ -31,6 +36,8 @@ inline fun <T, R> T.runCatchingCancellable(block: T.() -> R): Result<R> =
     try {
         Result.success(block())
     } catch (e: CancellationException) {
+        throw e
+    } catch (e: InvalidProgramState) {
         throw e
     } catch (e: Throwable) {
         Result.failure(e)
@@ -57,4 +64,16 @@ inline fun Logger.bestEffort(name: String, block: () -> Unit): Boolean =
  */
 suspend fun Logger.contained(failure: String, block: suspend () -> Unit) {
     runCatchingCancellable { block() }.onFailure { w(it) { failure } }
+}
+
+/**
+ * The handler of a root's process scope: what no coroutine handled is logged at `Error`, and the app lives — errors
+ * reduce into state and never crash the shell — except an [InvalidProgramState], which is rethrown to the coroutines
+ * library's last resort and ends the process with its crash report (`docs/patterns.md`, "Invalid program state").
+ */
+fun uncaughtInRootScope(log: Logger): CoroutineExceptionHandler = CoroutineExceptionHandler { _, failure ->
+    when (failure) {
+        is InvalidProgramState -> throw failure
+        else -> log.e(failure) { "uncaught in app scope — logged, not fatal" }
+    }
 }

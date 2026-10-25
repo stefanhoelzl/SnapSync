@@ -14,33 +14,55 @@ import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.TimestampText
 
 // The domain's values as the text columns that hold them (`docs/patterns.md`, "Formats live at the boundary"): the one
-// place each column's encoding lives, wired once per database. A stored value that is not one of them throws as the
-// row is read — as a malformed instant did when the row mapping parsed it — so a row is never read half-typed.
+// place each column's encoding lives, wired once per database.
 
 /**
- * An asset id's column: its canonical string — the form every row written before the type existed already holds, so
- * the adapter changes no byte on disk.
+ * What an id column held, as it was read: the id it spells, or the text when it spells none. A column is written only
+ * from an id, but the rows a device holds were also written by earlier builds and copied in by migrations, so a read
+ * cannot promise one — each reader says what a row that holds none means (`docs/patterns.md`, "The data layer").
  */
-object AssetIdColumnAdapter : ColumnAdapter<AssetId, String> {
-    override fun decode(databaseValue: String): AssetId = AssetId(databaseValue)
+sealed interface Stored<out T : Any> {
+    /** The column spells an id. */
+    data class Valid<out T : Any>(val value: T) : Stored<T>
 
-    override fun encode(value: AssetId): String = value.value
+    /** The column holds [text], which spells none. Written back as it was read. */
+    data class Invalid(val text: String) : Stored<Nothing>
+}
+
+/** An id column: the id's text exactly as it arrived, and [parse]'s reading of it. */
+abstract class StoredIdColumnAdapter<T : Any> : ColumnAdapter<Stored<T>, String> {
+    protected abstract fun parse(text: String): T?
+
+    protected abstract fun text(value: T): String
+
+    override fun decode(databaseValue: String): Stored<T> =
+        parse(databaseValue)?.let { Stored.Valid(it) } ?: Stored.Invalid(databaseValue)
+
+    override fun encode(value: Stored<T>): String = when (value) {
+        is Stored.Valid -> text(value.value)
+        is Stored.Invalid -> value.text
+    }
+}
+
+/** An asset id's column: its canonical string ([AssetId]). */
+object AssetIdColumnAdapter : StoredIdColumnAdapter<AssetId>() {
+    override fun parse(text: String) = AssetId.parse(text)
+
+    override fun text(value: AssetId) = value.value
 }
 
 /** An event id's column: the id exactly as it arrived ([EventId]). */
-object EventIdColumnAdapter : ColumnAdapter<EventId, String> {
-    override fun decode(databaseValue: String): EventId =
-        requireNotNull(EventId.parse(databaseValue)) { "not an event id: '$databaseValue'" }
+object EventIdColumnAdapter : StoredIdColumnAdapter<EventId>() {
+    override fun parse(text: String) = EventId.parse(text)
 
-    override fun encode(value: EventId): String = value.value
+    override fun text(value: EventId) = value.value
 }
 
 /** A device id's column: the id exactly as it arrived ([DeviceId]). */
-object DeviceIdColumnAdapter : ColumnAdapter<DeviceId, String> {
-    override fun decode(databaseValue: String): DeviceId =
-        requireNotNull(DeviceId.parse(databaseValue)) { "not a device id: '$databaseValue'" }
+object DeviceIdColumnAdapter : StoredIdColumnAdapter<DeviceId>() {
+    override fun parse(text: String) = DeviceId.parse(text)
 
-    override fun encode(value: DeviceId): String = value.value
+    override fun text(value: DeviceId) = value.value
 }
 
 /** A date role's column: its timestamp's canonical text ([TimestampText]). Each role says how it wraps a timestamp. */

@@ -200,7 +200,7 @@ private fun inSync(shared: Int = 0) = joined(SyncHealth.InSync, counts = counts(
 private val joinedLoading get() = joined(SyncHealth.Loading)
 private fun needsAccess(p: GalleryAccess) = joined(SyncHealth.NeedsAccess(canAsk = p == GalleryAccess.NOT_DETERMINED))
 
-private class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapshot())) :
+internal class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapshot())) :
     SyncStatusSource {
     constructor(initial: SyncProgress) : this(SyncStatus.Ready(initial))
 
@@ -215,13 +215,13 @@ private class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapsh
 
 // A plain permission cell (no port interface): the host observes a bare StateFlow since the step-9
 // split — presentation never names `ports/`, so neither do its fakes.
-private class FakePermissionSource(
+internal class FakePermissionSource(
     initial: GalleryAccess = GalleryAccess.GRANTED,
 ) {
     val permission = MutableStateFlow(initial)
 }
 
-private class FakeConfig(initial: EventConfig? = SAMPLE_CONFIG) {
+internal class FakeConfig(initial: EventConfig? = SAMPLE_CONFIG) {
     private val flow = MutableStateFlow(initial)
     val config: StateFlow<EventConfig?> = flow
     fun save(config: EventConfig) {

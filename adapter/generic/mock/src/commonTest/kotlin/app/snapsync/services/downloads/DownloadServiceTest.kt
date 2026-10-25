@@ -1,12 +1,12 @@
 package app.snapsync.services.downloads
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.SuppressionReadiness
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -27,7 +27,7 @@ class DownloadServiceTest {
 
     private val store = DownloadService(inMemoryDatabases())
 
-    private val ref = AssetRef(testDeviceId("DEVICE-A"), AssetId("ASSET-Q"))
+    private val ref = AssetRef(testDeviceId("DEVICE-A"), testAssetId("ASSET-Q"))
 
     private fun resources() = listOf(
         PlannedResource("ASSET-Q-primary.heic", "https://e/primary", "primary", "image/heic", "IMG.HEIC"),
@@ -71,7 +71,7 @@ class DownloadServiceTest {
 
     @Test
     fun `a batch plan records every asset with its resources`() = runTest {
-        val other = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-R"))
+        val other = AssetRef(testDeviceId("DEVICE-B"), testAssetId("ASSET-R"))
         store.planAll(
             listOf(
                 PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()),
@@ -126,11 +126,11 @@ class DownloadServiceTest {
 
     @Test
     fun `a batch re-plan refreshes only unstaged urls and never downgrades a settled row`() = runTest {
-        val done = AssetRef(testDeviceId("DEVICE-B"), AssetId("DONE"))
+        val done = AssetRef(testDeviceId("DEVICE-B"), testAssetId("DONE"))
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         store.plan(done, "2026-06-30T10:00:00Z", resources())
-        store.markImported(done, AssetId("LOCAL-DONE"))
+        store.markImported(done, testAssetId("LOCAL-DONE"))
 
         val rotated = listOf(
             PlannedResource("ASSET-Q-primary.heic", "https://e/primary?sig=NEW", "primary", "image/heic", "IMG.HEIC"),
@@ -155,12 +155,12 @@ class DownloadServiceTest {
             "a staged resource keeps its staging",
         )
         assertTrue(store.isSettled(done), "and a terminal row is never downgraded")
-        assertEquals(setOf(AssetId("LOCAL-DONE")), store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("LOCAL-DONE")), store.suppressedLocalIds())
     }
 
     @Test
     fun `a resource planned for no event fetches from the event-less path`() = runTest {
-        val ref = AssetRef(testDeviceId("DEV-A"), AssetId("A"))
+        val ref = AssetRef(testDeviceId("DEV-A"), testAssetId("A"))
 
         store.planAll(listOf(planned(ref)))
 
@@ -179,19 +179,19 @@ class DownloadServiceTest {
 
     @Test
     fun `settled among answers the asked refs that are imported or unimportable`() = runTest {
-        val imported = AssetRef(testDeviceId("DEVICE-A"), AssetId("IMPORTED"))
-        val unimportable = AssetRef(testDeviceId("DEVICE-A"), AssetId("UNIMPORTABLE"))
-        val pending = AssetRef(testDeviceId("DEVICE-A"), AssetId("PENDING"))
-        val unconfirmed = AssetRef(testDeviceId("DEVICE-A"), AssetId("UNCONFIRMED"))
-        val notAsked = AssetRef(testDeviceId("DEVICE-B"), AssetId("IMPORTED-NOT-ASKED"))
-        val unknown = AssetRef(testDeviceId("DEVICE-Z"), AssetId("NEVER-PLANNED"))
+        val imported = AssetRef(testDeviceId("DEVICE-A"), testAssetId("IMPORTED"))
+        val unimportable = AssetRef(testDeviceId("DEVICE-A"), testAssetId("UNIMPORTABLE"))
+        val pending = AssetRef(testDeviceId("DEVICE-A"), testAssetId("PENDING"))
+        val unconfirmed = AssetRef(testDeviceId("DEVICE-A"), testAssetId("UNCONFIRMED"))
+        val notAsked = AssetRef(testDeviceId("DEVICE-B"), testAssetId("IMPORTED-NOT-ASKED"))
+        val unknown = AssetRef(testDeviceId("DEVICE-Z"), testAssetId("NEVER-PLANNED"))
         listOf(imported, unimportable, pending, unconfirmed, notAsked).forEach {
             store.plan(it, "2026-06-30T10:00:00Z", resources())
         }
-        store.markImported(imported, AssetId("LOCAL-1"))
-        store.markImported(notAsked, AssetId("LOCAL-2"))
+        store.markImported(imported, testAssetId("LOCAL-1"))
+        store.markImported(notAsked, testAssetId("LOCAL-2"))
         store.settleUnimportable(unimportable)
-        store.recordCreatedLocalId(unconfirmed, AssetId("LOCAL-3"))
+        store.recordCreatedLocalId(unconfirmed, testAssetId("LOCAL-3"))
 
         assertEquals(
             setOf(imported, unimportable),
@@ -257,7 +257,7 @@ class DownloadServiceTest {
 
     @Test
     fun `a batch enqueue puts every marked asset in flight`() = runTest {
-        val other = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-R"))
+        val other = AssetRef(testDeviceId("DEVICE-B"), testAssetId("ASSET-R"))
         store.planAll(
             listOf(
                 PlannedAsset(ref, "2026-06-30T10:00:00Z", resources()),
@@ -297,7 +297,7 @@ class DownloadServiceTest {
 
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
         store.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
-        store.markImported(ref, AssetId("LOCAL-1"))
+        store.markImported(ref, testAssetId("LOCAL-1"))
 
         val settled = store.counts()
         assertEquals(1, settled.imported)
@@ -310,10 +310,10 @@ class DownloadServiceTest {
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         store.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
-        store.markImported(ref, AssetId("LOCAL-NEW_L0_001"))
+        store.markImported(ref, testAssetId("LOCAL-NEW_L0_001"))
 
         assertTrue(store.isSettled(ref))
-        assertEquals(setOf(AssetId("LOCAL-NEW_L0_001")), store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("LOCAL-NEW_L0_001")), store.suppressedLocalIds())
         assertEquals(1, store.counts().imported)
         assertTrue(store.importableAssets().isEmpty()) // imported, no longer importable
         assertTrue(store.pendingDownloads().isEmpty()) // imported asset's resources are not re-queued
@@ -334,27 +334,30 @@ class DownloadServiceTest {
         store.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
         assertEquals(listOf(ref), store.importableAssets().map { it.ref }) // ordinary work, before the marker
 
-        store.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
+        store.recordCreatedLocalId(ref, testAssetId("LOCAL-CREATED"))
 
         // Out of the ordinary import queue: importing it again is the duplicate.
         assertTrue(store.importableAssets().isEmpty(), "a row carrying a marker is not ordinary import work")
         // ...and into the adjudication queue instead.
         assertEquals(
-            listOf(ref to AssetId("LOCAL-CREATED")),
+            listOf(ref to testAssetId("LOCAL-CREATED")),
             store.unconfirmedImports().map { it.ref to it.createdLocalId },
         )
         // Suppressed from the moment the marker exists — the asset is observable before it is confirmed.
-        assertEquals(setOf(AssetId("LOCAL-CREATED")), store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("LOCAL-CREATED")), store.suppressedLocalIds())
         assertFalse(store.isSettled(ref), "still unconfirmed")
 
         // The marker is the only record that this asset must not be uploaded: a prune must not take it.
         assertTrue(store.pruneNonTerminal(protecting = emptySet()).isEmpty(), "it strands no files either")
-        assertEquals(setOf(AssetId("LOCAL-CREATED")), store.suppressedLocalIds(), "the marker survives a prune")
+        assertEquals(setOf(testAssetId("LOCAL-CREATED")), store.suppressedLocalIds(), "the marker survives a prune")
         assertEquals(listOf(ref), store.unconfirmedImports().map { it.ref }, "and so does the row")
         assertEquals(2, store.stagedResources(ref).size, "and its staged bytes stay reachable for the retry")
 
         // Cleared (the library says the asset never existed) → ordinary work again.
-        assertTrue(store.clearCreatedLocalId(ref, AssetId("LOCAL-CREATED")), "the clear names the marker the row holds")
+        assertTrue(
+            store.clearCreatedLocalId(ref, testAssetId("LOCAL-CREATED")),
+            "the clear names the marker the row holds",
+        )
         assertTrue(store.unconfirmedImports().isEmpty())
         assertEquals(listOf(ref), store.importableAssets().map { it.ref })
         assertTrue(store.suppressedLocalIds().isEmpty())
@@ -371,15 +374,15 @@ class DownloadServiceTest {
     fun `a marker write onto a row that is gone reports it`() = runTest {
         assertFalse(
             store.recordCreatedLocalId(
-                AssetRef(testDeviceId("DEVICE-Z"), AssetId("NEVER-PLANNED")),
-                AssetId("LOCAL-CREATED"),
+                AssetRef(testDeviceId("DEVICE-Z"), testAssetId("NEVER-PLANNED")),
+                testAssetId("LOCAL-CREATED"),
             ),
             "no row, so the marker landed on nothing",
         )
 
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
         assertTrue(
-            store.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED")),
+            store.recordCreatedLocalId(ref, testAssetId("LOCAL-CREATED")),
             "an ordinary write reports that it landed",
         )
     }
@@ -392,12 +395,16 @@ class DownloadServiceTest {
     @Test
     fun `a completion settles its row against the marker it holds`() = runTest {
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
-        store.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
+        store.recordCreatedLocalId(ref, testAssetId("LOCAL-CREATED"))
 
-        store.confirmCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
+        store.confirmCreatedLocalId(ref, testAssetId("LOCAL-CREATED"))
 
         assertTrue(store.isSettled(ref), "settled by the party that learned the outcome")
-        assertEquals(setOf(AssetId("LOCAL-CREATED")), store.suppressedLocalIds(), "against the marker it already held")
+        assertEquals(
+            setOf(testAssetId("LOCAL-CREATED")),
+            store.suppressedLocalIds(),
+            "against the marker it already held",
+        )
         assertTrue(store.unconfirmedImports().isEmpty(), "and it no longer awaits adjudication")
     }
 
@@ -409,18 +416,18 @@ class DownloadServiceTest {
     @Test
     fun `a late completion cannot settle a row whose marker moved on`() = runTest {
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
-        store.recordCreatedLocalId(ref, AssetId("FIRST"))
-        store.clearCreatedLocalId(ref, AssetId("FIRST"))
-        store.recordCreatedLocalId(ref, AssetId("SECOND"))
+        store.recordCreatedLocalId(ref, testAssetId("FIRST"))
+        store.clearCreatedLocalId(ref, testAssetId("FIRST"))
+        store.recordCreatedLocalId(ref, testAssetId("SECOND"))
 
         assertFalse(
-            store.confirmCreatedLocalId(ref, AssetId("FIRST")), // the abandoned transaction reports at last
+            store.confirmCreatedLocalId(ref, testAssetId("FIRST")), // the abandoned transaction reports at last
             "and it reports that it applied to nothing — the caller gates a byte release on this",
         )
 
         assertFalse(store.isSettled(ref), "the stale completion settled nothing")
         assertEquals(
-            listOf(ref to AssetId("SECOND")),
+            listOf(ref to testAssetId("SECOND")),
             store.unconfirmedImports().map { it.ref to it.createdLocalId },
             "and the marker the row now holds is intact",
         )
@@ -437,16 +444,16 @@ class DownloadServiceTest {
     @Test
     fun `a late clear cannot strip a settled row's marker`() = runTest {
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
-        store.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
-        store.confirmCreatedLocalId(ref, AssetId("LOCAL-CREATED")) // adjudication (or the completion) settles it
+        store.recordCreatedLocalId(ref, testAssetId("LOCAL-CREATED"))
+        store.confirmCreatedLocalId(ref, testAssetId("LOCAL-CREATED")) // adjudication (or the completion) settles it
 
         assertFalse(
-            store.clearCreatedLocalId(ref, AssetId("LOCAL-CREATED")),
+            store.clearCreatedLocalId(ref, testAssetId("LOCAL-CREATED")),
             "a clear against a settled row applies to nothing",
         )
         assertTrue(store.isSettled(ref), "the row is still terminal")
         assertEquals(
-            setOf(AssetId("LOCAL-CREATED")),
+            setOf(testAssetId("LOCAL-CREATED")),
             store.suppressedLocalIds(),
             "and its asset is still suppressed — stripping this handle is unrecoverable",
         )
@@ -456,16 +463,16 @@ class DownloadServiceTest {
     @Test
     fun `a clear naming a stale marker leaves the current one intact`() = runTest {
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
-        store.recordCreatedLocalId(ref, AssetId("FIRST"))
-        store.clearCreatedLocalId(ref, AssetId("FIRST"))
-        store.recordCreatedLocalId(ref, AssetId("SECOND"))
+        store.recordCreatedLocalId(ref, testAssetId("FIRST"))
+        store.clearCreatedLocalId(ref, testAssetId("FIRST"))
+        store.recordCreatedLocalId(ref, testAssetId("SECOND"))
 
         assertFalse(
-            store.clearCreatedLocalId(ref, AssetId("FIRST")),
+            store.clearCreatedLocalId(ref, testAssetId("FIRST")),
             "the abandoned transaction's clear applies to nothing",
         )
         assertEquals(
-            listOf(ref to AssetId("SECOND")),
+            listOf(ref to testAssetId("SECOND")),
             store.unconfirmedImports().map { it.ref to it.createdLocalId },
             "the marker the row now holds is intact",
         )
@@ -479,14 +486,14 @@ class DownloadServiceTest {
         store.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
 
         // Unconfirmed: neither releasable as confirmed, nor as prunable — the retry needs these bytes.
-        store.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED"))
+        store.recordCreatedLocalId(ref, testAssetId("LOCAL-CREATED"))
         assertTrue(store.stagedPathsOfImportedAssets().isEmpty())
         assertTrue(
             store.pruneNonTerminal(protecting = emptySet()).isEmpty(),
             "a marker-carrying row is never prunable, so its bytes are never stranded",
         )
 
-        store.markImported(ref, AssetId("LOCAL-CREATED"))
+        store.markImported(ref, testAssetId("LOCAL-CREATED"))
         assertEquals(
             setOf("/stage/primary.heic", "/stage/live.mov"),
             store.stagedPathsOfImportedAssets().toSet(),
@@ -497,7 +504,7 @@ class DownloadServiceTest {
         store.dropResources(ref)
         assertTrue(store.stagedPathsOfImportedAssets().isEmpty(), "a second pass finds nothing")
         assertTrue(store.isSettled(ref), "while the row and its marker remain")
-        assertEquals(setOf(AssetId("LOCAL-CREATED")), store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("LOCAL-CREATED")), store.suppressedLocalIds())
     }
 
     // ---- settling as unimportable --------------------------------------------------------------------------------
@@ -533,10 +540,10 @@ class DownloadServiceTest {
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
         store.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
-        store.markImported(ref, AssetId("LOCAL-1"))
+        store.markImported(ref, testAssetId("LOCAL-1"))
 
         assertFalse(store.settleUnimportable(ref), "an imported row is terminal — this must match nothing")
-        assertEquals(setOf(AssetId("LOCAL-1")), store.suppressedLocalIds(), "and its handle is untouched")
+        assertEquals(setOf(testAssetId("LOCAL-1")), store.suppressedLocalIds(), "and its handle is untouched")
         assertEquals(1, store.counts().imported)
     }
 
@@ -546,31 +553,31 @@ class DownloadServiceTest {
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/p")
         store.markStaged(ref, "ASSET-Q-live.mov", "/stage/l")
-        store.recordCreatedLocalId(ref, AssetId("LOCAL-1"))
+        store.recordCreatedLocalId(ref, testAssetId("LOCAL-1"))
 
         assertFalse(store.settleUnimportable(ref), "an asset WAS created for this ref — it is not unimportable")
         assertEquals(1, store.unconfirmedImports().size, "it stays adjudicable")
-        assertEquals(setOf(AssetId("LOCAL-1")), store.suppressedLocalIds(), "and stays suppressed")
+        assertEquals(setOf(testAssetId("LOCAL-1")), store.suppressedLocalIds(), "and stays suppressed")
     }
 
     // ---- pruning at a leave or a switch --------------------------------------------------------------------------
 
     @Test
     fun `a prune drops non-terminal rows and keeps imported ones`() = runTest {
-        val imported = AssetRef(testDeviceId("DEVICE-A"), AssetId("DONE"))
+        val imported = AssetRef(testDeviceId("DEVICE-A"), testAssetId("DONE"))
         store.plan(
             imported,
             "2026-01-01T00:00:00Z",
             listOf(PlannedResource("DONE-primary.heic", "u", "primary", "image/heic", "D.HEIC")),
         )
         store.markStaged(imported, "DONE-primary.heic", "/d")
-        store.markImported(imported, AssetId("LOCAL-DONE"))
+        store.markImported(imported, testAssetId("LOCAL-DONE"))
         store.plan(ref, "2026-06-30T10:00:00Z", resources()) // a fresh, non-terminal asset
 
         store.pruneNonTerminal(protecting = emptySet())
 
         assertTrue(store.isSettled(imported)) // terminal row preserved (delete-proof, cross-event dedup)
-        assertEquals(setOf(AssetId("LOCAL-DONE")), store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("LOCAL-DONE")), store.suppressedLocalIds())
         assertFalse(store.isSettled(ref))
         assertTrue(store.pendingDownloads().isEmpty()) // the non-terminal asset's resources were dropped
     }
@@ -614,16 +621,16 @@ class DownloadServiceTest {
         assertEquals(2, store.stagedResources(ref).size, "and its bytes are still there for the import to read")
         // The whole point: the change block that runs next still finds a row to write its marker onto.
         assertTrue(
-            store.recordCreatedLocalId(ref, AssetId("LOCAL-CREATED")),
+            store.recordCreatedLocalId(ref, testAssetId("LOCAL-CREATED")),
             "the marker write lands on a row that exists",
         )
-        assertEquals(setOf(AssetId("LOCAL-CREATED")), store.suppressedLocalIds())
+        assertEquals(setOf(testAssetId("LOCAL-CREATED")), store.suppressedLocalIds())
     }
 
     /** An unprotected sibling is still dropped in the same call — protection is per-ref, not a global off. */
     @Test
     fun `prune protects only the refs it was given`() = runTest {
-        val other = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-R"))
+        val other = AssetRef(testDeviceId("DEVICE-B"), testAssetId("ASSET-R"))
         store.plan(ref, "2026-06-30T10:00:00Z", resources())
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         store.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
@@ -660,7 +667,7 @@ class DownloadServiceTest {
      */
     @Test
     fun `event-scoped counts see only that event's union`() = runTest {
-        val earlier = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-OLD"))
+        val earlier = AssetRef(testDeviceId("DEVICE-B"), testAssetId("ASSET-OLD"))
         val earlierResources = listOf(
             PlannedResource("ASSET-OLD-primary.heic", "https://e/old", "primary", "image/heic", "OLD.HEIC"),
         )
@@ -670,7 +677,7 @@ class DownloadServiceTest {
             members = listOf(earlier),
         )
         store.markStaged(earlier, "ASSET-OLD-primary.heic", "/stage/old")
-        store.markImported(earlier, AssetId("LOCAL-OLD"))
+        store.markImported(earlier, testAssetId("LOCAL-OLD"))
         assertEquals(1, store.counts(testEventId("EVENT-1")).imported)
 
         // The next event's union holds none of it.
@@ -682,7 +689,7 @@ class DownloadServiceTest {
         val next = store.counts(testEventId("EVENT-2"))
         assertEquals(0, next.imported, "the earlier event's photo is not received for this one")
         assertEquals(1, next.stillArriving, "only this event's photo is there to receive")
-        assertEquals(setOf(AssetId("LOCAL-OLD")), store.suppressedLocalIds(), "the earlier row is kept as a handle")
+        assertEquals(setOf(testAssetId("LOCAL-OLD")), store.suppressedLocalIds(), "the earlier row is kept as a handle")
         assertEquals(2, store.counts().stillArriving, "the device-wide census still sees both")
 
         // A photo that reappears in a later union counts for that event from then on.
@@ -699,7 +706,7 @@ class DownloadServiceTest {
     /** Read by the event album's gather: only an import this event's union holds, and only a confirmed one. */
     @Test
     fun `an event's imported local ids are its confirmed imports only`() = runTest {
-        fun r(id: String) = AssetRef(testDeviceId("DEVICE-A"), AssetId(id))
+        fun r(id: String) = AssetRef(testDeviceId("DEVICE-A"), testAssetId(id))
         val imported = r("IMPORTED")
         val pending = r("PENDING")
         val unconfirmed = r("UNCONFIRMED")
@@ -713,14 +720,14 @@ class DownloadServiceTest {
         )
         store.planAll(listOf(planned(others)), testEventId("EVENT-2"), members = listOf(others))
         store.plan(untagged, "2026-06-30T12:00:00Z", resources())
-        store.markImported(imported, AssetId("LOCAL-A"))
-        store.recordCreatedLocalId(unconfirmed, AssetId("LOCAL-CREATED"))
+        store.markImported(imported, testAssetId("LOCAL-A"))
+        store.recordCreatedLocalId(unconfirmed, testAssetId("LOCAL-CREATED"))
         store.settleUnimportable(unimportable)
-        store.markImported(others, AssetId("LOCAL-B"))
-        store.markImported(untagged, AssetId("LOCAL-C"))
+        store.markImported(others, testAssetId("LOCAL-B"))
+        store.markImported(untagged, testAssetId("LOCAL-C"))
 
         assertEquals(
-            setOf(AssetId("LOCAL-A")),
+            setOf(testAssetId("LOCAL-A")),
             store.importedLocalIdsOf(testEventId("EVENT-1")),
             "a pending, an unconfirmed (a marker is not yet known to name an asset) and an unimportable ref are " +
                 "omitted, and so are another event's and an untagged one",
@@ -730,15 +737,15 @@ class DownloadServiceTest {
     @Test
     fun `an imported ref a later event reconciles answers for both events`() = runTest {
         store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref))
-        store.markImported(ref, AssetId("LOCAL-1"))
+        store.markImported(ref, testAssetId("LOCAL-1"))
         store.planAll(emptyList(), testEventId("EVENT-2"), members = listOf(ref))
         assertEquals(
-            setOf(AssetId("LOCAL-1")),
+            setOf(testAssetId("LOCAL-1")),
             store.importedLocalIdsOf(testEventId("EVENT-2")),
             "the settled ref is the later event's too",
         )
         assertEquals(
-            setOf(AssetId("LOCAL-1")),
+            setOf(testAssetId("LOCAL-1")),
             store.importedLocalIdsOf(testEventId("EVENT-1")),
             "and still the earlier one's",
         )
@@ -749,15 +756,15 @@ class DownloadServiceTest {
     @Test
     fun `the join's purge forgets other events' refs and keeps every photo's record`() = runTest {
         store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref))
-        store.markImported(ref, AssetId("LOCAL-1"))
+        store.markImported(ref, testAssetId("LOCAL-1"))
         store.planAll(emptyList(), testEventId("EVENT-2"), members = listOf(ref))
 
         store.union.purgeEventRefsExcept(testEventId("EVENT-2"))
 
         assertTrue(store.importedLocalIdsOf(testEventId("EVENT-1")).isEmpty(), "the other event's refs are gone")
-        assertEquals(setOf(AssetId("LOCAL-1")), store.importedLocalIdsOf(testEventId("EVENT-2")))
+        assertEquals(setOf(testAssetId("LOCAL-1")), store.importedLocalIdsOf(testEventId("EVENT-2")))
         assertTrue(store.isSettled(ref), "the photo's record survives")
-        assertEquals(setOf(AssetId("LOCAL-1")), store.suppressedLocalIds(), "and so does its import marker")
+        assertEquals(setOf(testAssetId("LOCAL-1")), store.suppressedLocalIds(), "and so does its import marker")
     }
 
     // ---- adoption of marked photos at join -----------------------------------------------------------------------
@@ -765,13 +772,17 @@ class DownloadServiceTest {
     @Test
     fun `an adopted photo is settled suppressed and counted for its event`() = runTest {
         val adopted = store.adoptAll(
-            listOf(AdoptedAsset(ref, AssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z")),
+            listOf(AdoptedAsset(ref, testAssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z")),
             testEventId("EVENT-1"),
         )
         assertEquals(setOf(ref), adopted)
         assertTrue(store.isSettled(ref), "an adopted ref is never planned or downloaded again")
-        assertEquals(setOf(AssetId("LOCAL-KEPT")), store.suppressedLocalIds(), "and its asset is never uploaded back")
-        assertEquals(setOf(AssetId("LOCAL-KEPT")), store.importedLocalIdsOf(testEventId("EVENT-1")))
+        assertEquals(
+            setOf(testAssetId("LOCAL-KEPT")),
+            store.suppressedLocalIds(),
+            "and its asset is never uploaded back",
+        )
+        assertEquals(setOf(testAssetId("LOCAL-KEPT")), store.importedLocalIdsOf(testEventId("EVENT-1")))
         assertEquals(
             1,
             store.counts(testEventId("EVENT-1")).imported,
@@ -787,20 +798,23 @@ class DownloadServiceTest {
 
     @Test
     fun `adoption settles a planned row and leaves a marked or terminal one`() = runTest {
-        val marked = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-MARKED"))
-        val deleted = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-DELETED"))
+        val marked = AssetRef(testDeviceId("DEVICE-B"), testAssetId("ASSET-MARKED"))
+        val deleted = AssetRef(testDeviceId("DEVICE-B"), testAssetId("ASSET-DELETED"))
         store.plan(ref, "2026-06-30T10:00:00Z", resources()) // planned while the photo grant was pending
         store.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         store.plan(marked, "2026-06-30T11:00:00Z", resources())
-        assertTrue(store.recordCreatedLocalId(marked, AssetId("LOCAL-CREATED")), "an import created an asset for it")
+        assertTrue(
+            store.recordCreatedLocalId(marked, testAssetId("LOCAL-CREATED")),
+            "an import created an asset for it",
+        )
         store.plan(deleted, "2026-06-30T12:00:00Z", resources())
-        store.markImported(deleted, AssetId("LOCAL-GONE")) // imported, then deleted from the library by the member
+        store.markImported(deleted, testAssetId("LOCAL-GONE")) // imported, then deleted from the library by the member
 
         val adopted = store.adoptAll(
             listOf(
-                AdoptedAsset(ref, AssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z"),
-                AdoptedAsset(marked, AssetId("LOCAL-OTHER"), "2026-06-30T11:00:00Z"),
-                AdoptedAsset(deleted, AssetId("LOCAL-Y"), "2026-06-30T12:00:00Z"),
+                AdoptedAsset(ref, testAssetId("LOCAL-KEPT"), "2026-06-30T10:00:00Z"),
+                AdoptedAsset(marked, testAssetId("LOCAL-OTHER"), "2026-06-30T11:00:00Z"),
+                AdoptedAsset(deleted, testAssetId("LOCAL-Y"), "2026-06-30T12:00:00Z"),
             ),
             testEventId("EVENT-1"),
         )
@@ -809,7 +823,7 @@ class DownloadServiceTest {
         assertTrue(store.importableAssets().none { it.ref == ref })
         assertTrue(store.pendingDownloads().none { it.ref == ref }, "and nothing of it is downloaded any more")
         assertEquals(
-            setOf(AssetId("LOCAL-KEPT"), AssetId("LOCAL-CREATED"), AssetId("LOCAL-GONE")),
+            setOf(testAssetId("LOCAL-KEPT"), testAssetId("LOCAL-CREATED"), testAssetId("LOCAL-GONE")),
             store.suppressedLocalIds(),
             "each row keeps the handle of the asset it records",
         )
@@ -866,8 +880,8 @@ class DownloadServiceTest {
 
     @Test
     fun `known counts every foreign row of the event - received and given up included`() = runTest {
-        val given = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-GIVEN-UP"))
-        val received = AssetRef(testDeviceId("DEVICE-B"), AssetId("ASSET-RECEIVED"))
+        val given = AssetRef(testDeviceId("DEVICE-B"), testAssetId("ASSET-GIVEN-UP"))
+        val received = AssetRef(testDeviceId("DEVICE-B"), testAssetId("ASSET-RECEIVED"))
         store.planAll(
             listOf(planned(ref), planned(given), planned(received)),
             testEventId("EVENT-1"),
@@ -876,7 +890,7 @@ class DownloadServiceTest {
         store.markStaged(given, "ASSET-Q-primary.heic", "/stage/p")
         store.markStaged(given, "ASSET-Q-live.mov", "/stage/l")
         assertTrue(store.settleUnimportable(given))
-        store.markImported(received, AssetId("LOCAL-R"))
+        store.markImported(received, testAssetId("LOCAL-R"))
 
         val counts = store.counts(testEventId("EVENT-1"))
         assertEquals(3, counts.known, "the declared total already counts all three")
@@ -900,7 +914,7 @@ class DownloadServiceTest {
 
     @Test
     fun `a withdrawal prune keeps what is listed - received - judged - claimed or another event's`() = runTest {
-        fun r(id: String) = AssetRef(testDeviceId("DEVICE-A"), AssetId(id))
+        fun r(id: String) = AssetRef(testDeviceId("DEVICE-A"), testAssetId(id))
         val listed = r("LISTED")
         val imported = r("IMPORTED")
         val unimportable = r("UNIMPORTABLE")
@@ -910,9 +924,9 @@ class DownloadServiceTest {
         val all = listOf(listed, imported, unimportable, claimed, marked)
         store.planAll(all.map(::planned), testEventId("EVENT-1"), members = all)
         store.planAll(listOf(planned(otherEvent)), testEventId("EVENT-2"), members = listOf(otherEvent))
-        store.markImported(imported, AssetId("L-IMPORTED"))
+        store.markImported(imported, testAssetId("L-IMPORTED"))
         store.settleUnimportable(unimportable)
-        store.recordCreatedLocalId(marked, AssetId("L-MARKED"))
+        store.recordCreatedLocalId(marked, testAssetId("L-MARKED"))
 
         store.union.pruneWithdrawn(testEventId("EVENT-1"), listed = setOf(listed), protecting = setOf(claimed))
 

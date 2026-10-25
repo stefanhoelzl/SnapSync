@@ -35,9 +35,12 @@ val generateSchemaStatements = tasks.register<SchemaStatementsTask>("generateSch
         mapOf(
             "String" to "\"f\"",
             "Long" to "1L",
-            "AssetId" to "AssetId(\"f\")",
+            "AssetId" to "AssetId.parse(\"f\")!!",
             "EventId" to "EventId.parse(\"00000000-0000-4000-8000-000000000001\")!!",
             "DeviceId" to "DeviceId.parse(\"00000000-0000-4000-8000-000000000002\")!!",
+            "Stored<AssetId>" to "Stored.Valid(AssetId.parse(\"f\")!!)",
+            "Stored<EventId>" to "Stored.Valid(EventId.parse(\"00000000-0000-4000-8000-000000000001\")!!)",
+            "Stored<DeviceId>" to "Stored.Valid(DeviceId.parse(\"00000000-0000-4000-8000-000000000002\")!!)",
             "CaptureCutoff" to "CaptureCutoff($epoch)",
             "CaptureCeiling" to "CaptureCeiling($epoch)",
             "EventStart" to "EventStart($epoch)",

@@ -85,6 +85,9 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(project(":test:contracts"))
+                // The process-death clause's roads to the end of a process: the runtime's, and `objcBoundary`'s.
+                implementation(project(":domain:scheduling"))
+                implementation(project(":adapter:ios:ext-safe"))
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kermit)
             }
@@ -93,6 +96,10 @@ kotlin {
             kotlin.srcDir("src/wireTest/kotlin")
             dependencies {
                 implementation(project(":test:contracts"))
+                // The process-death clause's roads to the end of a process: the runtime's.
+                implementation(project(":domain:scheduling"))
+                // …composed as a shipped build composes it (`NoEntryEvents`).
+                implementation(project(":adapter:generic:app"))
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kermit)
             }

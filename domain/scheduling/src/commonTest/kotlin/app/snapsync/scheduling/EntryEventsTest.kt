@@ -2,12 +2,14 @@
 
 package app.snapsync.scheduling
 
+import app.snapsync.inbound.Trigger
 import app.snapsync.ports.EntryEvent
 import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
@@ -26,11 +28,11 @@ import kotlin.time.Duration.Companion.seconds
  */
 class EntryEventsTest {
     private class OnWork(world: World, val body: suspend Steps.() -> Unit) : BackgroundEntryPoint<Unit>(world.runtime) {
-        override suspend fun run(arg: Unit) = steps { body() }
+        override suspend fun run(arg: Unit, on: Run) = on.steps { body() }
     }
 
     private class OnWake(world: World, val body: suspend () -> Unit) : GrantedEntryPoint<Unit>(world.runtime) {
-        override suspend fun run(arg: Unit) = body()
+        override suspend fun run(arg: Unit, on: Run) = body()
     }
 
     private class OnReport(world: World, val body: Delivery.() -> Unit) : InboundEntryPoint<Unit>(world.runtime) {
@@ -39,7 +41,7 @@ class EntryEventsTest {
 
     private class OnAsk(world: World, val body: suspend () -> String) :
         AnsweredEntryPoint<Unit, String>(world.runtime, onFailure = "FAILED") {
-        override suspend fun run(arg: Unit) = body()
+        override suspend fun run(arg: Unit, on: Run) = body()
     }
 
     @Test
@@ -70,8 +72,8 @@ class EntryEventsTest {
         val world = World(this)
         val inner = CompletableDeferred<Unit>()
         OnWork(world) {
-            detached {
-                steps { detached { inner.await() } }
+            detached { on ->
+                on.steps { detached { inner.await() } }
             }
         }.handle(Unit, CountingCompletion())
         runCurrent()
@@ -147,6 +149,25 @@ class EntryEventsTest {
     }
 
     @Test
+    fun `steps an inline delivery detaches run as its work - labelled with its trigger`() = runTest {
+        val world = World(this)
+        val topUp = CompletableDeferred<Unit>()
+        var ranFor: String? = null
+        OnReport(world) {
+            detachedSteps {
+                required { ranFor = currentCoroutineContext()[Trigger]?.label }
+                required { topUp.await() }
+            }
+        }.deliver(Unit)
+        runCurrent()
+        assertEquals("OnReport", ranFor)
+        assertEquals(listOf("delivered OnReport", "answered OnReport"), world.entries.seen(), "not done while it runs")
+        topUp.complete(Unit)
+        runCurrent()
+        assertEquals("done OnReport COMPLETED", world.entries.seen().last())
+    }
+
+    @Test
     fun `an answered delivery is done once what it detached has ended`() = runTest {
         val world = World(this)
         val tail = CompletableDeferred<Unit>()
@@ -165,7 +186,7 @@ class EntryEventsTest {
         val world = World(this)
         OnWork(world) {
             required {
-                outliving { delay(5.seconds) }
+                world.runtime.outliving { delay(5.seconds) }
             }
         }.handle(Unit, CountingCompletion())
         runCurrent()
@@ -184,7 +205,7 @@ class EntryEventsTest {
     fun `outliving work that fails makes the delivery's done a failure`() = runTest {
         val world = World(this)
         OnWork(world) {
-            isolated("import") { outliving { error("the library refused") } }
+            isolated("import") { world.runtime.outliving { error("the library refused") } }
         }.handle(Unit, CountingCompletion())
         runCurrent()
         assertEquals("done OnWork FAILED", world.entries.seen().last())
@@ -194,7 +215,7 @@ class EntryEventsTest {
     fun `work a sequence's pass detaches is its own - named by the pass`() = runTest {
         val world = World(this)
         val sequence = object : Sequence<Unit>("TopUp") {
-            override suspend fun pass() = steps { detached {} }
+            override suspend fun pass(on: Run) = on.steps { detached {} }
         }
         OnWork(world) { run(sequence) }.handle(Unit, CountingCompletion())
         runCurrent()

@@ -1,9 +1,9 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -52,7 +52,7 @@ class FactsOnlyAdmissionTest {
         mime: String = "image/heic",
     ) = Resource(
         filename = "$assetId-primary.heic",
-        assetId = AssetId(assetId),
+        assetId = testAssetId(assetId),
         contentType = "public.heic",
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to creationDate,
@@ -73,7 +73,7 @@ class FactsOnlyAdmissionTest {
         width: Long = 4032,
         height: Long = 3024,
     ) = AssetFacts(
-        assetId = AssetId(assetId),
+        assetId = testAssetId(assetId),
         captureDate = TimestampText.captureDate(creationDate),
         isScreenshot = isScreenshot,
         pixelArea = width * height,
@@ -105,7 +105,7 @@ class FactsOnlyAdmissionTest {
         val fromCheap = EventPhotoSet(policyOf()) { candidatesFromFacts(cheap) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
 
-        assertEquals(setOf(AssetId("CAM")), fromEager)
+        assertEquals(setOf(testAssetId("CAM")), fromEager)
         assertEquals(fromEager, fromCheap, "the cheap path is the exact answer, not an approximation")
     }
 

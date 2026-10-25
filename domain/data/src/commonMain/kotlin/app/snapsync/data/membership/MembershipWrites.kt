@@ -1,6 +1,7 @@
 package app.snapsync.data.membership
 
 import app.snapsync.data.store.LegacySource
+import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.Membership
@@ -26,7 +27,7 @@ private enum class Held { None, Same, Other }
 
 private fun LedgerDatabase.heldAgainst(event: EventId): Held = membershipQueries.selectMembership().executeAsList()
     .map {
-        when (it.eventId == event) {
+        when (it.eventId == Stored.Valid(event)) {
             true -> Held.Same
             false -> Held.Other
         }
@@ -35,7 +36,7 @@ private fun LedgerDatabase.heldAgainst(event: EventId): Held = membershipQueries
 
 /** Mark [event]'s membership, [active], deleted. */
 internal fun LedgerDatabase.markDeleted(event: EventId, active: Membership.Active): MarkResult {
-    membershipQueries.markDeleted(event)
+    membershipQueries.markDeleted(Stored.Valid(event))
     return when (changed()) {
         true -> MarkResult.Marked(Membership.Deleted(active.event, active.share))
         false -> MarkResult.Superseded
@@ -51,7 +52,7 @@ internal fun LedgerDatabase.update(next: Membership.Active): UpdateResult {
             membersSettled = members?.settled?.toLong(),
             membersWaiting = members?.waiting?.toLong(),
             openUntil = openUntil,
-            eventId = id,
+            eventId = Stored.Valid(id),
         )
     }
     return updated(next)
@@ -64,7 +65,7 @@ internal fun LedgerDatabase.reconfigure(next: Membership.Active): UpdateResult {
         maxPhotoDate = next.share.range.until,
         direction = next.share.direction,
         saveToAlbum = next.share.saveToAlbum,
-        eventId = next.event.id,
+        eventId = Stored.Valid(next.event.id),
     )
     return when (changed()) {
         true -> UpdateResult.Updated(next).also { ledgerQueries.bumpManifestVersion() }

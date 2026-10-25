@@ -239,7 +239,7 @@ class EdgeSetup(private val transport: HttpTransport, base: String, private val 
     override suspend fun unionAssetIds(eventId: String): Set<AssetId> {
         val reply = send(Routes.EventFiles.request(eventId), deviceId = null)
         val page = reply as? EventFilesReply.Page ?: refused("read the union", reply)
-        return page.items.mapTo(mutableSetOf()) { AssetId(it.assetId) }
+        return page.items.mapTo(mutableSetOf()) { AssetId.parse(it.assetId)!! }
     }
 
     /** Uploads one resource's bytes, as the app's uploader addresses them. */

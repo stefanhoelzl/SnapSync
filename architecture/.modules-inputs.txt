@@ -87,8 +87,11 @@ edge :adapter:generic:mock :domain:wire
 edge :adapter:generic:mock :test:contracts
 edge :adapter:generic:mock :test:levers
 edge :adapter:generic:mock :ui:state
+edge :adapter:generic:sentry :adapter:generic:app
+edge :adapter:generic:sentry :adapter:ios:ext-safe
 edge :adapter:generic:sentry :domain:model
 edge :adapter:generic:sentry :domain:ports
+edge :adapter:generic:sentry :domain:scheduling
 edge :adapter:generic:sentry :test:contracts
 edge :adapter:ios:app-only :adapter:generic:motionphoto
 edge :adapter:ios:app-only :adapter:ios:ext-safe
@@ -241,6 +244,7 @@ edge :domain:presentation :domain:query
 edge :domain:presentation :ui:state
 edge :domain:query :domain:data
 edge :domain:query :domain:domain
+edge :domain:scheduling :domain:domain
 edge :domain:scheduling :domain:inbound
 edge :domain:scheduling :domain:ports
 edge :domain:services :domain:data

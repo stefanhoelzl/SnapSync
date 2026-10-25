@@ -2,6 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.Stored
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.event.DeletesAt
@@ -30,6 +31,7 @@ import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.services.databases.LegacyRecords
+import app.snapsync.services.databases.use
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.testids.testEventId
@@ -110,7 +112,7 @@ class ExtensionEntryTest {
         // The membership row as a join writes it.
         appDatabase.use {
             it.membershipQueries.saveMembership(
-                eventId = testEventId("11111111-1111-4111-8111-111111111111"),
+                eventId = Stored.Valid(testEventId("11111111-1111-4111-8111-111111111111")),
                 name = "Anna's Birthday",
                 minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-14T18:00:00Z")),
                 startsAt = EventStart(TimestampText.parse("2026-07-14T18:00:00Z")),

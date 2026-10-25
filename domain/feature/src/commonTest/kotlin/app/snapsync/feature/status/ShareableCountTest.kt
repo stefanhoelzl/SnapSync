@@ -11,6 +11,7 @@ import app.snapsync.model.CandidateScope
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,7 +32,7 @@ private fun asset(
     width: Long = 4032,
     height: Long = 3024,
 ) = AssetFacts(
-    assetId = AssetId(id),
+    assetId = testAssetId(id),
     captureDate = TimestampText.captureDate(creationDate),
     isScreenshot = isScreenshot,
     pixelArea = width * height,
@@ -121,8 +122,8 @@ class ShareableCountTest {
     fun `denylisted-album and suppressed assets are subtracted`() = runTest {
         val n = countSource(
             FactsSource(listOf(asset("CAM"), asset("WA"), asset("DL"))),
-            suppressed = setOf(AssetId("DL")),
-            albumExcluded = setOf(AssetId("WA")),
+            suppressed = setOf(testAssetId("DL")),
+            albumExcluded = setOf(testAssetId("WA")),
         ).countFor()
         assertEquals(1, n, "a downloaded echo (DL) and a denylisted-album member (WA) do not count")
     }

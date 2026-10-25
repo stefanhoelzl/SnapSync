@@ -1,11 +1,11 @@
 package app.snapsync.downloadstore
 
 import app.snapsync.databases.IosDatabases
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PlannedResource
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.downloads.SuppressionService
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
@@ -36,7 +36,7 @@ import kotlin.test.assertTrue
  */
 class IosDownloadStoreTest {
 
-    private val ref = AssetRef(sourceDeviceId = testDeviceId("device-b"), sourceAssetId = AssetId("asset-9"))
+    private val ref = AssetRef(sourceDeviceId = testDeviceId("device-b"), sourceAssetId = testAssetId("asset-9"))
 
     private val resource = PlannedResource(
         resourceKey = "photo-9.heic",
@@ -109,10 +109,10 @@ class IosDownloadStoreTest {
 
             runBlocking {
                 app.plan(ref, creationDate = "2026-08-08T12:00:00Z", resources = listOf(resource))
-                app.recordCreatedLocalId(ref, AssetId("local-identifier-1"))
+                app.recordCreatedLocalId(ref, testAssetId("local-identifier-1"))
 
                 assertEquals(
-                    setOf(AssetId("local-identifier-1")),
+                    setOf(testAssetId("local-identifier-1")),
                     SuppressionService(IosDatabases(dir)).suppressedLocalIds(),
                     "an empty suppression set makes the upload cycle re-upload every photo this device " +
                         "downloaded from the event it downloaded them from",

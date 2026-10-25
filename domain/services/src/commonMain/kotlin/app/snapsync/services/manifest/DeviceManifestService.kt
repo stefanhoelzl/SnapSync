@@ -1,10 +1,13 @@
 package app.snapsync.services.manifest
 
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.Stored
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.services.databases.held
+import app.snapsync.services.databases.use
 import co.touchlab.kermit.Logger
 
 /**
@@ -30,12 +33,26 @@ class DeviceManifestService(
      * suppressed the rewrite forever. Staleness is outside this law; see `LeaveEvent`'s note.)
      */
     fun loadLastUploaded(): UploadedManifest? = runCatchingCancellable {
-        db.use { it.uploadedManifestQueries.selectUploaded(::UploadedManifest).executeAsOneOrNull() }
+        db.use {
+            it.uploadedManifestQueries.selectUploaded { event, version, manifest ->
+                UploadedManifest(
+                    held(event),
+                    version,
+                    manifest,
+                )
+            }.executeAsOneOrNull()
+        }
     }.getOrElse { null.also { _ -> log.w(it) { "the manifest record is unreadable — not believed" } } }
 
     fun saveLastUploaded(record: UploadedManifest) {
         runCatchingCancellable {
-            db.use { it.uploadedManifestQueries.recordUploaded(record.eventId, record.version, record.manifest) }
+            db.use {
+                it.uploadedManifestQueries.recordUploaded(
+                    Stored.Valid(record.eventId),
+                    record.version,
+                    record.manifest,
+                )
+            }
         }.onFailure { log.w(it) { "the manifest record was not written" } }
     }
 
@@ -46,7 +63,15 @@ class DeviceManifestService(
      */
     fun publishedCount(eventId: EventId): Int? {
         val record = runCatchingCancellable {
-            db.use { it.uploadedManifestQueries.selectUploaded(::UploadedManifest).executeAsOneOrNull() }
+            db.use {
+                it.uploadedManifestQueries.selectUploaded { event, version, manifest ->
+                    UploadedManifest(
+                        held(event),
+                        version,
+                        manifest,
+                    )
+                }.executeAsOneOrNull()
+            }
         }.getOrElse { return null.also { _ -> log.w(it) { "the manifest record is unreadable — no own count" } } }
         if (record == null || record.eventId != eventId) return 0
         return runCatchingCancellable { deviceManifestFromJson(record.manifest).assets.size }

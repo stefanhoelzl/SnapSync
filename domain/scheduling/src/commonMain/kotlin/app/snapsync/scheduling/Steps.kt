@@ -1,52 +1,14 @@
 package app.snapsync.scheduling
 
+import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Trigger
 import app.snapsync.inbound.of
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.EmptyCoroutineContext
-
-/**
- * Runs [block] as a list of steps (`docs/patterns.md`, "Steps"), under the [Runtime] of the run it is part of. Each
- * step block is written inline and makes exactly one call (`OneCallPerStep`); what a step does is that call's.
- */
-suspend fun <T> steps(block: suspend Steps.() -> T): T {
-    val context = currentCoroutineContext()
-    val trigger = checkNotNull(context[Trigger]) { "steps run for a trigger: inside an entry point or a sequence" }
-    val runtime = checkNotNull(context[RuntimeElement]) { "steps run under the process's runtime" }.runtime
-    val steps = Steps(runtime, trigger, context[WorkElement]?.work)
-    try {
-        return steps.block()
-    } finally {
-        steps.ensured()
-    }
-}
-
-/**
- * Awaits [block], run in the process scope: if the caller stops waiting — its time is up, or the pass it belongs to
- * yielded — [block] runs on to its end. For work the platform cannot stop once started, like a photo-library import,
- * whose own report records what it did.
- */
-suspend fun <T> outliving(block: suspend () -> T): T {
-    val runtime = checkNotNull(currentCoroutineContext()[RuntimeElement]) {
-        "outliving work runs under the process's runtime"
-    }.runtime
-    val trigger = currentCoroutineContext()[Trigger]
-    // The entry point's work it outlives its caller for is still that work's: its `done` waits for it.
-    val joined = currentCoroutineContext()[WorkElement]
-    val work = if (joined == null) null else joined.work.opened()
-    val outlived = runtime.scope.async((trigger ?: Trigger.of("outliving")) + (joined ?: EmptyCoroutineContext)) {
-        block()
-    }
-    work?.let { outlived.invokeOnCompletion { cause -> it.closed(endedAs(cause)) } }
-    return outlived.await()
-}
 
 /** The steps of one run. */
 class Steps internal constructor(
@@ -67,6 +29,8 @@ class Steps internal constructor(
             block()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (fatal: InvalidProgramState) {
+            throw fatal
         } catch (failure: Throwable) {
             log.e("step failed", "step" of name, cause = failure)
         }
@@ -82,8 +46,8 @@ class Steps internal constructor(
      * Work this run starts and does not await: it continues in the process scope, under its own background-time
      * hold, labelled with this run's trigger — and its entry point's `done` waits for it.
      */
-    fun detached(block: suspend () -> Unit) {
-        runtime.detached(trigger, work, block)
+    fun detached(block: suspend (Run) -> Unit) {
+        runtime.detached(trigger, work, { block(Run(runtime, trigger)) })
     }
 
     /** A pass of [sequence], single-flight across the process. */
