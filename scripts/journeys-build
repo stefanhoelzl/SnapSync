@@ -4,6 +4,7 @@
 # (`:test:journeys`), started only once this has returned (`docs/testing.md`, "All-real journeys are the contracts'
 # safety net"):
 #
+#   scripts/journeys-build ios          # on macOS, with snapsync.rig=true in ~/.gradle; then `journeys run --platform ios`
 #   scripts/journeys-build android      # then: test/journeys/build/install/journeys/bin/journeys run --platform android …
 #
 # Nothing overlaps the builds: a Gradle daemon and a test JVM beside the live simulator pushed the 7 GB macOS runner
@@ -13,12 +14,53 @@ set -eu
 
 platform="${1:-}"
 case "$platform" in
+    ios)
+        grep -q '^snapsync.rig=true' "$HOME/.gradle/gradle.properties" 2>/dev/null || {
+            echo "journeys-build: snapsync.rig=true is not in ~/.gradle/gradle.properties (never put it in the repo's)" >&2
+            exit 1
+        }
+        # applesimutils, pinned to a tap commit: the formula, and the bottle it pours, come from that commit, and
+        # auto-update is off so a newer formula cannot arrive mid-run. It grants the simulator app the photo library —
+        # `simctl privacy grant photos` writes a TCC row PhotoKit never consults.
+        APPLESIMUTILS_TAP_COMMIT=8f636f84541e08e850f455d7cffdfbd7ba305d3f   # applesimutils 0.9.12 (2025-06-18)
+        if ! command -v applesimutils >/dev/null; then
+            export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+            # Cloned into the taps directory rather than `brew tap`ped: the tap also carries casks we never install,
+            # and `brew tap` reads them all — its detox-instruments cask uses a deprecated `depends_on macos:` form,
+            # which surfaced as a warning annotation on every run. Dropping `Casks/` before brew first looks keeps the
+            # tap to the one formula we use.
+            TAP_DIR="$(brew --repository)/Library/Taps/wix/homebrew-brew"
+            [ -d "$TAP_DIR" ] || git clone -q https://github.com/wix/homebrew-brew "$TAP_DIR"
+            git -C "$TAP_DIR" checkout -q "$APPLESIMUTILS_TAP_COMMIT"
+            rm -rf "$TAP_DIR/Casks"
+            brew install wix/brew/applesimutils >/dev/null
+        fi
+        python3 scripts/resolve-deployment.py local >/dev/null
+        # The Gradle build the xcodebuild runs RE-RENDERS the deployment at configuration time, from
+        # `snapsync.deployment` — `prod` by the repo's default. Without this the simulator app is baked for the SHARED
+        # production backend (measured: the journeys' first run POSTed a create there). A system property through
+        # GRADLE_OPTS reaches the Gradle that Xcode's build phase launches (an `ORG_GRADLE_PROJECT_` variable does not:
+        # its name cannot carry the dot, measured), and touches no gradle.properties on the machine.
+        export GRADLE_OPTS="${GRADLE_OPTS:-} -Dorg.gradle.project.snapsync.deployment=local"
+        mkdir -p build/ios-journeys
+        # arm64 only: the generic simulator destination also builds an x86_64 slice (the Swift sources and the SwiftPM
+        # packages twice) that an Apple-silicon simulator never loads; the Kotlin framework is iosSimulatorArm64 alone.
+        xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/ios CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
+            build > build/ios-journeys/xcodebuild.log 2>&1 || { tail -40 build/ios-journeys/xcodebuild.log; exit 1; }
+        # The program, on the daemon the xcodebuild's Gradle left running, for the same deployment as the app.
+        ./gradlew -q :test:journeys:installDist -Psnapsync.deployment=local
+        APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
+        [ -n "$APP" ] || { echo "journeys-build: no simulator .app was built" >&2; exit 1; }
+        # An unsigned build has no App Group container.
+        scripts/sim-sign "$APP"
+        ;;
     android)
         # The rig RELEASE build (R8 as the store build runs it, signed with the debug key), baked for the local backend.
         ./gradlew :app:android:assembleRelease :test:journeys:installDist -Psnapsync.rig=true -Psnapsync.deployment=local
         ;;
     *)
-        echo "usage: scripts/journeys-build android" >&2
+        echo "usage: scripts/journeys-build ios|android" >&2
         exit 2
         ;;
 esac

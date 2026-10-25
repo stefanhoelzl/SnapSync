@@ -158,7 +158,7 @@ class SimAppNeverAskedPhotoAccessBinding : Binding<PhotoAccessState, PhotoAccess
 /**
  * The real [app.snapsync.gallery.IosGallery] in an app never asked for photo access and sent behind another — with no
  * screen to ask on, so asking raises nothing and the grant is answered as it stands. The run sends the app to the
- * background (`scripts/sim-contracts`, `?precondition=IN_BACKGROUND`); entering waits for that, holding background time
+ * background (`journeys run --platform ios`, `?precondition=IN_BACKGROUND`); entering waits for that, holding background time
  * so the process is not suspended under the clause.
  */
 class SimAppNeverAskedInBackgroundGalleryBinding : Binding<GalleryState, GalleryChange> {

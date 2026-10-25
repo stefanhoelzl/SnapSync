@@ -4,7 +4,7 @@ compilation target is real for the clauses it runs there"). It is a clause INPUT
 chose, encoded in the route's last segment, so what the contract states is how the app's transports behave given an
 answer, never how a backend behaves.
 
-    scripts/transfer-fixture.py --port <a free port> --log build/sim-contracts/transfer-fixture.log
+    scripts/transfer-fixture.py --port <a free port> --log build/ios-journeys/transfer-fixture.log
 
 The grammar is `TransferFixture` in :test:contracts — change both or neither:
 

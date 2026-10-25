@@ -234,31 +234,38 @@ seed, wipe — is now a channel verb. Load `rig-channel` for the full surface.
 ## The PhotoKit port contracts run here
 
 The simulator app is the host (`IOS_SIM_APP`) where the photo-library contracts meet real PhotoKit under a
-full grant, and CI runs them on every push (`journeys (ios)`). `scripts/sim-contracts` is that job, start to
-finish: a rig build, `sim-sign`, a fresh simulator, the `applesimutils` grant, the loopback transfer fixture
-(`scripts/transfer-fixture.py`, for the two `URLSession` contracts), launch, then every entry of
-`contract list`. It fails on any `Failed(…)` or `NotWithin(…)`, a refusal, or an empty registry. Run it on a Mac session to
-reproduce a red job. The contracts **seed photos and never delete them**, because deleting raises a
-confirmation that needs a finger. See `rig-channel` for the verb.
+full grant, and CI runs them on every push (`journeys (ios)`). That job is two commands, and running them on a Mac
+session reproduces a red one:
 
-The same script then runs the **all-real journeys** (`docs/testing.md`): it serves `api/` with
-`deno task dev:local` on `127.0.0.1:8080` — the address the `local` deployment bakes into the build, so it is
-started before the xcodebuild and warmed with one request (a cold deno exceeds the app's 5 s timeout) — reads the
-app's `GET /device` once (an unclassified vocabulary entry fails the job), and runs the journeys on the SAME
-simulator (the installed program, `test/journeys/build/install/journeys/bin/journeys journeys-only --app <rig url>
---backend <api base>` — `./gradlew :test:journeys:installDist` — which runs them in its own bare JVM; the same command
-runs them locally against an app and a backend already up): A creates and joins, A's photos reach the event union, then the journey itself plays a second member
-over the backend's public HTTP surface (joining through the id in A's invite link, uploading real JPEGs) and A
-receives them. It uses **one** simulator on purpose: a second fresh one's first-boot work swamped the hosted runner
-and made the job slow and flaky (`changes/archive/2026-09-25-one-simulator-journeys`). Nothing overlaps the build: the journeys
-compile on the build's daemon, every Gradle and Kotlin daemon is stopped, and only then does the simulator boot. A
-fresh simulator's photo library is not writable at boot (`assetsd` migrates it, and its Syndication library, in the
-background), so the app's first write, one `BULK` seed through the rig, is its own `photo library: ready` stage
-before the contracts; and the system library's BACKGROUND migration, a system task that holds every write while it
-runs (96–184 s measured), is awaited as `photo library: migrated` on its completion event in `assetsd`'s log
-(`scripts/await-photo-migration.py`, whose events log lands in `photo-migration.log`). Everything lands in `build/sim-contracts/`: `stages`,
-`resources.log` (load and memory every 10 s), the backend's output with a line per request, the app's `debug.log`,
-and `crash/`.
+```bash
+scripts/journeys-build ios                 # applesimutils (pinned), the rig app (local deployment) + sim-sign, the program
+test/journeys/build/install/journeys/bin/journeys run --platform ios      # [--udid <simulator>]; else one is created
+# evidence: build/ios-journeys/
+```
+
+The run (`:test:journeys`' `IosRun`): the local `api/` (`deno task dev:local` on `127.0.0.1:8080`, the address the
+`local` deployment bakes in, warmed with one request — a cold deno exceeds the app's 5 s timeout), ONE simulator
+booted after every build (the image's settled iPhone 17 on CI, from `journeys find-device`; a created and deleted one
+elsewhere), the daemons nothing tested needs stopped (`device/Settle.kt`), the `applesimutils` grant, the loopback
+transfer fixture (`scripts/transfer-fixture.py`, for the two `URLSession` contracts), the launch on a free rig port
+(`SIMCTL_CHILD_SNAPSYNC_RIG_PORT`, awaited as the app's `Documents/rig.port`), the baked-backend and advertisement
+checks, then every entry of `contract list` under the full grant. It fails on any `Failed(…)`, `Diverged(…)` or
+`NotWithin(…)`, a refusal, or an empty registry. The contracts **seed photos and never delete them**, because deleting
+raises a confirmation that needs a finger. See `rig-channel` for the verb.
+
+Then the **all-real journeys** (`docs/testing.md`) on the SAME simulator, in the program's own JVM: A creates and
+joins, A's photos reach the event union, then the journey itself plays a second member over the backend's public HTTP
+surface (joining through the id in A's invite link, uploading real JPEGs) and A receives them — each step waiting on
+the screen's events, then reading the real system once. Last, one launch per grant short of full (limited, refused,
+never asked), the contracts registered for it, and those that run in the background behind Settings. It uses **one**
+simulator on purpose: a second fresh one's first-boot work swamped the hosted runner and made the job slow and flaky
+(`changes/archive/2026-09-25-one-simulator-journeys`). A fresh simulator's photo library is not writable at boot
+(`assetsd` migrates it, and its Syndication library, in the background), so the app's first write, one `BULK` seed
+through the rig, is its own `photo library: ready` stage before the contracts; and the system library's BACKGROUND
+migration, a system task that holds every write while it runs (96–184 s measured), is awaited as `photo library:
+migrated` on its completion event in `assetsd`'s log (`PhotoMigrations`; the events land in `photo-migration.log`).
+Everything lands in `build/ios-journeys/`: `stages`, `resources.log` (load and memory every 10 s, and the program's own
+JVM), the backend's output with a line per request, the app's `debug.log`, the outcome tables, and `crash/`.
 
 ## ⚠️ Photo permission: use `applesimutils`, NOT `simctl privacy`
 

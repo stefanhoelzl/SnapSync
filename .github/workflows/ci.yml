@@ -29,8 +29,8 @@
 #                   the account gets about three. The journeys stay a job of their own; folding them in too doubled
 #                   the iOS wall clock (a one-job-per-platform spike: ~21 min against ~10).
 #   journeys (ios|android)   the all-real journeys against a local api/ — on iOS after the simulator app's in-app port
-#                   contracts (`scripts/sim-contracts`), on Android over every real adapter it has, the
-#                   force-stop journey last (`journeys run --platform android`, `:test:journeys`). Not Gradle:
+#                   contracts, on Android over every real adapter it has, the force-stop journey last
+#                   (`journeys run --platform ios|android`, `:test:journeys`). Not Gradle:
 #                   every Gradle and Kotlin daemon must be gone before the simulator boots on the 7 GB macOS
 #                   runner, and the journeys run in a bare JVM
 #   metadata · api-test · migration-rehearsal · site-build    the Linux checks of the spec, deployment resolver, App
@@ -157,10 +157,6 @@ jobs:
       # its tests, the PR merged clean, and production kept serving the previous bundle.
       - name: Test the deployment resolver
         run: python3 scripts/resolve_deployment_test.py
-      # The photo-library migration gate `journeys (ios)` waits on (scripts/await-photo-migration.py): its reading of
-      # `assetsd`'s log, tested here because the macOS job only ever exercises the one path the runner takes.
-      - name: Test the photo-library migration gate
-        run: python3 scripts/await_photo_migration_test.py
       # The use-case graphic (metadata/graphic/): its renders are committed, not built here, so this catches a tagline
       # changed in metadata/screenshots/en-US.json without re-running metadata/graphic/render.py.
       - name: Check the graphic renders carry the current tagline
@@ -672,7 +668,10 @@ jobs:
 
       # iOS: first the port contracts whose bindings live in the APP — the simulator app is the only simulator process
       # `applesimutils` can grant photo access to, so it is where PhotoKit runs under a real full grant
-      # (IOS_SIM_APP) — then the journeys, on the same app (`scripts/sim-contracts`, which builds, boots and runs).
+      # (IOS_SIM_APP) — then the journeys, on the same app (`journeys run --platform ios`, `:test:journeys`). Nothing
+      # overlaps the build: the app and the program are built FIRST, every Gradle and Kotlin daemon stopped, and only
+      # then is a simulator booted — the settle's included (decision record `changes/archive/2026-09-25-one-simulator-
+      # journeys`, D5).
       # ios-build's family, read only: its simulator tests build the iosSimulatorArm64 library caches this build links
       # against, so a family of its own would be a second ~0.9 GB copy.
       - name: Restore Kotlin/Native (~/.konan)
@@ -680,62 +679,6 @@ jobs:
         uses: ./.github/actions/konan-restore
         with:
           family: device
-      # The simulator, already past its first boot: the image's iPhone 17 (`scripts/lib/sim.sh`), its device directory
-      # cached as `scripts/sim-settle` leaves it — booted, the unneeded daemons disabled, Photos' library created, shut
-      # down clean, no app and no photo. A first boot on the runner otherwise spent ~4.5 min at a load of 100-480
-      # booting and installing (run 38393803729); restored, boot and install took 2.7 min and the library's migration 4 s
-      # (run 38402060923). Keyed on the image version, the device and the settle scripts. On a miss the device is
-      # settled (~12 min) and saved on main only; anywhere else the image's own directory is put back.
-      - name: Find the image's simulator
-        id: sim
-        if: matrix.platform == 'ios'
-        run: |
-          . scripts/lib/sim.sh
-          UDID="$(image_iphone)"
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-          echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
-          [ -z "$UDID" ] || mv "$HOME/Library/Developer/CoreSimulator/Devices/$UDID" "$HOME/Library/Developer/CoreSimulator/Devices/$UDID.image"
-      - name: Restore the settled simulator
-        id: sim-restore
-        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
-        uses: actions/cache/restore@v6
-        with:
-          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
-          key: sim-settled-${{ steps.sim.outputs.image }}-${{ steps.sim.outputs.udid }}-${{ hashFiles('scripts/sim-settle', 'scripts/lib/sim.sh') }}
-      - name: Settle the simulator
-        id: sim-settle
-        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
-        env:
-          UDID: ${{ steps.sim.outputs.udid }}
-          HIT: ${{ steps.sim-restore.outputs.cache-hit }}
-          SETTLE: ${{ github.ref == 'refs/heads/main' }}
-        run: |
-          D="$HOME/Library/Developer/CoreSimulator/Devices/$UDID"
-          if [ "$HIT" = true ]; then
-            rm -rf "$D.image"; echo "restored the settled simulator ($(du -sh "$D" | cut -f1))"
-          else
-            rm -rf "$D"; mv "$D.image" "$D"
-            if [ "$SETTLE" = true ]; then scripts/sim-settle "$UDID" && echo "save=true" >> "$GITHUB_OUTPUT"; fi
-          fi
-          # CoreSimulatorService read the device set before its directory moved; the next simctl starts it afresh.
-          killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
-      - name: Save the settled simulator
-        if: steps.sim-settle.outputs.save == 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
-          key: ${{ steps.sim-restore.outputs.cache-primary-key }}
-      # One entry is ~0.9 GB of a full 10 GB budget: drop the ones a new image or a changed settle superseded.
-      - name: Reclaim superseded simulator entries
-        if: steps.sim-settle.outputs.save == 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          KEEP: ${{ steps.sim-restore.outputs.cache-primary-key }}
-        run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=sim-settled-" \
-            --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
-            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
       # The SwiftPM checkout (sentry-cocoa) ios-build's archive restores and main saves (`.github/actions/ios-archive`
       # says why the key is the pbxproj): the same directory under the same derived-data path, read only here.
       - name: Restore the resolved SwiftPM checkout
@@ -746,7 +689,7 @@ jobs:
           key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
       # The rig app's own build caches, which ios-build's Gradle cache cannot hold: the Gradle build cache entries of
       # the compiles the rig and the `local` deployment change (the deployment's domain is generated into
-      # `:domain:model`, so every module above it compiles differently here) and of the journeys' compile, and the two
+      # `:domain:model`, so every module above it compiles differently here) and of the program's compile, and the two
       # frameworks' Kotlin/Native incremental-link caches (`kotlin.incremental.native`, gradle.properties). Restored
       # OVER ios-build's Gradle cache: build-cache entries are content-addressed files, so the two merge. ~150 MB, saved
       # by main only, success only (a half-written link cache must never be published); a branch reads main's.
@@ -762,16 +705,16 @@ jobs:
             app/ios/extension/build/kotlin-native-ic-cache
           key: journeys-ios-build-${{ github.run_id }}
           restore-keys: journeys-ios-build-
-      - name: Run the simulator app's port contracts and the journeys
+      # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed `snapsync.rig=true` would
+      # link the control channel into every shipped build. Spotlight indexes build outputs as they are written on this
+      # 3-vCPU runner (~26 s of CPU in the build, ~45 s while the simulator settled, run 36177197880); the runner is
+      # discarded, so switching it off costs nothing. Here, not in the script, which also runs on Macs.
+      - name: Build the rig app and the journeys
         if: matrix.platform == 'ios'
-        # The rig property goes into the RUNNER's ~/.gradle, never a tracked file: a committed `snapsync.rig=true`
-        # would link the control channel into every shipped build. Spotlight indexes build outputs as they are written
-        # on this 3-vCPU runner (~26 s of CPU in the build, ~45 s while the simulator settled, run 36177197880); the
-        # runner is discarded, so switching it off costs nothing. Here, not in the script, which also runs on Macs.
         run: |
           mkdir -p ~/.gradle && printf "snapsync.rig=true\n" >> ~/.gradle/gradle.properties
           sudo mdutil -a -i off >/dev/null || true
-          scripts/sim-contracts
+          scripts/journeys-build ios
       - name: Save the rig app's build caches
         if: matrix.platform == 'ios' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
@@ -791,6 +734,72 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=journeys-ios-build-" \
             --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
             while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
+      # The simulator, already past its first boot: the image's iPhone 17 (`journeys find-device`), its device
+      # directory cached as `journeys settle` leaves it — booted, the unneeded daemons disabled, Photos' library
+      # created, shut down clean, no app and no photo. A first boot on the runner otherwise spent ~4.5 min at a load of
+      # 100-480 booting and installing (run 38393803729); restored, boot and install took 2.7 min and the library's
+      # migration 4 s (run 38402060923). Keyed on the image version, the device and the settle's own file
+      # (`device/Settle.kt`). On a miss the device is settled (~12 min) and saved on main only; anywhere else the
+      # image's own directory is put back.
+      - name: Find the image's simulator
+        id: sim
+        if: matrix.platform == 'ios'
+        run: |
+          UDID="$(test/journeys/build/install/journeys/bin/journeys find-device)"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+          [ -z "$UDID" ] || mv "$HOME/Library/Developer/CoreSimulator/Devices/$UDID" "$HOME/Library/Developer/CoreSimulator/Devices/$UDID.image"
+      - name: Restore the settled simulator
+        id: sim-restore
+        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
+          key: sim-settled-${{ steps.sim.outputs.image }}-${{ steps.sim.outputs.udid }}-${{ hashFiles('test/journeys/src/main/kotlin/app/snapsync/journeys/device/Settle.kt') }}
+      - name: Settle the simulator
+        id: sim-settle
+        if: matrix.platform == 'ios' && steps.sim.outputs.udid != ''
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+          HIT: ${{ steps.sim-restore.outputs.cache-hit }}
+          SETTLE: ${{ github.ref == 'refs/heads/main' }}
+        run: |
+          D="$HOME/Library/Developer/CoreSimulator/Devices/$UDID"
+          if [ "$HIT" = true ]; then
+            rm -rf "$D.image"; echo "restored the settled simulator ($(du -sh "$D" | cut -f1))"
+          else
+            rm -rf "$D"; mv "$D.image" "$D"
+            # CoreSimulatorService read the device set before its directory moved; the settle's simctl starts it afresh.
+            killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+            if [ "$SETTLE" = true ]; then
+              test/journeys/build/install/journeys/bin/journeys settle --udid "$UDID" \
+                --log "$RUNNER_TEMP/settle-photo-migration.log" && echo "save=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+          # And again for the run's own simctl, whichever directory is in place now.
+          killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+      - name: Save the settled simulator
+        if: steps.sim-settle.outputs.save == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/Library/Developer/CoreSimulator/Devices/${{ steps.sim.outputs.udid }}
+          key: ${{ steps.sim-restore.outputs.cache-primary-key }}
+      # One entry is ~0.9 GB of a full 10 GB budget: drop the ones a new image or a changed settle superseded.
+      - name: Reclaim superseded simulator entries
+        if: steps.sim-settle.outputs.save == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: ${{ steps.sim-restore.outputs.cache-primary-key }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100&key=sim-settled-" \
+            --jq ".actions_caches[] | select(.key != \"$KEEP\") | .id" |
+            while read -r id; do gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches/$id" --silent; done
+      - name: Run the simulator app's port contracts and the journeys
+        if: matrix.platform == 'ios'
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: test/journeys/build/install/journeys/bin/journeys run --platform ios ${UDID:+--udid "$UDID"}
 
       # Android: the rig RELEASE build (R8 as the store build runs it, so every journey exercises R8 output) baked for
       # the local backend and the `journeys` program, built BEFORE the emulator boots and with the daemons stopped after,
@@ -813,7 +822,7 @@ jobs:
           # One artifact per attempt: a re-run's evidence would otherwise replace the attempt it re-runs.
           name: journeys-${{ matrix.platform }}-evidence-${{ github.run_attempt }}
           path: |
-            build/sim-contracts/
+            build/ios-journeys/
             build/android-journeys/
           if-no-files-found: ignore
 

@@ -2,6 +2,8 @@ package app.snapsync.journeys.run
 
 import app.snapsync.journeys.device.AndroidDriver
 import app.snapsync.journeys.device.ProcessShell
+import app.snapsync.journeys.device.SimulatorDriver
+import app.snapsync.journeys.device.settle
 import java.io.File
 import java.io.PrintStream
 
@@ -37,14 +39,27 @@ fun program(
                         runner = runner,
                     ).run()
                 }
-                else -> usage("no platform '$platform' (android)")
+                "ios" -> device(flags, out) { evidence ->
+                    IosRun(
+                        SimulatorDriver(ProcessShell),
+                        ProcessShell,
+                        app = flags.optional("app")?.let(::File) ?: simulatorApp(),
+                        udid = flags.optional("udid"),
+                        api = File(flags.optional("api") ?: "api"),
+                        evidence = evidence,
+                        runner = runner,
+                    ).run()
+                }
+                else -> usage("no platform '$platform' (ios, android)")
             }
-            "journeys-only" -> {
-                val passed = runner.run(
-                    listOf(JOURNEYS),
-                    mapOf(APP_A to flags.required("app"), BACKEND to flags.required("backend")),
-                )
-                if (passed) EXIT_OK else EXIT_FAILED
+            "find-device" -> out.println(SimulatorDriver(ProcessShell).imageIphone().orEmpty()).let { EXIT_OK }
+            "settle" -> {
+                val udid = flags.required("udid")
+                val log = File(
+                    flags.optional("log") ?: "build/settle-photo-migration.log",
+                ).apply { parentFile?.mkdirs() }
+                settle(SimulatorDriver(ProcessShell), ProcessShell, udid, log) { out.println("settle: $it") }
+                EXIT_OK
             }
             else -> usage("no command '$command'")
         }
@@ -71,6 +86,8 @@ private fun device(flags: Flags, out: PrintStream, run: (Evidence) -> Boolean): 
                 )
                 EXIT_FAILED
             }
+        } catch (e: UsageError) {
+            throw e
         } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
             evidence.result("journeys: FAILED — ${e.message ?: e::class.simpleName}")
             out.flush()
@@ -78,6 +95,11 @@ private fun device(flags: Flags, out: PrintStream, run: (Evidence) -> Boolean): 
         }
     }
 }
+
+/** The simulator app `scripts/journeys-build ios` leaves: the arm64 rig build, ad-hoc signed. */
+private fun simulatorApp(): File = File("build/ios/Build/Products").walkTopDown().maxDepth(2)
+    .firstOrNull { it.isDirectory && it.extension == "app" && it.parentFile.name.endsWith("-iphonesimulator") }
+    ?: usage("no simulator .app under build/ios/Build/Products — build it first: scripts/journeys-build ios")
 
 /** `--<name> <value>` pairs. */
 internal class Flags private constructor(private val values: Map<String, String>) {
@@ -125,13 +147,21 @@ internal const val EXIT_USAGE = 2
 private val HELP = """
     journeys <command> [--<flag> <value>…]
 
+      run --platform ios [--udid <simulator>] [--app <path>] [--api <dir>] [--out <dir>]
+          The simulator app's port contracts under every grant, and the journeys, on ONE simulator — the image's settled
+          iPhone 17 (--udid, from find-device) or one created and deleted. Built first: scripts/journeys-build ios.
+          Evidence in --out (build/ios-journeys). Exit 0 passed, 1 failed (why in <out>/result), 2 usage.
+
+      find-device
+          The UDID of the runner image's own iPhone 17 on its newest iOS runtime; nothing when it carries none.
+
+      settle --udid <simulator> [--log <file>]
+          Boots the simulator once, stops the daemons nothing tested needs, awaits its photo library's migration and the
+          load's fall, and shuts it down: what the CI cache keeps (keyed on device/Settle.kt).
+
       run --platform android --serial <adb serial> [--adb <path>] [--apk <path>] [--api <dir>] [--out <dir>]
           The whole device run on a BOOTED emulator: the local backend, the rig release build installed and granted,
           its adapters chosen, the journeys and the force-stop journey. Built first: scripts/journeys-build android.
           Evidence in --out (build/android-journeys). Exit 0 passed, 1 failed (why in <out>/result), 2 usage.
-
-      journeys-only --app <url> --backend <url>
-          The journeys alone, against the app whose control channel answers on --app and the local backend's API base
-          --backend — both already up. Exit 0 passed, 1 a journey failed, 2 usage.
 
 """.trimIndent()

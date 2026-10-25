@@ -7,11 +7,16 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 
-/** A [Shell] that records each command line and answers what [answers] gives it for one. */
+/** A [Shell] that records each command line, and the environment it added, and answers what [answers] gives it. */
 class RecordingShell(private val answers: (List<String>) -> Answer = { Answer(0, "", "") }) : Shell {
     val commands = mutableListOf<List<String>>()
+    val envs = mutableListOf<Map<String, String>>()
 
-    override fun run(command: List<String>, within: Duration): Answer = answers(command).also { commands += command }
+    override fun run(command: List<String>, within: Duration, env: Map<String, String>): Answer =
+        answers(command).also {
+            commands += command
+            envs += env
+        }
 
     override fun runInto(command: List<String>, into: File, within: Duration): Answer = run(command, within)
 }

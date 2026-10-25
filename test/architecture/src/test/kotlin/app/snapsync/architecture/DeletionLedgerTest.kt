@@ -280,6 +280,12 @@ class DeletionLedgerTest {
         val retired = listOf(
             "scripts/android" + "-journeys" to "the Android run is `journeys run --platform android`",
             "scripts/android" + "-force-stop-check" to "the force-stop check is `ForceStopJourney`, run on every push",
+            "scripts/sim" + "-contracts" to "the iOS run is `journeys run --platform ios`",
+            "scripts/sim" + "-settle" to "the settle is `journeys settle`, its daemons in `device/Settle.kt`",
+            "scripts/lib/sim" + ".sh" to "`journeys find-device` and `Settle.kt`'s daemon list",
+            "scripts/lib/journeys" + ".sh" to "the program keeps the stages and runs the journeys",
+            "scripts/await" + "-photo-migration.py" to "`PhotoMigrations`, tested in `build`",
+            "scripts/await_photo" + "_migration_test.py" to "`PhotoMigrationsTest`",
         )
         val resurrections = retired.filter { (path, _) -> File(repoRoot, path).exists() }
             .map { (path, now) -> "$path ($now — phase 13)" }
