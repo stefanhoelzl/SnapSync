@@ -2,12 +2,12 @@ package app.snapsync.journeys
 
 import app.snapsync.client.RigClient
 import app.snapsync.control.Choices
-import app.snapsync.domain.invite.InviteLinkVerdict
-import app.snapsync.domain.sharing.Direction
-import app.snapsync.format.InviteLinkText
 import app.snapsync.control.Verifies
 import app.snapsync.control.person
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.InviteLinkText
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.GalleryLevers
 import app.snapsync.levers.MovingFile
@@ -16,15 +16,17 @@ import app.snapsync.levers.OsLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.SeedKind
 import app.snapsync.model.ResourceRole
+import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncCounts
+import app.snapsync.ui.state.UiState
 import app.snapsync.wire.api.Limits
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
@@ -42,7 +44,6 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Clock
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
@@ -66,7 +67,8 @@ import kotlin.time.Duration.Companion.seconds
  * shared whole. The moving photos are real camera files: the Live Photo an SE2 took (`moving/`, committed) and five
  * phones' motion photos (`motionphoto/`, fetched by the build from Immich's test assets — `build.gradle.kts` says why).
  *
- * The same journeys run on iOS (`scripts/sim-contracts`) and Android (`scripts/android-journeys`).
+ * The same journeys run on iOS and Android, by the device runs' program (`journeys`, this module's `main`), which waits
+ * on what the screen shows and then reads the real system once: the backend's union, the photo library.
  */
 class Journeys {
 
@@ -114,7 +116,7 @@ class Journeys {
         requirement = "Only the original is uploaded, complete",
         scenario = "An Android motion photo travels as one file",
     )
-    fun a_member_creates_shares_and_receives_another_members_photos() = runBlocking {
+    fun aMemberCreatesSharesAndReceivesAnotherMembersPhotos() = runBlocking {
         RigClient(appA).use { a ->
             // Never drive an app baked for another backend: that is the shared production one, and these journeys
             // create events and upload photos.
@@ -141,12 +143,12 @@ class Journeys {
         val startsAt = today.plus(-1, DateTimeUnit.DAY).atTime(LocalTime(0, 0))
         val endsAt = today.plus(3, DateTimeUnit.DAY).atTime(LocalTime(0, 0))
         a.person().createEvent("Journey", local(startsAt), local(endsAt))
-        val gate = a.awaitState(JOIN) { (it.ui.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
-        val event = (gate.ui.layer as Layer.JoiningEvent).eventId
+        val gate = a.awaitScreen(JOIN, "the created event's join screen, its details loaded") {
+            (it.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed
+        }
+        val event = (gate.layer as Layer.JoiningEvent).eventId
         a.person().confirmJoin(Choices(direction = Direction.Both, saveToAlbum = false))
-        val joined = a.awaitState(JOIN) { it.ready.configResolved }
-        assertTrue(joined.ui.layer is Layer.Joined, "A reached the joined screen: ${joined.ui}")
-        assertTrue(joined.ready.eventId == event)
+        a.awaitScreen(JOIN, "the joined screen of event $event") { joinedTo(it) == event }
         return event
     }
 
@@ -162,9 +164,14 @@ class Journeys {
         assertTrue(admitted.size >= 2, "the policy seed admits its above-floor half: $admitted")
 
         a.levers(OsLevers).foreground()
-        eventually(UPLOAD, "A's photos in the event union") {
-            unionAssetIds(http, event).containsAll(admitted)
-        }
+        a.awaitScreen(UPLOAD, "A's ${admitted.size} admitted photos shared") { sharedCount(it).reached(admitted.size) }
+        // Shared means stored: the backend serves them in the union from then on (one read, no retry — a union that
+        // lags the count is a gap of its own, which a retry would hide).
+        val union = unionAssetIds(http, event)
+        assertTrue(
+            union.containsAll(admitted),
+            "A's shared photos in the event union: admitted $admitted, union $union",
+        )
     }
 
     /**
@@ -186,17 +193,14 @@ class Journeys {
         val shared = member.share(event, count = MEMBER_PHOTOS, creationDate = "${today}T12:00:00Z")
 
         val before = a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census.total
+        val receivedBefore = receivedCount(a.state().ui).done
         a.levers(OsLevers).foreground()
-        val received = a.awaitState(DOWNLOAD) {
-            it.download.total >= shared.size && it.download.downloaded == it.download.total
+        a.awaitScreen(DOWNLOAD, "the member's ${shared.size} photos received") {
+            receivedCount(it).reached(receivedBefore + shared.size)
         }
-        assertTrue(
-            received.download.downloaded >= shared.size,
-            "A downloaded the member's photos: ${received.download}",
-        )
-        eventually(DOWNLOAD, "the member's photos in A's library") {
-            a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census.total >= before + shared.size
-        }
+        // Received means imported into the library: one read.
+        val after = a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census.total
+        assertTrue(after >= before + shared.size, "the member's ${shared.size} photos in A's library: $before → $after")
     }
 
     /**
@@ -207,22 +211,23 @@ class Journeys {
      * the SE2's stuck motion photo with sound — fails here.
      */
     private suspend fun receiveMovingPhotos(a: RigClient, member: Member) {
-        val event = (a.state().ready.eventId) ?: fail("A is not joined")
+        val event = joinedTo(a.state().ui) ?: fail("A is not joined")
         val photos = listOf(LIVE_PHOTO.map(::part)) + MOTION_PHOTOS.map { listOf(part(it)) }
         val before = a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census
         val movingBefore = before.moving ?: fail("this host does not count moving photos: ${a.levers(RigLevers).advertise().host}")
-        val downloadedBefore = a.state().download.downloaded
+        val receivedBefore = receivedCount(a.state().ui).done
         val today = Clock.System.todayIn(TimeZone.UTC)
         member.share(event, photos, creationDate = "${today}T12:00:00Z")
 
         a.levers(OsLevers).foreground()
-        a.awaitState(DOWNLOAD) {
-            it.download.downloaded >= downloadedBefore + photos.size && it.download.downloaded == it.download.total
+        a.awaitScreen(DOWNLOAD, "the member's ${photos.size} moving photos received") {
+            receivedCount(it).reached(receivedBefore + photos.size)
         }
-        eventually(DOWNLOAD, "the member's ${photos.size} moving photos moving in A's library") {
-            val census = a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census
-            census.total >= before.total + photos.size && (census.moving ?: 0) >= movingBefore + photos.size
-        }
+        val census = a.levers(GalleryLevers).read(cutoff = WHOLE_LIBRARY).census
+        assertTrue(
+            census.total >= before.total + photos.size && (census.moving ?: 0) >= movingBefore + photos.size,
+            "the member's ${photos.size} moving photos moving in A's library: $before → $census",
+        )
     }
 
     /**
@@ -238,16 +243,21 @@ class Journeys {
         }
         // An hour ahead, as the policy seed dates its photos: inside an event that started yesterday.
         val taken = (Clock.System.now() + 1.hours).toString()
+        val sharedBefore = sharedCount(a.state().ui).done
         photos.forEach { files ->
             val body = MovingPhoto(taken, files.map { MovingFile(it.substringAfterLast('/'), base64(fixture(it))) })
             a.levers(GalleryLevers).addMoving(body)
         }
 
         a.levers(OsLevers).foreground()
-        eventually(UPLOAD, "A's ${photos.size} moving photo(s) in the event union, whole") {
-            val own = union(http, event).filter { it["deviceId"]?.jsonPrimitive?.content != member.deviceId }
-            photos.all { files -> own.any { shapeOf(it) == files.map(::part).map { p -> p.role.wire to p.filename }.toSet() } }
+        a.awaitScreen(UPLOAD, "A's ${photos.size} moving photo(s) shared") {
+            sharedCount(it).reached(sharedBefore + photos.size)
         }
+        val own = union(http, event).filter { it["deviceId"]?.jsonPrimitive?.content != member.deviceId }
+        val whole = photos.all { files ->
+            own.any { shapeOf(it) == files.map(::part).map { p -> p.role.wire to p.filename }.toSet() }
+        }
+        assertTrue(whole, "A's ${photos.size} moving photo(s) in the event union, whole: ${own.map(::shapeOf)}")
     }
 
     /** The (role, filename) pairs an asset of the union is made of. */
@@ -270,14 +280,16 @@ class Journeys {
 
     private fun fixture(path: String): ByteArray =
         checkNotNull(Journeys::class.java.getResourceAsStream("/$path")) {
-            "the journeys' resource $path is missing — `motionphoto/` is fetched by :test:integration:fetchMotionPhotos"
+            "the journeys' resource $path is missing — `motionphoto/` is fetched by :test:journeys:fetchMotionPhotos"
         }.use { it.readBytes() }
 
     private fun base64(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
 
     /** The event's union — the backend's public surface, read as a member reads it. */
     private suspend fun union(http: HttpClient, event: String): List<JsonObject> {
-        val body = http.get("$backend/events/$event/files") { header(Limits.VERSION_HEADER, SERVED_VERSION) }.bodyAsText()
+        val body = http.get(
+            "$backend/events/$event/files",
+        ) { header(Limits.VERSION_HEADER, SERVED_VERSION) }.bodyAsText()
         return runCatching { Json.parseToJsonElement(body).jsonArray.map { it.jsonObject } }.getOrDefault(emptyList())
     }
 
@@ -285,13 +297,20 @@ class Journeys {
     private suspend fun unionAssetIds(http: HttpClient, event: String): Set<AssetId> =
         union(http, event).mapTo(mutableSetOf()) { AssetId(it.getValue("assetId").jsonPrimitive.content) }
 
-    private suspend fun eventually(timeout: Duration, what: String, condition: suspend () -> Boolean) {
-        val deadline = kotlin.time.TimeSource.Monotonic.markNow() + timeout
-        while (!condition()) {
-            if (deadline.hasPassedNow()) fail("$what: not within $timeout")
-            delay(POLL)
-        }
-    }
+    /** The event the joined screen shows, or `null` off it. */
+    private fun joinedTo(ui: UiState): String? = (ui.layer as? Layer.Joined)?.membership?.eventId
+
+    /** The joined screen's shared count — nothing counted where the screen shows none. */
+    private fun sharedCount(ui: UiState): DirectionCount.Progress = counts(ui) { it.shared }
+
+    /** The joined screen's received count — nothing counted where the screen shows none. */
+    private fun receivedCount(ui: UiState): DirectionCount.Progress = counts(ui) { it.received }
+
+    private fun counts(ui: UiState, direction: (SyncCounts) -> DirectionCount): DirectionCount.Progress =
+        (ui.layer as? Layer.Joined)?.counts?.let(direction) as? DirectionCount.Progress ?: DirectionCount.Progress(0, 0)
+
+    /** At least [n] through, and nothing left: the count the journey's act should end in. */
+    private fun DirectionCount.Progress.reached(n: Int): Boolean = done >= n && complete
 
     private fun local(value: LocalDateTime): String = value.toString()
 
@@ -299,7 +318,6 @@ class Journeys {
         val JOIN = 60.seconds
         val UPLOAD = 180.seconds
         val DOWNLOAD = 180.seconds
-        val POLL = 1.seconds
         const val SERVED_VERSION = "99.0"
         const val WHOLE_LIBRARY = "1970-01-01T00:00:00Z"
         const val MEMBER_PHOTOS = 2

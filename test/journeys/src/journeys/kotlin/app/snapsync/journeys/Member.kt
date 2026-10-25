@@ -1,10 +1,10 @@
 package app.snapsync.journeys
 
-import app.snapsync.format.EventKeyText
 import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.contracts.attest.SoftwareKeyAttestation
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.format.EventKeyText
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -48,7 +48,8 @@ import javax.crypto.spec.SecretKeySpec
 class Member(private val http: HttpClient, backend: String) {
     private val backend = backend.trimEnd('/')
     val deviceId: String = UUID.randomUUID().toString()
-    private val tokens = DeviceTokens(KtorHttpTransport(http), this.backend, ::SoftwareKeyAttestation, { SERVED_VERSION })
+    private val tokens =
+        DeviceTokens(KtorHttpTransport(http), this.backend, ::SoftwareKeyAttestation, { SERVED_VERSION })
 
     /** The joined event's key, as its invite carried it — `null` for a plain event. */
     private var eventKey: ByteArray? = null
@@ -62,7 +63,11 @@ class Member(private val http: HttpClient, backend: String) {
 
     /** Uploads [count] real photos captured at [creationDate] and publishes them; answers their asset ids. */
     suspend fun share(eventId: String, count: Int, creationDate: String): Set<AssetId> =
-        share(eventId, List(count) { listOf(Part(ResourceRole.PRIMARY, "image/jpeg", FILENAME, JPEG)) }, creationDate).toSet()
+        share(
+            eventId,
+            List(count) { listOf(Part(ResourceRole.PRIMARY, "image/jpeg", FILENAME, JPEG)) },
+            creationDate,
+        ).toSet()
 
     /**
      * Uploads [photos] — each the parts ONE photo is made of, as a device uploads it: a still, a Live Photo's still and
@@ -93,7 +98,12 @@ class Member(private val http: HttpClient, backend: String) {
     /** One file of a photo, as a device uploads it: its [role], [contentType], camera [filename] and [bytes]. */
     class Part(val role: ResourceRole, val contentType: String, val filename: String, val bytes: ByteArray) {
         fun resource(assetId: AssetId) =
-            ManifestResource(role = role, contentType = contentType, key = uploadKey(assetId, role, filename), filename = filename)
+            ManifestResource(
+                role = role,
+                contentType = contentType,
+                key = uploadKey(assetId, role, filename),
+                filename = filename,
+            )
     }
 
     private suspend fun upload(eventId: String, assetId: AssetId, part: Part) {
@@ -135,7 +145,11 @@ class Member(private val http: HttpClient, backend: String) {
             val last = end == plain.size
             val nonce = EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, fileKey, GCMParameterSpec(EncryptedFileFormat.TAG_LENGTH * Byte.SIZE_BITS, nonce.bytes))
+            cipher.init(
+                Cipher.ENCRYPT_MODE,
+                fileKey,
+                GCMParameterSpec(EncryptedFileFormat.TAG_LENGTH * Byte.SIZE_BITS, nonce.bytes),
+            )
             file += cipher.doFinal(plain, offset, end - offset)
             offset = end
             segment++

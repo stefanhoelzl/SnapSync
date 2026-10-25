@@ -182,7 +182,7 @@ internal object Traceability {
     private val ESCAPED = setOf('"', '\\', '$')
 
     /**
-     * Source sets holding tests that are named neither `test` nor `*Test`: the all-real journeys and the
+     * Source sets holding tests that are named neither `test` nor `*Test`: the all-real journeys (`:test:journeys`), the
      * screenshot captures (`:test:integration`), and the crash reporter's shared wire parsing
      * (`:adapter:generic:sentry`). Pinned: a new one is production to [NoSpecCitationTest] until listed here.
      */

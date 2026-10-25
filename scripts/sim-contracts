@@ -153,7 +153,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 stage "xcodebuild: done"
 # The journeys compile now, on the daemon the xcodebuild's Gradle left running, so their run at the end compiles
 # nothing. Then every Gradle and Kotlin daemon goes: they hold gigabytes the simulator would otherwise swap against.
-./gradlew -q :test:integration:journeysClasses :test:integration:journeysClasspath :test:cli:installDist \
+./gradlew -q :test:journeys:installDist :test:cli:installDist \
     > "$OUT/journeys-compile.log" 2>&1 || { cat "$OUT/journeys-compile.log"; fail "the journeys did not compile"; }
 ./gradlew -q --stop >/dev/null 2>&1
 pkill -f 'org.jetbrains.kotlin.daemon.KotlinCompileDaemon' 2>/dev/null

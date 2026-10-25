@@ -1392,7 +1392,7 @@ The moving photos are **real camera files**, because a synthesized one is only a
 (the motion photo whose sound hung every iPhone import passed a two-frame, soundless fixture): an iPhone SE2's own Live
 Photo, scrubbed of its location and silenced, committed under `journeys/resources/moving/`, and five phones' motion
 photos (Pixel 6 Pro; Pixel 8a, two video tracks; Samsung One UI 5 and 6 with sound; a One UI 6 HEIC) from Immich's
-test assets. Those are AGPL-3.0, so they are never committed: `:test:integration:fetchMotionPhotos` fetches them pinned
+test assets. Those are AGPL-3.0, so they are never committed: `:test:journeys:fetchMotionPhotos` fetches them pinned
 to one commit and checks each SHA-256, into the journeys' resources under `motionphoto/`. A moving photo reaches the
 app's library through `gallery.addMoving` (the camera's files as they are), and the library's census
 counts what moves (`census.moving`: Live Photos on iPhone, motion photos whose video is where their XMP says on
@@ -1400,17 +1400,21 @@ Android). It is never a JVM-host lever or a private route,
 because a member the backend could tell apart from a device is not a member. One simulator, because a second
 fresh simulator's first-boot work swamped the hosted runner (it tripled the job and made the journeys flaky).
 
-- Source set `journeys` in `:test:integration`, task `:test:integration:journeys`. It is **outside
-  `build`**.
+- Source set `journeys` in `:test:journeys`. `build` compiles it and never runs it: the module's program runs it
+  (`journeys`, its `main`, installed by `:test:journeys:installDist`), in its own JVM through JUnit.
 - They run in the `journeys (ios)` CI job (`scripts/sim-contracts` boots the simulator and the backend, after the
   simulator app's contracts) and the `journeys (android)` one (`scripts/android-journeys`, on an emulator the job
   boots, over every real adapter Android has — only the crash reporter is mocked, and the iOS-only upload-job queue
-  and extension registration). There they run on a bare JVM, `java … org.junit.runner.JUnitCore app.snapsync.journeys.Journeys`
-  over the classpath `:test:integration:journeysClasspath` writes at compile time, with
-  `-Dsnapsync.journey.appA|backend`. No Gradle is alive next to the simulator: a Gradle daemon and a test JVM
-  starting there pushed the runner into swap, and the app timed out a response the backend had sent 9 s
-  earlier (run 36173548419). Locally, `:test:integration:journeys -Psnapsync.journey.appA|backend` runs the
-  same test. They gate merges. On a failure the job prints the failing assertion's message in its log.
+  and extension registration). There they run on a bare JVM, `journeys journeys-only --app <url> --backend <url>`.
+  No Gradle is alive next to the simulator: a Gradle daemon and a test JVM starting there pushed the runner into
+  swap, and the app timed out a response the backend had sent 9 s earlier (run 36173548419). Locally, the same
+  command runs them against an app and a backend already up. They gate merges. On a failure the job prints the
+  failing assertion's message in its log.
+- They **wait on what the screen shows** (`RigClient.awaitScreen`, on the device host's events), then read the real
+  system once — the backend's union, the photo library — and never poll. The real systems have no event; a read
+  that disagrees with the screen fails at once, naming what it saw. `TestsWaitOnEventsTest` holds them to it (every
+  journey verifies a requirement, none polls, none reads the app's log); the wall-clock rule is not theirs, because a
+  device runs on real time and the bound is the client's wait.
 - They **fail, never skip**, when an address is missing.
 - **Read a journey failure first as a missing contract clause**: the mocks lack a behaviour. Add the
   clause, and the mocked suite then covers it.

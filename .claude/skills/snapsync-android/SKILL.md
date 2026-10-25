@@ -212,7 +212,7 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :adapter:android:connectedAndroidDeviceTe
 # reports: adapter/android/build/reports/androidTests/ ; either way the build serves scripts/transfer-fixture.py
 # on the host (build/transfer-fixture.log), reached from the emulator as http://10.0.2.2:<a port each build chooses>
 
-./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
+./gradlew :app:android:assembleRelease :test:journeys:installDist :test:cli:installDist \
     -Psnapsync.rig=true -Psnapsync.deployment=local && ./gradlew --stop
 ANDROID_SERIAL=emulator-5554 JAVA_HOME=<a JDK 25> ADB=$ANDROID_HOME/platform-tools/adb scripts/android-journeys
 # evidence: build/android-journeys/

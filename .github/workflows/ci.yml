@@ -797,8 +797,8 @@ jobs:
       - name: Build the rig app and the journeys
         if: matrix.platform == 'android'
         run: |
-          ./gradlew :app:android:assembleRelease :test:integration:journeysClasses :test:integration:journeysClasspath \
-            :test:cli:installDist -Psnapsync.rig=true -Psnapsync.deployment=local
+          ./gradlew :app:android:assembleRelease :test:journeys:installDist :test:cli:installDist \
+            -Psnapsync.rig=true -Psnapsync.deployment=local
           ./gradlew --stop
       # The emulator (`.github/actions/android-emulator`): KVM, the system image, and the journeys run on it.
       - name: Run the journeys on the emulator
