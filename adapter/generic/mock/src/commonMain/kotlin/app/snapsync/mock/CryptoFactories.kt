@@ -1,8 +1,8 @@
 package app.snapsync.mock
 
-import app.snapsync.model.AesKey
-import app.snapsync.model.GcmNonce
+import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.GcmNonce
 
 /**
  * A stand-in [Crypto] for common code, where no platform's primitives are reachable — **not cryptography**, and never

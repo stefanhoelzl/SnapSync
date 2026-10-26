@@ -1,7 +1,12 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
@@ -9,19 +14,19 @@ import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.EventKeyText
+import app.snapsync.format.HeadRead
+import app.snapsync.format.Hmac
 import app.snapsync.format.TimestampText
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetRef
-import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.HeadRead
-import app.snapsync.model.Hmac
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -190,7 +195,9 @@ class EncryptedTransfersTest {
         resource,
     )
 
-    private fun adFor(device: String) = EncryptedFileFormat.associatedData(EVENT, device, ASSET, "primary")
+    private fun adFor(device: String) = EncryptedFileFormat.associatedData(
+        FileBinding(EventId.parse(EVENT)!!, DeviceId.parse(device)!!, AssetId.parse(ASSET)!!, ResourceRole.PRIMARY),
+    )
 
     @Test
     fun a_sealed_upload_is_what_another_member_opens_and_the_plaintext_never_waits_on_disk() = runTest {
@@ -245,9 +252,9 @@ class EncryptedTransfersTest {
             EncryptedFileFormat.decodeHead(decodeBase64(target.headers.getValue(EncryptedFileFormat.FILE_HEAD_HEADER))),
         ).head
         val eventKey = EventKeyText.decode(minted.linkKey)!!
-        assertContentEquals(EncryptedFileFormat.keyIdOf(eventKey, Hmac(crypto::hmacSha256)), head.keyId)
+        assertContentEquals(EncryptedFileFormat.keyIdOf(eventKey, portHmac(crypto)), head.keyId)
         assertContentEquals(
-            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, adFor(DEVICE_A), Hmac(crypto::hmacSha256)).bytes,
+            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, adFor(DEVICE_A), portHmac(crypto)),
             EventKeyText.decode(target.headers.getValue(EncryptedFileFormat.FILE_KEY_HEADER)),
             "the one file's key, bound to this resource — never the event key",
         )
@@ -431,4 +438,9 @@ class EncryptedTransfersTest {
         controls.encrypts = false
         assertEquals(null, minting.forNewEvent(), "a rig build may still create a plain event")
     }
+}
+
+/** The format's HMAC over [crypto]'s. */
+private fun portHmac(crypto: Crypto): Hmac = object : Hmac {
+    override fun mac(key: ByteArray, message: ByteArray): ByteArray = crypto.hmacSha256(key, message)
 }

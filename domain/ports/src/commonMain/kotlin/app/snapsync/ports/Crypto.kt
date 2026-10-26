@@ -1,18 +1,16 @@
 package app.snapsync.ports
 
-import app.snapsync.model.AesKey
-import app.snapsync.model.GcmNonce
-
 /**
  * **The platform's cryptographic primitives** — one external system, and nothing decided here: which key, which nonce,
- * how a file is cut into segments and what it is bound to are the encrypted file format's (`:domain:model`'s
- * `EncryptedFileFormat`) and the services' business. Each adapter answers with its platform's own implementation —
+ * how a file is cut into segments and what it is bound to are the encrypted file format's (`:domain:format`'s
+ * `EncryptedFileFormat`) and the data layer's business. Each adapter answers with its platform's own implementation —
  * CryptoKit and CommonCrypto on iOS, the platform's JCA provider on Android and the JVM — so no cryptography is
  * written here, only framed.
  *
  * Every member is synchronous and thread-agnostic: a segment is 64 KiB, which the slowest supported phone seals in
- * well under a millisecond. None throws: a key and a nonce are of their exact length by construction ([AesKey],
- * [GcmNonce]), and a seal that does not authenticate opens to `null`.
+ * well under a millisecond. None throws: a key and a nonce are handed over at their exact lengths ([AesKey],
+ * [GcmNonce] — the data layer's cipher builds them from the format's), and a seal that does not authenticate opens to
+ * `null`.
  *
  * Its promises are the port contract `CryptoContract`: published known-answer vectors for HMAC-SHA256 (RFC 4231) and
  * AES-256-GCM, a tampered seal that never opens, and random bytes that are not repeated.
@@ -40,3 +38,14 @@ interface Crypto : Port {
      */
     fun sha256(chunks: Sequence<ByteArray>): ByteArray
 }
+
+/**
+ * An AES-256 key — 32 bytes, as the encrypted file format derives it. Its builder makes it of that length: a platform
+ * cipher handed 16 or 24 bytes would quietly run AES-128 or AES-192.
+ */
+class AesKey(val bytes: ByteArray) {
+    override fun toString(): String = "AesKey(***)"
+}
+
+/** An AES-GCM nonce — 12 bytes, as the encrypted file format builds it. */
+class GcmNonce(val bytes: ByteArray)

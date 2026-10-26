@@ -2,21 +2,21 @@ package app.snapsync.services.upload
 
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.AesKey
 import app.snapsync.model.FileAccess
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileLocation
 import app.snapsync.model.FileResult
 import app.snapsync.model.FileTail
-import app.snapsync.model.GcmNonce
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
+import app.snapsync.ports.AesKey
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.GcmNonce
 import app.snapsync.ports.Transfer
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferHandle

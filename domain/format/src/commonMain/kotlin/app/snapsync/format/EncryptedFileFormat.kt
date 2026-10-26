@@ -1,8 +1,12 @@
-package app.snapsync.model
+package app.snapsync.format
+
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.program.InvalidProgramState
 
 /**
- * **The encrypted file format** of an encrypted event's stored photo — the layout alone, pure; the primitives it is
- * sealed with are the `Crypto` port's, and the reading and writing of files the services'. Its TypeScript twin is
+ * **The encrypted file format** of an encrypted event's stored photo — the layout alone, in bytes, naming no port: the
+ * primitives it is sealed with are the `Crypto` port's, and the reading and writing of files the data layer's
+ * (`FileCipher`). Its TypeScript twin is
  * `api/src/encrypted-file.ts` (the edge encrypts the iOS extension's uploads, the event page decrypts in a browser);
  * both are held to `test/vectors/encrypted-file.json`, produced by an implementation independent of either and
  * decrypted by Google Tink.
@@ -15,7 +19,7 @@ package app.snapsync.model
  *          nonce = nonce prefix ‖ segment number (u32 big-endian) ‖ last (0|1)
  * ```
  * The segment key is HKDF-SHA256(event key, salt, [associatedData]): the associated data names the resource the file
- * is, so a file moved to another event, device, asset or role fails to decrypt. The key id is HKDF-SHA256(event key,
+ * is (a [FileBinding]), so a file moved to another event, device, asset or role fails to decrypt. The key id is HKDF-SHA256(event key,
  * no salt, "snapsync/key-id/v1") cut to 8 bytes — what the event row holds, telling a wrong key from a damaged file
  * without revealing the key.
  */
@@ -49,13 +53,17 @@ object EncryptedFileFormat {
         KEY_ID_LENGTH,
     )
 
-    /** The key one file's segments are sealed with. */
-    fun fileKeyOf(eventKey: ByteArray, salt: ByteArray, associatedData: ByteArray, hmac: Hmac): AesKey =
-        AesKey(Hkdf.derive(hmac, eventKey, salt, associatedData, KEY_LENGTH))
+    /** The key one file's segments are sealed with: [KEY_LENGTH] bytes. */
+    fun fileKeyOf(eventKey: ByteArray, salt: ByteArray, associatedData: ByteArray, hmac: Hmac): ByteArray =
+        Hkdf.derive(hmac, eventKey, salt, associatedData, KEY_LENGTH)
 
-    /** What a file is bound to. The ids are validated path segments, so no `/` occurs inside one. */
-    fun associatedData(eventId: String, deviceId: String, assetId: String, role: String): ByteArray =
-        "snapsync/v1/$eventId/$deviceId/$assetId/$role".encodeToByteArray()
+    /**
+     * What a file bound to [binding] is sealed with as its associated data — the one place it is spelled. The ids are
+     * validated path segments, so no `/` occurs inside one.
+     */
+    fun associatedData(binding: FileBinding): ByteArray =
+        "snapsync/v1/${binding.event}/${binding.device}/${binding.asset}/${ResourceRoleText.of(binding.role)}"
+            .encodeToByteArray()
 
     /** How many plaintext bytes segment [segment] carries, unless it is the last. */
     fun plaintextSegmentLength(segment: Int): Int = SEGMENT_LENGTH - TAG_LENGTH - if (segment == 0) HEADER_LENGTH else 0
@@ -63,17 +71,18 @@ object EncryptedFileFormat {
     /** How many ciphertext bytes segment [segment] occupies, unless it is the last. */
     fun ciphertextSegmentLength(segment: Int): Int = plaintextSegmentLength(segment) + TAG_LENGTH
 
-    /** Segment [segment]'s nonce: [noncePrefix] (a [FileHead]'s, [NONCE_PREFIX_LENGTH] bytes) ‖ segment ‖ last. */
-    fun segmentNonce(noncePrefix: ByteArray, segment: Int, last: Boolean): GcmNonce = GcmNonce(
-        ByteArray(NONCE_LENGTH).also {
-            noncePrefix.copyInto(it, endIndex = NONCE_PREFIX_LENGTH)
-            it[7] = (segment ushr 24).toByte()
-            it[8] = (segment ushr 16).toByte()
-            it[9] = (segment ushr 8).toByte()
-            it[10] = segment.toByte()
-            it[11] = if (last) 1 else 0
-        },
-    )
+    /**
+     * Segment [segment]'s nonce, [NONCE_LENGTH] bytes: [noncePrefix] (a [FileHead]'s, [NONCE_PREFIX_LENGTH] bytes) ‖
+     * segment ‖ last.
+     */
+    fun segmentNonce(noncePrefix: ByteArray, segment: Int, last: Boolean): ByteArray = ByteArray(NONCE_LENGTH).also {
+        noncePrefix.copyInto(it, endIndex = NONCE_PREFIX_LENGTH)
+        it[7] = (segment ushr 24).toByte()
+        it[8] = (segment ushr 16).toByte()
+        it[9] = (segment ushr 8).toByte()
+        it[10] = segment.toByte()
+        it[11] = if (last) 1 else 0
+    }
 
     /** The prefix and header, as they open the file. */
     fun encodeHead(head: FileHead): ByteArray = ByteArray(HEAD_LENGTH).also {
@@ -99,21 +108,24 @@ object EncryptedFileFormat {
     }
 }
 
-/** An encrypted file's opening bytes: everything before its first segment. */
-class FileHead(val keyId: ByteArray, val salt: ByteArray, val noncePrefix: ByteArray) {
-    init {
-        require(keyId.size == EncryptedFileFormat.KEY_ID_LENGTH) { "key id length ${keyId.size}" }
-        require(salt.size == EncryptedFileFormat.SALT_LENGTH) { "salt length ${salt.size}" }
-        require(
-            noncePrefix.size == EncryptedFileFormat.NONCE_PREFIX_LENGTH,
-        ) { "nonce prefix length ${noncePrefix.size}" }
-    }
+/** An encrypted file's opening bytes: everything before its first segment, each part of its exact length. */
+class FileHead internal constructor(val keyId: ByteArray, val salt: ByteArray, val noncePrefix: ByteArray) {
 
     override fun equals(other: Any?): Boolean =
         other is FileHead && keyId.contentEquals(other.keyId) && salt.contentEquals(other.salt) &&
             noncePrefix.contentEquals(other.noncePrefix)
 
     override fun hashCode(): Int = keyId.contentHashCode()
+
+    companion object {
+        /** The head of these parts, or `null` unless each is of its length ([EncryptedFileFormat]'s constants). */
+        fun of(keyId: ByteArray, salt: ByteArray, noncePrefix: ByteArray): FileHead? = when {
+            keyId.size != EncryptedFileFormat.KEY_ID_LENGTH -> null
+            salt.size != EncryptedFileFormat.SALT_LENGTH -> null
+            noncePrefix.size != EncryptedFileFormat.NONCE_PREFIX_LENGTH -> null
+            else -> FileHead(keyId, salt, noncePrefix)
+        }
+    }
 }
 
 /** Whether a file's opening bytes are this format. */
@@ -122,8 +134,8 @@ sealed interface HeadRead {
     data class Refused(val reason: String) : HeadRead
 }
 
-/** HMAC-SHA256 of a message under a key — the one primitive HKDF is built from. */
-fun interface Hmac {
+/** HMAC-SHA256 of a message under a key — the one primitive HKDF is built from, which data adapts over the port. */
+interface Hmac {
     fun mac(key: ByteArray, message: ByteArray): ByteArray
 }
 
@@ -132,8 +144,9 @@ object Hkdf {
     private const val HASH_LENGTH = 32
     private const val MAX_BLOCKS = 255
 
+    /** [length] bytes of output keying material; [length] is one of the format's own, never more than 255 blocks. */
     fun derive(hmac: Hmac, ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
-        require(length in 0..MAX_BLOCKS * HASH_LENGTH) { "HKDF length $length" }
+        if (length !in 0..MAX_BLOCKS * HASH_LENGTH) throw InvalidProgramState("HKDF derives only the format's lengths")
         val prk = hmac.mac(if (salt.isEmpty()) ByteArray(HASH_LENGTH) else salt, ikm)
         val out = ByteArray(length)
         var previous = ByteArray(0)
@@ -147,36 +160,5 @@ object Hkdf {
             block++
         }
         return out
-    }
-}
-
-/**
- * An AES-256 key: exactly [EncryptedFileFormat.KEY_LENGTH] bytes, by construction — so the `Crypto` port has no wrong
- * length to refuse (a platform cipher would quietly run AES-128 or AES-192 under a 16- or 24-byte one). Production
- * keys are minted by [EncryptedFileFormat.fileKeyOf] alone; [of] is the way in for key material from outside — a
- * published test vector.
- */
-class AesKey internal constructor(bytes: ByteArray) {
-    /** The key's bytes — a copy, so no holder can change the key behind its back. */
-    val bytes: ByteArray = bytes.copyOf()
-
-    companion object {
-        /** [bytes] as a key, or `null` unless exactly [EncryptedFileFormat.KEY_LENGTH] long. */
-        fun of(bytes: ByteArray): AesKey? = if (bytes.size == EncryptedFileFormat.KEY_LENGTH) AesKey(bytes) else null
-    }
-}
-
-/**
- * An AES-GCM nonce: exactly [EncryptedFileFormat.NONCE_LENGTH] bytes, by construction. Production nonces are minted by
- * [EncryptedFileFormat.segmentNonce] alone; [of] is the way in for a published test vector's.
- */
-class GcmNonce internal constructor(bytes: ByteArray) {
-    /** The nonce's bytes — a copy. */
-    val bytes: ByteArray = bytes.copyOf()
-
-    companion object {
-        /** [bytes] as a nonce, or `null` unless exactly [EncryptedFileFormat.NONCE_LENGTH] long. */
-        fun of(bytes: ByteArray): GcmNonce? =
-            if (bytes.size == EncryptedFileFormat.NONCE_LENGTH) GcmNonce(bytes) else null
     }
 }

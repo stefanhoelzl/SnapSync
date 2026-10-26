@@ -1,8 +1,8 @@
 package app.snapsync.services.crypto
 
-import app.snapsync.format.ResourceRoleText
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.model.AssetRef
-import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.roleFromUploadKey
@@ -90,10 +90,7 @@ class DownloadOpening(
             return "the event key cannot be read now: ${locked.detail}"
         } ?: return NO_KEY
         val ad = EncryptedFileFormat.associatedData(
-            joined.eventId.value,
-            ref.sourceDeviceId.value,
-            ref.sourceAssetId.value,
-            ResourceRoleText.of(roleFromUploadKey(resourceKey)),
+            FileBinding(joined.eventId, ref.sourceDeviceId, ref.sourceAssetId, roleFromUploadKey(resourceKey)),
         )
         return when (val opened = cipher.decrypt(key, ad, FileArea.SHARED, from, to)) {
             Opened.Ok -> null

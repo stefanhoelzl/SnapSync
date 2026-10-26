@@ -1,9 +1,9 @@
 package app.snapsync.crypto
 
-import app.snapsync.model.AesKey
-import app.snapsync.model.GcmNonce
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.GcmNonce
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.DelicateCryptographyApi
 import dev.whyoleg.cryptography.algorithms.AES

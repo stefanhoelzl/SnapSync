@@ -1,18 +1,23 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
+import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetRef
-import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
@@ -123,7 +128,14 @@ class CryptoServicesEdgesTest {
         val plain = RecordingFiles().also { it.write(FileArea.SHARED, "p", ByteArray(10)) }
         FileCipher(crypto, plain).encrypt(
             keys.current()!!,
-            EncryptedFileFormat.associatedData(EVENT, DEVICE, "ASSET1", "primary"),
+            EncryptedFileFormat.associatedData(
+                FileBinding(
+                    EventId.parse(EVENT)!!,
+                    DeviceId.parse(DEVICE)!!,
+                    AssetId.parse("ASSET1")!!,
+                    ResourceRole.PRIMARY,
+                ),
+            ),
             FileArea.SHARED,
             "p",
             "s",
@@ -140,7 +152,14 @@ class CryptoServicesEdgesTest {
     @Test
     fun a_file_that_cannot_be_read_or_written_is_unreadable_never_damaged() = runTest {
         val key = ByteArray(32) { 1 }
-        val ad = EncryptedFileFormat.associatedData(EVENT, DEVICE, "ASSET1", "primary")
+        val ad = EncryptedFileFormat.associatedData(
+            FileBinding(
+                EventId.parse(EVENT)!!,
+                DeviceId.parse(DEVICE)!!,
+                AssetId.parse("ASSET1")!!,
+                ResourceRole.PRIMARY,
+            ),
+        )
         val files = RecordingFiles()
         files.write(FileArea.SHARED, "p", ByteArray(200_000))
         val cipher = FileCipher(crypto, files)
@@ -170,7 +189,14 @@ class CryptoServicesEdgesTest {
         files.write(FileArea.SHARED, "p", ByteArray(10))
         FileCipher(crypto, files).encrypt(
             keys.current()!!,
-            EncryptedFileFormat.associatedData(EVENT, DEVICE, "ASSET1", "primary"),
+            EncryptedFileFormat.associatedData(
+                FileBinding(
+                    EventId.parse(EVENT)!!,
+                    DeviceId.parse(DEVICE)!!,
+                    AssetId.parse("ASSET1")!!,
+                    ResourceRole.PRIMARY,
+                ),
+            ),
             FileArea.SHARED,
             "p",
             "in",

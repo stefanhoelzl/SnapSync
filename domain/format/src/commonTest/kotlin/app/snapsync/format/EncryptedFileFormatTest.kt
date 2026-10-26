@@ -1,5 +1,11 @@
-package app.snapsync.model
+package app.snapsync.format
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.program.InvalidProgramState
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -24,10 +30,17 @@ class EncryptedFileFormatTest {
         }
     }
 
-    private val head = FileHead(
+    private val head = FileHead.of(
         keyId = ByteArray(8) { it.toByte() },
         salt = ByteArray(32) { (0x40 + it).toByte() },
         noncePrefix = ByteArray(7) { (0xa0 + it).toByte() },
+    )!!
+
+    private val binding = FileBinding(
+        EventId.parse("0f8fad5b-d9cb-469f-a165-70867728950e")!!,
+        DeviceId.parse("7c9e6679-7425-40de-944b-e07fc1f90ae7")!!,
+        AssetId.parse("a")!!,
+        ResourceRole.LIVE,
     )
 
     @Test
@@ -48,10 +61,10 @@ class EncryptedFileFormatTest {
             salted.calls.single(),
             "a salt is the extract key; 0 bytes expand nothing",
         )
-        assertFailsWith<IllegalArgumentException> {
+        assertFailsWith<InvalidProgramState> {
             Hkdf.derive(Recording(), ByteArray(1), ByteArray(0), ByteArray(0), 255 * 32 + 1)
         }
-        assertFailsWith<IllegalArgumentException> {
+        assertFailsWith<InvalidProgramState> {
             Hkdf.derive(Recording(), ByteArray(1), ByteArray(0), ByteArray(0), -1)
         }
     }
@@ -62,9 +75,12 @@ class EncryptedFileFormatTest {
         assertEquals(8, EncryptedFileFormat.keyIdOf(ByteArray(32), keyId).size)
         assertEquals("snapsync/key-id/v1".encodeToByteArray().toList() + 1, keyId.calls[1].second)
         val fileKey = Recording()
-        val ad = EncryptedFileFormat.associatedData("e", "d", "a", "live")
-        assertEquals("snapsync/v1/e/d/a/live", ad.decodeToString())
-        assertEquals(32, EncryptedFileFormat.fileKeyOf(ByteArray(32), byteArrayOf(5), ad, fileKey).bytes.size)
+        val ad = EncryptedFileFormat.associatedData(binding)
+        assertEquals(
+            "snapsync/v1/0f8fad5b-d9cb-469f-a165-70867728950e/7c9e6679-7425-40de-944b-e07fc1f90ae7/a/live",
+            ad.decodeToString(),
+        )
+        assertEquals(32, EncryptedFileFormat.fileKeyOf(ByteArray(32), byteArrayOf(5), ad, fileKey).size)
         assertEquals(listOf<Byte>(5), fileKey.calls[0].first, "the file's salt")
         assertEquals(ad.toList() + 1, fileKey.calls[1].second, "bound to what the file is")
     }
@@ -81,14 +97,14 @@ class EncryptedFileFormatTest {
         assertEquals(head, assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(bytes + byteArrayOf(1, 2))).head)
         assertEquals(
             head.hashCode(),
-            FileHead(head.keyId.copyOf(), head.salt.copyOf(), head.noncePrefix.copyOf()).hashCode(),
+            FileHead.of(head.keyId.copyOf(), head.salt.copyOf(), head.noncePrefix.copyOf()).hashCode(),
         )
         assertNotEquals<Any>(head, "a head")
         // Equal by every byte of every part: a head differing in any one part is another file's.
         val other = ByteArray(32) { 99 }
-        assertNotEquals(head, FileHead(other.copyOf(8), head.salt, head.noncePrefix))
-        assertNotEquals(head, FileHead(head.keyId, other, head.noncePrefix))
-        assertNotEquals(head, FileHead(head.keyId, head.salt, other.copyOf(7)))
+        assertNotEquals(head, FileHead.of(other.copyOf(8), head.salt, head.noncePrefix))
+        assertNotEquals(head, FileHead.of(head.keyId, other, head.noncePrefix))
+        assertNotEquals(head, FileHead.of(head.keyId, head.salt, other.copyOf(7)))
     }
 
     @Test
@@ -103,9 +119,9 @@ class EncryptedFileFormatTest {
             HeadRead.Refused("header length 41"),
             EncryptedFileFormat.decodeHead(bytes.copyOf().also { it[9] = 41 }),
         )
-        assertFailsWith<IllegalArgumentException> { FileHead(ByteArray(7), head.salt, head.noncePrefix) }
-        assertFailsWith<IllegalArgumentException> { FileHead(head.keyId, ByteArray(31), head.noncePrefix) }
-        assertFailsWith<IllegalArgumentException> { FileHead(head.keyId, head.salt, ByteArray(8)) }
+        assertNull(FileHead.of(ByteArray(7), head.salt, head.noncePrefix), "a part of another length makes no head")
+        assertNull(FileHead.of(head.keyId, ByteArray(31), head.noncePrefix))
+        assertNull(FileHead.of(head.keyId, head.salt, ByteArray(8)))
     }
 
     @Test
@@ -115,20 +131,7 @@ class EncryptedFileFormatTest {
         assertEquals(65536 - 40, EncryptedFileFormat.ciphertextSegmentLength(0))
         assertEquals(65536, EncryptedFileFormat.ciphertextSegmentLength(7))
         val nonce = EncryptedFileFormat.segmentNonce(head.noncePrefix, 0x01020304, last = true)
-        assertContentEquals(head.noncePrefix + byteArrayOf(1, 2, 3, 4, 1), nonce.bytes)
-        assertEquals(0, EncryptedFileFormat.segmentNonce(head.noncePrefix, 0, last = false).bytes[11].toInt())
-    }
-
-    @Test
-    fun `a cipher key and a nonce are of their exact length or not made at all`() {
-        assertContentEquals(ByteArray(32) { 7 }, AesKey.of(ByteArray(32) { 7 })?.bytes)
-        assertNull(AesKey.of(ByteArray(16)), "a 16-byte key would run AES-128")
-        assertNull(AesKey.of(ByteArray(33)))
-        assertContentEquals(ByteArray(12) { 3 }, GcmNonce.of(ByteArray(12) { 3 })?.bytes)
-        assertNull(GcmNonce.of(ByteArray(11)))
-        val held = ByteArray(32)
-        val key = AesKey.of(held)
-        held[0] = 1
-        assertEquals(0, key?.bytes?.get(0)?.toInt(), "a key keeps its own copy of the bytes it was made from")
+        assertContentEquals(head.noncePrefix + byteArrayOf(1, 2, 3, 4, 1), nonce)
+        assertEquals(0, EncryptedFileFormat.segmentNonce(head.noncePrefix, 0, last = false)[11].toInt())
     }
 }
