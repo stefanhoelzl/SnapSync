@@ -113,8 +113,14 @@ class UploadCycleTest {
 
     /** A no-network provider returning a throwaway destination — the cycle never inspects the URL. */
     private class StubUploadRequestProvider : UploadRequestProvider {
-        override suspend fun provide(resource: Resource): UploadRequest =
-            UploadRequest(url = "https://stub.invalid/${resource.filename}", headers = emptyMap(), resource = resource)
+        override val event = testEventId("E")
+
+        override suspend fun provide(resource: Resource): UploadRequest = UploadRequest(
+            url = "https://stub.invalid/${resource.filename}",
+            headers = emptyMap(),
+            resource = resource,
+            event = event,
+        )
 
         override suspend fun provideForRetry(resource: Resource): UploadRequest = provide(resource)
     }

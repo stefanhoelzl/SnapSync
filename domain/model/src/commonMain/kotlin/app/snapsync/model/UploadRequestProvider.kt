@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.event.EventId
+
 /**
  * The engine's request-minting seam: mints the executable request for a
  * resource. Implementations: S3 presigner, dumb-HTTP test provider.
@@ -16,6 +18,9 @@ package app.snapsync.model
  *   skips ([SyncDecision.AlreadyUploaded]).
  */
 interface UploadRequestProvider {
+    /** The event every request this provider mints addresses. */
+    val event: EventId
+
     suspend fun provide(resource: Resource): UploadRequest
 
     /**

@@ -1,6 +1,11 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.Landing
+import app.snapsync.data.crypto.OpenAnswer
+import app.snapsync.data.crypto.UploadSealing
+import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
@@ -14,8 +19,8 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestEventKeys
-import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.EventKeyText
@@ -26,7 +31,6 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
@@ -53,8 +57,6 @@ import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
-import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.GalleryResourceRef
@@ -75,7 +77,6 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -106,9 +107,10 @@ class EncryptedTransfersTest {
     private inner class Device(val id: String, val linkKey: String?, keyId: String?) {
         val files = RecordingFiles()
         val keys = TestEventKeys(crypto, inMemorySecureStore()).also { k -> linkKey?.let(k::keep) }
-        val config = configService(joined(keyId))
+        val membership = MembershipRepository(SharedStore().apply { persist(joined(keyId)) }.db)
         val cipher = FileCipher(crypto, files)
-        val sealing = UploadSealing(keys.store, cipher, config, testIdentity(id))
+        val sealing = UploadSealing(membership, keys.store, testIdentity(id), cipher)
+        val opening = DownloadOpening(membership, keys.store, cipher, files)
     }
 
     /** The app's session, sending files, remembering what it was asked to send. */
@@ -192,6 +194,7 @@ class EncryptedTransfersTest {
         "https://edge.example/api/v2/events/$EVENT/files/devices/$DEVICE_A/$ASSET/primary?filename=IMG.HEIC",
         mapOf("Content-Type" to "image/heic"),
         resource,
+        testEventId(EVENT),
     )
 
     private fun adFor(device: String) = EncryptedFileFormat.associatedData(
@@ -226,7 +229,7 @@ class EncryptedTransfersTest {
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
             headers = { emptyMap() },
-            opening = DownloadOpening(receiver.keys.store, receiver.cipher, receiver.config, receiver.files),
+            opening = receiver.opening,
         )
         jobs.onFinished(
             "$DEVICE_A\n$ASSET\n$KEY\n$EVENT",
@@ -294,7 +297,7 @@ class EncryptedTransfersTest {
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
             headers = { emptyMap() },
-            opening = DownloadOpening(receiver.keys.store, receiver.cipher, receiver.config, receiver.files),
+            opening = receiver.opening,
         )
         // Plaintext, as a build predating encryption would have stored it — or anything else that is not a file of this key.
         repeat(5) { attempt ->
@@ -319,16 +322,16 @@ class EncryptedTransfersTest {
         val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         // The event is encrypted, and this device lost its key: nothing opens, and nothing is staged.
         val receiver = Device(DEVICE_B, linkKey = null, keyId = minted.keyId)
-        val opening = DownloadOpening(receiver.keys.store, receiver.cipher, receiver.config, receiver.files)
         repeat(5) { attempt ->
             receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
-            assertFalse(
-                opening.open(
-                    AssetRef(testDeviceId(DEVICE_A), testAssetId(ASSET)),
-                    KEY,
-                    EVENT,
-                    "os-tmp/$attempt",
-                    "staged/$attempt",
+            assertEquals(
+                OpenAnswer.NotOpened,
+                receiver.opening.open(
+                    Landing.Sealed("os-tmp/$attempt", "staged/$attempt"),
+                    testDeviceId(DEVICE_A),
+                    testAssetId(ASSET),
+                    ResourceRole.PRIMARY,
+                    testEventId(EVENT),
                 ),
             )
         }
@@ -406,7 +409,7 @@ class EncryptedTransfersTest {
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
             headers = { emptyMap() },
-            opening = DownloadOpening(receiver.keys.store, receiver.cipher, receiver.config, receiver.files),
+            opening = receiver.opening,
         )
         receiver.files.write(FileArea.SHARED, "os-tmp/0", photo)
         jobs.onFinished(

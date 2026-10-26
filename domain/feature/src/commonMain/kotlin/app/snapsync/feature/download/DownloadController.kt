@@ -1,6 +1,7 @@
 package app.snapsync.feature.download
 
 import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.crypto.SealedLanding
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.EventCheck
 import app.snapsync.data.membership.EventCheckRecord
@@ -27,7 +28,6 @@ import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.scheduling.Runtime
 import app.snapsync.services.backend.EventUnionSource
-import app.snapsync.services.crypto.openingFilesOf
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
@@ -752,7 +752,7 @@ class DownloadController(
                 // A claimed path's opening files are claimed too: an encrypted event's download waits beside its landing
                 // path, sealed, until it is opened into it (the encrypted file format, `docs/architecture.md`).
                 val inUse = store.claims.pathsInUse(stagedBytes.stagingRoot())
-                val unclaimed = listed - inUse - inUse.flatMap(::openingFilesOf).toSet()
+                val unclaimed = listed - inUse - inUse.flatMap(SealedLanding::filesOf).toSet()
                 if (unclaimed.isEmpty()) return@withLock
                 log.i { "releasing ${unclaimed.size} staged file(s) no download claims" }
                 stagedBytes.release(unclaimed)

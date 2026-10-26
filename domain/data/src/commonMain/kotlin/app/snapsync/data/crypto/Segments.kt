@@ -149,7 +149,12 @@ private fun ended(written: FileResult<Unit>): Opened = when (written) {
 
 /** The output being built: `<to>.part`, moved to `<to>` only once whole, removed on any failure. */
 internal class Part(private val files: Files, val area: FileArea, private val to: String) {
-    val path = "$to.part"
+    val path = of(to)
+
+    companion object {
+        /** Where the output for [to] is built. */
+        fun of(to: String): String = "$to.part"
+    }
 
     /** A part a crash left behind is never built on. */
     fun begun(): Part = also { files.delete(area, path) }

@@ -46,6 +46,9 @@ class SyncEngine(
 
     private val log = Logger.withTag("SyncEngine")
 
+    /** The event this engine's requests address. */
+    val event get() = provider.event
+
     /**
      * Logging (spec: privacy-security, field diagnostics — the headless iOS extension's only observability):
      * a failure WARNs with its mapped error, every issued [SyncDecision.Work] INFOs its arm + key, and the

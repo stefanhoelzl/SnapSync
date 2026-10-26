@@ -3,6 +3,7 @@ package app.snapsync.services.upload
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
+import app.snapsync.model.Resource
 import app.snapsync.ports.HttpResult
 import app.snapsync.services.backend.ScriptedCredential
 import app.snapsync.services.backend.ScriptedTransport
@@ -11,6 +12,7 @@ import app.snapsync.services.backend.ok
 import app.snapsync.services.backend.text
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.identityOf
+import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -22,6 +24,9 @@ import kotlin.test.assertEquals
  * "Resumable uploads"): only an unreachable backend withholds the transfer; every other answer sends something.
  */
 class UploadStandingsTest {
+
+    /** A photo the library read. */
+    private val photo = Resource("A-primary.jpg", testAssetId("A"), "image/jpeg", emptyMap(), null)
 
     private val sha = "ab".repeat(32)
     private val transport = ScriptedTransport()
@@ -35,7 +40,7 @@ class UploadStandingsTest {
 
     private suspend fun answered(reply: HttpResult): ResumePoint {
         transport.answer = { reply }
-        return standings().of(libraryResource(KEY), sha)
+        return standings().of(photo, sha)
     }
 
     @Test
@@ -69,15 +74,15 @@ class UploadStandingsTest {
 
     @Test
     fun `a device that is not joined or has no identity sends the file whole`() = runTest {
-        assertEquals(ResumePoint.From(0), standings(joined = null).of(libraryResource(KEY), sha))
+        assertEquals(ResumePoint.From(0), standings(joined = null).of(photo, sha))
         val absent = StoredDeviceIdentity(MapSecureStore())
-        assertEquals(ResumePoint.From(0), standings(identity = absent).of(libraryResource(KEY), sha))
+        assertEquals(ResumePoint.From(0), standings(identity = absent).of(photo, sha))
         assertEquals(emptyList(), transport.requests)
     }
 
     @Test
     fun `a device id that cannot be read now defers the transfer`() = runTest {
         val locked = identityOf("D", MapSecureStore(unavailable = true))
-        assertEquals(ResumePoint.Deferred, standings(identity = locked).of(libraryResource(KEY), sha))
+        assertEquals(ResumePoint.Deferred, standings(identity = locked).of(photo, sha))
     }
 }

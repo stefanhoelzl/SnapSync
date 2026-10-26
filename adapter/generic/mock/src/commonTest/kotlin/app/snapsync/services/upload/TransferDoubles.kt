@@ -1,11 +1,45 @@
 package app.snapsync.services.upload
 
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.UploadSealing
+import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.store.SharedDatabase
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Encryption
+import app.snapsync.domain.event.Event
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventName
+import app.snapsync.domain.event.EventNameVerdict
+import app.snapsync.domain.event.EventRange
+import app.snapsync.domain.event.EventRangeVerdict
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.membership.Enrolled
+import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MintsEnrolled
+import app.snapsync.domain.membership.Share
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.CaptureRangeVerdict
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.upload.LedgerState
+import app.snapsync.mock.fakeCrypto
+import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.inMemoryFiles
+import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.CandidateScope
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
+import app.snapsync.model.UploadRequest
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.FileAccess
 import app.snapsync.ports.FileArea
@@ -25,10 +59,12 @@ import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.WriteOutcome
+import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.GalleryResourceRef
 import app.snapsync.services.gallery.UploadDiscovery
 import app.snapsync.testids.testAssetId
+import app.snapsync.testids.testDeviceId
 import kotlin.time.Instant
 
 // The doubles both transfers' tests share: a ledger, the library, the shared area — each recording what it was asked.
@@ -149,4 +185,56 @@ internal fun setup(
     library: GalleryReader = Library(),
     files: Files = SharedArea(),
     network: () -> TransferNetwork = { TransferNetwork.ANY },
-) = TransferSetup(record, resources, library, files, network)
+    sealing: UploadSealing = plainSealing(),
+) = TransferSetup(record, resources, library, files, network, sealing)
+
+/** The event the transfers' requests address. */
+internal val TEST_EVENT: EventId = EventId.parse("0f0e8a5c-3f1b-4c2d-9e7a-1b2c3d4e5f60")!!
+
+/** [resource]'s request to [url], for [TEST_EVENT]. */
+internal fun request(resource: Resource, url: String = URL, headers: Map<String, String> = emptyMap()) =
+    UploadRequest(url, headers, resource, TEST_EVENT)
+
+/** A sealing for a member of the plain [TEST_EVENT]: everything goes up as it is. */
+@OptIn(MintsEnrolled::class)
+internal fun plainSealing(): UploadSealing {
+    val membership = MembershipRepository(
+        SharedDatabase(inMemoryDatabases(), LegacyRecords(inMemoryFiles(), inMemoryPreferences())),
+    )
+    val range = (
+        EventRange.of(
+            EventStart(Timestamp.of(START)),
+            EventEnd(Timestamp.of(END)),
+        ) as EventRangeVerdict.Ok
+        ).range
+    val event = Event(
+        id = TEST_EVENT,
+        name = (EventName.of("Plain") as EventNameVerdict.Ok).name,
+        range = range,
+        openUntil = null,
+        deletesAt = DeletesAt(Timestamp.of(END)),
+        encryption = Encryption.Plain,
+        members = null,
+    )
+    val share = (
+        CaptureRange.of(
+            CaptureCutoff(Timestamp.of(START)),
+            CaptureCeiling(Timestamp.of(END)),
+            range.start,
+            range.end,
+        ) as CaptureRangeVerdict.Ok
+        ).range
+    membership.enter(Enrolled(Membership.Active(event, Share(share, Direction.Both, saveToAlbum = false))))
+    return UploadSealing(
+        membership,
+        EventKeyStore(inMemorySecureStore(), EventKeyIds(fakeCrypto())),
+        object : DeviceIdentity {
+            override fun id(): DeviceIdRead = DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ)
+        },
+        FileCipher(fakeCrypto(), inMemoryFiles()),
+    )
+}
+
+private val START = Instant.parse("2026-07-14T18:00:00Z")
+private val END = Instant.parse("2026-07-21T18:00:00Z")
+private const val DEVICE = "11111111-0000-4000-8000-000000000002"

@@ -1,6 +1,7 @@
 package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 
 /**
  * The unit the sync domain transports (spec: background-upload). Constructed by the platform, never by
@@ -74,11 +75,15 @@ data class UploadFailure(val detail: String)
  * There is no attempt count and no job wrapper: the engine retries forever, so a count would limit nothing,
  * and which platform call executes the work (create, or retry an existing job) is decided by where the work
  * came from, never by a number on it (decision record `changes/shrink-the-ledger-row`, D4).
+ *
+ * [event] is the event [url] addresses — what an encrypted event's upload is sealed for, so the bytes and their seal
+ * never name different events.
  */
 class UploadRequest(
     val url: String,
     val headers: Map<String, String>,
     val resource: Resource,
+    val event: EventId,
 )
 
 /**

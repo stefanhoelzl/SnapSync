@@ -1,8 +1,12 @@
 package app.snapsync.services.upload
 
-import app.snapsync.model.Resource
+import app.snapsync.data.crypto.UploadSeal
+import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadFailure
+import app.snapsync.model.UploadRequest
+import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
@@ -10,8 +14,6 @@ import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferSession
-import app.snapsync.services.crypto.UploadSeal
-import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.gallery.UploadDiscovery
 import co.touchlab.kermit.Logger
 
@@ -51,14 +53,17 @@ class TransferSetup(
     /**
      * How each upload is sealed (the encrypted file format, `docs/architecture.md`): not at all in a plain event; in an
      * encrypted one, sealed into the staged file where the uploader sends files, else by the edge from the one file's
-     * key the headers carry. `null` where nothing is ever sealed.
+     * key the headers carry.
      */
-    val sealing: UploadSealing? = null,
+    val sealing: UploadSealing,
     val log: Logger = Logger.withTag("UploadTransfer"),
 ) {
-    /** How [resource] goes up: plainly where nothing is ever sealed, else as [sealing] decides for the joined event. */
-    internal suspend fun sealOf(resource: Resource): UploadSeal =
-        if (sealing == null) UploadSeal.Plain else sealing.sealFor(resource)
+    /** How [request]'s resource goes up to the event it addresses, as [sealing] decides. */
+    internal fun sealOf(request: UploadRequest): UploadSeal = sealing.sealFor(
+        request.event,
+        assetIdFromUploadKey(request.resource.filename),
+        roleFromUploadKey(request.resource.filename),
+    )
 }
 
 /** What the platform's create answer means to the cycle: the same outcome. */

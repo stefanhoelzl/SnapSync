@@ -64,6 +64,7 @@ class BackendUploadRequests(
     private val deviceId: DeviceId,
     private val credentials: CachedCredentialStore,
 ) : UploadRequestProvider {
+    override val event: EventId get() = eventId
 
     override suspend fun provide(resource: Resource): UploadRequest = mint(resource, credentials.token().held())
 
@@ -92,7 +93,7 @@ class BackendUploadRequests(
             putAll(exchange.versionHeaders())
             bearer?.let { put("Authorization", "Bearer ${it.secret}") }
         }
-        return UploadRequest(url = url, headers = headers, resource = resource)
+        return UploadRequest(url = url, headers = headers, resource = resource, event = eventId)
     }
 
     /**

@@ -3,6 +3,7 @@ package app.snapsync.upload
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
+import app.snapsync.testids.testEventId
 
 /**
  * Test seam double: records every [provide] invocation and its returned request, and can be
@@ -10,6 +11,7 @@ import app.snapsync.model.UploadRequestProvider
  * filename), satisfying the provider contract.
  */
 class RecordingUploadRequestProvider : UploadRequestProvider {
+    override val event = testEventId("E")
 
     val invocations = mutableListOf<Resource>()
 
@@ -29,6 +31,7 @@ class RecordingUploadRequestProvider : UploadRequestProvider {
             headers = mapOf("Content-Type" to resource.contentType) +
                 resource.metadata.mapKeys { (key, _) -> "x-amz-meta-$key" },
             resource = resource,
+            event = event,
         ).also { returned += it }
     }
 

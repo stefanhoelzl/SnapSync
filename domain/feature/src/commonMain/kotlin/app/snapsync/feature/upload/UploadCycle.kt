@@ -777,7 +777,7 @@ class UploadCycle(
      * deferred). Takes the engine rather than reading a field: it is built per cycle from that cycle's config.
      */
     private suspend fun adjudicateFailure(engine: SyncEngine, job: PlatformUploadJob): SyncDecision.Retry {
-        val failed = reconstruct(job)
+        val failed = reconstruct(job, engine)
         val error = job.error ?: UploadFailure("unspecified")
         return engine.handle(SyncEvent.UploadFailed(failed, error))
     }
@@ -787,7 +787,7 @@ class UploadCycle(
      * headers are placeholders — completion never reads them, and the retry path re-mints a fresh request via
      * the provider.
      */
-    private fun reconstruct(job: PlatformUploadJob): UploadRequest {
+    private fun reconstruct(job: PlatformUploadJob, engine: SyncEngine): UploadRequest {
         val resource = Resource(
             filename = job.key,
             // Derive the assetId from the key (the shared inverse of `uploadKey`) rather than the ledger
@@ -799,7 +799,7 @@ class UploadCycle(
             metadata = emptyMap(),
             data = job.data,
         )
-        return UploadRequest(url = "", headers = emptyMap(), resource = resource)
+        return UploadRequest(url = "", headers = emptyMap(), resource = resource, event = engine.event)
     }
 
     /**

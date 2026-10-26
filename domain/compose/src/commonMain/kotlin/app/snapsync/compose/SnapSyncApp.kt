@@ -4,7 +4,9 @@ import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.Observers
+import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.crypto.NewEventKeys
+import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.service.ServiceConditions
 import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
@@ -86,7 +88,6 @@ import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crash.FootprintSampler
-import app.snapsync.services.crypto.DownloadOpening
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.ImportMarkers
 import app.snapsync.services.foreground.AppForeground
@@ -457,7 +458,7 @@ class AppCore internal constructor(
             // The version every request declares — the download redirect's too (`downloadResource`).
             headers = exchange::versionHeaders,
             // An encrypted event's bytes are opened before they are staged (the encrypted file format).
-            opening = DownloadOpening(services.eventKeyStore, services.fileCipher, services.config, process.files),
+            opening = DownloadOpening(services.membership, services.eventKeyStore, services.fileCipher, process.files),
         )
     }
 
@@ -618,6 +619,12 @@ class AppCore internal constructor(
                 gallery = ports.gallery,
                 files = process.files,
                 network = services.mobileData::transferNetwork,
+                sealing = UploadSealing(
+                    services.membership,
+                    services.eventKeyStore,
+                    services.deviceIdentity,
+                    services.fileCipher,
+                ),
                 log = services.log,
             ),
             uploadResuming,

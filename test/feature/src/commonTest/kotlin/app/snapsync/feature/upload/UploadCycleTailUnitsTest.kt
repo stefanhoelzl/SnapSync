@@ -79,7 +79,10 @@ class UploadCycleTailUnitsTest {
     }
 
     private class Provider : UploadRequestProvider {
-        override suspend fun provide(resource: Resource) = UploadRequest("https://stub.invalid/x", emptyMap(), resource)
+        override val event = testEventId("E")
+
+        override suspend fun provide(resource: Resource) =
+            UploadRequest("https://stub.invalid/x", emptyMap(), resource, event)
         override suspend fun provideForRetry(resource: Resource) = provide(resource)
     }
 

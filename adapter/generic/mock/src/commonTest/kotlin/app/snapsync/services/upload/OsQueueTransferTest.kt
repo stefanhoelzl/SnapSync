@@ -5,7 +5,6 @@ import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadFailure
-import app.snapsync.model.UploadRequest
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -115,14 +114,14 @@ class OsQueueTransferTest {
     fun `an offered retry is re-pointed by the destination its row recorded`() = runTest {
         val queue = ScriptedQueue(offered = listOf(job(UploadJobState.FAILED)))
         val transfer = transfer(queue, rowA())
-        transfer.retryJob(transfer.fetchRetryJobs().single(), UploadRequest(URL, emptyMap(), libraryResource()))
+        transfer.retryJob(transfer.fetchRetryJobs().single(), request(libraryResource()))
         assertEquals(listOf("retry($URL -> $URL)"), queue.calls)
     }
 
     @Test
     fun `a destination that is not a URL is not a job before the queue sees it`() = runTest {
         val queue = ScriptedQueue()
-        val outcome = transfer(queue).createJob(UploadRequest("", emptyMap(), libraryResource()), libraryResource())
+        val outcome = transfer(queue).createJob(request(libraryResource(), url = ""), libraryResource())
         assertEquals(UploadCreateOutcome.FAILED, outcome)
         assertTrue(queue.calls.isEmpty())
     }
@@ -130,7 +129,7 @@ class OsQueueTransferTest {
     @Test
     fun `the queue is handed the library's own resource and its answer is the cycle's`() = runTest {
         val queue = ScriptedQueue(createAnswer = CreateOutcome.LIMIT_EXCEEDED)
-        val outcome = transfer(queue).createJob(UploadRequest(URL, emptyMap(), libraryResource()), libraryResource())
+        val outcome = transfer(queue).createJob(request(libraryResource()), libraryResource())
         assertEquals(UploadCreateOutcome.LIMIT_EXCEEDED, outcome)
         assertEquals(listOf<GalleryResourceHandle>(KeyHandle(KEY)), queue.created)
     }
@@ -138,7 +137,7 @@ class OsQueueTransferTest {
     @Test
     fun `a resource the library did not read is not a job`() = runTest {
         val queue = ScriptedQueue()
-        val outcome = transfer(queue).createJob(UploadRequest(URL, emptyMap(), unreadResource()), unreadResource())
+        val outcome = transfer(queue).createJob(request(unreadResource()), unreadResource())
         assertEquals(UploadCreateOutcome.FAILED, outcome)
         assertTrue(queue.created.isEmpty())
     }
@@ -151,9 +150,9 @@ class OsQueueTransferTest {
         val transfer = OsQueueTransfer(queue, setup(network = { rule }))
         val a = libraryResource("A-primary.jpg")
         val b = libraryResource("B-primary.jpg")
-        transfer.createJob(UploadRequest(URL, emptyMap(), a), a)
+        transfer.createJob(request(a), a)
         rule = TransferNetwork.ANY
-        transfer.createJob(UploadRequest(URL, emptyMap(), b), b)
+        transfer.createJob(request(b), b)
         assertEquals(listOf(TransferNetwork.UNRESTRICTED_ONLY, TransferNetwork.ANY), queue.networks)
     }
 
@@ -204,7 +203,7 @@ class OsQueueTransferTest {
         )
         val transfer = transfer(queue, rowA())
         transfer.drainTerminals()
-        transfer.retryJob(transfer.fetchRetryJobs().single(), UploadRequest(URL, emptyMap(), libraryResource()))
+        transfer.retryJob(transfer.fetchRetryJobs().single(), request(libraryResource()))
         assertEquals(1, queue.calls.count { it.startsWith("retry") })
     }
 
@@ -213,9 +212,9 @@ class OsQueueTransferTest {
         val queue = ScriptedQueue()
         val gone = PlatformUploadJob(KEY, "image/jpeg", null, null)
         val transfer = transfer(queue, rowA())
-        transfer.retryJob(gone, UploadRequest(URL, emptyMap(), libraryResource()))
+        transfer.retryJob(gone, request(libraryResource()))
         queue.offered = listOf(job(UploadJobState.FAILED))
-        transfer.retryJob(gone, UploadRequest("", emptyMap(), libraryResource()))
+        transfer.retryJob(gone, request(libraryResource(), url = ""))
         assertTrue(queue.calls.none { it.startsWith("retry") })
     }
 
@@ -281,7 +280,7 @@ class OsQueueTransferTest {
         )
         transfer(queue, rowA()).retryJob(
             PlatformUploadJob(KEY, "image/jpeg", null, null),
-            UploadRequest(URL, emptyMap(), libraryResource()),
+            request(libraryResource()),
         )
         assertEquals(listOf("retry($URL -> $URL)"), queue.calls)
     }
@@ -295,7 +294,7 @@ class OsQueueTransferTest {
     @Test
     fun `a resource the queue cannot take is no job`() = runTest {
         val queue = ScriptedQueue(createAnswer = CreateOutcome.FAILED)
-        val outcome = transfer(queue).createJob(UploadRequest(URL, emptyMap(), libraryResource()), libraryResource())
+        val outcome = transfer(queue).createJob(request(libraryResource()), libraryResource())
         assertEquals(UploadCreateOutcome.FAILED, outcome)
     }
 }
