@@ -4,8 +4,8 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
-import app.snapsync.model.FileArea
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.FileArea
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.TransferNetwork

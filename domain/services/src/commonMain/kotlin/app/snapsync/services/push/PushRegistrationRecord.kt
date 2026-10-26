@@ -1,8 +1,8 @@
 package app.snapsync.services.push
 
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.PrefRead
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.WriteOutcome

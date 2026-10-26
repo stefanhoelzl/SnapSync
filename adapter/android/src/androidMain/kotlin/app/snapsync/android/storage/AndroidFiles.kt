@@ -1,13 +1,13 @@
 package app.snapsync.android.storage
 
 import android.content.Context
-import app.snapsync.model.FileAccess
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileLocation
-import app.snapsync.model.FileResult
-import app.snapsync.model.FileTail
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
+import app.snapsync.ports.FileAccess
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileLocation
+import app.snapsync.ports.FileResult
+import app.snapsync.ports.FileTail
 import app.snapsync.ports.Files
 import java.io.File
 import java.io.IOException

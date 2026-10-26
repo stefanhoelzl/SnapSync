@@ -27,8 +27,6 @@ import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
@@ -38,6 +36,8 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.OsUploadJob

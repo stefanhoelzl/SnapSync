@@ -6,8 +6,8 @@ import app.snapsync.contracts.inboundOf
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.NOT_AN_IMAGE
 import app.snapsync.model.AssetRef
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImportRequest

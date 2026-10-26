@@ -1,7 +1,7 @@
 package app.snapsync.services.logs
 
 import app.snapsync.mock.inMemoryFiles
-import app.snapsync.model.FileArea
+import app.snapsync.ports.FileArea
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

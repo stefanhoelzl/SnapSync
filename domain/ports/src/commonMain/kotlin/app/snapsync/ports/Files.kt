@@ -1,11 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.FileAccess
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileLocation
-import app.snapsync.model.FileResult
-import app.snapsync.model.FileTail
-
 /**
  * **The platform's file system, by area** — one external system, and nothing decided here (`docs/architecture.md`,
  * "Ports are one external system each"). What a file holds, and what its absence means, are the services'

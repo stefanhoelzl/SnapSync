@@ -4,8 +4,8 @@ import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.model.AssetRef
-import app.snapsync.model.FileArea
 import app.snapsync.model.roleFromUploadKey
+import app.snapsync.ports.FileArea
 import app.snapsync.ports.Files
 import app.snapsync.services.membership.MembershipProjection
 import co.touchlab.kermit.Logger

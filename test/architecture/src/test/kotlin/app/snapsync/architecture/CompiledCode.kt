@@ -18,7 +18,7 @@ internal enum class CodeTarget(val label: String) {
     IOS_SIMULATOR_ARM64("iosSimulatorArm64"),
 }
 
-/** A type as the compiled code states it: our classes by dotted FQN (`app.snapsync.model.FileResult.Ok`). */
+/** A type as the compiled code states it: our classes by dotted FQN (`app.snapsync.ports.FileResult.Ok`). */
 internal data class CodeType(val fqn: String, val nullable: Boolean) {
     override fun toString() = fqn + if (nullable) "?" else ""
 }

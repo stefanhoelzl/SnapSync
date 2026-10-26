@@ -1,7 +1,7 @@
 package app.snapsync.services.staging
 
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import co.touchlab.kermit.Logger
 

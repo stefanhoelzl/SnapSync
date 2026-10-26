@@ -82,9 +82,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:android` AndroidExtensionRegistry; `:adapter:generic:mock` InMemoryExtensionRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:domain:services` RecordingRegistry; `:test:contracts` ExtensionRegistryProxy | yes |
 | `Fact` | `:domain:model` | `:domain:model` Failed, Known, Unsupported | no |
 | `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |
-| `FileAccess` | `:domain:model` | `:domain:model` Denied, Failed | no |
-| `FileLocation` | `:domain:model` | `:domain:model` AreaUnavailable, Ok | no |
-| `FileResult` | `:domain:model` | `:domain:model` NotFound | no |
+| `FileAccess` | `:domain:ports` | `:domain:ports` Denied, Failed | no |
+| `FileLocation` | `:domain:ports` | `:domain:ports` AreaUnavailable, Ok | no |
+| `FileResult` | `:domain:ports` | `:domain:ports` NotFound | no |
 | `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, MemFiles, SharedArea; `:test:contracts` FilesProxy, UnusedFiles; `:test:feature` RecordingFiles, ThrowingDeletes, UnlistableStaging | yes |
 | `Found` | `:domain:services` | `:adapter:generic:mock` Answered, Driver; `:domain:services` Failed, Missing, OldSchema, Open | no |
 | `Gallery` | `:domain:ports` | `:adapter:android` AndroidGallery; `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery; `:test:contracts` GalleryProxy | yes |

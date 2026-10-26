@@ -6,8 +6,6 @@ import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DumpResult
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.LoggedCrash
 import app.snapsync.model.PLATFORM_TAG
 import app.snapsync.model.PROCESS_METRIC_CONTEXT
@@ -26,6 +24,8 @@ import app.snapsync.model.scrubbedCrumb
 import app.snapsync.model.scrubbedEvent
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.CrashReporter
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.ThreadLabel
 import app.snapsync.services.logs.message

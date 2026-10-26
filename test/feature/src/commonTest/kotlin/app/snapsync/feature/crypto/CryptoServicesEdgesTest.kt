@@ -21,9 +21,9 @@ import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.Resource
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.StoredProtection
 import app.snapsync.services.crypto.DownloadOpening

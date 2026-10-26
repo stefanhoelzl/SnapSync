@@ -1,8 +1,8 @@
 package app.snapsync.mock
 
 import app.snapsync.data.trust.TrustSlots
-import app.snapsync.model.FileArea
 import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.FileArea
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferNetwork
 import kotlin.time.Instant

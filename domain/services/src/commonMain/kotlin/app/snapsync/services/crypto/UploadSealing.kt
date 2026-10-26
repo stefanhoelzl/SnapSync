@@ -4,11 +4,11 @@ import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.format.EncryptedFileFormat
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.Resource
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.roleFromUploadKey
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.membership.MembershipProjection
 

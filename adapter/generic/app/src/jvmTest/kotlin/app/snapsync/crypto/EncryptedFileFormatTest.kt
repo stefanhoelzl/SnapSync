@@ -11,9 +11,9 @@ import app.snapsync.format.HeadRead
 import app.snapsync.format.Hkdf
 import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
 import com.google.crypto.tink.subtle.AesGcmHkdfStreaming

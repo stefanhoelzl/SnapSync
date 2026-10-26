@@ -15,10 +15,10 @@ import app.snapsync.launchadapters.AdapterProcess
 import app.snapsync.launchadapters.LaunchAdapters
 import app.snapsync.launchadapters.randomDeviceId
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.EntryEvents
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.addMotionPhoto

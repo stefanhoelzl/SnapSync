@@ -20,9 +20,9 @@ import app.snapsync.mock.LibraryAssets
 import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
-import app.snapsync.model.FileArea
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
+import app.snapsync.ports.FileArea
 import app.snapsync.ports.SecureSlot
 import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.downloads.DownloadService

@@ -8,10 +8,10 @@ import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.levers.SeededInstall
 import app.snapsync.mock.DownloadSessionMock
-import app.snapsync.model.FileArea
 import app.snapsync.model.PrefRead
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DbResult
+import app.snapsync.ports.FileArea
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.wire.api.Limits
