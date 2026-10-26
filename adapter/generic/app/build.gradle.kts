@@ -67,6 +67,7 @@ kotlin {
                 implementation(project(":domain:services"))
                 implementation(project(":domain:format"))
                 implementation(project(":domain:domain"))
+                implementation(project(":domain:data"))
                 // The backend contracts' live bindings talk to the real `api/` over a socket, through the one
                 // process lifecycle `:test:edge` holds for every JVM consumer of the real backend.
                 implementation(project(":test:edge"))

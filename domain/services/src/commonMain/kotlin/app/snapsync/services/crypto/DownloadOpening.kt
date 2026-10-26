@@ -1,8 +1,9 @@
 package app.snapsync.services.crypto
 
 import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.OpenOutcome
 import app.snapsync.domain.asset.FileBinding
-import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.model.AssetRef
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.FileArea
@@ -84,17 +85,17 @@ class DownloadOpening(
     private fun attempt(ref: AssetRef, resourceKey: String, eventId: String, from: String, to: String): String? {
         val joined = config.joinedOrRead() ?: return "not joined"
         if (eventId.isNotEmpty() && eventId != joined.eventId.value) return "fetched for another event"
-        val key = when (val read = keys.keptBytes()) {
-            is KeptBytes.Kept -> read.bytes
-            KeptBytes.Unreadable -> return "the event key cannot be read now"
-            KeptBytes.None -> return NO_KEY
+        val key = when (val read = keys.kept()) {
+            is Kept.Key -> read.key
+            Kept.Unreadable -> return "the event key cannot be read now"
+            Kept.None -> return NO_KEY
         }
-        val ad = EncryptedFileFormat.associatedData(
-            FileBinding(joined.eventId, ref.sourceDeviceId, ref.sourceAssetId, roleFromUploadKey(resourceKey)),
-        )
-        return when (val opened = cipher.decrypt(key, ad, FileArea.SHARED, from, to)) {
-            Opened.Ok -> null
-            else -> opened.toString()
+        val binding = FileBinding(joined.eventId, ref.sourceDeviceId, ref.sourceAssetId, roleFromUploadKey(resourceKey))
+        return when (val opened = cipher.open(key, binding, FileArea.SHARED, from, to)) {
+            is OpenOutcome.Opened -> null
+            is OpenOutcome.OtherKey -> "the file names another event key"
+            is OpenOutcome.Damaged -> "damaged: ${opened.reason}"
+            is OpenOutcome.Unreadable -> "unreadable: ${opened.result}"
         }
     }
 

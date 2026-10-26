@@ -1,9 +1,11 @@
 package app.snapsync.services.crypto
 
 import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.SealOutcome
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.asset.FileBinding
-import app.snapsync.format.EncryptedFileFormat
+import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.model.Resource
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.roleFromUploadKey
@@ -31,39 +33,33 @@ class UploadSealing(
     suspend fun sealFor(resource: Resource): UploadSeal {
         val joined = config.joinedOrRead() ?: return UploadSeal.Plain
         val keyId = joined.keyId ?: return UploadSeal.Plain
-        val kept = when (val read = keys.keptBytes()) {
-            is KeptBytes.Kept -> read
-            KeptBytes.Unreadable -> return UploadSeal.Withheld("the event key cannot be read now")
-            KeptBytes.None -> return UploadSeal.Withheld("no event key is kept")
+        val key = when (val read = keys.kept()) {
+            is Kept.Key -> read.key
+            Kept.Unreadable -> return UploadSeal.Withheld("the event key cannot be read now")
+            Kept.None -> return UploadSeal.Withheld("no event key is kept")
         }
-        if (kept.id != keyId) return UploadSeal.Withheld("the kept key is not the event's")
-        val key = kept.bytes
-        val ad = EncryptedFileFormat.associatedData(
-            FileBinding(
-                joined.eventId,
-                identity.requireDeviceId(),
-                assetIdFromUploadKey(resource.filename),
-                roleFromUploadKey(resource.filename),
-            ),
+        if (key.id.value != keyId) return UploadSeal.Withheld("the kept key is not the event's")
+        val binding = FileBinding(
+            joined.eventId,
+            identity.requireDeviceId(),
+            assetIdFromUploadKey(resource.filename),
+            roleFromUploadKey(resource.filename),
         )
-        return UploadSeal.Sealed(key, ad)
+        return UploadSeal.Sealed(key, binding)
     }
 
     /** Seal [from] into [to] in the shared area — a platform that uploads files sends the sealed one. */
     fun seal(seal: UploadSeal.Sealed, from: String, to: String): FileResult<Unit> =
-        cipher.encrypt(seal.eventKey, seal.associatedData, FileArea.SHARED, from, to)
+        when (val sealed = cipher.seal(seal.key, seal.binding, FileArea.SHARED, from, to)) {
+            is SealOutcome.Sealed -> FileResult.Ok(Unit)
+            is SealOutcome.Failed -> sealed.result
+        }
 
     /**
      * The headers that let the edge seal the library's own bytes — for a platform that cannot hand over a file
      * (PhotoKit). They carry THIS file's key and opening bytes, never the event key, and are never logged.
      */
-    fun edgeHeaders(seal: UploadSeal.Sealed): Map<String, String> {
-        val elsewhere = cipher.sealedElsewhere(seal.eventKey, seal.associatedData)
-        return mapOf(
-            EncryptedFileFormat.FILE_KEY_HEADER to EncryptedFileFormat.headerValue(elsewhere.fileKey.bytes),
-            EncryptedFileFormat.FILE_HEAD_HEADER to EncryptedFileFormat.headerValue(elsewhere.head),
-        )
-    }
+    fun edgeHeaders(seal: UploadSeal.Sealed): Map<String, String> = cipher.edgeSeal(seal.key, seal.binding).headers()
 }
 
 /** How one upload goes up. */
@@ -71,8 +67,8 @@ sealed interface UploadSeal {
     /** A plain event: the bytes as the library holds them. */
     data object Plain : UploadSeal
 
-    /** An encrypted event: sealed under [eventKey], bound to [associatedData]. */
-    class Sealed(val eventKey: ByteArray, val associatedData: ByteArray) : UploadSeal {
+    /** An encrypted event: sealed under [key], bound to [binding]. */
+    class Sealed(val key: IdentifiedKey, val binding: FileBinding) : UploadSeal {
         override fun toString(): String = "Sealed"
     }
 

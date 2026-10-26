@@ -1,10 +1,18 @@
 package app.snapsync.crypto
 
+import app.snapsync.data.crypto.EdgeSeal
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.FileCipher
+import app.snapsync.data.crypto.OpenOutcome
+import app.snapsync.data.crypto.SealOutcome
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.IdentifiedKey
+import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.files.JvmFiles
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.HeadRead
@@ -13,9 +21,6 @@ import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.FileArea
-import app.snapsync.ports.FileResult
-import app.snapsync.services.crypto.FileCipher
-import app.snapsync.services.crypto.Opened
 import com.google.crypto.tink.subtle.AesGcmHkdfStreaming
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -41,6 +46,7 @@ import java.nio.file.Files as Nio
  * and whose output must open here. Exact bytes throughout: the edge's encryption of an extension upload must be what
  * the app writes, so "it round-trips" would prove nothing.
  */
+@OptIn(MakesEventKey::class)
 class EncryptedFileFormatTest {
 
     private val vectors: JsonObject = Json.parseToJsonElement(
@@ -69,6 +75,25 @@ class EncryptedFileFormatTest {
     private val jcaHmac = object : Hmac {
         override fun mac(key: ByteArray, message: ByteArray): ByteArray = JcaCrypto().hmacSha256(key, message)
     }
+
+    /** [bytes] as an event key, with its id. */
+    private fun identified(bytes: ByteArray): IdentifiedKey = EventKeyIds(JcaCrypto()).identify(EventKey.of(bytes)!!)
+
+    /** What a vector's associated data names: `snapsync/v1/<event>/<device>/<asset>/<role>`. */
+    private fun bindingOf(associatedData: ByteArray): FileBinding =
+        associatedData.decodeToString().removePrefix("snapsync/v1/").split("/").let { parts ->
+            val (event, device, asset) = parts
+            val role = parts[3]
+            FileBinding(
+                EventId.parse(event)!!,
+                DeviceId.parse(device)!!,
+                AssetId.parse(asset)!!,
+                ResourceRoleText.parse(role)!!,
+            )
+        }
+
+    private fun headerBytes(seal: EdgeSeal, header: String): ByteArray =
+        java.util.Base64.getUrlDecoder().decode(seal.headers().getValue(header))
 
     /** The resource a test file is, as [role]. */
     private fun binding(role: ResourceRole) = FileBinding(
@@ -123,7 +148,7 @@ class EncryptedFileFormatTest {
     @Test
     fun `the key id is the vectors'`() {
         vectors.getValue("keyId").jsonArray.map { it.jsonObject }.forEach { v ->
-            assertEquals(v.str("keyId"), FileCipher(JcaCrypto(), files).keyIdOf(v.str("eventKey").hex()).hex())
+            assertEquals(v.str("keyId"), identified(v.str("eventKey").hex()).id.value)
         }
     }
 
@@ -133,14 +158,20 @@ class EncryptedFileFormatTest {
             .filter { it.num("segmentSize") == EncryptedFileFormat.SEGMENT_LENGTH }
         assertTrue(ours.isNotEmpty())
         ours.forEachIndexed { i, v ->
-            val ikm = v.str("ikm").hex()
+            val key = identified(v.str("ikm").hex())
             val ad = v.str("associatedData").hex()
+            val binding = bindingOf(ad)
+            assertContentEquals(
+                ad,
+                EncryptedFileFormat.associatedData(binding),
+                "the vector's resource, spelled as ours",
+            )
             val plain = pattern(v.num("plaintextLength")) { it * 7 + 3 }
             val cipher = FileCipher(drawing(v.str("salt").hex(), v.str("noncePrefix").hex()), files)
-            assertEquals(FileResult.Ok(Unit), cipher.encrypt(ikm, ad, area, write("plain$i", plain), "sealed$i"))
+            assertEquals(SealOutcome.Sealed, cipher.seal(key, binding, area, write("plain$i", plain), "sealed$i"))
             val sealed = read("sealed$i")
             assertPinned(sealed.copyOfRange(EncryptedFileFormat.PREFIX_LENGTH, sealed.size), v)
-            assertEquals(Opened.Ok, cipher.decrypt(ikm, ad, area, "sealed$i", "opened$i"))
+            assertEquals(OpenOutcome.Opened, cipher.open(key, binding, area, "sealed$i", "opened$i"))
             assertContentEquals(plain, read("opened$i"))
         }
     }
@@ -148,32 +179,32 @@ class EncryptedFileFormatTest {
     @Test
     fun `the reference file is written to its exact bytes`() {
         val v = vectors.getValue("file").jsonArray.first().jsonObject
-        val eventKey = v.str("eventKey").hex()
-        val ad = EncryptedFileFormat.associatedData(
-            FileBinding(
-                EventId.parse(v.str("eventId"))!!,
-                DeviceId.parse(v.str("deviceId"))!!,
-                AssetId.parse(v.str("assetId"))!!,
-                ResourceRoleText.parse(v.str("role"))!!,
-            ),
+        val key = identified(v.str("eventKey").hex())
+        val binding = FileBinding(
+            EventId.parse(v.str("eventId"))!!,
+            DeviceId.parse(v.str("deviceId"))!!,
+            AssetId.parse(v.str("assetId"))!!,
+            ResourceRoleText.parse(v.str("role"))!!,
         )
         val plain = pattern(v.num("plaintextLength")) { it * 13 + 1 }
         val cipher = FileCipher(drawing(v.str("salt").hex(), v.str("noncePrefix").hex()), files)
-        cipher.encrypt(eventKey, ad, area, write("plain", plain), "sealed")
+        cipher.seal(key, binding, area, write("plain", plain), "sealed")
         assertPinned(read("sealed"), v, prefix = "file")
     }
 
     @Test
     fun `Tink opens what is written here, and what Tink writes opens here`() {
         val eventKey = ByteArray(32) { (it * 3).toByte() }
-        val ad = EncryptedFileFormat.associatedData(binding(ResourceRole.PRIMARY))
+        val key = identified(eventKey)
+        val binding = binding(ResourceRole.PRIMARY)
+        val ad = EncryptedFileFormat.associatedData(binding)
         val tink = AesGcmHkdfStreaming(eventKey, "HmacSha256", 32, EncryptedFileFormat.SEGMENT_LENGTH, 0)
         val cipher = FileCipher(JcaCrypto(), files)
         val first = EncryptedFileFormat.plaintextSegmentLength(0)
         val rest = EncryptedFileFormat.plaintextSegmentLength(1)
         for (n in listOf(0, 1, first, first + 1, first + rest, first + 3 * rest + 17, 1_000_000)) {
             val plain = pattern(n) { it * 31 + n }
-            cipher.encrypt(eventKey, ad, area, write("p$n", plain), "s$n")
+            cipher.seal(key, binding, area, write("p$n", plain), "s$n")
             val ours = read("s$n")
             val opened = tink.newDecryptingStream(
                 ByteArrayInputStream(ours, EncryptedFileFormat.PREFIX_LENGTH, ours.size),
@@ -187,24 +218,27 @@ class EncryptedFileFormatTest {
                     ad,
                 ).use { it.write(plain) }
             }.toByteArray()
-            write("t$n", byteArrayOf(EncryptedFileFormat.VERSION) + cipher.keyIdOf(eventKey) + tinkWritten)
-            assertEquals(Opened.Ok, cipher.decrypt(eventKey, ad, area, "t$n", "o$n"), "Tink's $n bytes open")
+            write(
+                "t$n",
+                byteArrayOf(EncryptedFileFormat.VERSION) + EncryptedFileFormat.keyIdOf(eventKey, jcaHmac) + tinkWritten,
+            )
+            assertEquals(OpenOutcome.Opened, cipher.open(key, binding, area, "t$n", "o$n"), "Tink's $n bytes open")
             assertContentEquals(plain, read("o$n"))
         }
     }
 
     @Test
     fun `a damaged, cut, extended, moved or foreign file never yields a byte`() {
-        val eventKey = ByteArray(32) { 1 }
-        val ad = EncryptedFileFormat.associatedData(binding(ResourceRole.PRIMARY))
+        val eventKey = identified(ByteArray(32) { 1 })
+        val primary = binding(ResourceRole.PRIMARY)
         val cipher = FileCipher(JcaCrypto(), files)
-        cipher.encrypt(eventKey, ad, area, write("plain", pattern(200_000) { it }), "sealed")
+        cipher.seal(eventKey, primary, area, write("plain", pattern(200_000) { it }), "sealed")
         val sealed = read("sealed")
-        fun opens(bytes: ByteArray, key: ByteArray = eventKey, boundTo: ByteArray = ad): Opened {
+        fun opens(bytes: ByteArray, key: IdentifiedKey = eventKey, boundTo: FileBinding = primary): OpenOutcome {
             write("case", bytes)
             File(dir, "out").delete()
-            return cipher.decrypt(key, boundTo, area, "case", "out").also {
-                if (it != Opened.Ok) {
+            return cipher.open(key, boundTo, area, "case", "out").also {
+                if (it != OpenOutcome.Opened) {
                     assertTrue(
                         !File(dir, "out").exists() && !File(dir, "out.part").exists(),
                         "nothing written for $it",
@@ -212,40 +246,46 @@ class EncryptedFileFormatTest {
                 }
             }
         }
-        assertIs<Opened.Damaged>(
+        assertIs<OpenOutcome.Damaged>(
             opens(sealed.copyOf().also { it[sealed.size - 100] = (it[sealed.size - 100] + 1).toByte() }),
         )
         val boundary = EncryptedFileFormat.HEAD_LENGTH + EncryptedFileFormat.ciphertextSegmentLength(0)
-        assertIs<Opened.Damaged>(
+        assertIs<OpenOutcome.Damaged>(
             opens(sealed.copyOf(boundary)),
             "cut at a segment boundary: the new last was sealed as not-last",
         )
-        assertIs<Opened.Damaged>(opens(sealed + byteArrayOf(0)))
-        assertIs<Opened.Damaged>(
-            opens(sealed, boundTo = EncryptedFileFormat.associatedData(binding(ResourceRole.LIVE))),
+        assertIs<OpenOutcome.Damaged>(opens(sealed + byteArrayOf(0)))
+        assertIs<OpenOutcome.Damaged>(
+            opens(sealed, boundTo = binding(ResourceRole.LIVE)),
         )
-        assertEquals(Opened.OtherKey, opens(sealed, key = ByteArray(32)))
-        assertIs<Opened.Damaged>(opens(sealed.copyOf().also { it[0] = 2 }), "a future format version")
-        assertIs<Opened.Damaged>(opens(sealed.copyOf(10)), "shorter than the head")
-        assertIs<Opened.Unreadable>(cipher.decrypt(eventKey, ad, area, "missing", "out"))
-        assertEquals(Opened.Ok, opens(sealed))
+        assertEquals(OpenOutcome.OtherKey, opens(sealed, key = identified(ByteArray(32))))
+        assertIs<OpenOutcome.Damaged>(opens(sealed.copyOf().also { it[0] = 2 }), "a future format version")
+        assertIs<OpenOutcome.Damaged>(opens(sealed.copyOf(10)), "shorter than the head")
+        assertIs<OpenOutcome.Unreadable>(cipher.open(eventKey, primary, area, "missing", "out"))
+        assertEquals(OpenOutcome.Opened, opens(sealed))
     }
 
     @Test
     fun `a seal for elsewhere carries a fresh head and only that file's key`() {
         val eventKey = ByteArray(32) { 9 }
-        val ad = EncryptedFileFormat.associatedData(binding(ResourceRole.PRIMARY))
+        val binding = binding(ResourceRole.PRIMARY)
         val cipher = FileCipher(JcaCrypto(), files)
-        val seal = cipher.sealedElsewhere(eventKey, ad)
-        val head = assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(seal.head)).head
-        assertContentEquals(cipher.keyIdOf(eventKey), head.keyId)
+        val seal = cipher.edgeSeal(identified(eventKey), binding)
+        val head = assertIs<HeadRead.Read>(
+            EncryptedFileFormat.decodeHead(headerBytes(seal, EncryptedFileFormat.FILE_HEAD_HEADER)),
+        ).head
+        assertContentEquals(EncryptedFileFormat.keyIdOf(eventKey, jcaHmac), head.keyId)
+        val fileKey = headerBytes(seal, EncryptedFileFormat.FILE_KEY_HEADER)
         assertContentEquals(
-            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, ad, jcaHmac),
-            seal.fileKey.bytes,
+            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, EncryptedFileFormat.associatedData(binding), jcaHmac),
+            fileKey,
         )
-        assertTrue(!seal.fileKey.bytes.contentEquals(eventKey))
+        assertTrue(!fileKey.contentEquals(eventKey))
+        assertEquals("EdgeSeal(***)", seal.toString(), "an edge seal never renders its key")
         val again = assertIs<HeadRead.Read>(
-            EncryptedFileFormat.decodeHead(cipher.sealedElsewhere(eventKey, ad).head),
+            EncryptedFileFormat.decodeHead(
+                headerBytes(cipher.edgeSeal(identified(eventKey), binding), EncryptedFileFormat.FILE_HEAD_HEADER),
+            ),
         ).head
         assertTrue(!again.salt.contentEquals(head.salt), "a fresh salt per file")
     }

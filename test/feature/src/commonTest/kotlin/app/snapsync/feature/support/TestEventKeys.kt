@@ -2,6 +2,7 @@ package app.snapsync.feature.support
 
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.event.KeyMaterial
 import app.snapsync.domain.event.KeyToKeep
@@ -27,6 +28,9 @@ internal class TestEventKeys(crypto: Crypto, secure: SecureStore) {
     fun keep(linkKey: String) {
         store.keep(KeyToKeep.Key(ids.identify(EventKeyText.decode(linkKey)!!)), testEventId("kept"))
     }
+
+    /** The kept key, with its id. */
+    fun held(): IdentifiedKey? = (store.state.value as? KeyFact.Kept)?.key
 
     /** The kept key's bytes. */
     fun current(): ByteArray? = (store.state.value as? KeyFact.Kept)?.key?.key?.bytes()

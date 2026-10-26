@@ -2,6 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.crypto.FileCipher
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.membership.MembershipRepository
@@ -12,7 +13,6 @@ import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService

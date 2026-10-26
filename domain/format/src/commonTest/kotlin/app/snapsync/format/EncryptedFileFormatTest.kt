@@ -125,6 +125,32 @@ class EncryptedFileFormatTest {
     }
 
     @Test
+    fun `bytes of the format's length are handed on, and any other length is none`() {
+        assertContentEquals(ByteArray(12), EncryptedFileFormat.ofLength(ByteArray(12), 12))
+        assertNull(EncryptedFileFormat.ofLength(ByteArray(11), 12))
+    }
+
+    @Test
+    fun `a segment is the last when nothing follows its length, else it is cut to it`() {
+        assertContentEquals(
+            byteArrayOf(1, 2),
+            assertIs<SegmentRead.Last>(EncryptedFileFormat.segmentOf(byteArrayOf(1, 2), 3)).bytes,
+        )
+        assertContentEquals(
+            byteArrayOf(1, 2, 3),
+            assertIs<SegmentRead.Last>(EncryptedFileFormat.segmentOf(byteArrayOf(1, 2, 3), 3)).bytes,
+        )
+        assertContentEquals(
+            byteArrayOf(1, 2, 3),
+            assertIs<SegmentRead.More>(EncryptedFileFormat.segmentOf(byteArrayOf(1, 2, 3, 4), 3)).bytes,
+        )
+        assertIs<SegmentRead.Last>(
+            EncryptedFileFormat.segmentOf(ByteArray(0), 3),
+            "an empty file is one empty last segment",
+        )
+    }
+
+    @Test
     fun `segments are 64 KiB but the first and each nonce names its number and whether it is last`() {
         assertEquals(65536 - 16 - 40, EncryptedFileFormat.plaintextSegmentLength(0))
         assertEquals(65536 - 16, EncryptedFileFormat.plaintextSegmentLength(1))

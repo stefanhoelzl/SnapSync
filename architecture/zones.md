@@ -60,6 +60,7 @@ flowchart LR
   adapter_android --> ui_components
   adapter_android --> ui_screens
   adapter_android --> ui_state
+  adapter_generic_app --> domain_data
   adapter_generic_app --> domain_domain
   adapter_generic_app --> domain_format
   adapter_generic_app --> domain_inbound

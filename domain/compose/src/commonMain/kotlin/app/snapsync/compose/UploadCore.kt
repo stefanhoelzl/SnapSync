@@ -2,6 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.crypto.FileCipher
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
@@ -21,7 +22,6 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.backend.BackendUploadRequests
 import app.snapsync.services.backend.ManifestPublisher
-import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource

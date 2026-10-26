@@ -1,6 +1,7 @@
 package app.snapsync.feature.crypto
 
 import app.snapsync.data.crypto.EncryptionSlots
+import app.snapsync.data.crypto.FileCipher
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
@@ -14,10 +15,8 @@ import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.TestEventKeys
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
-import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
-import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
@@ -27,8 +26,6 @@ import app.snapsync.ports.FileResult
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.StoredProtection
 import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.services.crypto.FileCipher
-import app.snapsync.services.crypto.Opened
 import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.testids.testAssetId
@@ -141,20 +138,34 @@ class CryptoServicesEdgesTest {
         }
         // A file that does open resets the count.
         val plain = RecordingFiles().also { it.write(FileArea.SHARED, "p", ByteArray(10)) }
-        FileCipher(crypto, plain).encrypt(
-            keys.current()!!,
-            EncryptedFileFormat.associatedData(
-                FileBinding(
-                    EventId.parse(EVENT)!!,
-                    DeviceId.parse(DEVICE)!!,
-                    AssetId.parse("ASSET1")!!,
-                    ResourceRole.PRIMARY,
-                ),
+        FileCipher(crypto, plain).seal(
+            keys.held()!!,
+            FileBinding(
+                EventId.parse(EVENT)!!,
+                DeviceId.parse(DEVICE)!!,
+                AssetId.parse("ASSET1")!!,
+                ResourceRole.PRIMARY,
             ),
             FileArea.SHARED,
             "p",
             "s",
         )
+        val other = TestEventKeys(crypto, inMemorySecureStore()).also { it.keep(it.mint().linkKey) }
+        val foreign = RecordingFiles().also { it.write(FileArea.SHARED, "p", ByteArray(10)) }
+        FileCipher(crypto, foreign).seal(
+            other.held()!!,
+            FileBinding(
+                EventId.parse(EVENT)!!,
+                DeviceId.parse(DEVICE)!!,
+                AssetId.parse("ASSET1")!!,
+                ResourceRole.PRIMARY,
+            ),
+            FileArea.SHARED,
+            "p",
+            "s",
+        )
+        files.write(FileArea.SHARED, "in", (foreign.read(FileArea.SHARED, "s") as FileResult.Ok).value)
+        assertFalse(opening.open(ref, "ASSET1-primary.heic", EVENT, "in", "out"), "a file of another key does not open")
         files.write(FileArea.SHARED, "in", (plain.read(FileArea.SHARED, "s") as FileResult.Ok).value)
         files.write(FileArea.SHARED, "again", (plain.read(FileArea.SHARED, "s") as FileResult.Ok).value)
         assertFalse(
@@ -164,37 +175,6 @@ class CryptoServicesEdgesTest {
         assertTrue(opening.open(ref, "ASSET1-primary.heic", EVENT, "in", "out"))
     }
 
-    @Test
-    fun a_file_that_cannot_be_read_or_written_is_unreadable_never_damaged() = runTest {
-        val key = ByteArray(32) { 1 }
-        val ad = EncryptedFileFormat.associatedData(
-            FileBinding(
-                EventId.parse(EVENT)!!,
-                DeviceId.parse(DEVICE)!!,
-                AssetId.parse("ASSET1")!!,
-                ResourceRole.PRIMARY,
-            ),
-        )
-        val files = RecordingFiles()
-        files.write(FileArea.SHARED, "p", ByteArray(200_000))
-        val cipher = FileCipher(crypto, files)
-        assertEquals(FileResult.Ok(Unit), cipher.encrypt(key, ad, FileArea.SHARED, "p", "s"))
-        files.denied += FileArea.SHARED to "o.part"
-        assertIs<Opened.Unreadable>(cipher.decrypt(key, ad, FileArea.SHARED, "s", "o"))
-        files.denied += FileArea.SHARED to "s"
-        assertIs<Opened.Unreadable>(cipher.decrypt(key, ad, FileArea.SHARED, "s", "o"))
-        files.denied += FileArea.SHARED to "t.part"
-        assertIs<FileResult.Denied>(cipher.encrypt(key, ad, FileArea.SHARED, "p", "t"))
-        assertEquals(
-            FileResult.NotFound,
-            FileCipher(crypto, RecordingFiles()).encrypt(key, ad, FileArea.SHARED, "missing", "t"),
-        )
-        assertEquals(
-            FileResult.AreaUnavailable,
-            FileCipher(crypto, inMemoryFiles(shared = null)).encrypt(key, ad, FileArea.SHARED, "p", "t"),
-        )
-    }
-
     /** A transfer started before transfers named their event fetched for the event joined then — the one joined now. */
     @Test
     fun a_download_from_before_transfers_named_their_event_opens_with_the_joined_events_key() = runTest {
@@ -202,15 +182,13 @@ class CryptoServicesEdgesTest {
         val keys = TestEventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
         val files = RecordingFiles()
         files.write(FileArea.SHARED, "p", ByteArray(10))
-        FileCipher(crypto, files).encrypt(
-            keys.current()!!,
-            EncryptedFileFormat.associatedData(
-                FileBinding(
-                    EventId.parse(EVENT)!!,
-                    DeviceId.parse(DEVICE)!!,
-                    AssetId.parse("ASSET1")!!,
-                    ResourceRole.PRIMARY,
-                ),
+        FileCipher(crypto, files).seal(
+            keys.held()!!,
+            FileBinding(
+                EventId.parse(EVENT)!!,
+                DeviceId.parse(DEVICE)!!,
+                AssetId.parse("ASSET1")!!,
+                ResourceRole.PRIMARY,
             ),
             FileArea.SHARED,
             "p",
