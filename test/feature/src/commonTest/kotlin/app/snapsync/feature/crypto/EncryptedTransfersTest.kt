@@ -7,11 +7,13 @@ import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.KeyMaterial
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
+import app.snapsync.feature.support.TestEventKeys
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.format.EncryptedFileFormat
@@ -51,8 +53,6 @@ import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.services.crypto.EventKeyMinting
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
 import app.snapsync.services.crypto.UploadSealing
@@ -87,7 +87,7 @@ import kotlin.test.assertTrue
  * the event's key. Over the stand-in crypto, which is honest about what opens; the real primitives' bytes are pinned by
  * the format's vectors.
  */
-@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, KeyMaterial::class)
 class EncryptedTransfersTest {
 
     private val crypto: Crypto = fakeCrypto()
@@ -106,10 +106,10 @@ class EncryptedTransfersTest {
     /** One member's device: its files, its kept key, its membership. */
     private inner class Device(val id: String, val linkKey: String?, keyId: String?) {
         val files = RecordingFiles()
-        val keys = EventKeys(crypto, inMemorySecureStore()).also { k -> linkKey?.let(k::keep) }
+        val keys = TestEventKeys(crypto, inMemorySecureStore()).also { k -> linkKey?.let(k::keep) }
         val config = configService(joined(keyId))
         val cipher = FileCipher(crypto, files)
-        val sealing = UploadSealing(keys, cipher, config, testIdentity(id))
+        val sealing = UploadSealing(keys.store, cipher, config, testIdentity(id))
     }
 
     /** The app's session, sending files, remembering what it was asked to send. */
@@ -201,7 +201,7 @@ class EncryptedTransfersTest {
 
     @Test
     fun a_sealed_upload_is_what_another_member_opens_and_the_plaintext_never_waits_on_disk() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val sharer = Device(DEVICE_A, minted.linkKey, minted.keyId)
         val session = FileSession()
 
@@ -227,7 +227,7 @@ class EncryptedTransfersTest {
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
             headers = { emptyMap() },
-            opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
+            opening = DownloadOpening(receiver.keys.store, receiver.cipher, receiver.config, receiver.files),
         )
         jobs.onFinished(
             "$DEVICE_A\n$ASSET\n$KEY\n$EVENT",
@@ -242,7 +242,7 @@ class EncryptedTransfersTest {
 
     @Test
     fun a_platform_that_sends_the_librarys_own_bytes_carries_that_one_files_key_for_the_edge() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
         val queue = Queue()
         assertEquals(UploadCreateOutcome.CREATED, transfer(device, queue).createJob(request, resource))
@@ -251,19 +251,19 @@ class EncryptedTransfersTest {
         val head = assertIs<HeadRead.Read>(
             EncryptedFileFormat.decodeHead(decodeBase64(target.headers.getValue(EncryptedFileFormat.FILE_HEAD_HEADER))),
         ).head
-        val eventKey = EventKeyText.decode(minted.linkKey)!!
+        val eventKey = EventKeyText.decode(minted.linkKey)!!.bytes()
         assertContentEquals(EncryptedFileFormat.keyIdOf(eventKey, portHmac(crypto)), head.keyId)
         assertContentEquals(
             EncryptedFileFormat.fileKeyOf(eventKey, head.salt, adFor(DEVICE_A), portHmac(crypto)),
-            EventKeyText.decode(target.headers.getValue(EncryptedFileFormat.FILE_KEY_HEADER)),
+            decodeBase64(target.headers.getValue(EncryptedFileFormat.FILE_KEY_HEADER)),
             "the one file's key, bound to this resource — never the event key",
         )
     }
 
     @Test
     fun without_the_events_key_nothing_goes_up() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
-        val other = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
+        val other = TestEventKeys(crypto, inMemorySecureStore()).mint()
         for (device in listOf(Device(DEVICE_A, null, minted.keyId), Device(DEVICE_A, other.linkKey, minted.keyId))) {
             val session = FileSession()
             assertEquals(UploadCreateOutcome.FAILED, transfer(device, session).createJob(request, resource))
@@ -286,7 +286,7 @@ class EncryptedTransfersTest {
 
     @Test
     fun a_download_that_does_not_open_is_never_staged_and_leaves_nothing_behind() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val receiver = Device(DEVICE_B, minted.linkKey, minted.keyId)
         val staged = mutableListOf<String>()
         val jobs = DownloadJobs(
@@ -295,7 +295,7 @@ class EncryptedTransfersTest {
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
             headers = { emptyMap() },
-            opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
+            opening = DownloadOpening(receiver.keys.store, receiver.cipher, receiver.config, receiver.files),
         )
         // Plaintext, as a build predating encryption would have stored it — or anything else that is not a file of this key.
         repeat(5) { attempt ->
@@ -317,10 +317,10 @@ class EncryptedTransfersTest {
 
     @Test
     fun a_download_with_no_key_kept_is_never_staged() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         // The event is encrypted, and this device lost its key: nothing opens, and nothing is staged.
         val receiver = Device(DEVICE_B, linkKey = null, keyId = minted.keyId)
-        val opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files)
+        val opening = DownloadOpening(receiver.keys.store, receiver.cipher, receiver.config, receiver.files)
         repeat(5) { attempt ->
             receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
             assertFalse(
@@ -338,9 +338,9 @@ class EncryptedTransfersTest {
 
     @Test
     fun a_file_opens_only_as_the_resource_it_was_sealed_as() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
-        val key = EventKeyText.decode(minted.linkKey)!!
+        val key = EventKeyText.decode(minted.linkKey)!!.bytes()
         device.files.write(FileArea.SHARED, "p", photo)
         device.cipher.encrypt(key, adFor(DEVICE_A), FileArea.SHARED, "p", "s")
         assertIs<Opened.Damaged>(device.cipher.decrypt(key, adFor(DEVICE_B), FileArea.SHARED, "s", "o"))
@@ -372,7 +372,7 @@ class EncryptedTransfersTest {
 
     @Test
     fun the_platforms_own_retry_renews_the_edge_seal_and_a_missing_key_withholds_it() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val sealed = Queue().apply { offered = listOf(offeredJob()) }
         val transfer = transfer(Device(DEVICE_A, minted.linkKey, minted.keyId), sealed)
         transfer.retryJob(transfer.fetchRetryJobs().single(), request)
@@ -389,7 +389,7 @@ class EncryptedTransfersTest {
 
     @Test
     fun a_seal_that_cannot_be_written_creates_no_job_and_leaves_nothing_staged() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
         device.files.denied += FileArea.SHARED to "${uploadStagingPath(KEY)}.part"
         val session = FileSession()
@@ -400,7 +400,7 @@ class EncryptedTransfersTest {
 
     @Test
     fun a_seal_with_nowhere_to_export_the_plaintext_creates_no_job() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
         device.files.unlocatable += "${uploadStagingPath(KEY)}.plain"
         val session = FileSession()
@@ -418,7 +418,7 @@ class EncryptedTransfersTest {
             onStaged = { _, _, path -> staged += path },
             network = { TransferNetwork.ANY },
             headers = { emptyMap() },
-            opening = DownloadOpening(receiver.keys, receiver.cipher, receiver.config, receiver.files),
+            opening = DownloadOpening(receiver.keys.store, receiver.cipher, receiver.config, receiver.files),
         )
         receiver.files.write(FileArea.SHARED, "os-tmp/0", photo)
         jobs.onFinished(
@@ -428,15 +428,6 @@ class EncryptedTransfersTest {
         ) { body -> launch { body() } }
         advanceUntilIdle()
         assertEquals(1, staged.size, "nothing to open: the bytes are the photo")
-    }
-
-    @Test
-    fun a_new_event_is_encrypted_unless_the_builds_control_asks_for_a_plain_one() {
-        val controls = app.snapsync.mock.DevControlsMock()
-        val minting = EventKeyMinting(EventKeys(crypto, inMemorySecureStore()), controls.port())
-        assertEquals(16, minting.forNewEvent()!!.keyId.length, "a build asking for no plain event encrypts it")
-        controls.encrypts = false
-        assertEquals(null, minting.forNewEvent(), "a rig build may still create a plain event")
     }
 }
 

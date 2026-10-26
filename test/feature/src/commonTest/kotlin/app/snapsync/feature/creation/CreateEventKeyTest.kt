@@ -1,13 +1,13 @@
 package app.snapsync.feature.creation
 
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.NewEventKeys
+import app.snapsync.domain.event.EventKey
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.mock.DevControlsMock
 import app.snapsync.mock.fakeCrypto
-import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.CreateOutcome
 import app.snapsync.services.backend.EventCreation
-import app.snapsync.services.crypto.EventKeyMinting
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -28,9 +28,10 @@ class CreateEventKeyTest {
 
     private class World {
         val controls = DevControlsMock()
-        val keys = EventKeys(fakeCrypto(), inMemorySecureStore())
+        val ids = EventKeyIds(fakeCrypto())
         var sentKeyId: String? = "unsent"
-        var mintedLink: String? = "unrouted"
+        var mintedKey: EventKey? = null
+        var routed = false
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
 
         fun create(eventId: String) = CreateEvent(
@@ -47,8 +48,11 @@ class CreateEventKeyTest {
                 }
             },
             status = status,
-            onMinted = { _, linkKey -> mintedLink = linkKey },
-            minting = EventKeyMinting(keys, controls.port()),
+            onMinted = { _, key ->
+                routed = true
+                mintedKey = key
+            },
+            keys = NewEventKeys(ids, controls.port()),
         )
     }
 
@@ -59,9 +63,9 @@ class CreateEventKeyTest {
         w.create(eventId).create("Party", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z", openUntil = null)
 
         val keyId = assertNotNull(w.sentKeyId)
-        val linkKey = assertNotNull(w.mintedLink)
-        assertTrue(w.keys.opens(linkKey, keyId), "the routed key is the one whose id was sent")
-        assertTrue(linkKey != keyId, "the key itself never reaches the backend")
+        val key = assertNotNull(w.mintedKey)
+        assertEquals(w.ids.identify(key).id.value, keyId, "the routed key is the one whose id was sent")
+        assertEquals(16, keyId.length, "only the key's 8-byte id is sent")
         assertEquals(CreationStatus.Idle, w.status.value)
     }
 
@@ -72,6 +76,7 @@ class CreateEventKeyTest {
         w.create(eventId).create("Party", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z", openUntil = null)
 
         assertNull(w.sentKeyId)
-        assertNull(w.mintedLink)
+        assertTrue(w.routed, "the plain event still reaches the creator's join")
+        assertNull(w.mintedKey)
     }
 }

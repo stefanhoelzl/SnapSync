@@ -1,9 +1,11 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventName
 import app.snapsync.domain.event.EventNameVerdict
@@ -16,6 +18,7 @@ import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
+import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
@@ -85,7 +88,7 @@ internal fun servedEvent(
     range = (EventRange.of(startsAt, endsAt) as EventRangeVerdict.Ok).range,
     openUntil = openUntil,
     deletesAt = deletesAt,
-    keyId = keyId?.let(::EventKeyId),
+    encryption = keyId?.let { Encryption.Encrypted(EventKeyId(it)) } ?: Encryption.Plain,
     members = null,
 )
 
@@ -180,7 +183,9 @@ internal class TestCommands(
     // The menu's mobile-data switch saves; a test about it overrides this.
     override suspend fun setMobileData(on: Boolean) = true
 
-    override suspend fun restoreEventKey(linkKey: String) = false
+    // Restoring a lost key is answered nowhere the screen reads; a test about it overrides this.
+    override fun restoreKey(key: EventKey) =
+        requests.ask(requests.statuses.restore, RestoreAnswer.Failed) { RestoreAnswer.NothingChanged }
 }
 
 /** Diagnostics that go nowhere unless a test is about them. */

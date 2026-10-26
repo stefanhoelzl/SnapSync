@@ -6,6 +6,7 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.DeletionVerdict
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.EncryptionText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.hasEnded
@@ -86,7 +87,7 @@ fun Membership.asConfig(): EventConfig = EventConfig(
     members = event.members?.let { MemberCounts(it.active, it.settled, it.waiting) },
     openUntil = event.openUntil,
     deleted = this is Membership.Deleted,
-    keyId = event.keyId?.value,
+    keyId = EncryptionText.of(event.encryption),
 )
 
 private fun MembershipRead.config(): EventConfig? = when (this) {

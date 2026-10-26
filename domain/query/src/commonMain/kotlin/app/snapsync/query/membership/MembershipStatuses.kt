@@ -2,6 +2,7 @@ package app.snapsync.query.membership
 
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
+import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.query.RequestStatuses
@@ -12,4 +13,5 @@ class MembershipStatuses {
     val settings = RequestStatuses<SettingsResult>()
     val switch = RequestStatuses<SwitchVerdict>()
     val rename = RequestStatuses<RenameResult>()
+    val restore = RequestStatuses<RestoreAnswer>()
 }

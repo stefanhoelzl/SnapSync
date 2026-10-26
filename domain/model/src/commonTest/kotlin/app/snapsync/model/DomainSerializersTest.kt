@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -36,6 +37,7 @@ class DomainSerializersTest {
         assertBare(OpenUntilAsString, OpenUntil(at), INSTANT)
         assertBare(DeletesAtAsString, DeletesAt(at), INSTANT)
         assertBare(AssetIdAsString, testAssetId("IMG_0001"), "IMG_0001")
+        assertBare(ResourceRoleAsString, ResourceRole.LIVE, "live")
     }
 
     @Test
@@ -43,6 +45,7 @@ class DomainSerializersTest {
         assertFailsWith<SerializationException> { Json.decodeFromString(EventIdAsString, "\"E1\"") }
         assertFailsWith<SerializationException> { Json.decodeFromString(DeviceIdAsString, "\"D1\"") }
         assertFailsWith<SerializationException> { Json.decodeFromString(AssetIdAsString, "\"a/b\"") }
+        assertFailsWith<SerializationException> { Json.decodeFromString(ResourceRoleAsString, "\"PRIMARY\"") }
         assertBare(EventIdAsString, EventId.parse(UUID)!!, UUID)
         assertBare(DeviceIdAsString, DeviceId.parse(UUID)!!, UUID)
     }

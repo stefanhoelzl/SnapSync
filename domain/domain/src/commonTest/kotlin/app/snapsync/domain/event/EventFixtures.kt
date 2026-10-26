@@ -19,6 +19,6 @@ internal fun anEvent(): Event = Event(
     ).range,
     openUntil = null,
     deletesAt = DeletesAt(ts("2026-08-21T18:00:00Z")),
-    keyId = null,
+    encryption = Encryption.Plain,
     members = null,
 )

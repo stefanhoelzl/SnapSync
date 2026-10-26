@@ -4,6 +4,7 @@ import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.Observers
+import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.service.ServiceConditions
 import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
@@ -77,6 +78,7 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Wake
+import app.snapsync.query.encryption.EventKeyQuery
 import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.scheduling.Observation
@@ -85,7 +87,6 @@ import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.services.crypto.EventKeyMinting
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.ImportMarkers
 import app.snapsync.services.foreground.AppForeground
@@ -242,9 +243,6 @@ class AppCore internal constructor(
 
     /** This process's services over [ports] — built here, never by a root (see [AppServices]). */
     internal val services: AppServices = AppServices(ports, process)
-
-    /** The composition's own log lines. */
-    internal val log get() = services.log
 
     /**
      * The app's uploader — the app-driven tier on every OS version, over the app's own [AppPorts.uploadSession]. Always
@@ -415,10 +413,8 @@ class AppCore internal constructor(
     /** The membership's cell, for readers outside the core (the status host), which see no service type. */
     val membership: StateFlow<EventConfig?> get() = services.config.config
 
-    /** What the screen reads of the joined event's key: the invite's, and whether it is lost ([EventKeyReads]). */
-    val eventKeyReads: EventKeyReads by lazy {
-        EventKeyReads(services.eventKeys, membership, scope, foreground.returns)
-    }
+    /** What the screen reads of the joined event's key: whether it is held, and so the key its invite carries. */
+    val keyQuery: EventKeyQuery by lazy { EventKeyQuery(services.membership, services.eventKeyStore, scope) }
 
     /** The device's mobile-data choice, for the status host's menu and waiting line. */
     val mobileDataChoice: StateFlow<Boolean> get() = services.mobileData.allowed
@@ -461,7 +457,7 @@ class AppCore internal constructor(
             // The version every request declares — the download redirect's too (`downloadResource`).
             headers = exchange::versionHeaders,
             // An encrypted event's bytes are opened before they are staged (the encrypted file format).
-            opening = DownloadOpening(services.eventKeys, services.fileCipher, services.config, process.files),
+            opening = DownloadOpening(services.eventKeyStore, services.fileCipher, services.config, process.files),
         )
     }
 
@@ -596,8 +592,8 @@ class AppCore internal constructor(
         CreateEvent(
             client = backend.creation,
             status = creationStatus,
-            onMinted = { eventId, linkKey -> minted.emit(MintedEvent(eventId, linkKey)) },
-            minting = EventKeyMinting(services.eventKeys, ports.devControls),
+            onMinted = { eventId, key -> minted.emit(MintedEvent(eventId, key)) },
+            keys = NewEventKeys(services.eventKeyIds, ports.devControls),
         )
     }
 

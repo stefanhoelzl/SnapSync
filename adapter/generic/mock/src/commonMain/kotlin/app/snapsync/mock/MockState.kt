@@ -2,6 +2,7 @@
 
 package app.snapsync.mock
 
+import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.trust.DeviceRefusal
@@ -244,7 +245,7 @@ private class SlotDto(
 @Serializable
 private class KeychainDto(val slots: List<SlotDto>) {
     /**
-     * Back into [items], each at the slot the app addresses it by — the slots are the app's own (`SecureSlots`), so a
+     * Back into [items], each at the slot the app addresses it by — the slots are the app's own (`TrustSlots`, `EncryptionSlots`), so a
      * stored item names one of them; an item that names none is one no build of the app would read, and stays behind.
      */
     fun into(items: MutableMap<SecureSlot, SecureStoreRead.Found>) {
@@ -259,6 +260,7 @@ private class KeychainDto(val slots: List<SlotDto>) {
             TrustSlots.DEVICE_ID,
             TrustSlots.ATTEST_TOKEN,
             TrustSlots.ATTEST_KEY_ID,
+            EncryptionSlots.EVENT_KEY,
         )
 
         fun of(items: Map<SecureSlot, SecureStoreRead.Found>) = KeychainDto(

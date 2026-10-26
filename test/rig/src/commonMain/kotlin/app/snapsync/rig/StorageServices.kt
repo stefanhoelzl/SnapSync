@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
@@ -26,7 +27,6 @@ import app.snapsync.ports.SecureSlot
 import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.preferences.PreferenceKeys
-import app.snapsync.services.secure.SecureSlots
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 
@@ -58,7 +58,7 @@ internal class Keychain(private val world: MockWorld) : KeychainLevers {
         world.device.keychain.fail(slotOf(item), kind, times ?: 1, WorldEvent.KeychainFaulted(item, kind))
 
     private fun slotOf(item: KeychainItem): SecureSlot = when (item) {
-        KeychainItem.EVENT_KEY -> SecureSlots.EVENT_KEY
+        KeychainItem.EVENT_KEY -> EncryptionSlots.EVENT_KEY
         KeychainItem.DEVICE_ID -> TrustSlots.DEVICE_ID
     }
 }

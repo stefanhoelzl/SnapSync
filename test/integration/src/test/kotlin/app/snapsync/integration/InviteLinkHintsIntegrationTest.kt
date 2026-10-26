@@ -5,6 +5,7 @@ import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.format.EventKeyText
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.levers.WorldEvent
@@ -38,7 +39,7 @@ class InviteLinkHintsIntegrationTest {
 
     /** [eventId]'s key as its invite carries it, or `null` for a plain event. */
     private suspend fun Acts.keyOf(eventId: String): String? =
-        (InviteLinkText.parse(host.invite(eventId)) as InviteLinkVerdict.Invite).link.key?.text
+        (InviteLinkText.parse(host.invite(eventId)) as InviteLinkVerdict.Invite).link.key?.let(EventKeyText::encode)
 
     @Test
     fun an_autoJoin_link_shows_the_join_screen_and_joins_nothing() = behaviour {

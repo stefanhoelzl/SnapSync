@@ -13,6 +13,7 @@ import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.downloadJobs
+import app.snapsync.feature.support.noKeyArm
 import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testRuntime
@@ -79,7 +80,7 @@ class DownloadPushReceiverTest {
             // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
             // (capability `receiving-photos`) — so state a downloading membership explicitly. The gate no
             // longer defaults: a permissive default is what let "no membership" mean "download freely".
-            arm = DownloadArm(enabled = { true }, keyHeld = { true }),
+            arm = noKeyArm(),
             checks = EventCheckRecord(testShared()),
             clock = WallClock(testClock()),
             readyToImport = { true },

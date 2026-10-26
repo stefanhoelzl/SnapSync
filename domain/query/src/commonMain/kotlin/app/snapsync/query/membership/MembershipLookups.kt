@@ -1,13 +1,14 @@
 package app.snapsync.query.membership
 
+import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.event.EventDirectory
-import app.snapsync.data.membership.InviteKeyCheck
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventLookupFact
 import app.snapsync.domain.event.EventPhase
+import app.snapsync.domain.event.KeyVerdict
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.SwitchFacts
@@ -34,7 +35,7 @@ interface JoinDetailsQuery {
  * The join screen's read of an invite's event: found — and then whether the invite's key opens it, so a link cut short
  * in sharing is told before the member chooses anything — not found, or no answer.
  */
-class JoinDetailsLookup(private val directory: EventDirectory, private val keys: InviteKeyCheck) : JoinDetailsQuery {
+class JoinDetailsLookup(private val directory: EventDirectory, private val ids: EventKeyIds) : JoinDetailsQuery {
     override suspend fun load(invite: InviteLink): JoinDetails = when (val found = directory.lookup(invite.event)) {
         is EventLookupFact.Found -> keyed(invite, found)
         EventLookupFact.NotFound -> JoinDetails.NotFound
@@ -42,9 +43,9 @@ class JoinDetailsLookup(private val directory: EventDirectory, private val keys:
     }
 
     private fun keyed(invite: InviteLink, found: EventLookupFact.Found): JoinDetails =
-        when (keys.opens(invite.key, found.event.keyId)) {
-            true -> JoinDetails.Found(found.event, found.completed)
-            false -> JoinDetails.WrongLink
+        when (found.event.encryption.openedBy(invite.key?.let(ids::identify))) {
+            is KeyVerdict.Opens -> JoinDetails.Found(found.event, found.completed)
+            KeyVerdict.WrongKey -> JoinDetails.WrongLink
         }
 }
 

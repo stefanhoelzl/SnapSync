@@ -2,6 +2,7 @@ package app.snapsync.format
 
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.program.InvalidProgramState
+import kotlin.io.encoding.Base64
 
 /**
  * **The encrypted file format** of an encrypted event's stored photo — the layout alone, in bytes, naming no port: the
@@ -43,6 +44,11 @@ object EncryptedFileFormat {
 
     /** That file's opening bytes (prefix and header), base64url. */
     const val FILE_HEAD_HEADER = "x-snapsync-file-head"
+
+    private val headerEncoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
+
+    /** [bytes] as [FILE_KEY_HEADER] and [FILE_HEAD_HEADER] carry them: base64url, unpadded. */
+    fun headerValue(bytes: ByteArray): String = headerEncoder.encode(bytes)
 
     /** The key id an event row holds for [eventKey]. */
     fun keyIdOf(eventKey: ByteArray, hmac: Hmac): ByteArray = Hkdf.derive(

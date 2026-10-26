@@ -45,3 +45,28 @@ value class LeftMembership @MintsLeftMembership constructor(val event: EventId)
 
 /** The store answered with no membership — never an unreadable one: what is left over may be swept. */
 class ConfirmedNotJoined @MintsConfirmedNotJoined constructor()
+
+/** Only the key store's keep mints a [KeptKey]. */
+@RequiresOptIn("Only the key store's keep says the join's key is kept.", level = RequiresOptIn.Level.ERROR)
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.CONSTRUCTOR)
+annotation class MintsKeptKey
+
+/** Only the rig's reset mints a [DevReset]. */
+@RequiresOptIn("Only the rig's reset says the device's state is being reset.", level = RequiresOptIn.Level.ERROR)
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.CONSTRUCTOR)
+annotation class MintsDevReset
+
+/**
+ * [event]'s key is kept — or, for a plain event, the slot cleared — before the event counts this device: what an
+ * enrolment requires, so a membership never names a key that is not kept.
+ */
+@JvmInline
+value class KeptKey @MintsKeptKey constructor(val event: EventId)
+
+/**
+ * The rig's reset is running — the one other reason the key may be forgotten (`PENDING_CLEANUPS.md`: it moves into the
+ * rig in 4.5).
+ */
+class DevReset @MintsDevReset constructor()

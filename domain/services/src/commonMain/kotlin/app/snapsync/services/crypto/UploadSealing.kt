@@ -1,13 +1,12 @@
 package app.snapsync.services.crypto
 
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.format.EncryptedFileFormat
-import app.snapsync.format.EventKeyText
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.Resource
-import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.services.identity.requireDeviceId
@@ -22,7 +21,7 @@ import app.snapsync.services.membership.MembershipProjection
  * the event names, the answer is [UploadSeal.Withheld] and no upload starts — the next cycle asks again.
  */
 class UploadSealing(
-    private val keys: EventKeys,
+    private val keys: EventKeyStore,
     private val cipher: FileCipher,
     private val config: MembershipProjection,
     private val identity: DeviceIdentity,
@@ -32,12 +31,13 @@ class UploadSealing(
     suspend fun sealFor(resource: Resource): UploadSeal {
         val joined = config.joinedOrRead() ?: return UploadSeal.Plain
         val keyId = joined.keyId ?: return UploadSeal.Plain
-        val key = try {
-            keys.current()
-        } catch (locked: SecureStoreUnavailable) {
-            return UploadSeal.Withheld("the event key cannot be read now: ${locked.detail}")
-        } ?: return UploadSeal.Withheld("no event key is kept")
-        if (cipher.keyIdOf(key).toHex() != keyId) return UploadSeal.Withheld("the kept key is not the event's")
+        val kept = when (val read = keys.keptBytes()) {
+            is KeptBytes.Kept -> read
+            KeptBytes.Unreadable -> return UploadSeal.Withheld("the event key cannot be read now")
+            KeptBytes.None -> return UploadSeal.Withheld("no event key is kept")
+        }
+        if (kept.id != keyId) return UploadSeal.Withheld("the kept key is not the event's")
+        val key = kept.bytes
         val ad = EncryptedFileFormat.associatedData(
             FileBinding(
                 joined.eventId,
@@ -60,12 +60,10 @@ class UploadSealing(
     fun edgeHeaders(seal: UploadSeal.Sealed): Map<String, String> {
         val elsewhere = cipher.sealedElsewhere(seal.eventKey, seal.associatedData)
         return mapOf(
-            EncryptedFileFormat.FILE_KEY_HEADER to EventKeyText.encode(elsewhere.fileKey.bytes),
-            EncryptedFileFormat.FILE_HEAD_HEADER to EventKeyText.encode(elsewhere.head),
+            EncryptedFileFormat.FILE_KEY_HEADER to EncryptedFileFormat.headerValue(elsewhere.fileKey.bytes),
+            EncryptedFileFormat.FILE_HEAD_HEADER to EncryptedFileFormat.headerValue(elsewhere.head),
         )
     }
-
-    private fun ByteArray.toHex(): String = joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 }
 
 /** How one upload goes up. */

@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.format.EventKeyText
 import app.snapsync.format.InviteLinkText
 import app.snapsync.levers.AssetView
 import app.snapsync.levers.LibraryPhotoKind
@@ -78,7 +79,7 @@ suspend fun Rig.inviteLink(eventId: String): String = host.invite(eventId)
 
 /** [eventId]'s key as its invite carries it, or `null` for a plain event. */
 suspend fun Rig.keyOf(eventId: String): String? =
-    (InviteLinkText.parse(host.invite(eventId)) as InviteLinkVerdict.Invite).link.key?.text
+    (InviteLinkText.parse(host.invite(eventId)) as InviteLinkVerdict.Invite).link.key?.let(EventKeyText::encode)
 
 suspend fun Rig.leave() {
     tap(UiIntent.LeaveEvent)

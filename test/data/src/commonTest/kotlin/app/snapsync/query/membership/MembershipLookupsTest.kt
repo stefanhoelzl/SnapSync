@@ -3,9 +3,11 @@ package app.snapsync.query.membership
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.membership.Device
 import app.snapsync.application.membership.EnterMembership
-import app.snapsync.application.membership.KeyIsItsId
 import app.snapsync.application.membership.LeaveEvent
 import app.snapsync.application.membership.RefreshMembership
+import app.snapsync.application.membership.testKey
+import app.snapsync.application.membership.testKeyId
+import app.snapsync.application.membership.testKeyIds
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
@@ -16,7 +18,6 @@ import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.domain.event.MemberCounts
-import app.snapsync.domain.invite.InviteKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
@@ -42,7 +43,7 @@ class MembershipLookupsTest {
 
     private val device = Device()
     private val directory = EventDirectory(device.gateway)
-    private val details = JoinDetailsLookup(directory, KeyIsItsId)
+    private val details = JoinDetailsLookup(directory, testKeyIds)
     private val switch = SwitchLookup(device.membership, directory, device.wallClock)
 
     private fun found(keyId: String? = null, completedAt: String? = null, waiting: Int = 2) = json(
@@ -62,13 +63,13 @@ class MembershipLookupsTest {
         device.transport.answer = { result }
     }
 
-    private fun invite(key: String? = null) = InviteLink(testEventId(EVENT), key?.let(::InviteKey))
+    private fun invite(key: String? = null) = InviteLink(testEventId(EVENT), key?.let(::testKey))
 
     // ---- the join screen's read ----
 
     @Test
     fun `an event the invite's key opens is found, with whether its photos are deleted`() = runTest {
-        answering(found(keyId = "k1"))
+        answering(found(keyId = testKeyId("k1")))
         val read = assertIs<JoinDetails.Found>(details.load(invite("k1")))
         assertEquals(testEventId(EVENT), read.event.id)
         assertEquals(MemberCounts(3, 1, 2), read.event.members)
@@ -80,7 +81,7 @@ class MembershipLookupsTest {
 
     @Test
     fun `an invite whose key does not open the event is the wrong link`() = runTest {
-        answering(found(keyId = "k1"))
+        answering(found(keyId = testKeyId("k1")))
         assertEquals(JoinDetails.WrongLink, details.load(invite("other")))
         assertEquals(JoinDetails.WrongLink, details.load(invite()), "a key cut short in sharing")
     }

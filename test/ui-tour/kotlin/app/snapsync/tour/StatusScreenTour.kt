@@ -2,6 +2,9 @@
 
 package app.snapsync.tour
 
+import app.snapsync.domain.membership.RestoreAnswer
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventName
@@ -178,7 +181,7 @@ private val OTHER_EVENT = JoinDetails.Found(
             ).range,
         openUntil = null,
         deletesAt = DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
-        keyId = null,
+        encryption = Encryption.Plain,
         members = null,
     ),
     completed = false,
@@ -322,7 +325,7 @@ abstract class StatusScreenTour {
 
                 override suspend fun setMobileData(on: Boolean) = true
 
-                override suspend fun restoreEventKey(linkKey: String) = false
+                override fun restoreKey(key: EventKey) = answered(statuses.restore, RestoreAnswer.NothingChanged)
             },
             queries = object : UserQueries {
                 override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null

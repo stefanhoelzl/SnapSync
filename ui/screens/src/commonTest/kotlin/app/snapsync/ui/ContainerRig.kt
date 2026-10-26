@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
@@ -195,9 +196,9 @@ internal class ContainerRig(
                 return true
             }
 
-            override suspend fun restoreEventKey(linkKey: String): Boolean {
-                record("restoreEventKey")
-                return false
+            override fun restoreKey(key: EventKey): RequestId {
+                record("restoreKey")
+                return answered(statuses.restore, null)
             }
         },
         queries = object : UserQueries {

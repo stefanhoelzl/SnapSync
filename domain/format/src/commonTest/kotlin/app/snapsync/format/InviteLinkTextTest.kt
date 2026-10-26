@@ -1,12 +1,12 @@
 package app.snapsync.format
 
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.invite.InviteKey
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
@@ -18,8 +18,14 @@ class InviteLinkTextTest {
     private val id = "11111111-1111-4111-8111-111111111111"
     private val event = EventId.parse(id)!!
     private val plain = InviteLink(event, null)
-    private val keyText = EventKeyText.encode(ByteArray(EventKeyText.KEY_BYTES) { it.toByte() })
-    private val keyed = InviteLink(event, InviteKey(keyText))
+
+    @OptIn(MakesEventKey::class)
+    private val key = EventKey.of(ByteArray(EventKey.LENGTH) { it.toByte() })!!
+    private val keyText = EventKeyText.encode(key)
+    private val keyed = InviteLink(event, key)
+
+    /** [bytes] spelled as a key would be, whatever their length. */
+    private fun spelled(bytes: ByteArray) = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(bytes)
 
     private fun absent(json: String) = Base64.UrlSafe.withPadding(
         Base64.PaddingOption.ABSENT,
@@ -113,7 +119,7 @@ class InviteLinkTextTest {
             "$LINK_ORIGIN/join/$id#k=",
             "$LINK_ORIGIN/join/$id#k",
             "$LINK_ORIGIN/join/$id#garbage",
-            "$LINK_ORIGIN/join/$id#k=${EventKeyText.encode(ByteArray(16))}",
+            "$LINK_ORIGIN/join/$id#k=${spelled(ByteArray(16))}",
         )) {
             assertEquals(event, assertIs<InviteLinkVerdict.KeyUnreadable>(InviteLinkText.parse(raw), raw).event)
         }
@@ -166,9 +172,9 @@ class InviteLinkTextTest {
 
     @Test
     fun `a key's text is one-to-one with the key`() {
-        val key = ByteArray(EventKeyText.KEY_BYTES) { (it * 7).toByte() }
-        assertContentEquals(key, EventKeyText.decode(EventKeyText.encode(key)))
-        assertNull(EventKeyText.decode(EventKeyText.encode(ByteArray(16))), "another length")
+        assertEquals(key, EventKeyText.decode(EventKeyText.encode(key)))
+        assertEquals(spelled(ByteArray(EventKey.LENGTH) { it.toByte() }), keyText, "unpadded base64url")
+        assertNull(EventKeyText.decode(spelled(ByteArray(16))), "another length")
         assertNull(EventKeyText.decode("$keyText="), "padded")
         assertNull(EventKeyText.decode("not base64!"))
     }

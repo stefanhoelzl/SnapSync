@@ -2,6 +2,7 @@ package app.snapsync.model
 
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.membership.InviteFact
@@ -65,9 +66,9 @@ import app.snapsync.domain.request.RequestId
  *   only way a screen-local surface, which touches no port, reaches a report), and what that surface showed.
  *   Present on every build: where the report goes is `UiState.reportDestination`, which the sheet states, so
  *   the affordance never suggests a destination the build does not have.
- * - [restoreEventKey] — keep the key a reopened invite of the joined event carries, when this device lost it
- *   (reopening the current event's invite changes nothing else): answers whether it was kept —
- *   only the event's own key, only while it is lost — and sharing and receiving resume at once.
+ * - [restoreKey] — keep the key a reopened invite of the joined event carries, when this device lost it
+ *   (reopening the current event's invite changes nothing else) — only the event's own key, only while it is lost —
+ *   and sharing and receiving resume at once. Answered on the restore status under the returned id.
  */
 interface UserCommands {
     fun leave()
@@ -97,5 +98,5 @@ interface UserCommands {
     /** The device's mobile-data choice, from the app menu: answers whether it was saved. */
     suspend fun setMobileData(on: Boolean): Boolean
 
-    suspend fun restoreEventKey(linkKey: String): Boolean
+    fun restoreKey(key: EventKey): RequestId
 }

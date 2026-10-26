@@ -3,8 +3,8 @@ package app.snapsync.domain.event
 import kotlin.jvm.JvmInline
 
 /**
- * The event as this device last knew it from the server: its name, its dates, its key and its members. A refresh or a
- * rename replaces it whole; the member's own choices on it are their share, never part of it.
+ * The event as this device last knew it from the server: its name, its dates, its encryption and its members. A refresh
+ * or a rename replaces it whole; the member's own choices on it are their share, never part of it.
  */
 data class Event(
     val id: EventId,
@@ -14,8 +14,8 @@ data class Event(
     val openUntil: OpenUntil?,
     /** When the server deletes the event's photos at the latest — the offline witness of a deletion. */
     val deletesAt: DeletesAt,
-    /** An encrypted event's key id; `null` for a plain event. */
-    val keyId: EventKeyId?,
+    /** Whether its photos are stored encrypted, and under which key. */
+    val encryption: Encryption,
     /** The members' progress, as the server last served it; `null` until it has. */
     val members: MemberCounts?,
 )

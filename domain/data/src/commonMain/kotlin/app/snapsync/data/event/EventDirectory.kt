@@ -10,7 +10,6 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventLookupFact
 import app.snapsync.domain.event.EventName
 import app.snapsync.domain.event.EventRange
@@ -20,6 +19,7 @@ import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.EncryptionText
 import app.snapsync.format.TimestampText
 import app.snapsync.wire.api.ClientError
 import app.snapsync.wire.api.EventNotFound
@@ -71,7 +71,7 @@ private fun EventDetails.event(id: EventId, name: EventName, range: EventRange, 
     // Not a fact a membership rests on: an unreadable one costs only the "guests can join until" line.
     openUntil = TimestampText.parseOrNull(openUntil)?.let(::OpenUntil),
     deletesAt = DeletesAt(deletesAt),
-    keyId = keyId?.let(::EventKeyId),
+    encryption = EncryptionText.parse(keyId),
     members = MemberCounts(members.active, members.`final`, members.waiting),
 )
 

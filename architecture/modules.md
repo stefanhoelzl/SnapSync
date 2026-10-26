@@ -75,6 +75,7 @@ flowchart LR
   adapter_android --> ui_screens
   adapter_android --> ui_state
   adapter_generic_app --> domain_domain
+  adapter_generic_app --> domain_format
   adapter_generic_app --> domain_inbound
   adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
@@ -147,6 +148,7 @@ flowchart LR
   app_android --> ui_state
   app_desktop --> adapter_generic_app
   app_desktop --> app_jvm
+  app_desktop --> domain_data
   app_desktop --> domain_domain
   app_desktop --> domain_feature
   app_desktop --> domain_model
@@ -283,6 +285,7 @@ flowchart LR
   test_contracts --> adapter_generic_motionphoto
   test_contracts --> domain_data
   test_contracts --> domain_domain
+  test_contracts --> domain_format
   test_contracts --> domain_inbound
   test_contracts --> domain_model
   test_contracts --> domain_ports

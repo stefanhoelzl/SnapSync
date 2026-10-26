@@ -27,6 +27,7 @@ internal class RecordingSecureStore(
 
     var refuseWrites: Boolean = false
     var writeRefusal: WriteOutcome = WriteOutcome.Failed("OSStatus -25308")
+    var refuseDeletes: Boolean = false
 
     val reads: MutableList<SecureSlot> = mutableListOf()
     val writes: MutableList<Pair<SecureSlot, String>> = mutableListOf()
@@ -50,6 +51,7 @@ internal class RecordingSecureStore(
 
     override fun delete(slot: SecureSlot): WriteOutcome {
         deletes += slot
+        if (refuseDeletes) return writeRefusal
         answers.remove(slot)
         return WriteOutcome.Ok
     }

@@ -4,9 +4,7 @@ import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.invite.InviteKey
 import app.snapsync.domain.invite.InviteLink
-import app.snapsync.format.EventKeyText
 import app.snapsync.format.InviteLinkText
 import app.snapsync.mock.MockedSystem
 import app.snapsync.ui.state.Layer
@@ -87,8 +85,7 @@ internal fun jvmHostServices(rig: JvmRig, hooks: RigHooks): List<HostService<*>>
         // This world recorded every key the app drew and the event each keyed create made, so the invite carries it.
         invite = honoured { event ->
             val id = EventId.parse(event) ?: throw IllegalArgumentException("'$event' is not an event id")
-            val key = rig.mocks.eventKeys.keyOf(event)?.let(EventKeyText::encode)
-            InviteLinkText.format(InviteLink(id, key?.let(::InviteKey)))
+            InviteLinkText.format(InviteLink(id, rig.mocks.eventKeys.eventKeyOf(event)))
         },
         disk = refusing(
             "the JVM host's files are the mocked disk's, which a test reads through the app's own outcomes",

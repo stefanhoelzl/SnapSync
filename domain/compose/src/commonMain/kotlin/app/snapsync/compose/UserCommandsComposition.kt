@@ -2,6 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
@@ -12,6 +13,7 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.entrypoints.JoinRequest
+import app.snapsync.entrypoints.KeyRestoreRequest
 import app.snapsync.entrypoints.RenameRequest
 import app.snapsync.entrypoints.SettingsRequest
 import app.snapsync.entrypoints.SwitchRequest
@@ -229,11 +231,15 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
             result.outcome
         }
 
-    // Keep the key a reopened invite of the joined event carries, when this device lost it.
-    // The work is `AppCore`'s own `restoreEventKey`, named through its receiver: inside this object the bare name is
-    // this override.
-    override suspend fun restoreEventKey(linkKey: String): Boolean =
-        awaitingOnCoreLane("tap.restoreEventKey") { this@userCommandsFor.restoreEventKey(linkKey) }
+    // Keep the key a reopened invite of the joined event carries, when this device lost it (`OnKeyRestoreRequested`).
+    // Answered on the restore status under the returned id.
+    override fun restoreKey(key: EventKey): RequestId = requested(
+        "tap.restoreKey",
+        "key=present",
+        nextId(),
+        membershipStatuses.restore,
+        work.keyRestoreRequested,
+    ) { id -> KeyRestoreRequest(id, key) }
 }
 
 /**

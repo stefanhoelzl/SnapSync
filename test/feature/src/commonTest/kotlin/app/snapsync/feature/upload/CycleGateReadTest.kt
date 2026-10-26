@@ -2,6 +2,8 @@
 
 package app.snapsync.feature.upload
 
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
@@ -32,7 +34,6 @@ import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformDeviceId
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.ledger.LedgerService
@@ -92,7 +93,7 @@ class CycleGateReadTest {
         suppression: Suppression = Suppression(),
         admission: UploadAdmission = UploadAdmission.Admit,
         albumExclusions: suspend (CaptureCutoff) -> Set<AssetId> = { emptySet() },
-        eventKeys: EventKeys = EventKeys(fakeCrypto(), inMemorySecureStore()),
+        keys: EventKeyStore = EventKeyStore(inMemorySecureStore(), EventKeyIds(fakeCrypto())),
         clock: Clock = testClock(),
     ) = CycleGateRead(
         records = records,
@@ -103,7 +104,7 @@ class CycleGateReadTest {
         recognition = suppression,
         host = host,
         admission = { admission },
-        eventKeys = eventKeys,
+        keys = keys,
         albumExclusions = albumExclusions,
     )
 

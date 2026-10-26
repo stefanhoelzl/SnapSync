@@ -1,10 +1,14 @@
 package app.snapsync.feature.download
 
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.EventCheck
 import app.snapsync.data.membership.EventCheckRecord
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.model.AdoptedAsset
@@ -248,7 +252,7 @@ class DownloadController(
             log.i { "reconcile skipped — this membership does not download" }
             return@body
         }
-        if (!arm.keyHeld()) {
+        if (arm.keyLost()) {
             log.i { "reconcile skipped — the event's key is lost; nothing downloads until its invite is opened again" }
             return@body
         }
@@ -808,7 +812,7 @@ class DownloadController(
 /**
  * **Whether the download arm may run at all** — asked by every trigger before it reads the union or starts a transfer
  * ([DownloadController.reconcile]). Two questions, and different ones: [enabled] can answer "nothing to receive", which
- * also decides [DownloadController.everythingReceived]; [keyHeld] never does.
+ * also decides [DownloadController.everythingReceived]; [keyLost] never does.
  */
 class DownloadArm(
     /**
@@ -829,14 +833,21 @@ class DownloadArm(
      * none: a permissive default on a safety gate is how a caller ships without one.
      */
     val enabled: () -> Boolean?,
+    /** The joined event's key, as re-read at every entry. */
+    private val keys: EventKeyStore,
+    /** The membership, as re-read at every entry: whose key the slot must hold. */
+    private val membership: MembershipRepository,
+) {
     /**
-     * Whether the joined event's key is in reach — `false` only when it is LOST: then no
-     * download starts, since none could be opened, until the event's invite brings the key back. Unlike [enabled] it
-     * never answers "nothing to receive", so a member who lost the key is never taken for one who holds everything.
-     * Required, and with no default, for the reason [enabled] has none.
+     * Whether the joined event's key is LOST: then no download starts, since none could be opened, until the event's
+     * invite brings the key back. Unlike [enabled] it never answers "nothing to receive", so a member who lost the key
+     * is never taken for one who holds everything. Read when a reconcile asks — never at composition, so building the
+     * arm opens no store.
      */
-    val keyHeld: () -> Boolean,
-)
+    fun keyLost(): Boolean =
+        KeyPresence.of((membership.state.value as? MembershipRead.Joined)?.membership, keys.state.value) ==
+            KeyPresence.Lost
+}
 
 /** What a reconcile's read covered, for its line: the announced position it read from, or the join's union. */
 private fun readOf(announced: Long?, known: Any?): String =

@@ -1,6 +1,9 @@
 package app.snapsync.feature.creation
 
+import app.snapsync.data.crypto.NewEventKey
+import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
@@ -8,7 +11,6 @@ import app.snapsync.format.TimestampText
 import app.snapsync.model.CreateOutcome
 import app.snapsync.model.EventCreator
 import app.snapsync.services.backend.EventCreation
-import app.snapsync.services.crypto.EventKeyMinting
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -38,11 +40,11 @@ class CreateEvent(
     // Route the minted event into the join gate (the composition root binds this to the container's
     // `onEventCreated`). The `POST /events` already minted the event, so the gate holds a real id and
     // performs a real details load; provision (save config with name + cutoff) happens on confirm.
-    // `linkKey` is the minted event's key when it is encrypted, `null` for a plain one: the creator joins through the
+    // `key` is the minted event's key when it is encrypted, `null` for a plain one: the creator joins through the
     // same gate as every guest, with the key its own invite will carry.
-    private val onMinted: suspend (eventId: EventId, linkKey: String?) -> Unit,
-    /** Whether a create is ENCRYPTED, and its key — asked at every create; `null` where this build creates only plain events. */
-    private val minting: EventKeyMinting?,
+    private val onMinted: suspend (eventId: EventId, key: EventKey?) -> Unit,
+    /** Whether a create is ENCRYPTED, and its key — asked at every create. */
+    private val keys: NewEventKeys,
 ) : EventCreator {
 
     private val log = Logger.withTag("CreateEvent")
@@ -61,18 +63,21 @@ class CreateEvent(
         status.value = CreationStatus.InFlight
         // The key is minted HERE, on the creating device, and only its id is sent (the encrypted file format,
         // `docs/architecture.md`); the key itself reaches the creator's join, and from it the invite link.
-        val key = minting?.forNewEvent()
+        val key = when (val new = keys.forNewEvent()) {
+            NewEventKey.Plain -> null
+            is NewEventKey.Encrypted -> new.key
+        }
         when (
             val outcome = client.create(
                 name.trim(),
                 startsAt,
                 endsAt,
-                key?.keyId,
+                key?.id?.value,
                 openUntil?.at?.let(TimestampText::format),
             )
         ) {
             is CreateOutcome.Created -> {
-                onMinted(outcome.eventId, key?.linkKey)
+                onMinted(outcome.eventId, key?.key)
                 status.value = CreationStatus.Idle
             }
             CreateOutcome.InvalidName -> {

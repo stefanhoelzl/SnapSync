@@ -6,6 +6,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.format.EventKeyText
 import app.snapsync.format.InviteLinkText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
@@ -110,7 +111,7 @@ class InstallReferrerIntegrationTest {
         val invite = inviteFor(event)
         val key = (InviteLinkText.parse(invite) as InviteLinkVerdict.Invite).link.key
         val payload = InviteLinkText.format(InviteLink(testEventId(event), null)).substringAfter('#')
-        return key?.let { "$payload&k=${it.text}" } ?: payload
+        return key?.let { "$payload&k=${EventKeyText.encode(it)}" } ?: payload
     }
 
     private companion object {

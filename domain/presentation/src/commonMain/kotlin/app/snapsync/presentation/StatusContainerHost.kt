@@ -3,9 +3,10 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.OpenUntil
-import app.snapsync.domain.invite.InviteKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.InviteFact
@@ -33,7 +34,6 @@ import app.snapsync.model.BuildLabel
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.KeyPresence
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
@@ -169,7 +169,6 @@ class StatusContainerHost(
     private val renameFlow: StateFlow<RequestStatus<RenameResult>> = requests.rename
     private val store = sources.store
     private val foreground = sources.foreground
-    private val inviteKey = sources.eventKey.inviteKey
     private val keyPresence = sources.eventKey.presence
 
     private val log = diagnostics.log
@@ -347,13 +346,10 @@ class StatusContainerHost(
                     )
                 }.collect { model -> reduce { model } }
             }
-            // An encrypted event's invite carries its key, read from where it is kept once the membership names one.
+            // Whether the joined event's key is held: a lost one is the joined screen's status line until a reopened invite
+            // gives it back, and an encrypted event's invite carries the held key — one read, so the two never disagree.
             intent {
-                inviteKey.collect { key -> local.update { it.copy(inviteKey = key) } }
-            }
-            // A lost key is the joined screen's status line until a reopened invite gives it back.
-            intent {
-                keyPresence.collect { presence -> local.update { it.copy(keyLost = presence == KeyPresence.Lost) } }
+                keyPresence.collect { presence -> local.update { it.copy(keyPresence = presence) } }
             }
             // The create draft follows the app's returns to the foreground.
             intent {
@@ -1028,18 +1024,18 @@ class StatusContainerHost(
             }
             is InviteLinkVerdict.Invite -> {
                 val eventId = read.link.event
-                val linkKey = read.link.key?.text
+                val key = read.link.key
                 val current = config.value
                 when {
                     // The two DUPLICATE rungs, first because they outrank every other reading of the same link.
                     pending.value?.eventId == eventId -> ignoreRepeat(eventId, "a pending join is open")
                     // The joined event's own invite gives a LOST key back; any other reopening of it changes nothing.
-                    current?.eventId == eventId && linkKey != null && keyPresence.value == KeyPresence.Lost ->
-                        restoreKey(eventId, linkKey)
+                    current?.eventId == eventId && key != null && keyPresence.value == KeyPresence.Lost ->
+                        restoreKey(eventId, key)
                     current?.eventId == eventId -> ignoreRepeat(eventId, "already joined")
                     // First join → JoiningEvent; a different event while joined → Joined.pendingSwitch (the
                     // same-event case is the duplicate rung above).
-                    else -> startPending(eventId, linkKey, leavesQuietly = current != null)
+                    else -> startPending(eventId, key, leavesQuietly = current != null)
                 }
             }
         }
@@ -1070,12 +1066,13 @@ class StatusContainerHost(
         log("join gate: ignoring a repeated delivery of $eventId — $because")
     }
 
-    /** The joined event's reopened invite, offered to give its lost key back — kept only if it is the event's own. */
-    private suspend fun restoreKey(eventId: EventId, linkKey: String) {
-        val kept = commands.restoreEventKey(linkKey)
-        log(
-            "join gate: the reopened invite of $eventId ${if (kept) "gave its lost key back" else "did not open it — nothing changed"}",
-        )
+    /**
+     * The joined event's reopened invite, offered to give its lost key back — kept only if it is the event's own. The
+     * screen follows the key's presence, not the request's answer.
+     */
+    private fun restoreKey(eventId: EventId, key: EventKey) {
+        val request = commands.restoreKey(key)
+        log("join gate: the reopened invite of $eventId offers its key back ($request)")
     }
 
     /** Retry the details fetch after a transient load failure. */
@@ -1083,7 +1080,7 @@ class StatusContainerHost(
         val p = pending.value ?: return@intent
         maintenanceReload?.cancel()
         pending.value = p.copy(phase = JoinProgress.Loading, service = null)
-        val loaded = load(p.eventId, p.linkKey)
+        val loaded = load(p.eventId, p.key)
         pending.update { it.showing(p.eventId, loaded) }
         scope.reloadWhileUpdating(loaded, pending) { onRetryLoad() }?.let { maintenanceReload = it }
     }
@@ -1170,7 +1167,7 @@ class StatusContainerHost(
      * capture-date cutoff, and confirms like any joiner. The `POST /events` already minted the event, so
      * the gate holds a real `eventId` and performs a real details load; provision happens on confirm.
      */
-    fun onEventCreated(eventId: EventId, linkKey: String? = null) = intent { startPending(eventId, linkKey) }
+    fun onEventCreated(eventId: EventId, key: EventKey? = null) = intent { startPending(eventId, key) }
 
     // The gate's async work runs INLINE within the orbit intent (not on a side scope) so each pending
     // transition reduces through the container's own pipeline deterministically. A modal join is fine
@@ -1182,18 +1179,18 @@ class StatusContainerHost(
     private fun startUnreadable(eventId: EventId) {
         log("join gate: the invite to $eventId carries a key that cannot be read")
         local.update { it.copy(form = freshForm, picking = null) }
-        pending.value = PendingJoin(eventId, JoinProgress.WrongLink, linkKey = null)
+        pending.value = PendingJoin(eventId, JoinProgress.WrongLink, key = null)
     }
 
-    private suspend fun startPending(eventId: EventId, linkKey: String?, leavesQuietly: Boolean = false) {
+    private suspend fun startPending(eventId: EventId, key: EventKey?, leavesQuietly: Boolean = false) {
         // A fresh surface starts from the defaults — all on, the full event window. Seeding HERE rather
         // than in the reduction is what keeps the member's edits from being overwritten by every
         // subsequent reduction, and what stops a previous surface's choices leaking into this one.
         local.update { it.copy(form = freshForm, picking = null) }
         // Pending BEFORE any read: a repeated delivery of the same link is then the duplicate rung's, and a loading
         // switch shows no dialog yet.
-        pending.value = PendingJoin(eventId, JoinProgress.Loading, linkKey)
-        val loaded = load(eventId, linkKey)
+        pending.value = PendingJoin(eventId, JoinProgress.Loading, key)
+        val loaded = load(eventId, key)
         // Another event's invite while joined: when leaving the joined event loses nothing for anyone (decision record
         // `changes/back-dated-events`, D8), it is left at once, without the switch question — the join that follows is
         // then a first join, whose Cancel leaves the device in no event, exactly as after a confirmed switch. Asked
@@ -1215,9 +1212,9 @@ class StatusContainerHost(
      * always carries a cutoff, so a details read that cannot supply one lands on a retryable failure, never on an empty
      * cutoff row and an enabled confirm, which would join at whole-library scope and upload the whole camera roll.
      */
-    private suspend fun load(eventId: EventId, linkKey: String?): Loaded {
+    private suspend fun load(eventId: EventId, key: EventKey?): Loaded {
         val load = try {
-            joinDetails.load(InviteLink(eventId, linkKey?.let(::InviteKey)))
+            joinDetails.load(InviteLink(eventId, key))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (t: Throwable) {
@@ -1266,7 +1263,7 @@ class StatusContainerHost(
         val served = p.loaded ?: return
         val choice = JoinChoice(
             served,
-            InviteLink(p.eventId, p.linkKey?.let(::InviteKey)),
+            InviteLink(p.eventId, p.key),
             range.chosenFrom,
             range.chosenUntil,
             range.direction,
@@ -1444,7 +1441,7 @@ private fun reduceFrom(
             display,
         )
     }
-    val health = joinedHealth(membership, config, network, nowCutoff, local.keyLost)
+    val health = joinedHealth(membership, config, network, nowCutoff, local.keyPresence == KeyPresence.Lost)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
     val pendingSwitch = pending?.let { PendingSwitch(it.eventId.value, it.phase.shows) }
     // Where the event is in its life, for the dates line. Informational only —
@@ -1459,7 +1456,7 @@ private fun reduceFrom(
     return joinedLayer(
         config, health, pendingSwitch, permission,
         JoinedFacts(timing, counts, display.today(), display.joinableUntil(config, nowCutoff)),
-        rename, reconfiguring, transient, Choices(form, local.picking), display, local.inviteKey,
+        rename, reconfiguring, transient, Choices(form, local.picking), display, local.inviteKey(),
     )
 }
 
@@ -1566,7 +1563,7 @@ private fun joinedLayer(
     transient: ScreenMessage?,
     choices: Choices,
     display: Display,
-    inviteKey: String?,
+    inviteKey: EventKey?,
 ): Reduced {
     val form = choices.form
     // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window. A deleted event has no settings
@@ -1702,11 +1699,11 @@ private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
  * The invite a member shares. An ENCRYPTED event's carries its key — only ever the key of the event its config names
  * (a key read for no encrypted membership is ignored); a plain event's carries none, in the form every build reads.
  */
-private fun EventConfig.inviteUrl(key: String?): String? = when {
+private fun EventConfig.inviteUrl(key: EventKey?): String? = when {
     keyId == null -> InviteLinkText.format(InviteLink(eventId, null))
     // An encrypted event's invite is offered only whole: no key read, no invite.
     key == null -> null
-    else -> InviteLinkText.format(InviteLink(eventId, InviteKey(key)))
+    else -> InviteLinkText.format(InviteLink(eventId, key))
 }
 
 private fun RenameStatus.toRenameState(): RenameState = when (this) {
@@ -1984,10 +1981,8 @@ private data class Local(
     val renameOwner: EventId? = null,
     /** The member's latest rename request, until its answer is consumed — the only answer the screen reads. */
     val renameRequest: RequestId? = null,
-    /** The joined event's invite key, when it is encrypted — copied from [EventKeyView.inviteKey], shown nowhere. */
-    val inviteKey: String? = null,
-    /** Whether this device lost the joined event's key — copied from [EventKeyView.presence]. */
-    val keyLost: Boolean = false,
+    /** Whether this device holds the joined event's key — copied from [EventKeyView.presence]. */
+    val keyPresence: KeyPresence = KeyPresence.NotNeeded,
     /**
      * The shareable count for whichever surface is showing a range, computed over the
      * query bundle and reduced into the range. It starts Unavailable (no row) rather than Counting: a count is only
@@ -2001,7 +1996,13 @@ private data class Local(
      * carries the refused verification's facts. Kept out of [Overlays]: it is how the sheet was opened, not what is shown.
      */
     val verifiedReport: Boolean = false,
-)
+) {
+    /** The key the joined event's invite carries: the held one, else none — and then no invite is offered. */
+    fun inviteKey(): EventKey? = when (keyPresence) {
+        is KeyPresence.Held -> keyPresence.key.key
+        KeyPresence.NotNeeded, KeyPresence.Unknown, KeyPresence.Lost -> null
+    }
+}
 
 /**
  * [combine] over thirteen flows, typed. The library's typed overloads stop at five, and nesting them is not the same

@@ -4,15 +4,12 @@ import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.inbound.AppProcessOnly
-import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.WriteOutcome
-import app.snapsync.services.secure.readExisting
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -125,10 +122,10 @@ class IosSecureStoreTest {
         )
     }
 
-    /** `readExisting` (the attestation path) must draw the same line: unreadable is not absent. */
+    /** A plain read draws the same line: unreadable is not absent. */
     @Test
-    fun `readExisting on an inaccessible keychain raises rather than reporting no value`() {
-        assertFailsWith<SecureStoreUnavailable> { readExisting(store, slot) }
+    fun `a read of an inaccessible keychain is unavailable rather than no value`() {
+        assertIs<SecureStoreRead.Unavailable>(store.read(slot))
     }
 
     /**

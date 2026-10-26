@@ -6,6 +6,7 @@ import app.snapsync.data.store.LegacySource
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventName
@@ -54,7 +55,7 @@ internal fun event(id: String = EVENT, name: String = "Lake weekend"): Event = E
     ).range,
     openUntil = null,
     deletesAt = DeletesAt(TimestampText.parse("2026-08-21T18:00:00Z")),
-    keyId = null,
+    encryption = Encryption.Plain,
     members = null,
 )
 

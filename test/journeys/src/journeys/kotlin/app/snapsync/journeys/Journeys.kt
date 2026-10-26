@@ -180,7 +180,7 @@ class Journeys {
         }
         val event = link.event.value
         // An encrypted event's invite carries its key, and the member keeps it as a device does at its join.
-        member.join(event, link.key?.text)
+        member.join(event, link.key)
         // Captured today at noon: inside the event's window, as a member's photo of the event would be.
         val today = Clock.System.todayIn(TimeZone.UTC)
         val shared = member.share(event, count = MEMBER_PHOTOS, creationDate = "${today}T12:00:00Z")

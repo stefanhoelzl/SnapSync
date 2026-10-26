@@ -63,13 +63,14 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DownloadStatusSource` | `:domain:feature` | `:domain:feature` StoreDownloadStatusSource | no |
 | `DumpHandOff` | `:domain:model` | `:domain:model` NotSent, Queued | no |
 | `DumpResult` | `:domain:model` | `:domain:model` Saved | no |
+| `Encryption` | `:domain:domain` | `:domain:domain` Encrypted, Plain | no |
 | `EnrollFact` | `:domain:data` | `:domain:data` Admitted, EventOver, Failed, Unverified | no |
 | `EnrollOutcome` | `:domain:application` | `:domain:application` Enrolled | no |
 | `EnterOutcome` | `:domain:application` | `:domain:application` Entered | no |
 | `EnterResult` | `:domain:data` | `:domain:data` AlreadyJoined, Entered, Failed, JoinedElsewhere | no |
 | `EntryEvent` | `:domain:ports` | `:domain:ports` Answered, Delivered, Done | no |
 | `EntryEvents` | `:domain:ports` | `:adapter:generic:app` NoEntryEvents; `:adapter:generic:mock` TellingEntryEvents; `:domain:scheduling` RecordingEntryEvents; `:test:contracts` EntryEventsProxy | no |
-| `EventCreation` | `:domain:services` | `:domain:feature` FakeClient; `:domain:services` BackendEventCreation | yes |
+| `EventCreation` | `:domain:services` | `:domain:services` BackendEventCreation; `:test:feature` FakeClient | yes |
 | `EventCreator` | `:domain:model` | `:domain:feature` CreateEvent; `:domain:presentation` SpyCreator | no |
 | `EventLookupFact` | `:domain:domain` | `:domain:domain` Found, NotFound, Unanswered | no |
 | `EventNameVerdict` | `:domain:domain` | `:domain:domain` Blank, Ok, TooLong | no |
@@ -93,8 +94,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `GalleryResourceHandle` | `:domain:ports` | `:adapter:android` MediaStoreResource; `:adapter:generic:mock` InMemoryResource, NotThisPlatformsHandle; `:adapter:ios:ext-safe` NotAPhoto, PhotoKitResource, ReplayOther, ReplayPhoto, StandInPhoto; `:domain:services` KeyHandle, TestHandle; `:test:feature` TestPhoto | yes |
 | `Granted` | `:domain:inbound` | `:domain:scheduling` GrantedEntryPoint; `:test:contracts` GrantedProxy; `:test:rig` QuietWake | yes |
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
-| `HeadRead` | `:domain:model` | `:domain:model` Read, Refused | no |
-| `Hmac` | `:domain:model` | `:domain:model` Recording | no |
+| `HeadRead` | `:domain:format` | `:domain:format` Read, Refused | no |
+| `Hmac` | `:domain:format` | `:domain:data` CryptoHmac; `:domain:format` Recording; `:domain:services` CryptoHmac | no |
 | `HostAssembly` | `:domain:entrypoints` | `:domain:host` HostFirst | no |
 | `HttpResult` | `:domain:ports` | `:domain:ports` Response, Unreachable | no |
 | `HttpTransport` | `:domain:ports` | `:adapter:generic:app` KtorHttpTransport; `:adapter:generic:mock` BackendRouter; `:domain:services` ScriptedTransport; `:test:architecture` Probe; `:test:contracts` HttpTransportProxy; `:test:data` FakeClient, ScriptedTransport | yes |
@@ -102,7 +103,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportResult` | `:domain:model` | `:domain:model` Failed, Imported | no |
 | `ImportedAssetPresence` | `:domain:services` | `:domain:services` GalleryAssetPresence, PermissionAwareAssetPresence, RecordingLibrary; `:test:feature` CountingPresence, InMemoryAssetPresence | yes |
 | `Inbound` | `:domain:inbound` | `:domain:host` LiveScreen; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
-| `InviteKeyCheck` | `:domain:data` | `:test:data` KeyIsItsId | yes |
 | `InviteLinkVerdict` | `:domain:domain` | `:domain:domain` Invite, KeyUnreadable, NotAnInvite | no |
 | `Items` | `:domain:ports` | — | no |
 | `JobRow` | `:domain:services` | `:domain:services` Found, Pruned, Unmappable | no |
@@ -110,7 +110,13 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JoinDetails` | `:domain:query` | `:domain:query` Found, NotFound, Unanswered, WrongLink | no |
 | `JoinDetailsQuery` | `:domain:query` | `:domain:query` JoinDetailsLookup | no |
 | `JoinProgress` | `:domain:presentation` | `:domain:presentation` Closed, Detailed, LoadFailed, Loading, NotFound, WrongLink | no |
+| `KeepOutcome` | `:domain:data` | `:domain:data` Kept, Refused | no |
+| `KeptBytes` | `:domain:services` | `:domain:services` Kept, None, Unreadable | no |
+| `KeyFact` | `:domain:domain` | `:domain:domain` Absent, Invalid, Kept, Unreadable | no |
 | `KeyIdRead` | `:domain:data` | `:domain:data` Held, None, Unavailable | no |
+| `KeyPresence` | `:domain:domain` | `:domain:domain` Held, Lost, NotNeeded, Unknown | no |
+| `KeyToKeep` | `:domain:domain` | `:domain:domain` Key, None | no |
+| `KeyVerdict` | `:domain:domain` | `:domain:domain` Opens, WrongKey | no |
 | `LeaveFact` | `:domain:data` | `:domain:data` Confirmed, Unanswered | no |
 | `LeaveOutcome` | `:domain:application` | `:domain:application` Left | no |
 | `LeaveResult` | `:domain:data` | `:domain:data` Failed, Left, NotJoined | no |
@@ -134,6 +140,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `NetworkAccess` | `:domain:model` | `:domain:model` Blocked, Offline, Online | no |
 | `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor; `:test:contracts` NetworkMonitorProxy | yes |
 | `NetworkStatusSource` | `:domain:feature` | `:domain:feature` NetworkWatch; `:domain:presentation` AlwaysOnline, FakeNetwork | yes |
+| `NewEventKey` | `:domain:data` | `:domain:data` Encrypted, Plain | no |
 | `NotEnrolled` | `:domain:application` | `:domain:application` AlreadyJoined, EventOver, Failed, InvalidRange, JoinedElsewhere, Unverified, WrongLink | no |
 | `NotEntered` | `:domain:application` | `:domain:application` AlreadyJoined, Failed | no |
 | `NotLeft` | `:domain:application` | `:domain:application` Failed, NotJoined | no |
@@ -174,6 +181,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RequestStatus` | `:domain:query` | `:domain:query` Done, Idle, InFlight | no |
 | `RequestStatusSink` | `:domain:query` | `:domain:query` RequestStatuses | no |
 | `ResourceBatch` | `:domain:model` | `:domain:model` RecordingBatch | no |
+| `RestoreOutcome` | `:domain:application` | `:domain:application` NothingChanged, Refused, Restored | no |
+| `RestoreVerdict` | `:domain:domain` | `:domain:domain` NotLost, NotTheEventsKey, Restore | no |
 | `ResumePoint` | `:domain:services` | `:domain:services` Deferred, From, Landed | no |
 | `RetryVerdict` | `:domain:domain` | `:domain:domain` Retry, Stands | no |
 | `Running` | `:domain:inbound` | `:domain:scheduling` Expirable; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
