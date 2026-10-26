@@ -3,6 +3,7 @@ package app.snapsync.services.upload
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.event.EventId
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.Resource
 import app.snapsync.model.SecureStoreUnavailable
@@ -46,7 +47,7 @@ class UploadStandings(
             eventId.value,
             deviceId.value,
             assetIdFromUploadKey(resource.filename).value,
-            roleFromUploadKey(resource.filename).wire,
+            ResourceRoleText.of(roleFromUploadKey(resource.filename)),
             xSnapsyncSha256 = sha256,
         )
         return when (val reply = gateway.send(request)) {

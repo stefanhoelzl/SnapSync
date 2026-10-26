@@ -1,6 +1,7 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.ResourceRole
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.api.UploadStateReply
 import kotlin.test.assertEquals
@@ -53,5 +54,11 @@ private suspend fun EdgeSubject<BackendClient>.uploadState(
     sha256: String,
     assetId: String = seeded.asset!!.assetId.value,
 ): UploadStateReply = port.send(
-    Routes.UploadState.request(seeded.eventId, seeded.deviceId, assetId, ResourceRole.PRIMARY.wire, sha256),
+    Routes.UploadState.request(
+        seeded.eventId,
+        seeded.deviceId,
+        assetId,
+        ResourceRoleText.of(ResourceRole.PRIMARY),
+        sha256,
+    ),
 )

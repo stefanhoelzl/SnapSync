@@ -1,10 +1,10 @@
 package app.snapsync.services.manifest
 
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.services.databases.sharedOver

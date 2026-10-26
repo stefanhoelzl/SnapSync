@@ -5,6 +5,7 @@ package app.snapsync.mock
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.UnionFetch
 import app.snapsync.model.CrashEvent
@@ -14,7 +15,6 @@ import app.snapsync.model.DeviceFile
 import app.snapsync.model.FileArea
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.PushEndpoint
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -558,7 +558,7 @@ private class BackendDto(
         storedFiles.forEach { (key, files) ->
             val event = key.substringBefore('/', missingDelimiterValue = "").ifEmpty { return@forEach }
             state.storedFiles[event to key.substringAfter('/')] = files.mapTo(mutableSetOf()) {
-                DeviceFile(AssetId.parse(it.asset)!!, ResourceRole.entries.first { role -> role.wire == it.role }, it.filename)
+                DeviceFile(AssetId.parse(it.asset)!!, ResourceRoleText.parse(it.role)!!, it.filename)
             }
             files.forEach { file -> file.sha256?.let { state.landedSha256["$key/${file.asset}/${file.role}"] = it } }
         }
@@ -602,8 +602,8 @@ private class BackendDto(
         fun of(state: BackendState) = BackendDto(
             storedFiles = state.storedFiles.entries.associate { (key, files) ->
                 "${key.first}/${key.second}" to files.map {
-                    val sha256 = state.landedSha256["${key.first}/${key.second}/${it.assetId.value}/${it.role.wire}"]
-                    StoredFileDto(it.assetId.value, it.role.wire, it.filename, sha256)
+                    val sha256 = state.landedSha256["${key.first}/${key.second}/${it.assetId.value}/${ResourceRoleText.of(it.role)}"]
+                    StoredFileDto(it.assetId.value, ResourceRoleText.of(it.role), it.filename, sha256)
                 }
             },
             events = state.events.mapValues { (_, e) ->

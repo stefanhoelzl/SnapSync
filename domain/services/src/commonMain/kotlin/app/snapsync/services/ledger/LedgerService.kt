@@ -3,14 +3,15 @@ package app.snapsync.services.ledger
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.LedgerState
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.DONE_STATES
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.NEEDS_JOB_STATES
 import app.snapsync.model.PendingResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.databases.held
 import app.snapsync.services.databases.use
@@ -337,10 +338,10 @@ class LedgerService(
 
     /** `""` is the not-yet-enriched sentinel; every other value is a wire token the enum knows. */
     /** A role's stored text; a row with no role stores the empty string, which [roleOrNull] reads back as none. */
-    private fun wireOf(role: ResourceRole?): String = if (role == null) "" else role.wire
+    private fun wireOf(role: ResourceRole?): String = if (role == null) "" else ResourceRoleText.of(role)
 
     private fun roleOrNull(wire: String): ResourceRole? =
-        ResourceRole.entries.firstOrNull { it.wire == wire }
+        ResourceRoleText.parse(wire)
 }
 
 /** Keys per `deleteKeys` statement — well under every driver's bind-variable limit. */

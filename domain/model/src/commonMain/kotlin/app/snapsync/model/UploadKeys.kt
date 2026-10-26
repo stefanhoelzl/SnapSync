@@ -1,24 +1,8 @@
 package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-
-/**
- * The generic, platform-neutral **role** of an asset resource. The role
- * carries the resource's place in its asset, never the platform resource-type name or the media kind
- * (that is `contentType`'s job): [PRIMARY] is the single original primary medium (a still image, a
- * video, or an audio track) and [LIVE] the original paired video of a Live Photo. [wire] is the
- * lowercase token used in object keys and serialized in the manifest (`primary`/`live`).
- */
-@Serializable
-enum class ResourceRole(val wire: String) {
-    @SerialName("primary")
-    PRIMARY("primary"),
-
-    @SerialName("live")
-    LIVE("live"),
-}
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.format.ResourceRoleText
 
 // A platform resource-type value is read by the platform, in `:adapter:ios:ext-safe`'s
 // `PhotoKitResourceKind.kt`, and what each kind is to the upload is the gallery services'. It used to sit here as a `when` over the raw
@@ -26,9 +10,6 @@ enum class ResourceRole(val wire: String) {
 // token-based gate can see and which a second platform's integers would silently collide with. The
 // adapter now reports the role itself, which is the platform-independent fact (spec
 // `docs/architecture.md`, "Ports are the I/O boundary named for the need").
-//
-// [ResourceRole] itself stays here: it is the neutral vocabulary, and it was already neutral — the
-// adapter was reporting the raw type *beside* it rather than instead of it.
 
 /**
  * Pure construction of an asset resource's ledger key / object name — the single place the role-based
@@ -38,7 +19,7 @@ enum class ResourceRole(val wire: String) {
  * so a manifest's `filename` is byte-identical to what the producer uploads under.
  */
 fun uploadKey(assetId: AssetId, role: ResourceRole, originalFilename: String): String =
-    "$assetId-${role.wire}.${fileExtension(originalFilename)}"
+    "$assetId-${ResourceRoleText.of(role)}.${fileExtension(originalFilename)}"
 
 /** The lowercased filename extension, or `bin` when the original filename carries none. */
 fun fileExtension(originalFilename: String): String =
@@ -80,7 +61,7 @@ const val RESOURCE_META_PIXEL_AREA: String = "pixelArea"
  */
 fun roleFromUploadKey(filename: String): ResourceRole {
     val wire = filename.substringBeforeLast('.').substringAfterLast('-')
-    return ResourceRole.entries.firstOrNull { it.wire == wire } ?: ResourceRole.PRIMARY
+    return ResourceRoleText.parse(wire) ?: ResourceRole.PRIMARY
 }
 
 /**

@@ -1,5 +1,6 @@
 package app.snapsync.mock
 
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileHead
 import app.snapsync.model.Hmac
@@ -63,7 +64,7 @@ class EventKeyLedger {
         val crypto = primitives
         if (tag == null || key == null || crypto == null) return null
         val hmac = Hmac(crypto::hmacSha256)
-        val role = roleFromUploadKey(tag[RESOURCE]).wire
+        val role = ResourceRoleText.of(roleFromUploadKey(tag[RESOURCE]))
         val associated = EncryptedFileFormat.associatedData(tag[EVENT], tag[DEVICE], tag[ASSET], role)
         val head = FileHead(
             keyId = EncryptedFileFormat.keyIdOf(key, hmac),

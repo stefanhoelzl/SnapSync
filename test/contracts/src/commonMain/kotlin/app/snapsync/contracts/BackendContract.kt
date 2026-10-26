@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.model.ResourceRole
+import app.snapsync.domain.asset.ResourceRole
 
 /** The backend states a [BackendContract] clause needs, each entered through the backend's public surface. */
 enum class BackendState {

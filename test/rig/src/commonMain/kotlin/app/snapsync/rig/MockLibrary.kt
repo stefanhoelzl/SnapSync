@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.levers.CensusView
 import app.snapsync.levers.GalleryView
 import app.snapsync.levers.SeedKind
@@ -8,7 +9,6 @@ import app.snapsync.levers.SeedOutcome
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.uploadKey
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.services.gallery.GalleryAccessState

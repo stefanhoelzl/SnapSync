@@ -1,16 +1,17 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.testShared
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.deviceManifestFromJson
@@ -70,7 +71,7 @@ class DeviceManifestProducerTest {
         state: LedgerState = LedgerState.COMPLETED,
         role: ResourceRole = ResourceRole.PRIMARY,
     ) = LedgerEntry(
-        key = "$id-${role.wire}.jpg",
+        key = "$id-${ResourceRoleText.of(role)}.jpg",
         assetId = testAssetId(id),
         state = state,
         creationDate = date,

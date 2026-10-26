@@ -1,7 +1,7 @@
 package app.snapsync.services.backend
 
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.model.DeviceManifest
-import app.snapsync.model.ResourceRole
 import app.snapsync.wire.models.Manifest
 import app.snapsync.wire.models.ManifestAsset
 import app.snapsync.wire.models.ManifestResource

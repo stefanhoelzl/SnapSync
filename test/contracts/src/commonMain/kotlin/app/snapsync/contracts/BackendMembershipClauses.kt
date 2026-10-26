@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.model.ResourceRole
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.wire.api.EventNotFound
 import app.snapsync.wire.api.JoinEventReply
 import app.snapsync.wire.api.LeaveEventReply

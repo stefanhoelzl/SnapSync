@@ -1,8 +1,10 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
@@ -22,7 +24,6 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.PushEndpoint
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.withFinal
 import app.snapsync.ports.HttpRequest
@@ -317,7 +318,7 @@ private fun resolved(id: String?): String = requireNotNull(id) {
 
 /** A held manifest as the operator reads it. */
 private fun DeviceManifest.published() = PublishedManifest(
-    assets = assets.map { a -> PublishedAsset(a.assetId.value, a.resources.map { it.role.wire }) },
+    assets = assets.map { a -> PublishedAsset(a.assetId.value, a.resources.map { ResourceRoleText.of(it.role) }) },
     final = final,
     version = version,
 )
@@ -649,7 +650,7 @@ internal class BackendState(
     fun deposit(eventId: String, deviceId: String, file: DeviceFile) {
         val was = servable(eventId, deviceId)
         storedFiles.getOrPut(eventId to deviceId) { mutableSetOf() } += file
-        watcher.told(WorldEvent.BytesStored(eventId, deviceId, file.assetId.value, file.role.wire))
+        watcher.told(WorldEvent.BytesStored(eventId, deviceId, file.assetId.value, ResourceRoleText.of(file.role)))
         // After the write, as the real byte route does: when this byte completed an asset, the event logs the gain and
         // wakes its other members.
         val now = servable(eventId, deviceId)
@@ -672,7 +673,7 @@ internal class BackendState(
         val segments = route.substringBefore('?').split('/').map(::percentDecoded)
         val filename = route.substringAfter('?', "").split('&')
             .firstOrNull { it.startsWith("filename=") }?.removePrefix("filename=")?.let(::percentDecoded)
-        val role = segments.getOrNull(2)?.let { wire -> ResourceRole.entries.firstOrNull { it.wire == wire } }
+        val role = segments.getOrNull(2)?.let { wire -> ResourceRoleText.parse(wire) }
         if (segments.size != 3 || role == null || !AssetId.isCanonical(segments[1]) || filename.isNullOrEmpty()) return BAD_REQUEST
         if (offline) return BAD_GATEWAY
         val deviceId = segments[0]
@@ -687,7 +688,7 @@ internal class BackendState(
             else -> named.takeIf { isPresent(it, deviceId) } ?: return FORBIDDEN
         }
         deposit(eventId, deviceId, DeviceFile(AssetId.parse(segments[1])!!, role, filename))
-        val key = "$eventId/$deviceId/${segments[1]}/${role.wire}"
+        val key = "$eventId/$deviceId/${segments[1]}/${ResourceRoleText.of(role)}"
         val shaHeader = Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256
         val sha256 = headers.entries.firstOrNull { it.key.equals(shaHeader, ignoreCase = true) }?.value
         if (sha256 == null) landedSha256 -= key else landedSha256[key] = sha256

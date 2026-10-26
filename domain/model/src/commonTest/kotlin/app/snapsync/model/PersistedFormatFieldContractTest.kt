@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart

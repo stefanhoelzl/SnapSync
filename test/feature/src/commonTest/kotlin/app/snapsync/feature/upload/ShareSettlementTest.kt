@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -13,7 +14,6 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.services.manifest.DeviceManifestService

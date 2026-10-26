@@ -1,7 +1,9 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
 import app.snapsync.levers.WorldEvent
@@ -10,7 +12,6 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.PushEndpoint
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
@@ -616,7 +617,7 @@ private fun <T> json(
 ): HttpResult = HttpResult.Response(status, JSON + headers, WireJson.encodeToString(serializer, value))
 
 /** A role, as the description names it. */
-internal fun ResourceRole.onWire(): Role = Role.fromValue(wire) ?: error("no described role for $this")
+internal fun ResourceRole.onWire(): Role = Role.fromValue(ResourceRoleText.of(this)) ?: error("no described role for $this")
 
 /** A published manifest, as the backend keeps it — under the device the path names. */
 private fun Manifest.inApp(deviceId: String): DeviceManifest? = runCatchingCancellable {
@@ -627,7 +628,7 @@ private fun Manifest.inApp(deviceId: String): DeviceManifest? = runCatchingCance
                 AssetId.parse(asset.assetId)!!,
                 asset.creationDate,
                 asset.resources.map { r ->
-                    val role = ResourceRole.entries.first { it.wire == r.role.value }
+                    val role = ResourceRoleText.parse(r.role.value)!!
                     ManifestResource(role, r.contentType, r.key, r.filename)
                 },
             )

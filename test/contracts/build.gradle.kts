@@ -69,6 +69,8 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:model"))
             api(project(":domain:domain"))
+            // The text a value takes on the wire — a resource role's token in an upload's path.
+            implementation(project(":domain:format"))
             // The Motion Photo fixtures the import contracts hand a library.
             implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))

@@ -1,6 +1,7 @@
 package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -9,6 +10,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.TimestampText
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
@@ -51,6 +53,12 @@ internal object AssetIdAsString : AsString<AssetId>(
     "app.snapsync.domain.asset.AssetId",
     { AssetId.parse(it) ?: throw SerializationException("not an asset id") },
     { it.value },
+)
+
+internal object ResourceRoleAsString : AsString<ResourceRole>(
+    "app.snapsync.domain.asset.ResourceRole",
+    { ResourceRoleText.parse(it) ?: throw SerializationException("not a resource role") },
+    ResourceRoleText::of,
 )
 
 internal object CaptureCutoffAsString : AsString<CaptureCutoff>(

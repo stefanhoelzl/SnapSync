@@ -1,5 +1,6 @@
 package app.snapsync.services.crypto
 
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
@@ -92,7 +93,7 @@ class DownloadOpening(
             joined.eventId.value,
             ref.sourceDeviceId.value,
             ref.sourceAssetId.value,
-            roleFromUploadKey(resourceKey).wire,
+            ResourceRoleText.of(roleFromUploadKey(resourceKey)),
         )
         return when (val opened = cipher.decrypt(key, ad, FileArea.SHARED, from, to)) {
             Opened.Ok -> null

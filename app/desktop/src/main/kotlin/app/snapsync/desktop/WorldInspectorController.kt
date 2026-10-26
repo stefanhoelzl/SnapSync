@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
@@ -29,7 +30,6 @@ import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.Store
 import app.snapsync.model.WakeId
