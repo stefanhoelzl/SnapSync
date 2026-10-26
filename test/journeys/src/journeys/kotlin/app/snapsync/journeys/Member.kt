@@ -3,8 +3,10 @@ package app.snapsync.journeys
 import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.contracts.attest.SoftwareKeyAttestation
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.format.EventKeyText
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
@@ -12,7 +14,6 @@ import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileHead
 import app.snapsync.model.Hmac
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
 import app.snapsync.wire.api.Limits
@@ -109,9 +110,11 @@ class Member(private val http: HttpClient, backend: String) {
     private suspend fun upload(eventId: String, assetId: AssetId, part: Part) {
         val token = token()
         checked(
-            "upload $assetId ${part.role.wire}",
+            "upload $assetId ${ResourceRoleText.of(part.role)}",
             http.put(
-                "$backend/events/$eventId/files/devices/$deviceId/$assetId/${part.role.wire}?filename=${part.filename}",
+                "$backend/events/$eventId/files/devices/$deviceId/$assetId/${ResourceRoleText.of(
+                    part.role,
+                )}?filename=${part.filename}",
             ) {
                 served(token)
                 contentType(ContentType.parse(part.contentType))
@@ -135,7 +138,12 @@ class Member(private val http: HttpClient, backend: String) {
             salt = ByteArray(EncryptedFileFormat.SALT_LENGTH).also(random::nextBytes),
             noncePrefix = ByteArray(EncryptedFileFormat.NONCE_PREFIX_LENGTH).also(random::nextBytes),
         )
-        val associated = EncryptedFileFormat.associatedData(eventId, deviceId, assetId.value, part.role.wire)
+        val associated = EncryptedFileFormat.associatedData(
+            eventId,
+            deviceId,
+            assetId.value,
+            ResourceRoleText.of(part.role),
+        )
         val fileKey = SecretKeySpec(EncryptedFileFormat.fileKeyOf(key, head.salt, associated, hmac).bytes, "AES")
         var file = EncryptedFileFormat.encodeHead(head)
         var offset = 0

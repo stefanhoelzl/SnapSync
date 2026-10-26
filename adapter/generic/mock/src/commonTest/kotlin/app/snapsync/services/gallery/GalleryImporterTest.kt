@@ -1,11 +1,12 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryImportRequest
@@ -39,7 +40,7 @@ class GalleryImporterTest {
     }
 
     private fun staged(key: String, role: ResourceRole, type: String, name: String) =
-        StagedResource(key, role.wire, type, name, "download-staging/$key")
+        StagedResource(key, ResourceRoleText.of(role), type, name, "download-staging/$key")
 
     private val importer = { library: Recording -> GalleryImporter(library, StagingService(inMemoryFiles())) }
 

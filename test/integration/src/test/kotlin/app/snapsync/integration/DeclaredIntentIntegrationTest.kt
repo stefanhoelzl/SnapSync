@@ -3,9 +3,10 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.ResourceRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -27,7 +28,7 @@ import kotlin.test.assertTrue
 @Verifies(spec = "photo-sharing", requirement = "Other members see a photo only once it is complete")
 class DeclaredIntentIntegrationTest {
 
-    private val bothRoles = setOf(ResourceRole.LIVE.wire, ResourceRole.PRIMARY.wire)
+    private val bothRoles = setOf(ResourceRoleText.of(ResourceRole.LIVE), ResourceRoleText.of(ResourceRole.PRIMARY))
 
     @Test
     @Verifies(

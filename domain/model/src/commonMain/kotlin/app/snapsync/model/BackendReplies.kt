@@ -1,6 +1,7 @@
 package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import kotlinx.serialization.Serializable
 

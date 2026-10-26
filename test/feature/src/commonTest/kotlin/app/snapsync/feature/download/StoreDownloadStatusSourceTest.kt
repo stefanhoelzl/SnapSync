@@ -1,5 +1,6 @@
 package app.snapsync.feature.download
 
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.EventId
 import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.support.testShared
@@ -10,7 +11,6 @@ import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.ports.DbOpen

@@ -1,11 +1,12 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.ReceivedPhotoName
 import app.snapsync.model.Resource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.factsFromResources
@@ -100,5 +101,7 @@ class MarkedPhotoLookup(
     }
 
     // The snapshot's resources are keyed by [uploadKey]'s `"<assetId>-<role>.<ext>"`; the primary one names the photo.
-    private fun Resource.isPrimary(): Boolean = filename.startsWith("$assetId-${ResourceRole.PRIMARY.wire}.")
+    private fun Resource.isPrimary(): Boolean = filename.startsWith(
+        "$assetId-${ResourceRoleText.of(ResourceRole.PRIMARY)}.",
+    )
 }

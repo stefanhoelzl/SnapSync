@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.model.ResourceRole
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.uploadKey
 import app.snapsync.wire.api.DeviceFilesReply

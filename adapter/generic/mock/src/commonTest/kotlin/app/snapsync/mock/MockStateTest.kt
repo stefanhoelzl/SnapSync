@@ -188,7 +188,7 @@ class MockStateTest {
         device.backend.operator.deposit(
             DEVICE,
             testAssetId("A1"),
-            app.snapsync.model.ResourceRole.PRIMARY,
+            app.snapsync.domain.asset.ResourceRole.PRIMARY,
             "A1-primary.jpg",
         )
         device.backend.operator.minAppVersion("0.5")

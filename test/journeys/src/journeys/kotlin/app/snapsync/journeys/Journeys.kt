@@ -5,9 +5,11 @@ import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.person
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.format.InviteLinkText
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.GalleryLevers
 import app.snapsync.levers.MovingFile
@@ -15,7 +17,6 @@ import app.snapsync.levers.MovingPhoto
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.RigLevers
 import app.snapsync.levers.SeedKind
-import app.snapsync.model.ResourceRole
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
 import io.ktor.client.HttpClient
@@ -247,7 +248,7 @@ class Journeys {
         }
         val own = union(http, event).filter { it["deviceId"]?.jsonPrimitive?.content != member.deviceId }
         val whole = photos.all { files ->
-            own.any { shapeOf(it) == files.map(::part).map { p -> p.role.wire to p.filename }.toSet() }
+            own.any { shapeOf(it) == files.map(::part).map { p -> ResourceRoleText.of(p.role) to p.filename }.toSet() }
         }
         assertTrue(whole, "A's ${photos.size} moving photo(s) in the event union, whole: ${own.map(::shapeOf)}")
     }

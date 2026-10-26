@@ -2,6 +2,7 @@ package app.snapsync.services.crypto
 
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.format.EventKeyText
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
@@ -41,7 +42,7 @@ class UploadSealing(
             joined.eventId.value,
             identity.requireDeviceId().value,
             assetIdFromUploadKey(resource.filename).value,
-            roleFromUploadKey(resource.filename).wire,
+            ResourceRoleText.of(roleFromUploadKey(resource.filename)),
         )
         return UploadSeal.Sealed(key, ad)
     }

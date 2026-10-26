@@ -9,8 +9,9 @@ import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.backend.VersionIgnored
 import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.trust.BearerToken
-import app.snapsync.model.ResourceRole
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
@@ -244,7 +245,13 @@ class EdgeSetup(private val transport: HttpTransport, base: String, private val 
 
     /** Uploads one resource's bytes, as the app's uploader addresses them. */
     override suspend fun upload(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole) {
-        val path = Routes.UploadResource.path(eventId, deviceId, asset.assetId.value, role.wire, asset.filename)
+        val path = Routes.UploadResource.path(
+            eventId,
+            deviceId,
+            asset.assetId.value,
+            ResourceRoleText.of(role),
+            asset.filename,
+        )
         val headers = mapOf(
             Limits.VERSION_HEADER to SERVED_APP_VERSION,
             AUTHORIZATION to "Bearer ${tokens.tokenFor(deviceId)}",
@@ -254,12 +261,20 @@ class EdgeSetup(private val transport: HttpTransport, base: String, private val 
         )
         val result = transport.send(HttpRequest(Routes.UploadResource.METHOD, base + path, headers, JPEG))
         check(result is HttpResult.Response && result.status in SUCCESS) {
-            "setup step 'upload ${asset.assetId}/${role.wire}' was refused by the backend: ${result.describe()}"
+            "setup step 'upload ${asset.assetId}/${ResourceRoleText.of(
+                role,
+            )}' was refused by the backend: ${result.describe()}"
         }
     }
 
     override suspend fun uploadPart(eventId: String, deviceId: String, asset: SeededAsset, role: ResourceRole) {
-        val path = Routes.UploadResource.path(eventId, deviceId, asset.assetId.value, role.wire, asset.filename)
+        val path = Routes.UploadResource.path(
+            eventId,
+            deviceId,
+            asset.assetId.value,
+            ResourceRoleText.of(role),
+            asset.filename,
+        )
         val headers = mapOf(
             Limits.VERSION_HEADER to SERVED_APP_VERSION,
             AUTHORIZATION to "Bearer ${tokens.tokenFor(deviceId)}",
@@ -271,7 +286,9 @@ class EdgeSetup(private val transport: HttpTransport, base: String, private val 
         val result = transport.send(HttpRequest(Routes.UploadResource.METHOD, base + path, headers, body))
         // A body shorter than its range is refused — and kept: that refusal IS the state this step enters.
         check(result is HttpResult.Response && result.status == BAD_REQUEST) {
-            "setup step 'upload part of ${asset.assetId}/${role.wire}' was not kept by the backend: ${result.describe()}"
+            "setup step 'upload part of ${asset.assetId}/${ResourceRoleText.of(
+                role,
+            )}' was not kept by the backend: ${result.describe()}"
         }
     }
 
@@ -323,4 +340,4 @@ fun manifestOf(deviceId: String, assets: List<SeededAsset>, version: Long = 0, f
     Manifest(deviceId = deviceId, assets = assets.map { it.onWire() }, version = version, `final` = final)
 
 /** A role, as the description names it. */
-fun ResourceRole.onWire(): Role = Role.fromValue(wire) ?: error("no described role for $this")
+fun ResourceRole.onWire(): Role = Role.fromValue(ResourceRoleText.of(this)) ?: error("no described role for $this")

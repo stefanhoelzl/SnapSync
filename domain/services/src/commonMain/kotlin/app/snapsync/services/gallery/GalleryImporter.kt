@@ -1,13 +1,14 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ImportRequest
 import app.snapsync.model.ImportResult
 import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.StagedResource
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryImportRequest
@@ -67,8 +68,8 @@ class GalleryImporter(private val gallery: GalleryImport, private val staging: S
  * and anything else nothing the library takes.
  */
 private fun StagedResource.kind(): ResourceKind? = when (role) {
-    ResourceRole.LIVE.wire -> ResourceKind.PAIRED_VIDEO
-    ResourceRole.PRIMARY.wire -> when {
+    ResourceRoleText.of(ResourceRole.LIVE) -> ResourceKind.PAIRED_VIDEO
+    ResourceRoleText.of(ResourceRole.PRIMARY) -> when {
         contentType.startsWith("image/") -> ResourceKind.PHOTO
         contentType.startsWith("video/") -> ResourceKind.VIDEO
         else -> null

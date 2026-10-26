@@ -5,7 +5,9 @@ import app.snapsync.contracts.SERVED_APP_VERSION
 import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
@@ -14,7 +16,6 @@ import app.snapsync.mock.StorePage
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionResource
 import app.snapsync.model.UnionTrigger
@@ -225,7 +226,7 @@ class BackendReach(
         bytes: ByteArray = SEEDED_BYTES,
         eventId: String? = null,
     ) {
-        val role = resource.role.wire
+        val role = ResourceRoleText.of(resource.role)
         val path = eventId?.let { Routes.UploadResource.path(it, deviceId, assetId.value, role, resource.filename) }
             ?: Routes.UploadResourceEventless.path(deviceId, assetId.value, role, resource.filename)
         val status = network.put(
@@ -276,7 +277,7 @@ class BackendReach(
     }
 }
 
-private fun Role.inApp(): ResourceRole = ResourceRole.entries.first { it.wire == value }
+private fun Role.inApp(): ResourceRole = ResourceRoleText.parse(value)!!
 
 /** A seeded member's snapshot as the backend takes it; an unstamped one is version 0, the oldest. */
 private fun DeviceManifest.onWire(): Manifest = Manifest(
@@ -287,7 +288,7 @@ private fun DeviceManifest.onWire(): Manifest = Manifest(
             creationDate = asset.creationDate,
             resources = asset.resources.map {
                 app.snapsync.wire.models.ManifestResource(
-                    Role.fromValue(it.role.wire) ?: error("no described role for ${it.role}"),
+                    Role.fromValue(ResourceRoleText.of(it.role)) ?: error("no described role for ${it.role}"),
                     it.contentType,
                     it.key,
                     it.filename,

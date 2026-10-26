@@ -5,6 +5,7 @@ import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.trust.BearerToken
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.Resource
@@ -76,7 +77,7 @@ class BackendUploadRequests(
         // the ledger key through the shared parsers, so the one definition of that layout stays in
         // `model/` and the destination cannot disagree with the row it belongs to.
         val assetId = assetIdFromUploadKey(resource.filename)
-        val role = roleFromUploadKey(resource.filename).wire
+        val role = ResourceRoleText.of(roleFromUploadKey(resource.filename))
         // The capture name falls back to the KEY, and the fallback is exact rather than approximate: the
         // endpoint consumes only this value's EXTENSION when composing the stored object name, and the
         // key carries the same extension as the capture name it was built from. That is what lets a

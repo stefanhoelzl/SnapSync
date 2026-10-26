@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlin.test.Test
@@ -64,8 +66,11 @@ class ReceivedPhotoNameTest {
     fun the_role_token_never_reaches_the_library() {
         for (role in ResourceRole.entries) {
             val roleKey = uploadKey(ref.sourceAssetId, role, "IMG_4471.HEIC")
-            assertTrue(roleKey.contains("-${role.wire}"), "the key under test must carry the role token")
-            assertTrue("-${role.wire}" !in ReceivedPhotoName.mark("IMG_4471.HEIC", roleKey, ref))
+            assertTrue(
+                roleKey.contains("-${ResourceRoleText.of(role)}"),
+                "the key under test must carry the role token",
+            )
+            assertTrue("-${ResourceRoleText.of(role)}" !in ReceivedPhotoName.mark("IMG_4471.HEIC", roleKey, ref))
         }
     }
 

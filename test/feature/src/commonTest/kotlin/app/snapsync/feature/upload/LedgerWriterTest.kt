@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.testShared
 import app.snapsync.model.LedgerEntry
@@ -7,7 +8,6 @@ import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.Resource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.testids.testAssetId

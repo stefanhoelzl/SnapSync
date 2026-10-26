@@ -1,6 +1,7 @@
 package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.model.CreateOutcome
@@ -8,7 +9,6 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.PushEndpoint
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.StoredResource
 import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.HttpResult

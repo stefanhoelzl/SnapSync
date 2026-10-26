@@ -57,6 +57,8 @@ kotlin {
             // The operator faces' typed interfaces, which the mocks implement (`docs/testing.md`, "Typed services").
             api(project(":test:levers"))
             api(libs.coroutines.core)
+            // The text a value takes on the wire — the backend mock routes and stores a resource role by its token.
+            implementation(project(":domain:format"))
             // The Clock double answers a zone (`TimeFactories.kt`).
             implementation(libs.kotlinx.datetime)
             // `inMemoryDatabases()`: real SQLite, in memory — the platform's driver per target, below.
@@ -77,7 +79,6 @@ kotlin {
         // deleted `:domain:gallery` / `:domain:download-store` / `:capability:attest` modules at
         // migration step 10; commonTest runs on the JVM only — `docs/testing.md`, "Where each test runs").
         commonTest.dependencies {
-            implementation(project(":domain:format"))
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
             // The fakes' own contract bindings (`docs/architecture.md`): only this module's test

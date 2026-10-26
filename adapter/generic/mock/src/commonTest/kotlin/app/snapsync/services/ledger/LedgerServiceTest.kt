@@ -2,12 +2,12 @@ package app.snapsync.services.ledger
 
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.PendingResource
-import app.snapsync.model.ResourceRole
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.DbOpen
 import app.snapsync.services.databases.driver
