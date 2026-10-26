@@ -78,6 +78,14 @@ object EncryptedFileFormat {
     fun ciphertextSegmentLength(segment: Int): Int = plaintextSegmentLength(segment) + TAG_LENGTH
 
     /**
+     * A segment's bytes from [read] — one byte more than a not-last segment's [length], asked for so the end of the file
+     * alone decides: finding nothing past [length] bytes makes it the last, whatever remains; otherwise it is [length]
+     * bytes and more follow.
+     */
+    fun segmentOf(read: ByteArray, length: Int): SegmentRead =
+        if (read.size <= length) SegmentRead.Last(read) else SegmentRead.More(read.copyOf(length))
+
+    /**
      * Segment [segment]'s nonce, [NONCE_LENGTH] bytes: [noncePrefix] (a [FileHead]'s, [NONCE_PREFIX_LENGTH] bytes) ‖
      * segment ‖ last.
      */
@@ -89,6 +97,9 @@ object EncryptedFileFormat {
         it[10] = segment.toByte()
         it[11] = if (last) 1 else 0
     }
+
+    /** [bytes] when they are exactly [length] long — the format's own lengths, checked where they are handed on. */
+    fun ofLength(bytes: ByteArray, length: Int): ByteArray? = bytes.takeIf { it.size == length }
 
     /** The prefix and header, as they open the file. */
     fun encodeHead(head: FileHead): ByteArray = ByteArray(HEAD_LENGTH).also {
@@ -132,6 +143,13 @@ class FileHead internal constructor(val keyId: ByteArray, val salt: ByteArray, v
             else -> FileHead(keyId, salt, noncePrefix)
         }
     }
+}
+
+/** One segment, as the end of the file decides it: the last, or one more follow. */
+sealed interface SegmentRead {
+    class Last(val bytes: ByteArray) : SegmentRead
+
+    class More(val bytes: ByteArray) : SegmentRead
 }
 
 /** Whether a file's opening bytes are this format. */

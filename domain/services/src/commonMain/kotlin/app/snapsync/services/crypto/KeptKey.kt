@@ -1,22 +1,21 @@
 package app.snapsync.services.crypto
 
 import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyFact
-import app.snapsync.domain.event.KeyMaterial
 
-/** What the key slot held at the entry's read, for the sealing and the opening that still frame raw bytes here. */
-internal sealed interface KeptBytes {
-    class Kept(val bytes: ByteArray, val id: String) : KeptBytes
+/** What the key slot held at the entry's read, for the sealing and the opening still composed here. */
+internal sealed interface Kept {
+    class Key(val key: IdentifiedKey) : Kept
 
-    data object Unreadable : KeptBytes
+    data object Unreadable : Kept
 
-    data object None : KeptBytes
+    data object None : Kept
 }
 
-/** The kept key's bytes and id — MIGRATING: the sealing and the opening move into the data layer with the cipher. */
-@OptIn(KeyMaterial::class)
-internal fun EventKeyStore.keptBytes(): KeptBytes = when (val fact = state.value) {
-    is KeyFact.Kept -> KeptBytes.Kept(fact.key.key.bytes(), fact.key.id.value)
-    KeyFact.Unreadable -> KeptBytes.Unreadable
-    KeyFact.Absent, KeyFact.Invalid -> KeptBytes.None
+/** The kept key — MIGRATING: the sealing and the opening move into the data layer. */
+internal fun EventKeyStore.kept(): Kept = when (val fact = state.value) {
+    is KeyFact.Kept -> Kept.Key(fact.key)
+    KeyFact.Unreadable -> Kept.Unreadable
+    KeyFact.Absent, KeyFact.Invalid -> Kept.None
 }

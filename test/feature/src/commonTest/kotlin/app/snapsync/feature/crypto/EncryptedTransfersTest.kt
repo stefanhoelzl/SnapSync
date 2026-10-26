@@ -1,5 +1,6 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.data.crypto.FileCipher
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
@@ -53,8 +54,6 @@ import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.services.crypto.FileCipher
-import app.snapsync.services.crypto.Opened
 import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.gallery.Discovery
@@ -334,17 +333,6 @@ class EncryptedTransfersTest {
             )
         }
         assertTrue(receiver.files.operations.none { it.startsWith("write") && it.contains("staged/") })
-    }
-
-    @Test
-    fun a_file_opens_only_as_the_resource_it_was_sealed_as() = runTest {
-        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
-        val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
-        val key = EventKeyText.decode(minted.linkKey)!!.bytes()
-        device.files.write(FileArea.SHARED, "p", photo)
-        device.cipher.encrypt(key, adFor(DEVICE_A), FileArea.SHARED, "p", "s")
-        assertIs<Opened.Damaged>(device.cipher.decrypt(key, adFor(DEVICE_B), FileArea.SHARED, "s", "o"))
-        assertEquals(Opened.Ok, device.cipher.decrypt(key, adFor(DEVICE_A), FileArea.SHARED, "s", "o"))
     }
 
     private fun decodeBase64(text: String): ByteArray =

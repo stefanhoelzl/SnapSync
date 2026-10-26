@@ -176,8 +176,10 @@ coverage {
         // (it asserts outcomes, never the app's databases); the data suites' (`MembershipRepositoryTest`,
         // `PendingLeavesTest`). Measured 84.84 %.
         // Branches → 60 in phase 4.3 (encryption): the event key's store arrived, and its rare answers — a key or a
-        // clear the store refuses, a slot that holds no key — are its unit suite's (`EventKeyStoreTest`).
-        integration(instructions = 84, branches = 60)
+        // clear the store refuses, a slot that holds no key — are its unit suite's (`EventKeyStoreTest`). → 83/59 when
+        // the file cipher moved in: every read and write its files refuse, mid-file, is its unit suite's
+        // (`FileCipherTest`); a member's day reads and writes whole files.
+        integration(instructions = 83, branches = 59)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -205,8 +207,9 @@ coverage {
         // install's referrer (`InstallReferrerIntegrationTest`); branches 64 → 78 with it. → 90/70 in phase 4.3
         // (encryption), when the encrypted file format moved in from model: every way a file's head is not this
         // format, a head's parts of another length and HKDF's bounds are the unit suite's (`EncryptedFileFormatTest`)
-        // — a member's day only ever reads whole files.
-        integration(instructions = 90, branches = 70)
+        // — a member's day only ever reads whole files; → 89/68 with the end-of-file rule and the length check the
+        // cipher hands its keys on through (`segmentOf`, `ofLength`), whose refusals are the unit suite's too.
+        integration(instructions = 89, branches = 68)
     }
     ":domain:domain" {
         unit()

@@ -71,8 +71,8 @@ class OptInPinsTest {
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyStore.kt" to mapOf(
             "MintsKeptKey" to Pin(1, "the one keep that says a join's key is kept"),
         ),
-        "/domain/services/src/commonMain/kotlin/app/snapsync/services/crypto/KeptKeyBytes.kt" to mapOf(
-            "KeyMaterial" to Pin(1, "the sealing and opening still framed here, MIGRATING into data with the cipher"),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/FileCipher.kt" to mapOf(
+            "KeyMaterial" to Pin(1, "the cipher: each file's key is derived from the event key's bytes"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/MembershipEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(1, "the membership's entry points and the steps they share call its use cases"),

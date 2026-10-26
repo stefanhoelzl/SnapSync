@@ -13,6 +13,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Answered` | `:domain:inbound` | `:adapter:ios:ext-safe` ContractOr; `:domain:scheduling` AnsweredEntryPoint; `:test:contracts` AnsweredProxy; `:test:launch-adapters` Completed | yes |
 | `AppUploadEngine` | `:domain:feature` | `:domain:entrypoints` UploadEngine; `:test:architecture` Engine; `:test:feature` FakeEngine | yes |
 | `AttestationHealthVerdict` | `:domain:domain` | `:domain:domain` Attested, Unattested | no |
+| `Authenticated` | `:domain:data` | `:domain:data` Not, Plain | no |
 | `BackendAnswer` | `:domain:domain` | `:domain:domain` NoAnswer, Refused, Rejected, Served, ServerIssue, TooOld, Updating | no |
 | `BackendTarget` | `:domain:data` | `:domain:data` BuildTarget; `:domain:services` ScriptedTarget, Target; `:test:contracts` FixedTarget; `:test:data` Target | yes |
 | `Background` | `:domain:inbound` | `:domain:scheduling` BackgroundEntryPoint; `:test:contracts` BackgroundProxy | no |
@@ -83,9 +84,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Fact` | `:domain:model` | `:domain:model` Failed, Known, Unsupported | no |
 | `FetchedJob` | `:domain:services` | `:domain:services` AcknowledgeToDrain, Emit | no |
 | `FileAccess` | `:domain:ports` | `:domain:ports` Denied, Failed | no |
+| `FileFailure` | `:domain:ports` | `:domain:ports` AreaUnavailable, Denied, Failed, NotFound | no |
 | `FileLocation` | `:domain:ports` | `:domain:ports` AreaUnavailable, Ok | no |
-| `FileResult` | `:domain:ports` | `:domain:ports` NotFound | no |
-| `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, MemFiles, SharedArea; `:test:contracts` FilesProxy, UnusedFiles; `:test:feature` RecordingFiles, ThrowingDeletes, UnlistableStaging | yes |
+| `FileResult` | `:domain:ports` | — | no |
+| `Files` | `:domain:ports` | `:adapter:android` AndroidFiles; `:adapter:generic:app` JvmFiles; `:adapter:generic:mock` InMemoryFiles; `:adapter:ios:ext-safe` IosFiles; `:domain:services` AcceptingFiles, Adopting, MemFiles, SharedArea; `:test:contracts` FilesProxy, UnusedFiles; `:test:data` Scripted; `:test:feature` RecordingFiles, ThrowingDeletes, UnlistableStaging | yes |
 | `Found` | `:domain:services` | `:adapter:generic:mock` Answered, Driver; `:domain:services` Failed, Missing, OldSchema, Open | no |
 | `Gallery` | `:domain:ports` | `:adapter:android` AndroidGallery; `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery; `:test:contracts` GalleryProxy | yes |
 | `GalleryImport` | `:domain:ports` | `:adapter:generic:mock` Recording; `:test:contracts` GalleryImportProxy, GalleryProxy; `:test:feature` FakeImporter, NoImports, NoopImporter | yes |
@@ -95,7 +97,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Granted` | `:domain:inbound` | `:domain:scheduling` GrantedEntryPoint; `:test:contracts` GrantedProxy; `:test:rig` QuietWake | yes |
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
 | `HeadRead` | `:domain:format` | `:domain:format` Read, Refused | no |
-| `Hmac` | `:domain:format` | `:domain:data` CryptoHmac; `:domain:format` Recording; `:domain:services` CryptoHmac | no |
+| `Hmac` | `:domain:format` | `:domain:data` CryptoHmac; `:domain:format` Recording | no |
 | `HostAssembly` | `:domain:entrypoints` | `:domain:host` HostFirst | no |
 | `HttpResult` | `:domain:ports` | `:domain:ports` Response, Unreachable | no |
 | `HttpTransport` | `:domain:ports` | `:adapter:generic:app` KtorHttpTransport; `:adapter:generic:mock` BackendRouter; `:domain:services` ScriptedTransport; `:test:architecture` Probe; `:test:contracts` HttpTransportProxy; `:test:data` FakeClient, ScriptedTransport | yes |
@@ -111,7 +113,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JoinDetailsQuery` | `:domain:query` | `:domain:query` JoinDetailsLookup | no |
 | `JoinProgress` | `:domain:presentation` | `:domain:presentation` Closed, Detailed, LoadFailed, Loading, NotFound, WrongLink | no |
 | `KeepOutcome` | `:domain:data` | `:domain:data` Kept, Refused | no |
-| `KeptBytes` | `:domain:services` | `:domain:services` Kept, None, Unreadable | no |
+| `Kept` | `:domain:services` | `:domain:services` Key, None, Unreadable | no |
 | `KeyFact` | `:domain:domain` | `:domain:domain` Absent, Invalid, Kept, Unreadable | no |
 | `KeyIdRead` | `:domain:data` | `:domain:data` Held, None, Unavailable | no |
 | `KeyPresence` | `:domain:domain` | `:domain:domain` Held, Lost, NotNeeded, Unknown | no |
@@ -147,7 +149,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `NotRenamed` | `:domain:data` | `:domain:data` Refused, Unanswered | no |
 | `NotSaved` | `:domain:application` | `:domain:application` NotCurrent, Refused, SaveFailed | no |
 | `OpenDatabase` | `:domain:ports` | `:adapter:android` AndroidOpenDatabase; `:adapter:generic:app` JdbcOpenDatabase; `:adapter:generic:mock` MockOpenDatabase; `:adapter:ios:ext-safe` IosOpenDatabase; `:test:contracts` OpenDatabaseProxy; `:test:feature` RecordingDatabase | yes |
-| `Opened` | `:domain:services` | `:domain:services` Damaged, Ok, OtherKey, Unreadable | no |
+| `OpenOutcome` | `:domain:data` | `:domain:data` Damaged, Opened, OtherKey, Unreadable | no |
+| `Opened` | `:domain:data` | `:domain:data` Damaged, Unreadable, Whole | no |
 | `OsUploadJobHandle` | `:domain:ports` | `:adapter:generic:mock` Job; `:adapter:ios:ext-safe` PhotoKitJob, Presented; `:domain:services` Job; `:test:feature` OfferedJob | yes |
 | `OsUploadQueue` | `:domain:ports` | `:adapter:generic:mock` Face; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:domain:services` Queue, ScriptedQueue; `:test:contracts` OsUploadQueueProxy; `:test:feature` Queue | yes |
 | `Parsed` | `:domain:data` | `:domain:data` Ok, Refused | no |
@@ -188,8 +191,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Running` | `:domain:inbound` | `:domain:scheduling` Expirable; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
 | `Screen` | `:domain:entrypoints` | — | no |
+| `SealOutcome` | `:domain:data` | `:domain:data` Failed, Sealed | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:data` RecordingSecureStore; `:test:feature` LockableSecureStore | yes |
 | `SecureStoreRead` | `:domain:ports` | `:domain:ports` Absent, Found, Unavailable | no |
+| `SegmentLength` | `:domain:data` | `:domain:data` Ciphertext, Plaintext | no |
+| `SegmentRead` | `:domain:format` | `:domain:format` Last, More | no |
+| `SegmentStep` | `:domain:data` | `:domain:data` Sealing, Unsealing | no |
 | `SelectionRule` | `:domain:model` | `:domain:model` CaptureAfter, CaptureBefore, DenyAll, ExcludeScreenRecordings, ExcludeScreenshots, MinImageArea, MinVideoArea, NotEcho, NotInDenylistedAlbum | no |
 | `SelectionScope` | `:domain:model` | `:domain:model` Scoped, Unread, Unrestricted | no |
 | `Settled` | `:domain:feature` | `:domain:feature` Ready | no |
