@@ -6,9 +6,9 @@ import app.snapsync.levers.DatabasesLevers
 import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WriteKind
-import app.snapsync.model.FileArea
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
+import app.snapsync.ports.FileArea
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureSlot

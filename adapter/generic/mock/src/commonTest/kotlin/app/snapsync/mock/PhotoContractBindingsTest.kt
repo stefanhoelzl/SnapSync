@@ -32,8 +32,8 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.NOT_AN_IMAGE
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.ImportFile

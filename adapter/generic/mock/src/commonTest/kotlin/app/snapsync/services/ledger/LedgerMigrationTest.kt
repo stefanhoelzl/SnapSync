@@ -16,11 +16,11 @@ import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
-import app.snapsync.model.FileArea
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.Databases
+import app.snapsync.ports.FileArea
 import app.snapsync.ports.Files
 import app.snapsync.services.databases.CONFIG_FILE_NAME
 import app.snapsync.services.databases.LegacyRecords

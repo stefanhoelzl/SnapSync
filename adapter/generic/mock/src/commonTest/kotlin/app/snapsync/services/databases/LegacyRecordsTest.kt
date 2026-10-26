@@ -20,11 +20,11 @@ import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeConfigFile
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.manifest.DeviceManifestService

@@ -9,7 +9,7 @@ import app.snapsync.contracts.FilesState
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.FileArea
+import app.snapsync.ports.FileArea
 import app.snapsync.ports.Files
 import java.io.File
 import kotlin.test.Test

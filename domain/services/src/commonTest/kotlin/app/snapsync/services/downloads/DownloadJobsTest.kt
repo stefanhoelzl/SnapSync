@@ -2,15 +2,15 @@ package app.snapsync.services.downloads
 
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AssetRef
-import app.snapsync.model.FileAccess
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileLocation
-import app.snapsync.model.FileResult
-import app.snapsync.model.FileTail
 import app.snapsync.model.PendingDownload
 import app.snapsync.model.PlannedResource
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.FileAccess
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileLocation
+import app.snapsync.ports.FileResult
+import app.snapsync.ports.FileTail
 import app.snapsync.ports.Files
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork

@@ -11,14 +11,14 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.StartResult

@@ -1,0 +1,52 @@
+package app.snapsync.ports
+
+/**
+ * Where a file lives, as far as the core can say it (`docs/architecture.md`, "Paths are area-relative"). The
+ * adapter maps each area to a platform directory; a path inside an area is relative, so no absolute platform
+ * path is ever stored or compared by the core.
+ */
+enum class FileArea {
+    /** Shared by the app and the upload extension, readable while the device is locked after its first unlock. */
+    SHARED,
+
+    /** This process's own files, never read by the other process. */
+    PRIVATE,
+}
+
+/**
+ * One file operation's answer. "Nothing is there" and "I could not look" are different answers, and a reader
+ * that acts on absence needs to know which it got (`docs/architecture.md`, "Absence is never silent"):
+ *
+ * - [NotFound] — the file (or a directory on its path) does not exist. Only a definite absence answers this.
+ * - [AreaUnavailable] — the area itself cannot be reached (a build without the App-Group entitlement).
+ * - [Denied] — the file exists and may not be read or written now (a locked device, a permission).
+ * - [Failed] — anything else.
+ *
+ * [Denied] and [Failed] carry diagnostics only: log them, never branch on [code].
+ */
+sealed interface FileResult<out T> {
+    data class Ok<out T>(val value: T) : FileLocation<T>
+    data object NotFound : FileFailure
+    data object AreaUnavailable : FileLocation<Nothing>, FileFailure
+    data class Denied(val detail: String, val code: Long? = null) : FileAccess<Nothing>, FileFailure
+    data class Failed(val detail: String, val code: Long? = null) : FileAccess<Nothing>, FileFailure
+}
+
+/** Every answer but [FileResult.Ok]: what a reader that only goes on after an `Ok` tells apart from it. */
+sealed interface FileFailure : FileResult<Nothing>
+
+/**
+ * A [FileResult] that is never [FileResult.NotFound]: the answer of an operation for which nothing being there is no
+ * outcome at all — a write creates the file and its parents, a listing of a missing directory is empty, an existence
+ * check answers `false`.
+ */
+sealed interface FileAccess<out T> : FileResult<T>
+
+/**
+ * A [FileAccess] that is only [FileResult.Ok] or [FileResult.AreaUnavailable]: naming a platform path touches no file,
+ * so only the area's own reachability can fail it.
+ */
+sealed interface FileLocation<out T> : FileAccess<T>
+
+/** The last bytes of a file, and whether the read began after its first byte (so possibly mid-line). */
+class FileTail(val bytes: ByteArray, val cut: Boolean)

@@ -1,14 +1,14 @@
 package app.snapsync.files
 
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.FileAccess
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileLocation
-import app.snapsync.model.FileResult
-import app.snapsync.model.FileTail
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
+import app.snapsync.ports.FileAccess
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileLocation
+import app.snapsync.ports.FileResult
+import app.snapsync.ports.FileTail
 import app.snapsync.ports.Files
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.BooleanVar

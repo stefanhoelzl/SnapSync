@@ -118,8 +118,10 @@ coverage {
     ":domain:ports" {
         unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
         // → 90 with the update test (`AppUpdateIntegrationTest`), and 91 since; → 92 in phase 31, once the polling
-        // tests waited on outcome events instead.
-        integration(instructions = 92, branches = 85) // no branches: any branch target is met
+        // tests waited on outcome events instead. → 90 in phase 4.3 (encryption), when the Files port's answers moved
+        // in from model: the ways a file operation fails — a denied or failed one's facts — are the adapters' and their
+        // contracts' (`FilesContract`) to reach, never a member's day.
+        integration(instructions = 90, branches = 85) // no branches: any branch target is met
     }
     ":domain:services" {
         skipped(
@@ -201,9 +203,9 @@ coverage {
         // text moved in: a Play install's referrer (Android's, which the JVM host cannot deliver) and every way a
         // fragment can be malformed are the unit suite's. Instructions back to the goal once the suite delivered a Play
         // install's referrer (`InstallReferrerIntegrationTest`); branches 64 → 78 with it. → 90/70 in phase 4.3
-        // (encryption), when the encrypted file format moved in from model: every way a file's head is not this format, a
-        // head's parts of another length and HKDF's bounds are the unit suite's (`EncryptedFileFormatTest`) — a
-        // member's day only ever reads whole files.
+        // (encryption), when the encrypted file format moved in from model: every way a file's head is not this
+        // format, a head's parts of another length and HKDF's bounds are the unit suite's (`EncryptedFileFormatTest`)
+        // — a member's day only ever reads whole files.
         integration(instructions = 90, branches = 70)
     }
     ":domain:domain" {

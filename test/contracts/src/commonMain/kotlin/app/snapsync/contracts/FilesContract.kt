@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -167,7 +167,7 @@ object FilesContract : Contract<FilesState, Files>("Files") {
             val p = path("EMPTY_AN_EMPTY_FILE_IS_NOT_ABSENT")
             files.write(FileArea.SHARED, p, ByteArray(0))
             assertEquals(0, assertIs<FileResult.Ok<ByteArray>>(files.read(FileArea.SHARED, p)).value.size)
-            val tail = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(
+            val tail = assertIs<FileResult.Ok<app.snapsync.ports.FileTail>>(
                 files.readTail(FileArea.SHARED, p, SMALL),
             ).value
             assertEquals(0, tail.bytes.size)
@@ -355,12 +355,12 @@ object FilesContract : Contract<FilesState, Files>("Files") {
         ) { files ->
             val id = "HOLDING_READ_TAIL_TAKES_THE_END"
             val bytes = seed(id)
-            val small = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(
+            val small = assertIs<FileResult.Ok<app.snapsync.ports.FileTail>>(
                 files.readTail(FileArea.SHARED, path(id), SMALL),
             ).value
             assertContentEquals(bytes.copyOfRange(bytes.size - SMALL, bytes.size), small.bytes)
             assertTrue(small.cut, "a tail that began after the first byte says so")
-            val whole = assertIs<FileResult.Ok<app.snapsync.model.FileTail>>(
+            val whole = assertIs<FileResult.Ok<app.snapsync.ports.FileTail>>(
                 files.readTail(FileArea.SHARED, path(id), bytes.size * 2),
             ).value
             assertContentEquals(bytes, whole.bytes)

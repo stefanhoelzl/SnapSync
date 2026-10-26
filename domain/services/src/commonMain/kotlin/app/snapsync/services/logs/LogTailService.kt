@@ -2,8 +2,8 @@ package app.snapsync.services.logs
 
 import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 
 /**

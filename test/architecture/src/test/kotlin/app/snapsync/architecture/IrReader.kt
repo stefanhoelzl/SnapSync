@@ -345,7 +345,7 @@ internal object IrReader {
         return FieldRef(owner, name) to type
     }
 
-    /** `app.snapsync.model/FileResult.Ok|null[0]` → `app.snapsync.model.FileResult.Ok`. */
+    /** `app.snapsync.ports/FileResult.Ok|null[0]` → `app.snapsync.ports.FileResult.Ok`. */
     fun fqnOfSignature(signature: String): String? {
         val path = signature.substringBefore('|')
         if ('/' !in path) return null

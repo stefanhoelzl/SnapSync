@@ -1,7 +1,5 @@
 package app.snapsync.services.crash
 
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.FootprintSample
 import app.snapsync.model.MemoryFootprint
 import app.snapsync.model.appendedFootprint
@@ -9,6 +7,8 @@ import app.snapsync.model.decodeFootprintTrail
 import app.snapsync.model.encodeFootprintTrail
 import app.snapsync.model.footprintFields
 import app.snapsync.ports.Clock
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import co.touchlab.kermit.Logger
 

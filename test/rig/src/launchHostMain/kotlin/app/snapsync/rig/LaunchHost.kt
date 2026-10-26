@@ -17,8 +17,8 @@ import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.WorldEvent
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ui.state.UiState

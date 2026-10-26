@@ -1,14 +1,14 @@
 package app.snapsync.services.upload
 
 import app.snapsync.domain.upload.LedgerState
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.Resource
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource

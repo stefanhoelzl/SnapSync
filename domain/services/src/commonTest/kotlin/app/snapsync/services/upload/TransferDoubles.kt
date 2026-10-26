@@ -2,16 +2,16 @@ package app.snapsync.services.upload
 
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.model.CandidateScope
-import app.snapsync.model.FileAccess
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileLocation
-import app.snapsync.model.FileResult
-import app.snapsync.model.FileTail
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.FileAccess
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileLocation
+import app.snapsync.ports.FileResult
+import app.snapsync.ports.FileTail
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryAsset

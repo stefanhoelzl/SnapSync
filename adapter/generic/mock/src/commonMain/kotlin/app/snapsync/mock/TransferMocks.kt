@@ -13,8 +13,6 @@ import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.UploadSessionView
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.BeforeListen
-import app.snapsync.model.FileArea
-import app.snapsync.model.FileResult
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.destinationPathOf
 import app.snapsync.ports.ChangeOutcome
@@ -22,6 +20,8 @@ import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.FileArea
+import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.FinishedDownload
 import app.snapsync.ports.FinishedTransfer
