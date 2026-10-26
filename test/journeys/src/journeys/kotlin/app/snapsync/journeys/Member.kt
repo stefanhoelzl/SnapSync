@@ -3,16 +3,18 @@ package app.snapsync.journeys
 import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.contracts.attest.SoftwareKeyAttestation
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
+import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.EventKeyText
+import app.snapsync.format.FileHead
+import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.EncryptedFileFormat
-import app.snapsync.model.FileHead
-import app.snapsync.model.Hmac
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
@@ -129,22 +131,20 @@ class Member(private val http: HttpClient, backend: String) {
      */
     private fun sealed(key: ByteArray, eventId: String, assetId: AssetId, part: Part): ByteArray {
         val plain = part.bytes
-        val hmac = Hmac { k, message ->
-            Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(k, "HmacSHA256")) }.doFinal(message)
+        val hmac = object : Hmac {
+            override fun mac(key: ByteArray, message: ByteArray): ByteArray =
+                Mac.getInstance("HmacSHA256").apply { init(SecretKeySpec(key, "HmacSHA256")) }.doFinal(message)
         }
         val random = SecureRandom()
-        val head = FileHead(
+        val head = FileHead.of(
             keyId = EncryptedFileFormat.keyIdOf(key, hmac),
             salt = ByteArray(EncryptedFileFormat.SALT_LENGTH).also(random::nextBytes),
             noncePrefix = ByteArray(EncryptedFileFormat.NONCE_PREFIX_LENGTH).also(random::nextBytes),
-        )
+        )!!
         val associated = EncryptedFileFormat.associatedData(
-            eventId,
-            deviceId,
-            assetId.value,
-            ResourceRoleText.of(part.role),
+            FileBinding(EventId.parse(eventId)!!, DeviceId.parse(deviceId)!!, assetId, part.role),
         )
-        val fileKey = SecretKeySpec(EncryptedFileFormat.fileKeyOf(key, head.salt, associated, hmac).bytes, "AES")
+        val fileKey = SecretKeySpec(EncryptedFileFormat.fileKeyOf(key, head.salt, associated, hmac), "AES")
         var file = EncryptedFileFormat.encodeHead(head)
         var offset = 0
         var segment = 0
@@ -156,7 +156,7 @@ class Member(private val http: HttpClient, backend: String) {
             cipher.init(
                 Cipher.ENCRYPT_MODE,
                 fileKey,
-                GCMParameterSpec(EncryptedFileFormat.TAG_LENGTH * Byte.SIZE_BITS, nonce.bytes),
+                GCMParameterSpec(EncryptedFileFormat.TAG_LENGTH * Byte.SIZE_BITS, nonce),
             )
             file += cipher.doFinal(plain, offset, end - offset)
             offset = end

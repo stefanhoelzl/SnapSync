@@ -1,10 +1,10 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
-import app.snapsync.model.AesKey
-import app.snapsync.model.GcmNonce
+import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.GcmNonce
 
 /** [Crypto] as its clause's [CallLog] sees it. */
 fun Crypto.recorded(log: CallLog): Crypto = CryptoProxy(log.wraps(this), log)

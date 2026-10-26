@@ -1,12 +1,11 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.AesKey
-import app.snapsync.model.GcmNonce
+import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.GcmNonce
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /** The primitives keep no state; what differs is whose bytes they produce. */
@@ -34,8 +33,12 @@ object CryptoContract : Contract<CryptoState, Crypto>("Crypto") {
         s.length / 2,
     ) { s.substring(2 * it, 2 * it + 2).toInt(16).toByte() }
 
-    private fun key(bytes: ByteArray): AesKey = assertNotNull(AesKey.of(bytes), "a vector key is 32 bytes")
-    private fun nonce(bytes: ByteArray): GcmNonce = assertNotNull(GcmNonce.of(bytes), "a vector nonce is 12 bytes")
+    private fun key(bytes: ByteArray): AesKey = AesKey(
+        bytes.also { assertEquals(32, it.size, "a vector key is 32 bytes") },
+    )
+    private fun nonce(bytes: ByteArray): GcmNonce = GcmNonce(
+        bytes.also { assertEquals(12, it.size, "a vector nonce is 12 bytes") },
+    )
 
     private val ZERO_KEY get() = key(ByteArray(32))
     private val ZERO_NONCE get() = nonce(ByteArray(12))

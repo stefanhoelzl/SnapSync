@@ -1,8 +1,8 @@
 package app.snapsync.android.crypto
 
-import app.snapsync.model.AesKey
-import app.snapsync.model.GcmNonce
+import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.GcmNonce
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException

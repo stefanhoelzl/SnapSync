@@ -2,10 +2,9 @@ package app.snapsync.services.crypto
 
 import app.snapsync.domain.invite.InviteKey
 import app.snapsync.domain.membership.ConfirmedNotJoined
+import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.EventKeyText
-import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.EventConfig
-import app.snapsync.model.Hmac
 import app.snapsync.model.KeyPresence
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.runCatchingCancellable
@@ -36,7 +35,7 @@ import kotlinx.coroutines.flow.stateIn
  */
 class EventKeys(private val crypto: Crypto, private val store: SecureStore) {
 
-    private val hmac = Hmac(crypto::hmacSha256)
+    private val hmac = CryptoHmac(crypto)
 
     /** A fresh key, as a link carries it, and its id, as the event row holds it. */
     fun mint(): MintedKey {

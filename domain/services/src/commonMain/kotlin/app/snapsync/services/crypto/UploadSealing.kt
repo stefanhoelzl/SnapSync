@@ -1,9 +1,9 @@
 package app.snapsync.services.crypto
 
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.EventKeyText
-import app.snapsync.format.ResourceRoleText
-import app.snapsync.model.EncryptedFileFormat
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.Resource
@@ -39,10 +39,12 @@ class UploadSealing(
         } ?: return UploadSeal.Withheld("no event key is kept")
         if (cipher.keyIdOf(key).toHex() != keyId) return UploadSeal.Withheld("the kept key is not the event's")
         val ad = EncryptedFileFormat.associatedData(
-            joined.eventId.value,
-            identity.requireDeviceId().value,
-            assetIdFromUploadKey(resource.filename).value,
-            ResourceRoleText.of(roleFromUploadKey(resource.filename)),
+            FileBinding(
+                joined.eventId,
+                identity.requireDeviceId(),
+                assetIdFromUploadKey(resource.filename),
+                roleFromUploadKey(resource.filename),
+            ),
         )
         return UploadSeal.Sealed(key, ad)
     }

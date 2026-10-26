@@ -1,12 +1,17 @@
 package app.snapsync.mock
 
-import app.snapsync.format.ResourceRoleText
-import app.snapsync.model.EncryptedFileFormat
-import app.snapsync.model.FileHead
-import app.snapsync.model.Hmac
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
+import app.snapsync.format.EncryptedFileFormat
+import app.snapsync.format.FileHead
+import app.snapsync.format.Hmac
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
+import app.snapsync.ports.GcmNonce
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
@@ -48,7 +53,7 @@ class EventKeyLedger {
 
     /** [eventId]'s key, or `null` for an event this device did not create encrypted. */
     fun keyOf(eventId: String): ByteArray? {
-        val hmac = primitives?.let { Hmac(it::hmacSha256) } ?: return null
+        val hmac = primitives?.let { portHmac(it) } ?: return null
         return lock.locked { keyIds[eventId]?.let { keyId -> drawn.firstOrNull { idOf(it, hmac) == keyId } } }
     }
 
@@ -63,22 +68,27 @@ class EventKeyLedger {
         val key = tag?.let { keyOf(it[EVENT]) }
         val crypto = primitives
         if (tag == null || key == null || crypto == null) return null
-        val hmac = Hmac(crypto::hmacSha256)
-        val role = ResourceRoleText.of(roleFromUploadKey(tag[RESOURCE]))
-        val associated = EncryptedFileFormat.associatedData(tag[EVENT], tag[DEVICE], tag[ASSET], role)
-        val head = FileHead(
+        val hmac = portHmac(crypto)
+        val binding = FileBinding(
+            EventId.parse(tag[EVENT])!!,
+            DeviceId.parse(tag[DEVICE])!!,
+            AssetId.parse(tag[ASSET])!!,
+            roleFromUploadKey(tag[RESOURCE]),
+        )
+        val associated = EncryptedFileFormat.associatedData(binding)
+        val head = FileHead.of(
             keyId = EncryptedFileFormat.keyIdOf(key, hmac),
             salt = crypto.randomBytes(EncryptedFileFormat.SALT_LENGTH),
             noncePrefix = crypto.randomBytes(EncryptedFileFormat.NONCE_PREFIX_LENGTH),
-        )
-        val fileKey = EncryptedFileFormat.fileKeyOf(key, head.salt, associated, hmac)
+        )!!
+        val fileKey = AesKey(EncryptedFileFormat.fileKeyOf(key, head.salt, associated, hmac))
         var file = EncryptedFileFormat.encodeHead(head)
         var offset = 0
         var segment = 0
         do {
             val end = minOf(bytes.size, offset + EncryptedFileFormat.plaintextSegmentLength(segment))
             val last = end == bytes.size
-            val nonce = EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last)
+            val nonce = GcmNonce(EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last))
             file += crypto.aesGcmSeal(fileKey, nonce, bytes.copyOfRange(offset, end))
             offset = end
             segment++
@@ -110,4 +120,9 @@ class EventKeyLedger {
         const val RESOURCE = 2
         const val EVENT = 3
     }
+}
+
+/** The format's HMAC over the process's primitives. */
+private fun portHmac(crypto: Crypto): Hmac = object : Hmac {
+    override fun mac(key: ByteArray, message: ByteArray): ByteArray = crypto.hmacSha256(key, message)
 }

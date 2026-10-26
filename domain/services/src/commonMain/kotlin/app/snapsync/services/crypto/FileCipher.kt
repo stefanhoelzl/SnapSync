@@ -1,15 +1,16 @@
 package app.snapsync.services.crypto
 
-import app.snapsync.model.AesKey
-import app.snapsync.model.EncryptedFileFormat
-import app.snapsync.model.EncryptedFileFormat.HEAD_LENGTH
+import app.snapsync.format.EncryptedFileFormat
+import app.snapsync.format.EncryptedFileFormat.HEAD_LENGTH
+import app.snapsync.format.FileHead
+import app.snapsync.format.HeadRead
+import app.snapsync.format.Hmac
 import app.snapsync.model.FileArea
-import app.snapsync.model.FileHead
 import app.snapsync.model.FileResult
-import app.snapsync.model.HeadRead
-import app.snapsync.model.Hmac
+import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Files
+import app.snapsync.ports.GcmNonce
 
 /**
  * **An encrypted event's files, sealed and opened** — the encrypted file format ([EncryptedFileFormat]) over the
@@ -22,7 +23,7 @@ import app.snapsync.ports.Files
  */
 class FileCipher(private val crypto: Crypto, private val files: Files) {
 
-    private val hmac = Hmac(crypto::hmacSha256)
+    private val hmac = CryptoHmac(crypto)
 
     /** The key id an event row holds for [eventKey]. */
     fun keyIdOf(eventKey: ByteArray): ByteArray = EncryptedFileFormat.keyIdOf(eventKey, hmac)
@@ -36,7 +37,7 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
         val head = freshHead(eventKey)
         return ElsewhereSeal(
             EncryptedFileFormat.encodeHead(head),
-            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac),
+            AesKey(EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac)),
         )
     }
 
@@ -49,7 +50,7 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
         to: String,
     ): FileResult<Unit> {
         val head = freshHead(eventKey)
-        val key = EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac)
+        val key = AesKey(EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac))
         return building(area, to) { part ->
             files.append(area, part, EncryptedFileFormat.encodeHead(head)).failure()?.let { return@building it }
             segments(
@@ -61,7 +62,11 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
                 files.append(
                     area,
                     part,
-                    crypto.aesGcmSeal(key, EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last), plain),
+                    crypto.aesGcmSeal(
+                        key,
+                        GcmNonce(EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last)),
+                        plain,
+                    ),
                 )
             }
         }
@@ -81,7 +86,7 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
             is HeadRead.Refused -> return Opened.Damaged(decoded.reason)
         }
         if (!head.keyId.contentEquals(keyIdOf(eventKey))) return Opened.OtherKey
-        val key = EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac)
+        val key = AesKey(EncryptedFileFormat.fileKeyOf(eventKey, head.salt, associatedData, hmac))
         var damage: String? = null
         val written = building(area, to) { part ->
             segments(
@@ -92,7 +97,7 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
             ) { segment, sealed, last ->
                 val plain = crypto.aesGcmOpen(
                     key,
-                    EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last),
+                    GcmNonce(EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last)),
                     sealed,
                 )
                 if (plain == null) {
@@ -136,11 +141,11 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
         return FileResult.Ok(Unit)
     }
 
-    private fun freshHead(eventKey: ByteArray) = FileHead(
+    private fun freshHead(eventKey: ByteArray) = FileHead.of(
         keyId = keyIdOf(eventKey),
         salt = crypto.randomBytes(EncryptedFileFormat.SALT_LENGTH),
         noncePrefix = crypto.randomBytes(EncryptedFileFormat.NONCE_PREFIX_LENGTH),
-    )
+    )!!
 
     /** Run [build] into `<to>.part`, then move it to [to]; on any failure the part is removed and [to] untouched. */
     private inline fun building(
@@ -164,6 +169,11 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
         is FileResult.Denied -> this
         is FileResult.Failed -> this
     }
+}
+
+/** The format's HMAC over the platform's. */
+internal class CryptoHmac(private val crypto: Crypto) : Hmac {
+    override fun mac(key: ByteArray, message: ByteArray): ByteArray = crypto.hmacSha256(key, message)
 }
 
 /** What the edge needs to seal one file of the iOS extension's: its opening bytes, and that one file's key. */

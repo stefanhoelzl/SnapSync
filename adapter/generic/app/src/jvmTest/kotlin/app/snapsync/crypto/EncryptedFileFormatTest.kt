@@ -1,12 +1,18 @@
 package app.snapsync.crypto
 
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.FileBinding
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.files.JvmFiles
-import app.snapsync.model.EncryptedFileFormat
+import app.snapsync.format.EncryptedFileFormat
+import app.snapsync.format.HeadRead
+import app.snapsync.format.Hkdf
+import app.snapsync.format.Hmac
+import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
-import app.snapsync.model.HeadRead
-import app.snapsync.model.Hkdf
-import app.snapsync.model.Hmac
 import app.snapsync.ports.Crypto
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
@@ -60,6 +66,18 @@ class EncryptedFileFormatTest {
         }
     }
 
+    private val jcaHmac = object : Hmac {
+        override fun mac(key: ByteArray, message: ByteArray): ByteArray = JcaCrypto().hmacSha256(key, message)
+    }
+
+    /** The resource a test file is, as [role]. */
+    private fun binding(role: ResourceRole) = FileBinding(
+        EventId.parse("0a1b2c3d-0000-4000-8000-000000000001")!!,
+        DeviceId.parse("0a1b2c3d-0000-4000-8000-000000000002")!!,
+        AssetId.parse("a")!!,
+        role,
+    )
+
     private fun write(name: String, bytes: ByteArray): String = name.also { File(dir, it).writeBytes(bytes) }
     private fun read(name: String): ByteArray = File(dir, name).readBytes()
 
@@ -75,7 +93,7 @@ class EncryptedFileFormatTest {
 
     @Test
     fun `HKDF is RFC 5869`() {
-        val hmac = Hmac(JcaCrypto()::hmacSha256)
+        val hmac = jcaHmac
         assertEquals(
             "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
             Hkdf.derive(
@@ -132,10 +150,12 @@ class EncryptedFileFormatTest {
         val v = vectors.getValue("file").jsonArray.first().jsonObject
         val eventKey = v.str("eventKey").hex()
         val ad = EncryptedFileFormat.associatedData(
-            v.str("eventId"),
-            v.str("deviceId"),
-            v.str("assetId"),
-            v.str("role"),
+            FileBinding(
+                EventId.parse(v.str("eventId"))!!,
+                DeviceId.parse(v.str("deviceId"))!!,
+                AssetId.parse(v.str("assetId"))!!,
+                ResourceRoleText.parse(v.str("role"))!!,
+            ),
         )
         val plain = pattern(v.num("plaintextLength")) { it * 13 + 1 }
         val cipher = FileCipher(drawing(v.str("salt").hex(), v.str("noncePrefix").hex()), files)
@@ -146,7 +166,7 @@ class EncryptedFileFormatTest {
     @Test
     fun `Tink opens what is written here, and what Tink writes opens here`() {
         val eventKey = ByteArray(32) { (it * 3).toByte() }
-        val ad = EncryptedFileFormat.associatedData("e", "d", "a", "primary")
+        val ad = EncryptedFileFormat.associatedData(binding(ResourceRole.PRIMARY))
         val tink = AesGcmHkdfStreaming(eventKey, "HmacSha256", 32, EncryptedFileFormat.SEGMENT_LENGTH, 0)
         val cipher = FileCipher(JcaCrypto(), files)
         val first = EncryptedFileFormat.plaintextSegmentLength(0)
@@ -176,7 +196,7 @@ class EncryptedFileFormatTest {
     @Test
     fun `a damaged, cut, extended, moved or foreign file never yields a byte`() {
         val eventKey = ByteArray(32) { 1 }
-        val ad = EncryptedFileFormat.associatedData("e", "d", "a", "primary")
+        val ad = EncryptedFileFormat.associatedData(binding(ResourceRole.PRIMARY))
         val cipher = FileCipher(JcaCrypto(), files)
         cipher.encrypt(eventKey, ad, area, write("plain", pattern(200_000) { it }), "sealed")
         val sealed = read("sealed")
@@ -201,7 +221,9 @@ class EncryptedFileFormatTest {
             "cut at a segment boundary: the new last was sealed as not-last",
         )
         assertIs<Opened.Damaged>(opens(sealed + byteArrayOf(0)))
-        assertIs<Opened.Damaged>(opens(sealed, boundTo = EncryptedFileFormat.associatedData("e", "d", "a", "live")))
+        assertIs<Opened.Damaged>(
+            opens(sealed, boundTo = EncryptedFileFormat.associatedData(binding(ResourceRole.LIVE))),
+        )
         assertEquals(Opened.OtherKey, opens(sealed, key = ByteArray(32)))
         assertIs<Opened.Damaged>(opens(sealed.copyOf().also { it[0] = 2 }), "a future format version")
         assertIs<Opened.Damaged>(opens(sealed.copyOf(10)), "shorter than the head")
@@ -212,13 +234,13 @@ class EncryptedFileFormatTest {
     @Test
     fun `a seal for elsewhere carries a fresh head and only that file's key`() {
         val eventKey = ByteArray(32) { 9 }
-        val ad = EncryptedFileFormat.associatedData("e", "d", "a", "primary")
+        val ad = EncryptedFileFormat.associatedData(binding(ResourceRole.PRIMARY))
         val cipher = FileCipher(JcaCrypto(), files)
         val seal = cipher.sealedElsewhere(eventKey, ad)
         val head = assertIs<HeadRead.Read>(EncryptedFileFormat.decodeHead(seal.head)).head
         assertContentEquals(cipher.keyIdOf(eventKey), head.keyId)
         assertContentEquals(
-            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, ad, Hmac(JcaCrypto()::hmacSha256)).bytes,
+            EncryptedFileFormat.fileKeyOf(eventKey, head.salt, ad, jcaHmac),
             seal.fileKey.bytes,
         )
         assertTrue(!seal.fileKey.bytes.contentEquals(eventKey))
