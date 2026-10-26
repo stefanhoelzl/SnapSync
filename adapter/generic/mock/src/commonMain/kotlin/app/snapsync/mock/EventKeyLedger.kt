@@ -4,6 +4,8 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.FileHead
 import app.snapsync.format.Hmac
@@ -41,7 +43,7 @@ class EventKeyLedger {
         primitives = delegate
         return object : Crypto by delegate {
             override fun randomBytes(count: Int): ByteArray = delegate.randomBytes(count).also { bytes ->
-                if (count == EncryptedFileFormat.KEY_LENGTH) lock.locked { drawn += bytes.copyOf() }
+                if (count == EventKey.LENGTH) lock.locked { drawn += bytes.copyOf() }
             }
         }
     }
@@ -50,6 +52,10 @@ class EventKeyLedger {
     fun recording(delegate: HttpTransport): HttpTransport = HttpTransport { request ->
         delegate.send(request).also { result -> record(request, result) }
     }
+
+    /** [eventId]'s key, as its invite carries it, or `null` for an event this device did not create encrypted. */
+    @OptIn(MakesEventKey::class)
+    fun eventKeyOf(eventId: String): EventKey? = keyOf(eventId)?.let(EventKey::of)
 
     /** [eventId]'s key, or `null` for an event this device did not create encrypted. */
     fun keyOf(eventId: String): ByteArray? {

@@ -4,6 +4,8 @@ import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.VersionIgnored
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
@@ -31,7 +33,6 @@ import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.SuppressionService
 import app.snapsync.services.gallery.AlbumLookupFailure
 import app.snapsync.services.gallery.GalleryAlbums
@@ -134,7 +135,7 @@ fun snapSyncExtension(
     val cycle = lazy { uploadCycle(process, services) }
     ports.host.inbound(
         ExtensionHandlers(
-            OnProcess(runtime, attestStore, services.membership, cycle, services.ledger),
+            OnProcess(runtime, attestStore, services.membership, services.keys, cycle, services.ledger),
             OnTerminate(runtime),
         ),
     )
@@ -199,7 +200,7 @@ private fun extensionServices(
         credentials = attestStore,
         exchange = exchange,
         // Read only: the extension derives each file's key from the kept one and never writes the slot.
-        eventKeys = EventKeys(process.crypto, ports.secureStore),
+        keys = EventKeyStore(ports.secureStore, EventKeyIds(process.crypto)),
         log = log,
     )
 }

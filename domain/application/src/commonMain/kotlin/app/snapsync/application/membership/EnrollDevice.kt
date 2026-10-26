@@ -1,17 +1,20 @@
 package app.snapsync.application.membership
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.EnrollFact
 import app.snapsync.data.membership.EventJoin
-import app.snapsync.data.membership.InviteKeyCheck
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.KeyToKeep
+import app.snapsync.domain.event.KeyVerdict
 import app.snapsync.domain.membership.Enrolled
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.KeptKey
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MintsEnrolled
 import app.snapsync.domain.membership.Share
@@ -29,7 +32,7 @@ class EnrollDevice(
     private val membership: MembershipRepository,
     private val identity: DeviceIdentity,
     private val join: EventJoin,
-    private val keys: InviteKeyCheck,
+    private val ids: EventKeyIds,
 ) {
     /** Whether [choice] may be enrolled — nothing is sent. */
     @EntryPointCall
@@ -43,10 +46,13 @@ class EnrollDevice(
             EnrollOutcome.InvalidRange
     }
 
-    /** Enrol [admitted] at the server. */
+    /** Enrol [admitted] at the server, once its key is [kept] — so a membership never names a key that is not kept. */
     @EntryPointCall
     @OptIn(MintsEnrolled::class)
-    suspend operator fun invoke(admitted: Admitted): EnrollOutcome =
+    suspend operator fun invoke(
+        admitted: Admitted,
+        @Suppress("UNUSED_PARAMETER") kept: KeptKey,
+    ): EnrollOutcome =
         when (val fact = join.enroll(admitted.membership.event.id, admitted.device)) {
             EnrollFact.Admitted -> EnrollOutcome.Enrolled(Enrolled(admitted.membership))
             EnrollFact.EventOver -> EnrollOutcome.EventOver
@@ -55,16 +61,17 @@ class EnrollDevice(
         }
 
     private suspend fun keyed(choice: JoinChoice, share: Share): AdmitOutcome =
-        when (keys.opens(choice.invite.key, choice.event.keyId)) {
-            true -> unjoined(Membership.Active(choice.event, share))
-            false -> EnrollOutcome.WrongLink
+        when (val verdict = choice.event.encryption.openedBy(choice.invite.key?.let(ids::identify))) {
+            is KeyVerdict.Opens -> unjoined(Membership.Active(choice.event, share), verdict.keep)
+            KeyVerdict.WrongKey -> EnrollOutcome.WrongLink
         }
 
-    private suspend fun unjoined(active: Membership.Active): AdmitOutcome = when (val held = membership.read()) {
-        is MembershipRead.NotJoined -> identified(active)
-        is MembershipRead.Joined -> held(held.membership, active)
-        is MembershipRead.Unavailable -> EnrollOutcome.Failed()
-    }
+    private suspend fun unjoined(active: Membership.Active, key: KeyToKeep): AdmitOutcome =
+        when (val held = membership.read()) {
+            is MembershipRead.NotJoined -> identified(active, key)
+            is MembershipRead.Joined -> held(held.membership, active)
+            is MembershipRead.Unavailable -> EnrollOutcome.Failed()
+        }
 
     private fun held(held: Membership, wanted: Membership.Active): AdmitOutcome =
         when (held.event.id == wanted.event.id) {
@@ -72,17 +79,19 @@ class EnrollDevice(
             false -> EnrollOutcome.JoinedElsewhere
         }
 
-    private suspend fun identified(active: Membership.Active): AdmitOutcome = when (val id = identity.id()) {
-        is DeviceIdRead.Ok -> Admitted(active, id.value)
-        DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> EnrollOutcome.Failed()
-    }
+    private suspend fun identified(active: Membership.Active, key: KeyToKeep): AdmitOutcome =
+        when (val id = identity.id()) {
+            is DeviceIdRead.Ok -> Admitted(active, id.value, key)
+            DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> EnrollOutcome.Failed()
+        }
 }
 
 /** Whether a join may be enrolled. */
 sealed interface AdmitOutcome
 
-/** [membership] may be enrolled, as [device]: every rule held, and nothing sent yet. */
-class Admitted internal constructor(val membership: Membership.Active, val device: DeviceId) : AdmitOutcome
+/** [membership] may be enrolled, as [device], once [key] is kept: every rule held, and nothing sent yet. */
+class Admitted internal constructor(val membership: Membership.Active, val device: DeviceId, val key: KeyToKeep) :
+    AdmitOutcome
 
 /** What an enrolment came to. */
 sealed interface EnrollOutcome {

@@ -10,9 +10,8 @@ import app.snapsync.feature.download.StoreDownloadStatusSource
 internal fun AppCore.downloadArm(): DownloadArm = DownloadArm(
     // Three-valued, no fallback: no membership → `null` → no arm.
     enabled = services.config::downloadsEnabled,
-    // Read fresh at each reconcile: a background wake has no screen's read-model.
-
-    keyHeld = { !services.eventKeys.lostFor(services.config.config.value) },
+    keys = services.eventKeyStore,
+    membership = services.membership,
 )
 
 /**

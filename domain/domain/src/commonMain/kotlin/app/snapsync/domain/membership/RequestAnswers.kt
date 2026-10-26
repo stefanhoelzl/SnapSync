@@ -52,3 +52,15 @@ sealed interface RenameResult {
     /** The server answered that the event's photos were deleted: the event is over. */
     data object EventOver : RenameResult
 }
+
+/** What a reopened invite of the joined event did to its lost key. */
+enum class RestoreAnswer {
+    /** The key was lost, and the invite gave it back. */
+    Restored,
+
+    /** Nothing was lost, or the invite carried another key: nothing changed. */
+    NothingChanged,
+
+    /** The key could not be kept. */
+    Failed,
+}

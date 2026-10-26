@@ -5,6 +5,7 @@ import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.use
 import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKeyId
@@ -90,7 +91,10 @@ class MembershipRepositoryTest {
 
     @Test
     fun `an entry and an update write every fact, a key and each count included`() {
-        val counted = active().event.copy(keyId = EventKeyId("k1"), members = MemberCounts(3, 1, 2))
+        val counted = active().event.copy(
+            encryption = Encryption.Encrypted(EventKeyId("k1")),
+            members = MemberCounts(3, 1, 2),
+        )
         repository.enter(enrolled(Membership.Active(counted, active().share)))
         assertEquals(counted, (repository.read() as MembershipRead.Joined).membership.event)
 
@@ -109,7 +113,7 @@ class MembershipRepositoryTest {
     fun `a stored row reads whole, its key and its members included`() {
         stored()
         val event = (repository.read() as MembershipRead.Joined).membership.event
-        assertEquals(EventKeyId("k1"), event.keyId)
+        assertEquals(Encryption.Encrypted(EventKeyId("k1")), event.encryption)
         assertEquals(MemberCounts(3, 1), event.members)
     }
 

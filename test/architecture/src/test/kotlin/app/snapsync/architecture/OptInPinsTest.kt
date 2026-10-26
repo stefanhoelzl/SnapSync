@@ -56,7 +56,23 @@ class OptInPinsTest {
             "AppProcessOnly" to Pin(1, "the app's credential, the one that attests"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
-            "EntryPointCall" to Pin(2, "the wake's prelude and the rig's reset call their use cases"),
+            "EntryPointCall" to Pin(3, "the wake's prelude, the key's restore and the rig's reset call their use cases"),
+            "MintsDevReset" to Pin(1, "the rig's reset, the one other reason the key is forgotten (PENDING_CLEANUPS, 4.5)"),
+        ),
+        "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to mapOf(
+            "KeyMaterial" to Pin(1, "a key's text: its bytes, spelled"),
+            "MakesEventKey" to Pin(1, "a key's text, read back as the key"),
+        ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyIds.kt" to mapOf(
+            "KeyMaterial" to Pin(1, "a key's id is derived from its bytes"),
+            "MakesEventKey" to Pin(1, "a fresh key, from the platform's secure generator"),
+            "MintsIdentifiedKey" to Pin(1, "the one derivation that says which id a key has"),
+        ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyStore.kt" to mapOf(
+            "MintsKeptKey" to Pin(1, "the one keep that says a join's key is kept"),
+        ),
+        "/domain/services/src/commonMain/kotlin/app/snapsync/services/crypto/KeptKeyBytes.kt" to mapOf(
+            "KeyMaterial" to Pin(1, "the sealing and opening still framed here, MIGRATING into data with the cipher"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/MembershipEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(1, "the membership's entry points and the steps they share call its use cases"),

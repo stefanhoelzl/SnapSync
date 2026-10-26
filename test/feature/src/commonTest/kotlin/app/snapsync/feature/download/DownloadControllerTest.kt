@@ -12,12 +12,14 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.support.InMemoryAssetPresence
+import app.snapsync.feature.support.LostKey
 import app.snapsync.feature.support.RecordingDatabases
 import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.ThrowingDeletes
 import app.snapsync.feature.support.clockOf
 import app.snapsync.feature.support.downloadJobs
+import app.snapsync.feature.support.noKeyArm
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testRuntime
 import app.snapsync.feature.support.testShared
@@ -221,7 +223,7 @@ class DownloadControllerTest {
         downloadEnabled: () -> Boolean? = { true },
         now: () -> Instant = { NOW },
         readyToImport: suspend () -> Boolean = { true },
-        keyHeld: () -> Boolean = { true },
+        arm: DownloadArm? = null,
         album: EventAlbumHooks = EventAlbumHooks(),
     ): DownloadController {
         val staging = StagingService(disk)
@@ -238,7 +240,7 @@ class DownloadControllerTest {
             // arguments silently re-bind when it does.
             stagedBytes = staging,
             identity = testIdentity(myDevice),
-            arm = DownloadArm(enabled = downloadEnabled, keyHeld = keyHeld),
+            arm = arm ?: noKeyArm(downloadEnabled),
             checks = EventCheckRecord(testShared()),
             clock = WallClock(clockOf(now)),
             readyToImport = readyToImport,
@@ -248,18 +250,21 @@ class DownloadControllerTest {
     @Test
     fun a_lost_key_starts_no_download_and_the_kept_key_resumes() = runTest {
         val download = RecordingDownload()
-        var held = false
-        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))), download = download, keyHeld = { held })
+        val lost = LostKey()
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))), download = download, arm = lost.arm)
         c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertTrue(download.started.isEmpty(), "a lost key fetches nothing it could not open")
-        held = true
+        lost.giveBack()
         c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
         assertTrue(download.started.isNotEmpty(), "the key back, the photo downloads")
     }
 
     @Test
     fun a_lost_key_is_never_taken_for_everything_received() = runTest {
-        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))), keyHeld = { false })
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "FOREIGN"))),
+            arm = LostKey().arm,
+        )
         assertNull(c.receivedPosition(testEventId("event")), "a member missing photos is never told it holds them all")
     }
 

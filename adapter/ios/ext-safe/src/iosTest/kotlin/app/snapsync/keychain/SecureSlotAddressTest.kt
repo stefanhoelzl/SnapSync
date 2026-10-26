@@ -5,7 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Where the [SecureSlots] live in the iOS Keychain (capabilities `photo-sharing` and `privacy-security`): the
+ * Where the `SecureSlot`s live in the iOS Keychain (capabilities `photo-sharing` and `privacy-security`): the
  * service, account and access group [IosSecureStore] stamps on every operation for each slot.
  *
  * The device id is written **once**, at mint, and the Keychain item survives app uninstall, so a moved address is

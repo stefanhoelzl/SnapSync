@@ -23,6 +23,7 @@ class RequestAnswersTest {
             ).map { it.kind() },
         )
         assertEquals(listOf("Saved", "SaveFailed", "NotCurrent", "Refused"), SettingsResult.entries.map { it.name })
+        assertEquals(listOf("Restored", "NothingChanged", "Failed"), RestoreAnswer.entries.map { it.name })
         assertEquals(
             listOf("Renamed", "InvalidName", "Failed", "EventOver"),
             listOf(RenameResult.Renamed, RenameResult.InvalidName, RenameResult.Failed(), RenameResult.EventOver)

@@ -67,6 +67,7 @@ edge :adapter:android :ui:components
 edge :adapter:android :ui:screens
 edge :adapter:android :ui:state
 edge :adapter:generic:app :domain:domain
+edge :adapter:generic:app :domain:format
 edge :adapter:generic:app :domain:inbound
 edge :adapter:generic:app :domain:model
 edge :adapter:generic:app :domain:ports
@@ -139,6 +140,7 @@ edge :app:android :ui:components
 edge :app:android :ui:state
 edge :app:desktop :adapter:generic:app
 edge :app:desktop :app:jvm
+edge :app:desktop :domain:data
 edge :app:desktop :domain:domain
 edge :app:desktop :domain:feature
 edge :app:desktop :domain:model
@@ -275,6 +277,7 @@ edge :test:client :test:rig
 edge :test:contracts :adapter:generic:motionphoto
 edge :test:contracts :domain:data
 edge :test:contracts :domain:domain
+edge :test:contracts :domain:format
 edge :test:contracts :domain:inbound
 edge :test:contracts :domain:model
 edge :test:contracts :domain:ports

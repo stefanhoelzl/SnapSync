@@ -2,7 +2,13 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.IdentifiedKey
+import app.snapsync.domain.event.KeyPresence
+import app.snapsync.domain.event.MakesEventKey
+import app.snapsync.domain.event.MintsIdentifiedKey
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.RenameResult
@@ -11,7 +17,6 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.format.EventKeyText
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
@@ -82,7 +87,7 @@ class JoinedLayerTest {
         download: DownloadProgress = DownloadProgress(0, 0),
         permission: GalleryAccess = GalleryAccess.GRANTED,
         commands: TestCommands = TestCommands(),
-        inviteKey: String? = null,
+        inviteKey: EventKey? = null,
         configFlow: MutableStateFlow<EventConfig?> = MutableStateFlow(config),
     ) = StatusContainerHost(
         StatusSources(
@@ -91,7 +96,11 @@ class JoinedLayerTest {
             configFlow,
             requests = commands.requests.flows,
             download = MutableStateFlow(download),
-            eventKey = EventKeyView(inviteKey = MutableStateFlow(inviteKey)),
+            eventKey = EventKeyView(
+                presence = MutableStateFlow(
+                    inviteKey?.let { KeyPresence.Held(heldKey(it)) } ?: KeyPresence.NotNeeded,
+                ),
+            ),
         ),
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
@@ -318,10 +327,15 @@ class JoinedLayerTest {
         assertEquals(SyncHealth.Loading, host.layer().health)
     }
 
-    private fun decodedKey(url: String): String? =
-        assertIs<InviteLinkVerdict.Invite>(InviteLinkText.parse(url)).link.key?.text
+    private fun decodedKey(url: String): EventKey? =
+        assertIs<InviteLinkVerdict.Invite>(InviteLinkText.parse(url)).link.key
 
     private companion object {
-        val INVITE_KEY = EventKeyText.encode(ByteArray(32) { (it * 7).toByte() })
+        @OptIn(MakesEventKey::class)
+        val INVITE_KEY = EventKey.of(ByteArray(EventKey.LENGTH) { (it * 7).toByte() })!!
     }
 }
+
+/** [key], as the store reads it back held. */
+@OptIn(MintsIdentifiedKey::class)
+private fun heldKey(key: EventKey) = IdentifiedKey(key, EventKeyId("k1"))

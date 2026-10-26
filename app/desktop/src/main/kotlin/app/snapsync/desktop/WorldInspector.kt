@@ -27,11 +27,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferFailure
-import app.snapsync.services.secure.SecureSlots
 import kotlin.time.Instant
 
 /** The failures a live job can be given, by the label its button shows. */
@@ -391,7 +391,7 @@ private fun OneShotLevers(controller: WorldInspectorController) {
     OutlinedButton(
         onClick = {
             controller.lever("the event key is lost — reopen the event's invite to restore it") {
-                keychain.forget(SecureSlots.EVENT_KEY)
+                keychain.forget(EncryptionSlots.EVENT_KEY)
             }
         },
     ) { Text("Lose the event key") }

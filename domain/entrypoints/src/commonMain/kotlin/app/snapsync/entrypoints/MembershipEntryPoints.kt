@@ -16,6 +16,8 @@ import app.snapsync.application.membership.ReconfigureEvent
 import app.snapsync.application.membership.ReconfigureOutcome
 import app.snapsync.application.membership.RefreshMembership
 import app.snapsync.application.membership.RenameEvent
+import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.crypto.KeepOutcome
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.CheckCadence
@@ -53,7 +55,6 @@ import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Steps
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.MembershipTransition
@@ -82,24 +83,36 @@ class SwitchRequest(val id: RequestId, val invite: InviteFact)
 class OnJoinConfirmed(
     runtime: Runtime,
     private val enroll: EnrollDevice,
-    private val keys: EventKeys,
-    private val joining: Joining,
+    private val enrolling: Enrolling,
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<JoinRequest>(runtime) {
     override suspend fun run(arg: JoinRequest, on: Run) = on.steps {
         ensure("answer") { statuses.join.settle(arg.id, JoinCommit.Failed()) }
         when (val admitted = required { enroll.admit(arg.choice) }) {
-            is Admitted -> {
-                // The key before the enrolment, and both before the membership: a key the store refuses fails the join
-                // before the event counts this device — never half-joined. A key kept with no membership is inert, and
-                // the next join, leave or reset replaces it.
-                required { keys.adopt(arg.choice.invite.key) }
-                when (val enrolled = required { enroll(admitted) }) {
-                    is EnrollOutcome.Enrolled -> required { joining.run(arg.id, enrolled.evidence, on) }
-                    is EnrollOutcome.NotEnrolled -> required { statuses.join.done(arg.id, enrolled.answer) }
-                }
-            }
+            is Admitted -> required { enrolling.run(arg.id, admitted, on) }
             is EnrollOutcome.NotEnrolled -> required { statuses.join.done(arg.id, admitted.answer) }
+        }
+    }
+}
+
+/**
+ * An admitted join: its key kept, then the enrolment, then the join itself. The key before the enrolment, and both
+ * before the membership: a key the store refuses fails the join before the event counts this device — never
+ * half-joined. A key kept with no membership is inert, and the next join, leave or reset replaces it.
+ */
+class Enrolling(
+    private val keys: EventKeyStore,
+    private val enroll: EnrollDevice,
+    private val joining: Joining,
+    private val statuses: MembershipStatuses,
+) {
+    suspend fun run(id: RequestId, admitted: Admitted, on: Run) = on.steps {
+        when (val kept = required { keys.keep(admitted.key, admitted.membership.event.id) }) {
+            is KeepOutcome.Kept -> when (val enrolled = required { enroll(admitted, kept.evidence) }) {
+                is EnrollOutcome.Enrolled -> required { joining.run(id, enrolled.evidence, on) }
+                is EnrollOutcome.NotEnrolled -> required { statuses.join.done(id, enrolled.answer) }
+            }
+            is KeepOutcome.Refused -> required { statuses.join.done(id, JoinCommit.Failed()) }
         }
     }
 }
@@ -236,7 +249,7 @@ class AfterJoin(
 class Leaving(
     private val uploads: UploadTransitions,
     private val downloads: DownloadController,
-    private val keys: EventKeys,
+    private val keys: EventKeyStore,
     private val deliver: DeliverPendingLeaves,
 ) {
     private val log = Log("Leaving")
@@ -245,7 +258,7 @@ class Leaving(
         required { log.i("left", "event" of left.event) }
         isolated("stop uploads") { uploads.onLeave() }
         isolated("stop downloads") { downloads.onLeaveOrSwitch() }
-        isolated("forget key") { keys.forget() }
+        isolated("forget key") { keys.forget(left) }
         detached { deliver() }
     }
 }
@@ -300,7 +313,7 @@ class EventAlbum(
  */
 class SweepLeftovers(
     private val membership: MembershipBranch,
-    private val keys: EventKeys,
+    private val keys: EventKeyStore,
     private val downloads: DownloadController,
     private val uploads: UploadTransitions,
     private val transition: MembershipTransition,
@@ -308,7 +321,7 @@ class SweepLeftovers(
     suspend fun run(on: Run) = on.steps {
         membership(membership, Freshness.Cached) {
             notJoined { none ->
-                isolated("leftover key") { keys.forgetLeftover(none, transition) }
+                isolated("leftover key") { transition.unlessJoining { keys.forget(none) } }
                 isolated("leftover downloads") { downloads.stopLeftovers(none, transition) }
                 isolated("leftover registration") { uploads.stopLeftovers(none, transition) }
             }

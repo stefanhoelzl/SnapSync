@@ -13,15 +13,16 @@ import app.snapsync.data.membership.PendingLeavesRead
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.data.membership.event
-import app.snapsync.domain.event.EventKeyId
-import app.snapsync.domain.invite.InviteKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinChoice
+import app.snapsync.domain.membership.KeptKey
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MintsKeptKey
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.EncryptionText
 import app.snapsync.format.TimestampText
 import app.snapsync.levers.WriteKind
 import app.snapsync.testids.testEventId
@@ -31,7 +32,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /** Joining: enrolled only within the rules, entered only once admitted; leaving: all or nothing. */
-@OptIn(EntryPointCall::class)
+@OptIn(EntryPointCall::class, MintsKeptKey::class)
 class JoinAndLeaveTest {
 
     private val device = Device()
@@ -40,12 +41,12 @@ class JoinAndLeaveTest {
             device.membership,
             device.identity,
             app.snapsync.data.membership.EventJoin(device.gateway),
-            KeyIsItsId,
+            testKeyIds,
         )
 
     /** A join's enrolment as its entry point runs it: admitted first, then — every rule held — sent. */
     private suspend fun enroll(choice: JoinChoice): EnrollOutcome = when (val admitted = enrollDevice.admit(choice)) {
-        is Admitted -> enrollDevice(admitted)
+        is Admitted -> enrollDevice(admitted, KeptKey(admitted.membership.event.id))
         is EnrollOutcome.NotEnrolled -> admitted
     }
 
@@ -59,8 +60,8 @@ class JoinAndLeaveTest {
         key: String? = null,
         keyId: String? = null,
     ) = JoinChoice(
-        event = event(id).copy(keyId = keyId?.let(::EventKeyId)),
-        invite = InviteLink(testEventId(id), key?.let(::InviteKey)),
+        event = event(id).copy(encryption = EncryptionText.parse(keyId?.let(::testKeyId))),
+        invite = InviteLink(testEventId(id), key?.let(::testKey)),
         from = CaptureCutoff(TimestampText.parse(from)),
         until = CaptureCeiling(TimestampText.parse(until)),
         direction = Direction.Both,

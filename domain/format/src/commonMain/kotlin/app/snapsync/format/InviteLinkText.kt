@@ -1,7 +1,6 @@
 package app.snapsync.format
 
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.invite.InviteKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import kotlinx.serialization.SerializationException
@@ -51,7 +50,7 @@ object InviteLinkText {
             val payload = buildJsonObject { put(EVENT_ID, link.event.toString()) }.toString()
             "${FRAGMENT_PREFIX}v=$VERSION&d=${encoder.encode(payload.encodeToByteArray())}"
         }
-        else -> "$PATH_PREFIX${link.event}#$KEY=${key.text}"
+        else -> "$PATH_PREFIX${link.event}#$KEY=${EventKeyText.encode(key)}"
     }
 
     /** What [raw] is: an invite, an invite whose key cannot be read, or no invite. Never throws. */
@@ -79,7 +78,7 @@ object InviteLinkText {
         val event = fragmentForm(fields.filterNot { it == keyField }.joinToString("&")) ?: return null
         return when (key) {
             null -> InviteLink(event, null)
-            else -> EventKeyText.decode(key)?.let { InviteLink(event, InviteKey(key)) }
+            else -> EventKeyText.decode(key)?.let { InviteLink(event, it) }
         }
     }
 
@@ -95,10 +94,8 @@ object InviteLinkText {
         if (fragment.isEmpty()) return InviteLinkVerdict.Invite(InviteLink(event, null))
         val pairs = pairs(fragment) ?: return InviteLinkVerdict.KeyUnreadable(event)
         val key = pairs[KEY] ?: return InviteLinkVerdict.Invite(InviteLink(event, null))
-        return when (EventKeyText.decode(key)) {
-            null -> InviteLinkVerdict.KeyUnreadable(event)
-            else -> InviteLinkVerdict.Invite(InviteLink(event, InviteKey(key)))
-        }
+        return EventKeyText.decode(key)?.let { InviteLinkVerdict.Invite(InviteLink(event, it)) }
+            ?: InviteLinkVerdict.KeyUnreadable(event)
     }
 
     /** After `<origin>/join#`: `v=3&d=<base64url(json)>` — the event id it names, or `null` when it names none. */

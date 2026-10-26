@@ -4,10 +4,11 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.event.OpenUntil
-import app.snapsync.domain.invite.InviteKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
@@ -16,7 +17,6 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.format.EventKeyText
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.format.TimestampText
@@ -54,8 +54,9 @@ import kotlin.time.Instant
 private const val EVENT_ID = "22222222-2222-4222-8222-222222222222"
 private const val OTHER_EVENT_ID = "33333333-3333-4333-8333-333333333333"
 
-/** An encrypted event's key as an invite link carries it: 32 bytes, base64url. */
-private val LINK_KEY = EventKeyText.encode(ByteArray(32) { it.toByte() })
+/** An encrypted event's key, as an invite link carries it. */
+@OptIn(MakesEventKey::class)
+private val LINK_KEY = EventKey.of(ByteArray(EventKey.LENGTH) { it.toByte() })!!
 
 private val FOUND = found(
     "Lake Weekend",
@@ -180,7 +181,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a retry re-sends the link's key with the load`() = runTest {
         val world = World().apply { load = { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) } }
-        val keys = mutableListOf<String?>()
+        val keys = mutableListOf<EventKey?>()
         val host = StatusContainerHost(
             StatusSources(
                 FixedSync(SyncStatus.Loading),
@@ -194,7 +195,7 @@ class JoinGateEdgesTest {
             queries = noQueries,
             joinDetails = object : JoinDetailsQuery {
                 override suspend fun load(invite: InviteLink): JoinDetails {
-                    keys += invite.key?.text
+                    keys += invite.key
                     return JoinDetails.Unanswered(ServiceFault.UNREACHABLE)
                 }
             },
@@ -202,11 +203,11 @@ class JoinGateEdgesTest {
             reduction = Dispatchers.Default,
         )
 
-        settle(host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), InviteKey(LINK_KEY)))))
+        settle(host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), LINK_KEY))))
         assertEquals(JoinProgress.LoadFailed, world.pending.value?.phase)
         settle(host.onRetryLoad())
 
-        assertEquals(listOf<String?>(LINK_KEY, LINK_KEY), keys)
+        assertEquals(listOf<EventKey?>(LINK_KEY, LINK_KEY), keys)
     }
 
     // ---- the switch without a question (capability `invite-link`; `changes/back-dated-events`, D8) ----------------
@@ -323,10 +324,10 @@ class JoinGateEdgesTest {
     fun `a commit carries the invite's key`() = runTest {
         val world = World()
         val host = host(world, backgroundScope)
-        settle(host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), InviteKey(LINK_KEY)))))
+        settle(host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), LINK_KEY))))
         settle(host.onConfirmJoin())
 
-        assertEquals(LINK_KEY, world.commits.single().invite.key?.text)
+        assertEquals(LINK_KEY, world.commits.single().invite.key)
     }
 
     @Test

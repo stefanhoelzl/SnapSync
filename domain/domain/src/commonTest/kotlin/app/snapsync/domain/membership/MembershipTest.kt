@@ -1,5 +1,6 @@
 package app.snapsync.domain.membership
 
+import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.anEvent
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -32,7 +33,7 @@ class MembershipTest {
 
     @Test
     fun `a deleted membership keeps its event and share, and is not the active one`() {
-        val active = Membership.Active(event.copy(keyId = EventKeyId("k1")), share)
+        val active = Membership.Active(event.copy(encryption = Encryption.Encrypted(EventKeyId("k1"))), share)
         val deleted = Membership.Deleted(active.event, active.share)
         assertEquals(active.event to active.share, deleted.event to deleted.share)
         assertNotEquals<Membership>(active, deleted)

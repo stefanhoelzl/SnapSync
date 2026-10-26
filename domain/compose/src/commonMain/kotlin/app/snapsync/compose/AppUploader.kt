@@ -45,7 +45,7 @@ internal class AppUploader(private val core: AppCore) {
             core.process,
             UploadServices(
                 exchange = core.exchange,
-                eventKeys = app.eventKeys,
+                keys = app.eventKeyStore,
                 process = UploaderProcess.App(core.appUploadAdmission),
                 records = app.sharedDatabase,
                 membership = app.membership,

@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.application.encryption.RestoreEventKey
 import app.snapsync.application.membership.ClaimStateCheck
 import app.snapsync.application.membership.DeliverPendingLeaves
 import app.snapsync.application.membership.EnrollDevice
@@ -9,9 +10,6 @@ import app.snapsync.application.membership.LeaveEvent
 import app.snapsync.application.membership.ReconfigureEvent
 import app.snapsync.application.membership.RefreshMembership
 import app.snapsync.application.membership.RenameEvent
-import app.snapsync.data.membership.InviteKeyCheck
-import app.snapsync.domain.event.EventKeyId
-import app.snapsync.domain.invite.InviteKey
 import app.snapsync.entrypoints.MembershipBranch
 import app.snapsync.query.membership.JoinDetailsLookup
 import app.snapsync.query.membership.MembershipQuery
@@ -24,14 +22,8 @@ import app.snapsync.query.membership.SwitchLookup
 internal class MembershipLayers(private val core: AppCore) {
     private val membership get() = core.services.membership
 
-    /** Whether an invite's key opens an event, as the event keys answer it — MIGRATING with them (phase 4.3). */
-    private val keys: InviteKeyCheck = object : InviteKeyCheck {
-        override fun opens(key: InviteKey?, keyId: EventKeyId?): Boolean =
-            core.services.eventKeys.opens(key?.text, keyId?.value)
-    }
-
     val enroll: EnrollDevice by lazy {
-        EnrollDevice(membership, core.services.deviceIdentity, core.backend.join, keys)
+        EnrollDevice(membership, core.services.deviceIdentity, core.backend.join, core.services.eventKeyIds)
     }
     val enter: EnterMembership by lazy { EnterMembership(membership) }
     val leave: LeaveEvent by lazy { LeaveEvent(membership) }
@@ -43,9 +35,12 @@ internal class MembershipLayers(private val core: AppCore) {
     val deliver: DeliverPendingLeaves by lazy { DeliverPendingLeaves(core.services.pendingLeaves, core.backend.leave) }
     val claimState: ClaimStateCheck by lazy { ClaimStateCheck(core.services.eventChecks, core.services.wallClock) }
     val forget: ForgetMembership by lazy { ForgetMembership(membership) }
+    val restoreKey: RestoreEventKey by lazy {
+        RestoreEventKey(membership, core.services.eventKeyStore, core.services.eventKeyIds)
+    }
 
     val query: MembershipQuery by lazy { MembershipQuery(membership) }
-    val joinDetails: JoinDetailsLookup by lazy { JoinDetailsLookup(core.backend.directory, keys) }
+    val joinDetails: JoinDetailsLookup by lazy { JoinDetailsLookup(core.backend.directory, core.services.eventKeyIds) }
     val switchLookup: SwitchLookup by lazy { SwitchLookup(membership, core.backend.directory, core.services.wallClock) }
 
     /** The membership as every trigger reads it. */

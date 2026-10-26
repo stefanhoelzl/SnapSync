@@ -7,8 +7,9 @@ import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.KeyMaterial
 import app.snapsync.format.EncryptedFileFormat
-import app.snapsync.format.EventKeyText
 import app.snapsync.format.FileHead
 import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
@@ -57,9 +58,10 @@ class Member(private val http: HttpClient, backend: String) {
     /** The joined event's key, as its invite carried it — `null` for a plain event. */
     private var eventKey: ByteArray? = null
 
-    /** Joins [eventId], keeping [linkKey] — the key its invite carries — to seal every upload with, as a device does. */
-    suspend fun join(eventId: String, linkKey: String?) {
-        eventKey = linkKey?.let { checkNotNull(EventKeyText.decode(it)) { "the invite's key is not a key" } }
+    /** Joins [eventId], keeping [key] — the key its invite carries — to seal every upload with, as a device does. */
+    @OptIn(KeyMaterial::class)
+    suspend fun join(eventId: String, key: EventKey?) {
+        eventKey = key?.bytes()
         val token = token()
         checked("join $deviceId", http.put("$backend/events/$eventId/devices/$deviceId") { served(token) })
     }

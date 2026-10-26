@@ -135,7 +135,9 @@ coverage {
         // phone and the refusing Keychain and preferences (`unavailable-keychain-and-preferences`). → 84/63 in phase
         // 4.2 (membership): the config service the suite covered left for the data layer.
         // → 86/65 in phase 31, once the polling tests waited on outcome events instead.
-        integration(instructions = 86, branches = 65)
+        // Branches → 64 in phase 4.3 (encryption): the key the old sealing and opening read from the store, each of its
+        // reads — a slot holding no key — the crypto suites' (`:test:feature`), until they move into the data layer.
+        integration(instructions = 86, branches = 64)
     }
     ":domain:wire" {
         skipped(
@@ -171,7 +173,9 @@ coverage {
         // a row that spells no id is reached only by a device's corrupt or foreign rows, which the suite never writes
         // (it asserts outcomes, never the app's databases); the data suites' (`MembershipRepositoryTest`,
         // `PendingLeavesTest`). Measured 84.84 %.
-        integration(instructions = 84, branches = 61)
+        // Branches → 60 in phase 4.3 (encryption): the event key's store arrived, and its rare answers — a key or a
+        // clear the store refuses, a slot that holds no key — are its unit suite's (`EventKeyStoreTest`).
+        integration(instructions = 84, branches = 60)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -180,7 +184,9 @@ coverage {
         // superseded — are their unit suites' (`:test:data`, zero gate), not the integration surface's. → 86 when the
         // service's faults reached the use cases: each failure's own outcome, told apart there.
         // → 87/65 in phase 31, once the polling tests waited on outcome events instead.
-        integration(instructions = 87, branches = 65)
+        // → 86/64 in phase 4.3 (encryption): the key's restore arrived, and its rare answers — a key the store refuses,
+        // a membership that cannot be read — are its unit suite's (`RestoreEventKeyTest`).
+        integration(instructions = 86, branches = 64)
     }
     ":domain:query" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -194,15 +200,20 @@ coverage {
         // suite's — no integration world adds an undated photo. 95/83 → 80/64 in phase 4.2, when the invite link's
         // text moved in: a Play install's referrer (Android's, which the JVM host cannot deliver) and every way a
         // fragment can be malformed are the unit suite's. Instructions back to the goal once the suite delivered a Play
-        // install's referrer (`InstallReferrerIntegrationTest`); branches 64 → 78 with it.
-        integration(branches = 78)
+        // install's referrer (`InstallReferrerIntegrationTest`); branches 64 → 78 with it. → 90/70 in phase 4.3
+        // (encryption), when the encrypted file format moved in from model: every way a file's head is not this format, a
+        // head's parts of another length and HKDF's bounds are the unit suite's (`EncryptedFileFormatTest`) — a
+        // member's day only ever reads whole files.
+        integration(instructions = 90, branches = 70)
     }
     ":domain:domain" {
         unit()
         // Branches 64 → 62 in phase 4.1 (trust): the trust verdicts arrived, and their rare answers — a stale
         // challenge, each refusal reason — are their unit suites', not the integration surface's.
         // → 90/76 in phase 31, once the polling tests waited on outcome events instead.
-        integration(instructions = 90, branches = 76)
+        // Branches → 75 in phase 4.3 (encryption): the key's verdicts arrived, and their rare answers — a key kept for
+        // another event, a restore while nothing is joined — are their unit suite's (`EventKeyTest`).
+        integration(instructions = 90, branches = 75)
     }
     // Integration-skipped until phase 3g: what the polling tests reach of these two moves with the machine's timing.
     // Their SingleFlight yield/withdraw and expiry paths run only when a process dies in the few dispatches between a

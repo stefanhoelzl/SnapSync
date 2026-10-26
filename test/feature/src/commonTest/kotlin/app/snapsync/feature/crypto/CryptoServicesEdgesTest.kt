@@ -1,5 +1,6 @@
 package app.snapsync.feature.crypto
 
+import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
@@ -10,6 +11,7 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.RecordingFiles
+import app.snapsync.feature.support.TestEventKeys
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.format.EncryptedFileFormat
@@ -22,9 +24,9 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.FileArea
 import app.snapsync.model.FileResult
 import app.snapsync.model.Resource
-import app.snapsync.model.SecureStoreUnavailable
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
 import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.Opened
 import app.snapsync.services.crypto.UploadSeal
@@ -32,15 +34,11 @@ import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -66,23 +64,40 @@ class CryptoServicesEdgesTest {
 
     @Test
     fun a_locked_store_withholds_an_upload_and_a_plain_or_absent_membership_seals_nothing() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val files = RecordingFiles()
-        val locked = EventKeys(crypto, inMemorySecureStore(unavailable = true))
+        val locked = TestEventKeys(crypto, inMemorySecureStore(unavailable = true))
         val sealing = UploadSealing(
-            locked,
+            locked.store,
             FileCipher(crypto, files),
             configService(config(minted.keyId)),
             testIdentity(DEVICE),
         )
         assertIs<UploadSeal.Withheld>(sealing.sealFor(resource))
 
-        val notJoined = UploadSealing(locked, FileCipher(crypto, files), configService(null), testIdentity(DEVICE))
+        val notJoined =
+            UploadSealing(locked.store, FileCipher(crypto, files), configService(null), testIdentity(DEVICE))
         assertEquals(UploadSeal.Plain, notJoined.sealFor(resource))
 
-        val kept = EventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
+        val damaged = TestEventKeys(
+            crypto,
+            inMemorySecureStore(
+                mutableMapOf(
+                    EncryptionSlots.EVENT_KEY to SecureStoreRead.Found("no key", StoredProtection.BACKGROUND_READABLE),
+                ),
+            ),
+        )
+        val invalid = UploadSealing(
+            damaged.store,
+            FileCipher(crypto, files),
+            configService(config(minted.keyId)),
+            testIdentity(DEVICE),
+        )
+        assertIs<UploadSeal.Withheld>(invalid.sealFor(resource), "a slot holding no key seals nothing")
+
+        val kept = TestEventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
         val sealed = UploadSealing(
-            kept,
+            kept.store,
             FileCipher(crypto, files),
             configService(config(minted.keyId)),
             testIdentity(DEVICE),
@@ -93,15 +108,15 @@ class CryptoServicesEdgesTest {
 
     @Test
     fun a_download_is_opened_only_with_the_events_key_at_hand() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         for ((keys, joined) in listOf(
-            EventKeys(crypto, inMemorySecureStore(unavailable = true)) to config(minted.keyId),
-            EventKeys(crypto, inMemorySecureStore()) to config(minted.keyId),
-            EventKeys(crypto, inMemorySecureStore()) to null,
+            TestEventKeys(crypto, inMemorySecureStore(unavailable = true)) to config(minted.keyId),
+            TestEventKeys(crypto, inMemorySecureStore()) to config(minted.keyId),
+            TestEventKeys(crypto, inMemorySecureStore()) to null,
         )) {
             val files = RecordingFiles()
             files.write(FileArea.SHARED, "in", ByteArray(100))
-            val opening = DownloadOpening(keys, FileCipher(crypto, files), configService(joined), files)
+            val opening = DownloadOpening(keys.store, FileCipher(crypto, files), configService(joined), files)
             assertEquals(joined != null, opening.sealed())
             assertFalse(opening.open(ref, "ASSET1-primary.heic", EVENT, "in", "out"))
             assertEquals(FileResult.Ok(false), files.exists(FileArea.SHARED, "in"), "the unopened file is discarded")
@@ -111,11 +126,11 @@ class CryptoServicesEdgesTest {
 
     @Test
     fun a_file_that_never_opens_is_counted_and_reported_once_however_often_it_is_retried() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
-        val keys = EventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
+        val keys = TestEventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
         val files = RecordingFiles()
         val opening = DownloadOpening(
-            keys,
+            keys.store,
             FileCipher(crypto, files),
             configService(config(minted.keyId)),
             files,
@@ -183,8 +198,8 @@ class CryptoServicesEdgesTest {
     /** A transfer started before transfers named their event fetched for the event joined then — the one joined now. */
     @Test
     fun a_download_from_before_transfers_named_their_event_opens_with_the_joined_events_key() = runTest {
-        val minted = EventKeys(crypto, inMemorySecureStore()).mint()
-        val keys = EventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
+        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
+        val keys = TestEventKeys(crypto, inMemorySecureStore()).also { it.keep(minted.linkKey) }
         val files = RecordingFiles()
         files.write(FileArea.SHARED, "p", ByteArray(10))
         FileCipher(crypto, files).encrypt(
@@ -202,47 +217,12 @@ class CryptoServicesEdgesTest {
             "in",
         )
         val opening = DownloadOpening(
-            keys,
+            keys.store,
             FileCipher(crypto, files),
             configService(config(minted.keyId)),
             files,
         )
         assertTrue(opening.open(ref, "ASSET1-primary.heic", eventId = "", from = "in", to = "out"))
-    }
-
-    @Test
-    fun the_kept_key_reads_back_as_the_link_carries_it_and_a_locked_store_says_so() = runTest {
-        val keys = EventKeys(crypto, inMemorySecureStore())
-        val minted = keys.mint()
-        assertNull(keys.linkKey())
-        keys.keep(minted.linkKey)
-        assertEquals(minted.linkKey, keys.linkKey())
-        assertEquals(minted.keyId, keys.idOf(minted.linkKey))
-        assertNull(keys.idOf("not a key"))
-        assertFailsWith<SecureStoreUnavailable> { EventKeys(crypto, inMemorySecureStore(unavailable = true)).linkKey() }
-    }
-
-    @Test
-    fun an_invite_carries_the_kept_key_only_while_the_membership_is_encrypted() = runTest {
-        val keys = EventKeys(crypto, inMemorySecureStore())
-        val minted = keys.mint()
-        keys.keep(minted.linkKey)
-        val membership = kotlinx.coroutines.flow.MutableStateFlow<EventConfig?>(null)
-        val invite = keys.inviteKeyOf(membership, emptyFlow(), backgroundScope)
-        runCurrent()
-        assertNull(invite.value, "no membership, no key")
-        membership.value = config(null)
-        runCurrent()
-        assertNull(invite.value, "a plain event's invite carries none")
-        membership.value = config(minted.keyId)
-        runCurrent()
-        assertEquals(minted.linkKey, invite.value)
-        val locked = EventKeys(
-            crypto,
-            inMemorySecureStore(unavailable = true),
-        ).inviteKeyOf(membership, emptyFlow(), backgroundScope)
-        runCurrent()
-        assertNull(locked.value, "a key that cannot be read now is no key in an invite")
     }
 
     private companion object {

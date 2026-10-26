@@ -4,6 +4,7 @@ import app.snapsync.entrypoints.AfterJoin
 import app.snapsync.entrypoints.AfterSettings
 import app.snapsync.entrypoints.DeletedTransfers
 import app.snapsync.entrypoints.EndOfWake
+import app.snapsync.entrypoints.Enrolling
 import app.snapsync.entrypoints.EventAlbum
 import app.snapsync.entrypoints.ForegroundWork
 import app.snapsync.entrypoints.ImportReceived
@@ -13,7 +14,7 @@ import app.snapsync.entrypoints.OnDevReset
 import app.snapsync.entrypoints.OnDownloadStaged
 import app.snapsync.entrypoints.OnInviteForOtherEvent
 import app.snapsync.entrypoints.OnJoinConfirmed
-import app.snapsync.entrypoints.OnKeyRestored
+import app.snapsync.entrypoints.OnKeyRestoreRequested
 import app.snapsync.entrypoints.OnLeaveConfirmed
 import app.snapsync.entrypoints.OnRenameRequested
 import app.snapsync.entrypoints.OnSettingsChanged
@@ -62,7 +63,13 @@ internal class AppWork(private val core: AppCore) {
         )
     }
 
-    internal val prelude: Prelude by lazy { Prelude(core.services.membership, core.refreshAttestation) }
+    internal val prelude: Prelude by lazy {
+        Prelude(
+            core.services.membership,
+            core.services.eventKeyStore,
+            core.refreshAttestation,
+        )
+    }
 
     /** The heartbeat the wake's re-arm keeps pending, and a disarm cancels. */
     private val heartbeat: Heartbeat by lazy {
@@ -135,7 +142,7 @@ internal class AppWork(private val core: AppCore) {
             stateRefresh,
             SweepLeftovers(
                 membership.branch,
-                core.services.eventKeys,
+                core.services.eventKeyStore,
                 core.downloadController,
                 core.uploadTransitions,
                 core.services.transition,
@@ -156,29 +163,35 @@ internal class AppWork(private val core: AppCore) {
     /** A staging recorded in a running process asks for the import, and nothing else. */
     internal val downloadStaged: OnDownloadStaged by lazy { OnDownloadStaged(core.runtime, importReceived) }
 
-    /** A lost event key kept from a reopened invite: the foreground's work runs again. */
-    internal val keyRestored: OnKeyRestored by lazy { OnKeyRestored(core.runtime, foregroundWork, wakeWork) }
+    /** A reopened invite of the joined event offered its key back. */
+    internal val keyRestoreRequested: OnKeyRestoreRequested by lazy {
+        OnKeyRestoreRequested(core.runtime, membership.restoreKey, foregroundWork, wakeWork, statuses)
+    }
 
     /** The member confirmed a join. */
     internal val joinConfirmed: OnJoinConfirmed by lazy {
         OnJoinConfirmed(
             core.runtime,
             membership.enroll,
-            core.services.eventKeys,
-            Joining(
-                core.services.transition,
-                core.joinUnion,
-                core.shareSetLoad,
-                core.receivedPhotoAdoption,
-                membership.enter,
-                AfterJoin(
-                    core.uploadTransitions,
-                    core.statusRefresh,
-                    eventAlbum,
-                    core.downloadController,
+            Enrolling(
+                core.services.eventKeyStore,
+                membership.enroll,
+                Joining(
+                    core.services.transition,
                     core.joinUnion,
-                    core.pushRegistration,
-                    core.services.pushTokens,
+                    core.shareSetLoad,
+                    core.receivedPhotoAdoption,
+                    membership.enter,
+                    AfterJoin(
+                        core.uploadTransitions,
+                        core.statusRefresh,
+                        eventAlbum,
+                        core.downloadController,
+                        core.joinUnion,
+                        core.pushRegistration,
+                        core.services.pushTokens,
+                        statuses,
+                    ),
                     statuses,
                 ),
                 statuses,
@@ -192,7 +205,7 @@ internal class AppWork(private val core: AppCore) {
         OnLeaveConfirmed(
             core.runtime,
             membership.leave,
-            Leaving(core.uploadTransitions, core.downloadController, core.services.eventKeys, membership.deliver),
+            Leaving(core.uploadTransitions, core.downloadController, core.services.eventKeyStore, membership.deliver),
         )
     }
 
@@ -236,7 +249,7 @@ internal class AppWork(private val core: AppCore) {
             core.services.ledger,
             core.downloadController,
             membership.forget,
-            core.services.eventKeys,
+            core.services.eventKeyStore,
             core.services.mobileData,
         )
     }

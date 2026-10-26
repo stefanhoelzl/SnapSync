@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventName
@@ -130,7 +131,7 @@ private val OTHER_EVENT = JoinDetails.Found(
             ).range,
         openUntil = null,
         deletesAt = DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
-        keyId = null,
+        encryption = Encryption.Plain,
         members = null,
     ),
     completed = false,

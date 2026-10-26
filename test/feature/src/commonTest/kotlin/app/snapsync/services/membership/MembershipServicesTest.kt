@@ -1,11 +1,14 @@
 package app.snapsync.services.membership
 
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
-import app.snapsync.domain.invite.InviteKey
+import app.snapsync.domain.event.KeyFact
+import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -16,7 +19,6 @@ import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
@@ -25,6 +27,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -172,35 +175,21 @@ class MembershipServicesTest {
         transition.end()
     }
 
-    // ---- the key a join adopts ----
-
-    @Test
-    fun `a join keeps its invite's key, a plain one forgets the last, and only its own key opens an event`() {
-        val keys = EventKeys(fakeCrypto(), inMemorySecureStore())
-        val minted = keys.mint()
-        assertTrue(keys.opens(minted.linkKey, minted.keyId))
-        assertFalse(keys.opens(null, minted.keyId), "an encrypted event wants its key")
-        assertFalse(keys.opens(minted.linkKey, null), "a plain event wants none")
-        assertTrue(keys.opens(null, null))
-
-        keys.adopt(InviteKey(minted.linkKey))
-        assertEquals(minted.linkKey, keys.linkKey())
-        keys.adopt(null)
-        assertNull(keys.linkKey())
-    }
+    // ---- the key a failed leave left ----
 
     @Test
     fun `a leftover key is forgotten unless a join is keeping one`() = runTest {
-        val keys = EventKeys(fakeCrypto(), inMemorySecureStore())
+        val ids = EventKeyIds(fakeCrypto())
+        val keys = EventKeyStore(inMemorySecureStore(), ids)
         val transition = MembershipTransition()
-        keys.keep(keys.mint().linkKey)
+        keys.keep(KeyToKeep.Key(ids.mint()), testEventId("E"))
 
         transition.begin()
-        keys.forgetLeftover(none(), transition)
-        assertTrue(keys.linkKey() != null, "the join's own key stays")
+        transition.unlessJoining { keys.forget(none()) }
+        assertIs<KeyFact.Kept>(keys.state.value, "the join's own key stays")
 
         transition.end()
-        keys.forgetLeftover(none(), transition)
-        assertNull(keys.linkKey())
+        transition.unlessJoining { keys.forget(none()) }
+        assertEquals(KeyFact.Absent, keys.state.value)
     }
 }

@@ -1,10 +1,10 @@
 package app.snapsync.services.crypto
 
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.model.AssetRef
 import app.snapsync.model.FileArea
-import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.Files
 import app.snapsync.services.membership.MembershipProjection
@@ -37,7 +37,7 @@ private const val PART_SUFFIX: String = ".part"
 fun openingFilesOf(landing: String): List<String> = listOf("$landing$SEALED_SUFFIX", "$landing$PART_SUFFIX")
 
 class DownloadOpening(
-    private val keys: EventKeys,
+    private val keys: EventKeyStore,
     private val cipher: FileCipher,
     private val config: MembershipProjection,
     private val files: Files,
@@ -84,11 +84,11 @@ class DownloadOpening(
     private fun attempt(ref: AssetRef, resourceKey: String, eventId: String, from: String, to: String): String? {
         val joined = config.joinedOrRead() ?: return "not joined"
         if (eventId.isNotEmpty() && eventId != joined.eventId.value) return "fetched for another event"
-        val key = try {
-            keys.current()
-        } catch (locked: SecureStoreUnavailable) {
-            return "the event key cannot be read now: ${locked.detail}"
-        } ?: return NO_KEY
+        val key = when (val read = keys.keptBytes()) {
+            is KeptBytes.Kept -> read.bytes
+            KeptBytes.Unreadable -> return "the event key cannot be read now"
+            KeptBytes.None -> return NO_KEY
+        }
         val ad = EncryptedFileFormat.associatedData(
             FileBinding(joined.eventId, ref.sourceDeviceId, ref.sourceAssetId, roleFromUploadKey(resourceKey)),
         )

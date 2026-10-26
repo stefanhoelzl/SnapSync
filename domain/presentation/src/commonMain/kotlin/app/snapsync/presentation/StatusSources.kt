@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
@@ -14,7 +15,6 @@ import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.KeyPresence
 import app.snapsync.model.NetworkAccess
 import app.snapsync.model.Store
 import app.snapsync.query.RequestStatus
@@ -114,8 +114,6 @@ class StatusSources(
  * `docs/architecture.md`) — read from the secure store, never from the config.
  */
 class EventKeyView(
-    /** The key as the invite link carries it. Defaults to none: a plain event's invite carries no key. */
-    val inviteKey: StateFlow<String?> = MutableStateFlow(null),
     /**
      * Whether this device holds it: a lost one is the joined screen's status line, and a reopened invite of the event
      * gives it back. Defaults to none needed.

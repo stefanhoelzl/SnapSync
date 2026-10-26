@@ -9,7 +9,6 @@ import app.snapsync.data.store.db.SelectMembership
 import app.snapsync.data.then
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventName
 import app.snapsync.domain.event.EventRange
 import app.snapsync.domain.event.EventRangeVerdict
@@ -20,6 +19,7 @@ import app.snapsync.domain.membership.MintsConfirmedNotJoined
 import app.snapsync.domain.membership.Share
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
+import app.snapsync.format.EncryptionText
 
 /** No membership: the store answered with none. */
 @OptIn(MintsConfirmedNotJoined::class)
@@ -48,7 +48,7 @@ private fun SelectMembership.event(): Parsed<Event> = parsed(eventId, "event id"
 }
 
 private fun SelectMembership.event(id: EventId, name: EventName, range: EventRange): Event =
-    Event(id, name, range, openUntil, deletesAt, keyId?.let(::EventKeyId), counts())
+    Event(id, name, range, openUntil, deletesAt, EncryptionText.parse(keyId), counts())
 
 private fun SelectMembership.range(): Parsed<EventRange> = when (val range = EventRange.of(startsAt, endsAt)) {
     is EventRangeVerdict.Ok -> Parsed.Ok(range.range)
@@ -82,7 +82,7 @@ internal fun MembershipQueries.save(membership: Membership.Active) = with(member
         membersActive = event.members?.active?.toLong(),
         membersSettled = event.members?.settled?.toLong(),
         membersWaiting = event.members?.waiting?.toLong(),
-        keyId = event.keyId?.value,
+        keyId = EncryptionText.of(event.encryption),
         openUntil = event.openUntil,
         deleted = false,
     )

@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.data.backend.BackendExchange
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
@@ -20,7 +21,6 @@ import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.backend.BackendUploadRequests
 import app.snapsync.services.backend.ManifestPublisher
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.crypto.UploadSealing
 import app.snapsync.services.downloads.RecognitionSource
@@ -148,9 +148,10 @@ internal class UploadServices(
     val exchange: BackendExchange,
     /**
      * The joined event's key, when it is encrypted (the encrypted file format, `docs/architecture.md`): what each
-     * upload is sealed under. Required: the app passes its own, the extension one over its read of the shared slot.
+     * upload is sealed under, as re-read at every entry. Required: the app passes its own, the extension one over the
+     * shared slot.
      */
-    val eventKeys: EventKeys,
+    val keys: EventKeyStore,
     val log: Logger = Logger.withTag("UploadCycle"),
 )
 
@@ -174,7 +175,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
             files = process.files,
             network = ports.mobileData::transferNetwork,
             sealing = UploadSealing(
-                ports.eventKeys,
+                ports.keys,
                 FileCipher(process.crypto, process.files),
                 ports.config,
                 ports.deviceIdentity,
@@ -247,6 +248,6 @@ private fun cycleGateRead(ports: UploadServices) = CycleGateRead(
     host = ports.host,
     // Each root states its own answer — the app from resolution, the extension from its own grant read.
     admission = ports.process::admission,
-    eventKeys = ports.eventKeys,
+    keys = ports.keys,
     albumExclusions = ports.albumExclusions,
 )

@@ -1,9 +1,16 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.encryption.RestoreEventKey
 import app.snapsync.application.membership.ForgetMembership
 import app.snapsync.application.trust.RefreshAttestation
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.membership.DevReset
+import app.snapsync.domain.membership.MintsDevReset
+import app.snapsync.domain.membership.RestoreAnswer
+import app.snapsync.domain.request.RequestId
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.links.readmodel.OpenedLinks
@@ -33,6 +40,7 @@ import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.SessionDrain
 import app.snapsync.ports.SessionRelaunch
+import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.GrantedEntryPoint
@@ -43,7 +51,6 @@ import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Sequence
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.ImportMarkers
 import app.snapsync.services.foreground.AppForeground
@@ -81,6 +88,7 @@ class OnForeground(
         // The membership before the screen: a launch before the phone's first unlock since it restarted read it
         // unreadable, and the first frame is drawn from what the device holds, never from that read.
         isolated("membership") { prelude.membership() }
+        isolated("key") { prelude.key() }
         required { host.assemble() }
         isolated("own work") { work.run(on) }
         required { wake.full(WakeKind.FOREGROUND, on) }
@@ -210,15 +218,37 @@ class OnDownloadStaged(private val runtime: Runtime, private val importReceived:
     suspend fun requested() = runtime.detached("OnDownloadStaged") { on -> on.steps { run(importReceived) } }
 }
 
-/** A lost event key was kept from a reopened invite: sharing and receiving resume without waiting for the next wake. */
-class OnKeyRestored(private val runtime: Runtime, private val work: ForegroundWork, private val wake: WakeWork) {
-    suspend fun requested() = runtime.detached("OnKeyRestored") { on ->
-        on.steps {
-            isolated("own work") { work.run(on) }
-            required { wake.full(WakeKind.FOREGROUND, on) }
+/**
+ * A reopened invite of the joined event offered its key: kept if the device lost it and it is the event's own —
+ * answered as soon as it is — then sharing and receiving resume without waiting for the next wake.
+ */
+class OnKeyRestoreRequested(
+    runtime: Runtime,
+    private val restore: RestoreEventKey,
+    private val work: ForegroundWork,
+    private val wake: WakeWork,
+    private val statuses: MembershipStatuses,
+) : BackgroundEntryPoint<KeyRestoreRequest>(runtime) {
+    private val log = Log("OnKeyRestoreRequested")
+
+    @OptIn(EntryPointCall::class)
+    override suspend fun run(arg: KeyRestoreRequest, on: Run) = on.steps {
+        ensure("answer") { statuses.restore.settle(arg.id, RestoreAnswer.Failed) }
+        val restored = required { restore(arg.key) }
+        required { log.i("key restore answered", "answer" of restored.answer) }
+        required { statuses.restore.done(arg.id, restored.answer) }
+        when (restored.resumes) {
+            true -> {
+                isolated("own work") { work.run(on) }
+                required { wake.full(WakeKind.FOREGROUND, on) }
+            }
+            false -> Unit
         }
     }
 }
+
+/** A reopened invite's [key], offered to restore the joined event's: [id] is answered on the restore status. */
+class KeyRestoreRequest(val id: RequestId, val key: EventKey)
 
 /** The library is creating an import's asset, inside its change block: the marker that keeps it from going back up. */
 class OnImportPlaceholder(runtime: Runtime, private val markers: ImportMarkers) :
@@ -277,15 +307,15 @@ class OnDevReset(
     private val ledger: LedgerService,
     private val downloads: DownloadController,
     private val forget: ForgetMembership,
-    private val keys: EventKeys,
+    private val keys: EventKeyStore,
     private val mobileData: MobileDataSetting,
 ) : BackgroundEntryPoint<Unit>(runtime) {
-    @OptIn(EntryPointCall::class)
+    @OptIn(EntryPointCall::class, MintsDevReset::class)
     override suspend fun run(arg: Unit, on: Run) = on.steps {
         isolated("ledger") { ledger.clear() }
         isolated("downloads") { downloads.onDurableStateReset() }
         isolated("membership") { forget() }
-        isolated("key") { keys.forget() }
+        isolated("key") { keys.forget(DevReset()) }
         isolated("mobile data") { mobileData.clear() }
     }
 }
@@ -335,18 +365,26 @@ class UploadEngine(
 }
 
 /**
- * What the re-read before a wake's own work covers: the membership, which another process may have changed, and the
- * token.
+ * What the re-read before a wake's own work covers: the membership and the event's key, which another process may have
+ * changed — or a phone unlocked since — and the token.
  */
-class Prelude(private val membership: MembershipRepository, private val refreshAttestation: RefreshAttestation) {
+class Prelude(
+    private val membership: MembershipRepository,
+    private val keys: EventKeyStore,
+    private val refreshAttestation: RefreshAttestation,
+) {
     @OptIn(EntryPointCall::class)
     suspend fun run(on: Run) = on.steps {
         isolated("membership") { membership() }
+        isolated("key") { key() }
         isolated("attestation") { refreshAttestation() }
     }
 
     /** The membership alone, re-read: what a screen about to be drawn needs before the token's network round trip. */
     fun membership() = membership.reload()
+
+    /** The event's key, re-read: whether it is held is part of the screen too. */
+    fun key() = keys.reload()
 }
 
 /** The foreground's own work — and a returned network's, which is the same. */

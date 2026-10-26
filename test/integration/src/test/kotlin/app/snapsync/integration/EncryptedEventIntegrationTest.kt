@@ -224,6 +224,16 @@ class EncryptedEventIntegrationTest {
         }
         then { never<WorldEvent.UiChanged> { (it.ui.layer as? Layer.Joined)?.health != SyncHealth.KeyLost } }
 
+        // Nor does one carrying another key.
+        whenever {
+            openLink("$LINK_ORIGIN/join/$event#k=" + "A".repeat(42) + "E")
+            os.foreground()
+        }
+        then {
+            never<WorldEvent.UiChanged> { (it.ui.layer as? Layer.Joined)?.health != SyncHealth.KeyLost }
+            settled { true }
+        }
+
         // The whole invite gives the key back in place: no join screen, the same settings, both directions resume.
         lateinit var resumed: Seen<Layer.Joined>
         whenever { openLink(invite) }

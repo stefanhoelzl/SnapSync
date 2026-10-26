@@ -1,11 +1,15 @@
 package app.snapsync.feature.creation
 
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.format.TimestampText
+import app.snapsync.mock.DevControlsMock
+import app.snapsync.mock.fakeCrypto
 import app.snapsync.model.CreateOutcome
 import app.snapsync.services.backend.EventCreation
 import app.snapsync.testids.testEventId
@@ -55,7 +59,12 @@ class CreateEventTest {
         val client = FakeClient(CreateOutcome.Created(testEventId(eventId)))
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         var provisioned: EventId? = null
-        val useCase = CreateEvent(client, status, onMinted = { eventId, _ -> provisioned = eventId }, minting = null)
+        val useCase = CreateEvent(
+            client,
+            status,
+            onMinted = { eventId, _ -> provisioned = eventId },
+            keys = plainKeys(),
+        )
 
         useCase.create("  My Party  ", startsAt, endsAt, openUntil = null)
 
@@ -70,7 +79,7 @@ class CreateEventTest {
     fun `the open-until date of an event created after its end is passed through verbatim`() = runTest {
         val client = FakeClient(CreateOutcome.Created(testEventId(eventId)))
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
-        val useCase = CreateEvent(client, status, onMinted = { _, _ -> }, minting = null)
+        val useCase = CreateEvent(client, status, onMinted = { _, _ -> }, keys = plainKeys())
 
         useCase.create("Party", startsAt, endsAt, openUntil = OpenUntil(TimestampText.parse("2026-07-28T18:00:00Z")))
 
@@ -101,7 +110,7 @@ class CreateEventTest {
                 client,
                 MutableStateFlow<CreationStatus>(CreationStatus.Idle),
                 onMinted = { _, _ -> },
-                minting = null,
+                keys = plainKeys(),
             )
 
         val first = launch { useCase.create("Party", startsAt, endsAt, openUntil = null) }
@@ -121,7 +130,7 @@ class CreateEventTest {
             FakeClient(CreateOutcome.InvalidName),
             status,
             onMinted = { eventId, _ -> provisioned = eventId },
-            minting = null,
+            keys = plainKeys(),
         )
 
         useCase.create("x", startsAt, endsAt, openUntil = null)
@@ -138,7 +147,7 @@ class CreateEventTest {
             FakeClient(CreateOutcome.InvalidWindow),
             status,
             onMinted = { eventId, _ -> provisioned = eventId },
-            minting = null,
+            keys = plainKeys(),
         )
 
         useCase.create("x", startsAt, endsAt, openUntil = null)
@@ -155,7 +164,7 @@ class CreateEventTest {
             FakeClient(CreateOutcome.Transient()),
             status,
             onMinted = { eventId, _ -> provisioned = eventId },
-            minting = null,
+            keys = plainKeys(),
         )
 
         useCase.create("x", startsAt, endsAt, openUntil = null)
@@ -172,7 +181,7 @@ class CreateEventTest {
             FakeClient(CreateOutcome.Unverified),
             status,
             onMinted = { eventId, _ -> provisioned = eventId },
-            minting = null,
+            keys = plainKeys(),
         )
 
         useCase.create("x", startsAt, endsAt, openUntil = null)
@@ -181,3 +190,6 @@ class CreateEventTest {
         assertNull(provisioned)
     }
 }
+
+/** A build that creates plain events: no key is minted. */
+private fun plainKeys() = NewEventKeys(EventKeyIds(fakeCrypto()), DevControlsMock().apply { encrypts = false }.port())

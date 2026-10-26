@@ -1,5 +1,7 @@
 package app.snapsync.compose
 
+import app.snapsync.data.crypto.EventKeyIds
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.membership.MembershipRepository
@@ -10,7 +12,6 @@ import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.crypto.FileCipher
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.downloads.DownloadService
@@ -106,11 +107,11 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
         MintingDeviceIdentity(ports.secureStore, ports.platformDeviceId)
     }
 
-    /**
-     * The joined event's key, when it is encrypted (the encrypted file format, `docs/architecture.md`), in the shared
-     * slot the extension reads too.
-     */
-    val eventKeys: EventKeys by lazy { EventKeys(process.crypto, ports.secureStore) }
+    /** An event key's id, and a fresh key (the encrypted file format, `docs/architecture.md`). */
+    val eventKeyIds: EventKeyIds by lazy { EventKeyIds(process.crypto) }
+
+    /** The joined event's key, when it is encrypted, in the shared slot the extension reads too. */
+    val eventKeyStore: EventKeyStore by lazy { EventKeyStore(ports.secureStore, eventKeyIds) }
 
     /** An encrypted event's files, sealed and opened a segment at a time over this process's files. */
     val fileCipher: FileCipher by lazy { FileCipher(process.crypto, process.files) }

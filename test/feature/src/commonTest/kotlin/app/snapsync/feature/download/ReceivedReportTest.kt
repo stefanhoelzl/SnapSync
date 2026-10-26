@@ -13,6 +13,7 @@ import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.downloadJobs
+import app.snapsync.feature.support.noKeyArm
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testRuntime
 import app.snapsync.feature.support.testShared
@@ -96,7 +97,7 @@ class ReceivedReportTest {
             onImportedIntoAlbum = {},
             stagedBytes = staging,
             identity = testIdentity("ME"),
-            arm = DownloadArm(enabled = { true }, keyHeld = { true }),
+            arm = noKeyArm(),
             checks = EventCheckRecord(testShared()),
             clock = WallClock(fixedClock(Instant.parse(now))),
             readyToImport = { true },

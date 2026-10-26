@@ -1,18 +1,19 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.SharedRecordsReadiness
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.KeyPresence
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.DeviceIdentityAbsent
-import app.snapsync.model.EventConfig
 import app.snapsync.model.PauseReason.LEGACY_RECORDS
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.selectionPolicyFor
-import app.snapsync.services.crypto.EventKeys
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.requireDeviceId
@@ -42,8 +43,8 @@ class CycleGateRead(
     private val host: String,
     /** Whether THIS process may create now — each uploader states its own, read once per gate. */
     private val admission: () -> UploadAdmission,
-    /** The joined event's key — a LOST one withholds the cycle (see [admissionFor]). */
-    private val eventKeys: EventKeys,
+    /** The joined event's key, as last read at the entry — a LOST one withholds the cycle (see [admissionFor]). */
+    private val keys: EventKeyStore,
     /** The membership's denylisted-album members since a cutoff, answered per the uploader's tier. */
     private val albumExclusions: suspend (CaptureCutoff) -> Set<AssetId>,
 ) {
@@ -109,7 +110,7 @@ class CycleGateRead(
                 )
             },
             host = host,
-            admission = admissionFor(payload),
+            admission = admissionFor(read),
             // The forensics for a skip: the decision is made in shared code that cannot see WHY the read failed, and an
             // unreadable config is invisible on a device except through this string.
             skipDetail = skipDetail(read, identityFailure, version.exceptionOrNull()),
@@ -122,8 +123,11 @@ class CycleGateRead(
      * the invite brings it back, where an unreadable one still runs and withholds at each
      * seal. So does an event whose photos are deleted: it takes no more.
      */
-    private fun admissionFor(membership: EventConfig?): UploadAdmission =
-        if (membership?.deleted == true || eventKeys.lostFor(membership)) UploadAdmission.Withheld else admission()
+    private fun admissionFor(read: MembershipRead): UploadAdmission {
+        val held = (read as? MembershipRead.Joined)?.membership
+        val lost = KeyPresence.of(held, keys.state.value) == KeyPresence.Lost
+        return if (held is Membership.Deleted || lost) UploadAdmission.Withheld else admission()
+    }
 }
 
 /** The skip line [CycleGateRead] hands the cycle: which read failed, and how. */

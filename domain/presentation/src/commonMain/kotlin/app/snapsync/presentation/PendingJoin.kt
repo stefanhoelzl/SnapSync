@@ -4,6 +4,7 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.service.ServiceFault
@@ -24,7 +25,7 @@ data class PendingJoin(
     val eventId: EventId,
     val phase: JoinProgress,
     /** The key the invite link carried, `null` when it carried none — committed with the join, shown nowhere. */
-    val linkKey: String? = null,
+    val key: EventKey? = null,
     /** The event as the server served it, once its details loaded — what a confirm commits. */
     val loaded: Event? = null,
     /**
@@ -34,7 +35,7 @@ data class PendingJoin(
     val service: ServiceFault? = null,
 ) {
     /** Never the key: a pending join reaches logs and test failures. */
-    override fun toString(): String = "PendingJoin(eventId=$eventId, phase=$phase, linkKey=${linkKey?.let { "present" }})"
+    override fun toString(): String = "PendingJoin(eventId=$eventId, phase=$phase, key=${key?.let { "present" }})"
 }
 
 /**

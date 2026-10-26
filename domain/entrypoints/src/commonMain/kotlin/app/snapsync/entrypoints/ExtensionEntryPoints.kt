@@ -1,5 +1,6 @@
 package app.snapsync.entrypoints
 
+import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.feature.upload.UploadCycle
@@ -29,6 +30,7 @@ class OnProcess(
     runtime: Runtime,
     private val credential: CachedCredentialStore,
     private val membership: MembershipRepository,
+    private val keys: EventKeyStore,
     private val cycle: Lazy<UploadCycle>,
     private val ledger: LedgerService,
 ) : AnsweredEntryPoint<Unit, ProcessingAnswer>(runtime, onFailure = ProcessingAnswer.FAILED) {
@@ -38,6 +40,7 @@ class OnProcess(
         // The app renews into the shared protected item, which this process's copy cannot see: read it again.
         required { credential.reread() }
         required { membership.reload() }
+        required { keys.reload() }
         val ran = required { cycle.value.run() }
         required { ran.requeueWhilePending(ledger, log) }.answer()
     }

@@ -7,6 +7,7 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
+import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventLookupFact
 import app.snapsync.domain.event.MemberCounts
@@ -74,7 +75,7 @@ class EventDirectoryTest {
             assertEquals(TimestampText.parse("2026-07-21T18:00:00Z"), range.end.at)
             assertEquals(OpenUntil(TimestampText.parse("2026-07-28T18:00:00Z")), openUntil)
             assertEquals(TimestampText.parse("2026-08-21T18:00:00Z"), deletesAt.at)
-            assertEquals(EventKeyId("k1"), keyId)
+            assertEquals(Encryption.Encrypted(EventKeyId("k1")), encryption)
             assertEquals(MemberCounts(3, 1, 2), members)
         }
     }
@@ -84,7 +85,7 @@ class EventDirectoryTest {
         answering(found(details(completedAt = "2026-08-01T00:00:00Z", keyId = null)))
         val found = assertIs<EventLookupFact.Found>(directory.lookup(testEventId(ID)))
         assertEquals(true, found.completed)
-        assertEquals(null, found.event.keyId)
+        assertEquals(Encryption.Plain, found.event.encryption)
     }
 
     @Test
