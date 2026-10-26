@@ -59,6 +59,45 @@ class EncryptedEventIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Whoever holds the invite can join and see everything",
+        scenario = "A forwarded invite admits a stranger",
+    )
+    fun a_forwarded_invite_admits_a_stranger_who_shares_and_receives() = behaviour {
+        val (event, invite) = given {
+            val event = registeredEvent()
+            step(
+                "$DEV_F shares FQ",
+                act = { publicBackend.foreignDevice(DEV_F, listOf("FQ"), event = event) },
+                until = { settled { true } },
+            )
+            event to inviteFor(event)
+        }
+        // With nothing but the forwarded invite — no account, no approval — the stranger joins.
+        whenever { openLink(invite) }
+        then { screen<Layer.JoiningEvent> { it.eventId == event && it.phase is JoinPhase.Detailed } }
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined> { it.membership.eventId == event }
+            event<WorldEvent.MemberJoined> { it.event == event }
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
+
+        // They contribute, and receive the other member's photo.
+        whenever {
+            takePhoto("OWN-1")
+            downloadSession.finish()
+            uploadAll()
+        }
+        then {
+            event<WorldEvent.BytesStored> { it.event == event && it.device != DEV_F && it.asset == "OWN-1" }
+            event<WorldEvent.LibraryAssetCreated> { it.asset == "imported-$DEV_F-FQ" }
+        }
+    }
+
+    @Test
     @Verifies(spec = "invite-link", requirement = "An incomplete invite never joins an encrypted event")
     fun an_invite_without_the_key_never_joins_an_encrypted_event() = behaviour {
         val (event, invite) = given {
