@@ -178,8 +178,11 @@ coverage {
         // Branches → 60 in phase 4.3 (encryption): the event key's store arrived, and its rare answers — a key or a
         // clear the store refuses, a slot that holds no key — are its unit suite's (`EventKeyStoreTest`). → 83/59 when
         // the file cipher moved in: every read and write its files refuse, mid-file, is its unit suite's
-        // (`FileCipherTest`); a member's day reads and writes whole files.
-        integration(instructions = 83, branches = 59)
+        // (`FileCipherTest`); a member's day reads and writes whole files. → 82/57 when the upload sealing and the
+        // download opening moved in: a seal withheld for a device that cannot name itself, an opening counted and
+        // reported, a membership that cannot be read are their unit suites' (`UploadSealingTest`,
+        // `DownloadOpeningTest`).
+        integration(instructions = 82, branches = 57)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -217,8 +220,10 @@ coverage {
         // challenge, each refusal reason — are their unit suites', not the integration surface's.
         // → 90/76 in phase 31, once the polling tests waited on outcome events instead.
         // Branches → 75 in phase 4.3 (encryption): the key's verdicts arrived, and their rare answers — a key kept for
-        // another event, a restore while nothing is joined — are their unit suite's (`EventKeyTest`).
-        integration(instructions = 90, branches = 75)
+        // another event, a restore while nothing is joined — are their unit suite's (`EventKeyTest`). → 86/71 with the
+        // seal's and the opening's verdicts: a device that cannot name itself, a locked phone, a download fetched for
+        // an event a switch left behind and the fourth failure in a row are their unit suite's (`SealVerdictsTest`).
+        integration(instructions = 86, branches = 71)
     }
     // Integration-skipped until phase 3g: what the polling tests reach of these two moves with the machine's timing.
     // Their SingleFlight yield/withdraw and expiry paths run only when a process dies in the few dispatches between a

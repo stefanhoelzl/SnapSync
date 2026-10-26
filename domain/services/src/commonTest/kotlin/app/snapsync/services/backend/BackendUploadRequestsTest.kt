@@ -71,6 +71,8 @@ class BackendUploadRequestsTest {
             "https://edge.example/events/$eventId/files/devices/$deviceId/ABC123_DEF/primary?filename=IMG_0001.JPG",
             req.url,
         )
+        assertEquals(testEventId(eventId), req.event, "what the request is sealed for: the event it addresses")
+        assertEquals(testEventId(eventId), provider().event)
     }
 
     @Test

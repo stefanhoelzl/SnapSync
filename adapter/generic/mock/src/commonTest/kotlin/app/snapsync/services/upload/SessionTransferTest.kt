@@ -4,7 +4,6 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadRequest
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Transfer
 import app.snapsync.ports.TransferFailure
@@ -69,7 +68,7 @@ class SessionTransferTest {
     @Test
     fun `a destination that is not a URL is not a transfer before the session sees it`() = runTest {
         val session = ScriptedSession()
-        val outcome = transfer(session).createJob(UploadRequest("", emptyMap(), libraryResource()), libraryResource())
+        val outcome = transfer(session).createJob(request(libraryResource(), url = ""), libraryResource())
         assertEquals(UploadCreateOutcome.FAILED, outcome)
         assertTrue(session.calls.isEmpty())
     }
@@ -80,7 +79,7 @@ class SessionTransferTest {
         val library = Library(exportable = setOf(KEY))
         val files = SharedArea()
         val outcome = transfer(session, library = library, files = files)
-            .createJob(UploadRequest(URL, emptyMap(), libraryResource()), libraryResource())
+            .createJob(request(libraryResource()), libraryResource())
         assertEquals(UploadCreateOutcome.LIMIT_EXCEEDED, outcome)
         assertEquals(listOf(KEY to "/shared/upload-staging/$KEY"), library.exports)
         assertEquals("/shared/upload-staging/$KEY", assertIs<TransferSource.File>(session.created.single()).path)
@@ -90,7 +89,7 @@ class SessionTransferTest {
     @Test
     fun `a session that takes resources is handed the resource itself`() = runTest {
         val session = ScriptedSession(takesResources = true)
-        val outcome = transfer(session).createJob(UploadRequest(URL, emptyMap(), libraryResource()), libraryResource())
+        val outcome = transfer(session).createJob(request(libraryResource()), libraryResource())
         assertEquals(UploadCreateOutcome.CREATED, outcome)
         assertEquals(KeyHandle(KEY), assertIs<TransferSource.Resource>(session.created.single()).handle)
     }
@@ -144,7 +143,7 @@ class SessionTransferTest {
     @Test
     fun `a resource the library can no longer export is not a transfer`() = runTest {
         val session = ScriptedSession()
-        val outcome = transfer(session).createJob(UploadRequest(URL, emptyMap(), libraryResource()), libraryResource())
+        val outcome = transfer(session).createJob(request(libraryResource()), libraryResource())
         assertEquals(UploadCreateOutcome.FAILED, outcome)
         assertTrue(session.created.isEmpty())
     }
@@ -154,7 +153,7 @@ class SessionTransferTest {
         val session = ScriptedSession()
         val library = Library(exportable = setOf(KEY))
         val outcome = transfer(session, library = library)
-            .createJob(UploadRequest(URL, emptyMap(), unreadResource()), unreadResource())
+            .createJob(request(unreadResource()), unreadResource())
         assertEquals(UploadCreateOutcome.FAILED, outcome)
         assertTrue(library.exports.isEmpty(), "the library is never asked")
         assertTrue(session.created.isEmpty())
@@ -166,7 +165,7 @@ class SessionTransferTest {
         val transfer = transfer(session, library = Library(setOf(KEY)), files = SharedArea(reachable = false))
         assertEquals(
             UploadCreateOutcome.FAILED,
-            transfer.createJob(UploadRequest(URL, emptyMap(), libraryResource()), libraryResource()),
+            transfer.createJob(request(libraryResource()), libraryResource()),
         )
         assertTrue(session.created.isEmpty())
     }
@@ -179,9 +178,9 @@ class SessionTransferTest {
         val transfer = transfer(session, network = { rule })
         val a = libraryResource("A-primary.jpg")
         val b = libraryResource("B-primary.jpg")
-        transfer.createJob(UploadRequest(URL, emptyMap(), a), a)
+        transfer.createJob(request(a), a)
         rule = TransferNetwork.ANY
-        transfer.createJob(UploadRequest(URL, emptyMap(), b), b)
+        transfer.createJob(request(b), b)
         assertEquals(listOf(TransferNetwork.UNRESTRICTED_ONLY, TransferNetwork.ANY), session.networks)
     }
 
@@ -229,7 +228,7 @@ class SessionTransferTest {
     @Test
     fun `a session that takes resources has nothing to send for a resource the library did not read`() = runTest {
         val session = ScriptedSession(takesResources = true)
-        val outcome = transfer(session).createJob(UploadRequest(URL, emptyMap(), unreadResource()), unreadResource())
+        val outcome = transfer(session).createJob(request(unreadResource()), unreadResource())
         assertEquals(UploadCreateOutcome.FAILED, outcome)
         assertTrue(session.created.isEmpty())
     }
@@ -242,7 +241,7 @@ class SessionTransferTest {
         assertTrue(transfer.drainTerminals().isEmpty())
         transfer.retryJob(
             PlatformUploadJob(KEY, "image/jpeg", null, null),
-            UploadRequest(URL, emptyMap(), libraryResource()),
+            request(libraryResource()),
         )
         assertTrue(session.calls.isEmpty(), "an end is recorded as it is told, so there is nothing to re-point")
     }

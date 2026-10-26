@@ -1,5 +1,6 @@
 package app.snapsync.services.upload
 
+import app.snapsync.data.crypto.UploadSeal
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadCreateOutcome
@@ -11,7 +12,6 @@ import app.snapsync.ports.OsUploadJob
 import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
-import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.gallery.GalleryResourceRef
 import app.snapsync.services.gallery.galleryHandle
 
@@ -148,11 +148,11 @@ class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: Trans
                 return@body
             }
             // The queue's own retry re-sends the library's bytes, so an encrypted event's edge seal is renewed with it.
-            val headers = when (val seal = setup.sealOf(request.resource)) {
+            val headers = when (val seal = setup.sealOf(request)) {
                 UploadSeal.Plain -> request.headers
-                is UploadSeal.Sealed -> request.headers + setup.sealing!!.edgeHeaders(seal)
+                is UploadSeal.Sealed -> request.headers + setup.sealing.edgeSeal(seal.order).headers()
                 is UploadSeal.Withheld -> {
-                    log.i { "retryJob: ${job.key} withheld — ${seal.reason}" }
+                    log.i { "retryJob: ${job.key} withheld — ${seal.because}" }
                     return@body
                 }
             }
@@ -177,11 +177,11 @@ class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: Trans
                 log.w { "createJob: ${resource.filename} is no library resource — not creating" }
                 return@body UploadCreateOutcome.FAILED
             }
-            val headers = when (val seal = setup.sealOf(resource)) {
+            val headers = when (val seal = setup.sealOf(request)) {
                 UploadSeal.Plain -> request.headers
-                is UploadSeal.Sealed -> request.headers + setup.sealing!!.edgeHeaders(seal)
+                is UploadSeal.Sealed -> request.headers + setup.sealing.edgeSeal(seal.order).headers()
                 is UploadSeal.Withheld -> {
-                    log.i { "createJob: ${resource.filename} withheld — ${seal.reason}" }
+                    log.i { "createJob: ${resource.filename} withheld — ${seal.because}" }
                     return@body UploadCreateOutcome.FAILED
                 }
             }

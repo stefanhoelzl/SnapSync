@@ -1,5 +1,7 @@
 package app.snapsync.services.upload
 
+import app.snapsync.data.crypto.SealOutcome
+import app.snapsync.data.crypto.UploadSeal
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.Resource
@@ -14,7 +16,6 @@ import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
-import app.snapsync.services.crypto.UploadSeal
 import app.snapsync.services.gallery.galleryHandle
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.sync.Mutex
@@ -84,7 +85,7 @@ class SessionTransfer(
             }
             val target = UploadTarget(request.url, request.headers, setup.network())
             val handle = resource.data.galleryHandle()
-            when (val seal = setup.sealOf(resource)) {
+            when (val seal = setup.sealOf(request)) {
                 UploadSeal.Plain -> if (session.takesResources && handle != null) {
                     session.create(TransferSource.Resource(handle), target, resource.filename).uploadCreateOutcome()
                 } else {
@@ -92,7 +93,7 @@ class SessionTransfer(
                 }
                 is UploadSeal.Sealed -> createFromFile(resource, target, seal)
                 is UploadSeal.Withheld -> {
-                    log.i { "createJob: ${resource.filename} withheld — ${seal.reason}" }
+                    log.i { "createJob: ${resource.filename} withheld — ${seal.because}" }
                     UploadCreateOutcome.FAILED
                 }
             }.also { if (it == UploadCreateOutcome.LIMIT_EXCEEDED) log.w { "job limit reached — deferring the rest" } }
@@ -173,9 +174,9 @@ class SessionTransfer(
             }
         }
         if (seal != null) {
-            val sealed = setup.sealing!!.seal(seal, exportedTo, staged)
+            val sealed = setup.sealing.seal(seal.order, exportedTo, staged)
             files.delete(FileArea.SHARED, exportedTo)
-            if (sealed !is FileResult.Ok) {
+            if (sealed !is SealOutcome.Sealed) {
                 log.w { "createJob: sealing ${resource.filename} failed ($sealed) — not creating" }
                 releaseStaged(resource.filename)
                 return UploadCreateOutcome.FAILED

@@ -1,16 +1,19 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.data.crypto.DownloadOpening
+import app.snapsync.data.crypto.Landing
+import app.snapsync.data.crypto.OpenAnswer
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.event.EventId
 import app.snapsync.model.AssetRef
 import app.snapsync.model.ConfinedTo
 import app.snapsync.model.PendingDownload
+import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.Download
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
-import app.snapsync.services.crypto.DownloadOpening
-import app.snapsync.services.crypto.SEALED_SUFFIX
 import app.snapsync.services.staging.StagingService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Job
@@ -204,15 +207,17 @@ class DownloadJobs(
         val relative = relativePath(decoded)
         // An encrypted event's bytes are taken over beside their staging path — the platform deletes its file when this
         // returns — and opened INTO it off the delegate queue: only a file whose every byte authenticated is staged.
-        val sealed = opening?.takeIf { it.sealed() }
-        val landed = if (sealed == null) relative else "$relative$SEALED_SUFFIX"
-        if (!staging.stage(tempPath, landed)) return
+        val landing = when (opening) {
+            null -> Landing.Plain(relative)
+            else -> opening.landing(relative)
+        }
+        if (!staging.stage(tempPath, landing.stagedAt)) return
         // Launched here, and REMEMBERED: this runs on the session's delegate queue, which must not wait for a store
         // write, but the write has to stay reachable so the wake's OS handler can wait for it. Pruning completed jobs
         // keeps the list from growing across a long session.
         val recording = start {
             // A file that does not open stays unstaged, so the next reconcile downloads it again.
-            if (sealed != null && !sealed.open(decoded.ref, decoded.resourceKey, decoded.eventId, landed, relative)) return@start
+            if (opened(landing, decoded) == OpenAnswer.NotOpened) return@start
             onStaged(decoded.ref, decoded.resourceKey, relative)
         }
         outstandingStagings.update { held -> held.filterNot { it.isCompleted } + recording }
@@ -238,6 +243,18 @@ class DownloadJobs(
      */
     suspend fun awaitOutstandingStagings() {
         outstandingStagings.getAndUpdate { emptyList() }.forEach { it.join() }
+    }
+
+    /** [landing] opened into its path when it is sealed — a file that does not open is not staged. */
+    private suspend fun opened(landing: Landing, tag: TaskTag): OpenAnswer = when (opening) {
+        null -> OpenAnswer.Opened
+        else -> opening.open(
+            landing,
+            tag.ref.sourceDeviceId,
+            tag.ref.sourceAssetId,
+            roleFromUploadKey(tag.resourceKey),
+            EventId.parse(tag.eventId),
+        )
     }
 
     /** The relative staged path of the resource [tag] names — the one place it is derived. */

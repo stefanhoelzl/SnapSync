@@ -4,7 +4,6 @@ import app.snapsync.domain.upload.LedgerState
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadRequest
 import app.snapsync.ports.AesKey
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Crypto
@@ -128,7 +127,7 @@ class SessionResumeTest {
         if (resuming) Resuming({ _, sha -> standing.also { asked += sha } }, Hash) else null,
     )
 
-    private fun request() = UploadRequest(URL, mapOf("Content-Type" to "video/quicktime"), resource)
+    private fun request() = request(resource, headers = mapOf("Content-Type" to "video/quicktime"))
 
     private val failure = TransferFailure("network")
 
