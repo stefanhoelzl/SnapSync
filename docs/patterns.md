@@ -78,8 +78,8 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
   suspend the process the moment it does), and the expiry.
 - Work several entry points share is a plain class beside them (`Prelude`, `ForegroundWork`, `WakeWork`, `Joining`,
   `Leaving`, `EndOfWake`), written in steps too. Work started from inside the process for a trigger that is not the platform's
-  (a staged download, a restored key, a transition's arm) is a small class whose `requested()` starts it
-  `detached` under that name (`OnDownloadStaged`, `OnKeyRestored`, `OnArm`). Started inside an entry point's work,
+  (a staged download, a transition's arm) is a small class whose `requested()` starts it
+  `detached` under that name (`OnDownloadStaged`, `OnArm`). Started inside an entry point's work,
   it is that work's; started outside any, it is its own.
 - A person's tap is an entry point too: `OnTap`, on the UI port, hands the intent to the status host's intent table,
   and every intent that launches — and every command it runs — is the tap's work. A fire-and-forget command starts
@@ -398,6 +398,11 @@ A value that must never reach the crash channel is a **secret type** whose `toSt
 bearer token (`BearerToken`, trust's, equal by its secret), and an invite link with only its key masked (the rest of
 the link stays readable). Each arrives with its concept. **Device, event and asset ids render in full** (`privacy-security`: crash reports may carry device,
 event and photo ids — never an event key), so `EventId`, `DeviceId` and `AssetId` render as the id itself.
+
+A secret whose bytes the core must handle — the event key (`EventKey`, encryption's) — guards them twice more. Reading
+its bytes is an opt-in (`@KeyMaterial`), and so is making one from bytes (`@MakesEventKey`); each marker's sites are
+pinned (`OptInPinsTest`), so who touches key material is a compile-checked list: its text form, its id's derivation
+and the cipher. It holds its bytes as a `List<Byte>` (the domain holds no `ByteArray`) and is equal by them.
 
 ### Result naming
 
