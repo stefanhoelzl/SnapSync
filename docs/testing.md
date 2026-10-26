@@ -304,7 +304,8 @@ Where bindings live: beside their implementations.
   specification's AES-256 test cases), so every platform computes what the others do. The encrypted file format framed
   over it is not a contract: both its halves are held to `test/vectors/encrypted-file.json` (the Kotlin one by
   `EncryptedFileFormatTest` over the real JVM adapters, the TypeScript one by `api/test/encrypted-file.test.ts`), and
-  on the JVM to Google Tink itself, which opens what `FileCipher` writes and the reverse. The mock module's
+  on the JVM to Google Tink itself, which opens what `FileCipher` writes and the reverse; every read and write its
+  files refuse is the cipher's own suite's (`FileCipherTest`, `:test:data`). The mock module's
   `fakeCrypto()` is not cryptography and is bound to nothing.
 - `NetworkMonitor`: live on `ANDROID_EMU` in all four states — online, restricted (the emulator's Wi-Fi marked metered
   through `cmd netpolicy`), airplane mode (offline), and the package denied by the `OEM_DENY_3` firewall chain

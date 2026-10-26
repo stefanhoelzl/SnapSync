@@ -35,7 +35,7 @@ middle of an event.
 - **Deadline: before the release that re-enables encrypted creation** (below). That release creates encrypted
   events, whose invite is the keyed path form `/join/<uuid>#k=…`. 0.4 reports that as a damaged invite, not as
   "update required"; the floor turns it into the update screen. 0.6 creates plain events, so it does not need the
-  floor. Records: `openspec/changes/encrypt-events-by-default` (design, Migration Plan),
+  floor. Records: `openspec/changes/archive/2026-10-08-encrypt-events-by-default` (design, Migration Plan),
   `openspec/changes/archive/2026-10-12-defer-encrypt-by-default`.
 - **Extra check before raising it:** no 0.4 device is a member of an open event, so nobody is cut off mid-event.
   Run against the database and expect `0` (2026-10-12: `5`, in 2 open events — why 0.6 deferred encrypted
@@ -145,7 +145,9 @@ such membership is live.
   - **What:** rows planned before 6.sqm, handled in:
     - `DownloadJobs.stagingPath`, which stages them in the root
     - `domain/model/.../DownloadRecords.kt`
-    - `domain/services/.../crypto/DownloadOpening.kt` (`eventId.isNotEmpty()`)
+    - `domain/services/.../downloads/DownloadJobs.kt` (`EventId.parse(tag.eventId)`, a row's empty event read as none)
+    - `domain/domain/.../event/SealVerdicts.kt` (`OpenVerdict.of`'s `fetchedFor: null`: the event joined then is the
+      one joined now)
     - the `download-staging/` row of `docs/architecture.md`
   - **Covered only in part:** the update test stages a 0.4 transfer with no event (`DownloadJobs.stagingPath`'s root),
     but seeds no row planned with no event: 0.4 tagged every row it planned
@@ -172,8 +174,8 @@ such membership is live.
   off. A rig build already encrypts by default.
   - `adapter/generic/app/.../dev/InertDevControls.kt`: `createsPlainEvents()` answers `true` — and its KDoc, and
     `InertDevControlsTest`.
-  - The KDoc of `DevControls.createsPlainEvents` (`domain/ports`) and `EventKeyMinting`
-    (`domain/services/.../crypto/EventKeys.kt`).
+  - The KDoc of `DevControls.createsPlainEvents` (`domain/ports`) and `NewEventKeys`
+    (`domain/data/.../crypto/NewEventKeys.kt`).
   - `DevControlsContract`: the shipped clause expects `true`, the switched clause `false`, and
     `RigDevControlsContractTest` sets `encrypts = true` for `SWITCHED`.
   - The `invite-link` spec: "Every invite form opens in every future version" says every event this version creates
@@ -197,7 +199,7 @@ such membership is live.
     > cannot open the stored photos. The one exception is an iPhone that uploads photos in the background through the
     > system's own photo uploader: there, each photo reaches our service unencrypted together with a key that opens
     > only that photo, and our service encrypts it as it arrives and keeps neither the key nor the unencrypted photo.
-- **Record:** `openspec/changes/archive/2026-10-12-defer-encrypt-by-default` (design D1–D5), `openspec/changes/encrypt-events-by-default`.
+- **Record:** `openspec/changes/archive/2026-10-12-defer-encrypt-by-default` (design D1–D5), `openspec/changes/archive/2026-10-08-encrypt-events-by-default`.
 
 ## At the promote that re-enables encrypted creation
 
@@ -210,7 +212,7 @@ such membership is live.
   encrypted event (0.6 creates plain ones, `openspec/changes/archive/2026-10-12-defer-encrypt-by-default`). It stays untrue for the plain
   events 0.5 and 0.6 create until those are retired (below); accepted.
 - **Ship:** merge just before dispatching that release's promote, after the floor and the re-enable above.
-- **Record:** `openspec/changes/encrypt-events-by-default` (design D7).
+- **Record:** `openspec/changes/archive/2026-10-08-encrypt-events-by-default` (design D7).
 
 ## Once `MIN_APP_VERSION` ≥ 0.6
 
@@ -320,13 +322,13 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
     that use it (`EncryptedEventIntegrationTest`, `PathFormLinkIntegrationTest`)
   - the api's keyless `POST /events` (`keyId` optional in `api/src/routes/shared.ts`, `key_id` NULL in
     `api/src/db.ts`) and the plain branch of `api/src/routes/encrypted-upload.ts`
-  - the app's plain branches: `EventKeys.opens` with no link key, `EventConfig.inviteUrl`'s fragment form,
-    `UploadSealing` and `DownloadOpening` for an event with no `keyId`, `KeyPresence.NotNeeded` for a joined event
+  - the app's plain branches: `Encryption.Plain` (`openedBy`), `EventConfig.inviteUrl`'s fragment form,
+    `SealVerdict.Plain` and `Landing.Plain` for a plain event, `KeyPresence.NotNeeded` for a joined event
   - the event page's plain path (`site/src/pages/join.astro`, `encryptionOf`)
 - **Remove:** require a key on create; refuse every keyless event in the app and on the page; drop the rig switch.
 - **Keep forever:** the fragment-form decoder (a printed QR opens forever) — a plain invite then opens the
   incomplete-invite screen.
-- **Record:** `openspec/changes/encrypt-events-by-default` (proposal, design Non-Goals).
+- **Record:** `openspec/changes/archive/2026-10-08-encrypt-events-by-default` (proposal, design Non-Goals).
 
 ## Once every event closed before open-until dates is gone
 
@@ -368,7 +370,7 @@ version or op gates these — each phase deletes its own uses, and the last one 
 - **What:** `DeviceIdentity.requireDeviceId()` (`domain/services/…/services/identity/RequireDeviceId.kt`): the device
   id as the old zones read it before trust moved into its layers (4.1) — thrown as `SecureStoreUnavailable` or
   `DeviceIdentityAbsent` out of the step that asked. Its callers: `ShareSetLoad` and `ReceivedPhotoAdoption` (4.4b,
-  4.5); upload's `StoredUploadSettle`, `CycleGateRead`, `UploadStandings`, `UploadSealing` and the cycle's assembly in
+  4.5); upload's `StoredUploadSettle`, `CycleGateRead`, `UploadStandings` and the cycle's assembly in
   `compose/UploadCore.kt` (4.4); downloads' `myDeviceId` in `compose/SnapSyncApp.kt` and `BackendReceivedReporter` in
   `services/backend/Membership.kt` (4.5); push's `PushRegistration` and `BackendPushTokenPublisher` (4.8).
 - **Why:** converting every caller to the sealed `DeviceIdRead` in 4.1 would have rewritten the error handling of four
@@ -385,13 +387,14 @@ version or op gates these — each phase deletes its own uses, and the last one 
     `reload`, `joinedOrRead`, the clock's reads, and `markOver` — the one write: the shared set's publish heard the
     event's photos were deleted (`BackendManifestPublisher`'s `eventOver`, wired in `compose/SnapSyncApp.kt`) — and
     `Membership.asConfig()`. Its readers: upload's
-    `UploadTransitions`, `CycleGateRead`, `PushTailGuard`, `WakeRearm`, `ShareSettlement` and `UploadSealing`, the
+    `UploadTransitions`, `CycleGateRead`, `PushTailGuard`, `WakeRearm` and `ShareSettlement`, the
     ledger's scope in `compose/AppServices.kt` and the cycle's assembly in `compose/UploadCore.kt` and
-    `compose/ExtensionCore.kt` (4.4); downloads' `DownloadPushReceiver`, `ReceivedReport` and `DownloadOpening`, with
+    `compose/ExtensionCore.kt` (4.4); downloads' `DownloadPushReceiver` and `ReceivedReport`, with
     the adoption's input in `OnSelectionChanged` and the held-everything read in `OnInviteForOtherEvent` (4.5);
     `AlbumGather` (4.6); `StatusRefresh` and `CollectDiagnosticDump` (4.7); presentation's `config` source (4.9).
   - `domain/services/.../membership/MembershipTransition.kt`: the join-in-progress guard a sweep of leftovers waits
-    out, held by `UploadTransitions.stopLeftovers`, `DownloadController.stopLeftovers` and `EventKeys.forgetLeftover`.
+    out, held by `UploadTransitions.stopLeftovers`, `DownloadController.stopLeftovers` and the key's leftover sweep
+    in `SweepLeftovers` (`domain/entrypoints/.../MembershipEntryPoints.kt`).
 - **Why:** phase 4.2 moved the membership into the layers; the concepts that read it move in their own phases.
 - **Remove:** each phase moves its readers onto `MembershipRead` (the query's `MembershipQuery`, or a use case's
   answer) and its leftover sweep into a use case — 4.4 moves the publisher and with it `markOver`, into a use case
@@ -420,13 +423,17 @@ version or op gates these — each phase deletes its own uses, and the last one 
   phase that removes the last one deletes the file and this entry.
 
 ### The rig's reset in production (app)
-- **What:** `OnDevReset` (`domain/entrypoints/.../AppEntryPoints.kt`) and `ForgetMembership`
-  (`domain/application/.../membership/`), delivered through `DevControls`' reset — production code only a rig build's
-  control channel reaches (`POST /device/reset`).
-- **Why:** the reset was rebuilt over the layers in phase 4.2 rather than moved into `:test:rig`, so the control channel
-  kept working while the membership moved.
-- **Remove:** the rig's reset calls the data layer's operations from `:test:rig` (`RigReset`); then delete
-  `OnDevReset`, `ForgetMembership`, `MembershipRepository.forget` and the `DevControls` reset delivery.
+- **What:** `OnDevReset` (`domain/entrypoints/.../AppEntryPoints.kt`), `ForgetMembership`
+  (`domain/application/.../membership/`) and the key's `EventKeyStore.forget(DevReset)` with its evidence `DevReset`
+  (`domain/domain/.../membership/Evidence.kt`, minted in `OnDevReset`), delivered through `DevControls`' reset —
+  production code only a rig build's control channel reaches (`POST /device/reset`).
+- **Why:** the reset was rebuilt over the layers in phases 4.2 and 4.3 rather than moved into `:test:rig`, so the
+  control channel kept working while the membership and the key moved.
+- **Remove (phase 4.5):** the reset must run inside the composition — under `DownloadController`'s lock, over the
+  same in-memory states the app holds — so `:test:rig` cannot build its own instances. A `RigReset` the rig composes
+  is handed the composition's layer instances (the membership and key stores, the download controller, the ledger,
+  the mobile-data choice); then delete `OnDevReset`, `ForgetMembership`, `MembershipRepository.forget`,
+  `EventKeyStore.forget(DevReset)`, `DevReset` and the `DevControls` reset delivery.
 
 ## One-off ops
 

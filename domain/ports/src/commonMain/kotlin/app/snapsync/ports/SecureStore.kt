@@ -3,7 +3,7 @@ package app.snapsync.ports
 /**
  * **The platform's protected small-value store** — one external system (on iOS the Keychain), and nothing decided
  * here. Each call addresses one [SecureSlot]; which items exist, and what their absence means, are the services'
- * (`PersistedDeviceIdentity`, `AttestState`, `EventKeys` in `:domain:services`).
+ * (the device identity, the credential and the event key's store, in `:domain:data`).
  *
  * It keeps a value confidential at rest, **outlives the app install**, and stays readable while the device is
  * locked after its first unlock. On iOS it is the only module permitted to touch `SecItem*` (`docs/architecture.md`).

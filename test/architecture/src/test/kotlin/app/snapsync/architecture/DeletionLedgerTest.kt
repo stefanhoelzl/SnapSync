@@ -270,6 +270,29 @@ class DeletionLedgerTest {
     }
 
     /**
+     * Encryption before its layers (phase 4.3): a services zone of its own (`services/crypto`) holding the key, its mint,
+     * the cipher, the sealing and the opening over raw bytes and a throwing secure-store read; an invite key that was a
+     * bare string, checked by a seam the composition implemented; a screen-side reader of the key re-read by hand; and a
+     * restore that was a suspending command answering a boolean, where a request now answers on its status.
+     */
+    @Test
+    fun `encryption's retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """(class|interface|object) (Event""" + "Keys|EventKey" + "Minting|Minted" + "Key|InviteKey" +
+                "Check|InviteKey|EventKey" + "Reads|Secure" + "Slots|ElsewhereSeal|OnKey" + "Restored)\\b"
+            declared(files, pre).forEach { add("encryption's pre-layer types in $it (the layers' — 4.3)") }
+            declared(files, """package app\.snapsync\.services\.crypto\b""").forEach {
+                add("a services/crypto file in $it (encryption is the layers' — 4.3)")
+            }
+            declared(files, """fun (read""" + "Existing|restore" + "EventKey|opening" + "FilesOf)\\b").forEach {
+                add("a door the layers replaced in $it (EventKeyStore, UserCommands.restoreKey, SealedLanding — 4.3)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
      * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop

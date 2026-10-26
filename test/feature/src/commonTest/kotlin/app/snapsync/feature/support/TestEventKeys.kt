@@ -4,7 +4,6 @@ import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyFact
-import app.snapsync.domain.event.KeyMaterial
 import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.format.EventKeyText
 import app.snapsync.ports.Crypto
@@ -12,10 +11,9 @@ import app.snapsync.ports.SecureStore
 import app.snapsync.testids.testEventId
 
 /**
- * A key store with keys a test mints and keeps by their invite text — the sealing and the opening the old zones still
- * frame are tested over it until they move into the data layer with the cipher.
+ * A key store with keys a test mints and keeps by their invite text — what the encrypted transfers' end-to-end test
+ * seals and opens with.
  */
-@OptIn(KeyMaterial::class)
 internal class TestEventKeys(crypto: Crypto, secure: SecureStore) {
     private val ids = EventKeyIds(crypto)
     val store = EventKeyStore(secure, ids)
@@ -31,7 +29,4 @@ internal class TestEventKeys(crypto: Crypto, secure: SecureStore) {
 
     /** The kept key, with its id. */
     fun held(): IdentifiedKey? = (store.state.value as? KeyFact.Kept)?.key
-
-    /** The kept key's bytes. */
-    fun current(): ByteArray? = (store.state.value as? KeyFact.Kept)?.key?.key?.bytes()
 }
