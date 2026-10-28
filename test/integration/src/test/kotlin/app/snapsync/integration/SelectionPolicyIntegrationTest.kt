@@ -76,6 +76,75 @@ class SelectionPolicyIntegrationTest {
     @Verifies(
         spec = "photo-sharing",
         requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A screen recording is never shared",
+    )
+    fun a_screen_recording_is_neither_uploaded_nor_shared() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("CAM")
+            photoTaken("REC", LibraryPhotoKind.SCREEN_RECORDING)
+        }
+
+        whenever { cycle() }
+        then { onlyCameraJob(excluded = "REC") }
+
+        whenever { cameraPhotoLanded() }
+        then { onlyCameraShared(excluded = "REC") }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "An ordinary animated GIF is excluded",
+    )
+    fun an_ordinary_gif_falls_below_the_image_floor() = behaviour {
+        // Excluded by its size, not its type: the library reports a messenger's GIF at 480×270, under the 3 MP floor.
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("CAM")
+            photoTaken("GIF", LibraryPhotoKind.GIF)
+        }
+
+        whenever { cycle() }
+        then { onlyCameraJob(excluded = "GIF") }
+
+        whenever { cameraPhotoLanded() }
+        then { onlyCameraShared(excluded = "GIF") }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A photo in a user album named \"Screenshots\" is excluded",
+    )
+    fun a_photo_in_an_album_the_member_named_screenshots_is_neither_uploaded_nor_shared() = behaviour {
+        // An iPhone's album is a collection: the member filing a camera photo in one of their own does not make it a
+        // screenshot — the album's title alone excludes it.
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("CAM")
+            photoTaken("FILED")
+            step("FILED in an album named Screenshots", act = { library.placeIn("Screenshots", "FILED") }, until = {
+                settled { true }
+            })
+        }
+
+        whenever { cycle() }
+        then { onlyCameraJob(excluded = "FILED") }
+
+        whenever { cameraPhotoLanded() }
+        then { onlyCameraShared(excluded = "FILED") }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
         scenario = "A compressed image received from a messenger is excluded",
     )
     @Verifies(

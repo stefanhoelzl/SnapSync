@@ -24,6 +24,11 @@ class FlexibleShareRangeIntegrationTest {
         requirement = "Nothing is shared before the event starts",
         scenario = "Photos from before the start wait for it",
     )
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Only photos inside the range the member chose are shared",
+        scenario = "A photo before the event inside the member's range is shared",
+    )
     fun photos_from_before_the_start_wait_for_it_and_are_shared_once_it_has_passed() = behaviour(
         startAt = BEFORE_THE_START,
     ) {
@@ -47,6 +52,53 @@ class FlexibleShareRangeIntegrationTest {
             uploadAll()
         }
         then { event<WorldEvent.BytesStored> { it.asset == "EVE" } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Nothing is shared before the event starts",
+        scenario = "Sharing begins after the start",
+    )
+    fun once_the_start_has_passed_opening_the_app_shares_the_range() = behaviour(startAt = BEFORE_THE_START) {
+        // No wake at the start: the photo waits for an ordinary occasion — here the member opening the app.
+        given {
+            joinedEvent(Choices(cutoff = EVENING_BEFORE), startsAt = START, endsAt = END)
+            photoTaken("EVE", date = TAKEN_THE_EVENING_BEFORE)
+        }
+
+        whenever { os.foreground() }
+        then { never<WorldEvent.SessionTransferCreated>() }
+
+        whenever {
+            os.background()
+            advanceTo(DURING)
+            os.foreground()
+        }
+        then { event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("EVE") } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Only photos inside the range the member chose are shared",
+        scenario = "A photo after the event inside the member's range is shared",
+    )
+    fun a_photo_after_the_event_inside_the_members_range_is_shared() = behaviour(startAt = DURING) {
+        given {
+            extensionUploadsOnly()
+            joinedEvent(Choices(until = TWO_DAYS_AFTER), startsAt = START, endsAt = END)
+            step("past the member's range", act = { advanceTo(AFTER_THE_RANGE) }, until = { settled { true } })
+            photoTaken("NEXTDAY", date = TAKEN_THE_DAY_AFTER)
+            photoTaken("PAST", date = TAKEN_AFTER_THE_RANGE) // the control: the member's own end still holds
+        }
+
+        whenever { uploadAll() }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "NEXTDAY" }
+            never<WorldEvent.BytesStored> { it.asset == "PAST" }
+            never<WorldEvent.ManifestPublished> { "PAST" in it.added }
+        }
     }
 
     @Test
@@ -107,5 +159,8 @@ class FlexibleShareRangeIntegrationTest {
         const val AFTER_THE_EVENT = "2026-05-21T00:00:00Z"
         const val TWO_DAYS_AFTER = "2026-05-22T00:00:00Z"
         const val AFTER_THE_RANGE = "2026-05-22T12:00:00Z"
+
+        const val TAKEN_THE_DAY_AFTER = "2026-05-21T10:00:00Z"
+        const val TAKEN_AFTER_THE_RANGE = "2026-05-22T06:00:00Z"
     }
 }
