@@ -6,7 +6,6 @@ import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
@@ -200,35 +199,11 @@ class FolderAlbumIntegrationTest {
         }
     }
 
-    @Test
-    @Verifies(
-        spec = "event-album",
-        requirement = "The album is offered on by default and declinable in one tap",
-        scenario = "On Android the explanation names received photos only",
-    )
-    fun sharing_and_receiving_the_folder_album_is_explained_as_the_received_photos() = behaviour {
-        given { androidLibrary() }
-
-        // The album's note is the screen's words for this surface: a folder album, and photos to receive into it.
-        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
-        then { joinSurface { it.shareOn && it.receiveOn && it.albumHolds == AlbumHolds.RECEIVED } }
-    }
-
-    @Test
-    @Verifies(
-        spec = "event-album",
-        requirement = "The album is offered on by default and declinable in one tap",
-        scenario = "On Android without receiving the album collects nothing",
-    )
-    fun with_receiving_off_the_folder_album_is_explained_as_collecting_nothing() = behaviour {
-        given {
-            androidLibrary()
-            createdEvent()
-        }
-
-        whenever { setRange(Choices(direction = Direction.UploadOnly)) }
-        then { joinSurface { it.shareOn && !it.receiveOn && it.albumHolds == AlbumHolds.RECEIVED } }
-    }
+    // What the album's note SAYS for the switches ("On Android the explanation names received photos only", "On Android
+    // without receiving the album collects nothing", and iPhone's "The explanation follows the switches") is the join
+    // screen's decision, not the core's. The screen state carries only the switches and how the library holds an album,
+    // so the integration suite has no claim on them: what it hands the screen, the test above shows. `JoinScreenTest`
+    // (`:ui:screens`) renders the note itself for each combination.
 
     // ---- the event's settings -------------------------------------------------------------------------------------
 

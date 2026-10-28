@@ -139,7 +139,8 @@ coverage {
         // → 86/65 in phase 31, once the polling tests waited on outcome events instead.
         // Branches → 64 in phase 4.3 (encryption): the key the old sealing and opening read from the store, each of its
         // reads — a slot holding no key — the crypto suites' (`:test:feature`), until they move into the data layer.
-        integration(instructions = 86, branches = 64)
+        // Branches → 65 in phase 19 (claim: event-album).
+        integration(instructions = 86, branches = 65)
     }
     ":domain:wire" {
         skipped(
