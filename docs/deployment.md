@@ -625,7 +625,9 @@ never reaches the internal track (below).
   artifact **`dsyms-<run_number>`** (= `CFBundleVersion`, 90 days, the platform maximum). The `/bugsink`
   skill symbolicates against it on Linux and fails loudly once it has expired. Copy dSYMs somewhere
   permanent at promote time for any version that must outlive 90 days.
-- The Android store build is R8-obfuscated, with line numbers kept (`app/android/proguard-rules.pro`).
+- The Android store build is R8-obfuscated, with line numbers kept (`app/android/proguard-rules.pro`). The
+  entry points and tap intents keep their class NAMES, which are the `entry_point` tag, the `[Trigger]` log label and
+  the entry events' `entry` (`verifyEntryNames`, on `check`, holds every release's mapping and dex to it).
   `android-deliver` publishes each delivered build's mapping as artifact **`r8-mapping-<build>`** (= `versionCode`
   = the event's `dist`, 90 days); `/bugsink` retraces against it with R8's own `retrace`, and fails loudly once it
   has expired.

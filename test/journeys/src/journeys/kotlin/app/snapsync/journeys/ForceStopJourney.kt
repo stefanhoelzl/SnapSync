@@ -7,6 +7,7 @@ import app.snapsync.journeys.device.DatedJpeg
 import app.snapsync.journeys.device.ProcessShell
 import app.snapsync.journeys.run.AndroidRun
 import app.snapsync.journeys.run.awaitChannel
+import app.snapsync.levers.WorldEvent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.runBlocking
@@ -63,8 +64,11 @@ class ForceStopJourney {
 
                 device.start(AndroidRun.ACTIVITY)
                 a.awaitChannel(AndroidRun.CHANNEL_UP)
-                // The opening's own `done` (phase 33) is the better wait for the heartbeat read below, but not yet usable
-                // here: an entry is named by its class, which R8 renames in this release build (`done entry=gt4`).
+                // The opening's `done`: its own work and the wake's re-arm have ended, so the heartbeat read below
+                // follows them. Its entry is named by its class, so this also proves the release's R8 kept the name.
+                a.awaitEvent(UPLOAD, "the opening's OnForeground done") { event ->
+                    (event as? WorldEvent.Done)?.takeIf { it.entry == "OnForeground" }
+                }
                 a.awaitScreen(UPLOAD, "the photo taken while A was stopped, shared") {
                     sharedCount(it).reached(sharedBefore + 1)
                 }
