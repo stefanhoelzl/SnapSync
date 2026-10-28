@@ -5,6 +5,8 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.ShareCount
 import kotlin.test.Test
 
 /**
@@ -99,6 +101,41 @@ class FlexibleShareRangeIntegrationTest {
             never<WorldEvent.BytesStored> { it.asset == "PAST" }
             never<WorldEvent.ManifestPublished> { "PAST" in it.added }
         }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "What the member is told is shared is exactly what is shared",
+        scenario = "Before the start the preview counts the photos that wait for it",
+    )
+    fun before_the_start_the_preview_counts_the_photos_that_wait_for_it() = behaviour(startAt = BEFORE_THE_START) {
+        given {
+            extensionUploadsOnly()
+            photoTaken("EVE", date = TAKEN_THE_EVENING_BEFORE)
+            createdEvent(startsAt = START, endsAt = END)
+        }
+
+        // The preview answers what WILL be shared: the photo from the evening before, though it waits for the start.
+        whenever { setRange(Choices(cutoff = EVENING_BEFORE)) }
+        then { screen<Layer.JoiningEvent> { it.range?.shareCount == ShareCount.Ready(1) } }
+
+        whenever {
+            confirmJoin()
+            uploadAll()
+        }
+        then {
+            screen<Layer.Joined>()
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.BytesStored>()
+        }
+
+        // Once the event has started, the counted photo is the one uploaded.
+        whenever {
+            advanceTo(DURING)
+            uploadAll()
+        }
+        then { event<WorldEvent.BytesStored> { it.asset == "EVE" } }
     }
 
     @Test

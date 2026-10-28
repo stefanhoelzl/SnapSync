@@ -139,12 +139,14 @@ foreground, without any action inside the app.
 - **WHEN** a member without access turns it on in the phone's Settings and returns to the app
 - **THEN** the access line disappears and sharing begins
 
-### Requirement: Switching between full and limited access never re-uploads
+### Requirement: Switching between full and limited access re-uploads only what was de-selected
 
 Moving from full to limited access SHALL narrow what is shared to the selection from then on: selected photos already
 shared SHALL stay shared without being uploaded again, and photos outside the selection SHALL be withdrawn like any
-de-selected photo (capability `photo-sharing`). Moving from limited to full access SHALL share only the in-range
-photos not yet shared, re-uploading nothing. A switch SHALL also change which kinds of photo are shared: a selected
+de-selected photo (capability `photo-sharing`). Moving from limited to full access SHALL keep every photo still shared
+without uploading it again, and SHALL share the in-range photos not shared yet; a photo that had been withdrawn because
+it was outside the selection comes back as a re-included photo does, uploaded again (capability `photo-sharing`,
+requirement "Restoring or re-including a photo shares it again"). A switch SHALL also change which kinds of photo are shared: a selected
 photo that only limited access shares (capability `photo-sharing`, requirement "Under limited access the member's
 selection decides what a photo is") SHALL be withdrawn on moving to full access, and shared again — uploaded again,
 like a photo recovered after being deleted — if access becomes limited with it still selected.
@@ -153,6 +155,10 @@ like a photo recovered after being deleted — if access becomes limited with it
 - **WHEN** a member who shared photos under limited access switches to full access
 - **THEN** only newly in-scope photos from the event's range upload, and nothing already shared is sent
   again
+
+#### Scenario: A photo de-selected earlier returns on widening
+- **WHEN** a member who removed a shared photo from their limited selection switches to full access
+- **THEN** that photo is uploaded again and offered to the other members, and no photo still shared is sent again
 
 #### Scenario: Widening right after changing the selection
 - **WHEN** a limited-access member changes their selection and switches to full access before the app has

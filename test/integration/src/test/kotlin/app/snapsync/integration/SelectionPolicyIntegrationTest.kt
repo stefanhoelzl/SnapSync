@@ -173,6 +173,27 @@ class SelectionPolicyIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A video just under the floor's pixel count is shared",
+    )
+    fun a_narrow_video_with_more_pixels_than_720p_is_shared() = behaviour {
+        // The video floor counts pixels: 1100×900 is narrower than 1280 but holds more pixels than 1280×720.
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("NARROW", LibraryPhotoKind.NARROW_VIDEO)
+        }
+
+        whenever { cycle() }
+        then {
+            times(1) { event<WorldEvent.UploadJobCreated>() }
+            settled { it.state.inFlight?.jobs?.mapTo(mutableSetOf(), ::assetIdOfJob) == setOf(testAssetId("NARROW")) }
+        }
+    }
+
+    @Test
     @Verifies(spec = "photo-sharing", requirement = "What the member is told is shared is exactly what is shared")
     @Verifies(
         spec = "sync-status",

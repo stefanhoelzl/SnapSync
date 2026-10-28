@@ -145,6 +145,10 @@ enum class LibraryPhotoKind {
     @SerialName("hd-video")
     HD_VIDEO,
 
+    /** A 1100×900 video: narrower than 1280, but with more pixels than 1280×720, so above the video floor. */
+    @SerialName("narrow-video")
+    NARROW_VIDEO,
+
     /** A photo with its paired video. */
     @SerialName("live-photo")
     LIVE_PHOTO,

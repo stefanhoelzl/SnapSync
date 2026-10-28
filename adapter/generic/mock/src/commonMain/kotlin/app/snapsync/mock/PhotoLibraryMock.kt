@@ -122,6 +122,7 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
             LibraryPhotoKind.SCREENSHOT -> LibraryAssets.screenshot(id, at)
             LibraryPhotoKind.SCREEN_RECORDING -> LibraryAssets.screenRecording(id, at)
             LibraryPhotoKind.HD_VIDEO -> LibraryAssets.hdVideo(id, at)
+            LibraryPhotoKind.NARROW_VIDEO -> LibraryAssets.narrowVideo(id, at)
             LibraryPhotoKind.LIVE_PHOTO -> LibraryAssets.livePhoto(id, at)
             LibraryPhotoKind.GIF -> LibraryAssets.gif(id, at)
         }

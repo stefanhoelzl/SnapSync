@@ -63,6 +63,13 @@ object LibraryAssets {
     fun hdVideo(assetId: String, creationDate: String = DEFAULT_DATE): GalleryAssetResources =
         photo(assetId, creationDate, isVideo = true, pixelWidth = 1920, pixelHeight = 1080)
 
+    /**
+     * A 1100×900 recording — narrower than 1280 but with more pixels than 1280×720, so the video floor, a pixel count,
+     * **admits** it.
+     */
+    fun narrowVideo(assetId: String, creationDate: String = DEFAULT_DATE): GalleryAssetResources =
+        photo(assetId, creationDate, isVideo = true, pixelWidth = 1100, pixelHeight = 900)
+
     /** A GIF as a messenger saves one (480×270) — excluded by the resolution floor, not by its type. */
     fun gif(assetId: String, creationDate: String = DEFAULT_DATE): GalleryAssetResources = photo(
         assetId,

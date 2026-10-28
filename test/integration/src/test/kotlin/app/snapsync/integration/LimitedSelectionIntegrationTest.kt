@@ -195,7 +195,7 @@ class LimitedSelectionIntegrationTest {
     @Test
     @Verifies(
         spec = "photo-access",
-        requirement = "Switching between full and limited access never re-uploads",
+        requirement = "Switching between full and limited access re-uploads only what was de-selected",
         scenario = "A selected screenshot leaves on widening to full access",
     )
     fun widening_to_full_access_withdraws_a_selected_screenshot_and_sends_nothing_again() = behaviour {
