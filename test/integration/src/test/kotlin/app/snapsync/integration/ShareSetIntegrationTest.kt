@@ -4,6 +4,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -153,6 +154,48 @@ class ShareSetIntegrationTest {
             never<WorldEvent.UploadJobCreated>()
             never<WorldEvent.BytesStored>()
             settled { it.state.inFlight?.jobs == listOf(primaryJob("A")) }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "A photo already in an event is not uploaded again for it",
+        scenario = "A reinstalled app keeps its photos",
+    )
+    fun a_reinstalled_app_rejoining_uploads_nothing_again_and_offers_nothing_twice() = behaviour {
+        val link = given {
+            extensionUploadsOnly()
+            val event = joinedEvent()
+            photos("A")
+            uploaded("A")
+            inviteFor(event).also {
+                step("reinstalled", act = { host.reinstall() }, until = { settled { true } })
+            }
+        }
+
+        // Rejoin through the event's link, as the member re-scanning the QR after the reinstall does.
+        whenever { openLink(link) }
+        then { screen<Layer.JoiningEvent> { it.phase.step == JoinPhase.Detailed.Step.Ready } }
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined>()
+            event<WorldEvent.MemberJoined>()
+            settled { true }
+        }
+
+        // The photo is still in the library, and neither uploader sends it again: the event keeps offering the one copy.
+        whenever {
+            library.permission(PhotoGrant.GRANTED)
+            os.foreground()
+            cycle()
+        }
+        then {
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.BytesStored>()
+            never<WorldEvent.UnionChanged> { it.asset == "A" }
+            settled { true }
         }
     }
 
