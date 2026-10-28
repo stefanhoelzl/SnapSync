@@ -26,5 +26,23 @@ suspend fun Given.downloadStarted(device: String = DEV_F, asset: String = "FQ"):
     return settle.value
 }
 
+/**
+ * [device] shares exactly [assets] to the joined event, and each arrives in the library: downloaded, staged and
+ * imported. The member's whole share — an asset it shared before and [assets] leaves out is withdrawn.
+ */
+suspend fun Given.receivedFrom(device: String, vararg assets: String) {
+    step("$device shares ${assets.joinToString()}", act = {
+        publicBackend.foreignDevice(device, assets.toList())
+        os.foreground()
+    }, until = {
+        event<WorldEvent.DownloadStarted>()
+        settled { true }
+    })
+    step("${assets.joinToString()} arrived", act = { downloadSession.finish() }, until = {
+        assets.forEach { asset -> event<WorldEvent.LibraryAssetCreated> { it.asset == imported(asset, device) } }
+        settled { true }
+    })
+}
+
 /** The photo [asset] of [device], as the library holds it once imported. */
 fun imported(asset: String = "FQ", device: String = DEV_F) = "imported-$device-$asset"

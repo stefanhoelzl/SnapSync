@@ -223,10 +223,18 @@ sealed interface WorldEvent {
     @SerialName("library-import-parked")
     data class LibraryImportParked(val device: String, val asset: String) : Library
 
-    /** An import created the photo [asset] in the library, its files under [names] — the names the app handed it. */
+    /**
+     * An import created the photo [asset] in the library, its files under [names] — the names the app handed it — dated
+     * [date], the capture time the app gave it (ISO-8601; `null` when it gave none, and the library dates it as it
+     * creates it).
+     */
     @Serializable
     @SerialName("library-asset-created")
-    data class LibraryAssetCreated(val asset: String, val names: List<String> = emptyList()) : Library
+    data class LibraryAssetCreated(
+        val asset: String,
+        val names: List<String> = emptyList(),
+        val date: String? = null,
+    ) : Library
 
     /** The app made the album [album], titled [title]. */
     @Serializable

@@ -40,7 +40,7 @@ class InterruptedImportIntegrationTest {
     private val foreignAsset = "FQ"
 
     @Test
-    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice")
+    @Verifies(spec = "receiving-photos", requirement = "Nothing arrives twice", scenario = "Killed while saving")
     fun an_interrupted_import_is_not_repeated_on_the_next_pass() = behaviour {
         // Precondition, in the step: the asset really was created, and the import really is unconfirmed. Without both,
         // this test would pass for the wrong reason.
