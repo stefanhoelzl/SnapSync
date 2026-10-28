@@ -5,6 +5,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
@@ -160,6 +161,78 @@ class PhotoAccessIntegrationTest {
             os.foreground()
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen counts what was shared and received",
+        scenario = "Limited access shows counts",
+    )
+    fun up_to_date_under_limited_access_counts_the_selection_beside_the_choice_to_widen() = behaviour {
+        given {
+            limitedMember()
+            photos("A", "B", "C", "D", "E", "F", "UNSELECTED")
+            // The upload session takes a few at a time: the first ones land, and the app hands it the rest.
+            step("six selected", act = { library.changeSelection(listOf("A", "B", "C", "D", "E", "F")) }, until = {
+                settled { true }
+            })
+            step("the first uploads landed", act = {
+                uploadSession.complete()
+                os.foreground()
+            }, until = { settled { true } })
+        }
+
+        whenever {
+            uploadSession.complete()
+            os.foreground()
+        }
+        then {
+            screen<Layer.Joined> {
+                it.health == SyncHealth.InSync &&
+                    it.counts?.shared == DirectionCount.Progress(done = 6, total = 6) &&
+                    it.canChoosePhotos
+            }
+        }
+    }
+
+    // ---- the app never raises iOS's limited-library prompt itself --------------------------------------------------
+
+    @Test
+    @Verifies(
+        spec = "photo-access",
+        requirement = "The app never raises iOS's limited-library prompt itself",
+        scenario = "Normal use under limited access",
+    )
+    fun sharing_and_receiving_under_limited_access_presents_no_picker_until_the_member_taps() = behaviour {
+        // A host proxy: iOS's own prompt is the platform's (both processes opt out of it in their Info.plists), so this holds
+        // what the app can do — it never presents the picker or asks for access itself, in front or behind.
+        given {
+            limitedMember()
+            photos("A", "B")
+            selected("A")
+        }
+
+        whenever {
+            uploadSession.complete()
+            publicBackend.foreignDevice(DEV_F, listOf(FOREIGN_ASSET))
+            os.foreground()
+            downloadSession.finish()
+            library.changeSelection(listOf("A", "B"))
+            os.background()
+            heartbeat()
+            cycle()
+        }
+        then {
+            event<WorldEvent.LibraryAssetCreated>()
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("B") }
+            never<WorldEvent.LibraryPickerShown>()
+            never<WorldEvent.LibraryAccessAsked>()
+        }
+
+        // Only the member's own tap on "Choose more photos" presents it — the never above watched a live read.
+        whenever { tap(UiIntent.ChoosePhotos) }
+        then { event<WorldEvent.LibraryPickerShown>() }
     }
 
     // ---- receive-only with limited access is never nagged ---------------------------------------------------------
