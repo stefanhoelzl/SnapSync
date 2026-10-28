@@ -5,7 +5,11 @@
 // A build WITHOUT `-Psnapsync.rig=true` composes every real Android adapter (`src/prod`), with no crash reporter until
 // phase 5. A rig build composes over an adapter choice of real and mocked systems, with the control channel served
 // in-process (`test/rig/src/android-hook`), reached over `adb forward`.
+import app.snapsync.buildlogic.EntryNamesTask
 import app.snapsync.buildlogic.rigEnabled
+import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.ScopedArtifacts
 
 plugins {
     alias(libs.plugins.android.application)
@@ -216,3 +220,27 @@ val verifyNoDirectBoot = tasks.register("verifyNoDirectBoot") {
     }
 }
 tasks.named("check") { dependsOn(verifyNoDirectBoot) }
+
+// Every entry point and tap intent tells its own class name in the release R8 built (`proguard-rules.pro`): neither
+// renamed nor merged, and a nested intent still carrying the annotation `simpleName` reads. The classes are those R8
+// was given, so one the rules miss is caught, not skipped; no device needed.
+val verifyEntryNames = tasks.register<EntryNamesTask>("verifyEntryNames") {
+    group = "verification"
+    description = "Fails when the release renames or merges an entry point or tap intent, or loses a nested one's name."
+    roots.set(
+        listOf("BackgroundEntryPoint", "GrantedEntryPoint", "InboundEntryPoint", "AnsweredEntryPoint")
+            .map { "app.snapsync.scheduling.$it" } + "app.snapsync.ui.state.UiIntent",
+    )
+    val buildTools = "build-tools/${android.buildToolsVersion}"
+    dexdump.set(androidComponents.sdkComponents.sdkDirectory.map { it.file("$buildTools/dexdump") })
+    verdict.set(layout.buildDirectory.file("reports/entry-names.txt"))
+}
+androidComponents.onVariants(androidComponents.selector().withBuildType("release")) { variant ->
+    variant.artifacts.forScope(ScopedArtifacts.Scope.ALL).use(verifyEntryNames)
+        .toGet(ScopedArtifact.CLASSES, EntryNamesTask::jars, EntryNamesTask::directories)
+    verifyEntryNames.configure {
+        mapping.set(variant.artifacts.get(SingleArtifact.OBFUSCATION_MAPPING_FILE))
+        apk.set(variant.artifacts.get(SingleArtifact.APK))
+    }
+}
+tasks.named("check") { dependsOn(verifyEntryNames) }
