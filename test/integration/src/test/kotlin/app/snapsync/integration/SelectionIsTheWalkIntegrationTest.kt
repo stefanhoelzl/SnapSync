@@ -25,7 +25,7 @@ class SelectionIsTheWalkIntegrationTest {
     @Test
     @Verifies(
         spec = "photo-access",
-        requirement = "Switching between full and limited access never re-uploads",
+        requirement = "Switching between full and limited access re-uploads only what was de-selected",
         scenario = "Narrowing to a selection",
     )
     fun a_downgrade_withdraws_the_unselected_and_the_foreground_settles_the_selected() = behaviour {
@@ -125,6 +125,11 @@ class SelectionIsTheWalkIntegrationTest {
         requirement = "Deleting or no longer sharing a photo withdraws it",
         scenario = "Deselecting under limited access withdraws",
     )
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Restoring or re-including a photo shares it again",
+        scenario = "A photo re-added to the selection is shared again",
+    )
     fun re_selecting_a_withdrawn_photo_shares_it_again() = behaviour {
         // Under a partial grant the app's uploader is the one that runs (the extension withholds), each selection
         // change's tail walking the read selection.
@@ -158,6 +163,44 @@ class SelectionIsTheWalkIntegrationTest {
             event<WorldEvent.ManifestPublished> { "B" in it.added }
             never<WorldEvent.ManifestPublished> { "A" in it.withdrawn }
             settled { it.state.inFlight?.sessionTransfers == listOf(primaryKey("B")) }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-access",
+        requirement = "Switching between full and limited access re-uploads only what was de-selected",
+        scenario = "A photo de-selected earlier returns on widening",
+    )
+    fun a_photo_de_selected_earlier_is_uploaded_again_on_widening() = behaviour {
+        given {
+            photoAccess(PhotoGrant.LIMITED)
+            joinedEvent()
+            photos("A", "B")
+            step("A and B selected", act = { library.changeSelection(listOf("A", "B")) }, until = {
+                times(2) { event<WorldEvent.SessionTransferCreated>() }
+                settled { true }
+            })
+            step("both uploaded", act = { uploadSession.complete() }, until = {
+                event<WorldEvent.BytesStored> { it.asset == "A" }
+                event<WorldEvent.BytesStored> { it.asset == "B" }
+                settled { true }
+            })
+            step("B de-selected", act = { library.changeSelection(listOf("A")) }, until = {
+                event<WorldEvent.ManifestPublished> { "B" in it.withdrawn }
+                settled { true }
+            })
+        }
+
+        // The de-selection forgot that B was shared, so full access finds it as a new photo; A, still shared, is not
+        // sent again.
+        whenever {
+            library.permission(PhotoGrant.GRANTED)
+            os.foreground()
+        }
+        then {
+            times(1) { event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("B") } }
+            never<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
         }
     }
 }

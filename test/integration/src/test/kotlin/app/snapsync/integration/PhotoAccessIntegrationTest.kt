@@ -307,12 +307,12 @@ class PhotoAccessIntegrationTest {
         }
     }
 
-    // ---- switching between full and limited access never re-uploads -----------------------------------------------
+    // ---- switching between full and limited access ------------------------------------------------------------------
 
     @Test
     @Verifies(
         spec = "photo-access",
-        requirement = "Switching between full and limited access never re-uploads",
+        requirement = "Switching between full and limited access re-uploads only what was de-selected",
         scenario = "Widening to full access",
     )
     fun widening_to_full_access_sends_only_the_newly_in_scope_photos() = behaviour {

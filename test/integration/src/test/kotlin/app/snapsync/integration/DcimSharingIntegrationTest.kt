@@ -89,6 +89,49 @@ class DcimSharingIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Restoring or re-including a photo shares it again",
+        scenario = "A photo moved back into DCIM is shared again",
+    )
+    fun a_photo_moved_out_of_dcim_and_back_is_uploaded_again() = behaviour {
+        // A photo moved out of DCIM leaves the default gallery the app is handed, and moving it back returns it: the
+        // library levers' remove and add of the same photo. Whether Android keeps its id across the moves does not
+        // change the outcome — the withdrawal forgot that it was shared, so either way it is uploaded again.
+        given {
+            androidLibrary()
+            joinedEvent()
+            step("A shared", act = {
+                takePhoto("A")
+                os.foreground()
+            }, until = {
+                event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") }
+                settled { true }
+            })
+            step("A uploaded", act = { uploadSession.complete() }, until = {
+                event<WorldEvent.BytesStored> { it.asset == "A" }
+                settled { true }
+            })
+            step("A moved out of DCIM", act = {
+                library.remove("A")
+                os.foreground()
+            }, until = {
+                event<WorldEvent.ManifestPublished> { "A" in it.withdrawn }
+                settled { true }
+            })
+        }
+
+        whenever {
+            library.add("A", date = Rig.PHOTO_DATE)
+            os.foreground()
+        }
+        then {
+            times(1) { event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("A") } }
+            event<WorldEvent.ManifestPublished> { "A" in it.added }
+        }
+    }
+
     // ---- under limited access the member's selection decides what a photo is -------------------------------------
 
     @Test
