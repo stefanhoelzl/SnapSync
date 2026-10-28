@@ -101,8 +101,7 @@ photo the app can no longer move â€” one saved before the app was reinstalled â€
 #### Scenario: A photo shared before the join arrives shortly after
 - **WHEN** an iPhone member joins with the album on, and a photo they shared to an earlier event lies inside
   this event's range
-- **THEN** it appears in the new album after the device's first pass over the library, without being
-  uploaded again
+- **THEN** it appears in the new album after the device's first pass over the library
 
 #### Scenario: Gathering twice changes nothing
 - **WHEN** the album is gathered again over an unchanged event
