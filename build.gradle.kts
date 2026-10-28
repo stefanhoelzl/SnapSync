@@ -255,8 +255,9 @@ coverage {
     }
     ":domain:presentation" {
         unit(alsoCoveredBy = listOf(":ui:screens"))
-        // → 90/80 in phase 31, once the polling tests waited on outcome events instead.
-        integration(instructions = 90, branches = 80)
+        // → 90/80 in phase 31, once the polling tests waited on outcome events instead. → 91/80 in phase 21, when the
+        // photo-sharing claims drove the settings' range and direction changes and a link's ignored hints.
+        integration(instructions = 91, branches = 80)
     }
     ":app:jvm" {
         unit(alsoCoveredBy = listOf(":test:integration"))
