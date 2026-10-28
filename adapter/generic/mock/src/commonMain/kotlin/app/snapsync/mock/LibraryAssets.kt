@@ -79,6 +79,36 @@ object LibraryAssets {
         pixelHeight = 270,
     )
 
+    /** An iPhone panorama (16000×3400): very wide, far above the image floor. */
+    fun panorama(assetId: String, creationDate: String = DEFAULT_DATE): GalleryAssetResources =
+        photo(assetId, creationDate, pixelWidth = 16000, pixelHeight = 3400)
+
+    /** A camera photo cropped on the device to 1500×1200 (1.8 MP) — below the image floor, but edited, so **admitted**. */
+    fun croppedPhoto(assetId: String, creationDate: String = DEFAULT_DATE): GalleryAssetResources =
+        photo(assetId, creationDate, pixelWidth = 1500, pixelHeight = 1200, isEdited = true)
+
+    /**
+     * A full-resolution photo received by AirDrop or saved from Messages — to the platform an ordinary 12 MP photo with
+     * nothing marking it received, so **admitted**.
+     */
+    fun receivedFullResPhoto(assetId: String, creationDate: String = DEFAULT_DATE): GalleryAssetResources = photo(
+        assetId,
+        creationDate,
+        resources = listOf(primaryResource(filename = "IMG_4711.HEIC", contentType = "image/heic")),
+    )
+
+    /**
+     * An Android motion photo (4080×3072): one JPEG with its video appended, which the gallery reports as an image —
+     * **admitted**.
+     */
+    fun motionPhoto(assetId: String, creationDate: String = DEFAULT_DATE): GalleryAssetResources = photo(
+        assetId,
+        creationDate,
+        resources = listOf(primaryResource(filename = "PXL_20260601_100000000.MP.jpg")),
+        pixelWidth = 4080,
+        pixelHeight = 3072,
+    )
+
     /** A Live Photo: a still and its paired motion, two resources that upload separately. */
     fun livePhoto(assetId: String, creationDate: String = DEFAULT_DATE): GalleryAssetResources = photo(
         assetId,

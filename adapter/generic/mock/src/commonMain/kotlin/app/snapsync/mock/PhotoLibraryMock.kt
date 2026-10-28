@@ -125,6 +125,10 @@ class PhotoLibraryOperator internal constructor(private val state: LibraryState)
             LibraryPhotoKind.NARROW_VIDEO -> LibraryAssets.narrowVideo(id, at)
             LibraryPhotoKind.LIVE_PHOTO -> LibraryAssets.livePhoto(id, at)
             LibraryPhotoKind.GIF -> LibraryAssets.gif(id, at)
+            LibraryPhotoKind.PANORAMA -> LibraryAssets.panorama(id, at)
+            LibraryPhotoKind.CROPPED -> LibraryAssets.croppedPhoto(id, at)
+            LibraryPhotoKind.RECEIVED_FULL_RES -> LibraryAssets.receivedFullResPhoto(id, at)
+            LibraryPhotoKind.MOTION_PHOTO -> LibraryAssets.motionPhoto(id, at)
         }
         state.library.update { it + asset }
     }

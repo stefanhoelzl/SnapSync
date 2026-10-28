@@ -44,6 +44,25 @@ class DcimSharingIntegrationTest {
     @Test
     @Verifies(
         spec = "photo-sharing",
+        requirement = "When in doubt, a photo is shared",
+        scenario = "An Android motion photo is shared",
+    )
+    fun a_motion_photo_in_the_camera_folder_leaves_the_device() = behaviour {
+        given {
+            androidLibrary()
+            joinedEvent()
+        }
+
+        whenever {
+            library.add("MOTION", kind = LibraryPhotoKind.MOTION_PHOTO, date = Rig.PHOTO_DATE)
+            os.foreground()
+        }
+        then { event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("MOTION", MOTION_PHOTO_FILE) } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
         requirement = "On Android under full access, only photos in the DCIM folder are shared",
         scenario = "A screen recording in DCIM is not shared",
     )
@@ -153,5 +172,36 @@ class DcimSharingIntegrationTest {
 
         whenever { library.changeSelection(listOf("WA")) }
         then { event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("WA") } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "On Android under full access, only photos in the DCIM folder are shared",
+        scenario = "Under limited access a selected photo outside DCIM is shared",
+    )
+    fun a_selected_photo_saved_from_the_web_leaves_the_device_beside_a_camera_photo() = behaviour {
+        // Under a partial grant the gallery hands the app the member's selection wherever each photo is stored — that a
+        // photo outside DCIM reaches it is the Android gallery adapter's, proven by its contract; what the app does with
+        // it is this. The web image is a small one, so nothing about it would pass the full-access rules either.
+        given {
+            androidLibrary()
+            limitedMember()
+            step("an image saved from the web, and a camera photo", act = {
+                library.add("WEB", kind = LibraryPhotoKind.LOW_RES, date = Rig.PHOTO_DATE)
+                takePhoto("CAM")
+            }, until = { settled { true } })
+        }
+
+        whenever { library.changeSelection(listOf("WEB", "CAM")) }
+        then {
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("WEB") }
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("CAM") }
+        }
+    }
+
+    private companion object {
+        /** The file a motion photo is saved as: one JPEG, its video appended. */
+        const val MOTION_PHOTO_FILE = "PXL_20260601_100000000.MP.jpg"
     }
 }

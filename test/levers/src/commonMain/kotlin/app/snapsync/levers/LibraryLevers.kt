@@ -155,6 +155,25 @@ enum class LibraryPhotoKind {
 
     @SerialName("gif")
     GIF,
+
+    /** A panorama: very wide, and far above the image floor. */
+    @SerialName("panorama")
+    PANORAMA,
+
+    /** A camera photo cropped on the device until it is below the image floor — edited, so the floor spares it. */
+    @SerialName("cropped")
+    CROPPED,
+
+    /**
+     * A full-resolution photo another phone sent (AirDrop, Messages): the platform reports the facts of a camera photo,
+     * and nothing that marks it received.
+     */
+    @SerialName("received-full-res")
+    RECEIVED_FULL_RES,
+
+    /** An Android motion photo: one JPEG with its video appended, which the gallery reports as an image. */
+    @SerialName("motion-photo")
+    MOTION_PHOTO,
 }
 
 /** The app's access to the library, as the person granted it. */

@@ -79,6 +79,21 @@ class ShareableCountIntegrationTest {
     @Verifies(
         spec = "join-event",
         requirement = "The join screen shows how many photos will be shared",
+        scenario = "Zero is explained",
+    )
+    fun a_range_holding_none_of_the_member_s_photos_previews_a_ready_zero() = behaviour {
+        // A counted zero, not an absent count: the join screen words exactly this state as "0 photos from your gallery"
+        // with the note that new photos will be shared as they are taken (`ParticipationSections`, `JoinScreenTest`).
+        given { photoTaken("OLD", date = "2026-04-20T10:00:00Z") } // weeks before the event's range
+
+        whenever { create() }
+        then { shareCount(ShareCount.Ready(0)) }
+    }
+
+    @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen shows how many photos will be shared",
         scenario = "No count without access",
     )
     fun no_count_without_a_usable_grant() = behaviour {

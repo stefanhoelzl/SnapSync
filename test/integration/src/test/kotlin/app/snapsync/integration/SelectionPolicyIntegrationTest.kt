@@ -231,7 +231,106 @@ class SelectionPolicyIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Media that is certainly not an event photo is excluded",
+        scenario = "A cropped camera photo is shared",
+    )
+    fun a_photo_cropped_below_the_floor_is_shared_where_an_unedited_one_is_not() = behaviour {
+        // The same size either side: only the edit tells the cropped camera photo from received media.
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("CROP", LibraryPhotoKind.CROPPED) // 1500×1200, edited on the device
+            photoTaken("WA", LibraryPhotoKind.LOW_RES) // 1600×1200, unedited
+        }
+
+        whenever { cycle() }
+        then {
+            sharesExactly("CROP")
+            never<WorldEvent.ManifestPublished> { "WA" in it.added }
+        }
+
+        whenever { allLanded() }
+        then { landedExactly(shared = listOf("CROP"), excluded = listOf("WA")) }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "When in doubt, a photo is shared",
+        scenario = "A panorama is shared",
+    )
+    fun a_panorama_is_uploaded_and_shared() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("PANO", LibraryPhotoKind.PANORAMA)
+        }
+
+        whenever { cycle() }
+        then { sharesExactly("PANO") }
+
+        whenever { allLanded() }
+        then { landedExactly(shared = listOf("PANO")) }
+    }
+
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "When in doubt, a photo is shared",
+        scenario = "A full-resolution AirDropped photo is shared",
+    )
+    fun a_full_resolution_received_photo_is_uploaded_and_shared() = behaviour {
+        // Nothing the platform reports of it marks it received: it is shared, the accepted gap.
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photoTaken("AIRDROP", LibraryPhotoKind.RECEIVED_FULL_RES)
+        }
+
+        whenever { cycle() }
+        then { sharesExactly("AIRDROP") }
+
+        whenever { allLanded() }
+        then { landedExactly(shared = listOf("AIRDROP")) }
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
+
+    /**
+     * The cycle creates a job for exactly the photos [ids] — each a primary, so one job each — and the device manifest
+     * declares each as it goes.
+     */
+    private fun Expectations.sharesExactly(vararg ids: String) {
+        times(ids.size) { event<WorldEvent.UploadJobCreated>() }
+        ids.forEach { id -> event<WorldEvent.ManifestPublished> { id in it.added } }
+        settled {
+            it.state.inFlight?.jobs?.mapTo(mutableSetOf(), ::assetIdOfJob) == ids.mapTo(mutableSetOf(), ::testAssetId)
+        }
+    }
+
+    /** The OS lands every live job, and the next cycle records the completions and publishes. */
+    private suspend fun Acts.allLanded() {
+        uploadQueue.completeJob()
+        cycle()
+    }
+
+    /**
+     * [shared]'s bytes are stored and the device manifest keeps declaring them, so the union serves them; [excluded]
+     * reaches neither.
+     */
+    private fun Expectations.landedExactly(shared: List<String>, excluded: List<String> = emptyList()) {
+        shared.forEach { id ->
+            event<WorldEvent.BytesStored> { it.asset == id }
+            never<WorldEvent.ManifestPublished> { id in it.withdrawn }
+        }
+        excluded.forEach { id ->
+            never<WorldEvent.BytesStored> { it.asset == id }
+            never<WorldEvent.ManifestPublished> { id in it.added }
+        }
+    }
 
     /**
      * The camera photo's is the one job created, and the device manifest declares it as it goes — [excluded] is
