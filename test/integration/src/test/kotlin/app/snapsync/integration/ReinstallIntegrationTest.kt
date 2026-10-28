@@ -50,10 +50,11 @@ class ReinstallIntegrationTest {
             rejoined(event)
         }
 
-        // The photo still held is not received again; the deleted one may be.
+        // The photo still held is not received again; the deleted one may be — an accepted gap ("A reinstall may receive
+        // again"), so nothing here says whether it is.
         downloadsAll {
             never<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(imported("FB", OTHER)) }
-            settled { it.state.libraryPhotos?.size == 2 }
+            settled { imported("FB", OTHER) in it.state.libraryPhotos.orEmpty() }
         }
 
         // No received photo is shared back as the member's own, and nothing of them lands on the backend.
@@ -275,6 +276,108 @@ class ReinstallIntegrationTest {
     @Test
     @Verifies(
         spec = "receiving-photos",
+        requirement = "A deleted received photo never comes back",
+        scenario = "A rejoin that cannot reach the event receives nothing twice",
+    )
+    fun a_rejoin_that_cannot_read_the_event_receives_nothing_again_once_it_can() = behaviour {
+        given {
+            val event = joinedEvent().also { received("FA", "FB") }
+            reinstalled()
+            step("the event's photos unreadable", act = { backend.failUnion(true) }, until = {})
+            rejoinedUnrecognised(event)
+        }
+
+        // The event is read at last, and whatever that read started has finished: the photos still in the library are
+        // recognised, not saved again.
+        whenever {
+            backend.failUnion(false)
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.BackendReceived> { it.operation == UNION }
+            settled { true }
+        }
+        downloadsAll {
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { it.state.libraryPhotos == listOf(imported("FA", OTHER), imported("FB", OTHER)) }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos are never shared back",
+        scenario = "A received photo from before the event is recognised after a reinstall",
+    )
+    fun a_received_photo_from_before_the_event_is_not_shared_by_a_rejoin_whose_range_covers_it() = behaviour(
+        startAt = DURING,
+    ) {
+        // FA was taken the day before the event (the fellow member's photos carry `Rig.PHOTO_DATE`); the rejoin's range
+        // starts that morning, and the member's own photo of that evening shows the range really covers the day.
+        given {
+            extensionUploadsOnly()
+            val event = joinedEvent(startsAt = START, endsAt = END).also { received("FA") }
+            reinstalled()
+            photoTaken("OWN", date = THE_EVENING_BEFORE)
+            rejoined(event, Choices(cutoff = THE_MORNING_BEFORE))
+        }
+
+        whenever { uploadAll() }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "OWN" }
+            never<WorldEvent.BytesStored> { it.asset != "OWN" }
+            never<WorldEvent.ManifestPublished> { it.device != OTHER && it.added.any { asset -> asset != "OWN" } }
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos are never shared back",
+        scenario = "A received photo from before the event added to a limited selection is not shared back",
+    )
+    fun a_received_photo_from_before_the_event_added_to_a_limited_selection_is_not_shared() = behaviour(
+        startAt = DURING,
+    ) {
+        given {
+            val event = joinedEvent(startsAt = START, endsAt = END).also { received("FA") }
+            reinstalled()
+            step("an own photo taken", act = { takePhoto("OWN") }, until = { settled { true } })
+            gateOpenOn(event)
+            step("rejoined", act = { confirmJoin(Choices(cutoff = THE_MORNING_BEFORE)) }, until = {
+                screen<Layer.Joined>()
+                settled { true }
+            })
+            step("a partial grant, both uploaders on", act = {
+                library.permission(PhotoGrant.LIMITED)
+                devControls.pin(app = true, extension = true)
+            }, until = { settled { true } })
+            step("OWN selected, and the app in front", act = {
+                library.changeSelection(listOf("OWN"))
+                os.foreground()
+            }, until = {
+                event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("OWN") }
+                settled { true }
+            })
+        }
+
+        // The member adds the received photo from before the event, still carrying its mark, and opens the app.
+        whenever {
+            library.changeSelection(listOf("OWN", imported("FA", OTHER)))
+            os.foreground()
+        }
+        then {
+            never<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.ManifestPublished> { it.device != OTHER && it.added.any { asset -> asset != "OWN" } }
+            settled { it.state.inFlight?.sessionTransfers == listOf(primaryKey("OWN")) }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "receiving-photos",
         requirement = "Received photos are never shared back",
         scenario = "Received photos added to a limited selection are not shared back",
     )
@@ -325,20 +428,8 @@ class ReinstallIntegrationTest {
     private suspend fun Given.reinstalled() =
         step("reinstalled", act = { host.reinstall() }, until = { settled { true } })
 
-    /** [OTHER] shares [assets], and each arrives in the library: downloaded, staged and imported. */
-    private suspend fun Given.received(vararg assets: String) {
-        step("$OTHER shares ${assets.joinToString()}", act = {
-            publicBackend.foreignDevice(OTHER, assets.toList())
-            os.foreground()
-        }, until = {
-            event<WorldEvent.DownloadStarted>()
-            settled { true }
-        })
-        step("${assets.joinToString()} arrived", act = { downloadSession.finish() }, until = {
-            assets.forEach { asset -> event<WorldEvent.LibraryAssetCreated> { it.asset == imported(asset, OTHER) } }
-            settled { true }
-        })
-    }
+    /** [OTHER] shares [assets], and each arrives in the library. */
+    private suspend fun Given.received(vararg assets: String) = receivedFrom(OTHER, *assets)
 
     /** The join gate open on [event], through its invite, ready to join. */
     private suspend fun Given.gateOpenOn(event: String) {
@@ -411,5 +502,14 @@ class ReinstallIntegrationTest {
 
         /** Long enough for the joined screen's status poll (every 2 s) to read again. */
         val STATUS_POLL = 5.seconds
+
+        /** An event that starts the day after `Rig.PHOTO_DATE`, the capture date of every fellow member's photo. */
+        const val START = "2026-06-02T00:00:00"
+        const val END = "2026-06-07T00:00:00"
+        const val DURING = "2026-06-03T12:00:00Z"
+
+        /** A range starting the day before the event, ahead of `Rig.PHOTO_DATE` by hours, as the rig reads a cutoff. */
+        const val THE_MORNING_BEFORE = "2026-06-01T02:00:00Z"
+        const val THE_EVENING_BEFORE = "2026-06-01T19:30:00Z"
     }
 }
