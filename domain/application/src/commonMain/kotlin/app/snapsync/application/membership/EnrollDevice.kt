@@ -70,7 +70,9 @@ class EnrollDevice(
         when (val held = membership.read()) {
             is MembershipRead.NotJoined -> identified(active, key)
             is MembershipRead.Joined -> held(held.membership, active)
-            is MembershipRead.Unavailable -> EnrollOutcome.Failed()
+            // A membership this build refuses is no membership to keep: the join replaces it. Any other could not be
+            // read now, and the join fails rather than guess.
+            is MembershipRead.Unavailable -> if (held.refused) identified(active, key) else EnrollOutcome.Failed()
         }
 
     private fun held(held: Membership, wanted: Membership.Active): AdmitOutcome =

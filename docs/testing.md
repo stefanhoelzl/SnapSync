@@ -978,6 +978,9 @@ too):
     layer too: the shared records' legacy files and keys, a transfer an earlier build started on the address it gave
     it. Every format cites the release source it copies (`v0.4:<path>:<line>`); each layer is deleted with the shim
     that reads it, and squashing a chain folds the layers below its new baseline into the baseline's.
+  - `older-install.refusedShareRange()` stretches the joined membership's share range past 30 days on the device's own
+    ledger: a row a build with looser rules could have stored, which this build refuses (`MembershipRead.Unavailable.refused`).
+    The relaunch after it is the update (`RefusedMembershipIntegrationTest`).
 - `device` (`DeviceLevers`) — a phone before its first unlock since it restarted, implemented by the rig over three
   mocks at once: the Keychain, the databases and the files sealed together, never one without the others, so it needs
   all three mocked. What each store answers then is Apple's documented semantics for the classes the app writes —

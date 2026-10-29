@@ -3,6 +3,7 @@ package app.snapsync.data.membership
 import app.snapsync.data.store.LegacySource
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.data.store.db.SelectMembership
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.Membership
 
@@ -16,7 +17,7 @@ internal fun LedgerDatabase.membershipRead(): MembershipRead =
         false -> MembershipRead.Unavailable("the membership is still in its legacy file")
     }
 
-/** Enter [active]'s membership, while none is held. */
+/** Enter [active]'s membership, while none is held — or only one this build refuses, which it replaces. */
 internal fun LedgerDatabase.enter(active: Membership.Active): EnterResult = when (heldAgainst(active.event.id)) {
     Held.None -> EnterResult.Entered(active).also { membershipQueries.save(active) }
     Held.Same -> EnterResult.AlreadyJoined
@@ -25,14 +26,21 @@ internal fun LedgerDatabase.enter(active: Membership.Active): EnterResult = when
 
 private enum class Held { None, Same, Other }
 
+// A row this build refuses — the only one `stored` answers with anything but `Joined` — holds nothing a join could lose
+// (`MembershipRead.Unavailable.refused`): it is no membership to keep.
 private fun LedgerDatabase.heldAgainst(event: EventId): Held = membershipQueries.selectMembership().executeAsList()
-    .map {
-        when (it.eventId == Stored.Valid(event)) {
-            true -> Held.Same
-            false -> Held.Other
+    .map { row ->
+        when (stored(row) is MembershipRead.Joined) {
+            true -> heldAs(row, event)
+            false -> Held.None
         }
     }
     .firstOrNull() ?: Held.None
+
+private fun heldAs(row: SelectMembership, event: EventId): Held = when (row.eventId == Stored.Valid(event)) {
+    true -> Held.Same
+    false -> Held.Other
+}
 
 /** Mark [event]'s membership, [active], deleted. */
 internal fun LedgerDatabase.markDeleted(event: EventId, active: Membership.Active): MarkResult {

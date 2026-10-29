@@ -13,6 +13,14 @@ sealed interface MembershipRead {
 
     class NotJoined(val evidence: ConfirmedNotJoined) : MembershipRead
 
-    /** The membership could not be read now. [detail] is diagnostics only. */
-    data class Unavailable(val detail: String) : MembershipRead
+    /**
+     * The membership could not be read now. [detail] is diagnostics only.
+     *
+     * [refused] when the store answered with a row this build refuses — a share range its rules forbid, an inverted
+     * event, a blank name. No path in this build writes one; an older build's row read against tightened rules is how
+     * one would arrive. Nothing is shared or received for it, as for any unreadable membership, but read again it
+     * answers the same — so a join replaces it, the member's one way back into an event, where any other unreadable
+     * membership fails the join.
+     */
+    data class Unavailable(val detail: String, val refused: Boolean = false) : MembershipRead
 }

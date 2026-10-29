@@ -23,7 +23,9 @@ import app.snapsync.mock.DatabasesMock
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 /**
  * This device's membership in the shared database: "not joined" only from a store that answered, every write after the
@@ -128,8 +130,21 @@ class MembershipRepositoryTest {
             { stored(from = "2026-07-22T00:00:00Z", until = "2026-07-23T00:00:00Z") },
         )) {
             row()
-            assertIs<MembershipRead.Unavailable>(repository.read())
+            assertTrue(
+                assertIs<MembershipRead.Unavailable>(repository.read()).refused,
+                "refused, as read again it will be",
+            )
         }
+    }
+
+    // capability `join-event`, "An unknown range shares nothing": a row this build refuses holds nothing a join could lose,
+    // and keeping it would leave the member unable to join any event.
+    @Test
+    fun `a join replaces a row the domain refuses`() {
+        stored(from = "2026-07-22T00:00:00Z", until = "2026-07-23T00:00:00Z")
+
+        assertEquals(EnterResult.Entered(active()), repository.enter(enrolled()))
+        assertEquals(MembershipRead.Joined(active()), repository.state.value)
     }
 
     @Test
@@ -145,7 +160,7 @@ class MembershipRepositoryTest {
     fun `a locked store is unavailable, and a reload keeps the last conclusive read`() {
         repository.enter(enrolled())
         device.lock()
-        assertIs<MembershipRead.Unavailable>(repository.read())
+        assertFalse(assertIs<MembershipRead.Unavailable>(repository.read()).refused, "it may read again")
         repository.reload()
         assertEquals(MembershipRead.Joined(active()), repository.state.value, "a passing failure keeps the membership")
 
