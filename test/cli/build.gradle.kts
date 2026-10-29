@@ -54,5 +54,15 @@ tasks.test {
     // JUnit 4, not the platform: the contracts module (on the runtime path through the rig) binds kotlin-test to
     // JUnit 4 in its main code, and two kotlin-test framework bindings cannot coexist.
     useJUnit()
+    // `SkillCommandsTest`'s subjects: every `rig` command a runbook names must resolve. Without them declared, a
+    // runbook edit that names a command `rig` does not have leaves this task UP-TO-DATE, and the guard passes a file it
+    // never read.
+    inputs.files(
+        fileTree(rootDir) {
+            include(".claude/skills/**/*.md")
+            include("**/AGENTS.md")
+            exclude("**/build/**", "**/node_modules/**", ".git/**", ".gradle/**")
+        },
+    ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("runbooks")
 }
 liveEdge.consumedBy(tasks.test)
