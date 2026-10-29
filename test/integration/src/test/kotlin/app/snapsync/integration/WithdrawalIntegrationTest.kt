@@ -210,7 +210,7 @@ class WithdrawalIntegrationTest {
 
         whenever {
             reconfigure(Choices(range = RangeChoice.EVENT_START))
-            awaitSharesFrom(LocalDateTime.parse(Rig.WINDOW_START))
+            awaitSharesFrom(LocalDateTime.parse(Defaults.WINDOW_START))
             cycle()
         }
         then {

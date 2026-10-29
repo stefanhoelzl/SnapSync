@@ -10,5 +10,5 @@ import app.snapsync.levers.LibraryPhotoKind
 suspend fun Given.photoTaken(
     id: String,
     kind: LibraryPhotoKind = LibraryPhotoKind.PHOTO,
-    date: String = Rig.PHOTO_DATE,
+    date: String = Defaults.PHOTO_DATE,
 ) = step("$id taken", act = { library.add(id, kind, date) }, until = { settled { true } })

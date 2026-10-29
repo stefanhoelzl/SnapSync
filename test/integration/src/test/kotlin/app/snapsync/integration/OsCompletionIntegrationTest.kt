@@ -5,10 +5,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.TransferEnd
 import app.snapsync.levers.WorldEvent
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlin.test.Test
-import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
 /**
@@ -201,37 +198,6 @@ class OsCompletionIntegrationTest {
             never<WorldEvent.CompletionReleased> { it.again }
             event<WorldEvent.HoldEnded>() // and the wake's hold ended with it
         }
-    }
-
-    // Still read the old way: what it pins — the stagings recorded before the release — is in the app's own staging
-    // directory, and nothing outside the app shows it at the release (the import they request follows it).
-    @Test
-    fun a_drain_report_releases_after_the_stagings_it_announced_are_recorded() = rigTest {
-        createAndJoin()
-        foreignDevice(DEV_F, "FQ")
-        reconcile() // the transfer is in flight in the operating system's session
-        host.relaunch(scene = false)
-        // A recorded staging requests its own tail at once, and that import would take the bytes out of staging before
-        // the release is read. Failing it keeps them, so the count at the release reads the wake's work alone.
-        library.failNextImport()
-        val armed = wake.wakes().heartbeatsScheduled
-
-        val atRelease = coroutineScope {
-            val delivery = async { os.backgroundTransfers(DOWNLOAD_SESSION, awaitRelease = true) }
-            awaitDownloadSessionUp()
-            downloadSession.finish()
-            downloadSession.reportEventsDrained()
-            checkNotNull(delivery.await()).atRelease
-        }
-
-        assertTrue(
-            checkNotNull(atRelease.stagedFiles) > 0,
-            "the stagings the wake delivered were recorded before the release",
-        )
-        // The wake's work follows the release, under the process's background time: awaited to its end, or the test
-        // could end before it ever started.
-        eventually(read = { wake.wakes().heartbeatsScheduled }) { it > armed }
-        awaitNoHolds()
     }
 
     // ---- the silent push's tail -----------------------------------------------------------------------------------

@@ -158,7 +158,7 @@ class AdmittedSetIntegrationTest {
         endsAt: String,
     ): Seen<Layer.JoiningEvent> {
         lateinit var preview: Seen<Layer.JoiningEvent>
-        whenever { createEvent(Rig.EVENT_NAME, startsAt, endsAt) }
+        whenever { createEvent(Defaults.EVENT_NAME, startsAt, endsAt) }
         then { preview = screen<Layer.JoiningEvent> { it.range?.shareCount is ShareCount.Ready } }
         return preview
     }

@@ -68,7 +68,7 @@ class HeldScreenIntegrationTest {
         given { step("the create held", act = { backend.hold(BackendCall.CREATE) }, until = {}) }
 
         whenever {
-            createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
+            createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END)
         }
         then {
             screen<Layer.CreatingEvent>()

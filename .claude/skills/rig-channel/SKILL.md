@@ -937,7 +937,7 @@ of it, so the loop knows when the app is **settled** — nothing running or runn
 but an operator's hold (`docs/testing.md` §7, "How a test waits"). Every request is a task of that loop: a `POST` or a
 typed call is an **act**, announced first; a `GET` runs there unannounced. Two consequences when driving it by hand:
 
-- **Time.** `JvmRigHost.start(time = LoopTime.REAL)` — what `runJvmHost` and the old `rigTest` use — keeps the wall
+- **Time.** `JvmRigHost.start(time = LoopTime.REAL)` — what `runJvmHost` and `ShotsTest` use — keeps the wall
   clock: timers fire after their real duration and `world.advanceTo(at)` only moves the clock the app reads. Under
   `LoopTime.MOCKED` (what `behaviour { }` uses) nothing fires until `world.advance(millis)` or `world.advanceTo(at)`
   moves the clock, each timer at its own instant, settling between them.

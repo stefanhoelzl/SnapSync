@@ -1,7 +1,6 @@
 package app.snapsync.screenshots
 
 import app.snapsync.client.RigClient
-import app.snapsync.integration.Rig
 import app.snapsync.integration.Shot
 import app.snapsync.integration.reach
 import app.snapsync.levers.AdaptersLevers
@@ -92,16 +91,16 @@ internal interface CaptureHost {
 }
 
 private class Capture(private val host: CaptureHost, private val out: File) {
-    private val rig = Rig(RigClient("http://127.0.0.1:${host.port}"))
+    private val rig = RigClient("http://127.0.0.1:${host.port}")
 
     suspend fun all() {
         // The first launch runs whatever choice the app's shared area holds — none, on a fresh install: on iOS all real,
         // on Android all mocked in memory. Writing the choice exits the app; every later launch composes over it.
         host.launch()
-        rig.client.levers(AdaptersLevers).choose(CHOICE)
+        rig.levers(AdaptersLevers).choose(CHOICE)
         host.awaitGone()
         host.launch()
-        val folder = checkNotNull(rig.client.levers(AdaptersLevers).current().folder) { "the app host names no folder for its adapter choice" }
+        val folder = checkNotNull(rig.levers(AdaptersLevers).current().folder) { "the app host names no folder for its adapter choice" }
         Shot.entries.forEach { shot -> capture(shot, folder) }
     }
 
@@ -126,8 +125,9 @@ private class Capture(private val host: CaptureHost, private val out: File) {
     /**
      * The next launch must find the clock the shot set: the app writes a changed mocked system every 500 ms, and a
      * terminate is no exit it can save before. So wait until the clock's state carries it, then terminate and launch.
+     * The one wait here on the app's own doing that no event backs: a launch-adapters save tells no one.
      */
-    private suspend fun Rig.relaunchOnceSaved(folder: String) {
+    private suspend fun relaunchOnceSaved(folder: String) {
         val clock = "$folder/state/clock.json"
         val millis = Instant.parse(Shot.NOW).toEpochMilliseconds().toString()
         within(10.seconds, "the clock's state was never saved to $clock") { this@Capture.host.read(clock)?.contains(millis) == true }

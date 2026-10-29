@@ -103,8 +103,8 @@ internal class HostThreads private constructor(
     }
 
     companion object {
-        fun open(time: LoopTime, startAt: Instant?, backend: RigBackend): HostThreads {
-            val events = WorldEvents()
+        fun open(time: LoopTime, startAt: Instant?, backend: RigBackend, serving: WorldEvents.Serving): HostThreads {
+            val events = WorldEvents(serving)
             var opened: HostThreads? = null
             // An OS upload's request to a real backend crosses its network off the loop, so the loop waits on it.
             val network = backend.network?.let { network ->

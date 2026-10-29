@@ -193,7 +193,7 @@ class FolderAlbumIntegrationTest {
     fun the_join_screen_offers_both_switches_the_range_and_the_folder_album_switched_on() = behaviour {
         given { androidLibrary() }
 
-        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             joinSurface { it.shareOn && it.receiveOn && it.saveToAlbum && it.albumHolds == AlbumHolds.RECEIVED }
         }

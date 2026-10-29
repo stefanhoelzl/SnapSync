@@ -122,7 +122,7 @@ class ReceivingIntegrationTest {
         scenario = "A received photo sorts by capture time",
     )
     fun a_photo_taken_yesterday_is_saved_at_its_capture_time_not_today() = behaviour {
-        // Every fellow member's photo was taken at `Rig.PHOTO_DATE`; it is received the day after.
+        // Every fellow member's photo was taken at `Defaults.PHOTO_DATE`; it is received the day after.
         given {
             joinedEvent()
             step("the next day", act = { advanceTo(THE_NEXT_DAY) }, until = { settled { true } })
@@ -130,7 +130,7 @@ class ReceivingIntegrationTest {
         }
 
         whenever { downloadSession.finish() }
-        then { event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FQ") && it.date == Rig.PHOTO_DATE } }
+        then { event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FQ") && it.date == Defaults.PHOTO_DATE } }
     }
 
     @Test
@@ -203,7 +203,7 @@ class ReceivingIntegrationTest {
         scenario = "A received photo stays out of the member's contribution",
     )
     fun a_received_photo_inside_the_range_is_neither_uploaded_nor_counted_nor_announced() = behaviour {
-        // FQ carries `Rig.PHOTO_DATE`, inside the member's range, as MINE does.
+        // FQ carries `Defaults.PHOTO_DATE`, inside the member's range, as MINE does.
         given {
             extensionUploadsOnly()
             joinedEvent()
@@ -233,7 +233,7 @@ class ReceivingIntegrationTest {
     private fun Layer.Joined.sharedTotal(): Int? = (counts?.shared as? DirectionCount.Progress)?.total
 
     private companion object {
-        /** The day after `Rig.PHOTO_DATE`. */
+        /** The day after `Defaults.PHOTO_DATE`. */
         const val THE_NEXT_DAY = "2026-06-02T12:00:00Z"
 
         /** Long enough for the joined screen's status poll (every 2 s) to read again. */

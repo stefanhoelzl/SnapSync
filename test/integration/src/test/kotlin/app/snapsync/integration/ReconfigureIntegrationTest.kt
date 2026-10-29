@@ -92,7 +92,7 @@ class ReconfigureIntegrationTest {
         whenever { reconfigure(Choices(saveToAlbum = true)) }
         then {
             event<WorldEvent.LibraryJoinedAlbum> { it.asset == "A" }
-            settled { it.state.albums?.map { album -> album.title to album.photos } == listOf(Rig.EVENT_NAME to listOf("A")) }
+            settled { it.state.albums?.map { album -> album.title to album.photos } == listOf(Defaults.EVENT_NAME to listOf("A")) }
         }
 
         // A NEW photo synced after the toggle is placed too, at its first enqueue — before the upload completed.

@@ -54,7 +54,7 @@ class DcimSharingIntegrationTest {
         }
 
         whenever {
-            library.add("MOTION", kind = LibraryPhotoKind.MOTION_PHOTO, date = Rig.PHOTO_DATE)
+            library.add("MOTION", kind = LibraryPhotoKind.MOTION_PHOTO, date = Defaults.PHOTO_DATE)
             os.foreground()
         }
         then { event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("MOTION", MOTION_PHOTO_FILE) } }
@@ -74,8 +74,8 @@ class DcimSharingIntegrationTest {
 
         whenever {
             library.placeIn("Screen recordings", "REC")
-            library.add("REC", kind = LibraryPhotoKind.HD_VIDEO, date = Rig.PHOTO_DATE)
-            library.add("CLIP", kind = LibraryPhotoKind.HD_VIDEO, date = Rig.PHOTO_DATE)
+            library.add("REC", kind = LibraryPhotoKind.HD_VIDEO, date = Defaults.PHOTO_DATE)
+            library.add("CLIP", kind = LibraryPhotoKind.HD_VIDEO, date = Defaults.PHOTO_DATE)
             os.foreground()
         }
         then {
@@ -98,7 +98,7 @@ class DcimSharingIntegrationTest {
         }
 
         whenever {
-            library.add("SMALL", kind = LibraryPhotoKind.LOW_RES, date = Rig.PHOTO_DATE)
+            library.add("SMALL", kind = LibraryPhotoKind.LOW_RES, date = Defaults.PHOTO_DATE)
             takePhoto("A")
             os.foreground()
         }
@@ -142,7 +142,7 @@ class DcimSharingIntegrationTest {
         }
 
         whenever {
-            library.add("A", date = Rig.PHOTO_DATE)
+            library.add("A", date = Defaults.PHOTO_DATE)
             os.foreground()
         }
         then {
@@ -188,7 +188,7 @@ class DcimSharingIntegrationTest {
             androidLibrary()
             limitedMember()
             step("an image saved from the web, and a camera photo", act = {
-                library.add("WEB", kind = LibraryPhotoKind.LOW_RES, date = Rig.PHOTO_DATE)
+                library.add("WEB", kind = LibraryPhotoKind.LOW_RES, date = Defaults.PHOTO_DATE)
                 takePhoto("CAM")
             }, until = { settled { true } })
         }

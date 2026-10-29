@@ -12,9 +12,8 @@ import kotlin.test.assertTrue
  * host's loop moves. So its sources name no wall clock and no thread of their own, and the app code the host runs names
  * no dispatcher or thread the loop cannot see — or the loop's "settled" would lie and a negative would pass early.
  *
- * Each rule the suite does not meet yet carries a list of the test classes still waiting (or reading) the old way. The lists may
- * only shrink — exact both ways, so a class that complies leaves its list in the same change — and phase 3g-b empties
- * them.
+ * The waits hold with no exceptions: phase 3g-b removed the last poll and the polling helpers with it
+ * (`DeletionLedgerTest`). A claim still has its list of classes not yet claiming, which may only shrink.
  */
 class TestsWaitOnEventsTest {
 
@@ -39,29 +38,28 @@ class TestsWaitOnEventsTest {
         val waiting = integration.filter { source -> WALL_CLOCK.containsMatchIn(ZoneGates.stripComments(source.text)) }
             .map { it.file.nameWithoutExtension }.toSet()
         assertEquals(
-            STILL_WAITING_BY_TIME.toSortedSet(),
+            emptySet(),
             waiting.toSortedSet(),
             "an integration test waits on an event and moves time through the host's clock — never `delay`, " +
-                "`Thread.sleep`, `withTimeout`, the system clock or a dispatcher of its own. A class leaves the list once " +
-                "it complies; no class joins it.",
+                "`Thread.sleep`, `withTimeout`, the system clock or a dispatcher of its own.",
         )
     }
 
     /**
      * A poll is a wait no event backs: it reads until a condition holds or a bound runs out, so it passes early on a
-     * state the app is only passing through, and fails late on one it never reaches. The rules above never see one —
-     * `eventually` and `rigTest` name no clock — so a class could leave `behaviour` for polling unnoticed; this one sees
-     * it. Every call counts, the support files' own included: they are what the old tests poll through.
+     * state the app is only passing through, and fails late on one it never reaches. The rule above never sees one — a
+     * poll need name no clock — so this one names the polls the suite once had, should one return under its old name.
+     * Every call counts, the support files' own included.
      */
     @Test
     fun `integration sources do not poll`() {
         val polling = integration.filter { source -> POLL.containsMatchIn(ZoneGates.stripComments(source.text)) }
             .map { it.file.nameWithoutExtension }.toSet()
         assertEquals(
-            STILL_POLLING.toSortedSet(),
+            emptySet(),
             polling.toSortedSet(),
-            "an integration test waits on the host's events (`behaviour { … }`) — never `rigTest`, `awaitState`, " +
-                "`neverWithin` or `eventually`, which poll. A class leaves the list once it polls no more; no class joins it.",
+            "an integration test waits on the host's events (`behaviour { … }`, `RigClient.awaitScreen`) — never " +
+                "`rigTest`, `awaitState`, `neverWithin` or `eventually`, which poll.",
         )
     }
 
@@ -138,8 +136,8 @@ class TestsWaitOnEventsTest {
         val FUNCTION = Regex("""\bfun\s+(`[^`]+`|\w+)""")
         val CLASS_CLAIM = Regex("""@Verifies\([^)]*\)\s*(@\w+[^\n]*\s*)*class\s""")
 
-        /** A call of a polling wait — never its declaration (`fun rigTest`, `fun Rig.eventually`). */
-        val POLL = Regex("""(?<!fun )(?<!fun Rig\.)\b(rigTest|awaitState|neverWithin|eventually)\s*[({<]""")
+        /** A call of a polling wait — never its declaration (`fun eventually`). */
+        val POLL = Regex("""(?<!fun )\b(rigTest|awaitState|neverWithin|eventually)\s*[({<]""")
 
         /** A read of the host's device log. */
         val LOG_READ = Regex("""\.logs\(""")
@@ -178,24 +176,5 @@ class TestsWaitOnEventsTest {
             "OsCompletionIntegrationTest", "RelaunchIntegrationTest", "RenameIntegrationTest", "UnreadStatusIntegrationTest",
             "VersionGateIntegrationTest",
         )
-
-        /**
-         * May only shrink: sources that still poll. Phase 31 converted every test that waits on an outcome a system
-         * outside the app records; what remains is
-         * - the legacy helpers `Rig`, `RigEvents`, `RigOs`, `RigTraffic` and `RigUploaders`, which the tests below still
-         *   call, and which phase 3g-b deletes with the polls;
-         * - `Shots` and `ShotsTest`: the marketing scenarios, shared with the simulator capture, whose device host has no
-         *   event stream yet;
-         * - `OsCompletionIntegrationTest` (one test) and `UploadCycleIntegrationTest` (two): what each pins — the
-         *   stagings in the app's own staging directory, which databases a wake opens — is the app's private state,
-         *   which nothing outside the app records, so no event can stand in for it.
-         */
-        val STILL_POLLING = setOf(
-            "OsCompletionIntegrationTest", "Rig", "RigEvents", "RigOs", "RigTraffic", "RigUploaders", "Shots",
-            "ShotsTest", "UploadCycleIntegrationTest",
-        )
-
-        /** May only shrink: classes that still wait by the wall clock — the legacy helpers' `Rig.kt` among them. */
-        val STILL_WAITING_BY_TIME = setOf("Rig")
     }
 }

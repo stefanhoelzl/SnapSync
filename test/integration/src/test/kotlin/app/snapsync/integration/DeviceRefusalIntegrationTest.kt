@@ -67,7 +67,7 @@ class DeviceRefusalIntegrationTest {
             }, until = {})
         }
 
-        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             screen<Layer.CreateEvent> { it.error == ScreenMessage.DEVICE_MODIFIED }
             neverScreen<Layer.CreateEvent> { it.error != null && it.error != ScreenMessage.DEVICE_MODIFIED }
@@ -83,7 +83,7 @@ class DeviceRefusalIntegrationTest {
     fun a_refused_create_says_why_and_leaves_the_phone_in_no_event() = behaviour {
         given { refused(DeviceRefusal.DEVICE_MODIFIED) }
         // The tap itself tried to verify the phone first, so it learns the cause from this create.
-        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             screen<Layer.CreateEvent> { it.error == ScreenMessage.DEVICE_MODIFIED }
             // The device is still in no event.
@@ -114,7 +114,7 @@ class DeviceRefusalIntegrationTest {
         }
 
         // No reopening: the tap re-checks, and the event is created as on any genuine phone.
-        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             event<WorldEvent.EventCreated>()
             screen<Layer.JoiningEvent> { it.phase is JoinPhase.Detailed }
@@ -217,7 +217,7 @@ class DeviceRefusalIntegrationTest {
      * accepted does.
      */
     private suspend fun Given.tokenless(told: ScreenMessage) = step("a refused create", act = {
-        createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
+        createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END)
     }, until = {
         screen<Layer.CreateEvent> { it.error == told }
         settled { true }

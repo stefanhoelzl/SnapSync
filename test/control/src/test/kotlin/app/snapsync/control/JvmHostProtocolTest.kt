@@ -35,14 +35,15 @@ import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.RigVocabulary
 import app.snapsync.rig.UPLOAD_HEARTBEAT_TASK
 import app.snapsync.rig.UPLOAD_TRANSFER_CHANNEL
+import app.snapsync.rig.WorldEvents
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.UiIntent
+import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -75,8 +76,8 @@ class JvmHostProtocolTest {
         client.levers(BackendLevers).minAppVersion("100.0")
         // Any backend call carries the version; a create is the first a person makes.
         client.person().createEvent("Old", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
-        val refused = client.awaitState { it.ui.layer is Layer.UpdateRequired }
-        assertEquals("100.0", (refused.ui.layer as Layer.UpdateRequired).minimumVersion)
+        val refused = client.awaitScreen("the update-required screen") { it.layer is Layer.UpdateRequired }
+        assertEquals("100.0", (refused.layer as Layer.UpdateRequired).minimumVersion)
     }
 
     /**
@@ -219,8 +220,8 @@ class JvmHostProtocolTest {
         )
         val screen = client.levers(ScreenLevers)
         screen.tap(UiIntent.CreateName("Tapped"))
-        val shown = client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.form?.name == "Tapped" }
-        assertEquals(shown.ui.layer, screen.shown()?.layer, "the screen shows what the host's state reports")
+        val shown = client.awaitScreen("the tapped name") { (it.layer as? Layer.CreateEvent)?.form?.name == "Tapped" }
+        assertEquals(shown.layer, screen.shown()?.layer, "the screen shows what the host's state reports")
     }
 
     /**
@@ -341,9 +342,9 @@ class JvmHostProtocolTest {
         backend.fail("createEvent", BackendFault.MAINTENANCE)
         val person = client.person()
         person.createEvent("Faulty", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
-        client.awaitState { (it.ui.layer as? Layer.CreateEvent)?.error != null }
+        client.awaitScreen("the create's error") { (it.layer as? Layer.CreateEvent)?.error != null }
         person.createEvent("Faulty", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
-        client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
+        client.awaitScreen("the join gate's range") { (it.layer as? Layer.JoiningEvent)?.range != null }
     }
 
     /**
@@ -353,16 +354,16 @@ class JvmHostProtocolTest {
     @Test
     fun the_mobile_data_choice_is_the_devices_and_driven_from_the_menu() = onHost { client ->
         client.person().tap(UiIntent.MobileData(false))
-        client.awaitState { !it.ui.mobileData.on }
+        client.awaitScreen("mobile data off") { !it.mobileData.on }
 
         client.person().createEvent("Data", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
-        client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
+        client.awaitScreen("the join gate's range") { (it.layer as? Layer.JoiningEvent)?.range != null }
         client.person().confirmJoin()
-        val joined = client.awaitState { it.ready.configResolved }
-        assertEquals(false, joined.ui.mobileData.on, "the joined event follows the device's choice")
+        val joined = client.awaitScreen("the joined screen") { it.layer is Layer.Joined }
+        assertEquals(false, joined.mobileData.on, "the joined event follows the device's choice")
 
         client.person().tap(UiIntent.MobileData(true))
-        client.awaitState { it.ui.mobileData.on }
+        client.awaitScreen("mobile data on") { it.mobileData.on }
     }
 
     /**
@@ -371,10 +372,9 @@ class JvmHostProtocolTest {
      */
     private fun roundTrip(backend: String) = onHost(backend) { client ->
         client.person().createEvent("Rig Trip", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
-        client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
+        client.awaitScreen("the join gate's range") { (it.layer as? Layer.JoiningEvent)?.range != null }
         client.person().confirmJoin()
-        val joined = client.awaitState { it.ready.configResolved }
-        assertIs<Layer.Joined>(joined.ui.layer)
+        client.awaitJoined()
 
         // The extension's cycle alone: the app's uploader, running beside it as on a phone, would take the same photo.
         client.levers(DevControlsLevers).pin(app = false, extension = true)
@@ -402,9 +402,9 @@ class JvmHostProtocolTest {
     @Test
     fun a_relaunch_keeps_what_the_device_keeps() = onHost { client ->
         client.person().createEvent("Relaunch", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
-        client.awaitState { (it.ui.layer as? Layer.JoiningEvent)?.range != null }
+        client.awaitScreen("the join gate's range") { (it.layer as? Layer.JoiningEvent)?.range != null }
         client.person().confirmJoin()
-        val event = client.awaitState { it.ready.configResolved }.ready.eventId
+        val event = client.awaitJoined()
         // The extension's cycle alone: the app's uploader, running beside it as on a phone, would take the same photo.
         client.levers(DevControlsLevers).pin(app = false, extension = true)
         client.levers(GalleryLevers).seed(1, SeedKind.POLICY)
@@ -412,7 +412,7 @@ class JvmHostProtocolTest {
 
         client.levers(HostLevers).relaunch()
 
-        assertEquals(event, client.awaitState { it.ready.configResolved }.ready.eventId, "the membership survives")
+        assertEquals(event, client.awaitJoined(), "the membership survives")
         assertEquals(
             1L,
             client.levers(GalleryLevers).read(cutoff = "1970-01-01T00:00:00Z").census.total,
@@ -424,14 +424,25 @@ class JvmHostProtocolTest {
     private fun onHost(backend: String = "mock", block: suspend (RigClient) -> Unit) =
         onHost(backend) { client, _ -> block(client) }
 
+    /**
+     * A host serving its events as a device host does — from where the latest act began — so a caller waits on the
+     * screen as it waits on a device ([RigClient.awaitScreen]).
+     */
     private fun onHost(backend: String = "mock", block: suspend (RigClient, JvmRigHost) -> Unit) = runBlocking {
-        val host = JvmRigHost.start(backend)
+        val host = JvmRigHost.start(backend, serving = WorldEvents.Serving.FROM_THE_LAST_ACT)
         try {
             RigClient("http://127.0.0.1:${host.port}").use { block(it, host) }
         } finally {
             host.close()
         }
     }
+
+    private suspend fun RigClient.awaitScreen(what: String, holds: (UiState) -> Boolean): UiState =
+        awaitScreen(SCREEN_WAIT, what, holds)
+
+    /** Waits for the joined screen, and answers the event it shows. */
+    private suspend fun RigClient.awaitJoined(): String =
+        (awaitScreen("the joined screen") { it.layer is Layer.Joined }.layer as Layer.Joined).membership.eventId
 
     private companion object {
         const val MINTED = "0b0e5f2a-7c1d-4e8a-9f3b-2d6c8a1e4f70"

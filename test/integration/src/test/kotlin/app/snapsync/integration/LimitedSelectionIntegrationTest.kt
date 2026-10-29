@@ -245,7 +245,7 @@ class LimitedSelectionIntegrationTest {
     // ---- helpers --------------------------------------------------------------------------------------------------
 
     /** The photo [id], of [kind], captured at [date] (the event's day unless said), lands in the library. */
-    private suspend fun Given.taken(id: String, kind: LibraryPhotoKind? = null, date: String = Rig.PHOTO_DATE) =
+    private suspend fun Given.taken(id: String, kind: LibraryPhotoKind? = null, date: String = Defaults.PHOTO_DATE) =
         step("$id taken", act = { library.add(id, kind, date) }, until = { settled { true } })
 
     /** A limited-access member who selected a camera photo and a screenshot, both shared and uploaded. */
@@ -267,7 +267,7 @@ class LimitedSelectionIntegrationTest {
     private fun Layer.Joined.sharedTotal(): Int? = (counts?.shared as? DirectionCount.Progress)?.total
 
     private companion object {
-        /** A capture time before the default event's range (`Rig.WINDOW_START`). */
+        /** A capture time before the default event's range (`Defaults.WINDOW_START`). */
         const val BEFORE_THE_RANGE = "2026-05-01T10:00:00Z"
 
         /** A day of an earlier event this member shared to, weeks before this one's range. */

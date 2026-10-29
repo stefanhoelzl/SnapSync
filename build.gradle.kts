@@ -94,10 +94,6 @@ subprojects {
 // module (the precondition for the platform-free compile error), and `Zones.kt` reads those files as TEXT, where an
 // edge to the covering module would render backwards. Name LEAF modules: `:domain` is an empty container, and a report
 // filtered to it measures nothing — `:domain:model:koverVerify` once passed at 100 over an empty report that way.
-/** Why a module's integration measurement waits for phase 3g: the polling tests' race, not what the module lacks. */
-val pollingRace = "the polling tests reach its SingleFlight yield/withdraw and expiry paths only in a process " +
-    "death's race window, so its measurement moves with the machine's timing until phase 3g converts them"
-
 coverage {
     integrationGoal(instructions = 95, branches = 85)
     ":domain:model" {
@@ -233,19 +229,20 @@ coverage {
         // an event a switch left behind and the fourth failure in a row are their unit suite's (`SealVerdictsTest`).
         integration(instructions = 86, branches = 71)
     }
-    // Integration-skipped until phase 3g: what the polling tests reach of these two moves with the machine's timing.
-    // Their SingleFlight yield/withdraw and expiry paths run only when a process dies in the few dispatches between a
-    // pass yielding and its unwind — a window a test that waits for the app to settle never opens — and so do the
-    // triggers those joins name (CI measured scheduling at 96.64 %; this tree 91.95–94.22 % instructions and
-    // 69.35–74.19 % branches, inbound 65.01–77.38 % / 25–50 %, over runs of the same code). Once nothing polls, 3g
-    // judges both at the goal.
+    // Measured once the polling tests were gone (3g-b): steady at 99/100 over five runs — the goal.
     ":domain:inbound" {
         unit()
-        integration { skipped(pollingRace) }
+        integration()
     }
+    // Measured once the polling tests were gone and a behaviour ended quiet (3g-b), steady at 95.7/77.4 over five runs;
+    // before that, a teardown cut whatever pass a test left running, and `SingleFlight`'s withdrawals moved between
+    // runs. The branches a member's day never takes are the runtime's rare paths, their unit suites'
+    // (`SingleFlightTest`, `EntryPointTest`): a waiter withdrawing from a queued pass or from one another waits for, a
+    // yield chain, a fatal program state ending the process, an expiry whose grace runs out, outliving work started
+    // outside any entry point.
     ":domain:scheduling" {
         unit()
-        integration { skipped(pollingRace) }
+        integration(instructions = 95, branches = 77)
     }
     // The process's composition registers its metric reports' entry point; the mocks' suite drives it.
     ":domain:entrypoints" {
@@ -433,7 +430,7 @@ subprojects {
 //
 // Every test task — JVM `Test`, the Kotlin/Native simulator's — prints a failure in Gradle's FULL format: the
 // assertion's message and its stack down to the test. SHORT, Gradle's default, prints the exception's class and the
-// first frame in the test class, which for a `rigTest { … }` is the `= rigTest {` line: CI then showed
+// first frame in the test class, which for a `behaviour { … }` is the `= behaviour {` line: CI then showed
 // `java.lang.AssertionError at EventChecksIntegrationTest.kt:33` and no `expected:<3> but was:<5>`. The simulator
 // runner is worse still — `AssertionError at null:-1` — and a red iOS-only test cannot be re-run from Linux.
 // Set ONCE, here, so a new module's tests are readable the day it has any. A module's own `testLogging` adds to this

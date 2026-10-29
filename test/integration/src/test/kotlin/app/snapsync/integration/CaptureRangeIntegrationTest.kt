@@ -131,7 +131,7 @@ class CaptureRangeIntegrationTest {
     }
 
     private companion object {
-        /** The default event's end ([Rig.WINDOW_END]) as the host reads it: the last instant of the member's range. */
+        /** The default event's end ([Defaults.WINDOW_END]) as the host reads it: the last instant of the member's range. */
         const val RANGE_END = "2026-06-14T00:00:00Z"
         const val A_MINUTE_AFTER_THE_END = "2026-06-14T00:01:00Z"
 

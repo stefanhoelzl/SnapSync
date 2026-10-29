@@ -276,7 +276,7 @@ class DiagnosticDumpIntegrationTest {
     fun the_screen_names_the_running_build() = behaviour {
         // The app menu's footer reads the build the composition was handed, not a guess.
         lateinit var shown: Seen<WorldEvent.UiChanged>
-        whenever { tap(UiIntent.CreateName(Rig.EVENT_NAME)) }
+        whenever { tap(UiIntent.CreateName(Defaults.EVENT_NAME)) }
         then { shown = event<WorldEvent.UiChanged> { it.ui.build != BuildLine.UNKNOWN } }
         val build = shown.value.ui.build
         assertTrue(build.version.isNotBlank() && build.version != BuildLine.UNKNOWN.version, "the version: $build")
