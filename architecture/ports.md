@@ -78,7 +78,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventNameVerdict` | `:domain:domain` | `:domain:domain` Blank, Ok, TooLong | no |
 | `EventPort` | `:domain:ports` | — | no |
 | `EventRangeVerdict` | `:domain:domain` | `:domain:domain` Inverted, Ok | no |
-| `EventUnionSource` | `:domain:services` | `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, RecordingUnion, Union | yes |
+| `EventUnionSource` | `:domain:services` | `:domain:feature` OthersDeclaredUnion; `:domain:services` BackendEventUnionSource; `:test:feature` FakeUnion, RecordingUnion, Union | yes |
 | `ExtensionHost` | `:domain:ports` | `:adapter:generic:mock` Face; `:adapter:ios:ext-safe` ContractRunningExtensionHost, IosExtensionHost; `:test:contracts` ExtensionHostProxy; `:test:launch-adapters` UncomposedExtensionHost | yes |
 | `ExtensionRegistration` | `:domain:services` | `:domain:services` OsDrivenRegistration; `:test:architecture` PlatformRegistration; `:test:feature` FakeRegistration | yes |
 | `ExtensionRegistry` | `:domain:ports` | `:adapter:android` AndroidExtensionRegistry; `:adapter:generic:mock` InMemoryExtensionRegistry, RecordingRegistry; `:adapter:ios:app-only` PhotoKitExtensionRegistry, SimulatorExtensionRegistry; `:test:contracts` ExtensionRegistryProxy | yes |

@@ -49,6 +49,9 @@ class MigrationPinTest {
         // Not merged yet: the id columns read as a `Stored` (the `InvalidProgramState` change).
         "download/app/snapsync/services/downloads/db/10.sqm" to
             "c6b3f36f768099f74083ea66155ad3c3273d641cb4ca9a7bb21c46265bec45b7",
+        // Not merged yet: a union read stores what the others declared (change `count-declared-photos`).
+        "download/app/snapsync/services/downloads/db/11.sqm" to
+            "8dbc12d5f9b9579d59f9d2b1d391aa5e144cafe8705f7e6c16b8234a07e9d6cf",
         "ledger/app/snapsync/data/store/db/11.sqm" to
             "bc378a8aecf83363863d1742286af7021f0c4d3ba591d09c194e010963763548",
         "ledger/app/snapsync/data/store/db/12.sqm" to

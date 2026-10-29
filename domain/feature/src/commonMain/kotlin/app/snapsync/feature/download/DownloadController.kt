@@ -257,7 +257,7 @@ class DownloadController(
             return@body
         }
         val stored = store.union.cursor(eventId)
-        val storedDeclared = store.union.declared(eventId)
+        val storedOthers = store.union.othersDeclared(eventId)
         if (known == null && announced != null && stored != null && stored >= announced) {
             log.i { "the union was already read to $stored, past the announced $announced — nothing to read" }
             return@body
@@ -272,19 +272,19 @@ class DownloadController(
             log.w(it) { "union fetch failed — keeping last state; the tail still imports what is staged" }
             return@body
         }
-        mutex.withLock { planLocked(eventId, page, stored, storedDeclared, from) }
+        mutex.withLock { planLocked(eventId, page, stored, storedOthers, from) }
     }.also { log.i { "reconcile(eventId=$eventId trigger=${trigger.wire}${readOf(announced, known)})" } }
 
     /**
      * Plan [page] — read from [from], `null` for the whole union — and enqueue what is not yet staged, under [mutex];
-     * store the position the read covered when it moved past [stored] — or the event's declared total when it moved off
-     * [storedDeclared] — and prune after a full read ([reconcile]).
+     * store the position the read covered when it moved past [stored] — or what the others declared when it moved off
+     * [storedOthers] — and prune after a full read ([reconcile]).
      */
     private suspend fun planLocked(
         eventId: EventId,
         page: UnionPage,
         stored: Long?,
-        storedDeclared: Long?,
+        storedOthers: Long?,
         from: Long?,
     ) {
         // Own contribution is already in this library; only foreign assets are download work.
@@ -317,15 +317,16 @@ class DownloadController(
         // counts as received on the joined screen, and one imported for an earlier event stops counting. The
         // position the read covered lands in the same transaction — only when it moved: a wake that found nothing
         // new costs no durable commit (position 0, no gain yet, is the same as none).
-        // The declared total rides with it, and moves it too: a read that served nothing new may still say the others
-        // declared more (change `count-declared-photos`).
-        val moved = page.cursor != (stored ?: 0L) || page.declared != storedDeclared
+        // What the others declared rides with it, and moves it too: a read that served nothing new may still say they
+        // declared more (change `count-declared-photos`). The page's total is theirs alone: the composition reads the union
+        // through [OthersDeclaredUnion].
+        val moved = page.cursor != (stored ?: 0L) || page.declared != storedOthers
         store.planAll(
             plans,
             eventId,
             members = foreignRefs,
             cursor = page.cursor.takeIf { moved },
-            declared = page.declared,
+            othersDeclared = page.declared,
         )
         if (from == null) pruneWithdrawnLocked(eventId, foreignRefs.toSet())
         log.i {

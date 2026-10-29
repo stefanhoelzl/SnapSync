@@ -79,8 +79,26 @@ class DownloadMigrationTest {
         val store = DownloadService(databases)
 
         assertEquals(5, store.union.cursor(testEventId(E1)), "the position survives")
-        assertEquals(null, store.union.declared(testEventId(E1)))
-        assertEquals(null, store.counts(testEventId(E1)).declared)
+        assertEquals(null, store.union.othersDeclared(testEventId(E1)))
+        assertEquals(null, store.counts(testEventId(E1)).othersDeclared)
+    }
+
+    /**
+     * v11 → v12 (change `count-declared-photos`): a union read stores what the OTHERS declared. A stored total is dropped,
+     * not converted — what this device had declared when it was read is not kept — so the event awaits nothing until its
+     * next read; the position is kept, so the next push still reads only what is new.
+     */
+    @Test
+    fun `v11 to v12 keeps each position and drops the stored total`() = runTest {
+        val (databases, _) = databaseAt(
+            DOWNLOADS_DB_NAME,
+            DownloadDatabase.Schema.at(11, "INSERT INTO unionCursor VALUES ('$E1', 5, 200)"),
+        )
+
+        val store = DownloadService(databases)
+
+        assertEquals(5, store.union.cursor(testEventId(E1)), "the position survives")
+        assertEquals(null, store.union.othersDeclared(testEventId(E1)), "the total held this device's own photos")
     }
 }
 

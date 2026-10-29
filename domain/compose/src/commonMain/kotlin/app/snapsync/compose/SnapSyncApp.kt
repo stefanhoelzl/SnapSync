@@ -34,6 +34,7 @@ import app.snapsync.feature.creation.readmodel.MintedEvent
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
+import app.snapsync.feature.download.OthersDeclaredUnion
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.feature.membership.JoinUnion
@@ -456,7 +457,9 @@ class AppCore internal constructor(
     val downloadController: DownloadController by lazy {
         DownloadController(
             runtime = runtime,
-            union = backend.union,
+            // What the others declared: the event's total net of this device's own declaration at each read (change
+            // `count-declared-photos`).
+            union = OthersDeclaredUnion(backend.union, services.manifestStore),
             store = services.downloadStore,
             jobs = downloadJobs,
             importer = GalleryImporter(ports.gallery, services.stagedBytes),

@@ -242,12 +242,13 @@ internal class OlderInstalls(private val world: MockWorld) {
             // 5.sqm: where each event's union was last read to.
             DOWNLOADS_BASELINE + 1 -> now.downloads.of(
                 "unionCursor",
-            ).forEach { db.insert("unionCursor", it - "declared") }
+            ).forEach { db.insert("unionCursor", it - "othersDeclared") }
             // 7.sqm: the memberships whose received photos were recognised.
             DOWNLOADS_BASELINE + 3 -> now.downloads.of("recognised").forEach { db.insert("recognised", it) }
-            // 8.sqm: each union's declared total.
+            // 8.sqm: each union's declared total — this device's own declaration in it, which 11.sqm drops: what the
+            // others declared now stands for it.
             DOWNLOADS_BASELINE + 4 -> now.downloads.of("unionCursor").forEach {
-                db.write("UPDATE unionCursor SET declared = ? WHERE eventId = ?", it["declared"], it["eventId"])
+                db.write("UPDATE unionCursor SET declared = ? WHERE eventId = ?", it["othersDeclared"], it["eventId"])
             }
             else -> Unit
         }

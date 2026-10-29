@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.feature.download.OthersDeclaredUnion
 import app.snapsync.feature.membership.ReceivedPhotoAdoption
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.model.GalleryAccess
@@ -31,8 +32,8 @@ internal fun shareSetLoadFor(services: AppServices, files: DeviceFilesSource): S
  * The join-time adoption: the union over [backend], the download store, and the
  * library's marked photos over [gallery] under the same read plan as upload discovery ([AppCore.readPlan]),
  * written through the download controller's locked write. Every union it reads is offered to [AppCore.joinUnion], so
- * the provision it runs in plans its downloads from the same answer. A top-level factory for the same reason as
- * [shareSetLoadFor].
+ * the provision it runs in plans its downloads from the same answer — read, as the controller reads it, net of this
+ * device's own declaration ([OthersDeclaredUnion]). A top-level factory for the same reason as [shareSetLoadFor].
  */
 internal fun receivedPhotoAdoptionFor(
     services: AppServices,
@@ -41,7 +42,8 @@ internal fun receivedPhotoAdoptionFor(
     core: AppCore,
 ): ReceivedPhotoAdoption = ReceivedPhotoAdoption(
     union = { eventId, cursor, trigger ->
-        backend.union.union(eventId, cursor, trigger).onSuccess { core.joinUnion.offer(eventId, it) }
+        OthersDeclaredUnion(backend.union, services.manifestStore).union(eventId, cursor, trigger)
+            .onSuccess { core.joinUnion.offer(eventId, it) }
     },
     store = services.downloadStore,
     library = MarkedPhotoLookup(gallery, core.selection),

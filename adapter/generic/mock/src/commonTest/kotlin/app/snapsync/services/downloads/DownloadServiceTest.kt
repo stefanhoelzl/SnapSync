@@ -857,25 +857,31 @@ class DownloadServiceTest {
         assertEquals(9, store.union.cursor(testEventId("EVENT-1")), "a read that served nothing new still moves it")
     }
 
-    // The event's declared total (change `count-declared-photos`) rides with the position, and goes with it.
+    // What the others declared (change `count-declared-photos`) rides with the position, and goes with it.
     @Test
-    fun `the declared total is stored with the position and counted with the event`() = runTest {
-        assertEquals(null, store.counts(testEventId("EVENT-1")).declared, "none before any read")
-        store.planAll(listOf(planned(ref)), testEventId("EVENT-1"), members = listOf(ref), cursor = 7, declared = 200)
-        assertEquals(200, store.union.declared(testEventId("EVENT-1")))
-        assertEquals(200, store.counts(testEventId("EVENT-1")).declared)
-        assertEquals(null, store.counts(testEventId("EVENT-2")).declared, "per event")
+    fun `what the others declared is stored with the position and counted with the event`() = runTest {
+        assertEquals(null, store.counts(testEventId("EVENT-1")).othersDeclared, "none before any read")
+        store.planAll(
+            listOf(planned(ref)),
+            testEventId("EVENT-1"),
+            members = listOf(ref),
+            cursor = 7,
+            othersDeclared = 200,
+        )
+        assertEquals(200, store.union.othersDeclared(testEventId("EVENT-1")))
+        assertEquals(200, store.counts(testEventId("EVENT-1")).othersDeclared)
+        assertEquals(null, store.counts(testEventId("EVENT-2")).othersDeclared, "per event")
 
-        store.planAll(emptyList(), testEventId("EVENT-1"), cursor = 7, declared = null)
+        store.planAll(emptyList(), testEventId("EVENT-1"), cursor = 7, othersDeclared = null)
         assertEquals(
             null,
-            store.counts(testEventId("EVENT-1")).declared,
+            store.counts(testEventId("EVENT-1")).othersDeclared,
             "a backend without it answers none, which is stored",
         )
 
-        store.planAll(emptyList(), testEventId("EVENT-1"), cursor = 8, declared = 5)
+        store.planAll(emptyList(), testEventId("EVENT-1"), cursor = 8, othersDeclared = 5)
         store.pruneNonTerminal(emptySet())
-        assertEquals(null, store.counts(testEventId("EVENT-1")).declared, "forgotten with the position")
+        assertEquals(null, store.counts(testEventId("EVENT-1")).othersDeclared, "forgotten with the position")
     }
 
     @Test
