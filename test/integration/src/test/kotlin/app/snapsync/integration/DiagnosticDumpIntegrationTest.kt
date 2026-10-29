@@ -97,6 +97,11 @@ class DiagnosticDumpIntegrationTest {
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
     )
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A device fact cannot be read",
+    )
     fun a_dump_carries_the_device_state_the_operating_system_reports() = behaviour {
         given {
             joinedEvent()

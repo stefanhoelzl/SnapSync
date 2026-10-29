@@ -171,10 +171,12 @@ class TestsWaitOnEventsTest {
         /** May only shrink: classes with a test that claims no requirement yet. */
         val UNCLAIMED = setOf(
             "EntryIntegrationTest",
-            "EventChecksIntegrationTest", "FullStackIntegrationTest", "HandOffIntegrationTest",
-            "IncrementalUnionIntegrationTest", "JoinGateIntegrationTest", "ManifestVersionIntegrationTest",
-            "OsCompletionIntegrationTest", "RelaunchIntegrationTest", "RenameIntegrationTest", "UnreadStatusIntegrationTest",
-            "VersionGateIntegrationTest",
+            "EventChecksIntegrationTest",
+            "HandOffIntegrationTest",
+            "IncrementalUnionIntegrationTest",
+            "ManifestVersionIntegrationTest",
+            "OsCompletionIntegrationTest",
+            "RelaunchIntegrationTest",
         )
     }
 }

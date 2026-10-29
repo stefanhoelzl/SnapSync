@@ -247,6 +247,7 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "join-event", requirement = "The shared capture range is always bounded and chosen by the member")
     fun join_persists_the_capture_date_cutoff_through_the_provision_path() = behaviour {
         // Regression: the chosen cutoff must survive the confirm → the join → the stored membership. A wiring that
         // drops it (as an early iOS build did) leaves the extension whole-library.

@@ -27,6 +27,16 @@ class DeclaredPhotosIntegrationTest {
 
     @Test
     @Verifies(spec = "sync-status", requirement = "Progress counts only what this membership shares")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Direction arrows show the work left and the transfer running",
+        scenario = "Waiting for the others' photos",
+    )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Progress counts only what this membership shares",
+        scenario = "Photos still uploading count toward what there is to receive",
+    )
     fun photos_still_uploading_elsewhere_are_counted_and_waited_for_until_they_land() = behaviour {
         val all = (1..10).map { "P$it" }
         given {
@@ -63,6 +73,11 @@ class DeclaredPhotosIntegrationTest {
 
     @Test
     @Verifies(spec = "sync-status", requirement = "Progress counts only what this membership shares")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Progress counts only what this membership shares",
+        scenario = "A departing member's undelivered photos stop counting",
+    )
     fun a_member_leaving_before_its_photos_arrive_takes_them_out_of_the_total() = behaviour {
         given {
             joinedEvent()
@@ -88,6 +103,11 @@ class DeclaredPhotosIntegrationTest {
 
     @Test
     @Verifies(spec = "sync-status", requirement = "Direction arrows show the work left and the transfer running")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Direction arrows show the work left and the transfer running",
+        scenario = "Photos leaving",
+    )
     fun photos_leaving_while_everything_has_arrived_are_on_their_way_not_waited_for() = behaviour {
         given {
             extensionUploadsOnly()

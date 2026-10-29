@@ -32,6 +32,11 @@ class NetworkIntegrationTest {
         requirement = "The joined screen shows one status line in a fixed priority",
         scenario = "A missing network outranks everything else",
     )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The app says when it cannot reach the network",
+        scenario = "Mobile data switched off for SnapSync, away from Wi-Fi",
+    )
     fun a_missing_network_outranks_in_sync_and_clears_when_it_returns() = behaviour {
         given {
             joinedEvent()

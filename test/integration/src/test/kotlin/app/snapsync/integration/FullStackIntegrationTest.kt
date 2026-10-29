@@ -67,6 +67,7 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "photo-sharing", requirement = "Nothing is shared before the event starts")
     fun the_same_event_uploads_normally_once_its_start_is_in_the_past() = behaviour {
         // The mirror of the theorem: with the start in the past the floor binds nothing, and the very same stack
         // uploads exactly as it did before start dates existed.
@@ -94,6 +95,16 @@ class FullStackIntegrationTest {
 
     @Test
     @Verifies(spec = "sync-status", requirement = "The joined screen counts the photos shared and received")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen counts the photos shared and received",
+        scenario = "Up to date shows totals",
+    )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen counts the photos shared and received",
+        scenario = "No counts while access is missing",
+    )
     fun the_counts_line_tracks_what_was_shared_and_received() = behaviour {
         // The same numbers the arrows derive from, through the real stack — own photos out, the other members' photos
         // in.
@@ -158,6 +169,11 @@ class FullStackIntegrationTest {
 
     @Test
     @Verifies(spec = "sync-status", requirement = "Direction arrows show the work left and the transfer running")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Direction arrows show the work left and the transfer running",
+        scenario = "A new photo waiting to upload",
+    )
     fun upload_completion_advances_uistate_and_world_outcomes() = behaviour {
         given {
             extensionUploadsOnly()

@@ -99,6 +99,16 @@ class EncryptedEventIntegrationTest {
 
     @Test
     @Verifies(spec = "invite-link", requirement = "An incomplete invite never joins an encrypted event")
+    @Verifies(
+        spec = "invite-link",
+        requirement = "An incomplete invite never joins an encrypted event",
+        scenario = "An invite without its key",
+    )
+    @Verifies(
+        spec = "invite-link",
+        requirement = "An incomplete invite never joins an encrypted event",
+        scenario = "The whole invite still opens the event",
+    )
     fun an_invite_without_the_key_never_joins_an_encrypted_event() = behaviour {
         val (event, invite) = given {
             val event = createdEvent()
@@ -183,6 +193,11 @@ class EncryptedEventIntegrationTest {
         spec = "invite-link",
         requirement = "The joined screen offers the invite until the event's photos are deleted",
         scenario = "The invite returns with the key",
+    )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "A device that lost the event's key asks for its invite",
+        scenario = "The invite ends it",
     )
     fun a_lost_key_stops_both_directions_and_the_reopened_invite_resumes_them() = behaviour {
         val (event, before) = given { createdEvent() to joinedWithItsInvite() }
