@@ -24,6 +24,11 @@ import kotlin.test.Test
 @Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
 class ColdDownloadRelaunchIntegrationTest {
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Photos travel without the app being opened",
+        scenario = "Downloads finish in the background",
+    )
     fun a_download_relaunch_imports_what_the_session_staged() = behaviour {
         // The process that started the transfers, then died; the OS relaunches it with no scene.
         val before = given {

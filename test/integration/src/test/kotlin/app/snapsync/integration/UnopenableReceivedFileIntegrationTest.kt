@@ -23,6 +23,11 @@ class UnopenableReceivedFileIntegrationTest {
         requirement = "Other members' photos arrive in the photo library automatically",
         scenario = "A photo the phone cannot open",
     )
+    @Verifies(
+        spec = "delivery",
+        requirement = "Download problems delay photos, never corrupt or lose them",
+        scenario = "A photo the library rejects",
+    )
     fun a_received_file_the_library_cannot_open_is_not_saved_and_holds_up_nothing() = behaviour {
         val (readable, unreadable) = given {
             joinedEvent()

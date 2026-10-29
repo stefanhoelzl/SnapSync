@@ -123,6 +123,16 @@ class DeviceRefusalIntegrationTest {
 
     @Test
     @Verifies(spec = "join-event", requirement = "A refused phone is told why it cannot join")
+    @Verifies(
+        spec = "join-event",
+        requirement = "A refused phone is told why it cannot join",
+        scenario = "A refused guest is told why",
+    )
+    @Verifies(
+        spec = "join-event",
+        requirement = "A refused phone is told why it cannot join",
+        scenario = "Retry after the service stops refusing",
+    )
     fun a_refused_join_says_why_and_its_retry_joins_once_the_service_stops_refusing() = behaviour {
         given {
             val event = registeredEvent()

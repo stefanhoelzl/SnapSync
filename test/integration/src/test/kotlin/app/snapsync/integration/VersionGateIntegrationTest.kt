@@ -56,6 +56,11 @@ class VersionGateIntegrationTest {
 
     @Test
     @Verifies(spec = "app-update-required", requirement = "The notice clears by itself")
+    @Verifies(
+        spec = "app-update-required",
+        requirement = "The notice clears by itself",
+        scenario = "Served again",
+    )
     fun updating_clears_the_refusal_and_the_screen_goes_away() = behaviour {
         given {
             joinedEvent()
@@ -75,6 +80,11 @@ class VersionGateIntegrationTest {
 
     @Test
     @Verifies(spec = "app-update-required", requirement = "The notice clears by itself")
+    @Verifies(
+        spec = "app-update-required",
+        requirement = "The notice clears by itself",
+        scenario = "Served again",
+    )
     fun an_updated_build_whose_first_answer_is_a_refusal_of_the_request_is_cleared_too() = behaviour {
         // Served means past the version check, not a success: once updated, the first answer this member gets is a
         // 404 for an event the nightly sweep deleted — and that answer, too, says this build is no longer refused.
@@ -93,6 +103,7 @@ class VersionGateIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "app-update-required", requirement = "A newer app is never mistaken for an older one")
     fun a_served_build_never_sees_the_screen() = behaviour {
         // The negative direction, and it is not ceremony: a gate that reported on every response would park
         // every member on an update screen, and the two tests above would still pass.

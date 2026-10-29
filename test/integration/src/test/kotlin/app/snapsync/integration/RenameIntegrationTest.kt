@@ -110,6 +110,10 @@ class RenameIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+    )
     fun the_reset_command_clears_the_latch_so_a_second_rename_starts_clean() = behaviour {
         val (event, _) = given {
             joinedWeekend().also {

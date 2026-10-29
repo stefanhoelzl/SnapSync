@@ -181,7 +181,11 @@ class MobileDataIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "mobile-data", requirement = "Everything but photo transfers keeps working on any network")
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "Everything but photo transfers keeps working on any network",
+        scenario = "Renaming on mobile data",
+    )
     fun joining_and_renaming_work_on_mobile_data_with_photos_kept_off_it() = behaviour {
         val event = given {
             network(NetworkState.RESTRICTED)

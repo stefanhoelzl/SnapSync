@@ -37,6 +37,16 @@ import kotlin.test.Test
 class UnreadStatusIntegrationTest {
     @Test
     @Verifies(spec = "sync-status", requirement = "\"Up to date\" is never claimed before the app has looked")
+    @Verifies(
+        spec = "sync-status",
+        requirement = "\"Up to date\" is never claimed before the app has looked",
+        scenario = "A cold launch shows the neutral line",
+    )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "\"Up to date\" is never claimed before the app has looked",
+        scenario = "Outstanding work never reads as a regression",
+    )
     fun a_joined_membership_with_photos_never_reads_in_sync_before_a_status_read() = behaviour {
         given {
             extensionUploadsOnly()
@@ -140,6 +150,11 @@ class UnreadStatusIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen shows one status line in a fixed priority",
+        scenario = "Limited access shows ordinary progress",
+    )
     fun `the arriving selection is what counts — and it counts a real total`() = behaviour {
         given {
             limitedMemberWithAPhoto()

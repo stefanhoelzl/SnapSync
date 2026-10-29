@@ -21,6 +21,11 @@ import kotlin.time.Instant
 class CreateDraftIntegrationTest {
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The start follows the clock until the host chooses the range",
+        scenario = "An untouched start moves to now after a short absence",
+    )
     fun a_return_within_15_minutes_keeps_the_draft_and_a_later_one_starts_afresh() = behaviour(startAt = T0) {
         lateinit var first: Seen<Layer.CreateEvent>
         given {
