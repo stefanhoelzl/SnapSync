@@ -32,8 +32,10 @@ import app.snapsync.model.CrashOptions
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
 import java.io.File
+import java.lang.ref.Reference
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Clock
@@ -106,10 +108,15 @@ class SentryProcessDeathContractTest {
      */
     private fun endProcess(route: FatalRoute, dsn: String) {
         val died = CountDownLatch(1)
+        // From target SDK 35 a death recipient is held weakly once nothing references its binder, so both are held
+        // until the death is told: a collection between the unbind and the throw would otherwise lose it.
+        val recipient = IBinder.DeathRecipient { died.countDown() }
+        val bound = AtomicReference<IBinder>()
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                bound.set(service)
                 try {
-                    service.linkToDeath({ died.countDown() }, 0)
+                    service.linkToDeath(recipient, 0)
                 } catch (_: DeadObjectException) {
                     died.countDown() // it died before we could watch it
                 }
@@ -124,7 +131,10 @@ class SentryProcessDeathContractTest {
             .putExtra(ContractDeathService.ROUTE, route.name)
             .putExtra(ContractDeathService.DSN, dsn)
         assertTrue(context.bindService(intent, connection, Context.BIND_AUTO_CREATE), "the app's process starts")
-        assertTrue(died.await(DEATH_SECONDS, TimeUnit.SECONDS), "the app's process ended on the throw down $route")
+        val ended = died.await(DEATH_SECONDS, TimeUnit.SECONDS)
+        Reference.reachabilityFence(recipient)
+        Reference.reachabilityFence(bound.get())
+        assertTrue(ended, "the app's process ended on the throw down $route")
     }
 
     private fun resetChannel() {
