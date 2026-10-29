@@ -28,7 +28,8 @@ internal fun notJoined(): MembershipRead = MembershipRead.NotJoined(ConfirmedNot
 /** The membership [row] stores, or why it cannot be read. */
 internal fun stored(row: SelectMembership): MembershipRead = when (val membership = row.membership()) {
     is Parsed.Ok -> MembershipRead.Joined(membership.value)
-    is Parsed.Refused -> MembershipRead.Unavailable("the stored membership is unreadable: ${membership.detail}")
+    is Parsed.Refused ->
+        MembershipRead.Unavailable("the stored membership is unreadable: ${membership.detail}", refused = true)
 }
 
 // The membership row as the domain reads it, and back. A row is the store's: a value the domain refuses in it — a

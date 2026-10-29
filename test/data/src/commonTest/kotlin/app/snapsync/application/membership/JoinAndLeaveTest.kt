@@ -13,6 +13,7 @@ import app.snapsync.data.membership.PendingLeavesRead
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.data.membership.event
+import app.snapsync.data.store.Stored
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.KeptKey
@@ -110,6 +111,26 @@ class JoinAndLeaveTest {
             assertEquals(EnrollOutcome.Failed(), enroll(choice()))
         }
         assertEquals(emptyList(), device.transport.calls)
+    }
+
+    // capability `join-event`, "An unknown range shares nothing": a membership this build refuses — a range an older build
+    // stored past today's rules — holds nothing a join could lose, so a join replaces it rather than failing on it.
+    @Test
+    fun `a membership this build refuses is replaced by a join`() = runTest {
+        enter(enrolled())
+        device.shared.execute {
+            it.membershipQueries.updateShare(
+                minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-14T18:00:00Z")),
+                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-09-01T00:00:00Z")),
+                direction = Direction.Both,
+                saveToAlbum = false,
+                eventId = Stored.Valid(testEventId(EVENT)),
+            )
+        }
+        assertIs<MembershipRead.Unavailable>(device.membership.read())
+        device.transport.answer = { ok(200) }
+
+        assertIs<EnrollOutcome.Enrolled>(enroll(choice(OTHER)))
     }
 
     @Test

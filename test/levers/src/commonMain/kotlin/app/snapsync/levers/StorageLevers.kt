@@ -244,6 +244,14 @@ interface OlderInstallLevers {
      */
     suspend fun installedAt(ledgerBehind: Int? = null, downloadsBehind: Int? = null): SeededInstall
 
+    /**
+     * An install whose membership an older build stored with a share range this build's rules refuse — the joined
+     * membership's range stretched past 30 days. No path in this build writes one; rules that tightened across an update
+     * are how a device would hold one. Refused while no membership is held. The app's processes keep what they hold
+     * until they die: the relaunch after it is the update.
+     */
+    suspend fun refusedShareRange()
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<OlderInstallLevers>(
         OlderInstallLevers::class,

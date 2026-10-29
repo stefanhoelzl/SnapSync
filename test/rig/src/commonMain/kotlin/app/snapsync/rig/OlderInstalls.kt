@@ -6,6 +6,8 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.TimestampText
 import app.snapsync.levers.SeededInstall
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.model.PrefRead
@@ -20,6 +22,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
 
 // **What an older install left** (`OlderInstallLevers.installedAt`): what the device holds now, rewritten as a device
 // whose databases are older would hold it — the moment before an update.
@@ -79,6 +83,25 @@ internal class OlderInstalls(private val world: MockWorld) {
             uploadsWithNoEvent = uploads,
             downloadsWithNoEvent = downloadTags,
         )
+    }
+
+    /**
+     * The joined membership's share range stretched past what this build's rules allow ([REFUSED_RANGE] from its start),
+     * on the device's own ledger — as a build with looser rules could have stored it.
+     */
+    fun refusedShareRange() {
+        val opened = databases.inspectorPort().open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = false)
+        val database = (opened as? DbOpen.Opened)?.database ?: error("ledger.db is not writable as this build's ($opened)")
+        val written = database.execute { driver ->
+            val db = Tables(driver)
+            val held = db.snapshot().of("membership").singleOrNull() ?: error("no membership is held to refuse")
+            val from = Instant.parse(held.getValue("minPhotoDate") ?: error("the membership has no range"))
+            db.write(
+                "UPDATE membership SET maxPhotoDate = ? WHERE id = 0",
+                TimestampText.format(Timestamp.of(from + REFUSED_RANGE)),
+            )
+        }
+        check(written is DbResult.Ok) { "the membership could not be rewritten: $written" }
     }
 
     // ---- ledger.db ----------------------------------------------------------------------------------------------
@@ -363,6 +386,9 @@ internal class OlderInstalls(private val world: MockWorld) {
 
         /** 4.sqm: the oldest downloads.db the chain builds — 0.4's. */
         const val DOWNLOADS_BASELINE = 5L
+
+        /** A share range longer than any this build admits (`EventWindow.MAX`, 30 days). */
+        val REFUSED_RANGE = 40.days
 
         /** The membership's columns 14.sqm added. */
         val OPEN_UNTIL_FACTS = setOf("openUntil", "membersWaiting", "deleted")
