@@ -10,7 +10,7 @@ import app.snapsync.model.UploadRequest
  * implementations, one per uploader ([Uploader]): [OsQueueTransfer] over the OS's job queue and [SessionTransfer] over
  * the app's own session. The cycle holds this seam rather than either so its own orchestration stays testable against
  * a scripted transfer (`UploadCycle`'s tests). What the cycle reads from the photo library is not this seam's: that is
- * [UploadDiscovery], bound once beside it.
+ * the data layer's `OwnPhotos`, bound once beside it.
  *
  * Returned jobs are surfaced as [PlatformUploadJob]s whose [PlatformUploadJob.key] is the ledger row their
  * **destination URL** names — the only fact reliably present across a job's whole life (`resource` is nil for

@@ -1,7 +1,8 @@
 package app.snapsync.feature.status
 
-import app.snapsync.model.EventConfig
-import app.snapsync.model.SelectionPolicy
+import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.sharing.Contribution
+import app.snapsync.domain.membership.Membership
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.membership.MembershipProjection
@@ -43,11 +44,11 @@ class StatusRefresh(
     /** The joined membership, or `null` when unjoined. */
     private val configSource: MembershipProjection,
     /**
-     * What this membership contributes — the ONE derivation, run
-     * where the config and both port readers are in scope. Injected because deriving it costs two port
-     * reads (echo suppression, the denylisted-album lookup) and this zone may not make them.
+     * What this membership contributes — the ONE derivation (`OwnPhotos.contribution`), run
+     * where the membership and the port readers are in scope. Injected because deriving it reads ports
+     * (echo suppression, the grant, the denylisted-album lookup) and this zone may not make them.
      */
-    private val policyFor: suspend (EventConfig) -> SelectionPolicy,
+    private val contributionFor: suspend (Membership) -> Contribution,
     /**
      * Whether the membership's received photos have been recognised: until they have,
      * any of them could count as the member's own, so `N` is not counted — it keeps what it last honestly held, and an
@@ -90,10 +91,13 @@ class StatusRefresh(
      * snapshot the read seam then answers from. Nothing while unjoined; a failed policy read leaves `N` as it was.
      */
     suspend fun refreshTotal() {
-        val config = configSource.config.value ?: return
+        val membership = when (val read = configSource.membership) {
+            is MembershipRead.Joined -> read.membership
+            else -> return
+        }
         // Before recognition the admitted set would include received photos nothing has recognised yet — a count the
         // upload gate (which withholds until then) would never match.
-        if (!recognition.isRecognised(config.eventId)) {
+        if (!recognition.isRecognised(membership.event.id)) {
             return log.i { "status: received photos not recognised yet — N not counted" }
         }
         // NO GRANT CHECK. The read seam answers both halves — where candidates come from AND whether an
@@ -101,7 +105,7 @@ class StatusRefresh(
         // and restated it wrongly: `grantsPhotoAccess` is true under LIMITED, so it admitted the one case
         // that actually reaches members — a partial grant whose selection snapshot has not landed,
         // counted as a zero and settling the screen at "Up to date".
-        val derived = runCatchingCancellable { policyFor(config) }
+        val derived = runCatchingCancellable { contributionFor(membership) }
         derived.exceptionOrNull()?.let { failure ->
             // Cancellation is not a failed read: `runCatchingCancellable` rethrows it, so it never lands
             // here — swallowing it would break structured concurrency AND post an Error-severity line, which

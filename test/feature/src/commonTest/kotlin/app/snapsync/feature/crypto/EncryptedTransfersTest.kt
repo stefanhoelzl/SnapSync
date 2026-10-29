@@ -34,7 +34,6 @@ import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadRequest
@@ -58,9 +57,9 @@ import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.downloads.DownloadJobs
-import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.GalleryResourceRef
-import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.gallery.KeyedRead
+import app.snapsync.services.gallery.KeyedResources
 import app.snapsync.services.staging.StagingService
 import app.snapsync.services.upload.OsQueueTransfer
 import app.snapsync.services.upload.SessionTransfer
@@ -155,9 +154,8 @@ class EncryptedTransfersTest {
             }
         }
 
-    private val noDiscovery = object : UploadDiscovery {
-        override suspend fun discover(policy: SelectionPolicy): Discovery = error("not walked here")
-        override suspend fun resourcesFor(keys: Set<String>): List<Resource> = emptyList()
+    private val noDiscovery = object : KeyedResources {
+        override suspend fun resourcesFor(keys: Set<String>): KeyedRead = KeyedRead.Resolved(emptyList())
     }
 
     /** The one row a retry resolves its offered job to — by destination, as the ledger does. */

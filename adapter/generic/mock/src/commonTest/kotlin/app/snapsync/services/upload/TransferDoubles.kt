@@ -34,10 +34,8 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.CandidateScope
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadRequest
 import app.snapsync.ports.AssetFilter
@@ -60,9 +58,9 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.gallery.Discovery
 import app.snapsync.services.gallery.GalleryResourceRef
-import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.gallery.KeyedRead
+import app.snapsync.services.gallery.KeyedResources
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlin.time.Instant
@@ -99,11 +97,14 @@ internal fun rowA(state: LedgerState = LedgerState.REQUESTED) =
         ),
     )
 
-/** The live resources the cycle's by-key resolve finds. */
-internal class Resources(val live: Map<String, Resource> = emptyMap()) : UploadDiscovery {
-    override suspend fun discover(policy: SelectionPolicy) =
-        Discovery(emptyList(), fullEnumeration = false, scope = CandidateScope.Library)
-    override suspend fun resourcesFor(keys: Set<String>) = keys.mapNotNull(live::get)
+/** The live resources the cycle's by-key resolve finds; while not [readable] the library cannot be read at all. */
+internal class Resources(val live: Map<String, Resource> = emptyMap(), var readable: Boolean = true) : KeyedResources {
+    var calls = 0
+
+    override suspend fun resourcesFor(keys: Set<String>): KeyedRead {
+        calls++
+        return if (readable) KeyedRead.Resolved(keys.mapNotNull(live::get)) else KeyedRead.NotReadable
+    }
 }
 
 /** The test library's handle of a resource: the key it was read under. */
@@ -181,7 +182,7 @@ internal class SharedArea(
 /** A transfer's collaborators, every one a double unless given. */
 internal fun setup(
     record: TransferRecord = Record(),
-    resources: UploadDiscovery = Resources(),
+    resources: KeyedResources = Resources(),
     library: GalleryReader = Library(),
     files: Files = SharedArea(),
     network: () -> TransferNetwork = { TransferNetwork.ANY },

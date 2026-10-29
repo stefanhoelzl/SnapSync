@@ -9,7 +9,12 @@ import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.sharing.DenylistedAlbums
+import app.snapsync.data.sharing.GalleryWalk
+import app.snapsync.data.sharing.OwnPhotos
+import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.DropOnlyCredential
 import app.snapsync.data.trust.SecureCredentialStore
@@ -18,7 +23,6 @@ import app.snapsync.entrypoints.OnTerminate
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.SelectionScope
 import app.snapsync.ports.Databases
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
@@ -34,11 +38,7 @@ import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.downloads.SuppressionService
-import app.snapsync.services.gallery.AlbumLookupFailure
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.gallery.GalleryDiscovery
-import app.snapsync.services.gallery.denylistedAlbumMembers
-import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
@@ -102,8 +102,8 @@ class ComposedExtension internal constructor(
  *   it, and an older schema pauses the cycle instead;
  * - the credential only **drops** a rejected token (see [extensionBackend]), and the in-memory copy is re-read at every
  *   invocation, since the app renews into the shared item;
- * - admission is this process's own grant read (a full grant only), the library is walked unrestricted, and a failed
- *   denylisted-album lookup fails the cycle, which the next invocation retries.
+ * - admission is this process's own grant read (a full grant only), and its own photos walk the library bare — no
+ *   walk memo, and no selection: under a partial grant there is nothing it may read.
  */
 @OptIn(CompositionOnly::class)
 fun snapSyncExtension(
@@ -159,6 +159,7 @@ private fun extensionServices(
     val records = SharedDatabase(ports.databases, legacy = null)
     val membership = MembershipRepository(records)
     val config = MembershipProjection(membership, process.clock)
+    val clock = WallClock(process.clock)
     // The app's download store, read-only: both the echo suppression and the recognition record.
     val downloads = SuppressionService(ports.databases)
     return UploadServices(
@@ -173,27 +174,22 @@ private fun extensionServices(
         ledger = LedgerService(records) { config.config.value?.eventId },
         uploader = Uploader.Queue(ports.uploadQueue),
         gallery = ports.gallery,
-        discovery = GalleryDiscovery(ports.gallery),
+        // The extension's own photos: walked afresh on every invocation (the walk memo is the app's), and never a
+        // selection — it holds none, so under a partial grant its read plan is that nothing can be read.
+        photos = OwnPhotos(
+            ports.gallery,
+            GalleryWalk(ports.gallery, clock),
+            SelectionSnapshots(),
+            DenylistedAlbums(ports.gallery),
+            clock,
+        ),
         // This process's own grant read — the extension withholds its cycle without a full grant: the OS invokes a
         // surviving registration under a partial grant too, and this is what stops it.
         process = UploaderProcess.Extension(ports.gallery),
-        // Unrestricted, stated: the extension never reads the library under a partial grant — its admission withholds
-        // before any read.
-        selectionScope = { SelectionScope.Unrestricted },
         manifestStore = DeviceManifestService(records),
         manifestPublisher = extensionBackend(exchange, attestStore, identity).manifest,
         suppression = downloads,
         recognition = downloads,
-        // A failed denylisted-album lookup fails the cycle here; the next invocation retries.
-        albumExclusions = { cutoff ->
-            denylistedAlbumMembers(
-                albums,
-                cutoff,
-                ports.gallery.access().galleryAccess(),
-                AlbumLookupFailure.FailCycle,
-                log,
-            )
-        },
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(albums, AlbumMapService(records)),
         // A retry re-reads the shared item: the app may have renewed the token this copy still holds.

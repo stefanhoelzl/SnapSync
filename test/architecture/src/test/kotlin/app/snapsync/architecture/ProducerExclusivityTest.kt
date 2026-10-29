@@ -1,5 +1,6 @@
 package app.snapsync.architecture
 
+import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
@@ -7,6 +8,7 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
@@ -21,7 +23,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UploaderPin
 import app.snapsync.model.extensionRegistrable
-import app.snapsync.model.selectionScope
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.use
@@ -212,10 +213,13 @@ class ProducerExclusivityTest {
 
     @Test
     fun `the admission gates answer from the grant and the switch alone`() {
-        for (permission in GalleryAccess.entries) {
+        for (grant in LibraryGrant.entries) {
+            val permission = grant.galleryAccess()
             for (pin in listOf(null, UploaderPin(), UploaderPin(app = false), UploaderPin(extension = false))) {
                 val usable = permission == GalleryAccess.GRANTED || permission == GalleryAccess.LIMITED
-                val app = appAdmission(permission, selectionScope(permission, emptyList()), pin) == UploadAdmission.Admit
+                // A partial grant's selection read (if empty): the plan the composition derives from the grant.
+                val plan = ReadPlan.of(grant.photoAccess(), selection = Unit)
+                val app = appAdmission(plan, pin) == UploadAdmission.Admit
                 assertEquals(usable && pin?.app != false, app, "app under $permission / $pin")
             }
             val ext = extensionAdmission(permission) == UploadAdmission.Admit

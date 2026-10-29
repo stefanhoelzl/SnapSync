@@ -113,23 +113,15 @@ class CompositionSeamTest {
             "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
             "scope and rig pin, all in-process state. The extension's variant reads the GalleryReader PORT's grant",
         "AlbumGather.policyFor" to
-            "the membership's ONE selection-policy derivation, built in compose/ over the download store and the " +
-            "album port — a sibling the gather may not name (feature-blindness)",
+            "the membership's ONE contribution's policy (OwnPhotos), derived in compose/ over the download store — " +
+            "a store the gather may not name (feature-blindness)",
         "CreateEvent.onMinted" to
             "emits the minted event on AppCore.mintedEvents, which the host zone collects into this core's join gate " +
             "(StatusContainerHost.onEventCreated) — a re-entry into this same graph so create and a scanned QR take " +
             "one gate, not two. Nothing leaves the process",
         "CycleGateRead.admission" to
-            "UploaderProcess.admission: the app's from its own core (grant, selection scope, rig pin — in-process " +
+            "UploaderProcess.admission: the app's from its own core (its read plan and rig pin — in-process " +
             "state), the extension's from the GalleryReader PORT's grant through extensionAdmission",
-        "CycleGateRead.albumExclusions" to
-            "UploadServices.albumExclusions, the tier's denylisted-album read — the gallery services over the Gallery port",
-        "UploadServices.albumExclusions" to
-            "denylistedAlbumMembers over the tier's GalleryAlbums service and its own grant read: the app's " +
-            "AppCore.albumExclusionsWhenReadable (admit on doubt), the extension's FailCycle answer",
-        "UploadServices.selectionScope" to
-            "what discovery may read right now (capability `photo-access`), derived by the app composition from " +
-            "current permission plus the in-memory snapshot — a call because the answer changes between cycles",
         "CollectDiagnosticDump.uploadFacts" to
             "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
         "CollectDiagnosticDump.appFacts" to
@@ -163,13 +155,9 @@ class CompositionSeamTest {
         "ReadingLedgerCountsSource.read" to
             "a read-only LedgerStore.assetProgress() mapped to LedgerCounts in compose/, so ledger types never " +
             "reach feature/status (stated at the class); the store is the LedgerStore port",
-        "ShareableCountSource.suppressedLocalIds" to
-            "the DownloadStore port's suppressed set, the same read the status total and the cycle use",
-        "ShareableCountSource.albumExcludedAssetIds" to
-            "compose/'s admit-on-doubt read over the AlbumManager PORT — the one wrapper both consumers share",
         "StatusCountsPoller.refreshCheapLocalReads" to "this core's own StatusRefresh.refreshCheapLocalReads()",
         "StatusRefresh.refreshDownloadLine" to "the sibling download status source's refresh — feature-blindness",
-        "StatusRefresh.policyFor" to "the membership's ONE selection-policy derivation, built in compose/",
+        "StatusRefresh.contributionFor" to "the membership's ONE contribution (OwnPhotos), derived in compose/",
         // The app's own uploads, as a wake and a finished upload take them (`OwnUploads`, `WakeRearm`).
         "OwnUploads.admission" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
         "WakeRearm.facts" to
@@ -178,8 +166,7 @@ class CompositionSeamTest {
             "not name",
         "ShareSettlement.publishFinal" to
             "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
-        "SelectionScopedDiscovery.selectionScope" to "UploadServices.selectionScope, forwarded — a pure core read",
-        "JoinedMembership.policy" to "the membership's ONE selection-policy derivation, built by the entry gate",
+        "JoinedMembership.contribution" to "the membership's ONE contribution (OwnPhotos), derived when the cycle asks",
         "UploadCycle.readGate" to "uploadCycle's own entry-gate translation over the services (readGate in UploadCore.kt)",
         "UploadCycle.engineFor" to
             "builds the SyncEngine over the gate's config per cycle — core machinery, whose transfer is a port",
@@ -297,8 +284,11 @@ class CompositionSeamTest {
                 "feature the zone law forbids it to name — pin it in `constructorPins` WITH its binding.\n" +
                 "  `-` — a pin outlived its parameter. Delete it in the same commit.",
         )
+        // The floor is the true count, minus nothing: 28 since the selection moved into the layers (4.4a), which
+        // removed the albumExclusions / selectionScope / suppressedLocalIds / albumExcludedAssetIds lambdas — the
+        // read is now OwnPhotos', a service, not a seam. Lower it only with a removal like that one, never to pass.
         assertTrue(
-            found.size >= 30,
+            found.size >= 28,
             "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
                 "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
         )

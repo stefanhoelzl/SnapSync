@@ -115,7 +115,8 @@ class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: Trans
                     GalleryResourceRef(held),
                 )
             classified.state == UploadJobState.SUCCEEDED -> null
-            else -> setup.resources.resourcesFor(setOf(key)).firstOrNull { it.filename == key }
+            // A library that cannot be read now offers no live resource, as a gone one does: nothing is re-created.
+            else -> setup.resources.resourcesFor(setOf(key)).liveResource(key)
         }
         val disposition = terminalDisposition(classified.state, resourceIsLive = live != null)
         if (!setup.record.markTerminal(key, disposition.outcome)) {

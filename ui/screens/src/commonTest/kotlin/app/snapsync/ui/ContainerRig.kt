@@ -31,8 +31,7 @@ import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.request.RequestId
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
@@ -202,7 +201,7 @@ internal class ContainerRig(
             }
         },
         queries = object : UserQueries {
-            override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
+            override suspend fun shareableCount(range: CaptureRange): Int? = null
         },
         joinDetails = object : JoinDetailsQuery {
             override suspend fun load(invite: InviteLink): JoinDetails = details(invite.event.value)

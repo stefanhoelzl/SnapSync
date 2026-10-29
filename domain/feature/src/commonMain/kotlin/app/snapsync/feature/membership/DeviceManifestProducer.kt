@@ -2,8 +2,8 @@ package app.snapsync.feature.membership
 
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest

@@ -9,6 +9,7 @@ package app.snapsync.model
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.sharing.SelectionPolicy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.UseSerializers
 import kotlinx.serialization.json.Json

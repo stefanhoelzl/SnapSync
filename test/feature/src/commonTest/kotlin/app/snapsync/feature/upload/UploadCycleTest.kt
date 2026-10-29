@@ -5,40 +5,33 @@ package app.snapsync.feature.upload
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.LEDGER_EVENT
+import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.TestLedger
-import app.snapsync.format.TimestampText
-import app.snapsync.model.Candidate
-import app.snapsync.model.CandidateScope
+import app.snapsync.feature.support.captureRange
+import app.snapsync.feature.support.keyOf
+import app.snapsync.feature.support.photo
+import app.snapsync.feature.support.resourceOf
+import app.snapsync.feature.support.resourcesOf
 import app.snapsync.model.CycleResult
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LibraryResource
 import app.snapsync.model.PlatformUploadJob
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
-import app.snapsync.model.RESOURCE_META_IS_EDITED
-import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
-import app.snapsync.model.RESOURCE_META_IS_SCREEN_RECORDING
-import app.snapsync.model.RESOURCE_META_IS_VIDEO
-import app.snapsync.model.RESOURCE_META_MIME
-import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.SelectionRule
-import app.snapsync.model.SelectionScope
 import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadFailure
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
-import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.projectDeviceManifest
-import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.toLedgerRow
-import app.snapsync.services.gallery.Discovery
-import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.LibraryGrant
+import app.snapsync.services.gallery.KeyedResources
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.upload.BackgroundTransfer
 import app.snapsync.testids.testAssetId
@@ -50,65 +43,41 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
+/**
+ * The upload cycle over the member's REAL own photos: `OwnPhotos` over the in-memory photo library, so what the cycle
+ * reads, admits and resolves is decided where production decides it, and observed at the gallery port. Only the
+ * transport is a fake ([FakePlatform]): it records what the cycle asked of it and serves canned returned jobs.
+ */
 class UploadCycleTest {
 
-    /**
-     * A permissive test cutoff, and a capture date after it. Every membership carries a cutoff (capability
-     * `photo-sharing`), so a cycle cannot be built without one; these keep the non-cutoff tests
-     * exercising what they mean to.
-     */
     private companion object {
-        const val TEST_CUTOFF = "2026-01-01T00:00:00Z"
-
         /**
-         * An admitting policy carrying the two port-read exclusions. They used to be injected into the
-         * cycle and applied by it; the one derivation now folds them into the rule list, so a fixture
-         * states them here (capability `photo-sharing`).
+         * A permissive test cutoff: the membership shares `[TEST_CUTOFF, +30 days]`, and every photo is captured at
+         * [IN_SCOPE_DATE] inside it unless a test states otherwise. Every membership carries a range (capability
+         * `photo-sharing`), so a cycle cannot be built without one.
          */
-        suspend fun admittingWith(
-            cutoff: String = TEST_CUTOFF,
-            echo: Set<AssetId> = emptySet(),
-            albumExcluded: Set<AssetId> = emptySet(),
-        ): SelectionPolicy = SelectionPolicy(
-            selectionRulesFor(
-                includesUpload = true,
-                cutoff = CaptureCutoff(TimestampText.parse(cutoff)),
-                ceiling = null,
-                suppressedAssetIds = { echo },
-                albumExcludedAssetIds = { albumExcluded },
-            ),
-        )
-
-        /** An admitting policy over [cutoff], unbounded above — the shape every cycle fixture wants. */
-        suspend fun admitting(cutoff: String): SelectionPolicy =
-            SelectionPolicy(
-                selectionRulesFor(
-                    includesUpload = true,
-                    cutoff = CaptureCutoff(
-                        TimestampText.parse(
-                            cutoff,
-                        ),
-                    ),
-                    ceiling = null,
-                    suppressedAssetIds = {
-                        emptySet()
-                    },
-                    albumExcludedAssetIds = { emptySet() },
-                ),
-            )
+        const val TEST_CUTOFF = "2026-05-15T00:00:00Z"
         const val IN_SCOPE_DATE = "2026-06-01T10:00:00Z"
         const val TEST_HOST = "https://edge.example"
         const val TEST_EVENT = "event-1"
 
         /** The manifest version the fixture gate reads — distinctive, so a test can see it reach the publish. */
         const val TEST_MANIFEST_VERSION = 4242L
+
+        /**
+         * The policy a membership over [cutoff] with echo set [echo] is judged by — derived where production derives
+         * it, for a projection a test reads itself.
+         */
+        suspend fun policyFor(cutoff: String = TEST_CUTOFF, echo: Set<AssetId> = emptySet()): SelectionPolicy =
+            OwnLibrary().contribution(captureRange(cutoff), echo).policy
     }
 
     /** A no-network provider returning a throwaway destination — the cycle never inspects the URL. */
@@ -125,10 +94,12 @@ class UploadCycleTest {
         override suspend fun provideForRetry(resource: Resource): UploadRequest = provide(resource)
     }
 
-    /** Records what the cycle asked the platform to do; serves canned discovered/returned jobs. */
+    /**
+     * Records what the cycle asked the transport to do and serves canned returned jobs; holds the member's [library]
+     * with [discovered] in it. Under a partial [grant], [selection] is the member's read selection (`null`: unread).
+     */
     private class FakePlatform(
-        /** `var` so a test can model a library that stops reporting changes while work remains. */
-        var discovered: List<Resource> = emptyList(),
+        discovered: List<GalleryAssetResources> = emptyList(),
         private val retryJobs: List<PlatformUploadJob> = emptyList(),
         // Keys the "platform" finished successfully. Recorded `COMPLETED` into [ledger] when the cycle
         // drains, exactly as both device adapters do — a success no longer crosses this seam at all.
@@ -139,12 +110,13 @@ class UploadCycleTest {
         private val ledger: LedgerService? = null,
         private val limitAfter: Int = Int.MAX_VALUE,
         private val failCreate: Boolean = false,
-        // Not authoritative by default, so a test that is not about deletion is not affected by it: a row
-        // seeded without a matching `discovered` resource would otherwise be deleted as departed.
-        private val fullEnumeration: Boolean = false,
-        // A walk of the library by default; a partial grant's selection snapshot is judged by fewer rules.
-        private val scope: CandidateScope = CandidateScope.Library,
-    ) : BackgroundTransfer, UploadDiscovery {
+        grant: LibraryGrant = LibraryGrant.GRANTED,
+        val selection: List<GalleryAssetResources>? = null,
+    ) : BackgroundTransfer {
+        val library = OwnLibrary(grant).also { lib ->
+            lib.add(*discovered.toTypedArray())
+            selection?.filter { it !in discovered }?.forEach { lib.add(it) }
+        }
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
 
@@ -153,24 +125,19 @@ class UploadCycleTest {
 
         /** Whether the cycle settled with the platform — the obligation a declined cycle still owes. */
         var drained = false
-        var discoverPolicyArg: SelectionPolicy? = null
+
+        /** Every walk of the library the discovery made, by the filter it asked for. */
+        val walks get() = library.gallery.walks
 
         /** Keys the cycle asked to resolve — how a test asserts it enqueued from the ledger, not a walk. */
-        val resolvedKeys = mutableSetOf<String>()
+        val resolvedKeys get() = library.keys.keys
 
         /** How many resolve round-trips the cycle made, counted with repeats — what reusing the walk saves. */
-        var resolveCalls = 0
+        val resolveCalls get() = library.keys.calls
 
-        /** Assets whose resources the cycle read off a walk's candidates — the per-asset round-trip a skip saves. */
-        val readAssets = mutableListOf<AssetId>()
+        /** Assets whose resources the discovery read — the per-asset round-trip a skip saves. */
+        val readAssets get() = library.gallery.read
 
-        /**
-         * Everything this fixture's "library" has ever held — what [resourcesFor] answers from.
-         *
-         * Deliberately not [discovered]: a test can empty the walk, and the whole point of resolving by key
-         * is that it works for an asset the walk no longer needs to re-read.
-         */
-        private val library = discovered
         private var creates = 0
 
         override suspend fun fetchRetryJobs() = retryJobs
@@ -185,32 +152,6 @@ class UploadCycleTest {
         /** Operator lever: the platform's in-flight slots freed, so it will accept jobs again. */
         fun freeSlots() { creates = 0 }
 
-        /**
-         * Resolves from the same held set [discovered] answers with — the fixture's stand-in for a
-         * library. Deliberately **partial**: a key naming a resource this fixture does not hold resolves
-         * to nothing, which is the port's contract and the case a test needs to be able to construct
-         * (an asset that left the library between the row being written and the cycle enqueueing it).
-         */
-        override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
-            resolvedKeys += keys
-            resolveCalls++
-            return library.filter { it.filename in keys }
-        }
-
-        override suspend fun discover(policy: SelectionPolicy): Discovery {
-            discoverPolicyArg = policy
-            // The fake returns HELD candidates: it stands in for a platform whose discovery already
-            // carried resources, which is the honest shape for an in-memory fixture. It deliberately
-            // does NOT narrow by the policy — a fake that mirrored the real fetch predicate would hide
-            // an admission relying on the fetch to have already excluded something.
-            val candidates = candidatesFromResources(discovered).map { held ->
-                object : Candidate {
-                    override val facts = held.facts
-                    override suspend fun resources() = held.resources().also { readAssets += held.facts.assetId }
-                }
-            }
-            return Discovery(candidates, fullEnumeration, scope)
-        }
         override suspend fun createJob(request: UploadRequest, resource: Resource): UploadCreateOutcome {
             createAttempts++
             if (failCreate) return UploadCreateOutcome.FAILED
@@ -221,16 +162,8 @@ class UploadCycleTest {
         }
     }
 
-    // Dated by default: every membership carries a cutoff (capability `photo-sharing`), and an asset
-    // with no `creationDate` sorts before any cutoff, so an undated resource is always out of scope.
-    private fun resource(name: String, assetId: String = name) =
-        Resource(
-            filename = name,
-            assetId = testAssetId(assetId),
-            contentType = "image/jpeg",
-            metadata = mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE),
-            data = Held,
-        )
+    /** The primary resource of the in-scope photo [id] — what a row for it is recorded from. */
+    private fun resource(id: String) = resourceOf(photo(id))
 
     /** A retry-spent failure — the only kind of job that still crosses the seam. */
     private fun platformJob(key: String, error: UploadFailure? = null) =
@@ -251,30 +184,27 @@ class UploadCycleTest {
      * The one place a cycle is built for these tests, so each test states only what it is about.
      *
      * The defaults live HERE, once and visibly, rather than on `UploadCycle`'s own parameters — that is the
-     * distinction the required-ports rule draws (capability `background-upload`). A default on the class
-     * lets a *composition root* inherit an unstated policy, which is how the app-driven tier once shipped
-     * without the direction gate and nearly shipped without an album denylist. A default in a test
-     * helper is an answer stated once, in the file that reads it.
+     * distinction the required-ports rule draws (capability `background-upload`). A default in a test helper is an
+     * answer stated once, in the file that reads it.
      *
-     * [readGate] defaults to a joined membership on [TEST_EVENT]: nearly every test here is about the
-     * phases, not the entry gate, and the gate's own three outcomes are covered in [CycleGateTest] and in
-     * the entry-gate tests below.
+     * The membership's contribution is derived by the real `OwnPhotos` over [platform]'s library, from [direction],
+     * the range from [cutoff] and the echo set [echo]. [readGate] defaults to a joined membership on [TEST_EVENT].
      */
     private suspend fun cycle(
         backend: LedgerService,
         platform: FakePlatform,
-        // Nullable rather than defaulted: a suspend call is not allowed in a default value.
-        policy: SelectionPolicy? = null,
+        cutoff: String = TEST_CUTOFF,
+        echo: Set<AssetId> = emptySet(),
+        direction: Direction = Direction.Both,
         saveToAlbum: Boolean = true,
         readGate: (() -> CycleGate)? = null,
         onDiscovery: suspend (EventId, SelectionPolicy, Long) -> Boolean = { _, _, _ -> true },
         placeInAlbum: suspend (EventId, Set<AssetId>) -> Unit = { _, _ -> },
         log: Logger = Logger.withTag("UploadCycleTest"),
-        // The platform itself by default; a test about the partial-grant read discipline wraps it in the
-        // production `SelectionScopedDiscovery`.
-        library: UploadDiscovery = platform,
+        keys: KeyedResources = platform.library.keys,
     ): UploadCycle {
-        val effectivePolicy = policy ?: admitting(TEST_CUTOFF)
+        platform.selection?.let { platform.library.select(it) }
+        val range = captureRange(cutoff)
         val ledger = LedgerWriter(backend)
         return UploadCycle(
             readGate = readGate ?: {
@@ -282,7 +212,7 @@ class UploadCycleTest {
                     UploadConfig(host = TEST_HOST, eventId = testEventId(TEST_EVENT)),
                     JoinedMembership(
                         eventId = testEventId(TEST_EVENT),
-                        policy = { effectivePolicy },
+                        contribution = { platform.library.contribution(range, echo, direction) },
                         saveToAlbum = saveToAlbum,
                         manifestVersion = TEST_MANIFEST_VERSION,
                     ),
@@ -291,7 +221,8 @@ class UploadCycleTest {
             engineFor = { SyncEngine(StubUploadRequestProvider(), ledger) },
             ledger = ledger,
             platform = platform,
-            library = library,
+            photos = platform.library.photos,
+            keys = keys,
             onDiscovery = onDiscovery,
             placeInAlbum = placeInAlbum,
             log = log,
@@ -317,7 +248,7 @@ class UploadCycleTest {
         val seen = mutableListOf<Long>()
         cycle(
             TestLedger().service,
-            FakePlatform(discovered = listOf(resource("A-primary.heic")), fullEnumeration = true),
+            FakePlatform(discovered = listOf(photo("A"))),
             onDiscovery = { _, _, version ->
                 seen += version
                 true
@@ -332,10 +263,7 @@ class UploadCycleTest {
         // A library full of admissible work: the ONLY reason nothing happens is that the membership could not
         // be read.
         val touched = mutableListOf<String>()
-        val platform = FakePlatform(
-            discovered = listOf(resource("A-primary.heic"), resource("B-primary.heic")),
-            fullEnumeration = true,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("A"), photo("B")))
 
         val result = cycle(
             backend,
@@ -350,10 +278,8 @@ class UploadCycleTest {
         assertEquals(CycleResult.COMPLETED, result, "an unreadable read is a clean no-op, never a failure")
         assertEquals(emptyList<String>(), touched, "unreadable ≠ left: no hooks")
         assertEquals(emptyList<String>(), platform.created.map { it.filename }, "no upload job")
-        assertNull(platform.discoverPolicyArg, "the library is not walked")
+        assertTrue(platform.walks.isEmpty(), "the library is not walked")
     }
-
-    // ---- Admission (capability `background-upload`, "The upload cycle owns its entry decision") -------------
 
     // ---- Two uploaders over one ledger (decision record `changes/both-uploaders-active`, D2) ---------------
 
@@ -362,15 +288,15 @@ class UploadCycleTest {
         // The app's cycle and the extension's cycle share one App-Group ledger. Write-after-act is what makes
         // that safe: the first records REQUESTED only after its job exists, and a cycle picks only DISCOVERED.
         val backend = TestLedger().service
-        val first = FakePlatform(discovered = listOf(resource("a"), resource("b")))
-        val second = FakePlatform(discovered = listOf(resource("a"), resource("b")))
+        val first = FakePlatform(discovered = listOf(photo("a"), photo("b")))
+        val second = FakePlatform(discovered = listOf(photo("a"), photo("b")))
 
         cycleOver(backend, first).run()
         cycleOver(backend, second).run()
 
-        assertEquals(listOf("a", "b"), first.created.map { it.filename })
+        assertEquals(listOf(keyOf("a"), keyOf("b")), first.created.map { it.filename })
         assertTrue(second.created.isEmpty(), "no duplicate job start in a normal sequence")
-        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+        assertEquals(LedgerState.REQUESTED, backend.get(keyOf("a"))?.state)
     }
 
     @Test
@@ -390,10 +316,10 @@ class UploadCycleTest {
         val backend = TestLedger().service
         backend.inFlight("done-primary.heic", assetId = "done")
         backend.inFlight("lost-primary.heic", assetId = "lost")
-        LedgerWriter(backend).recordRequested(resource("spent-primary.heic", "spent"))
+        LedgerWriter(backend).recordRequested(resource("spent"))
         val touched = mutableListOf<String>()
         val platform = FakePlatform(
-            discovered = listOf(resource("A-primary.heic")),
+            discovered = listOf(photo("A")),
             succeeded = listOf("done-primary.heic"),
             ackJobs = listOf(platformJob("spent-primary.heic", UploadFailure("network"))),
             ledger = backend,
@@ -424,7 +350,7 @@ class UploadCycleTest {
             "an in-flight row is left to its completion",
         )
         assertEquals(emptyList<String>(), touched, "a temporary grant state publishes no manifest")
-        assertNull(platform.discoverPolicyArg, "the library is not walked")
+        assertTrue(platform.walks.isEmpty(), "the library is not walked")
     }
 
     @Test
@@ -432,13 +358,13 @@ class UploadCycleTest {
         // Not joined is not this cycle's to clean up: the leave that got here cleared the ledger itself
         // (capability `manage-membership`). A row the cycle deleted here would be a row a later join never loads.
         val backend = TestLedger().service
-        backend.completed(resource("kept-primary.heic", "kept"))
-        val platform = FakePlatform(discovered = listOf(resource("A-primary.heic")))
+        backend.completed(resource("kept"))
+        val platform = FakePlatform(discovered = listOf(photo("A")))
 
         val result = cycle(backend, platform, readGate = { CycleGate.NotJoined }).run()
 
         assertEquals(CycleResult.SKIPPED, result, "no membership, nothing to re-arm for — the join arms")
-        assertEquals(LedgerState.COMPLETED, backend.get("kept-primary.heic")?.state, "the ledger is untouched")
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("kept"))?.state, "the ledger is untouched")
         assertEquals(emptyList<String>(), platform.created.map { it.filename }, "a leave creates no upload job")
     }
 
@@ -447,7 +373,7 @@ class UploadCycleTest {
         // The cycle is long-lived: a tier whose process survives across cycles must see a membership
         // change on the next run, not on the next launch.
         val backend = TestLedger().service
-        val platform = FakePlatform(discovered = listOf(resource("A-primary.heic")))
+        val platform = FakePlatform(discovered = listOf(photo("A")))
         var joined = true
 
         val c = cycle(
@@ -459,7 +385,7 @@ class UploadCycleTest {
                         UploadConfig(TEST_HOST, testEventId(TEST_EVENT)),
                         JoinedMembership(
                             testEventId(TEST_EVENT),
-                            { admitting(TEST_CUTOFF) },
+                            { platform.library.contribution(captureRange(TEST_CUTOFF)) },
                             saveToAlbum = false,
                             manifestVersion = 0L,
                         ),
@@ -494,7 +420,7 @@ class UploadCycleTest {
     ): UploadCycle = cycle(
         backend,
         platform,
-        policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
+        direction = Direction.DownloadOnly,
         onDiscovery = { _, _, _ ->
             order += "discovery"
             true
@@ -506,7 +432,7 @@ class UploadCycleTest {
         // A library full of perfectly admissible work: in scope, no origin exclusion, nothing in flight.
         // The ONLY reason nothing happens is the membership's direction.
         val platform = FakePlatform(
-            discovered = listOf(resource("a"), resource("b")),
+            discovered = listOf(photo("a"), photo("b")),
             succeeded = listOf("c-primary.heic"),
         )
         val order = mutableListOf<String>()
@@ -529,7 +455,7 @@ class UploadCycleTest {
      */
     @Test
     fun the_gate_precedes_the_walk_but_not_the_manifest() = runTest {
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val platform = FakePlatform(discovered = listOf(photo("a")))
         val order = mutableListOf<String>()
 
         decliningCycle(TestLedger().service, platform, order).run()
@@ -539,7 +465,7 @@ class UploadCycleTest {
         // settlement is deliberately not in `order`: acknowledging a job the OS already presented is not
         // new work, and a declined cycle owes it (capability `background-upload`).
         assertEquals(listOf("discovery"), order, "the manifest is still published")
-        assertNull(platform.discoverPolicyArg, "the library is still never enumerated — that is the cost")
+        assertTrue(platform.walks.isEmpty(), "the library is still never enumerated — that is the cost")
     }
 
     /**
@@ -549,19 +475,17 @@ class UploadCycleTest {
      * download-only cycle took a "malformed policy" branch and logged at `Error`, and `privacy-security`
      * turns `Error` into an event. One wrong severity became four Bugsink issues and an event on every
      * foreground and every completed upload task, for as long as the membership stayed download-only.
-     * Both branches returned `SKIPPED` having touched nothing, which is exactly why the two tests above
-     * passed while running through the wrong one.
      */
     @Test
     fun a_declined_cycle_reports_no_fault() = runTest {
         val recorder = CapturingLogWriter()
         val lines = recorder.lines
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val platform = FakePlatform(discovered = listOf(photo("a")))
 
         val result = cycle(
             TestLedger().service,
             platform,
-            policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
+            direction = Direction.DownloadOnly,
             log = recorder.logger("UploadCycleTest"),
         ).run()
 
@@ -591,7 +515,7 @@ class UploadCycleTest {
         val presented = "c-primary.heic"
         backend.inFlight(presented, assetId = "c")
         val platform =
-            FakePlatform(discovered = listOf(resource("a")), succeeded = listOf(presented), ledger = backend)
+            FakePlatform(discovered = listOf(photo("a")), succeeded = listOf(presented), ledger = backend)
         val order = mutableListOf<String>()
 
         val result = decliningCycle(backend, platform, order).run()
@@ -610,7 +534,7 @@ class UploadCycleTest {
         // And it took nothing the gate withholds: the walk and job creation.
         assertTrue(platform.created.isEmpty(), "no upload job is created")
         assertEquals(listOf("discovery"), order, "the manifest still runs")
-        assertNull(platform.discoverPolicyArg, "the library is never enumerated")
+        assertTrue(platform.walks.isEmpty(), "the library is never enumerated")
     }
 
     @Test
@@ -618,34 +542,34 @@ class UploadCycleTest {
         // The cycle holds no re-join reconciliation (capability `photo-sharing`): the join
         // loads the ledger, and a cycle reads what it is given. A row it did not judge survives it.
         val backend = TestLedger().service
-        backend.completed(resource("stored-primary.heic", "stored"))
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        backend.completed(resource("stored"))
+        val platform = FakePlatform(discovered = listOf(photo("stored"), photo("a")))
 
         assertEquals(CycleResult.COMPLETED, cycle(backend, platform).run())
 
-        assertEquals(listOf("a"), platform.created.map { it.filename })
-        assertEquals(LedgerState.COMPLETED, backend.get("stored-primary.heic")?.state)
+        assertEquals(listOf(keyOf("a")), platform.created.map { it.filename })
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("stored"))?.state)
     }
 
     @Test
     fun discovery_creates_a_job_per_new_resource_and_records_requested_after_create() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b")))
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf("a", "b"), platform.created.map { it.filename })
-        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
-        assertEquals(LedgerState.REQUESTED, backend.get("b")?.state)
+        assertEquals(listOf(keyOf("a"), keyOf("b")), platform.created.map { it.filename })
+        assertEquals(LedgerState.REQUESTED, backend.get(keyOf("a"))?.state)
+        assertEquals(LedgerState.REQUESTED, backend.get(keyOf("b"))?.state)
     }
 
     @Test
     fun discovery_skips_in_flight_and_completed_resources() = runTest {
         val backend = TestLedger().service
-        LedgerWriter(backend).recordRequested(resource("a", "a")) // in flight
-        backend.completed(resource("b", "b")) // done
-        val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
+        LedgerWriter(backend).recordRequested(resource("a")) // in flight
+        backend.completed(resource("b")) // done
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b")))
 
         cycleOver(backend, platform).run()
 
@@ -657,8 +581,8 @@ class UploadCycleTest {
         // Uploaded resources are immutable: a COMPLETED key is never re-uploaded, even when the same
         // asset is re-discovered (e.g. after a metadata-only change).
         val backend = TestLedger().service
-        backend.completed(resource("a", "a"))
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        backend.completed(resource("a"))
+        val platform = FakePlatform(discovered = listOf(photo("a")))
 
         cycleOver(backend, platform).run()
 
@@ -673,33 +597,27 @@ class UploadCycleTest {
         // id set supplied per cycle, so the projection re-applies it (capability `photo-sharing`), and
         // the row stays where it belongs: a true record that those bytes are on the backend.
         val backend = TestLedger().service
-        backend.completed(resource("FOREIGN-primary.heic", "FOREIGN"))
-        val platform = FakePlatform(
-            discovered = listOf(resource("FOREIGN-primary.heic", "FOREIGN"), resource("MINE-primary.heic", "MINE")),
-            fullEnumeration = true,
-        )
-        val cycle = cycle(backend, platform, policy = admittingWith(echo = setOf(testAssetId("FOREIGN"))))
+        backend.completed(resource("FOREIGN"))
+        val platform = FakePlatform(discovered = listOf(photo("FOREIGN"), photo("MINE")))
+        val echo = setOf(testAssetId("FOREIGN"))
 
-        cycle.run()
+        cycle(backend, platform, echo = echo).run()
 
-        assertEquals(listOf("MINE-primary.heic"), platform.created.map { it.filename }) // FOREIGN suppressed
+        assertEquals(listOf(keyOf("MINE")), platform.created.map { it.filename }) // FOREIGN suppressed
         assertEquals(
             LedgerState.COMPLETED,
-            backend.get("FOREIGN-primary.heic")?.state,
+            backend.get(keyOf("FOREIGN"))?.state,
             "the stale row survives — it is a true statement about bytes on the backend",
         )
         // The read is not state-scoped, so BOTH rows are present — MINE only REQUESTED, FOREIGN stale and
-        // COMPLETED. The echo suppression, an id set supplied per cycle, is what keeps FOREIGN unlisted;
-        // pruning used to do this. That the filtering happens in the projection rather than in the read is
-        // the whole point: the ledger states what exists, the policy states what is shared.
+        // COMPLETED. The echo suppression, an id set supplied per cycle, is what keeps FOREIGN unlisted.
         val rows = backend.manifestRows()
         assertEquals(
             listOf(testAssetId("FOREIGN"), testAssetId("MINE")),
             rows.map { it.assetId }.sorted(),
             "both rows are present to be filtered — the read filters no row",
         )
-        val listed = projectDeviceManifest(testDeviceId("D"), rows, admittingWith(echo = setOf(testAssetId("FOREIGN"))))
-            .assets.map { it.assetId }
+        val listed = projectDeviceManifest(testDeviceId("D"), rows, policyFor(echo = echo)).assets.map { it.assetId }
         assertEquals(
             listOf(testAssetId("MINE")),
             listed,
@@ -710,13 +628,12 @@ class UploadCycleTest {
     @Test
     fun suppression_matches_on_the_canonical_assetid() = runTest {
         // The walk and the download importer mint ids through the one platform mapping, so a downloaded
-        // asset's createdLocalId IS the id discovery hands out — the §7.6 load-bearing contract.
+        // asset's createdLocalId IS the id discovery hands out — the §7.6 load-bearing contract. A PhotoKit
+        // `localIdentifier` carries `/`, which the mapping turns into the canonical id's `_`.
         val backend = TestLedger().service
-        val id = testAssetId("ABC_L0_001")
-        val platform = FakePlatform(discovered = listOf(resource("$id-primary.heic", id.value)))
-        val cycle = cycle(backend, platform, policy = admittingWith(echo = setOf(id)))
+        val platform = FakePlatform(discovered = listOf(photo("ABC/L0/001")))
 
-        cycle.run()
+        cycle(backend, platform, echo = setOf(testAssetId("ABC_L0_001"))).run()
 
         assertTrue(platform.created.isEmpty(), "a downloaded asset must be suppressed on its id")
     }
@@ -727,21 +644,19 @@ class UploadCycleTest {
         // death — and it records it SETTLED: nothing a completion used to owe is left for a cycle to do.
         // Nothing about the success crosses the seam.
         val backend = TestLedger().service
-        LedgerWriter(backend).recordRequested(resource("a", "a"))
-        val platform = FakePlatform(succeeded = listOf("a"), ledger = backend)
+        LedgerWriter(backend).recordRequested(resource("a"))
+        val platform = FakePlatform(discovered = listOf(photo("a")), succeeded = listOf(keyOf("a")), ledger = backend)
 
         cycleOver(backend, platform).run()
 
-        assertEquals(LedgerState.COMPLETED, backend.get("a")?.state)
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("a"))?.state)
         assertTrue(platform.created.isEmpty())
     }
 
     @Test
     fun a_terminal_outcome_for_a_pruned_row_writes_nothing_at_all() = runTest {
         // The row was pruned (a mid-upload deletion, or a full-enumeration retain) before the outcome
-        // arrived. The phantom `assetId=""` row this used to guard against is now structurally
-        // impossible: the terminal write is a guarded UPDATE, so with no row to match it writes nothing
-        // and there is no reconstruct step left to get an assetId wrong.
+        // arrived. The terminal write is a guarded UPDATE, so with no row to match it writes nothing.
         val backend = TestLedger().service
         val platform = FakePlatform(succeeded = listOf("L-primary.jpg"), ledger = backend)
 
@@ -767,14 +682,14 @@ class UploadCycleTest {
     @Test
     fun first_failure_retries_with_a_fresh_url_and_records_requested() = runTest {
         val backend = TestLedger().service
-        LedgerWriter(backend).recordRequested(resource("a", "a"))
-        val job = platformJob("a", UploadFailure("network"))
-        val platform = FakePlatform(retryJobs = listOf(job))
+        LedgerWriter(backend).recordRequested(resource("a"))
+        val job = platformJob(keyOf("a"), UploadFailure("network"))
+        val platform = FakePlatform(discovered = listOf(photo("a")), retryJobs = listOf(job))
 
         cycleOver(backend, platform).run()
 
         assertEquals(listOf(job), platform.retried)
-        val entry = backend.get("a")
+        val entry = backend.get(keyOf("a"))
         assertEquals(LedgerState.REQUESTED, entry?.state) // UploadStarted recorded the retry
         assertTrue(platform.created.isEmpty(), "a free retry re-points, it does not create")
     }
@@ -786,71 +701,81 @@ class UploadCycleTest {
         // still retries (an untouched `.retry` job's fate is unmeasured, and a duplicate PUT converges) — but
         // both records it makes are declined by the ledger's guard.
         val backend = TestLedger().service
-        backend.resetTo(testEventId(LEDGER_EVENT), listOf(LedgerEntry("a", testAssetId("a"), LedgerState.COMPLETED)))
-        val job = platformJob("a", UploadFailure("network"))
+        backend.resetTo(
+            testEventId(LEDGER_EVENT),
+            listOf(LedgerEntry(keyOf("a"), testAssetId("a"), LedgerState.COMPLETED)),
+        )
+        val job = platformJob(keyOf("a"), UploadFailure("network"))
         val platform = FakePlatform(retryJobs = listOf(job))
 
         cycleOver(backend, platform).run()
 
         assertEquals(listOf(job), platform.retried)
-        assertEquals(LedgerState.COMPLETED, backend.get("a")?.state, "neither the failure nor REQUESTED landed")
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("a"))?.state, "neither the failure nor REQUESTED landed")
         assertTrue(platform.created.isEmpty())
     }
 
     @Test
     fun retry_spent_failure_re_creates_from_the_job_resource_and_is_acknowledged() = runTest {
         val backend = TestLedger().service
-        LedgerWriter(backend).recordRequested(resource("a", "a"))
-        val job = platformJob("a", UploadFailure("network"))
-        val platform = FakePlatform(ackJobs = listOf(job))
+        LedgerWriter(backend).recordRequested(resource("a"))
+        val job = platformJob(keyOf("a"), UploadFailure("network"))
+        val platform = FakePlatform(discovered = listOf(photo("a")), ackJobs = listOf(job))
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf("a"), platform.created.map { it.filename }) // re-created
-        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+        assertEquals(listOf(keyOf("a")), platform.created.map { it.filename }) // re-created
+        assertEquals(LedgerState.REQUESTED, backend.get(keyOf("a"))?.state)
     }
 
     @Test
     fun retry_spent_failures_past_the_platform_limit_are_left_for_the_work_read() = runTest {
         val backend = TestLedger().service
-        LedgerWriter(backend).recordRequested(resource("a", "a"))
-        LedgerWriter(backend).recordRequested(resource("b", "b"))
+        LedgerWriter(backend).recordRequested(resource("a"))
+        LedgerWriter(backend).recordRequested(resource("b"))
         val platform = FakePlatform(
-            discovered = listOf(resource("a", "a"), resource("b", "b")),
-            ackJobs = listOf(platformJob("a", UploadFailure("network")), platformJob("b", UploadFailure("network"))),
+            discovered = listOf(photo("a"), photo("b")),
+            ackJobs = listOf(
+                platformJob(keyOf("a"), UploadFailure("network")),
+                platformJob(keyOf("b"), UploadFailure("network")),
+            ),
             ledger = backend,
             limitAfter = 1,
         )
 
         val result = cycleOver(backend, platform).run()
 
-        assertEquals(listOf("a"), platform.created.map { it.filename }, "the limit stops the re-creation")
-        assertEquals(LedgerState.DISCOVERED, backend.get("b")?.state, "the refused one waits in the work read")
+        assertEquals(listOf(keyOf("a")), platform.created.map { it.filename }, "the limit stops the re-creation")
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("b"))?.state, "the refused one waits in the work read")
         assertEquals(CycleResult.PROCESSING, result)
     }
 
     @Test
     fun a_retry_spent_failure_without_its_resource_is_not_re_created() = runTest {
         val backend = TestLedger().service
-        LedgerWriter(backend).recordRequested(resource("a", "a"))
+        LedgerWriter(backend).recordRequested(resource("a"))
         val job =
-            PlatformUploadJob(key = "a", contentType = "image/jpeg", error = UploadFailure("network"), data = null)
-        // The platform is full, so the enqueue pass cannot re-create it from the ledger either.
-        val platform =
-            FakePlatform(
-                discovered = listOf(resource("a", "a")),
-                ackJobs = listOf(job),
-                ledger = backend,
-                limitAfter = 0,
+            PlatformUploadJob(
+                key = keyOf("a"),
+                contentType = "image/jpeg",
+                error = UploadFailure("network"),
+                data = null,
             )
+        // The platform is full, so the enqueue pass cannot re-create it from the ledger either.
+        val platform = FakePlatform(
+            discovered = listOf(photo("a")),
+            ackJobs = listOf(job),
+            ledger = backend,
+            limitAfter = 0,
+        )
 
         cycleOver(backend, platform).run()
 
         assertTrue(platform.created.isEmpty(), "no resource to re-create from")
         assertEquals(
             LedgerState.DISCOVERED,
-            backend.get("a")?.state,
+            backend.get(keyOf("a"))?.state,
             "the failure is adjudicated back to the work read",
         )
     }
@@ -859,8 +784,12 @@ class UploadCycleTest {
     fun a_retry_spent_failure_for_a_settled_row_is_neither_adjudicated_nor_re_created() = runTest {
         // Two uploaders can overlap: the other one's completion may have settled the row first.
         val backend = TestLedger().service
-        backend.completed(resource("a", "a"))
-        val platform = FakePlatform(ackJobs = listOf(platformJob("a", UploadFailure("network"))), ledger = backend)
+        backend.completed(resource("a"))
+        val platform = FakePlatform(
+            discovered = listOf(photo("a")),
+            ackJobs = listOf(platformJob(keyOf("a"), UploadFailure("network"))),
+            ledger = backend,
+        )
 
         cycleOver(backend, platform).run()
         cycle(
@@ -870,39 +799,36 @@ class UploadCycleTest {
         ).run()
 
         assertTrue(platform.created.isEmpty())
-        assertEquals(LedgerState.COMPLETED, backend.get("a")?.state, "a settled row is never re-opened")
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("a"))?.state, "a settled row is never re-opened")
     }
 
     @Test
     fun create_failure_records_no_requested_and_does_not_cap() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(discovered = listOf(resource("a")), failCreate = true)
+        val platform = FakePlatform(discovered = listOf(photo("a")), failCreate = true)
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result) // a create FAILURE is not the cap
-        // Still no REQUESTED — write-after-act is intact, and that is what this test guards.
-        // But the row is no longer ABSENT: the walk recorded it DISCOVERED before any job was
-        // attempted, so a create that failed leaves the resource remembered rather than forgotten.
-        // Before, a failed create left nothing at all, and the resource was found again only by a walk
-        // that re-derived it — which the walk no longer does for an asset the ledger already knows.
-        // Same defect as the never-retried failure, arriving through a different door.
-        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state)
+        // Still no REQUESTED — write-after-act is intact, and that is what this test guards. But the row is not
+        // ABSENT: the walk recorded it DISCOVERED before any job was attempted, so a create that failed leaves the
+        // resource remembered rather than forgotten.
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("a"))?.state)
     }
 
     @Test
     fun already_completed_re_handed_job_is_a_noop_acknowledge() = runTest {
         val backend = TestLedger().service
-        backend.completed(resource("a", "a"))
-        val job = platformJob("a", UploadFailure("network"))
-        val platform = FakePlatform(ackJobs = listOf(job), ledger = backend)
+        backend.completed(resource("a"))
+        val job = platformJob(keyOf("a"), UploadFailure("network"))
+        val platform = FakePlatform(discovered = listOf(photo("a")), ackJobs = listOf(job), ledger = backend)
 
         cycleOver(backend, platform).run()
 
         // The guarded write cannot touch a COMPLETED row, so the re-handed failure changes nothing — the
-        // suppression is now structural rather than a state check the cycle has to remember to make.
+        // suppression is structural rather than a state check the cycle has to remember to make.
         assertTrue(platform.created.isEmpty(), "an already-COMPLETED key is not re-created")
-        assertEquals(LedgerState.COMPLETED, backend.get("a")?.state)
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("a"))?.state)
     }
 
     @Test
@@ -911,17 +837,11 @@ class UploadCycleTest {
         // What a join-time load leaves behind: COMPLETED rows taken from a filename listing, which carries
         // no capture date. A bare row is excluded from every projection fail-closed, so until something
         // fills it this member's photos are missing from the event union.
-        backend.recordUnlessSettled(LedgerEntry("seeded-a", testAssetId("seeded-a"), LedgerState.COMPLETED))
-        backend.recordUnlessSettled(LedgerEntry("seeded-b", testAssetId("seeded-b"), LedgerState.COMPLETED))
+        backend.recordUnlessSettled(LedgerEntry(keyOf("seeded-a"), testAssetId("seeded-a"), LedgerState.COMPLETED))
+        backend.recordUnlessSettled(LedgerEntry(keyOf("seeded-b"), testAssetId("seeded-b"), LedgerState.COMPLETED))
         val platform = FakePlatform(
             // New work FIRST, so creation stops before the walk reaches the seeded rows in the old order.
-            discovered = listOf(
-                resource("new-1"),
-                resource("new-2"),
-                resource("new-3"),
-                resource("seeded-a"),
-                resource("seeded-b"),
-            ),
+            discovered = listOf(photo("new-1"), photo("new-2"), photo("new-3"), photo("seeded-a"), photo("seeded-b")),
             limitAfter = 1,
         )
 
@@ -931,49 +851,48 @@ class UploadCycleTest {
         // BOTH are enriched, including the one the platform's job limit would once have stopped short of.
         // A capture date lives only in the library and only the walk reads it, so a bare row that is not
         // filled here stays bare — and invisible to every projection.
-        assertEquals(IN_SCOPE_DATE, backend.get("seeded-a")?.creationDate)
-        assertEquals(IN_SCOPE_DATE, backend.get("seeded-b")?.creationDate)
+        assertEquals(IN_SCOPE_DATE, backend.get(keyOf("seeded-a"))?.creationDate)
+        assertEquals(IN_SCOPE_DATE, backend.get(keyOf("seeded-b"))?.creationDate)
     }
 
     @Test
     fun a_truncated_cycle_resumes_its_remainder_from_the_ledger_without_re_discovering() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(
-            discovered = listOf(resource("a"), resource("b"), resource("c")),
-            limitAfter = 2,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b"), photo("c")), limitAfter = 2)
         val cycle = cycleOver(backend, platform)
 
         assertEquals(CycleResult.PROCESSING, cycle.run())
-        assertEquals(listOf("a", "b"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("a"), keyOf("b")), platform.created.map { it.filename })
 
-        // The platform frees its slots, and the walk returns nothing new. "c" is not re-derived by any walk:
-        // it is resolved from its DISCOVERED row.
+        // The platform frees its slots. The walk reads nothing new — "c" is fully known to the ledger now, so it is
+        // not re-derived by the walk: it is resolved from its DISCOVERED row.
         platform.freeSlots()
-        platform.discovered = emptyList()
+        platform.readAssets.clear()
 
         assertEquals(CycleResult.COMPLETED, cycle.run())
 
-        assertEquals(listOf("a", "b", "c"), platform.created.map { it.filename }, "the remainder resumes")
-        assertTrue("c" in platform.resolvedKeys, "resolved by key from the ledger, not re-derived by a walk")
+        assertEquals(
+            listOf(keyOf("a"), keyOf("b"), keyOf("c")),
+            platform.created.map { it.filename },
+            "the remainder resumes",
+        )
+        assertTrue(platform.readAssets.isEmpty(), "the second walk re-read no asset")
+        assertTrue(keyOf("c") in platform.resolvedKeys, "resolved by key from the ledger, not re-derived by a walk")
     }
 
     @Test
     fun cap_during_creation_leaves_the_remainder_discovered() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(
-            discovered = listOf(resource("a"), resource("b"), resource("c")),
-            limitAfter = 2,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b"), photo("c")), limitAfter = 2)
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.PROCESSING, result)
-        assertEquals(listOf("a", "b"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("a"), keyOf("b")), platform.created.map { it.filename })
         // Every fact the walk produced is durable before any job is created: the un-created remainder holds a
         // DISCOVERED row, so the platform's job limit loses nothing (capability `background-upload`).
-        assertEquals(LedgerState.DISCOVERED, backend.get("c")?.state, "the remainder is remembered")
-        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state, "what got a job is in flight")
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("c"))?.state, "the remainder is remembered")
+        assertEquals(LedgerState.REQUESTED, backend.get(keyOf("a"))?.state, "what got a job is in flight")
     }
 
     // ---- The top-up creates until the platform refuses ---------------------------------------------------
@@ -982,24 +901,23 @@ class UploadCycleTest {
 
     @Test
     fun a_refusal_stops_the_pass_with_no_further_resolve() = runTest {
-        // Rows the ledger already holds and this cycle's walk does not return — so every row is RESOLVED by key.
+        // Rows the ledger already fully knows, so this cycle's walk reads none of them — every row is RESOLVED by key.
         // (A row the walk just read is created from the handle in hand and resolves nothing; see the next test.)
         val backend = TestLedger().service
-        val library = (1..10).map { resource("r${it.toString().padStart(2, '0')}") }
-        LedgerWriter(backend).recordDiscovered(library)
+        val library = (1..10).map { photo("r${it.toString().padStart(2, '0')}") }
+        LedgerWriter(backend).recordDiscovered(resourcesOf(*library.toTypedArray()))
         val platform = FakePlatform(discovered = library, limitAfter = 2)
-        platform.discovered = emptyList()
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(2, platform.created.size, "creation stops at the refusal")
         assertEquals(
-            setOf("r01", "r02", "r03"),
+            setOf(keyOf("r01"), keyOf("r02"), keyOf("r03")),
             platform.resolvedKeys,
             "the two created rows and the refused one — nothing past the refusal is resolved",
         )
         assertEquals(CycleResult.PROCESSING, result, "the platform refused, so work remains")
-        assertEquals(LedgerState.DISCOVERED, backend.get("r10")?.state, "the remainder is remembered")
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("r10"))?.state, "the remainder is remembered")
     }
 
     @Test
@@ -1007,12 +925,16 @@ class UploadCycleTest {
         // The walk already read these resources through the same port; resolving them again would repeat one
         // synchronous platform round-trip per new photo for the handle already in hand.
         val backend = TestLedger().service
-        val platform = FakePlatform(discovered = listOf(resource("a"), resource("b"), resource("c")))
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b"), photo("c")))
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf("a", "b", "c"), platform.created.map { it.filename }, "every discovered row got a job")
+        assertEquals(
+            listOf(keyOf("a"), keyOf("b"), keyOf("c")),
+            platform.created.map { it.filename },
+            "every discovered row got a job",
+        )
         assertEquals(
             listOf(testAssetId("a"), testAssetId("b"), testAssetId("c")),
             platform.readAssets,
@@ -1025,24 +947,24 @@ class UploadCycleTest {
     @Test
     fun only_the_rows_the_walk_did_not_read_are_resolved() = runTest {
         // A mixed pass: "old" rests DISCOVERED from an earlier cycle and its asset is fully known, so the walk
-        // skips it; "new" is discovered now. Only "old" (and the departed "gone") cost a resolve — and a real
-        // miss is still deleted by key.
+        // skips it; "new" is discovered now. Only "old" costs a resolve. "gone" left the library: the authoritative
+        // walk already retracted its row, so it is not even offered.
         val backend = TestLedger().service
-        LedgerWriter(backend).recordDiscovered(listOf(resource("old"), resource("gone")))
-        val platform = FakePlatform(discovered = listOf(resource("old"), resource("new")))
+        LedgerWriter(backend).recordDiscovered(resourcesOf(photo("old"), photo("gone")))
+        val platform = FakePlatform(discovered = listOf(photo("old"), photo("new")))
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(setOf("old", "new"), platform.created.mapTo(mutableSetOf()) { it.filename })
+        assertEquals(setOf(keyOf("old"), keyOf("new")), platform.created.mapTo(mutableSetOf()) { it.filename })
         assertEquals(
             listOf(testAssetId("new")),
             platform.readAssets,
             "the fully known asset was not re-read by the walk",
         )
-        assertEquals(setOf("old", "gone"), platform.resolvedKeys, "only rows the walk did not read are resolved")
-        assertEquals(2, platform.resolveCalls, "one resolve per missed row, one row at a time")
-        assertNull(backend.get("gone"), "a row that resolves to nothing is still deleted by key")
+        assertEquals(setOf(keyOf("old")), platform.resolvedKeys, "only rows the walk did not read are resolved")
+        assertEquals(1, platform.resolveCalls, "one resolve per missed row, one row at a time")
+        assertNull(backend.get(keyOf("gone")), "the departed asset's row is gone")
     }
 
     @Test
@@ -1050,7 +972,7 @@ class UploadCycleTest {
         // The regression this guards: truncation is observed ONLY through a refusal now. A pass that reaches
         // the end of the admitted rows without one has created everything.
         val backend = TestLedger().service
-        val platform = FakePlatform(discovered = (1..10).map { resource("r${it.toString().padStart(2, '0')}") })
+        val platform = FakePlatform(discovered = (1..10).map { photo("r${it.toString().padStart(2, '0')}") })
 
         val result = cycleOver(backend, platform).run()
 
@@ -1061,13 +983,13 @@ class UploadCycleTest {
     @Test
     fun a_full_platform_reports_work_remaining() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(discovered = listOf(resource("a")), limitAfter = 0)
+        val platform = FakePlatform(discovered = listOf(photo("a")), limitAfter = 0)
 
         val result = cycleOver(backend, platform).run()
 
         assertTrue(platform.created.isEmpty())
         assertEquals(CycleResult.PROCESSING, result, "backpressure, not an absence of work")
-        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "the row is untouched")
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("a"))?.state, "the row is untouched")
     }
 
     @Test
@@ -1085,14 +1007,15 @@ class UploadCycleTest {
     @Test
     fun a_row_that_no_longer_resolves_is_deleted_by_key_and_its_sibling_survives() = runTest {
         // A Live Photo whose primary is uploaded and whose paired video still waits. The video's key now
-        // resolves to nothing — its asset left the library, or, under a partial grant, left the selection;
-        // the cycle sees the same answer from `resourcesFor` either way.
+        // resolves to nothing — its asset left the library since. A top-up resolves from the ledger without a walk,
+        // so the resolve's miss is the only evidence, and it speaks for its own key alone.
         val backend = TestLedger().service
-        backend.completed(resource("X-primary.heic", "X"))
-        LedgerWriter(backend).recordDiscovered(listOf(resource("X-live.mov", "X")))
+        val (still, motion) = resourcesOf(photo("X", live = true))
+        backend.completed(still)
+        LedgerWriter(backend).recordDiscovered(listOf(motion))
         val platform = FakePlatform(discovered = emptyList())
 
-        val result = cycleOver(backend, platform).run()
+        val result = cycleOver(backend, platform).topUp()
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(setOf("X-live.mov"), platform.resolvedKeys, "the row was offered")
@@ -1122,17 +1045,17 @@ class UploadCycleTest {
     @Test
     fun an_authoritative_walk_deletes_the_rows_of_a_departed_in_window_asset() = runTest {
         val backend = TestLedger().service
-        backend.row("gone-photo.jpg")
-        backend.row("gone-video.mov")
-        backend.row("kept-photo.jpg")
-        val platform = FakePlatform(discovered = listOf(resource("kept-photo.jpg", "kept")), fullEnumeration = true)
+        backend.row("gone-primary.jpg")
+        backend.row("gone-live.mov")
+        backend.row(keyOf("kept"))
+        val platform = FakePlatform(discovered = listOf(photo("kept")))
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertNull(backend.get("gone-photo.jpg"), "every row of the departed asset goes")
-        assertNull(backend.get("gone-video.mov"))
-        assertEquals(LedgerState.COMPLETED, backend.get("kept-photo.jpg")?.state, "a returned asset is present")
+        assertNull(backend.get("gone-primary.jpg"), "every row of the departed asset goes")
+        assertNull(backend.get("gone-live.mov"))
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("kept"))?.state, "a returned asset is present")
     }
 
     @Test
@@ -1141,7 +1064,7 @@ class UploadCycleTest {
         // walk — narrowed by that cutoff — could never have returned it. Its absence is no evidence.
         val backend = TestLedger().service
         backend.row("old-photo.jpg", creationDate = "2025-01-01T00:00:00Z")
-        val platform = FakePlatform(fullEnumeration = true)
+        val platform = FakePlatform()
 
         cycleOver(backend, platform).run()
 
@@ -1152,24 +1075,39 @@ class UploadCycleTest {
     fun a_bare_row_is_never_deleted_by_the_walk() = runTest {
         val backend = TestLedger().service
         backend.row("seeded-photo.jpg", creationDate = "")
-        val platform = FakePlatform(fullEnumeration = true)
+        val platform = FakePlatform()
 
         cycleOver(backend, platform).run()
 
-        assertNotNull(backend.get("seeded-photo.jpg"), "an empty date sorts before every cutoff")
+        assertNotNull(backend.get("seeded-photo.jpg"), "an undated row lies in no window")
     }
 
     @Test
     fun a_walk_that_is_not_authoritative_deletes_nothing() = runTest {
-        // A library the platform could not read arrives as `fullEnumeration = false`: no evidence that anything
-        // left it. (A READ selection snapshot is authoritative — see the partial-grant tests below.)
+        // A library the platform could not read is no evidence that anything left it. (A READ selection is
+        // authoritative — see the partial-grant tests below.)
         val backend = TestLedger().service
         backend.row("deselected-photo.jpg")
-        val platform = FakePlatform(fullEnumeration = false)
+        val platform = FakePlatform()
+        platform.library.gallery.unreadable = true
 
         cycleOver(backend, platform).run()
 
         assertEquals(LedgerState.COMPLETED, backend.get("deselected-photo.jpg")?.state)
+    }
+
+    @Test
+    fun a_walk_that_is_not_authoritative_admits_nothing() = runTest {
+        // No discovery: a photo the library holds is not admitted from a read that could not be made, so nothing is
+        // created and nothing the walk would have read is recorded.
+        val backend = TestLedger().service
+        val platform = FakePlatform(discovered = listOf(photo("unseen")))
+        platform.library.gallery.unreadable = true
+
+        cycleOver(backend, platform).run()
+
+        assertTrue(platform.created.isEmpty())
+        assertNull(backend.get(keyOf("unseen")))
     }
 
     @Test
@@ -1179,7 +1117,7 @@ class UploadCycleTest {
         val backend = TestLedger().service
         backend.row("gone-photo.jpg")
         backend.row("gone-video.mov", state = LedgerState.REQUESTED)
-        val platform = FakePlatform(fullEnumeration = true)
+        val platform = FakePlatform()
 
         cycleOver(backend, platform).run()
 
@@ -1254,26 +1192,29 @@ class UploadCycleTest {
     @Test
     fun a_read_selection_deletes_the_rows_of_a_de_selected_photo_whatever_their_state() = runTest {
         val backend = TestLedger().service
-        backend.row("kept-photo.jpg")
-        backend.row("dropped-photo.jpg")
-        backend.row("flying-photo.jpg", state = LedgerState.REQUESTED)
-        val platform = FakePlatform()
-        val selection = listOf(resource("kept-photo.jpg", "kept"))
+        backend.row(keyOf("kept"))
+        backend.row(keyOf("dropped"))
+        backend.row(keyOf("flying"), state = LedgerState.REQUESTED)
+        val platform = FakePlatform(
+            discovered = listOf(photo("dropped"), photo("flying")),
+            grant = LibraryGrant.LIMITED,
+            selection = listOf(photo("kept")),
+        )
         val published = mutableListOf<List<AssetId>>()
 
         cycle(
             backend,
             platform,
-            library = SelectionScopedDiscovery(platform) { SelectionScope.Scoped(selection) },
             onDiscovery = { _, policy, _ ->
                 published += projectDeviceManifest(testDeviceId("D"), backend.manifestRows(), policy).assets.map { it.assetId }
                 true
             },
         ).run()
 
-        assertEquals(LedgerState.COMPLETED, backend.get("kept-photo.jpg")?.state, "a selected photo is present")
-        assertNull(backend.get("dropped-photo.jpg"), "de-selecting is deleting")
-        assertNull(backend.get("flying-photo.jpg"), "in flight or not")
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("kept"))?.state, "a selected photo is present")
+        assertNull(backend.get(keyOf("dropped")), "de-selecting is deleting, though the photo is still in the library")
+        assertNull(backend.get(keyOf("flying")), "in flight or not")
+        assertTrue(platform.walks.isEmpty(), "under a partial grant the library is never walked")
         assertEquals(
             listOf(listOf(testAssetId("kept"))),
             published,
@@ -1285,17 +1226,18 @@ class UploadCycleTest {
     fun an_unread_selection_deletes_nothing_even_if_a_cycle_reaches_it() = runTest {
         // The app's admission withholds on an unread selection, so a cycle never gets here in production. This
         // pins the backstop: collapsed to an empty selection, the enqueue resolved every DISCOVERED row against
-        // it and deleted each one as gone (`changes/selection-is-the-walk`, D1).
+        // it and deleted each one as gone (`changes/selection-is-the-walk`, D1). Now the key resolve answers
+        // `NotReadable`, and `createOne` keeps the row: could not look is never gone.
         val backend = TestLedger().service
-        backend.row("waiting-photo.jpg", state = LedgerState.DISCOVERED)
-        backend.row("done-photo.jpg")
-        val platform = FakePlatform()
+        backend.row(keyOf("waiting"), state = LedgerState.DISCOVERED)
+        backend.row(keyOf("done"))
+        val platform = FakePlatform(discovered = listOf(photo("waiting"), photo("done")), grant = LibraryGrant.LIMITED)
 
-        val cycle = cycle(backend, platform, library = SelectionScopedDiscovery(platform) { SelectionScope.Unread })
+        cycle(backend, platform).run()
 
-        assertFailsWith<IllegalStateException> { cycle.run() }
-        assertEquals(LedgerState.DISCOVERED, backend.get("waiting-photo.jpg")?.state, "no row is deleted")
-        assertEquals(LedgerState.COMPLETED, backend.get("done-photo.jpg")?.state)
+        assertEquals(setOf(keyOf("waiting")), platform.resolvedKeys, "the cycle did reach the row's resolve")
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("waiting"))?.state, "no row is deleted")
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("done"))?.state)
         assertTrue(platform.created.isEmpty())
     }
 
@@ -1304,12 +1246,13 @@ class UploadCycleTest {
         // Still in the library, but now in a denylisted album: the admission excludes it, the walk returns
         // it. A diff fed the admitted set would delete it — the retired reconcile's defect, reintroduced.
         val backend = TestLedger().service
-        backend.row("x-photo.jpg")
-        val platform = FakePlatform(discovered = listOf(resource("x-photo.jpg", "x")), fullEnumeration = true)
+        backend.row(keyOf("x"))
+        val platform = FakePlatform(discovered = listOf(photo("x")))
+        platform.library.inAlbum("WhatsApp", "x")
 
-        cycle(backend, platform, policy = admittingWith(albumExcluded = setOf(testAssetId("x")))).run()
+        cycleOver(backend, platform).run()
 
-        assertEquals(LedgerState.COMPLETED, backend.get("x-photo.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("x"))?.state)
         assertTrue(platform.created.isEmpty(), "and the admission still keeps it from uploading")
     }
 
@@ -1318,17 +1261,13 @@ class UploadCycleTest {
         // The deletion is a fact about the walk, not about how many jobs the cycle then created.
         val backend = TestLedger().service
         backend.row("gone-photo.jpg")
-        val platform = FakePlatform(
-            discovered = listOf(resource("a-photo.jpg"), resource("b-photo.jpg")),
-            fullEnumeration = true,
-            limitAfter = 1,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b")), limitAfter = 1)
 
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.PROCESSING, result)
         assertNull(backend.get("gone-photo.jpg"))
-        assertEquals(LedgerState.DISCOVERED, backend.get("b-photo.jpg")?.state)
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("b"))?.state)
     }
 
     // ---- A walk re-reads only the assets the ledger does not fully know (capability `photo-sharing`) --------
@@ -1336,11 +1275,8 @@ class UploadCycleTest {
     @Test
     fun a_fully_known_asset_is_not_re_read() = runTest {
         val backend = TestLedger().service
-        backend.completed(resource("known-photo.jpg", "known"))
-        val platform = FakePlatform(
-            discovered = listOf(resource("known-photo.jpg", "known"), resource("new-photo.jpg", "new")),
-            fullEnumeration = true,
-        )
+        backend.completed(resource("known"))
+        val platform = FakePlatform(discovered = listOf(photo("known"), photo("new")))
 
         cycleOver(backend, platform).run()
 
@@ -1349,19 +1285,19 @@ class UploadCycleTest {
             platform.readAssets,
             "the recorded, enriched asset costs no round-trip",
         )
-        assertEquals(LedgerState.REQUESTED, backend.get("new-photo.jpg")?.state)
+        assertEquals(LedgerState.REQUESTED, backend.get(keyOf("new"))?.state)
     }
 
     @Test
     fun an_asset_with_a_bare_row_is_read_and_its_detail_filled() = runTest {
         val backend = TestLedger().service
-        backend.recordUnlessSettled(LedgerEntry("b-photo.jpg", testAssetId("b"), LedgerState.COMPLETED))
-        val platform = FakePlatform(discovered = listOf(resource("b-photo.jpg", "b")), fullEnumeration = true)
+        backend.recordUnlessSettled(LedgerEntry(keyOf("b"), testAssetId("b"), LedgerState.COMPLETED))
+        val platform = FakePlatform(discovered = listOf(photo("b")))
 
         cycleOver(backend, platform).run()
 
         assertEquals(listOf(testAssetId("b")), platform.readAssets, "only the walk can fill a bare row")
-        assertEquals(IN_SCOPE_DATE, backend.get("b-photo.jpg")?.creationDate)
+        assertEquals(IN_SCOPE_DATE, backend.get(keyOf("b"))?.creationDate)
         assertTrue(platform.created.isEmpty(), "and it is still already-uploaded")
     }
 
@@ -1374,10 +1310,7 @@ class UploadCycleTest {
             testEventId(LEDGER_EVENT),
             listOf(LedgerEntry("X-primary.heic", testAssetId("X"), LedgerState.COMPLETED)),
         )
-        val platform = FakePlatform(
-            discovered = listOf(resource("X-primary.heic", "X"), resource("X-live.mov", "X")),
-            fullEnumeration = true,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("X", live = true)))
 
         cycleOver(backend, platform).run()
 
@@ -1388,11 +1321,11 @@ class UploadCycleTest {
     @Test
     fun cap_during_re_create_still_walks_publishes_and_returns_processing() = runTest {
         val backend = TestLedger().service
-        LedgerWriter(backend).recordRequested(resource("a", "a"))
-        val job = platformJob("a", UploadFailure("network"))
+        LedgerWriter(backend).recordRequested(resource("a"))
+        val job = platformJob(keyOf("a"), UploadFailure("network"))
         // The asset is still in the library: this is about the cap, not about a departed photo, whose row
         // would be deleted when its key failed to resolve.
-        val platform = FakePlatform(discovered = listOf(resource("a", "a")), ackJobs = listOf(job), limitAfter = 0)
+        val platform = FakePlatform(discovered = listOf(photo("a")), ackJobs = listOf(job), limitAfter = 0)
 
         val result = cycleOver(backend, platform).run()
 
@@ -1401,10 +1334,10 @@ class UploadCycleTest {
         assertEquals(CycleResult.PROCESSING, result)
         // It WALKS. This cycle is the one whose remaining backlog most needs accounting for, and an
         // authoritative walk is also what retracts a departed photo.
-        assertNotNull(platform.discoverPolicyArg, "a settle-pass cap hit still enumerates")
+        assertTrue(platform.walks.isNotEmpty(), "a settle-pass cap hit still enumerates")
         // The retry it could not re-create rests DISCOVERED — which the ledger's work read returns next
         // cycle, so nothing depends on a later walk re-deriving it.
-        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state)
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("a"))?.state)
     }
 
     // ── The publish (capabilities `photo-sharing`, `receiving-photos`) ─────────────────────
@@ -1470,7 +1403,7 @@ class UploadCycleTest {
         backend.inFlight("done-primary.jpg", assetId = "done")
         val platform = FakePlatform(
             succeeded = listOf("done-primary.jpg"),
-            discovered = listOf(resource("a"), resource("b"), resource("c")),
+            discovered = listOf(photo("a"), photo("b"), photo("c")),
             ledger = backend,
             limitAfter = 2,
         )
@@ -1482,8 +1415,7 @@ class UploadCycleTest {
         // THE HEADLINE INVERSION. This assertion used to read `order.isEmpty()` — "a cap-truncated cycle
         // refreshes no manifest and fires no notify" — and that is the two-hour silence measured in the
         // field: a device with more outstanding work than the platform's job limit takes this branch on
-        // every cycle, so its successfully-uploaded photos never entered the event union. Nothing the
-        // manifest needs was missing; only the drain was.
+        // every cycle, so its successfully-uploaded photos never entered the event union.
         assertEquals(listOf("manifest"), order, "a truncated cycle publishes what it settled")
         assertEquals(LedgerState.COMPLETED, backend.get("done-primary.jpg")?.state)
     }
@@ -1492,7 +1424,7 @@ class UploadCycleTest {
     fun a_cycle_that_settled_nothing_still_publishes() = runTest {
         val backend = TestLedger().service
         // New work discovered and created, but nothing COMPLETED this cycle.
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val platform = FakePlatform(discovered = listOf(photo("a")))
         val order = mutableListOf<String>()
 
         val result = cycleWithHooks(backend, platform, order).run()
@@ -1537,109 +1469,94 @@ class UploadCycleTest {
     fun a_duplicate_succeeded_on_an_already_completed_key_disturbs_nothing() = runTest {
         val backend = TestLedger().service
         // The key is already COMPLETED; the OS re-hands a SUCCEEDED job (at-least-once delivery). This
-        // duplicate is not new work. It used to be asserted through the notify it must not fire; with the
-        // notify gone, what it must not do is disturb the settled row or the projection built from it.
-        backend.completed(resource("a-primary.jpg", "a"))
-        val platform = FakePlatform(succeeded = listOf("a-primary.jpg"))
+        // duplicate is not new work: what it must not do is disturb the settled row or the projection built from it.
+        backend.completed(resource("a"))
+        val platform = FakePlatform(discovered = listOf(photo("a")), succeeded = listOf(keyOf("a")))
         val order = mutableListOf<String>()
 
         val result = cycleWithHooks(backend, platform, order).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(LedgerState.COMPLETED, backend.get("a-primary.jpg")?.state)
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("a"))?.state)
         assertEquals(listOf("manifest"), order)
     }
 
     @Test
     fun a_pure_re_ack_failed_job_on_a_completed_key_disturbs_nothing() = runTest {
         val backend = TestLedger().service
-        backend.completed(resource("a-primary.jpg", "a"))
+        backend.completed(resource("a"))
         // A FAILED job whose key is already COMPLETED → the re-ack arm: skipped as settled.
         val platform = FakePlatform(
-            ackJobs = listOf(platformJob("a-primary.jpg", UploadFailure("network"))),
+            discovered = listOf(photo("a")),
+            ackJobs = listOf(platformJob(keyOf("a"), UploadFailure("network"))),
         )
         val order = mutableListOf<String>()
 
         val result = cycleWithHooks(backend, platform, order).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(LedgerState.COMPLETED, backend.get("a-primary.jpg")?.state, "a re-ack never un-settles")
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("a"))?.state, "a re-ack never un-settles")
         assertEquals(listOf("manifest"), order)
     }
 
     // ── Capture-date cutoff (capability `photo-sharing`) ──────────────────────────────────────────
 
-    private fun datedResource(name: String, creationDate: String, assetId: String = name) =
-        Resource(
-            filename = name,
-            assetId = testAssetId(assetId),
-            contentType = "image/jpeg",
-            metadata = mapOf(RESOURCE_META_CREATION_DATE to creationDate),
-            data = Held,
-        )
-
     private suspend fun cycleWithCutoff(
         backend: LedgerService,
         platform: FakePlatform,
         cutoff: String,
-    ): UploadCycle = cycle(backend, platform, policy = admitting(cutoff))
+    ): UploadCycle = cycle(backend, platform, cutoff = cutoff)
 
     @Test
     fun cutoff_excludes_pre_cutoff_resources_from_upload() = runTest {
         val backend = TestLedger().service
         val platform = FakePlatform(
-            discovered = listOf(
-                datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old"),
-                datedResource("new-primary.jpg", "2026-07-10T00:00:00Z", "new"),
-            ),
+            discovered = listOf(photo("old", "2026-07-01T00:00:00Z"), photo("new", "2026-07-10T00:00:00Z")),
         )
 
         cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
 
-        assertEquals(listOf("new-primary.jpg"), platform.created.map { it.filename })
-        assertNull(backend.get("old-primary.jpg"), "a pre-cutoff asset creates no ledger row")
+        assertEquals(listOf(keyOf("new")), platform.created.map { it.filename })
+        assertNull(backend.get(keyOf("old")), "a pre-cutoff asset creates no ledger row")
     }
 
     @Test
     fun cutoff_applies_to_a_walk_that_takes_no_predicate() = runTest {
+        // A partial grant's selection takes no predicate at all, so the cycle's admission is all that stands in the
+        // way of a pre-cutoff photo in it.
         val backend = TestLedger().service
         val platform = FakePlatform(
-            discovered = listOf(datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old")),
-            fullEnumeration = false,
+            grant = LibraryGrant.LIMITED,
+            selection = listOf(photo("old", "2026-07-01T00:00:00Z")),
         )
 
         cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
 
-        // A selection snapshot takes no predicate, so the cycle's admission is all that stands in the way.
         assertTrue(platform.created.isEmpty(), "a pre-cutoff asset is excluded without the fetch's help")
     }
 
     @Test
     fun the_cutoff_is_passed_to_the_platform_as_a_walk_bound() = runTest {
-        // The cutoff scopes the platform's own fetch, so a full enumeration does not walk the whole
-        // library (capability `photo-sharing`). The cycle's filter below stays authoritative.
+        // The range scopes the platform's own fetch, so a full enumeration does not walk the whole
+        // library (capability `photo-sharing`). The cycle's admission stays authoritative.
         val backend = TestLedger().service
         val platform = FakePlatform(discovered = emptyList())
+        val cutoff = Instant.parse("2026-07-06T14:32:11Z")
 
-        cycleWithCutoff(backend, platform, "2026-07-06T14:32:11Z").run()
+        cycleWithCutoff(backend, platform, cutoff.toString()).run()
 
-        // The POLICY reaches the platform, not a bound flattened out of it — which is what lets the
-        // fetch predicate be derived by translating the rules (capability `photo-sharing`).
-        assertEquals(
-            SelectionRule.CaptureAfter(CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z"))),
-            platform.discoverPolicyArg?.rules?.filterIsInstance<SelectionRule.CaptureAfter>()?.single(),
-            "the platform receives the membership's policy, carrying its capture floor as a rule",
-        )
+        val walk = platform.walks.single()
+        assertEquals(cutoff, walk.createdFrom, "the platform's fetch carries the membership's capture floor")
+        assertEquals(cutoff + 30.days, walk.createdUntil, "and its ceiling")
     }
 
     @Test
     fun a_pre_cutoff_resource_is_dropped_even_when_the_platform_over_returns_it() = runTest {
         // The platform's date predicate is deliberately widened, so it MAY hand back assets before the
-        // cutoff. The cycle's filter is what makes that safe — the admitted set must be unchanged.
+        // cutoff. The cycle's admission is what makes that safe — the admitted set must be unchanged.
         val backend = TestLedger().service
-        val platform = FakePlatform(
-            discovered = listOf(datedResource("old-primary.jpg", "2000-01-01T00:00:00Z", "old")),
-        )
+        val platform = FakePlatform(discovered = listOf(photo("old", "2000-01-01T00:00:00Z")))
+        platform.library.gallery.widened = true
 
         cycleWithCutoff(backend, platform, "2026-07-06T14:32:11Z").run()
 
@@ -1649,8 +1566,9 @@ class UploadCycleTest {
     @Test
     fun an_undated_asset_is_excluded_under_a_cutoff() = runTest {
         val backend = TestLedger().service
-        // No creationDate metadata → empty string, which sorts before any non-empty cutoff.
-        val platform = FakePlatform(discovered = listOf(resource("undated-primary.jpg", "undated")))
+        // No capture date: no range holds it — even one the platform's fetch does not narrow by.
+        val platform = FakePlatform(discovered = listOf(photo("undated", date = "")))
+        platform.library.gallery.widened = true
 
         cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
 
@@ -1658,104 +1576,66 @@ class UploadCycleTest {
     }
 
     // ── Origin exclusions (capability `photo-sharing`) ────────────────────────────────────────
-    // The cutoff bounds WHEN a photo was taken; these bound WHAT it is. Note the existing tests above are
-    // unaffected: `resource()` carries no origin facts, and absent facts ADMIT (admit-on-doubt).
-
-    /** A resource carrying the origin facts the enumerator would have stashed on it. */
-    private fun originResource(
-        name: String,
-        assetId: String = name,
-        isScreenshot: Boolean = false,
-        isScreenRecording: Boolean = false,
-        isVideo: Boolean = false,
-        width: Long = 4032,
-        height: Long = 3024,
-        adjusted: Boolean = false,
-        mime: String = "image/heic",
-    ) = Resource(
-        filename = name,
-        assetId = testAssetId(assetId),
-        contentType = "public.heic",
-        metadata = mapOf(
-            RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE,
-            RESOURCE_META_MIME to mime,
-            RESOURCE_META_IS_SCREENSHOT to isScreenshot.toString(),
-            RESOURCE_META_IS_SCREEN_RECORDING to isScreenRecording.toString(),
-            RESOURCE_META_IS_VIDEO to isVideo.toString(),
-            RESOURCE_META_IS_EDITED to adjusted.toString(),
-            RESOURCE_META_PIXEL_AREA to (width * height).toString(),
-        ),
-        data = Held,
-    )
+    // The cutoff bounds WHEN a photo was taken; these bound WHAT it is.
 
     /**
-     * Pre-record every discovered resource as COMPLETED, so the ledger-projected manifest has rows to
+     * Pre-record every resource of [assets] as COMPLETED, so the ledger-projected manifest has rows to
      * list and the only thing left deciding its contents is the admission.
      */
-    private suspend fun completing(backend: LedgerService, platform: FakePlatform) {
-        platform.discovered.forEach { backend.completed(it) }
+    private suspend fun completing(backend: LedgerService, vararg assets: GalleryAssetResources) {
+        resourcesOf(*assets).forEach { backend.completed(it) }
     }
 
     /**
-     * A cycle whose POLICY carries the album exclusion, and a manifest hook recording what the manifest
-     * actually saw. The exclusion used to be an injected port on the cycle; it is a rule in the policy now
-     * (capability `photo-sharing`), which is why this is `suspend` — the one derivation reads it.
+     * A cycle whose library files [albumExcluded] in a messenger's album, and a manifest hook recording what the
+     * manifest actually saw — the REAL projection of the ledger under the cycle's policy.
      */
     private suspend fun originCycle(
         backend: LedgerService,
         platform: FakePlatform,
-        albumExcluded: Set<AssetId> = emptySet(),
+        albumExcluded: Set<String> = emptySet(),
         manifestSaw: MutableList<AssetId> = mutableListOf(),
-    ): UploadCycle = cycle(
-        backend,
-        platform,
-        // The manifest is now a PROJECTION of the ledger's COMPLETED rows (capability
-        // `photo-sharing`), so what it "sees" is read from the ledger at hook time rather than
-        // handed over. These fixtures record COMPLETED rows for the admitted set first, so the
-        // projection has something to list — see `completing`.
-        // The REAL projection, not the raw rows. These used to agree only because `retainAssets` pruned
-        // every row the policy stopped admitting; with the ledger no longer policy-pruned they differ, and
-        // what other members see is the projection (capability `photo-sharing`).
-        onDiscovery = { _, policy, _ ->
-            manifestSaw += projectDeviceManifest(testDeviceId("D"), backend.manifestRows(), policy)
-                .assets.map { it.assetId }
-            true
-        },
-        // The album denylist is a rule in the policy now, not a port the cycle reads.
-        policy = admittingWith(albumExcluded = albumExcluded),
-    )
+    ): UploadCycle {
+        albumExcluded.forEach { platform.library.inAlbum("WhatsApp", it) }
+        return cycle(
+            backend,
+            platform,
+            onDiscovery = { _, policy, _ ->
+                manifestSaw += projectDeviceManifest(testDeviceId("D"), backend.manifestRows(), policy)
+                    .assets.map { it.assetId }
+                true
+            },
+        )
+    }
 
     @Test
     fun a_screenshot_never_reaches_the_engine() = runTest {
         val backend = TestLedger().service
         val platform = FakePlatform(
-            discovered = listOf(
-                originResource("shot-primary.png", "shot", isScreenshot = true),
-                originResource("cam-primary.heic", "cam"),
-            ),
+            discovered = listOf(photo("shot", ext = "png", isScreenshot = true), photo("cam")),
         )
 
         originCycle(backend, platform).run()
 
-        assertEquals(listOf("cam-primary.heic"), platform.created.map { it.filename })
-        assertNull(backend.get("shot-primary.png"), "an excluded asset creates no ledger row")
+        assertEquals(listOf(keyOf("cam")), platform.created.map { it.filename })
+        assertNull(backend.get(keyOf("shot", "png")), "an excluded asset creates no ledger row")
     }
 
     @Test
     fun a_screen_recording_and_a_gif_are_excluded() = runTest {
-        // The GIF is excluded by the RESOLUTION FLOOR now, not by a rule reading its MIME — a messenger
-        // GIF is 480x270 = 0.13 MP. The cycle's admitted set is unchanged for the ordinary case.
+        // The GIF is excluded by the RESOLUTION FLOOR, not by a rule reading its type — a messenger
+        // GIF is 480x270 = 0.13 MP.
         val platform = FakePlatform(
             discovered = listOf(
-                originResource("rec.mov", "rec", isScreenRecording = true, isVideo = true),
-                originResource("meme.gif", "meme", width = 480, height = 270, mime = "image/gif"),
-                originResource("cam.heic", "cam"),
+                photo("rec", ext = "mov", isScreenRecording = true, isVideo = true),
+                photo("meme", ext = "gif", width = 480, height = 270),
+                photo("cam"),
             ),
         )
 
         originCycle(TestLedger().service, platform).run()
 
-        assertEquals(listOf("cam.heic"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("cam")), platform.created.map { it.filename })
     }
 
     @Test
@@ -1764,45 +1644,39 @@ class UploadCycleTest {
         // A single shared floor would silently drop every 1080p recording taken at the event.
         val platform = FakePlatform(
             discovered = listOf(
-                originResource("wa.jpg", "wa", width = 1600, height = 1200), // 1.9 MP → excluded
-                originResource("clip.mov", "clip", isVideo = true, width = 1920, height = 1080),
+                photo("wa", ext = "jpg", width = 1600, height = 1200), // 1.9 MP → excluded
+                photo("clip", ext = "mov", isVideo = true, width = 1920, height = 1080),
             ),
         )
 
         originCycle(TestLedger().service, platform).run()
 
-        assertEquals(listOf("clip.mov"), platform.created.map { it.filename }, "the 1080p recording survives")
+        assertEquals(listOf(keyOf("clip", "mov")), platform.created.map { it.filename }, "the 1080p recording survives")
     }
 
     @Test
     fun an_edited_photo_below_the_floor_is_admitted() = runTest {
         // A crop renders small. Without the hasAdjustments guard this real capture would silently vanish.
-        val platform = FakePlatform(
-            discovered = listOf(originResource("crop.heic", "crop", width = 1000, height = 800, adjusted = true)),
-        )
+        val platform = FakePlatform(discovered = listOf(photo("crop", width = 1000, height = 800, isEdited = true)))
 
         originCycle(TestLedger().service, platform).run()
 
-        assertEquals(listOf("crop.heic"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("crop")), platform.created.map { it.filename })
     }
 
     @Test
     fun a_denylisted_album_member_is_excluded_via_the_injected_port() = runTest {
-        val platform = FakePlatform(
-            discovered = listOf(originResource("wa.heic", "wa"), originResource("cam.heic", "cam")),
-        )
+        val platform = FakePlatform(discovered = listOf(photo("wa"), photo("cam")))
 
-        originCycle(TestLedger().service, platform, albumExcluded = setOf(testAssetId("wa"))).run()
+        originCycle(TestLedger().service, platform, albumExcluded = setOf("wa")).run()
 
-        assertEquals(listOf("cam.heic"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("cam")), platform.created.map { it.filename })
     }
 
     @Test
     fun the_origin_filter_covers_a_walk_that_takes_no_predicate() = runTest {
-        val platform = FakePlatform(
-            discovered = listOf(originResource("shot.png", "shot", isScreenshot = true)),
-            fullEnumeration = false,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("shot", ext = "png", isScreenshot = true)))
+        platform.library.gallery.widened = true
 
         originCycle(TestLedger().service, platform).run()
 
@@ -1813,21 +1687,33 @@ class UploadCycleTest {
     fun a_selected_photo_reaches_the_engine_whatever_it_is() = runTest {
         // Under a partial grant the member hand-picked each photo, so the rules that judge what a photo is stand
         // down (capability `photo-sharing`, "Under limited access the member's selection decides what a photo is"):
-        // a screenshot and a small image are uploaded; the capture range still holds. (No album set here: under a
-        // partial grant the derivation never reads one — `denylistedAlbumMembers` asks only under a full grant.)
+        // a screenshot and a small image are uploaded; the capture range still holds.
         val platform = FakePlatform(
-            discovered = listOf(
-                originResource("shot.png", "shot", isScreenshot = true),
-                originResource("small.jpg", "small", width = 1600, height = 1200),
-                datedResource("old.heic", "2020-01-01T00:00:00Z", "old"),
+            grant = LibraryGrant.LIMITED,
+            selection = listOf(
+                photo("shot", ext = "png", isScreenshot = true),
+                photo("small", ext = "jpg", width = 1600, height = 1200),
+                photo("old", "2020-01-01T00:00:00Z"),
             ),
-            fullEnumeration = true,
-            scope = CandidateScope.Selection,
         )
 
         originCycle(TestLedger().service, platform).run()
 
-        assertEquals(listOf("shot.png", "small.jpg"), platform.created.map { it.filename }.sorted())
+        assertEquals(
+            listOf(keyOf("shot", "png"), keyOf("small", "jpg")),
+            platform.created.map { it.filename }.sorted(),
+        )
+    }
+
+    @Test
+    fun a_selected_photo_in_a_denylisted_album_reaches_the_engine() = runTest {
+        // The album denylist judges what a photo is too — and under a partial grant the album structure is not even
+        // read: the member chose the photo.
+        val platform = FakePlatform(grant = LibraryGrant.LIMITED, selection = listOf(photo("wa")))
+
+        originCycle(TestLedger().service, platform, albumExcluded = setOf("wa")).run()
+
+        assertEquals(listOf(keyOf("wa")), platform.created.map { it.filename })
     }
 
     @Test
@@ -1835,93 +1721,72 @@ class UploadCycleTest {
         // Imports join a partial grant's selection — on iPhone as they are created, on Android as the app's own rows,
         // wherever they were saved — and the selection is judged without the rules about what a photo is. Echo
         // suppression is not one of them: a received photo stays out (capability `receiving-photos`).
-        val platform = FakePlatform(
-            discovered = listOf(originResource("recv.heic", "recv"), originResource("cam.heic", "cam")),
-            fullEnumeration = true,
-            scope = CandidateScope.Selection,
-        )
+        val platform = FakePlatform(grant = LibraryGrant.LIMITED, selection = listOf(photo("recv"), photo("cam")))
 
-        cycle(TestLedger().service, platform, policy = admittingWith(echo = setOf(testAssetId("recv")))).run()
+        cycle(TestLedger().service, platform, echo = setOf(testAssetId("recv"))).run()
 
-        assertEquals(listOf("cam.heic"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("cam")), platform.created.map { it.filename })
     }
 
     @Test
     fun a_full_walk_withdraws_a_row_the_policy_refuses_for_what_it_is() = runTest {
         // The manifest hook is handed the POLICY, not raw discovery, so it can never list bytes that were never
-        // uploaded (rows are COMPLETED or they are not there). A ledger row carries an assetId and a capture date —
-        // nothing about what the asset IS — so the projection can re-apply the capture-date bounds and the two id-set
-        // exclusions (echo, denylisted album), and not the screenshot or size rules. Those are answered by the walk
-        // instead: a full walk that sees the screenshot and refuses it withdraws its row, as it would a deleted
-        // photo's (decision record `changes/archive/2026-10-15-limited-selection-decides`, D2) — the case a
-        // screenshot shared under a partial grant reaches once access widens (capability `photo-access`). The album
-        // member keeps its row: the row's own admission refuses it, so it comes back with no second upload.
+        // uploaded. A ledger row carries an assetId and a capture date — nothing about what the asset IS — so the
+        // projection can re-apply the capture-date bounds and the two id-set exclusions (echo, denylisted album), and
+        // not the screenshot or size rules. Those are answered by the walk instead: a full walk that sees the
+        // screenshot and refuses it withdraws its row, as it would a deleted photo's (decision record
+        // `changes/archive/2026-10-15-limited-selection-decides`, D2). The album member keeps its row: the row's own
+        // admission refuses it, so it comes back with no second upload.
         val manifestSaw = mutableListOf<AssetId>()
-        val platform = FakePlatform(
-            discovered = listOf(
-                originResource("shot.png", "shot", isScreenshot = true),
-                originResource("wa.heic", "wa"),
-                originResource("cam.heic", "cam"),
-            ),
-            fullEnumeration = true,
-        )
+        val shot = photo("shot", ext = "png", isScreenshot = true)
+        val platform = FakePlatform(discovered = listOf(shot, photo("wa"), photo("cam")))
 
         // Every discovered resource is already COMPLETED, so the ONLY thing deciding what the
         // projection lists is the admission — which is exactly what this test is about.
         val backend = TestLedger().service
-        completing(backend, platform)
-        originCycle(backend, platform, albumExcluded = setOf(testAssetId("wa")), manifestSaw = manifestSaw).run()
+        completing(backend, shot, photo("wa"), photo("cam"))
+        originCycle(backend, platform, albumExcluded = setOf("wa"), manifestSaw = manifestSaw).run()
 
         assertEquals(listOf(testAssetId("cam")), manifestSaw, "the screenshot is withdrawn, the album member excluded")
-        assertNull(backend.get("shot.png"), "the screenshot's row is forgotten, as a deleted photo's is")
-        assertEquals(LedgerState.COMPLETED, backend.get("wa.heic")?.state, "the album member's row is kept")
+        assertNull(backend.get(keyOf("shot", "png")), "the screenshot's row is forgotten, as a deleted photo's is")
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("wa"))?.state, "the album member's row is kept")
     }
 
     @Test
     fun a_selection_walk_keeps_a_row_it_shares_whatever_it_is() = runTest {
         // The same screenshot read from a partial grant's selection is the member's own pick: admitted, listed, kept.
         val manifestSaw = mutableListOf<AssetId>()
-        val platform = FakePlatform(
-            discovered = listOf(originResource("shot.png", "shot", isScreenshot = true)),
-            fullEnumeration = true,
-            scope = CandidateScope.Selection,
-        )
+        val shot = photo("shot", ext = "png", isScreenshot = true)
+        val platform = FakePlatform(grant = LibraryGrant.LIMITED, selection = listOf(shot))
         val backend = TestLedger().service
-        completing(backend, platform)
+        completing(backend, shot)
 
         originCycle(backend, platform, manifestSaw = manifestSaw).run()
 
         assertEquals(listOf(testAssetId("shot")), manifestSaw)
-        assertEquals(LedgerState.COMPLETED, backend.get("shot.png")?.state)
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("shot", "png"))?.state)
     }
 
     @Test
     fun the_projection_re_applies_the_capture_date_bounds() = runTest {
-        // BOTH exclusions now land on the SAME side of the manifest hook — it is handed the admitted set
-        // itself, not the inputs to compute one from. This REVERSES the earlier split, deliberately: the
-        // capture-date bounds used to be withheld from the accumulator as forward-prep for multi-event
-        // membership ("another event's cutoff may admit it"), leaving the per-event projection to re-apply
-        // them. That is exactly how the ceiling went missing — the projection was given a bare cutoff and
-        // silently applied only the floor. Multi-event membership is a named non-goal, so the forward-prep
-        // is removed rather than deepened, and the hook receives one already-decided set.
+        // BOTH exclusions land on the SAME side of the manifest hook — it is handed the admitted set itself, not the
+        // inputs to compute one from. The capture-date bounds used to be withheld from the accumulator as forward-prep
+        // for multi-event membership, leaving the per-event projection to re-apply them — exactly how the ceiling went
+        // missing. The hook receives one already-decided policy.
         val manifestSaw = mutableListOf<AssetId>()
-        val platform = FakePlatform(
-            discovered = listOf(
-                datedResource("old.heic", "2020-01-01T00:00:00Z", "old"), // pre-cutoff, no origin facts
-                originResource("shot.png", "shot", isScreenshot = true),
-            ),
-            fullEnumeration = true,
-        )
+        val old = photo("old", "2020-01-01T00:00:00Z") // pre-cutoff, an ordinary photo
+        val shot = photo("shot", ext = "png", isScreenshot = true)
+        val platform = FakePlatform(discovered = listOf(old, shot))
 
         val backend = TestLedger().service
-        completing(backend, platform)
+        completing(backend, old, shot)
         originCycle(backend, platform, manifestSaw = manifestSaw).run()
 
         // The capture-date bound IS re-applied at projection — the row carries its creation date — so the
         // pre-cutoff asset is not listed, and its row is kept (outside the window, it comes back without an upload).
         // The screenshot is withdrawn by the walk, as in the test above.
         assertEquals(emptyList(), manifestSaw, "the pre-cutoff asset is excluded by the date bound")
-        assertNotNull(backend.get("old.heic"), "a row outside the window is kept")
+        assertNotNull(backend.get(keyOf("old")), "a row outside the window is kept")
         assertTrue(platform.created.isEmpty(), "and neither is uploaded")
     }
 
@@ -1932,27 +1797,19 @@ class UploadCycleTest {
         // dates such a row only for an asset it admits.
         val backend = TestLedger().service
         backend.recordUnlessSettled(
-            LedgerEntry(key = "shot.png", assetId = testAssetId("shot"), state = LedgerState.COMPLETED),
+            LedgerEntry(key = keyOf("shot", "png"), assetId = testAssetId("shot"), state = LedgerState.COMPLETED),
         )
-        val platform = FakePlatform(
-            discovered = listOf(
-                originResource("shot.png", "shot", isScreenshot = true),
-                originResource("cam.heic", "cam"),
-            ),
-            fullEnumeration = true,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("shot", ext = "png", isScreenshot = true), photo("cam")))
 
         originCycle(backend, platform).run()
 
-        assertEquals(LedgerState.COMPLETED, backend.get("shot.png")?.state, "a bare row is never judged")
-        assertTrue(backend.get("cam.heic") != null, "the admitted asset keeps its row")
+        assertEquals(LedgerState.COMPLETED, backend.get(keyOf("shot", "png"))?.state, "a bare row is never judged")
+        assertTrue(backend.get(keyOf("cam")) != null, "the admitted asset keeps its row")
     }
 
     // ---- Narrowing must not prune upload-suppression state -------------------------------------------
-    // Change `separate-shared-set-from-uploaded-bytes`, tasks 1.2/1.3. Pins the claim that a NARROWING of
-    // the membership's scope prunes ledger rows it has no business touching. Expected to FAIL on the code
-    // as it stands: `retainAssets` is fed the policy-ADMITTED set, so an asset that is still in the library
-    // and still uploaded loses its row merely because the cutoff moved past it.
+    // Change `separate-shared-set-from-uploaded-bytes`, tasks 1.2/1.3: a NARROWING of the membership's scope must not
+    // prune ledger rows it has no business touching.
 
     @Test
     fun raising_the_cutoff_does_not_prune_an_already_uploaded_row() = runTest {
@@ -1960,7 +1817,7 @@ class UploadCycleTest {
         // Already contributed under the old, lower cutoff.
         backend.recordUnlessSettled(
             LedgerEntry(
-                key = "old-primary.jpg",
+                key = keyOf("old", "jpg"),
                 assetId = testAssetId("old"),
                 state = LedgerState.COMPLETED,
                 creationDate = "2026-07-01T00:00:00Z",
@@ -1972,16 +1829,15 @@ class UploadCycleTest {
         // Both assets are still in the library; the member simply raised their cutoff past the older one.
         val platform = FakePlatform(
             discovered = listOf(
-                datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old"),
-                datedResource("new-primary.jpg", "2026-07-10T00:00:00Z", "new"),
+                photo("old", "2026-07-01T00:00:00Z", ext = "jpg"),
+                photo("new", "2026-07-10T00:00:00Z", ext = "jpg"),
             ),
-            fullEnumeration = true,
         )
 
         cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
 
         assertTrue(
-            backend.get("old-primary.jpg") != null,
+            backend.get(keyOf("old", "jpg")) != null,
             "sync-ledger: retention is a fact about the library, not about the policy - the asset is " +
                 "still present and still uploaded, so raising the cutoff must not prune its row " +
                 "(pruning it makes the narrowing irreversible: re-widening would re-upload).",
@@ -1993,7 +1849,7 @@ class UploadCycleTest {
         val backend = TestLedger().service
         backend.recordUnlessSettled(
             LedgerEntry(
-                key = "old-primary.jpg",
+                key = keyOf("old", "jpg"),
                 assetId = testAssetId("old"),
                 state = LedgerState.COMPLETED,
                 creationDate = IN_SCOPE_DATE,
@@ -2002,29 +1858,12 @@ class UploadCycleTest {
                 originalFilename = "IMG_old.JPG",
             ),
         )
-        val platform = FakePlatform(
-            discovered = listOf(datedResource("old-primary.jpg", IN_SCOPE_DATE, "old")),
-            fullEnumeration = true,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("old", ext = "jpg")))
 
-        cycle(
-            backend,
-            platform,
-            policy = SelectionPolicy(
-                selectionRulesFor(
-                    includesUpload = false,
-                    cutoff = CaptureCutoff(TimestampText.parse(TEST_CUTOFF)),
-                    ceiling = null,
-                    suppressedAssetIds = {
-                        emptySet()
-                    },
-                    albumExcludedAssetIds = { emptySet() },
-                ),
-            ),
-        ).run()
+        cycle(backend, platform, direction = Direction.DownloadOnly).run()
 
         assertTrue(
-            backend.get("old-primary.jpg") != null,
+            backend.get(keyOf("old", "jpg")) != null,
             "reconfigure-membership: a drained upload is recorded so that re-enabling the direction " +
                 "re-uploads nothing - turning the direction off must not wipe the event's ledger.",
         )
@@ -2038,13 +1877,13 @@ class UploadCycleTest {
     fun a_declined_cycle_publishes_an_empty_manifest() = runTest {
         val order = mutableListOf<String>()
         val backend = TestLedger().service
-        backend.completed(resource("a-photo.jpg", "a"))
+        backend.completed(resource("a"))
         var listed: List<AssetId>? = null
 
         val result = cycle(
             backend,
-            FakePlatform(),
-            policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
+            FakePlatform(discovered = listOf(photo("a"))),
+            direction = Direction.DownloadOnly,
             onDiscovery = { _, policy, _ ->
                 order += "discovery"
                 listed = projectDeviceManifest(testDeviceId("D"), backend.manifestRows(), policy)
@@ -2064,49 +1903,37 @@ class UploadCycleTest {
         // A member shares a photo, raises their cutoff past it, then lowers it back. The listing must go
         // and come back, and the bytes must not move twice.
         val backend = TestLedger().service
-        val old = datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old")
+        val old = photo("old", "2026-07-01T00:00:00Z")
+        val wide = "2026-06-05T00:00:00Z"
+        val narrow = "2026-07-06T00:00:00Z"
 
         // Shared under the original floor.
-        cycleWithCutoff(
-            backend,
-            FakePlatform(discovered = listOf(old), fullEnumeration = true),
-            "2026-06-01T00:00:00Z",
-        ).run()
-        backend.completed(old)
+        cycleWithCutoff(backend, FakePlatform(discovered = listOf(old)), wide).run()
+        backend.completed(resourceOf(old))
         assertEquals(
             listOf(testAssetId("old")),
-            projectDeviceManifest(
-                testDeviceId("D"),
-                backend.manifestRows(),
-                admittingWith(cutoff = "2026-06-01T00:00:00Z"),
-            )
-                .assets.map { it.assetId },
+            projectDeviceManifest(testDeviceId("D"), backend.manifestRows(), policyFor(wide)).assets.map { it.assetId },
             "precondition: shared and listed",
         )
 
-        // NARROWED past it. A real narrowed fetch no longer returns the asset, so the platform hands back
-        // nothing — which is exactly the case the deleted retain-live reconcile used to read as a deletion.
-        val narrowedPlatform = FakePlatform(discovered = emptyList(), fullEnumeration = true)
-        cycleWithCutoff(backend, narrowedPlatform, "2026-07-06T00:00:00Z").run()
+        // NARROWED past it. The narrowed fetch no longer returns the asset — which is exactly the case the deleted
+        // retain-live reconcile used to read as a deletion.
+        val narrowedPlatform = FakePlatform(discovered = listOf(old))
+        cycleWithCutoff(backend, narrowedPlatform, narrow).run()
 
         assertEquals(
             LedgerState.COMPLETED,
-            backend.get("old-primary.jpg")?.state,
+            backend.get(keyOf("old"))?.state,
             "the ledger records bytes on the backend — a scope change is not a fact about that",
         )
         assertTrue(
-            projectDeviceManifest(
-                testDeviceId("D"),
-                backend.manifestRows(),
-                admittingWith(cutoff = "2026-07-06T00:00:00Z"),
-            )
-                .assets.isEmpty(),
+            projectDeviceManifest(testDeviceId("D"), backend.manifestRows(), policyFor(narrow)).assets.isEmpty(),
             "but it stops being listed to the event",
         )
 
         // WIDENED back. The asset is in scope again and the fetch returns it.
-        val widenedPlatform = FakePlatform(discovered = listOf(old), fullEnumeration = true)
-        cycleWithCutoff(backend, widenedPlatform, "2026-06-01T00:00:00Z").run()
+        val widenedPlatform = FakePlatform(discovered = listOf(old))
+        cycleWithCutoff(backend, widenedPlatform, wide).run()
 
         assertTrue(
             widenedPlatform.created.isEmpty(),
@@ -2115,12 +1942,7 @@ class UploadCycleTest {
         )
         assertEquals(
             listOf(testAssetId("old")),
-            projectDeviceManifest(
-                testDeviceId("D"),
-                backend.manifestRows(),
-                admittingWith(cutoff = "2026-06-01T00:00:00Z"),
-            )
-                .assets.map { it.assetId },
+            projectDeviceManifest(testDeviceId("D"), backend.manifestRows(), policyFor(wide)).assets.map { it.assetId },
             "and it is listed again",
         )
     }
@@ -2140,7 +1962,7 @@ class UploadCycleTest {
     @Test
     fun a_new_photo_is_placed_before_its_upload_job_is_created() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b")))
         val placed = Placements(platform)
 
         cycle(backend, platform, placeInAlbum = placed.hook).run()
@@ -2151,18 +1973,18 @@ class UploadCycleTest {
             placed.createdAtCall,
             "each made before its own job existed — it waits for no upload",
         )
-        assertEquals(listOf("a", "b"), platform.created.map { it.filename }, "and the jobs follow")
+        assertEquals(listOf(keyOf("a"), keyOf("b")), platform.created.map { it.filename }, "and the jobs follow")
     }
 
     @Test
     fun an_opted_out_membership_places_nothing() = runTest {
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val platform = FakePlatform(discovered = listOf(photo("a")))
         val placed = Placements(platform)
 
         cycle(TestLedger().service, platform, saveToAlbum = false, placeInAlbum = placed.hook).run()
 
         assertEquals(emptyList(), placed.calls)
-        assertEquals(listOf("a"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("a")), platform.created.map { it.filename })
     }
 
     @Test
@@ -2170,8 +1992,8 @@ class UploadCycleTest {
         // A failed upload returns its row to DISCOVERED (there is no FAILED state), so the enqueue pass that
         // re-creates it places it again — a no-op for an asset already in the album (capability `event-album`).
         val backend = TestLedger().service
-        LedgerWriter(backend).recordFailed(resource("f", "f"))
-        val platform = FakePlatform(discovered = listOf(resource("f"), resource("n")))
+        LedgerWriter(backend).recordFailed(resource("f"))
+        val platform = FakePlatform(discovered = listOf(photo("f"), photo("n")))
         val placed = Placements(platform)
 
         cycle(backend, platform, placeInAlbum = placed.hook).run()
@@ -2181,7 +2003,7 @@ class UploadCycleTest {
             placed.calls,
             "one placement per row, the failure included",
         )
-        assertEquals(setOf("f", "n"), platform.created.map { it.filename }.toSet(), "both are enqueued")
+        assertEquals(setOf(keyOf("f"), keyOf("n")), platform.created.map { it.filename }.toSet(), "both are enqueued")
     }
 
     @Test
@@ -2189,19 +2011,24 @@ class UploadCycleTest {
         val backend = TestLedger().service
         // Admitted when it was recorded, excluded by the membership's policy now.
         backend.recordUnlessSettled(
-            LedgerEntry("old", testAssetId("old"), LedgerState.DISCOVERED, creationDate = "2025-01-01T00:00:00Z"),
+            LedgerEntry(
+                keyOf("old"),
+                testAssetId("old"),
+                LedgerState.DISCOVERED,
+                creationDate = "2025-01-01T00:00:00Z",
+            ),
         )
         // Recorded, but the asset has left the library since.
         backend.recordUnlessSettled(
-            LedgerEntry("gone", testAssetId("gone"), LedgerState.DISCOVERED, creationDate = IN_SCOPE_DATE),
+            LedgerEntry(keyOf("gone"), testAssetId("gone"), LedgerState.DISCOVERED, creationDate = IN_SCOPE_DATE),
         )
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val platform = FakePlatform(discovered = listOf(photo("a")))
         val placed = Placements(platform)
 
         cycle(backend, platform, placeInAlbum = placed.hook).run()
 
         assertEquals(listOf(setOf(testAssetId("a"))), placed.calls)
-        assertEquals(listOf("a"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("a")), platform.created.map { it.filename })
     }
 
     // ── Own-photo album placement when a loaded row is healed (capability `event-album`) ───────────────
@@ -2216,7 +2043,7 @@ class UploadCycleTest {
             testEventId(LEDGER_EVENT),
             listOf(LedgerEntry("X-primary.heic", testAssetId("X"), LedgerState.COMPLETED)),
         )
-        val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
+        val platform = FakePlatform(discovered = listOf(photo("X")))
         val datesAtPlacement = mutableListOf<String?>()
         val placed = mutableListOf<Set<AssetId>>()
 
@@ -2238,10 +2065,8 @@ class UploadCycleTest {
             testEventId(LEDGER_EVENT),
             listOf(LedgerEntry("old-primary.heic", testAssetId("old"), LedgerState.COMPLETED)),
         )
-        val platform = FakePlatform(
-            discovered = listOf(datedResource("old-primary.heic", "2025-01-01T00:00:00Z", "old")),
-            fullEnumeration = true,
-        )
+        val platform = FakePlatform(discovered = listOf(photo("old", "2025-01-01T00:00:00Z")))
+        platform.library.gallery.widened = true
         val placed = Placements(platform)
 
         cycle(backend, platform, placeInAlbum = placed.hook).run()
@@ -2256,7 +2081,7 @@ class UploadCycleTest {
             testEventId(LEDGER_EVENT),
             listOf(LedgerEntry("X-primary.heic", testAssetId("X"), LedgerState.COMPLETED)),
         )
-        val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
+        val platform = FakePlatform(discovered = listOf(photo("X")))
         val placed = Placements(platform)
 
         cycle(backend, platform, saveToAlbum = false, placeInAlbum = placed.hook).run()
@@ -2272,7 +2097,7 @@ class UploadCycleTest {
             testEventId(LEDGER_EVENT),
             listOf(LedgerEntry("X-primary.heic", testAssetId("X"), LedgerState.COMPLETED)),
         )
-        val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
+        val platform = FakePlatform(discovered = listOf(photo("X")))
         val placed = Placements(platform)
 
         cycle(backend, platform, placeInAlbum = placed.hook).run()
@@ -2288,7 +2113,7 @@ class UploadCycleTest {
     @Test
     fun a_job_limit_leaves_the_refused_row_placed_and_the_next_cycle_places_only_what_still_waits() = runTest {
         val backend = TestLedger().service
-        val platform = FakePlatform(discovered = listOf(resource("a"), resource("b"), resource("c")), limitAfter = 1)
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b"), photo("c")), limitAfter = 1)
         val placed = Placements(platform)
 
         val first = cycle(backend, platform, placeInAlbum = placed.hook).run()
@@ -2298,7 +2123,7 @@ class UploadCycleTest {
             placed.calls,
             "the refused row was placed before the platform refused it; nothing past it was reached",
         )
-        assertEquals(LedgerState.DISCOVERED, backend.get("b")?.state, "the refused rows still wait")
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("b"))?.state, "the refused rows still wait")
 
         platform.freeSlots()
         cycle(backend, platform, placeInAlbum = placed.hook).run()
@@ -2310,23 +2135,23 @@ class UploadCycleTest {
 
     @Test
     fun a_placement_failure_does_not_stop_job_creation() = runTest {
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val platform = FakePlatform(discovered = listOf(photo("a")))
 
         val result = cycle(TestLedger().service, platform, placeInAlbum = { _, _ -> error("album boom") }).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertEquals(listOf("a"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("a")), platform.created.map { it.filename })
     }
 
     @Test
     fun a_declined_cycle_places_nothing() = runTest {
-        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val platform = FakePlatform(discovered = listOf(photo("a")))
         val placed = Placements(platform)
 
         cycle(
             TestLedger().service,
             platform,
-            policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
+            direction = Direction.DownloadOnly,
             placeInAlbum = placed.hook,
         ).run()
 
@@ -2341,7 +2166,7 @@ class UploadCycleTest {
 
         val result = cycle(
             TestLedger().service,
-            FakePlatform(discovered = listOf(resource("a"))),
+            FakePlatform(discovered = listOf(photo("a"))),
             readGate = { CycleGate.Skip("") },
             log = recorder.logger("UploadCycleTest"),
         ).run()
@@ -2358,9 +2183,9 @@ class UploadCycleTest {
         // The member raised their cutoff while this photo's upload was in flight: the ledger's work read no longer
         // admits it, but the platform's spent retry is still re-created — and refused. Work remains either way.
         val backend = TestLedger().service
-        LedgerWriter(backend).recordRequested(datedResource("old-primary.heic", "2025-06-01T10:00:00Z", "old"))
+        LedgerWriter(backend).recordRequested(resourceOf(photo("old", "2025-06-01T10:00:00Z")))
         val platform = FakePlatform(
-            ackJobs = listOf(platformJob("old-primary.heic", UploadFailure("network"))),
+            ackJobs = listOf(platformJob(keyOf("old"), UploadFailure("network"))),
             ledger = backend,
             limitAfter = 0,
         )
@@ -2369,22 +2194,22 @@ class UploadCycleTest {
 
         assertEquals(CycleResult.PROCESSING, result, "the refused re-creation is work left")
         assertEquals(1, platform.createAttempts, "the re-creation was asked once; the work read admits nothing")
-        assertEquals(LedgerState.DISCOVERED, backend.get("old-primary.heic")?.state)
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("old"))?.state)
     }
 
     @Test
     fun a_top_up_over_rows_the_current_policy_no_longer_admits_creates_nothing_and_keeps_them() = runTest {
         // The rows were admitted when the walk recorded them; the member has since raised their cutoff past them.
         val backend = TestLedger().service
-        LedgerWriter(backend).recordDiscovered(listOf(resource("a"), resource("b")))
-        val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
+        LedgerWriter(backend).recordDiscovered(resourcesOf(photo("a"), photo("b")))
+        val platform = FakePlatform(discovered = listOf(photo("a"), photo("b")))
 
-        val result = cycle(backend, platform, policy = admitting("2026-07-01T00:00:00Z")).topUp()
+        val result = cycle(backend, platform, cutoff = "2026-07-01T00:00:00Z").topUp()
 
         assertEquals(CycleResult.COMPLETED, result, "nothing it may create is left waiting")
         assertEquals(0, platform.createAttempts)
-        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "an excluded row is kept, not deleted")
-        assertEquals(LedgerState.DISCOVERED, backend.get("b")?.state)
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("a"))?.state, "an excluded row is kept, not deleted")
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("b"))?.state)
     }
 
     @Test
@@ -2394,19 +2219,14 @@ class UploadCycleTest {
         val backend = TestLedger().service
         val a = resource("a")
         LedgerWriter(backend).recordDiscovered(listOf(a))
-        val platform = FakePlatform(discovered = listOf(a))
-        val racing = object : UploadDiscovery by platform {
-            override suspend fun resourcesFor(keys: Set<String>): List<Resource> {
-                LedgerWriter(backend).recordRequested(a)
-                return platform.resourcesFor(keys)
-            }
-        }
+        val platform = FakePlatform(discovered = listOf(photo("a")))
+        platform.library.keys.before = { LedgerWriter(backend).recordRequested(a) }
 
-        val result = cycle(backend, platform, library = racing).topUp()
+        val result = cycle(backend, platform).topUp()
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(0, platform.createAttempts, "the row was already in flight")
-        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+        assertEquals(LedgerState.REQUESTED, backend.get(keyOf("a"))?.state)
     }
 
     @Test
@@ -2416,7 +2236,7 @@ class UploadCycleTest {
             testEventId(LEDGER_EVENT),
             listOf(LedgerEntry("X-primary.heic", testAssetId("X"), LedgerState.COMPLETED)),
         )
-        val platform = FakePlatform(discovered = listOf(resource("X-primary.heic", "X")), fullEnumeration = true)
+        val platform = FakePlatform(discovered = listOf(photo("X")))
         val recorder = CapturingLogWriter()
 
         val result = cycle(
@@ -2435,22 +2255,26 @@ class UploadCycleTest {
     fun a_retry_spent_failure_the_platform_reported_without_an_error_is_still_re_created() = runTest {
         val backend = TestLedger().service
         LedgerWriter(backend).recordRequested(resource("a"))
-        val platform = FakePlatform(ackJobs = listOf(platformJob("a", error = null)), ledger = backend)
+        val platform = FakePlatform(
+            discovered = listOf(photo("a")),
+            ackJobs = listOf(platformJob(keyOf("a"), error = null)),
+            ledger = backend,
+        )
 
         cycleOver(backend, platform).run()
 
-        assertEquals(listOf("a"), platform.created.map { it.filename })
-        assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
+        assertEquals(listOf(keyOf("a")), platform.created.map { it.filename })
+        assertEquals(LedgerState.REQUESTED, backend.get(keyOf("a"))?.state)
     }
 
     @Test
     fun once_the_platform_refuses_a_re_creation_the_later_spent_retries_are_not_offered_to_it() = runTest {
         val backend = TestLedger().service
-        val library = listOf(resource("a"), resource("b"), resource("c"))
-        library.forEach { LedgerWriter(backend).recordRequested(it) }
+        val library = listOf(photo("a"), photo("b"), photo("c"))
+        library.forEach { LedgerWriter(backend).recordRequested(resourceOf(it)) }
         val platform = FakePlatform(
             discovered = library,
-            ackJobs = library.map { platformJob(it.filename, UploadFailure("network")) },
+            ackJobs = listOf("a", "b", "c").map { platformJob(keyOf(it), UploadFailure("network")) },
             ledger = backend,
             limitAfter = 1,
         )
@@ -2458,11 +2282,11 @@ class UploadCycleTest {
         val result = cycleOver(backend, platform).topUp()
 
         assertEquals(CycleResult.PROCESSING, result)
-        assertEquals(listOf("a"), platform.created.map { it.filename })
+        assertEquals(listOf(keyOf("a")), platform.created.map { it.filename })
         // a created, b refused; c is adjudicated back to the work read but not offered — and the work read then stops
         // at its own first refusal (b).
         assertEquals(3, platform.createAttempts, "a, b, then the work read's first row; never c in the settle")
-        assertEquals(LedgerState.DISCOVERED, backend.get("c")?.state, "c waits in the work read")
+        assertEquals(LedgerState.DISCOVERED, backend.get(keyOf("c"))?.state, "c waits in the work read")
     }
 
     @Test
@@ -2470,8 +2294,8 @@ class UploadCycleTest {
         val backend = TestLedger().service
         LedgerWriter(backend).recordRequested(resource("a"))
         val platform = FakePlatform(
-            discovered = listOf(resource("a")),
-            ackJobs = listOf(platformJob("a", UploadFailure("network"))),
+            discovered = listOf(photo("a")),
+            ackJobs = listOf(platformJob(keyOf("a"), UploadFailure("network"))),
             ledger = backend,
             failCreate = true,
         )
@@ -2480,9 +2304,13 @@ class UploadCycleTest {
 
         assertEquals(CycleResult.COMPLETED, result, "a failed creation is not the platform's limit")
         assertTrue(platform.created.isEmpty())
-        assertEquals(LedgerState.DISCOVERED, backend.get("a")?.state, "write-after-act: no REQUESTED without a job")
+        assertEquals(
+            LedgerState.DISCOVERED,
+            backend.get(keyOf("a"))?.state,
+            "write-after-act: no REQUESTED without a job",
+        )
     }
 
-    /** The library's own resource a read photo carries — opaque here, as it is to the cycle. */
+    /** The library's own resource a returned job carries — opaque here, as it is to the cycle. */
     private object Held : LibraryResource
 }

@@ -111,7 +111,9 @@ coverage {
         // `LedgerState` and the membership's vocabulary the suite covered (the join's choices and loads, the outcomes)
         // left for the domain and the layers.
         // → 77/47 in phase 31, once the polling tests waited on outcome events instead.
-        integration(instructions = 77, branches = 47)
+        // → 74/43 in phase 4.4a (selection): the selection policy, its candidate seams and the
+        // facts they read — which the suite covered — left for the domain and the data layer. Measured 74.37 / 43.12 %.
+        integration(instructions = 74, branches = 43)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -156,7 +158,9 @@ coverage {
         // 90/73 → 91/74 with the update test (`AppUpdateIntegrationTest`): the upload gate's pause for legacy records.
         // Held with the locked phone and the refusing Keychain (`unavailable-keychain-and-preferences`).
         // → 93/79 in phase 31, once the polling tests waited on outcome events instead.
-        integration(instructions = 93, branches = 79)
+        // Branches → 78 in phase 4.4a (selection): the cycle's read that could not be made, and a key resolve that
+        // cannot look, are the cycle's unit suite's (`UploadCycleTest`); a member's day reads. Measured 78.19 %.
+        integration(instructions = 93, branches = 78)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.
@@ -213,7 +217,10 @@ coverage {
         // format, a head's parts of another length and HKDF's bounds are the unit suite's (`EncryptedFileFormatTest`)
         // — a member's day only ever reads whole files; → 89/68 with the end-of-file rule and the length check the
         // cipher hands its keys on through (`segmentOf`, `ofLength`), whose refusals are the unit suite's too.
-        integration(instructions = 89, branches = 68)
+        // → 84/66 in phase 4.4a (selection), when the asset id's encoding moved in from services (`AssetIdText`): the
+        // characters a platform id may hold beyond letters, digits, `-` and `/` — and their decoding — are the unit
+        // suite's (`AssetIdTextTest`); no integration world's photo carries one. Measured 84.36 / 66.23 %.
+        integration(instructions = 84, branches = 66)
     }
     ":domain:domain" {
         unit()

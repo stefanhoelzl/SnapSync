@@ -1,9 +1,9 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.data.gallery.assetId
 import app.snapsync.model.ImportResult
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
-import app.snapsync.services.gallery.assetId
 import app.snapsync.services.gallery.assetRefOf
 import app.snapsync.services.gallery.importResult
 import co.touchlab.kermit.Logger

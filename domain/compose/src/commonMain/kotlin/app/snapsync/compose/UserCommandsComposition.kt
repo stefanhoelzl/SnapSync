@@ -10,8 +10,7 @@ import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.request.RequestId
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.entrypoints.JoinRequest
 import app.snapsync.entrypoints.KeyRestoreRequest
 import app.snapsync.entrypoints.RenameRequest
@@ -247,8 +246,8 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
  * photo-library or network read never runs on the thread that asked.
  */
 internal fun AppCore.userQueriesFor(): UserQueries = object : UserQueries {
-    override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
-        awaitingOnCoreLane("query.shareableCount") { loadShareableCount(cutoff, until) }
+    override suspend fun shareableCount(range: CaptureRange): Int? =
+        awaitingOnCoreLane("query.shareableCount") { loadShareableCount(range) }
 }
 
 /** The join gate's read of an invite's event, awaited on the composition lane like every query. */

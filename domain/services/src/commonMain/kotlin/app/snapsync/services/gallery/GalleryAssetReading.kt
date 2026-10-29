@@ -1,44 +1,26 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.data.gallery.assetId
+import app.snapsync.data.gallery.facts
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.TimestampText
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.ImportResult
 import app.snapsync.model.LibraryResource
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
-import app.snapsync.model.RESOURCE_META_IS_EDITED
-import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
-import app.snapsync.model.RESOURCE_META_IS_SCREEN_RECORDING
-import app.snapsync.model.RESOURCE_META_IS_VIDEO
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
-import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.uploadKey
-import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.ResourceKind
 
-/** The app's facts of the asset the platform describes. */
-fun GalleryAsset.facts(): AssetFacts =
-    AssetFacts(
-        assetId = id.assetId(),
-        captureDate = created?.let { CaptureDate.Dated(Timestamp.of(it)) } ?: CaptureDate.Undated,
-        isScreenshot = isScreenshot,
-        isScreenRecording = isScreenRecording,
-        isVideo = isVideo,
-        isEdited = isEdited,
-        pixelArea = pixelArea,
-    )
-
 /**
- * Every original resource of [assets] as the upload cycle's [Resource]: keyed by [uploadKey] under its role, its
- * asset's facts carried in its metadata for the one admission to decide on, and the platform's handle riding along
- * uninterpreted for the uploader.
+ * Every original resource of [assets] as the upload cycle's [Resource]: keyed by [uploadKey] under its role, carrying
+ * what its ledger row records — the capture date, the original name, the type — and the platform's handle riding along
+ * uninterpreted for the uploader. What the asset IS is not carried: the selection decided on the typed facts before
+ * any resource was read.
  */
 fun resourcesFrom(assets: List<GalleryAssetResources>): List<Resource> = assets.flatMap { asset ->
     val facts = asset.asset.facts()
@@ -51,11 +33,6 @@ fun resourcesFrom(assets: List<GalleryAssetResources>): List<Resource> = assets.
                 RESOURCE_META_CREATION_DATE to TimestampText.captureText(facts.captureDate),
                 RESOURCE_META_ORIGINAL_FILENAME to resource.originalFilename,
                 RESOURCE_META_MIME to resource.contentType,
-                RESOURCE_META_IS_SCREENSHOT to facts.isScreenshot.toString(),
-                RESOURCE_META_IS_SCREEN_RECORDING to facts.isScreenRecording.toString(),
-                RESOURCE_META_IS_VIDEO to facts.isVideo.toString(),
-                RESOURCE_META_IS_EDITED to facts.isEdited.toString(),
-                RESOURCE_META_PIXEL_AREA to facts.pixelArea?.toString().orEmpty(),
             ),
             data = GalleryResourceRef(resource.handle),
         )

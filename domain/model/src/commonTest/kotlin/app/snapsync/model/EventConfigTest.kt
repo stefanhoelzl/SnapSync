@@ -8,7 +8,6 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.format.TimestampText
 import app.snapsync.testids.testEventId
-import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -176,25 +175,6 @@ class EventConfigTest {
         assertEquals(true, Direction.DownloadOnly.includesDownload)
         assertEquals(false, Direction.Neither.includesUpload)
         assertEquals(false, Direction.Neither.includesDownload)
-    }
-
-    @Test
-    fun `a membership that neither shares nor receives admits none of the member's photos`() = runTest {
-        // The upload policy reads the direction, so Neither withdraws every photo from the manifest and the
-        // cycle with no special case (capability `manage-membership`).
-        val config = EventConfig(
-            eventId = testEventId("e"),
-            name = "n",
-            minPhotoDate = cutoff,
-            maxPhotoDate = FIXTURE_CEILING,
-            direction = Direction.Neither,
-            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
-            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
-        )
-        assertEquals(
-            listOf<SelectionRule>(SelectionRule.DenyAll),
-            selectionRulesFor(config, TimestampText.parse("2026-08-01T00:00:00Z"), { emptySet() }, { emptySet() }),
-        )
     }
 
     @Test
@@ -381,16 +361,5 @@ class EventConfigTest {
         val late = startsBefore.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-11T09:00:00Z")))
         assertEquals(late.minPhotoDate, late.sharingFloor(TimestampText.parse("2026-07-09T12:00:00Z")))
         assertEquals(late.minPhotoDate, late.sharingFloor(TimestampText.parse("2026-07-11T12:00:00Z")))
-    }
-
-    @Test
-    fun `the policy before the start admits no photo — however early the member's range starts`() = runTest {
-        val rules = selectionRulesFor(
-            startsBefore,
-            TimestampText.parse("2026-07-09T12:00:00Z"),
-            { emptySet() },
-            { emptySet() },
-        )
-        assertTrue(SelectionRule.CaptureAfter(CaptureCutoff(startsBefore.startsAt.at)) in rules, "$rules")
     }
 }

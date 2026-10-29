@@ -283,9 +283,9 @@ class StatusContainerHostSurfacesTest {
         val eventStart = CONFIG.startsAt.at
         val asked = mutableListOf<CaptureCutoff>()
         return onHost(
-            queries = counting { from, _ ->
-                asked += from
-                if (from.at == eventStart) 5 else 1
+            queries = counting { range ->
+                asked += range.from
+                if (range.from.at == eventStart) 5 else 1
             },
         ) { host ->
             host.surfaces.onOpenReconfigure()
@@ -306,7 +306,7 @@ class StatusContainerHostSurfacesTest {
         // state alone passes before the read ran. The read is awaited itself, then Unavailable is the failure's answer.
         val asked = CompletableDeferred<Unit>()
         return onHost(
-            queries = counting { _, _ ->
+            queries = counting { _ ->
                 asked.complete(Unit)
                 error("download store unreadable")
             },
@@ -331,7 +331,7 @@ class StatusContainerHostSurfacesTest {
         val spy = Spy()
         return onHost(
             spy,
-            queries = counting { _, _ ->
+            queries = counting { _ ->
                 asked++
                 3
             },
@@ -347,6 +347,39 @@ class StatusContainerHostSurfacesTest {
             awaitReconfigures(spy, 2)
             host.stateWhere("the new range shown") { it.settings()?.range?.preset == RangeChoice.CUSTOM }
             assertEquals(1, asked, "a hidden row must not cost a photo-library read")
+        }
+    }
+
+    @Test
+    fun `bounds that make no capture range for the event are not counted`() {
+        // A stored start 66 days before a 7-day event's: longer than any range may be, so the bounds make no capture
+        // range and the count is unavailable without a read. Once the range is the event's again, it is counted.
+        // Unavailable is also where the count starts, so the bounds that are no range follow a count: only their
+        // handling turns Ready into Unavailable, and a wait on it cannot pass before it.
+        val tooLong = CONFIG.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-05-01T00:00:00Z")))
+        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        val asked = mutableListOf<CaptureCutoff>()
+        return onHost(
+            config = config,
+            queries = counting { range ->
+                asked += range.from
+                4
+            },
+        ) { host ->
+            host.surfaces.onOpenReconfigure()
+            host.stateWhere("the count of the event's range") { it.reconfigureCount() == ShareCount.Ready(4) }
+            host.surfaces.onCancelReconfigure()
+            host.stateWhere("the settings closed") { it.settings() == null }
+            config.value = tooLong
+            host.surfaces.onOpenReconfigure()
+            host.stateWhere("no count for bounds that are no range") { it.reconfigureCount() == ShareCount.Unavailable }
+            assertEquals(listOf(CONFIG.minPhotoDate), asked.distinct(), "no read is made for bounds that are no range")
+
+            host.form.onRangePreset(RangeChoice.EVENT_START)
+            host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
+            host.settings.onConfirmStopSharing()
+            host.stateWhere("the count of the event's range again") { it.reconfigureCount() == ShareCount.Ready(4) }
+            assertEquals(listOf(CONFIG.minPhotoDate), asked.distinct())
         }
     }
 

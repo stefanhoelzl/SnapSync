@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
  * So the rule is not "apply both bounds"; a consumer that re-applies the policy correctly today is still
  * the *shape* that drifts tomorrow. The rule is that a consumer may not compare a capture date **at
  * all** — it receives the admitted set and filters by nothing. Comparing `creationDate` against anything
- * is therefore a violation wherever it appears outside `SelectionPolicy.kt`, however correct the
+ * is therefore a violation wherever it appears outside the capture range itself (`CaptureRange.kt`), however correct the
  * comparison happens to be.
  *
  * **Textual and blunt on purpose**, like the other zone gates: it reads source rather than types, so it
@@ -33,8 +33,8 @@ import kotlin.test.assertTrue
  */
 class SelectionPolicyContainmentTest {
 
-    /** The one file allowed to compare a capture date — the single admission. */
-    private val admissionSite = "SelectionPolicy.kt"
+    /** The one file allowed to compare a capture date: the range that holds it ([CaptureRange.holds]), which every rule asks. */
+    private val admissionSite = "CaptureRange.kt"
 
     /**
      * Files that legitimately mention `creationDate` without deciding admission: the neutral facts value
@@ -90,7 +90,7 @@ class SelectionPolicyContainmentTest {
     /** The guard is only worth anything if the admission is actually where the comparison lives. */
     @Test
     fun `the single admission does compare the capture date`() {
-        val file = File(ZoneGates.domainSrc, "model/src/commonMain/kotlin/app/snapsync/model/$admissionSite")
+        val file = File(ZoneGates.domainSrc, "domain/src/commonMain/kotlin/app/snapsync/domain/sharing/$admissionSite")
         assertTrue(file.isFile, "$admissionSite not found at $file — has the admission moved?")
         assertTrue(
             comparison.containsMatchIn(file.readText()),

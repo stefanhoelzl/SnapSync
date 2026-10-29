@@ -1,9 +1,6 @@
 package app.snapsync.compose
 
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.inbound.AppProcessOnly
-import app.snapsync.ports.GalleryReader
-import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.upload.Uploader
 
 /**
@@ -26,20 +23,12 @@ internal class AppUploader(private val core: AppCore) {
     private val log get() = app.log
 
     /**
-     * The platform's live grant read — what the walk memo keys on, and what the denylisted-album lookup asks. Read
-     * through the gallery port rather than the core's permission cell, which follows the platform rather than leading
-     * it.
-     */
-    private val grant: GalleryReader get() = core.ports.gallery
-
-    /**
      * The cycle — assembled by the SHARED composition `uploadCore` (`docs/architecture.md`, "One shared composition"):
      * the entry-gate translation, the device-manifest producer (on this tier the APP is its sole writer, and without
      * the PUT this tier's uploads would never appear in the event union) and the engine wiring are the same code the
-     * ≥26.1 extension and the world harness run. Long-lived: each unit re-reads the membership. It binds the walk
-     * memo, the app process's alone ([AppProcessOnly]).
+     * ≥26.1 extension and the world harness run. Long-lived: each unit re-reads the membership. Its photos are the
+     * core's own ([AppCore.ownPhotos]), whose walk memo is the app process's alone.
      */
-    @OptIn(AppProcessOnly::class)
     val cycle: UploadCycle by lazy {
         uploadCycle(
             core.process,
@@ -58,23 +47,12 @@ internal class AppUploader(private val core: AppCore) {
                 ledger = app.ledger,
                 uploader = Uploader.Session(ports.uploadSession, core.uploadResuming),
                 gallery = ports.gallery,
-                // The walk memo, which answers an unchanged library, is the app uploader's alone; the extension
-                // walks bare.
-                discovery = appUploadDiscovery(
-                    walk = GalleryDiscovery(ports.gallery),
-                    changeToken = ports.gallery,
-                    grant = grant,
-                    log = log,
-                ),
-                selectionScope = core::selectionScope,
+                photos = core.ownPhotos,
                 manifestStore = app.manifestStore,
                 manifestPublisher = core.backend.manifest,
                 // Echo-suppression: the download store IS the narrowed suppression read.
                 suppression = app.downloadStore,
                 recognition = app.downloadStore.recognition,
-                // Denylisted-album membership, scoped by the cutoff — the SAME admit-on-doubt answer the own-device
-                // status total gets, so the two consumers of the policy cannot diverge.
-                albumExclusions = core::albumExclusionsWhenReadable,
                 albumCoordinator = core.albumCoordinator,
                 // The token the app's credential keeps, the same copy every request it authenticates reads.
                 credentials = app.credentials,

@@ -2,6 +2,7 @@
 
 package app.snapsync.album
 
+import app.snapsync.data.gallery.assetId
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -11,9 +12,11 @@ import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.support.LEDGER_EVENT
+import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
+import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
@@ -23,7 +26,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
-import app.snapsync.model.selectionPolicyFor
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
@@ -35,7 +37,6 @@ import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.gallery.assetId
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.testids.testAssetId
@@ -51,6 +52,7 @@ import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The event album's gather (capability `event-album`, "Ensuring the album gathers what the device already
@@ -118,13 +120,10 @@ class AlbumGatherTest {
         val gather = AlbumGather(
             configSource = config,
             ledger = ledger,
-            policyFor = { c ->
-                selectionPolicyFor(
-                    c,
-                    now = TimestampText.parse("2026-10-01T00:00:00Z"),
-                    suppressedAssetIds = { emptySet() },
-                    albumExcludedAssetIds = { emptySet() },
-                )
+            // The one derivation, by the real `OwnPhotos` — after the event, so the range is shared whole.
+            policyFor = { membership ->
+                OwnLibrary(clock = testClock(Instant.parse("2026-10-01T00:00:00Z")))
+                    .photos.contribution(membership, received = emptySet()).policy
             },
             downloads = downloads,
             photoAccess = galleryAccess(grant),

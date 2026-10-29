@@ -1,7 +1,6 @@
 package app.snapsync.model
 
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
 
 /**
  * The **user-query bundle** (`docs/architecture.md`, "Queries cross a lane-gated door"): every read the
@@ -17,9 +16,9 @@ import app.snapsync.domain.sharing.CaptureCutoff
  *
  * No query has a default body: a host that cannot answer a query must say what it answers instead.
  *
- * - [shareableCount] — how many of the member's own photos the range `[cutoff, until]` would share,
- *   or `null` when the grant permits no count. Purely local.
+ * - [shareableCount] — how many of the member's own photos [range] would share, photos waiting for the event's start
+ *   included, or `null` when the grant permits no count. Purely local.
  */
 interface UserQueries {
-    suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int?
+    suspend fun shareableCount(range: CaptureRange): Int?
 }

@@ -42,11 +42,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/status`
 
-- files: `ForegroundCounts.kt`, `ForegroundWatches.kt`, `LedgerBackedSyncStatusSource.kt`, `LedgerCountsSource.kt`, `NetworkStatusSource.kt`, `NetworkWatch.kt`, `OwnDeviceGalleryStatusSource.kt`, `ShareableCount.kt`, `StatusCountsPoller.kt`, `StatusRefresh.kt`, `SyncStatusSource.kt`
-- top-level types: `ForegroundCounts (class)`, `ForegroundWatches (class)`, `LedgerCounts (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `NetworkStatusSource (interface)`, `NetworkWatch (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `ShareableCountSource (class)`, `StatusCountsPoller (class)`, `StatusRefresh (class)`, `SyncStatusSource (interface)`
+- files: `ForegroundCounts.kt`, `ForegroundWatches.kt`, `LedgerBackedSyncStatusSource.kt`, `LedgerCountsSource.kt`, `NetworkStatusSource.kt`, `NetworkWatch.kt`, `OwnDeviceGalleryStatusSource.kt`, `StatusCountsPoller.kt`, `StatusRefresh.kt`, `SyncStatusSource.kt`
+- top-level types: `ForegroundCounts (class)`, `ForegroundWatches (class)`, `LedgerCounts (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `NetworkStatusSource (interface)`, `NetworkWatch (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `StatusCountsPoller (class)`, `StatusRefresh (class)`, `SyncStatusSource (interface)`
 
 ## `feature/upload`
 
-- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `OwnUploads.kt`, `PushTailGuard.kt`, `SelectionScopedDiscovery.kt`, `ShareSettlement.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WakeRearm.kt`
-- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OwnUploads (class)`, `PushTailGuard (class)`, `SelectionScopedDiscovery (class)`, `ShareSettlement (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WakeRearm (class)`, `WalkOutcome (class)`
+- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `OwnUploads.kt`, `PushTailGuard.kt`, `ShareSettlement.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WakeRearm.kt`
+- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OwnUploads (class)`, `PushTailGuard (class)`, `ShareSettlement (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WakeRearm (class)`, `WalkOutcome (class)`
 

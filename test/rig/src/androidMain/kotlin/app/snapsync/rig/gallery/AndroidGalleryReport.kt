@@ -16,7 +16,7 @@ import app.snapsync.levers.GalleryView
 fun androidGalleryReader(core: () -> AppCore, context: Context): suspend (String?, Boolean, Boolean) -> GalleryView =
     { cutoff, resources, includesUpload ->
         val report = GalleryReport(
-            candidates = core().candidates,
+            photos = core().ownPhotos,
             grant = { core().photoPermission.value.name },
             census = { mediaStoreCensus(context) },
         )

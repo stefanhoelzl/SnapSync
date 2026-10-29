@@ -7,6 +7,7 @@ import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
+import app.snapsync.data.sharing.DiscoveryRead
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.asset.AssetId
@@ -16,9 +17,11 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.configService
+import app.snapsync.feature.support.photo
 import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.testShared
@@ -29,7 +32,6 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PauseReason
-import app.snapsync.model.SelectionRule
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DbOpen
@@ -92,9 +94,9 @@ class CycleGateReadTest {
         identity: DeviceIdentity = testIdentity("11111111-1111-4111-8111-111111111111"),
         suppression: Suppression = Suppression(),
         admission: UploadAdmission = UploadAdmission.Admit,
-        albumExclusions: suspend (CaptureCutoff) -> Set<AssetId> = { emptySet() },
         keys: EventKeyStore = EventKeyStore(inMemorySecureStore(), EventKeyIds(fakeCrypto())),
         clock: Clock = testClock(),
+        library: OwnLibrary = OwnLibrary(clock = clock),
     ) = CycleGateRead(
         records = records,
         ledger = ledger,
@@ -105,8 +107,14 @@ class CycleGateReadTest {
         host = host,
         admission = { admission },
         keys = keys,
-        albumExclusions = albumExclusions,
+        photos = library.photos,
     )
+
+    /** What [run]'s membership admits of [library] — its contribution, derived when the cycle asks, then applied. */
+    private suspend fun admitted(run: CycleGate.Run, library: OwnLibrary): Set<AssetId> {
+        val read = assertIs<DiscoveryRead.Discovered>(library.photos.discover(run.membership.contribution()))
+        return read.discovery.admitted.mapTo(mutableSetOf()) { it.facts.assetId }
+    }
 
     // ---- a lost event key -------------------------------------------------------------------------------
 
@@ -148,22 +156,27 @@ class CycleGateReadTest {
         }
 
     @Test
-    fun `the membership's policy reads the suppressed ids and the album exclusions from the cutoff`() = runTest {
+    fun `the membership's contribution reads the suppressed ids and the album exclusions from the cutoff`() = runTest {
         val suppression = Suppression(suppressed = setOf(testAssetId("echo")))
-        val askedFrom = mutableListOf<CaptureCutoff>()
+        val library = OwnLibrary().apply {
+            add(
+                photo("echo", "2026-01-10T00:00:00Z"),
+                photo("meme", "2026-01-10T00:00:00Z"),
+                photo("cam", "2026-01-10T00:00:00Z"),
+                photo("first", "2026-01-01T00:00:00Z"),
+                photo("before", "2025-12-31T23:59:59Z"),
+            )
+            inAlbum("WhatsApp", "meme")
+        }
 
-        val run = assertIs<CycleGate.Run>(
-            gate(suppression = suppression, albumExclusions = {
-                askedFrom += it
-                setOf(testAssetId("meme"))
-            }).read(),
+        val run = assertIs<CycleGate.Run>(gate(suppression = suppression, library = library).read())
+        assertEquals(0, suppression.idsAsked, "the gate derives nothing")
+
+        assertEquals(
+            setOf(testAssetId("cam"), testAssetId("first")),
+            admitted(run, library),
+            "the echo and the album member are out, and the floor is the membership's own cutoff",
         )
-        val rules = run.membership.policy().rules
-
-        assertTrue(SelectionRule.NotEcho(setOf(testAssetId("echo"))) in rules, "$rules")
-        assertTrue(SelectionRule.NotInDenylistedAlbum(setOf(testAssetId("meme"))) in rules, "$rules")
-        assertTrue(SelectionRule.CaptureAfter(cutoff) in rules, "the floor is the membership's own cutoff")
-        assertEquals(listOf(cutoff), askedFrom)
         assertEquals(1, suppression.idsAsked)
     }
 
@@ -183,12 +196,14 @@ class CycleGateReadTest {
             override fun now(): Instant = now
             override fun timeZone(): TimeZone = TimeZone.UTC
         }
-        val run = assertIs<CycleGate.Run>(gate(joined = joined, clock = clock).read())
+        val library = OwnLibrary(clock = clock).apply {
+            add(photo("early", "2026-07-09T00:00:00Z"), photo("atStart", "2026-07-10T18:00:00Z"))
+        }
+        val run = assertIs<CycleGate.Run>(gate(joined = joined, clock = clock, library = library).read())
 
-        val beforeTheStart = run.membership.policy().rules
-        assertTrue(SelectionRule.CaptureAfter(CaptureCutoff(start.at)) in beforeTheStart, "before the start")
+        assertEquals(setOf(testAssetId("atStart")), admitted(run, library), "before the start")
         now = Instant.parse("2026-07-10T18:00:01Z")
-        assertTrue(SelectionRule.CaptureAfter(own) in run.membership.policy().rules, "from the start on")
+        assertEquals(setOf(testAssetId("early"), testAssetId("atStart")), admitted(run, library), "from the start on")
     }
 
     @Test

@@ -2,6 +2,7 @@
 
 package app.snapsync.feature.album
 
+import app.snapsync.data.gallery.assetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -26,7 +27,6 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.gallery.assetId
 import app.snapsync.services.gallery.correlation
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId

@@ -151,7 +151,6 @@ class CatchSitesTest {
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/backend/Membership.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/backend/PushTokenPublisher.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt" to 5,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/gallery/AlbumExclusions.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/manifest/DeviceManifestService.kt" to 6,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/upload/SessionTransfer.kt" to 1,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/upload/UploadStandings.kt" to 2,

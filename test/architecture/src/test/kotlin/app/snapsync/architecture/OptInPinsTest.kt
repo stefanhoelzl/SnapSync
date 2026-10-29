@@ -30,6 +30,7 @@ class OptInPinsTest {
         ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt" to mapOf(
             "CompositionOnly" to Pin(1, "the app's composition: its handler bundles and the selection it follows"),
+            "AppProcessOnly" to Pin(1, "the app's own photos walk behind the memo; the extension walks afresh"),
         ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt" to mapOf(
             "CompositionOnly" to Pin(1, "every process's first act: the metrics handlers and the crash reporter's handlers"),
@@ -84,8 +85,9 @@ class OptInPinsTest {
             "ExperimentalForInheritanceCoroutinesApi" to
                 Pin(1, "a hand-written StateFlow over the membership, for the old zones (MIGRATING)"),
         ),
-        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppUploader.kt" to mapOf(
-            "AppProcessOnly" to Pin(1, "the app's uploader binds the memoised discovery; the extension walks afresh"),
+        "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/SelectionPolicy.kt" to mapOf(
+            "MintsAdmittedAsset" to Pin(1, "the one admission of a read's candidates"),
+            "MintsAdmittedRow" to Pin(1, "the one admission of ledger rows"),
         ),
         "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt" to mapOf(
             "CompositionOnly" to Pin(1, "the host's registration"),

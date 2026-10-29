@@ -7,14 +7,22 @@ import app.snapsync.data.backend.Observers
 import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.crypto.UploadSealing
+import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.service.ServiceConditions
+import app.snapsync.data.sharing.Contribution
+import app.snapsync.data.sharing.DenylistedAlbums
+import app.snapsync.data.sharing.GalleryWalk
+import app.snapsync.data.sharing.MemoizedWalk
+import app.snapsync.data.sharing.OwnPhotos
+import app.snapsync.data.sharing.SelectionSnapshots
+import app.snapsync.data.sharing.SelectionState
 import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
 import app.snapsync.data.version.AppVersionGate
-import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.service.ServiceFault
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnSelectionChanged
@@ -35,7 +43,6 @@ import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
-import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
@@ -43,6 +50,7 @@ import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
+import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AlbumContents
 import app.snapsync.model.EventConfig
@@ -50,12 +58,10 @@ import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.SelectionScope
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
 import app.snapsync.model.extensionRegistrable
-import app.snapsync.model.selectionPolicyFor
+import app.snapsync.model.selectionPhotos
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Databases
@@ -83,6 +89,7 @@ import app.snapsync.ports.Wake
 import app.snapsync.query.encryption.EventKeyQuery
 import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.sharing.ShareableCountQuery
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
@@ -91,19 +98,13 @@ import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.downloads.ImportMarkers
 import app.snapsync.services.foreground.AppForeground
-import app.snapsync.services.gallery.AlbumLookupFailure
-import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.gallery.GalleryAssetPresence
-import app.snapsync.services.gallery.GalleryCandidateSource
-import app.snapsync.services.gallery.GalleryDiscovery
 import app.snapsync.services.gallery.GalleryImporter
+import app.snapsync.services.gallery.GalleryKeyedResources
 import app.snapsync.services.gallery.ImportedAssetPresence
-import app.snapsync.services.gallery.LatestSelection
 import app.snapsync.services.gallery.PermissionAwareAssetPresence
-import app.snapsync.services.gallery.PermissionAwareCandidateSource
-import app.snapsync.services.gallery.denylistedAlbumMembers
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.upload.ExtensionRegistration
@@ -350,63 +351,52 @@ class AppCore internal constructor(
     }
 
     /**
-     * The one read seam the app's consumers hold — the grant decides the backing, not the consumer.
-     * Built here because choosing between ports by a third port's
-     * state is composition.
+     * **The member's own photos** — the one place their contribution is decided (data's [OwnPhotos]): the upload
+     * cycle, the status total `N`, the join preview and the album gather all take their answer from this instance, so
+     * none can judge a photo another way. Its walk sits behind the walk memo, which is the app process's alone; the
+     * extension builds its own, bare.
      *
-     * Public for the same reason [gallery] is: the dev/test control channel's gallery read asks THIS seam
-     * rather than walking PhotoKit itself, so what it reports is what the app would see — including the
-     * grant-dependent backing. A second walk would be a second answer, and the interesting failures are
-     * exactly the ones where the two would differ.
+     * Public for the same reason [gallery] is: the dev/test control channel's gallery read asks THIS rather than
+     * walking PhotoKit itself, so what it reports is what the app would see — including the grant-dependent read.
      */
-    val candidates: CandidateSource by lazy {
-        PermissionAwareCandidateSource(
-            permission = galleryAccess.grant,
-            walk = GalleryCandidateSource(ports.gallery),
-            selection = selection.snapshot,
+    @OptIn(AppProcessOnly::class)
+    val ownPhotos: OwnPhotos by lazy {
+        OwnPhotos(
+            gallery = ports.gallery,
+            walk = MemoizedWalk(GalleryWalk(ports.gallery, services.wallClock), ports.gallery, services.wallClock),
+            selection = selection,
+            albums = DenylistedAlbums(ports.gallery),
+            clock = services.wallClock,
         )
     }
 
     /**
      * The one presence source the download guard holds: full access queries the library, a partial grant
-     * answers from the snapshot and never says "absent", no grant answers unknown. Built here for the
-     * same reason as [candidates] — choosing a source by the grant is composition, and both halves are
-     * available here.
+     * answers from the selection and never says "absent", no grant answers unknown — choosing a source by the grant
+     * is composition, and both halves are available here.
      */
     private val assetPresence: ImportedAssetPresence by lazy {
         PermissionAwareAssetPresence(
             permission = galleryAccess.grant,
             library = GalleryAssetPresence(ports.gallery),
-            selection = selection.snapshot,
+            selection = selection.state,
         )
     }
 
-    // The own-device upload TOTAL N: gallery enumeration minus downloaded foreign photos, scoped by the
-    // membership's cutoff and the origin exclusions — the SAME policy the upload cycle gets, because the
-    // two enumerate independently and a rule applied to one and not the other would peg the joined
-    // screen below 100% forever.
-    val gallery: OwnDeviceGalleryStatusSource by lazy { OwnDeviceGalleryStatusSource(candidates) }
+    // The own-device upload TOTAL N: the member's own photos as the upload cycle admits them — the same discovery, so
+    // a rule applied to one and not the other cannot peg the joined screen below 100% forever.
+    val gallery: OwnDeviceGalleryStatusSource by lazy { OwnDeviceGalleryStatusSource(ownPhotos) }
 
-    // The join-time shareable-count preview: the SAME policy the cycle and
-    // `gallery` (N) apply, over the same permission-aware source — so the preview and the total cannot
-    // disagree about where candidates come from. No usable grant → null → the surface omits the row.
-    private val shareableCountSource: ShareableCountSource by lazy {
-        ShareableCountSource(
-            source = candidates,
-            suppressedLocalIds = { services.downloadStore.suppressedLocalIds() },
-            // The same grant-gated reader the status total uses — the preview runs on the JOIN surface,
-            // where an unresolved grant is the normal state, so an ungated read would prompt there too.
-            albumExcludedAssetIds = ::albumExclusionsWhenReadable,
-        )
-    }
+    // The join-time shareable-count preview: the same admission the cycle and `gallery` (N) take.
+    private val shareableCount: ShareableCountQuery by lazy { ShareableCountQuery(ownPhotos) }
 
     /**
-     * The join surface's live "how many photos from your gallery will be shared" query: for a
-     * candidate [cutoff] with sharing on, the count of own photos the policy admits, or `null` when
-     * the grant permits no count. Purely local — no backend LIST.
+     * The join surface's live "how many photos from your gallery will be shared" query: for a candidate [range] with
+     * sharing on, the count of own photos the policy admits, or `null` when the grant permits no count. Purely local —
+     * no backend LIST.
      */
-    suspend fun loadShareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
-        shareableCountSource.count(includesUpload = true, cutoff = cutoff, ceiling = until)
+    suspend fun loadShareableCount(range: CaptureRange): Int? =
+        shareableCount.count(range, services.downloadStore.suppressedLocalIds())
 
     /** What the photo-library grant means now, over the permission port — the one read every feature takes. */
     val galleryAccess: GalleryAccessState by lazy { GalleryAccessState(ports.gallery.grant) }
@@ -511,8 +501,7 @@ class AppCore internal constructor(
             galleryAccess,
             albumCoordinator,
             scope,
-            ::selectionPolicyForMembership,
-        )
+        ) { membership -> contributionFor(membership).policy }
     }
 
     /**
@@ -532,9 +521,9 @@ class AppCore internal constructor(
      * the upload cycle owns its entry decision.
      */
     val appUploadAdmission: () -> UploadAdmission = {
-        // The scope, not the raw cell: an unread partial-grant selection withholds (`appAdmission`), and it is
-        // the same derivation discovery reads through `selectionScope()`.
-        appAdmission(galleryAccess.grant.value, selectionScope(), ports.devControls.uploaderPin())
+        // The read plan, not the raw grant: an unread partial-grant selection withholds (`appAdmission`), and it is
+        // the same plan discovery reads under.
+        appAdmission(readPlan(), ports.devControls.uploaderPin())
     }
 
     /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads; the delegate records the
@@ -599,8 +588,8 @@ class AppCore internal constructor(
     }
 
     // ---- Selection-driven reads under a partial grant -----------
-    /** The latest selection snapshot, set only by the selection subscription below — see [LatestSelection]. */
-    private val selection = LatestSelection()
+    /** The latest selection, set only by the selection subscription below — see [SelectionSnapshots]. */
+    internal val selection = SelectionSnapshots()
 
     /** The transfer sessions' drain reports, which a relaunch for their events waits for. */
     internal val uploadDrains: SessionDrains = SessionDrains()
@@ -615,7 +604,7 @@ class AppCore internal constructor(
             ports.uploadSession,
             TransferSetup(
                 record = services.ledger,
-                resources = GalleryDiscovery(ports.gallery),
+                resources = GalleryKeyedResources(ports.gallery),
                 gallery = ports.gallery,
                 files = process.files,
                 network = services.mobileData::transferNetwork,
@@ -632,64 +621,17 @@ class AppCore internal constructor(
     }
 
     /**
-     * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports): the permission
-     * port's current value over the snapshot cell — see [LatestSelection.scopeUnder]. A call and not a value because
-     * the answer changes between cycles.
+     * What the member's photos may be read as right now — the plan discovery reads under, and the app's upload
+     * admission withholds on. A call and not a value because the answer changes between cycles.
      */
-    fun selectionScope(): SelectionScope = selection.scopeUnder(galleryAccess.grant.value)
+    fun readPlan(): ReadPlan<SelectionState.Read> = ReadPlan.of(ports.gallery.access().photoAccess(), selection.read)
 
     /**
-     * The one derivation, for this composition's status readers.
-     *
-     * Both `N` and the join preview must admit exactly what the upload cycle admits, so all three reach
-     * the policy the same way — through `selectionPolicyFor`, with the same two port readers. The cycle
-     * gets there via the membership's supplier; these two call it directly, because they already hold the
-     * config and are already in a coroutine.
+     * What [membership] contributes now — the ONE derivation ([OwnPhotos.contribution]), for this composition's own
+     * readers: the status total and the album gather. The upload cycle reaches the same one through its entry gate.
      */
-    private suspend fun selectionPolicyForMembership(config: EventConfig): SelectionPolicy =
-        selectionPolicyFor(
-            config = config,
-            now = services.config.now(),
-            suppressedAssetIds = { services.downloadStore.suppressedLocalIds() },
-            albumExcludedAssetIds = ::albumExclusionsWhenReadable,
-        )
-
-    /**
-     * The denylisted-album reader, **asked only when the library can be read** — the third
-     * permission-aware seam in this file, and the same shape as [PermissionAwareCandidateSource] and
-     * [PermissionAwareAssetPresence]: choosing behaviour by a port's state is composition.
-     *
-     * **Measured, not assumed** (simulator, iOS 26.4, 2026-08-28). A `PHAssetCollection` fetch under
-     * `NOT_DETERMINED` issues a non-preflight TCC request and iOS **presents the photo-permission
-     * dialog** — `tccd` logs one `AUTHREQ_PROMPTING` for the app. The A/B that pins it: a joined
-     * `UploadOnly` membership at `NOT_DETERMINED` produced exactly one prompt, while `DownloadOnly` —
-     * identical in every other respect, but resolving to `DenyAll` before either exclusion reader is
-     * called — produced none.
-     *
-     * That matters because the consumers stopped gating on the grant: the
-     * policy must now be derived **before** the read seam can answer that it has nothing to say, and
-     * `selectionRulesFor` reads its exclusion sets eagerly. Without this the status refresh would raise
-     * an unrequested system dialog on every foreground of a joined device whose grant is undetermined —
-     * a state a member reaches by resetting privacy settings, and one the app must never answer with a
-     * prompt it did not ask for. `AlbumCoordinator` already gates its own writes this way.
-     *
-     * The empty set is the **honest** answer rather than a fallback: the denylist is a subtraction and
-     * the policy admits on doubt, so "no denylisted assets" is what an unreadable album structure means
-     * anyway — which is why the denylist is recorded as inert under a partial grant.
-     *
-     * The grant gate itself lives in [denylistedAlbumMembers], shared with the upload cycle, and asks only
-     * under a FULL grant: under `LIMITED` the album structure is unreadable, so the lookup could only ever
-     * answer the empty set it now answers without the round-trip.
-     */
-    internal suspend fun albumExclusionsWhenReadable(cutoff: CaptureCutoff): Set<AssetId> =
-        // The app tier admits on doubt: a failed lookup must never drop a real photo from the total.
-        denylistedAlbumMembers(
-            albumManager,
-            cutoff,
-            galleryAccess.grant.value,
-            AlbumLookupFailure.AdmitOnDoubt,
-            services.log,
-        )
+    private suspend fun contributionFor(membership: Membership): Contribution =
+        ownPhotos.contribution(membership, services.downloadStore.suppressedLocalIds())
 
     /**
      * The status-refresh **rule**: cheap local reads before the library
@@ -707,7 +649,7 @@ class AppCore internal constructor(
             // The sibling feature, reached through a lambda so `feature/status` stays blind to it.
             refreshDownloadLine = { downloadStatusSource.refresh() },
             configSource = services.config,
-            policyFor = ::selectionPolicyForMembership,
+            contributionFor = ::contributionFor,
             recognition = services.downloadStore.recognition,
             log = services.log,
         )
@@ -747,9 +689,9 @@ class AppCore internal constructor(
     /** The diagnostic dump assembly — see [diagnosticDumpFor]. */
     internal val collectDiagnosticDump: CollectDiagnosticDump by lazy { diagnosticDumpFor() }
 
-    /** How many photos a partial grant's selection holds, for a bug report — the snapshot cell is this core's. */
+    /** How many photos a partial grant's selection holds, for a bug report — the selection cell is this core's. */
     internal fun selectionPhotosNow(): Fact<Int> =
-        selection.photosUnder(galleryAccess.grant.value)
+        selectionPhotos(galleryAccess.grant.value, selection.selectedPhotos)
 
     /**
      * Install the **port-state-transition subscriptions** on the permission StateFlow (spec
@@ -787,7 +729,7 @@ class AppCore internal constructor(
             // With one sweep per process and no re-arm, a sweep that ran before a partial grant's selection was read
             // would defer every inherited row to the next launch — and on a URLSession-driven relaunch that never
             // foregrounds, potentially every launch. So it waits until the presence source can answer.
-            selection.awaitAnswerable(galleryAccess.grant.value)
+            selection.awaitAnswerable(ports.gallery.access().photoAccess())
             downloadController.sweepInterruptedImports()
         }
     }
