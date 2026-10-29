@@ -185,6 +185,27 @@ class SwitchQuestionIntegrationTest {
         }
     }
 
+    // The member left the joined screen open; the event finished while the app was in the pocket. Back in front, the
+    // invite of another event asks nothing, and nothing is joined until the member confirms.
+    @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "The app keeps its place across backgrounding",
+        scenario = "Returning after the event finished",
+    )
+    fun returning_to_a_finished_event_opens_another_invite_on_its_join_screen() = behaviour {
+        val link = given { endedAndReceived(othersUploading = false) }
+
+        whenever { openLink(link) }
+        then {
+            screen<Layer.JoiningEvent> { (it.phase as? JoinPhase.Detailed)?.eventName == SKI_TRIP }
+            neverScreen<Layer.Joined> { it.pendingSwitch?.phase is JoinPhase.Detailed }
+            neverScreen<Layer.CreateEvent>()
+            never<WorldEvent.BackendReceived> { it.operation == JOIN }
+            settled { true }
+        }
+    }
+
     @Test
     @Verifies(
         spec = "invite-link",

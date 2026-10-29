@@ -129,7 +129,7 @@ class MembershipChangesIntegrationTest {
     @Test
     @Verifies(
         spec = "manage-membership",
-        requirement = "Settings changes take effect immediately",
+        requirement = "A settings change takes effect as soon as it applies",
         scenario = "Turning receiving on starts right away",
     )
     fun turning_receiving_on_starts_bringing_in_the_events_photos() = behaviour {
@@ -154,7 +154,7 @@ class MembershipChangesIntegrationTest {
     @Test
     @Verifies(
         spec = "manage-membership",
-        requirement = "Settings changes take effect immediately",
+        requirement = "A settings change takes effect as soon as it applies",
         scenario = "Narrowing then widening restores the photos",
     )
     fun a_photo_withdrawn_by_a_narrower_range_is_offered_again_once_it_is_widened() = behaviour {

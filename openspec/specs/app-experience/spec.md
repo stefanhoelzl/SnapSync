@@ -43,9 +43,9 @@ NOT drop a joined member to the create screen.
 ### Requirement: The app keeps its place across backgrounding
 
 Returning to the app from the background SHALL show the same screen the member left, with any open
-surface and any half-typed text intact, and SHALL never present a blank or corrupted screen — unless the
-membership ended on its own meanwhile (capability `event-lifetime`), in which case it SHALL show the
-create screen.
+surface and any half-typed text intact, and SHALL never present a blank or corrupted screen. An event that
+finished meanwhile does not change that: the app never leaves an event on its own (capability
+`event-lifetime`).
 
 #### Scenario: Returning to an open settings surface
 - **WHEN** the member opens settings, switches to another app, and comes back later
@@ -56,9 +56,10 @@ create screen.
 - **THEN** it renders normally, never blank
 
 #### Scenario: Returning after the event finished
-- **WHEN** the member left the joined screen open, the event finished and the app left it in the
-  background, and the member returns
-- **THEN** the create screen is shown
+- **WHEN** the member left the joined screen open, the event finished while the app was in the background,
+  and the member returns and opens another event's invite
+- **THEN** no switch question is asked and the new event's join screen is shown, as "Opening another event's
+  invite asks before switching" decides (capability `invite-link`); the member joins only when they confirm
 
 ### Requirement: Background wakes do their work without showing anything
 

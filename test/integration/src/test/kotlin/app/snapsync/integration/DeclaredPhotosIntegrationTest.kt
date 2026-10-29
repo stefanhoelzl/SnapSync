@@ -87,7 +87,7 @@ class DeclaredPhotosIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "sync-status", requirement = "Direction arrows show remaining work and live transfer")
+    @Verifies(spec = "sync-status", requirement = "Direction arrows show the work left and the transfer running")
     fun photos_leaving_while_everything_has_arrived_are_on_their_way_not_waited_for() = behaviour {
         given {
             extensionUploadsOnly()
@@ -119,7 +119,7 @@ class DeclaredPhotosIntegrationTest {
     @Test
     @Verifies(
         spec = "sync-status",
-        requirement = "The joined screen counts what was shared and received",
+        requirement = "The joined screen counts the photos shared and received",
         scenario = "Sharing switched off",
     )
     fun switching_sharing_off_counts_only_the_others_photos_as_received() = behaviour {

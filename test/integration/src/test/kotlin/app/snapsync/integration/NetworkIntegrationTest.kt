@@ -29,7 +29,7 @@ class NetworkIntegrationTest {
     @Verifies(spec = "sync-status", requirement = "The app says when it cannot reach the network")
     @Verifies(
         spec = "sync-status",
-        requirement = "One status line in a fixed priority",
+        requirement = "The joined screen shows one status line in a fixed priority",
         scenario = "A missing network outranks everything else",
     )
     fun a_missing_network_outranks_in_sync_and_clears_when_it_returns() = behaviour {
@@ -54,7 +54,7 @@ class NetworkIntegrationTest {
     @Test
     @Verifies(
         spec = "sync-status",
-        requirement = "One status line in a fixed priority",
+        requirement = "The joined screen shows one status line in a fixed priority",
         scenario = "Missing access outranks a missing network",
     )
     fun missing_access_outranks_a_missing_network() = behaviour {

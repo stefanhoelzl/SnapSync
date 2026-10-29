@@ -28,7 +28,7 @@ class ReconfigureIntegrationTest {
     )
     @Verifies(
         spec = "manage-membership",
-        requirement = "Settings changes take effect immediately",
+        requirement = "A settings change takes effect as soon as it applies",
         scenario = "Turning sharing on starts right away",
     )
     fun enabling_share_on_a_download_only_membership_starts_uploading_in_place() = behaviour {
@@ -109,7 +109,7 @@ class ReconfigureIntegrationTest {
     @Test
     @Verifies(
         spec = "manage-membership",
-        requirement = "Settings changes take effect immediately",
+        requirement = "A settings change takes effect as soon as it applies",
         scenario = "Turning receiving off stops downloads",
     )
     fun turning_receive_off_cancels_in_flight_downloads_and_imports_nothing() = behaviour {
@@ -149,7 +149,7 @@ class ReconfigureIntegrationTest {
     @Verifies(spec = "photo-sharing", requirement = "Deleting or no longer sharing a photo withdraws it")
     @Verifies(
         spec = "sync-status",
-        requirement = "One status line in a fixed priority",
+        requirement = "The joined screen shows one status line in a fixed priority",
         scenario = "Neither sharing nor receiving is said plainly",
     )
     fun switching_both_directions_off_withdraws_the_photos_and_says_so() = behaviour {
