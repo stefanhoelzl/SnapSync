@@ -2,12 +2,10 @@
 
 package app.snapsync.feature.status
 
+import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.Recognised
 import app.snapsync.feature.support.configService
-import app.snapsync.model.CandidateRead
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.membership.MembershipProjection
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -125,17 +123,16 @@ class StatusCountsPollerTest {
                 LedgerCounts(done = emptySet(), pending = emptySet())
             },
             gallery = OwnDeviceGalleryStatusSource(
-                object : CandidateSource {
-                    override suspend fun candidates(policy: SelectionPolicy): CandidateRead =
-                        throw AssertionError("a poll tick must never reach the library enumeration")
-                },
+                OwnLibrary().also {
+                    it.gallery.onWalk = { throw AssertionError("a poll tick must never reach the library enumeration") }
+                }.photos,
             ),
             refreshDownloadLine = { downloadReads++ },
             // No membership: the walk is unreachable, so the tick is exactly the cheap local group — which
             // is also what the poll is specified to read (never the enumeration).
             recognition = Recognised(),
             configSource = membership(null),
-            policyFor = { throw AssertionError("no membership — no policy derivation") },
+            contributionFor = { throw AssertionError("no membership — no policy derivation") },
         )
         val poller = StatusCountsPoller(
             backgroundScope,

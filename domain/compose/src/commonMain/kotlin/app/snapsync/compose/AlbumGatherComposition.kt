@@ -1,9 +1,9 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
-import app.snapsync.model.EventConfig
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.galleryAccess
@@ -23,7 +23,7 @@ internal fun albumGather(
     access: GalleryAccessState,
     coordinator: AlbumCoordinator,
     scope: CoroutineScope,
-    policyFor: suspend (EventConfig) -> SelectionPolicy,
+    policyFor: suspend (Membership) -> SelectionPolicy,
 ): AlbumGather = AlbumGather(
     configSource = services.config,
     ledger = services.ledger,

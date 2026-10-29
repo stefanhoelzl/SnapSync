@@ -52,6 +52,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.NetworkStatusSource
@@ -328,7 +329,7 @@ abstract class StatusScreenTour {
                 override fun restoreKey(key: EventKey) = answered(statuses.restore, RestoreAnswer.NothingChanged)
             },
             queries = object : UserQueries {
-                override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? = null
+                override suspend fun shareableCount(range: CaptureRange): Int? = null
             },
             joinDetails = object : JoinDetailsQuery {
                 override suspend fun load(invite: InviteLink): JoinDetails = details(invite.event)

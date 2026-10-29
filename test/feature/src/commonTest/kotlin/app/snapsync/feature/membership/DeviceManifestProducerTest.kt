@@ -3,21 +3,20 @@ package app.snapsync.feature.membership
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.domain.upload.LedgerState
+import app.snapsync.feature.support.OwnLibrary
+import app.snapsync.feature.support.captureRange
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.ResourceRoleText
-import app.snapsync.format.TimestampText
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
 import app.snapsync.model.projectDeviceManifest
-import app.snapsync.model.selectionRulesFor
 import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.testids.testAssetId
@@ -32,23 +31,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** An admitting policy bounded below by [cutoff] and unbounded above — the projection's date filter. */
-private suspend fun policyFrom(cutoff: String): SelectionPolicy =
-    SelectionPolicy(
-        selectionRulesFor(
-            includesUpload = true,
-            cutoff = CaptureCutoff(
-                TimestampText.parse(
-                    cutoff,
-                ),
-            ),
-            ceiling = null,
-            suppressedAssetIds = {
-                emptySet()
-            },
-            albumExcludedAssetIds = { emptySet() },
-        ),
-    )
+/**
+ * An admitting policy over `[cutoff, +30 days]` — the projection's date filter — derived where production derives it.
+ * Every fixture row is captured on 2026-06-27, inside the range [IN_RANGE] starts.
+ */
+private suspend fun policyFrom(cutoff: String): SelectionPolicy = OwnLibrary().contribution(captureRange(cutoff)).policy
+
+/** A range every fixture row's default capture date lies in. */
+private const val IN_RANGE = "2026-06-20T00:00:00Z"
 
 class DeviceManifestProducerTest {
 
@@ -103,7 +93,7 @@ class DeviceManifestProducerTest {
             projectDeviceManifest(
                 testDeviceId("dev"),
                 listOf(row("B"), row("A")),
-                policy = policyFrom("0001-01-01T00:00:00Z"),
+                policy = policyFrom(IN_RANGE),
             )
         assertEquals(testDeviceId("dev"), m.deviceId)
         assertEquals(listOf(testAssetId("A"), testAssetId("B")), m.assets.map { it.assetId }) // sorted, all kept
@@ -112,7 +102,7 @@ class DeviceManifestProducerTest {
     @Test
     fun projection_excludes_assets_before_the_start_date() = runTest {
         val rows = listOf(row("old", "2025-01-01T00:00:00Z"), row("new", "2026-06-27T10:00:00Z"))
-        val m = projectDeviceManifest(testDeviceId("dev"), rows, policy = policyFrom("2026-01-01T00:00:00Z"))
+        val m = projectDeviceManifest(testDeviceId("dev"), rows, policy = policyFrom(IN_RANGE))
         assertEquals(listOf(testAssetId("new")), m.assets.map { it.assetId })
     }
 
@@ -142,7 +132,7 @@ class DeviceManifestProducerTest {
         // The ledger row is what names the resource now, so it must carry everything the union's field
         // vocabulary needs — otherwise the manifest would have to re-read PhotoKit to describe bytes it
         // has already uploaded.
-        val m = projectDeviceManifest(testDeviceId("dev"), listOf(row("A")), policyFrom("0001-01-01T00:00:00Z"))
+        val m = projectDeviceManifest(testDeviceId("dev"), listOf(row("A")), policyFrom(IN_RANGE))
         val r = m.assets.single().resources.single()
         assertEquals(ResourceRole.PRIMARY, r.role)
         assertEquals("image/jpeg", r.contentType)
@@ -156,7 +146,7 @@ class DeviceManifestProducerTest {
         // it, not because its bytes have landed. The backend keeps the asset out of the union until every
         // declared role has a resource, which is what lets it tell "not yet" from "never".
         val rows = LedgerState.entries.map { row("A${it.name}", state = it) }
-        val m = projectDeviceManifest(testDeviceId("dev"), rows, policyFrom("0001-01-01T00:00:00Z"))
+        val m = projectDeviceManifest(testDeviceId("dev"), rows, policyFrom(IN_RANGE))
         assertEquals(
             LedgerState.entries.map { testAssetId("A${it.name}") }.sorted(),
             m.assets.map { it.assetId }.sorted(),
@@ -168,7 +158,7 @@ class DeviceManifestProducerTest {
         // Why a failed resource stays declared: the engine retries forever, and a failure returns the row to
         // DISCOVERED — "still owed". Excluding it would make the declared role set
         // oscillate as a resource fails and retries — and each flip is a manifest write and a member wake.
-        val policy = policyFrom("0001-01-01T00:00:00Z")
+        val policy = policyFrom(IN_RANGE)
         val discovered = listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE))
         val failed = listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE))
         val retried = listOf(row("A"), row("A", state = LedgerState.REQUESTED, role = ResourceRole.LIVE))
@@ -186,7 +176,7 @@ class DeviceManifestProducerTest {
         val m = projectDeviceManifest(
             testDeviceId("dev"),
             listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE)),
-            policyFrom("0001-01-01T00:00:00Z"),
+            policyFrom(IN_RANGE),
         )
         assertEquals(1, m.assets.size)
         assertEquals(
@@ -202,7 +192,7 @@ class DeviceManifestProducerTest {
         // projection or its storage read: an empty capture date sorts before every real cutoff
         // (`SelectionRule.CaptureAfter`), so the one admission decides this like every other.
         val bare = LedgerEntry("Z-primary.jpg", testAssetId("Z"), LedgerState.COMPLETED)
-        val m = projectDeviceManifest(testDeviceId("dev"), listOf(row("A"), bare), policyFrom("0001-01-01T00:00:00Z"))
+        val m = projectDeviceManifest(testDeviceId("dev"), listOf(row("A"), bare), policyFrom(IN_RANGE))
         assertEquals(listOf(testAssetId("A")), m.assets.map { it.assetId })
     }
 
@@ -214,7 +204,7 @@ class DeviceManifestProducerTest {
             store,
             up,
             testDeviceId("dev"),
-        ).produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        ).produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals(testEventId("E"), up.puts.single().first)
         assertTrue(store.lastUploaded!!.manifest.endsWith(up.puts.single().third)) // the record holds the json
@@ -229,13 +219,13 @@ class DeviceManifestProducerTest {
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
         producer.produce(
             testEventId("EVENT-A"),
-            policyFrom("0001-01-01T00:00:00Z"),
+            policyFrom(IN_RANGE),
             listOf(row("A")),
             manifestVersion = 1L,
         )
         producer.produce(
             testEventId("EVENT-B"),
-            policyFrom("0001-01-01T00:00:00Z"),
+            policyFrom(IN_RANGE),
             listOf(row("A")),
             manifestVersion = 1L,
         ) // same content, new event
@@ -248,10 +238,10 @@ class DeviceManifestProducerTest {
         val store = manifestRecord()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
-        producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        producer.produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
         producer.produce(
             testEventId("E"),
-            policyFrom("0001-01-01T00:00:00Z"),
+            policyFrom(IN_RANGE),
             listOf(row("A")),
             manifestVersion = 1L,
         ) // identical
@@ -273,16 +263,16 @@ class DeviceManifestProducerTest {
         val store = manifestRecord()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
-        producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        producer.produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
 
         // the re-join writes no manifest: the producer's record is untouched
         assertEquals(1, up.puts.size)
 
-        producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        producer.produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size, "an unchanged projection under the same version is correctly skipped")
 
-        producer.produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 7L)
+        producer.produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 7L)
         assertEquals(2, up.puts.size, "the join's ledger load advanced the version, so the unchanged set republishes")
         assertEquals(up.puts[0].third.substringBefore("\"version\""), up.puts[1].third.substringBefore("\"version\""))
     }
@@ -291,7 +281,7 @@ class DeviceManifestProducerTest {
     fun the_publish_carries_the_manifest_version() = runTest {
         val up = FakeUploader()
         DeviceManifestProducer(manifestRecord(), up, testDeviceId("dev"))
-            .produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 42L)
+            .produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 42L)
         assertEquals(42L, deviceManifestFromJson(up.puts.single().third).version)
     }
 
@@ -307,13 +297,13 @@ class DeviceManifestProducerTest {
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
         producer.produce(
             testEventId("E"),
-            policyFrom("0001-01-01T00:00:00Z"),
+            policyFrom(IN_RANGE),
             listOf(row("A"), row("B")),
             manifestVersion = 5L,
         )
         producer.produce(
             testEventId("E"),
-            policyFrom("0001-01-01T00:00:00Z"),
+            policyFrom(IN_RANGE),
             listOf(row("A"), row("B")),
             manifestVersion = 6L,
         )
@@ -328,7 +318,7 @@ class DeviceManifestProducerTest {
             store,
             up,
             testDeviceId("dev"),
-        ).produce(testEventId("E"), policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")), manifestVersion = 1L)
+        ).produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals(null, store.lastUploaded) // not recorded → retried next cycle
         assertFalse(up.puts.isEmpty())

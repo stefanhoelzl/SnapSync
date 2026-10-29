@@ -187,7 +187,7 @@ class AndroidImportContractTest {
             } else {
                 assertEquals(CAPTURED, dateTaken(id), "$fixture sorts at its own capture time")
             }
-            val read = assertIs<GalleryRead.Read<List<app.snapsync.model.AssetFacts>>>(gallery.assetsById(setOf(id)))
+            val read = assertIs<GalleryRead.Read<List<app.snapsync.ports.GalleryAsset>>>(gallery.assetsById(setOf(id)))
             assertEquals(1, read.value.size, "$fixture is readable through the default gallery, once")
         }
     }
@@ -297,7 +297,7 @@ class AndroidImportContractTest {
         // An import killed between its pending insert and its publish: the item exists only as a pending row.
         val pending = insertPending("killed.jpg")
         val id = PlatformAssetId(ContentUris.parseId(pending).toString())
-        val read = assertIs<GalleryRead.Read<List<app.snapsync.model.AssetFacts>>>(gallery.assetsById(setOf(id)))
+        val read = assertIs<GalleryRead.Read<List<app.snapsync.ports.GalleryAsset>>>(gallery.assetsById(setOf(id)))
         assertTrue(read.value.isEmpty(), "a pending item reads as absent, so the startup sweep imports again")
 
         val ref = ref("after-kill")

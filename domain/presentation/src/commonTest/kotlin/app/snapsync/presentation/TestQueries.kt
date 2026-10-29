@@ -24,8 +24,7 @@ import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
@@ -45,9 +44,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /** A query bundle whose shareable count is [count]; by default no count is available. */
-internal fun counting(count: suspend (CaptureCutoff, CaptureCeiling?) -> Int? = { _, _ -> null }): UserQueries =
+internal fun counting(count: suspend (CaptureRange) -> Int? = { null }): UserQueries =
     object : UserQueries {
-        override suspend fun shareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?) = count(cutoff, until)
+        override suspend fun shareableCount(range: CaptureRange) = count(range)
     }
 
 /** A query bundle that answers nothing: no count is available. */

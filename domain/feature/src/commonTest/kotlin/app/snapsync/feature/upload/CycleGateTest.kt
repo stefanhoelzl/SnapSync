@@ -1,21 +1,17 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.format.TimestampText
+import app.snapsync.data.sharing.Contribution
+import app.snapsync.domain.sharing.PhotoAccess
+import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.SelectionRule
-import app.snapsync.model.SelectionScope
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UploaderPin
-import app.snapsync.model.selectionRulesFor
-import app.snapsync.model.selectionScope
 import app.snapsync.testids.testEventId
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -32,22 +28,12 @@ class CycleGateTest {
 
     private val host = "https://edge.example"
     private val eventId = "event-1"
-    private val cutoff = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z"))
 
-    // The membership carries a SUPPLIER, not a built policy: the one derivation reads two ports and this
-    // gate's translation must stay port-pure (capability `background-upload`). These fixtures never invoke
-    // it — the gate decides without consulting the policy, which is the point.
-    private val admitting: suspend () -> SelectionPolicy = {
-        SelectionPolicy(
-            selectionRulesFor(
-                includesUpload = true,
-                cutoff = cutoff,
-                ceiling = null,
-                suppressedAssetIds = { emptySet() },
-                albumExcludedAssetIds = { emptySet() },
-            ),
-        )
-    }
+    // The membership carries a SUPPLIER, not a built contribution: the one derivation reads ports and this
+    // gate's translation must stay port-pure (capability `background-upload`). The gate never invokes it — it
+    // decides without consulting the policy, which is the point — so a supplier that fails if invoked is the honest
+    // fixture.
+    private val admitting: suspend () -> Contribution = { error("the gate never derives the contribution") }
 
     // Every pre-admission case runs as an admitted process: admission is decided only once the membership is
     // readable and joined, so these assert that it never masks "unreadable" or "not joined".
@@ -61,11 +47,11 @@ class CycleGateTest {
 
     private fun joined(
         eventId: String = this.eventId,
-        policy: suspend () -> SelectionPolicy = admitting,
+        contribution: suspend () -> Contribution = admitting,
         saveToAlbum: Boolean = false,
     ) = JoinedMembership(
         eventId = testEventId(eventId),
-        policy = policy,
+        contribution = contribution,
         saveToAlbum = saveToAlbum,
         manifestVersion = 0L,
     )
@@ -145,7 +131,7 @@ class CycleGateTest {
     fun `a joined config runs the cycle and carries the membership through`() {
         val gate = gate(
             configReadable = true,
-            membership = joined(policy = admitting, saveToAlbum = true),
+            membership = joined(contribution = admitting, saveToAlbum = true),
             host = host,
         )
 
@@ -154,7 +140,7 @@ class CycleGateTest {
         assertEquals(host, gate.config.host)
         // The cycle's selection inputs arrive WITH the decision — there is no second read, and nothing
         // downstream has to invent a cutoff for a membership that may not exist.
-        assertEquals(admitting, gate.membership.policy)
+        assertSame(admitting, gate.membership.contribution)
         assertEquals(true, gate.membership.saveToAlbum)
     }
 
@@ -162,20 +148,20 @@ class CycleGateTest {
     // inside `UploadCycle.run()`, so the cycle can decline it after the read rather than before.
     @Test
     fun `a non-contributing membership is Run and declines later at the direction gate`() {
+        // A download-only membership's contribution — never invoked here, so the supplier stands for it.
+        val nonContributing: suspend () -> Contribution = { error("the direction gate is the cycle's, not the gate's") }
         val gate = gate(
             configReadable = true,
-            membership = joined(policy = { SelectionPolicy(listOf(SelectionRule.DenyAll)) }),
+            membership = joined(contribution = nonContributing),
             host = host,
         )
 
         assertIs<CycleGate.Run>(gate)
         // The gate does NOT invoke the supplier — it decides whether to run, and the direction gate inside
         // the cycle is what consults the policy. That is the whole reason this is a supplier: the
-        // derivation reads two ports, and this translation must stay port-pure.
-        assertEquals(
-            SelectionPolicy(listOf(SelectionRule.DenyAll)),
-            runBlocking { gate.membership.policy() },
-        )
+        // derivation reads ports, and this translation must stay port-pure. (That the cycle then declines such a
+        // membership is `UploadCycleTest`'s.)
+        assertSame(nonContributing, gate.membership.contribution)
     }
 
     @Test
@@ -199,10 +185,10 @@ class CycleGateTest {
     // decide the decline without invoking the supplier.
     @Test
     fun `a withheld decline does not invoke the policy supplier`() {
-        val forbidden: suspend () -> SelectionPolicy = { error("the gate must not build the policy") }
+        val forbidden: suspend () -> Contribution = { error("the gate must not build the policy") }
         val gate = gate(
             configReadable = true,
-            membership = joined(policy = forbidden),
+            membership = joined(contribution = forbidden),
             host = host,
             admission = UploadAdmission.Withheld,
         )
@@ -224,40 +210,29 @@ class CycleGateTest {
 
     @Test
     fun `the app admits under any usable grant unless switched off`() {
-        for (permission in GalleryAccess.entries) {
-            val usable = permission == GalleryAccess.GRANTED || permission == GalleryAccess.LIMITED
+        for (access in PhotoAccess.entries) {
+            val usable = access == PhotoAccess.FULL || access == PhotoAccess.LIMITED
             val expected = if (usable) UploadAdmission.Admit else UploadAdmission.Withheld
-            val read = selectionScope(permission, emptyList())
-            assertEquals(expected, appAdmission(permission, read), "under $permission")
-            assertEquals(
-                UploadAdmission.Withheld,
-                appAdmission(permission, read, UploaderPin(app = false)),
-                "switched off",
-            )
-            assertEquals(expected, appAdmission(permission, read, UploaderPin(extension = false)), "the other switch")
+            val plan = ReadPlan.of(access, selection = Unit)
+            assertEquals(expected, appAdmission(plan), "under $access")
+            assertEquals(UploadAdmission.Withheld, appAdmission(plan, UploaderPin(app = false)), "switched off")
+            assertEquals(expected, appAdmission(plan, UploaderPin(extension = false)), "the other switch")
         }
     }
 
     @Test
     fun `the app withholds under a partial grant until the selection has been read`() {
-        // An unread selection is not an empty one: a read snapshot is an authoritative walk, so a cycle over an
-        // unread one would delete every row (`changes/selection-is-the-walk`, D1). A read EMPTY selection admits —
-        // it is a real answer, and a receive-only member's resting state.
-        assertEquals(UploadAdmission.Withheld, appAdmission(GalleryAccess.LIMITED, SelectionScope.Unread))
-        assertEquals(
-            UploadAdmission.Admit,
-            appAdmission(GalleryAccess.LIMITED, selectionScope(GalleryAccess.LIMITED, emptyList())),
-        )
-        assertEquals(
-            UploadAdmission.Withheld,
-            appAdmission(GalleryAccess.LIMITED, selectionScope(GalleryAccess.LIMITED, null)),
-            "the derivation of a null snapshot is what withholds",
-        )
+        // An unread selection is not an empty one: a read selection is authoritative, so a cycle over an unread one
+        // would delete every row (`changes/selection-is-the-walk`, D1). A read EMPTY selection admits — it is a real
+        // answer, and a receive-only member's resting state. (That a `null` snapshot is never published as read is
+        // the selection snapshots' own, in the data layer.)
+        assertEquals(UploadAdmission.Withheld, appAdmission(ReadPlan.of<Unit>(PhotoAccess.LIMITED, selection = null)))
+        assertEquals(UploadAdmission.Admit, appAdmission(ReadPlan.of(PhotoAccess.LIMITED, selection = Unit)))
     }
 
     @Test
     fun `under a full grant both processes admit`() {
-        assertEquals(UploadAdmission.Admit, appAdmission(GalleryAccess.GRANTED, SelectionScope.Unrestricted))
+        assertEquals(UploadAdmission.Admit, appAdmission(ReadPlan.of<Unit>(PhotoAccess.FULL, selection = null)))
         assertEquals(UploadAdmission.Admit, extensionAdmission(GalleryAccess.GRANTED))
     }
 

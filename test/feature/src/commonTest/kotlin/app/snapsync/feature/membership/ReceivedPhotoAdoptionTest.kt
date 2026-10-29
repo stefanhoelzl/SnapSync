@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.data.sharing.SelectionSnapshots
+import app.snapsync.data.sharing.SelectionState
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -16,7 +18,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.PlannedAsset
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.SelectionScope
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionTrigger
@@ -27,7 +28,6 @@ import app.snapsync.services.backend.EventUnionSource
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.MarkedPhotoLookup
-import app.snapsync.services.gallery.resourcesFrom
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
@@ -92,7 +92,8 @@ class ReceivedPhotoAdoptionTest {
         }
         val lookup = MarkedPhotoLookup(
             inMemoryGallery(MutableStateFlow(library), grant),
-        ) { SelectionScope.Unrestricted }
+            SelectionSnapshots(),
+        )
     }
 
     private fun World.adoption(me: String) = ReceivedPhotoAdoption(
@@ -368,7 +369,7 @@ class ReceivedPhotoAdoptionTest {
         val reads = world.unionReads
 
         val own = LibraryAssets.photo("L-OWN", creationDate = date)
-        adoption.beforeSelectionPublished(cfg, resourcesFrom(listOf(own)))
+        adoption.beforeSelectionPublished(cfg, SelectionState.Read(listOf(own)))
         adoption.afterSelectionPublished(cfg)
 
         assertTrue(world.store.recognition.isRecognised(cfg.eventId))
@@ -380,7 +381,7 @@ class ReceivedPhotoAdoptionTest {
         val world = World(Result.success(unionOf(ref("A"))), emptyList())
         val adoption = world.adoption(me)
 
-        adoption.beforeSelectionPublished(null, resourcesFrom(listOf(received("L-A", ref("A")))))
+        adoption.beforeSelectionPublished(null, SelectionState.Read(listOf(received("L-A", ref("A")))))
         adoption.afterSelectionPublished(null)
 
         assertEquals(0, world.unionReads)
@@ -413,7 +414,7 @@ class ReceivedPhotoAdoptionTest {
         adoption.adopt(cfg)
         assertTrue(world.store.recognition.isRecognised(cfg.eventId))
 
-        adoption.beforeSelectionPublished(cfg, resourcesFrom(listOf(received("L-A", a))))
+        adoption.beforeSelectionPublished(cfg, SelectionState.Read(listOf(received("L-A", a))))
         assertFalse(world.store.recognition.isRecognised(cfg.eventId), "withheld before the snapshot is published")
 
         answer = Result.failure(IllegalStateException("unreachable"))
@@ -427,7 +428,7 @@ class ReceivedPhotoAdoptionTest {
         val adoption = world.adoption(me)
         adoption.adopt(cfg)
         val before = received("L-A", ref("A"), taken = "2026-05-25T12:00:00Z")
-        adoption.beforeSelectionPublished(cfg, resourcesFrom(listOf(before)))
+        adoption.beforeSelectionPublished(cfg, SelectionState.Read(listOf(before)))
         assertFalse(world.store.recognition.isRecognised(cfg.eventId), "whatever its date")
     }
 

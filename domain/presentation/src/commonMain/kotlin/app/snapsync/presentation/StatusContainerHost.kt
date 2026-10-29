@@ -21,6 +21,8 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
@@ -226,7 +228,7 @@ class StatusContainerHost(
     ): ResolvedRange {
         val windowStart = cutoffFormatter.toLocal(startsAt)
         val windowEnd = cutoffFormatter.toLocal(endsAt)
-        return form.resolve(
+        val resolved = form.resolve(
             windowStart = windowStart,
             windowEnd = windowEnd,
             nowLocal = cutoffFormatter.nowLocal(),
@@ -234,6 +236,8 @@ class StatusContainerHost(
             toCutoff = cutoffFormatter::toCutoff,
             shareCount = local.value.shareCount,
         )
+        val chosen = CaptureRange.of(resolved.chosenFrom, resolved.chosenUntil, startsAt, endsAt)
+        return resolved.copy(chosen = (chosen as? CaptureRangeVerdict.Ok)?.range)
     }
 
     /**
@@ -397,14 +401,15 @@ class StatusContainerHost(
             // first-join grant resolves the count). `collectLatest`: a newer range cancels an older count.
             intent {
                 combine(container.stateFlow.map { it.shown.countedRange }, permission) { range, grant ->
-                    range?.let { CountKey(it.chosenFrom, it.chosenUntil, grant) }
+                    range?.let { CountKey(it.chosen, grant) }
                 }
                     .distinctUntilChanged()
                     .collectLatest { key ->
                         if (key == null) return@collectLatest
                         local.update { it.copy(shareCount = ShareCount.Counting) }
                         val count = try {
-                            queries.shareableCount(key.from, key.until)?.let { ShareCount.Ready(it) } ?: ShareCount.Unavailable
+                            key.range?.let { queries.shareableCount(it) }?.let { ShareCount.Ready(it) }
+                                ?: ShareCount.Unavailable
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -421,7 +426,7 @@ class StatusContainerHost(
     private val display: Display get() = Display(cutoffFormatter, ::resolveRange)
 
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
-    private data class CountKey(val from: CaptureCutoff, val until: CaptureCeiling, val grant: GalleryAccess)
+    private data class CountKey(val range: CaptureRange?, val grant: GalleryAccess)
 
     /** What the screen shows: the display half of the container's [ScreenModel]. */
     val screen: StateFlow<UiState> = Displayed { container.stateFlow }

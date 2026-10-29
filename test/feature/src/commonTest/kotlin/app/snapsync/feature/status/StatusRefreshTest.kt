@@ -1,24 +1,20 @@
 package app.snapsync.feature.status
 
-import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.data.sharing.Contribution
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.support.CapturingLogWriter
+import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.Recognised
+import app.snapsync.feature.support.captureRange
 import app.snapsync.feature.support.configService
+import app.snapsync.feature.support.photo
 import app.snapsync.format.TimestampText
-import app.snapsync.model.AssetFacts
-import app.snapsync.model.Candidate
-import app.snapsync.model.CandidateRead
-import app.snapsync.model.CandidateScope
 import app.snapsync.model.EventConfig
-import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionRulesFor
-import app.snapsync.services.gallery.CandidateSource
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
@@ -54,59 +50,35 @@ class StatusRefreshTest {
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
-    private suspend fun policy(): SelectionPolicy = SelectionPolicy(
-        selectionRulesFor(
-            includesUpload = true,
-            cutoff = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),
-            ceiling = null,
-            suppressedAssetIds = { emptySet() },
-            albumExcludedAssetIds = { emptySet() },
-        ),
-    )
+    /** One asset in the membership's range, so a completed walk publishes a count of 1 rather than an ambiguous 0. */
+    private fun oneAsset(): OwnLibrary = OwnLibrary().apply { add(photo("A", "2026-01-15T00:00:00Z")) }
 
-    /** One asset, so a completed walk publishes a count of 1 rather than an ambiguous 0. */
-    private class OneAsset : CandidateSource {
-        override suspend fun candidates(policy: SelectionPolicy): CandidateRead = CandidateRead.Readable(
-            listOf(
-                object : Candidate {
-                    override val facts =
-                        AssetFacts(testAssetId("A"), CaptureDate.Dated(TimestampText.parse("2026-06-01T00:00:00Z")))
-                    override suspend fun resources(): List<Resource> = emptyList()
-                },
-            ),
-            CandidateScope.Library,
-        )
-    }
+    /** The real derivation, over [library]. */
+    private fun derivedBy(library: OwnLibrary): suspend (Membership) -> Contribution =
+        { library.photos.contribution(it, received = emptySet()) }
 
     /** Records the ORDER of every step, which is the whole subject of this file. */
     private fun harness(
-        source: CandidateSource = OneAsset(),
+        library: OwnLibrary = oneAsset(),
         activeConfig: EventConfig? = config,
-        policyFor: suspend (EventConfig) -> SelectionPolicy = { policy() },
+        contributionFor: suspend (Membership) -> Contribution = derivedBy(library),
         gallery: OwnDeviceGalleryStatusSource? = null,
         log: Logger = Logger.withTag("status"),
     ): Pair<MutableList<String>, StatusRefresh> {
         val steps = mutableListOf<String>()
-        val walked = gallery ?: OwnDeviceGalleryStatusSource(
-            object : CandidateSource {
-                override suspend fun candidates(policy: SelectionPolicy): CandidateRead {
-                    steps += "walk"
-                    return source.candidates(policy)
-                }
-            },
-        )
+        library.gallery.onWalk = { steps += "walk" }
         val refresh = StatusRefresh(
             ledgerCounts = ReadingLedgerCountsSource {
                 steps += "ledger"
                 LedgerCounts(done = setOf(testAssetId("d1")), pending = emptySet())
             },
-            gallery = walked,
+            gallery = gallery ?: OwnDeviceGalleryStatusSource(library.photos),
             refreshDownloadLine = { steps += "downloads" },
             recognition = Recognised(listOfNotNull(activeConfig?.eventId)),
             configSource = membership(activeConfig),
-            policyFor = { cfg ->
+            contributionFor = { m ->
                 steps += "policy"
-                policyFor(cfg)
+                contributionFor(m)
             },
             log = log,
         )
@@ -127,14 +99,15 @@ class StatusRefreshTest {
     fun `an unrecognised membership is not counted - N stays not counted`() = runTest {
         // Before the received photos were recognised, any of them would count as the member's own: the upload gate
         // withholds until then, so `N` must not count them either (capability `receiving-photos`).
-        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
+        val library = oneAsset()
+        val gallery = OwnDeviceGalleryStatusSource(library.photos)
         StatusRefresh(
             ledgerCounts = ReadingLedgerCountsSource { LedgerCounts(done = emptySet(), pending = emptySet()) },
             gallery = gallery,
             refreshDownloadLine = {},
             recognition = Recognised(),
             configSource = membership(config),
-            policyFor = { policy() },
+            contributionFor = derivedBy(library),
         ).run()
         assertNull(gallery.admitted.value, "not counted, so the screen stays on its neutral line")
     }
@@ -143,7 +116,8 @@ class StatusRefreshTest {
     fun `a completed refresh publishes the counted total`() = runTest {
         // The ordering assertions above would all pass against a method that walked and threw the
         // answer away, so pin that the sequence actually produces `N`.
-        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
+        val library = oneAsset()
+        val gallery = OwnDeviceGalleryStatusSource(library.photos)
         val counts =
             ReadingLedgerCountsSource {
                 LedgerCounts(
@@ -157,7 +131,7 @@ class StatusRefreshTest {
             refreshDownloadLine = {},
             recognition = Recognised(listOf(config.eventId)),
             configSource = membership(config),
-            policyFor = { policy() },
+            contributionFor = derivedBy(library),
         ).run()
         assertEquals(setOf(testAssetId("A")), gallery.admitted.value, "N is the admitted own-asset count")
         assertEquals(
@@ -184,7 +158,7 @@ class StatusRefreshTest {
         // The spec's *One failing refresh does not cancel the others*: this runs as one child of the
         // Foreground flow's coroutineScope, so an escaping failure would take the download reconcile,
         // the staged-byte reclaim and the membership refresh with it.
-        val (steps, refresh) = harness(policyFor = { error("album lookup blew up") })
+        val (steps, refresh) = harness(contributionFor = { error("album lookup blew up") })
         refresh.run() // must NOT throw
         assertEquals(listOf("ledger", "downloads", "policy"), steps, "the walk never started")
         assertTrue("walk" !in steps)
@@ -208,7 +182,8 @@ class StatusRefreshTest {
         // other children. The ledger source already had this posture; the download line gained it with
         // the group, which is what makes the two members uniform rather than one safe by accident.
         val steps = mutableListOf<String>()
-        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
+        val library = oneAsset()
+        val gallery = OwnDeviceGalleryStatusSource(library.photos)
         StatusRefresh(
             ledgerCounts = ReadingLedgerCountsSource {
                 steps += "ledger"
@@ -218,9 +193,9 @@ class StatusRefreshTest {
             refreshDownloadLine = { steps += "downloads" },
             recognition = Recognised(listOf(config.eventId)),
             configSource = membership(config),
-            policyFor = {
+            contributionFor = {
                 steps += "policy"
-                policy()
+                derivedBy(library)(it)
             },
         ).run() // must NOT throw
 
@@ -233,7 +208,7 @@ class StatusRefreshTest {
         // The leftover this change closes. `runCatching` catches CancellationException like anything
         // else; swallowing it breaks structured concurrency AND posts an Error line — which reaches the
         // crash reporter on production builds — for an ordinary teardown.
-        val (_, refresh) = harness(policyFor = { throw CancellationException("scope torn down") })
+        val (_, refresh) = harness(contributionFor = { throw CancellationException("scope torn down") })
         assertFailsWith<CancellationException> { refresh.run() }
     }
 
@@ -241,17 +216,19 @@ class StatusRefreshTest {
 
     @Test
     fun `the total alone recounts N without the cheap reads`() = runTest {
-        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
-        val (steps, refresh) = harness(gallery = gallery)
+        val library = oneAsset()
+        val gallery = OwnDeviceGalleryStatusSource(library.photos)
+        val (steps, refresh) = harness(library = library, gallery = gallery)
         refresh.refreshTotal()
-        assertEquals(listOf("policy"), steps, "neither cheap read runs")
+        assertEquals(listOf("policy", "walk"), steps, "neither cheap read runs")
         assertEquals(setOf(testAssetId("A")), gallery.admitted.value)
     }
 
     @Test
     fun `the total alone while unjoined counts nothing`() = runTest {
-        val gallery = OwnDeviceGalleryStatusSource(OneAsset())
-        val (steps, refresh) = harness(activeConfig = null, gallery = gallery)
+        val library = oneAsset()
+        val gallery = OwnDeviceGalleryStatusSource(library.photos)
+        val (steps, refresh) = harness(library = library, activeConfig = null, gallery = gallery)
         refresh.refreshTotal()
         assertEquals(emptyList(), steps)
         assertNull(gallery.admitted.value, "N stays not counted")
@@ -259,10 +236,14 @@ class StatusRefreshTest {
 
     @Test
     fun `the total alone under a failed policy read is logged and keeps N`() = runTest {
-        val gallery = OwnDeviceGalleryStatusSource(OneAsset()).apply { refresh(policy()) }
+        val library = oneAsset()
+        val gallery = OwnDeviceGalleryStatusSource(library.photos).apply {
+            refresh(library.contribution(captureRange("2026-01-01T00:00:00Z")))
+        }
         val recorder = CapturingLogWriter()
         val (_, refresh) = harness(
-            policyFor = { error("album lookup blew up") },
+            library = library,
+            contributionFor = { error("album lookup blew up") },
             gallery = gallery,
             log = recorder.logger(),
         )

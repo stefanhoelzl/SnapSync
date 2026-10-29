@@ -1,10 +1,10 @@
 package app.snapsync.feature.status
 
+import app.snapsync.data.sharing.Contribution
+import app.snapsync.data.sharing.DiscoveryRead
+import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.gallery.CandidateSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +18,7 @@ import kotlin.time.TimeSource
  * the ledger, see [LedgerCountsSource]).
  *
  * **`N` counts the admitted set, and nothing else**. It counts
- * exactly the assets the upload cycle admits, by asking the *same* [SelectionPolicy] rather than
+ * exactly the assets the upload cycle admits, by asking the *same* `OwnPhotos` discovery rather than
  * re-applying its rules — the identity is a REQUIREMENT, not a coincidence. This source runs in the app
  * process and the cycle runs in the upload path; they enumerate independently, and any rule applied there
  * but not here counts an asset that is never uploaded, pegging the joined screen below 100% forever
@@ -46,18 +46,18 @@ import kotlin.time.TimeSource
  * That fix held here and leaked underneath. The read seam still answered an unreadable library with an
  * empty list, so a `0` arrived through the ordinary path and this source published it in good faith —
  * the same defect, one layer down, and reachable in ordinary use under a partial grant whose selection
- * snapshot had not yet landed. The seam now says which it means ([app.snapsync.model.CandidateRead]),
+ * snapshot had not yet landed. The read now says which it means ([DiscoveryRead.NotReadable]),
  * and [refresh] declines to publish anything when it cannot count.
  *
  * A **counted** zero is a real answer and still settles the screen: a non-contributing membership
  * carries `DenyAll`, admits nothing, and publishes `0` through the ordinary path below.
  *
- * The policy is a [refresh] **parameter**, not an injected supplier: it belongs to a membership, and a
+ * The contribution is a [refresh] **parameter**, not an injected supplier: it belongs to a membership, and a
  * device with no membership has no scope to count — so the composition root simply does not refresh, and
- * `N` stays `null`, *not counted*. There is deliberately no "no policy" value to pass.
+ * `N` stays `null`, *not counted*. There is deliberately no "no membership" value to pass.
  */
 class OwnDeviceGalleryStatusSource(
-    private val source: CandidateSource,
+    private val photos: OwnPhotos,
     // The echo-suppression and denylisted-album readers used to sit here, so this source could complete a
     // config-derived policy itself. They are gone with the two-phase construction: the one derivation runs
     // in the shared composition, and `refresh` receives a finished policy. Their `{ emptySet() }`
@@ -103,7 +103,7 @@ class OwnDeviceGalleryStatusSource(
      * IT does around the call (deriving the policy costs two port reads); it no longer has to remember to
      * protect a rule it does not own.
      */
-    suspend fun refresh(policy: SelectionPolicy) {
+    suspend fun refresh(contribution: Contribution) {
         // The policy arrives COMPLETE: there is one derivation, and
         // it runs where the config and the two port readers are both in scope — the shared composition.
         // This source therefore receives a decision and never the material to re-decide, and there is no
@@ -120,10 +120,9 @@ class OwnDeviceGalleryStatusSource(
         //   • NOT READABLE       → publish nothing (below)
         //   • a thrown walk      → publish nothing (the `runCatching` arm)
         val counted = runCatchingCancellable {
-            EventPhotoSet.readable(policy, source::candidates)?.let { set ->
-                set.assets().mapTo(mutableSetOf()) {
-                    it.facts.assetId
-                }
+            when (val read = photos.discover(contribution)) {
+                is DiscoveryRead.Discovered -> read.discovery.admitted.mapTo(mutableSetOf()) { it.facts.assetId }
+                DiscoveryRead.NotReadable -> null
             }
         }
         counted.exceptionOrNull()?.let { failure ->

@@ -1,35 +1,24 @@
 package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.RecordedAsset
+import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.format.TimestampText
 
 /**
- * The assets a membership's [policy] **admits** among a set of ledger [rows] — the one derivation both consumers of the
- * ledger take: the device-manifest projection ([projectDeviceManifest]), which declares what this device provides, and
- * the upload cycle's enqueue, which decides whose bytes leave.
+ * The assets a membership's [policy] **admits** among a set of ledger [rows] — the one translation every consumer of
+ * the ledger takes to the policy's row admission ([SelectionPolicy.admitRecorded]): the device-manifest projection,
+ * the upload cycle's enqueue and its departed window, and the album gather. MIGRATING: the ledger moves into the layers
+ * with the uploads, and this translation with it.
  *
  * **A ledger row is not the admitted set.** It records that the policy admitted its asset *when the row was written*,
- * and a membership's policy changes under it: a member who raises their cutoff leaves rows behind that the current
- * policy excludes. Reading rows and acting on them without asking is what the policy's *no consumer SHALL treat an
- * upstream-filtered structure as the admitted set* forbids — and it shipped once, as an uploader that kept sending the
- * photos a narrowing had just excluded while the manifest, which does ask, stopped listing them.
- *
- * A row carries a date and an id but not the origin facts (a screenshot earns no row at all — the cycle
- * drops it before recording), so those default to **admit-on-doubt**: the rules that can still speak here
- * are the two capture-date bounds and the two id-set exclusions, which is exactly what a per-event
- * question about a device-global ledger needs. A row with no readable `creationDate` holds no capture date, so
- * a row the policy cannot judge is excluded — the one place a missing fact excludes rather than admits —
- * and the next walk that reaches it fills its detail — a walk always reads an asset with a bare row — so
- * it re-enters with a real date.
- *
- * Rows are grouped per asset first: several resources of one photo share an `assetId` and stand or fall
- * together, or a Live Photo's paired video outlives its excluded primary as an orphan.
+ * and a membership's policy changes under it — so it is asked again. Rows are grouped per asset first: several resources
+ * of one photo share an `assetId` and stand or fall together. A row with no readable `creationDate` is undated, which
+ * no range holds; the next walk that reaches it fills its date.
  */
-suspend fun admittedAssetIds(rows: Collection<LedgerEntry>, policy: SelectionPolicy): Set<AssetId> {
-    val facts = rows.groupBy { it.assetId }.map { (assetId, group) ->
-        AssetFacts(assetId = assetId, captureDate = TimestampText.captureDate(group.first().creationDate))
-    }
-    return EventPhotoSet(policy) { candidatesFromFacts(facts) }
-        .assets()
-        .mapTo(mutableSetOf()) { it.facts.assetId }
-}
+fun admittedAssetIds(rows: Collection<LedgerEntry>, policy: SelectionPolicy): Set<AssetId> =
+    policy.admitRecorded(
+        rows.groupBy { it.assetId }.map { (assetId, group) ->
+            RecordedAsset(assetId, TimestampText.captureDate(group.first().creationDate))
+        },
+    ).mapTo(mutableSetOf()) { it.assetId }

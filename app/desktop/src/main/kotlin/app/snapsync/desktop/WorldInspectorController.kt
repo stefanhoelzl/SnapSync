@@ -4,9 +4,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import app.snapsync.data.gallery.assetId
+import app.snapsync.data.gallery.facts
+import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.sharing.AdmissionVerdict
+import app.snapsync.domain.sharing.CandidateSet
+import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.CaptureRangeVerdict
+import app.snapsync.domain.sharing.SelectionInputs
+import app.snapsync.domain.sharing.SelectionPolicy
+import app.snapsync.domain.sharing.WalkBounds
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.inbound.Completion
@@ -23,27 +33,20 @@ import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.StorePage
 import app.snapsync.mock.id
-import app.snapsync.model.CandidateRead
-import app.snapsync.model.CandidateScope
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.SELECTION_CALIBRATION
 import app.snapsync.model.Store
 import app.snapsync.model.WakeId
-import app.snapsync.model.noContribution
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.uploadKey
+import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAssetResources
+import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferOutcome
-import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.gallery.GalleryCandidateSource
-import app.snapsync.services.gallery.assetId
 import app.snapsync.services.gallery.role
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -454,33 +457,36 @@ class WorldInspectorController(
     private suspend fun snapshotNow(): InspectorSnapshot {
         // The membership the cycle reads — not the screen's statement of it, which carries no policy.
         val joined = app.composed.core.membership.value
-        // What the selection policy would exclude — the REAL policy over the REAL
-        // enumeration of the library, so the row badge cannot drift from what the cycle does. Echo is reported
-        // separately (an imported photo), so the echo set is empty here; the album lookup is real.
+        // What the selection policy would exclude — the REAL policy over the REAL enumeration of the library, so the
+        // row badge cannot drift from what the cycle does. Echo is reported separately (an imported photo), so the
+        // echo set is empty here; the album lookup is real, read only when the library is walked, as the app does.
         val reads = mocks.library.port()
-        val policy = joined?.let { config ->
-            selectionPolicyFor(
-                config = config,
-                now = Timestamp.of(mocks.clock.port().now()),
-                suppressedAssetIds = { emptySet() },
-                albumExcludedAssetIds = { GalleryAlbums(reads).assetIdsInAlbums(SELECTION_CALIBRATION, it) },
+        val range = joined?.let {
+            (CaptureRange.of(it.minPhotoDate, it.maxPhotoDate, it.startsAt, it.endsAt) as? CaptureRangeVerdict.Ok)
+                ?.range?.sharedAt(Timestamp.of(mocks.clock.port().now()), it.startsAt)
+        }
+        val walked = mocks.library.grant.value == LibraryGrant.GRANTED
+        val policy = range?.let {
+            SelectionPolicy.of(
+                SelectionInputs(
+                    joined.direction,
+                    it,
+                    received = emptySet(),
+                    inDeniedAlbums = if (walked) DenylistedAlbums(reads).members(it.from) else emptySet(),
+                ),
             )
-        } ?: noContribution()
-        val candidates = when (val read = GalleryCandidateSource(reads).candidates(policy)) {
-            is CandidateRead.Readable -> read.candidates
-            CandidateRead.NotReadable -> emptyList()
         }
-        // The app reads a partial grant's selection from its snapshot and judges it as one (`SelectionPolicy.over`);
-        // this read is a walk of the same mock library, which under a partial grant answers that selection, so the
-        // badge judges it the way the app does.
-        val scope = if (mocks.library.grant.value == LibraryGrant.LIMITED) {
-            CandidateScope.Selection
-        } else {
-            CandidateScope.Library
-        }
-        val admitted = EventPhotoSet(policy.over(scope)) { candidates }.assets()
+        val facts = (policy?.walkBounds as? WalkBounds.Within)?.range?.let { bounds ->
+            (reads.assets(AssetFilter(bounds.from.at.at, bounds.until.at.at)) as? GalleryRead.Read)
+                ?.value?.map { it.facts() }
+        }.orEmpty()
+        // The app reads a partial grant's selection and judges it as one; this read is a walk of the same mock
+        // library, which under a partial grant answers that selection, so the badge judges it the way the app does.
+        val now = Timestamp.of(mocks.clock.port().now())
+        val candidates = if (walked) CandidateSet.Walked(facts, now) else CandidateSet.Selected(facts, now)
+        val admitted = (policy?.admit(candidates) as? AdmissionVerdict.Discovered)?.discovery?.admitted.orEmpty()
             .mapTo(mutableSetOf()) { it.facts.assetId }
-        val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted
+        val policyExcluded = facts.mapTo(mutableSetOf()) { it.assetId } - admitted
         val galleryRows = mocks.library.contents.value.map {
             GalleryRow(
                 it.id.value,

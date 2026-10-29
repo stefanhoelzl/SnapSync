@@ -6,26 +6,23 @@ import app.snapsync.data.crypto.FileCipher
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.CachedCredentialStore
-import app.snapsync.domain.asset.AssetId
-import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.feature.upload.CycleGateRead
 import app.snapsync.feature.upload.LedgerWriter
-import app.snapsync.feature.upload.SelectionScopedDiscovery
 import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.extensionAdmission
-import app.snapsync.model.SelectionScope
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.backend.BackendUploadRequests
 import app.snapsync.services.backend.ManifestPublisher
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
-import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.gallery.ContributionKeyedResources
 import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
@@ -97,10 +94,11 @@ internal class UploadServices(
     /** The photo library — what exports a resource to a file for an uploader that sends files. */
     val gallery: GalleryReader,
     /**
-     * The cycle's photo-library reads, through which ledger keys resolve to uploadable resources: bound once per
-     * root — `GalleryDiscovery` over the gallery on both device tiers — and never by a transport.
+     * The member's own photos (`OwnPhotos`): what the cycle discovers and admits, and the read its ledger keys resolve
+     * under — bound once per root, never by a transport. The app's walks behind its memo and reads its selection; the
+     * extension's walks bare and never holds a selection, so under a partial grant it can read nothing.
      */
-    val discovery: UploadDiscovery,
+    val photos: OwnPhotos,
     /**
      * Which uploader process this cycle runs in, which decides whether it may run a cycle now — the upload cycle
      * owns its entry decision — read once per gate. Required, with **no
@@ -110,15 +108,6 @@ internal class UploadServices(
      * membership's policy is built, so an undetermined grant never reaches the album read that prompts.
      */
     val process: UploaderProcess,
-    /**
-     * What upload discovery may read: [SelectionScope.Unrestricted]
-     * walks as ever; [SelectionScope.Scoped] makes discovery consume the selection snapshot with no
-     * platform read. The default keeps every full-grant composition byte-identical — the extension root
-     * keeps it because it never reads the library under a partial grant: the OS does invoke a surviving
-     * registration there (measured SE2/26.6, 2026-09-21), but its admission withholds before any read — and
-     * the world opts in per test. Derived by the app composition from current permission + the latest snapshot.
-     */
-    val selectionScope: () -> SelectionScope,
     val manifestStore: DeviceManifestService,
     /**
      * The device-manifest publisher — a backend service over this process's authenticated backend: the app passes
@@ -129,11 +118,6 @@ internal class UploadServices(
     val suppression: SuppressionSource,
     /** Whether the membership's received photos have been recognised: required. */
     val recognition: RecognitionSource,
-    /**
-     * The policy's denylisted-album read: this tier's `denylistedAlbumMembers` over its
-     * own grant read and its own `AlbumLookupFailure` answer.
-     */
-    val albumExclusions: suspend (CaptureCutoff) -> Set<AssetId>,
     /** Event-album placement. */
     val albumCoordinator: AlbumCoordinator,
     /**
@@ -164,13 +148,12 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
     // [process] proves the process set up its crash reporting before this cycle was composed (`snapSyncProcess`, every
     // root's first act), and supplies the one `Files` a file uploader's staged bytes live in.
     val ledger = LedgerWriter(ports.ledger)
-    // The read-discipline gate: the ONE shared assembly wraps the library reads, so every
-    // tier and the world get the same walk-vs-snapshot decision — the cycle's, and the transfer's live-resource lookup.
-    val library = SelectionScopedDiscovery(ports.discovery, ports.selectionScope)
+    // The keys resolve under the read the grant allows — the cycle's, and the transfer's live-resource lookup.
+    val keys = ContributionKeyedResources(ports.photos)
     val transfer = ports.uploader.transferFor(
         TransferSetup(
             record = ports.ledger,
-            resources = library,
+            resources = keys,
             gallery = ports.gallery,
             files = process.files,
             network = ports.mobileData::transferNetwork,
@@ -210,7 +193,8 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
         },
         ledger = ledger,
         platform = transfer,
-        library = library,
+        photos = ports.photos,
+        keys = keys,
         log = ports.log,
         // Device manifest from the cycle's OWN discovery — no second library enumeration. Catching a failed
         // publish is the cycle's; nothing bounds it but the per-request HTTP timeout (no timeout of ours).
@@ -249,5 +233,5 @@ private fun cycleGateRead(ports: UploadServices) = CycleGateRead(
     // Each root states its own answer — the app from resolution, the extension from its own grant read.
     admission = ports.process::admission,
     keys = ports.keys,
-    albumExclusions = ports.albumExclusions,
+    photos = ports.photos,
 )

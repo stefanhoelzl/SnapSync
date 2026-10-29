@@ -1,9 +1,8 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.data.gallery.platformId
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.AlbumContents
-import app.snapsync.model.SelectionCalibration
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryAlbumKind
@@ -12,9 +11,8 @@ import app.snapsync.ports.WriteOutcome
 import co.touchlab.kermit.Logger
 
 /**
- * The event album's and the denylist's album operations over the [GalleryReader]. The gallery only lists and
- * fills albums; which titles are denied is decided here, by the [SelectionCalibration] the caller passes, and matched
- * per [SelectionCalibration.isDenylistedAlbum].
+ * The event album's operations over the [GalleryReader]: create, look up and fill it. (The album denylist the selection
+ * reads is the data layer's `DenylistedAlbums`.)
  */
 class GalleryAlbums(
     private val gallery: GalleryReader,
@@ -60,22 +58,6 @@ class GalleryAlbums(
         )
         if (outcome != WriteOutcome.Ok) log.w { "add to album $albumLocalId: $outcome (${assetIds.size} asset(s))" }
         return outcome == WriteOutcome.Ok
-    }
-
-    /**
-     * Cost is O(albums), never O(assets): one listing, then one member read per denied album. An unreadable
-     * gallery answers the empty set — the denylist is a subtraction and the policy admits on doubt.
-     */
-    suspend fun assetIdsInAlbums(calibration: SelectionCalibration, since: CaptureCutoff): Set<AssetId> {
-        val albums = when (val read = gallery.albums()) {
-            is GalleryRead.Read -> read.value
-            GalleryRead.NotReadable -> return emptySet()
-        }
-        return albums.filter { calibration.isDenylistedAlbum(it.title) }.flatMapTo(mutableSetOf()) { album ->
-            val members = (gallery.albumMembers(album.id, since.at.at) as? GalleryRead.Read)?.value.orEmpty()
-            log.i { "denylisted album '${album.title}': ${members.size} member(s) in scope" }
-            members.map { it.assetId() }
-        }
     }
 }
 

@@ -1,6 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.sharing.SelectionState
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.TimestampText
@@ -8,7 +9,6 @@ import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.Resource
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
@@ -103,14 +103,14 @@ class ReceivedPhotoAdoption(
 
     /**
      * A selection change's first step, BEFORE its snapshot is published: when the new
-     * selection's [resources] hold marked photos — of any capture date — that the download store does not record,
+     * [selection] holds marked photos — of any capture date — that the download store does not record,
      * any of them may be a received photo no pass has recognised — so the membership's recognition is withdrawn before
      * any reader sees the snapshot, and [afterSelectionPublished] recognises them. A read of memory and the store only.
      * Unjoined ([joined] `null`), there is nothing to withhold.
      */
-    suspend fun beforeSelectionPublished(joined: EventConfig?, resources: List<Resource>) = gate.withLock {
+    suspend fun beforeSelectionPublished(joined: EventConfig?, selection: SelectionState.Read) = gate.withLock {
         val cfg = joined ?: return@withLock
-        val unknown = library.markedAmong(resources, known = store.suppressedLocalIds())
+        val unknown = library.markedAmong(selection, known = store.suppressedLocalIds())
         if (unknown.isEmpty()) return@withLock
         store.recognition.unmark(cfg.eventId)
         settledFor = null

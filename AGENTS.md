@@ -23,10 +23,10 @@ membership is the *current* contract.
 > "back up everything of mine" becomes "upload a guest's whole camera roll to a stranger's event". A membership's
 > cutoff is therefore **required**, never absent.
 
-What a member contributes is decided by **one** policy at **one** place: capability `photo-sharing`, enforced in
-`UploadCycle`'s resource selection, and the same policy gates the byte upload, the device manifest and the status
-total. Limited (partial) photo access is a first-class grant whose selection decides; its measured platform traps
-are in `adapter/ios/AGENTS.md`.
+What a member contributes is decided by **one** policy at **one** place: capability `photo-sharing`, the domain's
+`SelectionPolicy`, derived, read and admitted only by the data layer's `OwnPhotos` — and that one answer gates the
+byte upload, the device manifest, the status total, the join preview and the album gather. Limited (partial) photo
+access is a first-class grant whose selection decides; its measured platform traps are in `adapter/ios/AGENTS.md`.
 
 Stack: Kotlin · Compose MP · JDK 25 · min iOS 18.0 · Orbit MVI · SQLDelight · Ktor (`gradle/libs.versions.toml` is
 the source of truth for versions).

@@ -1,8 +1,10 @@
 package app.snapsync.domain.sharing
 
+import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.EventWindow
+import app.snapsync.domain.time.Timestamp
 
 /**
  * A member's capture range `[from, until]` — the capture dates this device contributes to its event. Both ends are
@@ -16,10 +18,27 @@ import app.snapsync.domain.event.EventWindow
  * it would share a range nobody chose.
  *
  * "Nothing is uploaded before the event starts" does NOT follow from this rule — a floor before the start is allowed.
- * The membership's selection derivation holds it instead.
+ * [sharedAt] holds it instead: the range as it is shared at a moment.
  */
 @ConsistentCopyVisibility
 data class CaptureRange private constructor(val from: CaptureCutoff, val until: CaptureCeiling) {
+
+    /** Whether a photo captured at [date] lies inside this range — an undated one never does. */
+    fun holds(date: CaptureDate): Boolean = when (date) {
+        CaptureDate.Undated -> false
+        is CaptureDate.Dated -> date.at >= from.at && date.at <= until.at
+    }
+
+    /**
+     * This range as it is shared at [now]: from the event's [start] while that still lies ahead — "nothing is shared
+     * before the event starts" — and whole once it has passed. Still a range: it overlaps its event, so its end is not
+     * before the start.
+     */
+    fun sharedAt(now: Timestamp, start: EventStart): CaptureRange = when {
+        now >= start.at || from.at >= start.at -> this
+        else -> CaptureRange(CaptureCutoff(start.at), until)
+    }
+
     companion object {
         /** The range `[from, until]` for the event `[start, end]`, or why it cannot be one. */
         fun of(from: CaptureCutoff, until: CaptureCeiling, start: EventStart, end: EventEnd): CaptureRangeVerdict =

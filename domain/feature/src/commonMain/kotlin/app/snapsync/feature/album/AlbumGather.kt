@@ -1,9 +1,10 @@
 package app.snapsync.feature.album
 
+import app.snapsync.data.membership.MembershipRead
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
-import app.snapsync.model.EventConfig
-import app.snapsync.model.SelectionPolicy
+import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAccessState
@@ -59,7 +60,7 @@ class AlbumGather(
     private val configSource: MembershipProjection,
     private val ledger: LedgerService,
     /** The membership's one selection policy — the same derivation every other consumer uses. */
-    private val policyFor: suspend (EventConfig) -> SelectionPolicy,
+    private val policyFor: suspend (Membership) -> SelectionPolicy,
     private val downloads: DownloadService,
     /** The photo grant: a gather without usable access (`grantsPhotoAccess`) could only fail its adds. */
     private val photoAccess: GalleryAccessState,
@@ -113,13 +114,19 @@ class AlbumGather(
     }
 
     suspend fun gather(eventId: EventId) = running.withLock {
-        val cfg = configSource.config.value
+        // The joined membership of [eventId], read once: it decides whether this gather runs and what of its own it
+        // places.
+        val membership = when (val read = configSource.membership) {
+            is MembershipRead.Joined -> read.membership.takeIf { it.event.id == eventId }
+            else -> null
+        }
         when {
-            cfg == null || cfg.eventId != eventId -> log.i { "gather: event=$eventId is no longer joined — skipping" }
-            !cfg.saveToAlbum -> log.i { "gather: event=$eventId opted out of the album — skipping" }
+            membership == null ->
+                log.i { "gather: event=$eventId is no longer joined — skipping" }
+            !membership.share.saveToAlbum -> log.i { "gather: event=$eventId opted out of the album — skipping" }
             !photoAccess.usable -> log.i { "gather: photo access not usable — skipping event=$eventId" }
             else -> {
-                val own = if (coordinator.placesOwnPhotos) ownSet(cfg) else emptyList()
+                val own = if (coordinator.placesOwnPhotos) ownSet(membership) else emptyList()
                 val foreign = downloads.importedLocalIdsOf(eventId).sorted()
                 log.i { "gather: placing ${own.size} own and ${foreign.size} received asset(s) for event=$eventId" }
                 own.chunked(batchSize).forEach { batch -> coordinator.place(eventId, batch) }
@@ -128,9 +135,9 @@ class AlbumGather(
         }
     }
 
-    private suspend fun ownSet(cfg: EventConfig): List<AssetId> {
+    private suspend fun ownSet(membership: Membership): List<AssetId> {
         val rows = ledger.manifestRows()
-        val admitted = admittedAssetIds(rows, policyFor(cfg))
+        val admitted = admittedAssetIds(rows, policyFor(membership))
         return admitted.sorted()
     }
 }

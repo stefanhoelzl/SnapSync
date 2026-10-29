@@ -277,8 +277,9 @@ it does not name, and the world read inside a call, are review's.
 backend's routes say and how a store keeps a value. Today it holds trust (`docs/architecture.md`, "Trust"): the gateway,
 the credential stores, the device identity, the attestation handshake, the version gate — and the membership: the
 `ledger.db` store, the membership row's repository, the leaves owed, the check times, the event's read and rename, the
-enrolment and the leave told to the backend. Its edges are the domain, the format, the ports, the generated wire and
-the inbound log — never an old zone, never `application`.
+enrolment and the leave told to the backend; and the selection: `OwnPhotos`, where a member's contribution is derived,
+read under the grant's plan and admitted — the one place every consumer of their photos asks. Its edges are the domain,
+the format, the ports, the generated wire and the inbound log — never an old zone, never `application`.
 
 - **Data translates and never decides.** Its only branch is an exhaustive `when` over a fact or a domain verdict,
   with a subject and no `else`, **used as an expression** — its value is the answer, so no case can quietly do nothing
@@ -334,8 +335,8 @@ slip past it. Its hole is that anyone may write `@OptIn(X::class)`, so **every o
 (`OptInPinsTest`), exact in both directions:
 
 - **The project's markers**, found rather than listed: `@InboundImplementation`, `@CompositionOnly` (§1) and
-  `@AppProcessOnly` — the walk memo, which the upload extension's 32 MB process must never construct or reach: its
-  constructor carries the marker, `appUploadDiscovery` carries it on, and the app's uploader opts in once.
+  `@AppProcessOnly` — the walk memo (`MemoizedWalk`), which the upload extension's 32 MB process must never construct or reach: its
+  constructor carries the marker, and the app's composition opts in once, building its own photos (`AppCore.ownPhotos`).
 - **The library markers the library itself calls delicate**: `DelicateCoroutinesApi`, `InternalCoroutinesApi`,
   `ExperimentalForInheritanceCoroutinesApi`, `DelicateCryptographyApi` — the sites where someone accepted a risk.
   The markers that only say "this is cinterop" or "not yet stable" are not pinned.
@@ -355,7 +356,9 @@ at exactly **one** call site (never module-wide), and listed by the pin (§10). 
 never stored, never `@Serializable`, never a `data class`, never in API Swift can see — and a value class keeps it
 free. Each concept's evidence arrives with its phase; the membership's are `Enrolled` (the server admitted this
 device), `ConfirmedNotJoined` (the store answered with no membership), `LeftMembership` (the leave's transaction landed)
-and `ConfirmedDeletion` (the event's photos are deleted, by the server's word or the membership's own deadline).
+and `ConfirmedDeletion` (the event's photos are deleted, by the server's word or the membership's own deadline); the
+selection's are `AdmittedAsset` (the policy admitted a read's photo, minted by `SelectionPolicy.admit`) and `AdmittedRow`
+(it admitted a ledger row's asset, by `admitRecorded`).
 
 ---
 

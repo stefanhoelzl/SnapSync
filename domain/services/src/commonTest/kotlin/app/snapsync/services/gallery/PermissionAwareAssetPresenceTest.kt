@@ -1,9 +1,9 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.data.sharing.SelectionState
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.Resource
 import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -17,8 +17,7 @@ import kotlin.test.assertTrue
  *
  * The distinction under test is not *can we look* but **is a miss trustworthy**. A miss reported as
  * absence clears a live marker, imports a second copy, and orphans the first — the defect the download
- * capability exists to prevent. Its sibling [PermissionAwareCandidateSource] has carried a test since it
- * landed; this one did not, and the two decide the same question about two different reads.
+ * capability exists to prevent. The upload's read plan decides the same question for a different read.
  */
 class PermissionAwareAssetPresenceTest {
 
@@ -34,7 +33,7 @@ class PermissionAwareAssetPresenceTest {
     private fun source(
         permission: GalleryAccess,
         library: RecordingLibrary = RecordingLibrary(emptyMap()),
-        snapshot: List<Resource>? = null,
+        snapshot: SelectionState = SelectionState.Unread,
     ) = library to PermissionAwareAssetPresence(
         permission = MutableStateFlow(permission),
         library = library,
@@ -80,7 +79,7 @@ class PermissionAwareAssetPresenceTest {
     fun `LIMITED before the first snapshot answers UNKNOWN for everything`() = runTest {
         // The honest gap between a grant turning partial and the first observer emission: nothing is
         // known to be selected, and we may not go looking. Every row simply waits.
-        val (library, source) = source(GalleryAccess.LIMITED, snapshot = null)
+        val (library, source) = source(GalleryAccess.LIMITED, snapshot = SelectionState.Unread)
         val verdicts = source.presence(setOf(testAssetId("A"), testAssetId("B")))
         assertEquals(
             mapOf(testAssetId("A") to AssetPresence.UNKNOWN, testAssetId("B") to AssetPresence.UNKNOWN),

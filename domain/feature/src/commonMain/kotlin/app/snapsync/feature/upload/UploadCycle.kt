@@ -1,14 +1,16 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.sharing.Contribution
+import app.snapsync.data.sharing.DiscoveryRead
+import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.model.CycleResult
-import app.snapsync.model.EventPhotoSet
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.PauseReason
 import app.snapsync.model.PlatformUploadJob
 import app.snapsync.model.Resource
-import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SyncDecision
 import app.snapsync.model.SyncEvent
 import app.snapsync.model.UploadCreateOutcome
@@ -17,9 +19,10 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.model.admittedAssetIds
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.isDone
-import app.snapsync.model.resourcesOf
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.gallery.KeyedRead
+import app.snapsync.services.gallery.KeyedResources
+import app.snapsync.services.gallery.uploadable
 import app.snapsync.services.upload.BackgroundTransfer
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.NonCancellable
@@ -33,8 +36,9 @@ import kotlinx.coroutines.withContext
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
  * retry), then walk the library, record what it found, and create jobs from the ledger — all gated by the
  * [engine]. This is the testable core: it depends only on the [engine], the [ledger] (to reconstruct
- * lifecycle jobs and to delete the rows of departed assets), and the [BackgroundTransfer] and
- * [UploadDiscovery] ports, so a fake platform + a real engine exercise the whole flow in `commonTest`
+ * lifecycle jobs and to delete the rows of departed assets), the [BackgroundTransfer] port, and the member's own
+ * photos, read and admitted through the data layer's `OwnPhotos` over the gallery port, so a fake platform, an
+ * in-memory gallery and a real engine exercise the whole flow in `commonTest`
  * without touching PhotoKit.
  *
  * Every walk is a **full enumeration**; there is no persisted cursor. Write-after-act: the engine records `REQUESTED`
@@ -66,9 +70,11 @@ class UploadCycle(
     private val engineFor: (UploadConfig) -> SyncEngine,
     private val ledger: LedgerWriter,
     private val platform: BackgroundTransfer,
-    // What the cycle reads from the photo library — the full-enumeration walk and the id-scoped key resolve.
-    // Not the transport's: both tiers read the library identically, and only the transfer lifecycle differs.
-    private val library: UploadDiscovery,
+    // What the cycle reads from the photo library — the member's own photos, read and admitted under the membership's
+    // contribution — and the id-scoped key resolve under the same read. Not the transport's: both tiers read the
+    // library identically, and only the transfer lifecycle differs.
+    private val photos: OwnPhotos,
+    private val keys: KeyedResources,
     // Best-effort hook fired once per fully-drained cycle with that cycle's discovery — the device
     // manifest is built from THIS (no second PhotoKit enumeration). `runCatching`ed HERE, so a failed
     // publish never fails a cycle and no root has to remember to catch it. Deliberately NOT bounded by a
@@ -223,11 +229,11 @@ class UploadCycle(
             is CycleGate.Run -> gate.config to gate.membership
         }
 
-        // ONE derivation, invoked once per cycle. The membership carries a supplier rather than a built policy because
-        // the derivation reads two ports, and the entry-gate translation that produced the membership must stay
-        // port-pure. The supplier is closed over in the shared composition, where the config and both readers are in
-        // scope; a non-contributing membership still invokes neither reader.
-        val policy = membership.policy()
+        // ONE derivation, invoked once per cycle: the membership's policy, paired with the read it applies to. A supplier,
+        // because deriving it reads ports and the entry-gate translation that produced the membership must stay port-pure;
+        // a non-contributing membership reads no album.
+        val contribution = membership.contribution()
+        val policy = contribution.policy
         val eventId = config.eventId
         val engine = engineFor(config)
 
@@ -266,7 +272,7 @@ class UploadCycle(
         // departed photo. What the cap costs is only that this cycle cannot enqueue more — and the
         // work it could not re-create rests `DISCOVERED`, which the ledger's work read returns next cycle
         // without needing a walk to re-derive it.
-        return Ready(eventId, policy, membership.manifestVersion, engine, membership.saveToAlbum, capHit)
+        return Ready(eventId, contribution, membership.manifestVersion, engine, membership.saveToAlbum, capHit)
     }
 
     // --- stage 2: decide -------------------------------------------------------------------------
@@ -282,27 +288,21 @@ class UploadCycle(
      * acting there becomes a duplicate-upload path, and nothing in the compiler will say so.
      */
     private suspend fun decide(ready: Ready): CyclePlan {
-        // Phase 3 — walk the library: a full enumeration, every cycle. The capture range came in with the contribution
-        // and is passed down, so the walk is scoped at the platform fetch rather than walked whole and filtered
-        // afterwards.
-        val discovery = library.discover(ready.policy)
-        log.i { "discovered ${discovery.candidates.size} candidate asset(s)" }
-
-        // THE ADMISSION: one policy, applied once, deciding the whole admitted set — the capture-date RANGE (both
-        // bounds), the origin exclusions, the echo suppression, and the album denylist together. Every consumer of this
-        // cycle reads the set below; none re-states a rule, which is what makes the drift that produced the ceiling bug
-        // unrepresentable (see `SelectionPolicy`).
-        //
-        // It stays **authoritative** even though the platform walk narrows its own fetch by some of
-        // the same rules: the walk may return a superset (its predicate is deliberately widened, and a
-        // selection snapshot takes no predicate at all), and this is what makes that optimization
-        // unable to change the admitted set. `resources()` pays the per-asset round-trip ONLY for the
-        // assets it kept.
-        //
-        // Judged by the rules for where the discovery says its candidates came from: a partial grant's selection stands
-        // down the rules that judge what a photo is (`SelectionPolicy.over`).
-        val judgedBy = ready.policy.over(discovery.scope)
-        val admitted = EventPhotoSet(judgedBy) { discovery.candidates }.assets()
+        // Phase 3 — discover: the member's photos, read the way the grant allows (the library walked within the capture
+        // range, or the selection in hand) and admitted by the membership's ONE policy — the range, the origin
+        // exclusions, echo suppression and the album denylist together, a selection judged without the rules about what
+        // a photo is. Every consumer of this cycle reads the set below; none re-states a rule. A read that could not be
+        // made admits nothing and is evidence of nothing.
+        val read = photos.discover(ready.contribution)
+        val admitted = when (read) {
+            is DiscoveryRead.Discovered -> read.discovery.admitted
+            DiscoveryRead.NotReadable -> emptyList()
+        }
+        val considered = when (read) {
+            is DiscoveryRead.Discovered -> read.discovery.considered
+            DiscoveryRead.NotReadable -> 0
+        }
+        log.i { "discovered $considered candidate asset(s)" }
 
         // …and of those, only for the assets the ledger does not fully know. Every walk is a full enumeration, so
         // without this each cycle would repeat one synchronous platform round-trip per photo already recorded — the
@@ -319,26 +319,29 @@ class UploadCycle(
         // enqueued (their bytes are stored), so this walk is the only moment that places them in the event album. An
         // asset read here that has rows at all has a bare one — a fully known asset is not read.
         val healing = toRead.mapTo(mutableSetOf()) { it.facts.assetId }.filterTo(mutableSetOf()) { it in byAsset }
-        val liveResources = resourcesOf(toRead)
-            .also {
-                log.i {
-                    "selection policy admitted ${admitted.size} of ${discovery.candidates.size} " +
-                        "candidate(s); ${admitted.size - toRead.size} fully known, ${toRead.size} read " +
-                        "→ ${it.size} resource(s)"
-                }
+        // Resources only for the admitted assets the ledger does not fully know: in hand for a selection, one batched
+        // request for a walk.
+        val liveResources = when (read) {
+            is DiscoveryRead.Discovered -> read.uploadable(toRead)
+            DiscoveryRead.NotReadable -> emptyList()
+        }.also {
+            log.i {
+                "selection policy admitted ${admitted.size} of $considered " +
+                    "candidate(s); ${admitted.size - toRead.size} fully known, ${toRead.size} read " +
+                    "→ ${it.size} resource(s)"
             }
+        }
         val admittedIds = admitted.mapTo(mutableSetOf()) { it.facts.assetId }
         return CyclePlan(
             liveResources,
             skipped = admitted.size - toRead.size,
             healing = healing,
-            departedKeys = if (discovery.fullEnumeration) {
-                departedKeys(rows, admittedIds, ready.policy)
-            } else {
-                // A library the platform could not read is no evidence that anything left it. A read selection
-                // snapshot IS authoritative — under a partial grant the selection is the gallery — and an unread one
-                // never gets here.
-                emptyList()
+            // A discovery exists only for a read that saw the whole of what this member shares from — the library
+            // under a full grant, the read selection under a partial one — so only then is an absence evidence. A read
+            // that could not be made is no evidence that anything left.
+            departedKeys = when (read) {
+                is DiscoveryRead.Discovered -> departedKeys(rows, admittedIds, ready.policy)
+                DiscoveryRead.NotReadable -> emptyList()
             },
         )
     }
@@ -535,13 +538,19 @@ class UploadCycle(
      * read through the same port, keyed by filename; a hit is the very handle a resolve would return (one
      * platform read of the same asset, moments earlier), so the second synchronous round-trip bought nothing but
      * its cost. Only a miss — a row the walk did not read: a retried failure, or a truncated cycle's remainder
-     * whose asset the ledger already fully knows — resolves through [UploadDiscovery.resourcesFor], and only a
-     * miss there is evidence the asset is gone. The shape is unchanged: one row at a time, stopping at the first
+     * whose asset the ledger already fully knows — resolves through [KeyedResources.resourcesFor], and only a
+     * miss there is evidence the asset is gone; a library that cannot be read now is evidence of nothing, and the
+     * row is kept for a pass that can look. The shape is unchanged: one row at a time, stopping at the first
      * refusal before the next row is looked up.
      */
     private suspend fun createOne(ready: Ready, row: LedgerEntry, walked: Map<String, Resource>): UploadCreateOutcome? {
-        val resource = walked[row.key]
-            ?: library.resourcesFor(setOf(row.key)).firstOrNull { it.filename == row.key }
+        val resource = walked[row.key] ?: when (val read = keys.resourcesFor(setOf(row.key))) {
+            KeyedRead.NotReadable -> {
+                log.i { "cannot read the library to resolve ${row.key} — keeping its row" }
+                return null
+            }
+            is KeyedRead.Resolved -> read.resources.firstOrNull { it.filename == row.key }
+        }
         if (resource == null) {
             log.i { "cannot resolve ${row.key} — its asset is gone; deleting that row" }
             ledger.deleteKeys(listOf(row.key))
@@ -701,7 +710,8 @@ class UploadCycle(
     /** A settled cycle that may create work: the facts every later stage needs. */
     private class Ready(
         val eventId: EventId,
-        val policy: SelectionPolicy,
+        /** What the membership contributes this cycle: its [policy], and the read discovery applies it to. */
+        val contribution: Contribution,
         /** The manifest version the gate read first; the publish carries it. */
         val manifestVersion: Long,
         val engine: SyncEngine,
@@ -712,7 +722,9 @@ class UploadCycle(
          * the row rests `DISCOVERED` and the ledger's work read returns it next cycle.
          */
         val capHit: Boolean,
-    ) : Settled
+    ) : Settled {
+        val policy: SelectionPolicy get() = contribution.policy
+    }
 
     /**
      * What a cycle established, and therefore what it may publish. Exhaustive: a new variant stops

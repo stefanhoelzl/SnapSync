@@ -98,11 +98,19 @@ class UnreadStatusIntegrationTest {
         //
         // The consequence, named rather than hidden: the total stays UNKNOWN, so the screen holds its neutral
         // line. It is deliberately not collapsed to `0`, which would read "In sync".
+        //
+        // The library changes first: the status read sits behind the app's walk memo (`changes/own-work-per-wake`,
+        // D9), which answers an unchanged library without walking, so only a moved change token makes the refresh
+        // walk at all — and only a walk can fail.
         whenever {
+            library.add("B")
             library.failNextEnumeration()
             os.foreground()
         }
-        then { neverInSync() }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.Loading }
+            neverInSync()
+        }
 
         // And the next refresh recovers: the lever is one-shot, like a transient platform failure.
         whenever { os.foreground() }

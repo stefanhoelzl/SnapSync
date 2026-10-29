@@ -11,10 +11,10 @@ package app.snapsync.model
  * unsupported and the report leaves it out. A selection not read yet is failed, never zero: an empty selection and an
  * unread one are different reports.
  */
-fun selectionPhotos(permission: GalleryAccess, snapshot: List<Resource>?): Fact<Int> = when {
+fun selectionPhotos(permission: GalleryAccess, selectedPhotos: Int?): Fact<Int> = when {
     permission != GalleryAccess.LIMITED -> Fact.Unsupported
-    snapshot == null -> Fact.Failed("the selection has not been read yet")
-    else -> Fact.Known(snapshot.distinctBy { it.assetId }.size)
+    selectedPhotos == null -> Fact.Failed("the selection has not been read yet")
+    else -> Fact.Known(selectedPhotos)
 }
 
 /** A process's footprint in whole megabytes; unsupported where the platform's is not read. */

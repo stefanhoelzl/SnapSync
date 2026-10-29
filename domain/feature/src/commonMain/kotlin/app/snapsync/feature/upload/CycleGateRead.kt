@@ -3,23 +3,20 @@ package app.snapsync.feature.upload
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.SharedRecordsReadiness
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.Membership
-import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.PauseReason.LEGACY_RECORDS
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.selectionPolicyFor
 import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.membership.asConfig
 
 /**
  * THE ENTRY-GATE TRANSLATION — the upload cycle owns its entry decision — one
@@ -45,8 +42,8 @@ class CycleGateRead(
     private val admission: () -> UploadAdmission,
     /** The joined event's key, as last read at the entry — a LOST one withholds the cycle (see [admissionFor]). */
     private val keys: EventKeyStore,
-    /** The membership's denylisted-album members since a cutoff, answered per the uploader's tier. */
-    private val albumExclusions: suspend (CaptureCutoff) -> Set<AssetId>,
+    /** The member's own photos: what the membership contributes, and the read it is applied to. */
+    private val photos: OwnPhotos,
 ) {
     /**
      * The gate. The legacy-records check is first; the suppression reads are last, and only for an admitted cycle: the
@@ -84,28 +81,17 @@ class CycleGateRead(
         val identityFailure = runCatchingCancellable { identity.requireDeviceId() }
             .onFailure { if (it !is SecureStoreUnavailable && it !is DeviceIdentityAbsent) throw it }
             .exceptionOrNull()
-        val payload = when (read) {
-            is MembershipRead.Joined -> read.membership.asConfig()
-            is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
-        }
+        val joined = (read as? MembershipRead.Joined)?.membership
         return cycleGate(
             configReadable = read !is MembershipRead.Unavailable && identityFailure == null && version.isSuccess,
-            membership = payload?.let {
+            membership = joined?.let { membership ->
                 JoinedMembership(
-                    eventId = it.eventId,
-                    // A supplier, not a value: the derivation reads two ports and this translation must stay
-                    // port-pure. Closing over them is not calling them.
-                    policy = {
-                        selectionPolicyFor(
-                            config = it,
-                            // Read when the cycle derives its policy, not at the gate: a cycle that crosses the
-                            // event's start shares what the start admits from then on.
-                            now = config.now(),
-                            suppressedAssetIds = { suppression.suppressedLocalIds() },
-                            albumExcludedAssetIds = albumExclusions,
-                        )
-                    },
-                    saveToAlbum = it.saveToAlbum,
+                    eventId = membership.event.id,
+                    // A supplier, not a value: the derivation reads ports and this translation must stay port-pure.
+                    // Closing over them is not calling them. Derived when the cycle asks, not at the gate: a cycle
+                    // that crosses the event's start shares what the start admits from then on.
+                    contribution = { photos.contribution(membership, suppression.suppressedLocalIds()) },
+                    saveToAlbum = membership.share.saveToAlbum,
                     manifestVersion = version.getOrDefault(0L),
                 )
             },

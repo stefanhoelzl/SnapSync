@@ -411,6 +411,23 @@ version or op gates these — each phase deletes its own uses, and the last one 
 - **Remove:** each phase moves its store into the data layer, answering what it read and wrote as values, and deletes
   its `use` calls; the phase that removes the last one deletes the file and this entry.
 
+### The selection as the old zones reach it (app)
+- **What:** the old zones reach the member's own photos (`OwnPhotos`, `domain/data/.../sharing/`) through edges that
+  stay theirs until their concepts move:
+  - echo suppression's set is read by each caller from the download store and passed in as `received`
+    (`OwnPhotos.contribution`, `preview`; `ShareableCountQuery.count`) — its callers `CycleGateRead` (4.4b),
+    `AppCore.contributionFor` and `loadShareableCount` in `compose/SnapSyncApp.kt`;
+  - ledger rows are judged through `admittedAssetIds` (`domain/model/.../LedgerAdmission.kt`), the rows' translation
+    to `SelectionPolicy.admitRecorded`: `UploadCycle` (4.4b), `projectDeviceManifest` (4.4c), `AlbumGather` (4.7);
+  - the cycle's discovery, key resolve and resources (`UploadCycle`, `KeyedResources` and `uploadable` in
+    `domain/services/.../gallery/KeyedResources.kt`, 4.4b); the status total (`OwnDeviceGalleryStatusSource`,
+    `StatusRefresh`, 4.9); receiving's read plan (`MarkedPhotoLookup`, 4.5).
+- **Why:** phase 4.4a moved the selection into the layers; the download store, the ledger, the uploads, the status
+  and receiving move in their own phases.
+- **Remove:** 4.5 moves the download store into the data layer and `OwnPhotos` reads `received` itself (the parameter
+  goes); 4.4b moves the ledger and the cycle and deletes `admittedAssetIds` once its last caller judges rows as
+  `RecordedAsset`s, and `KeyedResources` with the upload keys; the phase that removes the last edge deletes this entry.
+
 ### The old zones' throwing read of a stored id (app)
 - **What:** `held` (`domain/services/…/services/databases/StoredIds.kt`): an id column as the old zones read it — the
   id, or a throw when the column spells none, as the column's adapter threw before it answered a `Stored`

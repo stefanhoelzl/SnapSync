@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.model.AlbumContents
 import app.snapsync.ui.state.RangeChoice
@@ -72,4 +73,9 @@ data class ResolvedRange(
      * different things: `Ready(0)` says the chosen range admits none of their photos.
      */
     val shareCount: ShareCount = ShareCount.Counting,
+    /**
+     * The chosen bounds as the member's capture range for this event — what the shareable count counts. `null` when
+     * they make no range for it, which no pick reaches (the calendar holds the range rule); then nothing is counted.
+     */
+    val chosen: CaptureRange? = null,
 )

@@ -293,6 +293,36 @@ class DeletionLedgerTest {
     }
 
     /**
+     * The selection before its layers (phase 4.4a): a policy in `model` built from suspending readers and completed by
+     * scope (`over`), consumers handed a candidate seam or an admitted-set object to apply it through, a grant switch in
+     * a decorator, a walk-vs-snapshot scope beside it, a discovery port carrying an authority flag, a denylist lookup
+     * with a failure mode the non-throwing ports had already retired, and a walk memo that could be told only to shadow.
+     * The policy is the domain's (`SelectionPolicy`), the read and its admission data's (`OwnPhotos`).
+     */
+    @Test
+    fun `the selection's retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """(class|interface|object) (EventPhoto""" + "Set|Candidate" + "Source|GalleryCandidate" +
+                "Source|PermissionAwareCandidate" + "Source|CandidateRead|Candidate" + "Scope|Selection" + "Scope|" +
+                "GalleryDiscovery|Upload" + "Discovery|SelectionScoped" + "Discovery|WalkMemo" + "Use|Latest" +
+                "Selection|ShareableCount" + "Source|AlbumLookup" + "Failure|ResourceBatch)\\b"
+            declared(files, pre).forEach { add("the selection's pre-layer types in $it (the layers' — 4.4a)") }
+            declared(
+                files,
+                """fun (selection""" + "PolicyFor|selection" + "RulesFor|no" + "Contribution|received" +
+                    "Window|denylistedAlbum" + "Members|appUpload" + "Discovery|assetIds" + "InAlbums)\\b",
+            ).forEach {
+                add("a derivation the layers replaced in $it (SelectionPolicy.of, OwnPhotos — 4.4a)")
+            }
+            declared(files, """val SELECTION""" + "_CALIBRATION\\b").forEach {
+                add("a top-level calibration in $it (SelectionCalibration.STANDARD — 4.4a)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
      * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop

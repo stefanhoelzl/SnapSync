@@ -1,13 +1,13 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.sharing.Contribution
+import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
-import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.SelectionScope
 import app.snapsync.model.SuppressionReadiness
 import app.snapsync.model.UploaderPin
-import app.snapsync.model.grantsPhotoAccess
 
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
 class UploadConfig(
@@ -31,34 +31,24 @@ fun buildUploadConfig(eventId: EventId?, host: String?): UploadConfig? {
  * The membership facts one cycle needs, in the shared vocabulary — present **only** when the read
  * found a joined event.
  *
- * It exists so [cycleGate] can never be handed a [SelectionPolicy] for a membership that does not exist.
- * Fold these into the gate's arguments instead and every caller must supply a policy even in the
+ * It exists so [cycleGate] can never be handed a contribution for a membership that does not exist.
+ * Fold these into the gate's arguments instead and every caller must supply one even in the
  * not-joined case, which means inventing one — and an invented cutoff is precisely the invariant this
  * project is built against (a membership's cutoff is required, never absent). The type deletes the
- * state rather than tolerating it, the same reasoning [SelectionPolicy] itself is built on.
- *
- * The [policy] is the config-derived one ([SelectionPolicy.from]); the cycle completes it with the two
- * port-read exclusion sets (`excluding`) once it can read them. Primitives plus that pure value, never a
- * config type: this module stays event- and platform-agnostic, so a root translates *its* storage into
- * this and the decision stays testable off every device.
+ * state rather than tolerating it.
  */
 class JoinedMembership(
     val eventId: EventId,
     /**
-     * The membership's selection policy, as a **supplier** rather than a built value.
+     * What the membership contributes — its policy and the read it applies to ([OwnPhotos.contribution]) — as a
+     * **supplier** rather than a built value.
      *
-     * The one derivation reads two ports — the download store's imported ids and the platform album lookup — and the
-     * entry-gate translation that builds this membership must stay **port-pure** (a fresh three-state config read, the
-     * identity probe, the host read, and nothing else). So the translation closes over the readers instead of calling
-     * them; the shared composition is where both the config and the readers are in scope, and invoking this is the
-     * cycle's business.
-     *
-     * Capturing a port is not reading one, so the gate's purity is intact. What this buys is that the
-     * cycle receives an already-decided policy — never a half-built one it has to complete, which is what
-     * the deleted `excluding()` step made it do, and why the capture floor kept having to be extracted
-     * back out of the policy to scope the album fetch.
+     * Deriving it reads ports (the echo store, the grant, the album denylist), and the entry-gate translation that
+     * builds this membership must stay **port-pure** (a fresh three-state config read, the identity probe, the host
+     * read, and nothing else). So the translation closes over the readers instead of calling them; invoking this is
+     * the cycle's business. Capturing a port is not reading one, so the gate's purity is intact.
      */
-    val policy: suspend () -> SelectionPolicy,
+    val contribution: suspend () -> Contribution,
     val saveToAlbum: Boolean,
     /**
      * The ledger's manifest version, read by the entry-gate translation **before** the membership, and carried
@@ -173,24 +163,19 @@ enum class UploadAdmission {
 }
 
 /**
- * The **app** process's admission: its uploader creates under any usable grant — `GRANTED` or `LIMITED`, on every
- * OS version, beside the extension where one is registered — unless the rig's [pin] turned it off.
+ * The **app** process's admission: its uploader creates whenever the member's photos can be read — under a full
+ * grant, or a partial one whose selection has been read — on every OS version, beside the extension where one is
+ * registered, unless the rig's [pin] turned it off.
  *
- * Without usable access it withholds rather than touching nothing: the narrow settle creates no job and reads
- * no library, and a completion that arrives meanwhile still records through the transport's guarded write.
- *
- * It withholds too while the [scope] is [SelectionScope.Unread] — a partial grant whose selection has not been read
- * yet. A read selection snapshot is an authoritative walk, so a cycle run over an unread one would take the absence of
- * a selection for the absence of every photo and delete their rows (decision record `changes/selection-is-the-walk`,
- * D1). The scope is derived from the same snapshot cell discovery reads, so admission and discovery cannot disagree
- * about whether it was read.
+ * Otherwise ([ReadPlan.NotReadable]) it withholds rather than touching nothing: the narrow settle creates no job and
+ * reads no library, and a completion that arrives meanwhile still records through the transport's guarded write. A
+ * partial grant whose selection has not been read yet is withheld for a reason of its own: a read selection is
+ * authoritative, so a cycle run over an unread one would take the absence of a selection for the absence of every photo
+ * and delete their rows (decision record `changes/selection-is-the-walk`, D1). The [plan] is the one discovery reads
+ * under, so admission and discovery cannot disagree about whether the selection was read.
  */
-fun appAdmission(permission: GalleryAccess, scope: SelectionScope, pin: UploaderPin? = null): UploadAdmission =
-    if (permission.grantsPhotoAccess && scope != SelectionScope.Unread && pin?.app != false) {
-        UploadAdmission.Admit
-    } else {
-        UploadAdmission.Withheld
-    }
+fun appAdmission(plan: ReadPlan<*>, pin: UploaderPin? = null): UploadAdmission =
+    if (plan != ReadPlan.NotReadable && pin?.app != false) UploadAdmission.Admit else UploadAdmission.Withheld
 
 /**
  * The **extension** process's admission: it runs exactly under a full grant, read in its own process.

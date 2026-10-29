@@ -1,5 +1,7 @@
 package app.snapsync.services.gallery
 
+import app.snapsync.data.gallery.assetId
+import app.snapsync.data.gallery.platformId
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.GalleryAccess

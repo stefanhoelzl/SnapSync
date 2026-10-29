@@ -99,6 +99,30 @@ class OsQueueTransferTest {
     }
 
     @Test
+    fun `a retry-spent failure while the library cannot be read is recorded FAILED and re-creates nothing`() = runTest {
+        // Could not look offers no live resource, as a gone photo does: nothing is handed up to be re-created.
+        val queue = ScriptedQueue(terminal = listOf(job(UploadJobState.FAILED)))
+        val record = rowA()
+        val resources = Resources(mapOf(KEY to libraryResource()), readable = false)
+        val handedUp = transfer(queue, record, resources).drainTerminals()
+        assertEquals(1, resources.calls, "the resolve was asked")
+        assertEquals(listOf(KEY to TerminalOutcome.FAILED), record.terminals)
+        assertTrue(handedUp.isEmpty(), "an unreadable library re-creates nothing")
+    }
+
+    @Test
+    fun `a retry-spent failure whose photo is gone is recorded FAILED and re-creates nothing`() = runTest {
+        // The resolve answers, but nothing it answers is this key's resource: the photo left the library.
+        val queue = ScriptedQueue(terminal = listOf(job(UploadJobState.FAILED)))
+        val record = rowA()
+        val resources = Resources(mapOf(KEY to libraryResource(key = "B-primary.jpg")))
+        val handedUp = transfer(queue, record, resources).drainTerminals()
+        assertEquals(1, resources.calls, "the resolve was asked")
+        assertEquals(listOf(KEY to TerminalOutcome.FAILED), record.terminals)
+        assertTrue(handedUp.isEmpty(), "a gone photo re-creates nothing")
+    }
+
+    @Test
     fun `every presented job is acknowledged - an unmappable and a pruned one included`() = runTest {
         val queue = ScriptedQueue(
             terminal = listOf(

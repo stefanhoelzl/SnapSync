@@ -1,25 +1,28 @@
 package app.snapsync.gallery
 
+import app.snapsync.data.sharing.SelectionSnapshots
+import app.snapsync.data.sharing.SelectionState
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.id
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.AssetRef
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.ReceivedPhotoName
-import app.snapsync.model.Resource
-import app.snapsync.model.SelectionScope
+import app.snapsync.ports.AssetFilter
+import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
+import app.snapsync.ports.SelectionSnapshot
 import app.snapsync.services.gallery.MarkedPhotoLookup
-import app.snapsync.services.gallery.resourcesFrom
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -72,6 +75,13 @@ class MarkedPhotoLookupTest {
         ), // outside the event
     )
 
+    /** No selection read yet — the state under a full grant, and the gap before a partial grant's first read. */
+    private fun unread() = SelectionSnapshots()
+
+    /** A selection read of [assets], as the gallery's selection observer publishes it. */
+    private suspend fun selected(assets: List<GalleryAssetResources>): SelectionSnapshots =
+        SelectionSnapshots().also { it.published(flowOf(SelectionSnapshot(assets))) {}.collect() }
+
     /** The gallery's reads, recording every id a resource read asked for. */
     private class Recording(private val reader: GalleryReader) : GalleryReader by reader {
         val resourceReads = mutableListOf<Set<PlatformAssetId>>()
@@ -82,7 +92,7 @@ class MarkedPhotoLookupTest {
     @Test
     fun a_full_grant_finds_the_marked_photos_in_the_window() = runTest {
         val gallery = Recording(inMemoryGallery(MutableStateFlow(library)))
-        val found = MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, known = emptySet())
+        val found = MarkedPhotoLookup(gallery, unread()).markedIn(start, end, known = emptySet())
         assertEquals(
             mapOf(
                 ReceivedPhotoName.token(refA) to testAssetId("L-A"),
@@ -100,7 +110,7 @@ class MarkedPhotoLookupTest {
     fun a_window_reaching_before_the_event_finds_a_photo_received_from_before_it() = runTest {
         // Capability `receiving-photos`: another member's range may start before the event, so the photo they took
         // the week before is a received photo too — found when the caller's window reaches it.
-        val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unrestricted }
+        val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library)), unread())
             .markedIn(TimestampText.parse("2026-05-15T00:00:00Z"), end, known = emptySet())
         assertEquals(
             testAssetId("L-EARLY"),
@@ -112,17 +122,15 @@ class MarkedPhotoLookupTest {
     fun a_selection_snapshot_is_searched_for_marked_photos_whatever_their_date() {
         // The pre-check a selection change makes: no date narrows it, so a received photo from before the event pauses
         // sharing too. The member's own unmarked photo is never a candidate.
-        val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library))) { SelectionScope.Unread }
-            .markedAmong(resourcesFrom(library), known = setOf(testAssetId("L-A")))
+        val found = MarkedPhotoLookup(inMemoryGallery(MutableStateFlow(library)), unread())
+            .markedAmong(SelectionState.Read(library), known = setOf(testAssetId("L-A")))
         assertEquals(setOf(testAssetId("L-B"), testAssetId("L-EARLY")), found.values.toSet())
     }
 
     @Test
     fun a_known_asset_is_never_read() = runTest {
         val gallery = Recording(inMemoryGallery(MutableStateFlow(library)))
-        val found = MarkedPhotoLookup(
-            gallery,
-        ) { SelectionScope.Unrestricted }.markedIn(start, end, known = setOf(testAssetId("L-A")))
+        val found = MarkedPhotoLookup(gallery, unread()).markedIn(start, end, known = setOf(testAssetId("L-A")))
         assertEquals(mapOf(ReceivedPhotoName.token(refB) to testAssetId("L-B")), found)
         assertTrue(PlatformAssetId("L-A") !in gallery.resourceReads.flatten())
     }
@@ -130,35 +138,33 @@ class MarkedPhotoLookupTest {
     @Test
     fun a_partial_grant_reads_the_snapshot_and_not_the_library() = runTest {
         val gallery = Recording(inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.LIMITED)))
-        val selection = resourcesFrom(library.filter { it.id.value != "L-B" }) // L-B was not selected
-        val found = MarkedPhotoLookup(
-            gallery,
-        ) { SelectionScope.Scoped(selection) }.markedIn(start, end, known = emptySet())
+        val selection = selected(library.filter { it.id.value != "L-B" }) // L-B was not selected
+        val found = MarkedPhotoLookup(gallery, selection).markedIn(start, end, known = emptySet())
         assertEquals(mapOf(ReceivedPhotoName.token(refA) to testAssetId("L-A")), found)
         assertTrue(gallery.resourceReads.isEmpty(), "the selection already carries every name")
     }
 
     @Test
     fun an_unread_selection_finds_nothing_and_no_grant_reads_nothing() = runTest {
-        val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.DENIED))
-        assertEquals(emptyMap(), MarkedPhotoLookup(gallery) { SelectionScope.Unread }.markedIn(start, end, emptySet()))
+        val limited = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.LIMITED))
+        assertEquals(emptyMap(), MarkedPhotoLookup(limited, unread()).markedIn(start, end, emptySet()))
+        val denied = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.DENIED))
+        assertNull(MarkedPhotoLookup(denied, unread()).markedIn(start, end, emptySet()), "unreadable")
         assertNull(
-            MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, emptySet()),
-            "unreadable",
+            MarkedPhotoLookup(denied, selected(library)).markedIn(start, end, emptySet()),
+            "a selection held from an earlier grant is not readable under none",
         )
     }
 
     @Test
     fun a_known_asset_in_the_selection_is_passed_over_and_a_primary_with_no_name_is_unmarked() = runTest {
         val gallery = inMemoryGallery(MutableStateFlow(library), MutableStateFlow(LibraryGrant.LIMITED))
-        val nameless = Resource(
-            "L-X-primary.heic",
-            testAssetId("L-X"),
-            "image/heic",
-            mapOf(RESOURCE_META_CREATION_DATE to "2026-06-05T12:00:00Z"),
-            null,
+        val nameless = LibraryAssets.photo(
+            "L-X",
+            creationDate = "2026-06-05T12:00:00Z",
+            resources = listOf(LibraryAssets.primaryResource("", "image/heic")),
         )
-        val found = MarkedPhotoLookup(gallery) { SelectionScope.Scoped(resourcesFrom(library) + nameless) }
+        val found = MarkedPhotoLookup(gallery, selected(library + nameless))
             .markedIn(start, end, known = setOf(testAssetId("L-A")))
         assertEquals(mapOf(ReceivedPhotoName.token(refB) to testAssetId("L-B")), found)
     }
@@ -169,10 +175,16 @@ class MarkedPhotoLookupTest {
             override suspend fun resources(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAssetResources>> =
                 GalleryRead.NotReadable
         }
-        assertEquals(
-            emptyMap(),
-            MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, known = emptySet()),
-        )
+        assertEquals(emptyMap(), MarkedPhotoLookup(gallery, unread()).markedIn(start, end, known = emptySet()))
+    }
+
+    @Test
+    fun a_library_that_cannot_be_walked_under_a_full_grant_is_unreadable() = runTest {
+        // Not "nothing marked": the caller asks again once the library can be read.
+        val gallery = object : GalleryReader by inMemoryGallery(MutableStateFlow(library)) {
+            override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> = GalleryRead.NotReadable
+        }
+        assertNull(MarkedPhotoLookup(gallery, unread()).markedIn(start, end, known = emptySet()))
     }
 
     @Test
@@ -189,9 +201,6 @@ class MarkedPhotoLookupTest {
             ),
         )
         val gallery = inMemoryGallery(MutableStateFlow(listOf(liveOnly)))
-        assertEquals(
-            emptyMap(),
-            MarkedPhotoLookup(gallery) { SelectionScope.Unrestricted }.markedIn(start, end, known = emptySet()),
-        )
+        assertEquals(emptyMap(), MarkedPhotoLookup(gallery, unread()).markedIn(start, end, known = emptySet()))
     }
 }

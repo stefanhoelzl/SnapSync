@@ -127,11 +127,11 @@ private fun photoKitGallery(launch: RigLaunch, core: () -> AppCore, photoAccess:
         )
     }
 
-/** The gallery read, bound to the app's own permission-aware candidate seam rather than a second walk. */
+/** The gallery read, bound to the app's own photos rather than a second walk. */
 private fun photoKitGalleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> GalleryView =
     { cutoff, resources, includesUpload ->
         val reader = GalleryReport(
-            candidates = core().candidates,
+            photos = core().ownPhotos,
             grant = { core().photoPermission.value.name },
             census = ::photoKitCensus,
         )

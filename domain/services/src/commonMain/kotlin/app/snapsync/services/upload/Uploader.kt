@@ -14,7 +14,7 @@ import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferSession
-import app.snapsync.services.gallery.UploadDiscovery
+import app.snapsync.services.gallery.KeyedResources
 import co.touchlab.kermit.Logger
 
 /**
@@ -40,7 +40,7 @@ sealed interface Uploader {
 class TransferSetup(
     val record: TransferRecord,
     /** Where a failed job's still-live resource is found for its re-creation: the cycle's own by-key resolve. */
-    val resources: UploadDiscovery,
+    val resources: KeyedResources,
     /** The photo library, which exports a resource to a file for an uploader that sends files. */
     val gallery: GalleryReader,
     /** The shared area a file uploader's exported bytes wait in ([UPLOAD_STAGING_DIR]). */

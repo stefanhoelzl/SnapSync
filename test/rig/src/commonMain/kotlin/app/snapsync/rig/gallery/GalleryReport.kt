@@ -1,6 +1,29 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.data.sharing.OwnPhotos
+import app.snapsync.domain.asset.AssetFacts
+import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.MediaKind
+import app.snapsync.domain.asset.PixelArea
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.EventWindow
+import app.snapsync.domain.sharing.AdmissionVerdict
+import app.snapsync.domain.sharing.CandidateSet
+import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.CaptureRangeVerdict
+import app.snapsync.domain.sharing.DenyAll
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.ImageFloor
+import app.snapsync.domain.sharing.InRange
+import app.snapsync.domain.sharing.NoScreenRecordings
+import app.snapsync.domain.sharing.NoScreenshots
+import app.snapsync.domain.sharing.SelectionCalibration
+import app.snapsync.domain.sharing.SelectionRule
+import app.snapsync.domain.sharing.VideoFloor
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.TimestampText
 import app.snapsync.levers.AssetView
 import app.snapsync.levers.CalibrationView
@@ -8,12 +31,10 @@ import app.snapsync.levers.CensusView
 import app.snapsync.levers.GalleryView
 import app.snapsync.levers.PolicyView
 import app.snapsync.levers.ResourceView
-import app.snapsync.model.CandidateRead
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
-import app.snapsync.model.SELECTION_CALIBRATION
-import app.snapsync.model.SelectionRule
-import app.snapsync.model.selectionPolicyFor
-import app.snapsync.services.gallery.CandidateSource
+import app.snapsync.model.Resource
+import app.snapsync.ports.GalleryRead
+import app.snapsync.services.gallery.resourcesFrom
 import kotlin.time.TimeSource
 
 /**
@@ -47,12 +68,13 @@ import kotlin.time.TimeSource
  * not a field of `host.state()`.
  */
 class GalleryReport(
-    private val candidates: CandidateSource,
+    /** The app's own photos — the same read and policy the app takes, never a second walk. */
+    private val photos: OwnPhotos,
     private val grant: () -> String,
     /**
      * The raw subtype census, from the host's own library. Injected because it is the one part of this read
      * that is platform by nature: the app host counts PhotoKit's subtype bitmask, the JVM host its world
-     * gallery. Everything else here is the app's own candidate seam and selection policy, on both hosts.
+     * gallery. Everything else here is the app's own read and selection policy, on both hosts.
      */
     private val census: () -> CensusView,
 ) {
@@ -61,58 +83,37 @@ class GalleryReport(
         val census = census()
         if (cutoff == null) return GalleryView(census = census, grant = grant(), policy = null)
 
-        val policy = selectionPolicyFor(
-            // A non-contributing membership is a policy this route must be able to READ, not just one
-            // the app can hold. Without it the deny-everything narrowing — the one that keeps a
-            // download-only member off a whole-library walk — is unobservable on a device.
-            includesUpload = includesUpload,
-            cutoff = CaptureCutoff(TimestampText.parse(cutoff)),
-            ceiling = null,
-            // The operator reads the POLICY here, not the device's echo/album state — this route
-            // answers "what would this cutoff admit", so the two port-read exclusions are out of scope.
-            suppressedAssetIds = { emptySet() },
-            albumExcludedAssetIds = { emptySet() },
-        )
+        // What this cutoff would admit, over the longest range a member may choose from it. A non-contributing
+        // membership is a policy this route must be able to READ too: the deny-everything narrowing is what keeps a
+        // download-only member off a whole-library walk. The operator reads the POLICY here, not the device's echo
+        // state, so the echo set is empty; the album denylist is read as the app reads it.
+        val range = longestRangeFrom(CaptureCutoff(TimestampText.parse(cutoff)))
+        val direction = if (includesUpload) Direction.UploadOnly else Direction.DownloadOnly
+        val contribution = photos.contribution(direction, range, received = emptySet())
         val mark = TimeSource.Monotonic.markNow()
-        // This route asks the app's OWN seam, so it reports what the app would see — including "there is
-        // nothing to report". Answering that with an empty asset list would tell an operator the library
-        // is empty when the truth is that nobody could look.
-        val found = when (val read = candidates.candidates(policy)) {
-            is CandidateRead.Readable -> read.candidates
-            CandidateRead.NotReadable ->
+        // The read the app makes, so this reports what the app would see — including "there is nothing to report".
+        // Answering that with an empty asset list would tell an operator the library is empty when the truth is that
+        // nobody could look.
+        val read = photos.read(contribution)
+        val (facts, selected) = when (val set = read.candidates) {
+            is CandidateSet.Walked -> set.assets to false
+            is CandidateSet.Selected -> set.assets to true
+            CandidateSet.NotReadable ->
                 return GalleryView(census = census, grant = grant(), policy = null, notReadable = true)
         }
-        val rules = policy.rules
-        val assets = found.map { candidate ->
-            val facts = candidate.facts
-            // Admission comes from the POLICY — the single decision. This used to re-run the rule list itself
-            // and call the result
-            // `admitted`, which is a second implementation of the one thing the policy exists to decide.
-            // The rule scan below now only NAMES the reason, and never decides.
-            val admitted = policy.admits(facts)
-            // The FIRST rule that refuses is the reported reason. Reporting all of them would read as
-            // "these all applied" when only one had to.
-            val refusedBy = if (admitted) null else rules.firstOrNull { !it.admits(facts) }
-            AssetView(
-                assetId = facts.assetId.value,
-                captureDate = TimestampText.captureText(facts.captureDate),
-                pixelArea = facts.pixelArea,
-                isScreenshot = facts.isScreenshot,
-                isScreenRecording = facts.isScreenRecording,
-                isVideo = facts.isVideo,
-                isEdited = facts.isEdited,
-                admitted = admitted,
-                refusedBy = refusedBy?.let(::describe),
-                resources = if (resources && admitted) {
-                    candidate.resources().map { ResourceView(it.contentType, it.filename) }
-                } else {
-                    null
-                },
-                originalFilenames = if (resources) {
-                    candidate.resources().mapNotNull { it.metadata[RESOURCE_META_ORIGINAL_FILENAME] }
-                } else {
-                    null
-                },
+        // Admission comes from the POLICY — the single decision. The rule scan below only NAMES the reason.
+        val admitted = when (val verdict = contribution.policy.admit(read.candidates)) {
+            is AdmissionVerdict.Discovered -> verdict.discovery.admitted.mapTo(mutableSetOf()) { it.facts.assetId }
+            AdmissionVerdict.NotReadable -> emptySet()
+        }
+        val held = if (resources) heldResources(read.resources, facts) else null
+        val rules = rulesOf(range, includesUpload, selected)
+        val assets = facts.map {
+            view(
+                it,
+                it.assetId in admitted,
+                rules,
+                held?.get(it.assetId).orEmpty().takeIf { resources },
             )
         }
         return GalleryView(
@@ -120,8 +121,8 @@ class GalleryReport(
             grant = grant(),
             policy = PolicyView(
                 cutoff = cutoff,
-                calibration = SELECTION_CALIBRATION.let {
-                    CalibrationView(it.imageFloor, it.videoFloor, it.denylistTitles.sorted())
+                calibration = SelectionCalibration.STANDARD.let {
+                    CalibrationView(it.imageFloor.pixels, it.videoFloor.pixels, it.denylist.sorted())
                 },
                 admitted = assets.count { it.admitted },
                 excluded = assets.count { !it.admitted },
@@ -132,19 +133,66 @@ class GalleryReport(
         )
     }
 
+    /** Every candidate's resources, in one request — the cost ladder's expensive rung, paid only on request. */
+    private suspend fun heldResources(
+        of: app.snapsync.data.sharing.AssetResources,
+        facts: List<AssetFacts>,
+    ): Map<AssetId, List<Resource>> = when (val read = of.of(facts.mapTo(linkedSetOf()) { it.assetId })) {
+        is GalleryRead.Read -> resourcesFrom(read.value).groupBy { it.assetId }
+        GalleryRead.NotReadable -> emptyMap()
+    }
+
+    private fun view(asset: AssetFacts, admitted: Boolean, rules: List<SelectionRule>, held: List<Resource>?) = AssetView(
+        assetId = asset.assetId.value,
+        captureDate = TimestampText.captureText(asset.captureDate),
+        pixelArea = (asset.pixelArea as? PixelArea.Known)?.pixels,
+        isScreenshot = asset.kind == MediaKind.SCREENSHOT,
+        isScreenRecording = asset.kind == MediaKind.SCREEN_RECORDING,
+        isVideo = asset.kind.isMoving,
+        isEdited = asset.isEdited,
+        admitted = admitted,
+        // The FIRST rule that refuses is the reported reason; reporting all of them would read as "these all applied".
+        // The album denylist is the one rule whose ids this report does not hold, so it is the reason left over.
+        refusedBy = if (admitted) null else rules.firstOrNull { !it.admits(asset) }?.let(::describe) ?: DENYLISTED,
+        resources = held?.takeIf { admitted }?.map { ResourceView(it.contentType, it.filename) },
+        originalFilenames = held?.mapNotNull { it.metadata[RESOURCE_META_ORIGINAL_FILENAME] },
+    )
+
     /**
-     * Name the rule that refused, in the rule's own vocabulary rather than a re-description of it. A reader
-     * who sees `MinImageArea(3000000)` can check the asset's `pixelArea` in the same row.
+     * The policy's rules, in its order, for naming a refusal — never for deciding one: the policy decides. A selection
+     * is judged without the rules about what a photo is.
      */
+    private fun rulesOf(range: CaptureRange, includesUpload: Boolean, selected: Boolean): List<SelectionRule> =
+        if (!includesUpload) {
+            listOf(DenyAll)
+        } else {
+            listOf(
+                InRange(range),
+                NoScreenshots,
+                NoScreenRecordings,
+                ImageFloor(SelectionCalibration.STANDARD.imageFloor),
+                VideoFloor(SelectionCalibration.STANDARD.videoFloor),
+            ).filterNot { selected && it.judgesWhatItIs }
+        }
+
+    /** Name the rule that refused, in the rule's own vocabulary — a reader can check the asset's facts in the same row. */
     private fun describe(rule: SelectionRule): String = when (rule) {
-        SelectionRule.DenyAll -> "DenyAll"
-        is SelectionRule.CaptureAfter -> "CaptureAfter(${TimestampText.format(rule.cutoff.at)})"
-        is SelectionRule.CaptureBefore -> "CaptureBefore(${TimestampText.format(rule.ceiling.at)})"
-        SelectionRule.ExcludeScreenshots -> "ExcludeScreenshots"
-        SelectionRule.ExcludeScreenRecordings -> "ExcludeScreenRecordings"
-        is SelectionRule.MinImageArea -> "MinImageArea(${rule.minArea})"
-        is SelectionRule.MinVideoArea -> "MinVideoArea(${rule.minArea})"
-        is SelectionRule.NotEcho -> "NotEcho"
-        is SelectionRule.NotInDenylistedAlbum -> "NotInDenylistedAlbum"
+        is InRange -> "InRange(${TimestampText.format(
+            rule.range.from.at,
+        )}..${TimestampText.format(rule.range.until.at)})"
+        is ImageFloor -> "ImageFloor(${SelectionCalibration.STANDARD.imageFloor.pixels})"
+        is VideoFloor -> "VideoFloor(${SelectionCalibration.STANDARD.videoFloor.pixels})"
+        else -> rule::class.simpleName.orEmpty()
+    }
+
+    private companion object {
+        const val DENYLISTED = "NotInDenylistedAlbum"
+
+        /** The longest range a member may choose from [from]: the event it would be is that range itself. */
+        fun longestRangeFrom(from: CaptureCutoff): CaptureRange {
+            val until = Timestamp.of(from.at.at + EventWindow.MAX)
+            val verdict = CaptureRange.of(from, CaptureCeiling(until), EventStart(from.at), EventEnd(until))
+            return (verdict as CaptureRangeVerdict.Ok).range
+        }
     }
 }

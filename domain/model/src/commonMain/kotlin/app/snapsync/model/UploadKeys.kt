@@ -35,25 +35,6 @@ const val RESOURCE_META_ORIGINAL_FILENAME: String = "originalFilename"
 const val RESOURCE_META_MIME: String = "mimeContentType"
 
 /**
- * The **neutral origin facts**, stashed alongside the manifest
- * detail so the one admission can decide in `commonMain` on a `Resource` — which is all the upload cycle
- * ever sees (the gallery services build each one from the platform's asset before the cycle is reached).
- *
- * They are **platform-neutral by construction**: the iOS adapter interprets `PHAssetMediaSubtype` /
- * `PHAssetMediaType` / the pixel dimensions into the gallery port's asset, so no PhotoKit value reaches `model/`
- * (the `:test:architecture` PhotoKit-ABI guard enforces it).
- *
- * The device-manifest producer reads only the three keys above by name, so these entries are inert to it.
- * Values are `"true"`/`"false"` for the flags and a decimal string for the area; [factsFromResources]
- * parses them back, resolving anything absent or unparseable to the admit-on-doubt side.
- */
-const val RESOURCE_META_IS_SCREENSHOT: String = "isScreenshot"
-const val RESOURCE_META_IS_SCREEN_RECORDING: String = "isScreenRecording"
-const val RESOURCE_META_IS_VIDEO: String = "isVideo"
-const val RESOURCE_META_IS_EDITED: String = "isEdited"
-const val RESOURCE_META_PIXEL_AREA: String = "pixelArea"
-
-/**
  * Recover the [ResourceRole] from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): the role token
  * is the segment after the **last** `-` and before the `.` (`primary`/`live`; the role token carries
  * no `-`, though an `assetId` may). Defaults to [ResourceRole.PRIMARY] for an unrecognised token (never
