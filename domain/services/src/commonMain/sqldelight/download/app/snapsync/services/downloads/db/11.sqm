@@ -1,0 +1,26 @@
+import app.snapsync.data.store.Stored;
+import app.snapsync.domain.event.EventId;
+
+-- v11 -> v12: a union read stores what the OTHERS declared, not the event's whole declared total (change
+-- `count-declared-photos`). The total holds this device's own declaration as the backend knew it at the read; the
+-- status source subtracted the device's own count as it stood at the REFRESH, so a publish between the two — a
+-- withdrawal when sharing is switched off — showed the member's own photos as awaited until the next read. The read now
+-- subtracts its own count itself, so both numbers describe the same backend state.
+--
+-- The stored totals are dropped, not converted: what this device had declared when each was read is not kept. `NULL`
+-- is "no total read", which awaits nothing, and the next read of the event stores the others' count. The table is
+-- re-created to rename the column, the way 10.sqm re-created it.
+
+CREATE TABLE unionCursor_v12 AS SELECT * FROM unionCursor;
+
+DROP TABLE unionCursor;
+
+CREATE TABLE unionCursor (
+    eventId        TEXT AS Stored<EventId> NOT NULL PRIMARY KEY,
+    cursor         INTEGER NOT NULL,
+    othersDeclared INTEGER
+);
+
+INSERT INTO unionCursor (eventId, cursor, othersDeclared) SELECT eventId, cursor, NULL FROM unionCursor_v12;
+
+DROP TABLE unionCursor_v12;

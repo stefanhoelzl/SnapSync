@@ -5,6 +5,7 @@ import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -29,12 +30,17 @@ import app.snapsync.model.AdoptedAsset
 import app.snapsync.model.AlbumId
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.EventConfig
+import app.snapsync.model.ManifestResource
 import app.snapsync.model.PlannedResource
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.UnionPage
 import app.snapsync.model.UnionResource
 import app.snapsync.model.UnionTrigger
+import app.snapsync.model.UploadedManifest
+import app.snapsync.model.encodeToJson
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.FileAccess
 import app.snapsync.ports.FileArea
@@ -50,6 +56,7 @@ import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.ImportedAssetPresence
 import app.snapsync.services.gallery.assetRefOf
+import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipTransition
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
@@ -1727,24 +1734,77 @@ class DownloadControllerTest {
         assertEquals(6, store.union.cursor(testEventId("event")), "a failed read stores nothing")
     }
 
-    // The event's declared total (change `count-declared-photos`) rides with the position.
+    // What the others declared (change `count-declared-photos`) rides with the position: the event's declared total the
+    // read answered, less this device's own declaration as it stood at that read — read through [OthersDeclaredUnion], as
+    // the composition reads it.
     @Test
-    fun a_read_stores_the_declared_total_it_answered_even_when_nothing_new_was_served() = runTest {
+    fun a_read_stores_what_the_others_declared_even_when_nothing_new_was_served() = runTest {
         val store = DownloadService(inMemoryDatabases())
         val union = FakeUnion(emptyList(), position = 6, declared = 200)
-        val c = controller(union, store = store)
+        val manifest = published(10)
+        val c = controller(OthersDeclaredUnion(union, manifest), store = store)
         c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
-        assertEquals(200, store.union.declared(testEventId("event")))
+        assertEquals(190, store.union.othersDeclared(testEventId("event")))
 
         union.declared = 230
         c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
-        assertEquals(230, store.union.declared(testEventId("event")), "the others declared more, at the same position")
+        assertEquals(
+            220,
+            store.union.othersDeclared(testEventId("event")),
+            "the others declared more, at the same position",
+        )
         assertEquals(6, store.union.cursor(testEventId("event")))
+
+        manifest.saveLastUploaded(UploadedManifest(testEventId("event"), 2, "not a manifest"))
+        c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+        assertEquals(null, store.union.othersDeclared(testEventId("event")), "an unreadable own count stores none")
 
         union.declared = null
         c.reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
-        assertEquals(null, store.union.declared(testEventId("event")), "a backend without it stores none")
+        assertEquals(null, store.union.othersDeclared(testEventId("event")), "a backend without it stores none")
     }
+
+    // The member's own count moves without a read — a withdrawal when sharing is switched off — and what the others
+    // declared, stored at the read, does not move with it: the member's own photos are never counted as the others'.
+    @Test
+    fun a_withdrawal_after_the_read_leaves_what_the_others_declared_as_it_was_read() = runTest {
+        val store = DownloadService(inMemoryDatabases())
+        val manifest = published(1)
+        controller(OthersDeclaredUnion(FakeUnion(emptyList(), position = 6, declared = 3), manifest), store = store)
+            .reconcile(testEventId("event"), UnionTrigger.FOREGROUND)
+
+        manifest.saveLastUploaded(manifestOf(0))
+
+        assertEquals(2, store.union.othersDeclared(testEventId("event")))
+    }
+
+    @Test
+    fun a_failed_read_nets_nothing_and_stays_a_failure() = runTest {
+        val read = OthersDeclaredUnion(FakeUnion(emptyList(), ok = false), published(1))
+            .union(testEventId("event"), null, UnionTrigger.FOREGROUND)
+
+        assertTrue(read.isFailure)
+    }
+
+    /** This device's manifest record, as it last published [count] photos into `event`. */
+    private fun published(
+        count: Int,
+    ) = DeviceManifestService(testShared()).also { it.saveLastUploaded(manifestOf(count)) }
+
+    private fun manifestOf(count: Int) = UploadedManifest(
+        testEventId("event"),
+        1,
+        DeviceManifest(
+            testDeviceId(myDevice),
+            (1..count).map {
+                DeviceManifestAsset(
+                    testAssetId("OWN-$it"),
+                    "2026-06-30T10:00:00Z",
+                    listOf(ManifestResource(ResourceRole.PRIMARY, "image/jpeg", "own-$it", "OWN.JPG")),
+                )
+            },
+        ).encodeToJson(),
+    )
 
     @Test
     fun a_push_announcing_what_was_already_read_reads_nothing_and_stamps_nothing() = runTest {

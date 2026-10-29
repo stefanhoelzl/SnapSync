@@ -41,14 +41,15 @@ data class DownloadCounts(
     val inFlight: Int,
     /**
      * Every foreign asset of the event this device has a row for, imported and unimportable included — what the
-     * event's declared total already accounts for here. Event-scoped counts only; 0 for the device-wide census.
+     * others' declared count already accounts for here. Event-scoped counts only; 0 for the device-wide census.
      */
     val known: Int = 0,
     /**
-     * The event's declared total the last union read answered (change `count-declared-photos`), or `null` when no read
-     * has — a backend that predates it, or a position forgotten. Event-scoped counts only.
+     * What the others declared to the event at the last union read (change `count-declared-photos`): the event's declared
+     * total that read answered, less this device's own declaration then. `null` when no read has, or either was unknown —
+     * a backend that predates it, a position forgotten, an own count that could not be read. Event-scoped counts only.
      */
-    val declared: Long? = null,
+    val othersDeclared: Long? = null,
 )
 
 /** The source identity of a foreign asset: its owning device and that device's assetId. */

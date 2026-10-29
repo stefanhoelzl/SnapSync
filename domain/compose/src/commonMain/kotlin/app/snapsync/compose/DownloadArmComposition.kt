@@ -16,11 +16,11 @@ internal fun AppCore.downloadArm(): DownloadArm = DownloadArm(
 
 /**
  * The joined screen's download progress, scoped to the joined event and counting the others' declared photos only for
- * a member who receives, net of this device's own published declaration. Top-level for the reason [downloadArm] is.
+ * a member who receives — what the others declared, as the union read stored it (`DownloadController`). Top-level for
+ * the reason [downloadArm] is.
  */
 internal fun AppCore.downloadStatus(): StoreDownloadStatusSource = StoreDownloadStatusSource(
     services.downloadStore,
     currentEvent = services.config::activeEventId,
     receives = services.config::downloadsEnabled,
-    manifest = services.manifestStore,
 )

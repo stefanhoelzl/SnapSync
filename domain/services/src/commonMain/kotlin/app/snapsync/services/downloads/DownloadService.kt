@@ -118,15 +118,15 @@ class DownloadService(databases: Databases) : SuppressionSource {
      * [cursor], with an [eventId], is the union position the read that served these assets covered (decision record
      * `changes/incremental-union`, D6): it is stored in the SAME transaction, so the position never stands past an asset
      * that was not planned — a failed plan leaves the previous one, and the next delta serves the assets again.
-     * [declared] is the event's declared total that same read answered (change `count-declared-photos`), stored with the
-     * position — `null` from a backend that predates it, which reads as before.
+     * [othersDeclared] is what the others declared to the event at that same read (change `count-declared-photos`), stored
+     * with the position — `null` when it is unknown, which awaits nothing.
      */
     suspend fun planAll(
         assets: List<PlannedAsset>,
         eventId: EventId? = null,
         members: Collection<AssetRef> = emptyList(),
         cursor: Long? = null,
-        declared: Long? = null,
+        othersDeclared: Long? = null,
     ) {
         if (assets.isEmpty() && (eventId == null || (members.isEmpty() && cursor == null))) return
         store.use { q ->
@@ -159,7 +159,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
                     members.forEach {
                         q.insertEventRef(stored, Stored.Valid(it.sourceDeviceId), Stored.Valid(it.sourceAssetId))
                     }
-                    if (cursor != null) q.upsertUnionCursor(stored, cursor, declared)
+                    if (cursor != null) q.upsertUnionCursor(stored, cursor, othersDeclared)
                 }
             }
         }
@@ -364,7 +364,7 @@ class DownloadService(databases: Databases) : SuppressionSource {
                 stillArriving = it.stillArriving.toInt(),
                 inFlight = it.inFlight.toInt(),
                 known = it.known.toInt(),
-                declared = it.declared,
+                othersDeclared = it.othersDeclared,
             )
         }
     }
@@ -503,9 +503,9 @@ class UnionTracking internal constructor(private val store: OwnedDatabase<Downlo
         eventId: EventId,
     ): Long? = store.use { q -> q.selectUnionCursor(Stored.Valid(eventId)).executeAsOneOrNull() }
 
-    /** The declared total stored with [eventId]'s position (change `count-declared-photos`), or `null` for none. */
-    suspend fun declared(eventId: EventId): Long? =
-        store.use { q -> q.selectUnionDeclared(Stored.Valid(eventId)).executeAsOneOrNull()?.declared }
+    /** What the others declared, stored with [eventId]'s position (change `count-declared-photos`), or `null` for none. */
+    suspend fun othersDeclared(eventId: EventId): Long? =
+        store.use { q -> q.selectUnionOthersDeclared(Stored.Valid(eventId)).executeAsOneOrNull()?.othersDeclared }
 
     /**
      * Forget which photos belonged to every event's union but [eventId]'s — the join's purge (change

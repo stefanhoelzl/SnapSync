@@ -1,14 +1,17 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,7 +20,8 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * **What there is to receive is what the others declared** (change `count-declared-photos`): a fellow member's photos
  * still uploading on its phone count toward this member's received total, the line says it waits for them, and they
- * stop counting when that member leaves before they arrive — read off the joined screen.
+ * stop counting when that member leaves before they arrive, and the member's own photos never count among them, not
+ * even right after they are withdrawn — read off the joined screen.
  */
 class DeclaredPhotosIntegrationTest {
 
@@ -108,6 +112,50 @@ class DeclaredPhotosIntegrationTest {
             running.value.health,
             "only this device's upload runs: the line is the one for a running transfer, never waiting for photos",
         )
+    }
+
+    // The member's own photo leaves what they declare when they switch sharing off, while the union read before it still
+    // holds it in the event's total: their own photo was briefly counted as one the others had yet to send.
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen counts what was shared and received",
+        scenario = "Sharing switched off",
+    )
+    fun switching_sharing_off_counts_only_the_others_photos_as_received() = behaviour {
+        given {
+            step("only the app uploads", act = { devControls.pin(app = true, extension = false) }, until = {})
+            joinedEvent()
+            step("MINE taken, its transfer created", act = {
+                takePhoto("MINE")
+                os.foreground()
+            }, until = {
+                event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("MINE") }
+                settled { true }
+            })
+            step("MINE shared", act = { uploadSession.complete() }, until = {
+                event<WorldEvent.BytesStored> { it.asset == "MINE" }
+                settled { true }
+            })
+            downloadsPlanned(listOf("A", "B"))
+            step("the others' photos arrived", act = { arrivedAndCounted() }, until = {
+                screen<Layer.Joined> { it.received == DirectionCount.Progress(done = 2, total = 2) }
+                settled { true }
+            })
+        }
+
+        whenever {
+            reconfigure(Choices(direction = Direction.DownloadOnly))
+            advance(COUNTS_POLL)
+        }
+        then {
+            screen<Layer.Joined> {
+                !it.membership.shares && it.health == SyncHealth.InSync &&
+                    it.counts == SyncCounts(shared = DirectionCount.Off, received = DirectionCount.Progress(2, 2))
+            }
+            neverScreen<Layer.Joined> { (it.received as? DirectionCount.Progress)?.total != 2 }
+            settled { true }
+        }
     }
 
     // ---- helpers --------------------------------------------------------------------------------
