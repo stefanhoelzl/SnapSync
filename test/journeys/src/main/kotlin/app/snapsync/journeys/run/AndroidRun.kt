@@ -163,7 +163,7 @@ suspend fun RigClient.awaitChannel(within: Duration) =
     until(within, "the app's control channel never answered") { runCatching { health() }.isSuccess }
 
 /** Repeats [holds] — a read of a system that tells nothing when it changes — until it holds, or fails after [within]. */
-internal suspend fun until(within: Duration, failure: String, holds: suspend () -> Boolean) {
+suspend fun until(within: Duration, failure: String, holds: suspend () -> Boolean) {
     val giveUp = TimeSource.Monotonic.markNow() + within
     while (!holds()) {
         check(!giveUp.hasPassedNow()) { "$failure (within $within)" }
