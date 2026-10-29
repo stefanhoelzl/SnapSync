@@ -39,6 +39,23 @@ class StorePageIntegrationTest {
     @Verifies(
         spec = "app-update-required",
         requirement = "The notice says what to install and where",
+        scenario = "Opening the App Store",
+    )
+    fun the_notice_names_the_app_store_and_its_button_opens_the_build_s_page() = behaviour {
+        given {
+            listedIn(APP_STORE, APP_STORE_PAGE)
+            joinedEvent()
+            outdated(APP_STORE)
+        }
+
+        whenever { tap(UiIntent.OpenAppStore) }
+        then { event<WorldEvent.UrlOpened> { it.url == APP_STORE_PAGE } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "app-update-required",
+        requirement = "The notice says what to install and where",
         scenario = "No store page known",
     )
     fun a_build_with_no_store_page_says_an_update_is_required_and_offers_no_button() = behaviour {
@@ -65,15 +82,17 @@ class StorePageIntegrationTest {
     }, until = { settled { true } })
 
     /** The service raised its minimum past this build, and the app met it: the notice shows, naming the store. */
-    private suspend fun Given.outdated() = step("outdated", act = {
+    private suspend fun Given.outdated(store: String = GOOGLE_PLAY) = step("outdated", act = {
         backend.minAppVersion(MINIMUM)
         build.declare(OLDER)
         os.foreground()
-    }, until = { screen<Layer.UpdateRequired> { it.minimumVersion == MINIMUM && it.store == GOOGLE_PLAY } })
+    }, until = { screen<Layer.UpdateRequired> { it.minimumVersion == MINIMUM && it.store == store } })
 
     private companion object {
         const val GOOGLE_PLAY = "Google Play"
         const val PLAY_PAGE = "https://play.google.com/store/apps/details?id=app.snapsync"
+        const val APP_STORE = "App Store"
+        const val APP_STORE_PAGE = "https://apps.apple.com/app/snapsync/id6740000000"
         const val MINIMUM = "0.4"
         const val OLDER = "0.3"
     }

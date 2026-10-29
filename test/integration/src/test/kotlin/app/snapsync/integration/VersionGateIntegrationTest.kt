@@ -122,6 +122,25 @@ class VersionGateIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "app-update-required",
+        requirement = "An outdated app is told so at first contact",
+        scenario = "A new install that is already outdated",
+    )
+    fun a_fresh_install_already_outdated_meets_the_notice_when_it_first_creates() = behaviour {
+        // A fresh host is a fresh install: no event, no device registered, the create screen in front.
+        given { outdated() }
+
+        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        then {
+            screen<Layer.UpdateRequired>()
+            never<WorldEvent.UiChanged> { (it.ui.layer as? Layer.CreateEvent)?.error != null }
+            neverScreen<Layer.JoiningEvent>()
+            neverScreen<Layer.Joined>()
+        }
+    }
+
     /** The backend requires 0.4, and this build declares 0.3 — one that predates it. */
     private suspend fun Given.outdated() = step("an outdated build", act = {
         backend.minAppVersion("0.4")

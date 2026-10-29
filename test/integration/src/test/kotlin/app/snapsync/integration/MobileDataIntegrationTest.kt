@@ -264,6 +264,145 @@ class MobileDataIntegrationTest {
         then { event<WorldEvent.BytesStored> { it.asset == "P1" } }
     }
 
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "On mobile data nothing is transferred",
+    )
+    fun on_mobile_data_neither_direction_transfers() = behaviour {
+        given { waitingInBothDirections() }
+
+        whenever {
+            uploadSession.complete()
+            downloadSession.finish()
+            advance(5.seconds)
+        }
+        then {
+            never<WorldEvent.BytesStored>()
+            never<WorldEvent.DownloadEnded>()
+            never<WorldEvent.LibraryAssetCreated>()
+            settled {
+                it.state.inFlight?.sessionTransfers == listOf(primaryKey("P1")) && it.state.inFlight?.downloads?.size == 1
+            }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "Reaching Wi-Fi sends what waited",
+    )
+    fun reaching_wifi_sends_what_waited_in_both_directions_without_opening_the_app() = behaviour {
+        given {
+            waitingInBothDirections()
+            step("in the pocket", act = { os.background() }, until = { settled { true } })
+        }
+
+        whenever {
+            network.set(NetworkState.ONLINE)
+            uploadSession.complete()
+            downloadSession.finish()
+        }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "P1" }
+            times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(imported("FA")) } }
+            never<WorldEvent.UiChanged>()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "Everything but photo transfers keeps working on any network",
+        scenario = "Joining on mobile data",
+    )
+    fun joining_on_mobile_data_with_the_choice_off_completes() = behaviour {
+        val event = given {
+            network(NetworkState.RESTRICTED)
+            mobileData(false)
+            createdEvent()
+        }
+
+        whenever {
+            confirmJoin()
+            advance(5.seconds) // the screen's status poll
+        }
+        then { screen<Layer.Joined> { it.membership.eventId == event && it.counts != null } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "A change applies to transfers that start afterwards",
+        scenario = "Turning mobile data off stops new transfers",
+    )
+    fun turning_mobile_data_off_holds_every_transfer_that_starts_afterwards() = behaviour {
+        given {
+            appUploadsOnly()
+            joinedEvent()
+            network(NetworkState.RESTRICTED)
+        }
+
+        whenever {
+            tap(UiIntent.MobileData(false))
+            shareFromForeground("P1")
+            uploadSession.complete()
+            advance(5.seconds)
+        }
+        then {
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("P1") }
+            never<WorldEvent.BytesStored>()
+            settled { it.state.inFlight?.sessionTransfers == listOf(primaryKey("P1")) }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "A change applies to transfers that start afterwards",
+        scenario = "Turning mobile data on sends the rest at once",
+    )
+    fun turning_mobile_data_on_sends_new_photos_both_ways_while_the_waiting_ones_keep_waiting() = behaviour {
+        given { waitingInBothDirections() }
+
+        whenever {
+            tap(UiIntent.MobileData(true))
+            shareFromForeground("P2")
+            publicBackend.foreignDevice(DEV_F, listOf("FA", "FB"))
+            os.foreground()
+            uploadSession.complete()
+            downloadSession.finish()
+        }
+        then {
+            event<WorldEvent.BytesStored> { it.asset == "P2" }
+            times(1) { event<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(imported("FB")) } }
+            // the two handed over to wait keep the rule they started with
+            never<WorldEvent.BytesStored> { it.asset == "P1" }
+            never<WorldEvent.LibraryAssetCreated> { it.asset.startsWith(imported("FA")) }
+        }
+    }
+
+    /**
+     * A sharing and receiving member with mobile data off, on mobile data: their photo P1 handed to the app's uploader
+     * and a fellow member's FA to the download session, both held by the platform until an unrestricted network.
+     */
+    private suspend fun Given.waitingInBothDirections() {
+        appUploadsOnly()
+        joinedEvent()
+        mobileData(false)
+        network(NetworkState.RESTRICTED)
+        sharedFromForeground("P1")
+        step("a fellow member's photo on its way", act = {
+            publicBackend.foreignDevice(DEV_F, listOf("FA"))
+            os.foreground()
+        }, until = {
+            event<WorldEvent.DownloadStarted>()
+            settled { it.state.inFlight?.downloads?.size == 1 }
+        })
+    }
+
     private companion object {
         val WAITING_FOR_WIFI = SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN, waitingForWifi = true)
     }
