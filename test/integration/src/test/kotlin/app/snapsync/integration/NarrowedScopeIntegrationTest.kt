@@ -117,7 +117,7 @@ class NarrowedScopeIntegrationTest {
     @Verifies(spec = "photo-sharing", requirement = "What the member is told is shared is exactly what is shared")
     @Verifies(
         spec = "manage-membership",
-        requirement = "Settings changes take effect immediately",
+        requirement = "A settings change takes effect as soon as it applies",
         scenario = "Narrowing withdraws listings but not received copies",
     )
     fun after_a_narrowing_the_manifest_and_the_uploaded_set_are_the_same_set() = behaviour {

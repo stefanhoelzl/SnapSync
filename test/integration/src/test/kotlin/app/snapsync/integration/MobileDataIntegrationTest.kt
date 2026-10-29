@@ -77,7 +77,7 @@ class MobileDataIntegrationTest {
     @Verifies(spec = "mobile-data", requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi")
     @Verifies(
         spec = "sync-status",
-        requirement = "Direction arrows show remaining work and live transfer",
+        requirement = "Direction arrows show the work left and the transfer running",
         scenario = "Photos waiting for Wi-Fi are named",
     )
     fun with_mobile_data_off_an_upload_waits_for_wifi_and_says_so() = behaviour {

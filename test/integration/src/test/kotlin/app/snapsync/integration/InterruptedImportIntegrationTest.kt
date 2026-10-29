@@ -199,7 +199,7 @@ class InterruptedImportIntegrationTest {
      * status line below 100% forever, which reads as a broken app and would ship silently.
      */
     @Test
-    @Verifies(spec = "sync-status", requirement = "The joined screen counts what was shared and received")
+    @Verifies(spec = "sync-status", requirement = "The joined screen counts the photos shared and received")
     fun download_progress_settles_after_an_interrupted_import() = behaviour {
         given {
             joinedEvent()

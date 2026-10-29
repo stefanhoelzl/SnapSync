@@ -78,15 +78,16 @@ photos already received.
 - **WHEN** an Android member turns the album on in settings
 - **THEN** the settings say the album also collects the photos already received, and that their own photos stay in the camera folder
 
-### Requirement: Settings changes take effect immediately
+### Requirement: A settings change takes effect as soon as it applies
 A settings change SHALL take effect as soon as it applies, and newly enabled directions SHALL start at once
 rather than waiting for iOS to schedule work:
 turning sharing on SHALL start sharing, and turning receiving on SHALL start bringing in the event's
 photos. Widening the range SHALL share the newly included older photos while photos already shared stay
 shared. Narrowing the range or turning sharing off SHALL stop listing the excluded photos to the event;
 members who already received them SHALL keep them, and a later widening SHALL bring them back to the
-event. Turning sharing off SHALL let uploads already under way finish and count as shared; turning
-receiving off SHALL stop downloads under way at once. Photos the member already received SHALL be
+event. Turning sharing off SHALL withdraw an upload already under way like any other photo not yet shared
+(capability `photo-sharing`) and SHALL start no new upload; turning receiving off SHALL stop downloads under
+way at once. Photos the member already received SHALL be
 unaffected by any change.
 
 #### Scenario: Turning sharing on starts right away
@@ -109,9 +110,10 @@ unaffected by any change.
 - **WHEN** a member narrows their range, and later widens it back
 - **THEN** the previously withdrawn photos are offered to the event again
 
-#### Scenario: Turning sharing off lets uploads finish
+#### Scenario: Turning sharing off withdraws the upload under way
 - **WHEN** a member turns sharing off and confirms while a photo is uploading
-- **THEN** that upload completes and the photo counts as shared, and no new uploads start
+- **THEN** that photo is not offered to the other members and does not count as shared, and no new uploads
+  start
 
 #### Scenario: Turning receiving off stops downloads
 - **WHEN** a member turns receiving off while the event's photos are downloading

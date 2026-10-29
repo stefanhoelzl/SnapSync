@@ -24,7 +24,7 @@ class ServiceLineIntegrationTest {
     )
     @Verifies(
         spec = "sync-status",
-        requirement = "One status line in a fixed priority",
+        requirement = "The joined screen shows one status line in a fixed priority",
         scenario = "A failing service outranks progress",
     )
     fun photos_waiting_while_the_service_is_in_trouble_are_told_safe() = behaviour {

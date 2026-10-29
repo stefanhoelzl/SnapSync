@@ -15,7 +15,7 @@ Decision record: changes/archive/2026-10-06-explain-joined-screen
 
 ## Requirements
 
-### Requirement: One status line in a fixed priority
+### Requirement: The joined screen shows one status line in a fixed priority
 
 The joined screen SHALL show exactly one status line. When several conditions hold at once it SHALL show the
 first that applies, in this order: the app is still reading its state; the member neither shares nor receives
@@ -60,9 +60,10 @@ missing access (capability `photo-access`).
 - **WHEN** a joined member has switched both sharing and receiving off and nothing is left to transfer
 - **THEN** the status line reads "Not sharing or receiving", without counts, even if photo access is missing, the network is gone or the event has not started
 
-#### Scenario: Work left in switched-off directions is still shown
+#### Scenario: Switching both directions off mid-upload is said at once
 - **WHEN** a member switches both directions off while a photo is still uploading
-- **THEN** the status line shows that upload's progress until it finishes, then reads "Not sharing or receiving"
+- **THEN** the status line reads "Not sharing or receiving" at once, with no progress for that upload, which is
+  withdrawn (capability `manage-membership`)
 
 ### Requirement: Only missing access and a blocked network make the status line tappable
 
@@ -117,7 +118,7 @@ service could not be reached, was having trouble or was being updated, the line 
 NOT appear while the current verification still works, however close to renewal, and SHALL NOT be shown
 on opening the app on the strength of a failure from before that opening — only once the attempt that
 opening triggers has also failed. It SHALL clear as soon as verification succeeds. While the device has no
-usable network, the network line SHALL be shown instead (as "One status line in a fixed priority" requires).
+usable network, the network line SHALL be shown instead (as "The joined screen shows one status line in a fixed priority" requires).
 
 #### Scenario: Unreachable server with an expired verification
 - **WHEN** the device has a network, its verification has expired, and renewing it fails because the server
@@ -169,7 +170,7 @@ be shared and received once the service works. It SHALL NOT be tappable or ask t
 NOT replace "Up to date" while nothing waits, and SHALL NOT be shown on opening the app on the strength of a
 failure from before that opening — only once the attempt that opening triggers has also failed. It SHALL clear as
 soon as an attempt succeeds. While the device has no usable network, the network line SHALL be shown instead (as
-"One status line in a fixed priority" requires).
+"The joined screen shows one status line in a fixed priority" requires).
 
 #### Scenario: Photos wait while the service is in trouble
 - **WHEN** a joined member has photos waiting to be shared and the service keeps answering that it failed
@@ -259,7 +260,7 @@ nothing to do SHALL settle to "Up to date".
 - **WHEN** the member shares nothing and everything to receive has arrived
 - **THEN** the status line reads "Up to date"
 
-### Requirement: Direction arrows show remaining work and live transfer
+### Requirement: Direction arrows show the work left and the transfer running
 
 While work remains, the status line SHALL show an upload arrow when some of the member's photos are
 not yet shared and a download arrow when some of the others' photos have not yet arrived. An arrow
@@ -268,9 +269,9 @@ line SHALL read "Photos on their way…" when any arrow pulses — whichever dir
 pulses and the work waits because the member chose not to use mobile data for photos and the phone is on a
 network that choice avoids (capability `mobile-data`), "Waiting for photos…" when no arrow pulses and the only
 work left is photos the other members have declared but not yet finished sharing — work this device cannot do
-anything about — and "Photos queued…" otherwise. "Up to date" SHALL be shown exactly when neither arrow is shown and the member shares or receives; with both switched off and neither arrow shown the line reads "Not sharing or receiving" ("One status line in a fixed priority"). A direction the member switched
-off has no work and therefore no arrow — but if the app ever does work in a switched-off direction, that
-arrow SHALL be shown rather than hidden.
+anything about — and "Photos queued…" otherwise. "Up to date" SHALL be shown exactly when neither arrow is shown and the member shares or receives; with both switched off and neither arrow shown the line reads "Not sharing or receiving" ("The joined screen shows one status line in a fixed priority"). A direction the member switched
+off has no work and therefore no arrow: switching it off withdraws the photos not yet shared, an upload under
+way included, or stops the downloads under way (capability `manage-membership`).
 
 #### Scenario: A new photo waiting to upload
 - **WHEN** the member takes an in-range photo and no upload is running yet
@@ -300,9 +301,9 @@ arrow SHALL be shown rather than hidden.
   arrived
 - **THEN** the status line reads "Up to date"
 
-#### Scenario: Work in a switched-off direction is not masked
-- **WHEN** a receive-only member's device nevertheless has uploads outstanding
-- **THEN** the upload arrow is shown and the line does not read "Up to date"
+#### Scenario: Switching sharing off mid-upload clears the upload arrow
+- **WHEN** a member switches sharing off while a photo is uploading, and everything to receive has arrived
+- **THEN** the upload arrow disappears at once and the line reads "Up to date"
 
 #### Scenario: Photos waiting for Wi-Fi are named
 - **WHEN** a member with mobile data off is on mobile data and has a photo waiting to upload
@@ -386,15 +387,14 @@ within a minute without any other trigger.
 - **WHEN** a member is joined to an event running from 13 July, 18:00 to 14 July, 00:00
 - **THEN** the screen shows 13 to 14 July, not a same-day event with its times
 
-### Requirement: The joined screen counts what was shared and received
+### Requirement: The joined screen counts the photos shared and received
 
 Beneath the status line, the joined screen SHALL count, for each direction, the member's photos this
 membership shares and how many of them are shared (capability `photo-sharing`, counted as the upload side of
 "Progress counts only what this membership shares"), and the other members' photos there are to receive and
 how many of them arrived (capability `receiving-photos`). A direction with work remaining SHALL show both
 numbers; a complete direction SHALL show its total alone. A direction the member switched off SHALL say it is
-off instead of numbers — unless the device nevertheless has work in that direction, which SHALL be counted
-like any other rather than hidden. The counts SHALL be shown only while the status line reads "Up to date" or
+off instead of numbers. The counts SHALL be shown only while the status line reads "Up to date" or
 work in progress, and SHALL be hidden in every other status. They SHALL stay as current as the
 status line and never contradict it: "Up to date" SHALL NOT be shown beside a direction with work remaining.
 
@@ -414,9 +414,9 @@ status line and never contradict it: "Up to date" SHALL NOT be shown beside a di
 - **WHEN** a receive-only member has 40 of 52 photos received
 - **THEN** the counts say the member is not sharing, and 40 of 52 received
 
-#### Scenario: Work in a switched-off direction is counted
-- **WHEN** a receive-only member's device nevertheless has 3 uploads outstanding
-- **THEN** the counts show those uploads as shared-of-total numbers rather than "not sharing"
+#### Scenario: Switching sharing off mid-upload counts nothing as shared
+- **WHEN** a member with 3 photos still to share switches sharing off while one of them is uploading
+- **THEN** the counts say the member is not sharing at once, with no shared-of-total numbers
 
 #### Scenario: No counts while access is missing
 - **WHEN** a joined member without photo access opens the joined screen

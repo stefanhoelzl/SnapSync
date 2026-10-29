@@ -93,7 +93,7 @@ class FullStackIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "sync-status", requirement = "The joined screen counts what was shared and received")
+    @Verifies(spec = "sync-status", requirement = "The joined screen counts the photos shared and received")
     fun the_counts_line_tracks_what_was_shared_and_received() = behaviour {
         // The same numbers the arrows derive from, through the real stack — own photos out, the other members' photos
         // in.
@@ -143,7 +143,7 @@ class FullStackIntegrationTest {
     @Verifies(spec = "sync-status", requirement = "A not-yet-started event says when it starts")
     @Verifies(
         spec = "sync-status",
-        requirement = "The joined screen counts what was shared and received",
+        requirement = "The joined screen counts the photos shared and received",
         scenario = "No counts before the start or before the app has looked",
     )
     fun a_future_event_says_how_long_until_it_starts_and_shows_no_counts() = behaviour {
@@ -157,7 +157,7 @@ class FullStackIntegrationTest {
     }
 
     @Test
-    @Verifies(spec = "sync-status", requirement = "Direction arrows show remaining work and live transfer")
+    @Verifies(spec = "sync-status", requirement = "Direction arrows show the work left and the transfer running")
     fun upload_completion_advances_uistate_and_world_outcomes() = behaviour {
         given {
             extensionUploadsOnly()
@@ -528,7 +528,7 @@ class FullStackIntegrationTest {
     )
     @Verifies(
         spec = "sync-status",
-        requirement = "Direction arrows show remaining work and live transfer",
+        requirement = "Direction arrows show the work left and the transfer running",
         scenario = "Receive-only ignores the member's own gallery",
     )
     fun download_only_imports_foreign_and_reads_in_sync_through_a_zero_total() = behaviour {
