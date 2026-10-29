@@ -7,6 +7,7 @@ import app.snapsync.journeys.device.DatedJpeg
 import app.snapsync.journeys.device.ProcessShell
 import app.snapsync.journeys.run.AndroidRun
 import app.snapsync.journeys.run.awaitChannel
+import app.snapsync.journeys.run.until
 import app.snapsync.levers.WorldEvent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -16,7 +17,6 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneOffset
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 import kotlin.time.Duration.Companion.seconds
@@ -54,7 +54,10 @@ class ForceStopJourney {
                 assertTrue(heartbeats() >= 1, "A, joined, has its heartbeat pending: ${heartbeats()}")
 
                 device.forceStop(AndroidRun.APP)
-                assertEquals(0, heartbeats(), "a force-stop leaves no heartbeat pending")
+                // JobScheduler drops a stopped package's jobs on its own thread, after `am force-stop` has returned: a
+                // read straight after it can still find the heartbeat (353 ms behind a contended system_server, CI
+                // 2026-10-29), so the read repeats until the cancel has landed.
+                until(CANCELLED, "a force-stop leaves no heartbeat pending") { heartbeats() == 0 }
 
                 // Taken today at noon (UTC, the emulator's zone): inside the event, which runs from yesterday.
                 val photo = File.createTempFile("force-stop", ".jpg").apply { deleteOnExit() }
@@ -84,5 +87,8 @@ class ForceStopJourney {
 
     private companion object {
         val UPLOAD = 180.seconds
+
+        /** How long JobScheduler may take to drop a force-stopped package's jobs. */
+        val CANCELLED = 10.seconds
     }
 }
