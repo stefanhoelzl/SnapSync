@@ -12,7 +12,6 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * The upload cycle over the real stack, driven through the control protocol and read back off the systems outside the
@@ -123,30 +122,6 @@ class UploadCycleIntegrationTest {
             event<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") }
             settled { primaryJob("A") in it.state.inFlight?.jobs.orEmpty() }
         }
-    }
-
-    // Still read the old way: what it pins — which of the app's databases a process opens — is the app's own storage,
-    // and nothing outside the app records an open.
-    /**
-     * A process that may not create never opens the download store: its suppression read is the gate's last step,
-     * taken only for an admitted cycle — so a withheld cycle never pauses on it either.
-     */
-    @Test
-    @Verifies(spec = "delivery", requirement = "Losing photo access stops new uploads but lets in-flight ones finish")
-    fun a_withheld_cycle_never_opens_the_download_store() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("A")
-        permission(PhotoGrant.DENIED)
-        host.relaunch(scene = false)
-        val opened = databases.opened().size
-
-        assertEquals("completed", cycle())
-
-        assertTrue(
-            "downloads.db" !in databases.opened().drop(opened),
-            "admission is decided before the store is opened",
-        )
     }
 
     // ---- the capture-date cutoff ----------------------------------------------------------------------------------
@@ -268,7 +243,7 @@ class UploadCycleIntegrationTest {
 
         lateinit var joined: Seen<Layer.Joined>
         whenever {
-            createEvent("Trip", Rig.WINDOW_START, Rig.WINDOW_END)
+            createEvent("Trip", Defaults.WINDOW_START, Defaults.WINDOW_END)
             awaitScreen("the join gate") { (it.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
             confirmJoin()
         }
@@ -290,36 +265,6 @@ class UploadCycleIntegrationTest {
             // healed: the new event's union serves it
             event<WorldEvent.UnionChanged> { it.event == second && it.asset == "A" && it.gained }
         }
-    }
-
-    // ---- the composition opens nothing it is not asked for --------------------------------------------------------
-
-    // Still read the old way: what it pins — which of the app's databases a process opens — is the app's own storage,
-    // and nothing outside the app records an open.
-    /**
-     * **Forcing the composition opens no database** (`docs/architecture.md`): the storage services open on first use,
-     * so a process the operating system starts and wakes for something that needs no store opens none — a locked
-     * background launch is never forced into an open by composition — and the first cycle is what opens the ledger.
-     */
-    @Test
-    @Verifies(
-        spec = "delivery",
-        requirement = "A locked phone delays uploads and never ends the membership",
-        scenario = "A wake before the first unlock after a restart",
-    )
-    fun a_wake_that_needs_no_store_opens_no_database_and_the_first_cycle_opens_the_ledger() = rigTest {
-        extensionUploadsOnly()
-        createAndJoin()
-        addPhoto("A")
-        host.relaunch(scene = false)
-        val opened = databases.opened().size
-
-        os.pushToken("0a1b2c3d")
-        eventually(read = { deviceConfig()?.first }) { it == "0a1b2c3d" }
-        assertEquals(opened, databases.opened().size, "composing and waking the app opened a database")
-
-        cycle()
-        assertTrue("ledger.db" in databases.opened().drop(opened), "the first cycle is what opens the ledger")
     }
 
     /** The own photo [id] uploaded through the extension, and served in the event's union. */

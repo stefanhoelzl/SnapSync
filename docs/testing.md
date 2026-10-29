@@ -1264,11 +1264,14 @@ steps (`Steps.kt`), each acting and awaiting its own outcome; then an ordered ch
 the module does not compile against them. Test classes run in up to four JVMs at once, each test on its own host and
 port.
 
-Older tests still run under `rigTest { … }` (`Rig.kt`), which polls the state on real time (`awaitState`,
-`eventually`, `neverWithin`). Each face batch converted the tests it touched, and `TestsWaitOnEventsTest`'s polling
-gate holds the rest to a list that only shrinks: phase 31 gave the outcomes they waited on events and converted them,
-leaving only what still depends on a host with no event stream (the screenshots' scenarios, shared with the simulator
-capture), and phase 3g-b deletes the polling.
+No test polls. The suite's older harness — `rigTest { … }` (`Rig.kt`), which read the state on real time until a
+condition held (`awaitState`, `eventually`, `neverWithin`) — is gone, converted face batch by face batch and deleted in
+phase 3g-b; `TestsWaitOnEventsTest` holds the suite to events with no exceptions, and `DeletionLedgerTest` keeps the
+harness dead. A test that pinned only the app's private state (which databases a wake opens, what was staged at a
+release) went with it: nothing outside the app records those, and their stores' own tests pin what they open. The
+marketing screenshots' scenarios (`Shots.kt`), which a device host also plays, wait on the host's stream through
+`RigClient.awaitScreen` and `awaitEvent`: `ShotsTest` runs them on a JVM host started to serve its events from the latest
+act, as a device host does (`JvmRigHost.start(serving = …)`).
 
 Tests use **mocks only**, with no per-test real system. The port contracts are what justify trusting the
 mocks, and the journeys exercise the real systems.
@@ -1339,21 +1342,20 @@ the app — then a gate, then review.
 
 | rule | held by |
 |---|---|
-| **Wait on events, never poll.** A test awaits the event it cares about; it never settles and then reads | the DSL (no read, no poll); `TestsWaitOnEventsTest` (no `delay`, `Thread.sleep`, `withTimeout`, system clock or dispatcher in integration sources; no `rigTest`, `awaitState`, `neverWithin` or `eventually` outside its shrink-only `STILL_POLLING`) |
+| **Wait on events, never poll.** A test awaits the event it cares about; it never settles and then reads | the DSL (no read, no poll); `TestsWaitOnEventsTest` (no `delay`, `Thread.sleep`, `withTimeout`, system clock or dispatcher in integration sources; no `rigTest`, `awaitState`, `neverWithin` or `eventually` anywhere); `DeletionLedgerTest` (the polling waits stay deleted) |
 | **A positive expectation fails the moment the app settles without it**; a negative (`never`, `neverScreen`) holds only once it has. `Settled` exists only to prove a negative; "never, even later" is `settled { it.nextTimer == null }` | the DSL's judge |
 | **Time only from the clock mock**, in a fixed zone; a timer fires by `advance`, never by waiting | `TestsWaitOnEventsTest`; the app side is the law "the lanes are the app's only timers" (`docs/architecture.md`, "Concurrency and failure") |
 | **A transient is observed only by holding what it waits for**: every external wait needs a hold lever | review |
 | **Typed matchers, not equality**: `screen<L> { … }`, `event<E> { … }`, `never<E>`, `neverScreen<L>`. Unordered by default; `inOrder { … }` only where the order is the contract, `times(n) { … }` only where a count is the behaviour | the DSL; review |
-| **Observe what a person sees and what the outside world records**: the screen, the backend, the photo library, the push service, the crash reporter's receipts, and of the operating system's record only what the OS knows (handlers handed over and released, wakes and their timing, background-time holds, push registrations, sessions) — never an app-side label such as the trigger a hold began under | the stream carries nothing else; review for the polling tests |
-| **Never** log text, the app's private files (the staging directory included: what the outside sees of it is the storage the app takes, `appStorageBytes`), its databases, the ledger, or `gallery.read` (it runs the app's own selection policy) | the stream; review for the polling helpers, whose remaining reads of the staging directory and the databases opened (`files.stagedFiles`, `databases.opened` — 3g-a typed them off the OS record) go with them |
+| **Observe what a person sees and what the outside world records**: the screen, the backend, the photo library, the push service, the crash reporter's receipts, and of the operating system's record only what the OS knows (handlers handed over and released, wakes and their timing, background-time holds, push registrations, sessions) — never an app-side label such as the trigger a hold began under | the stream carries nothing else |
+| **Never** log text, the app's private files (the staging directory included: what the outside sees of it is the storage the app takes, `appStorageBytes`), its databases, the ledger, or `gallery.read` (it runs the app's own selection policy) | the stream |
 | **Nothing asserted on a generated id or a random value** (`next-event-id` where a fixed id is needed; mock randomness seeded per test); **no global mutable state** in the app, the mocks or the rig, so tests pass in any order and in parallel | review; `-Psnapsync.lanes=shuffled:<seed>` and `parallel` find what order hides |
 | **Work reaches the app only through the loop** | the host: a dispatch onto an app lane from a thread the loop does not own fails the test (`LaneViolation`) |
 | **No retries, anywhere** | review |
 | **Every test claims the requirement it verifies** (`@Verifies`, below) | `TestsWaitOnEventsTest` |
 | **One behaviour per test; setup through shared named steps**, never copied code | review |
 | **No timeout inside a test.** One 30-second guard per behaviour catches a hung harness and reports why the app is not settled — what runs, what is queued, what it waits on outside. Host start-up does not count against it, and the real `api/` keeps its own start-up bound (`LiveEdge`'s 180 s) | the DSL |
-
-The gates' lists of classes not yet converted may only shrink, exact both ways; phase 3g-b empties them.
+| **A behaviour ends quiet.** Once its last `then` holds, the host waits for the loop to go quiet before it closes, so a teardown never cuts a pass the act left running — which made what a run covers a matter of thread timing (3g-b measured `SingleFlight`'s withdrawals moving between runs) | the DSL (`JvmRigHost.awaitQuiet`) |
 
 **Never assert** ledger or download-store content (the protocol no longer carries the ledger), in-memory feature
 state, or call counts on a mock whose real system records nothing

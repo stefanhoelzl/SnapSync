@@ -80,7 +80,7 @@ class AlbumIntegrationTest {
         // offers it on, and it holds what arrives — never the member's own camera photo.
         given { androidLibrary() }
 
-        whenever { createEvent("Party", Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent("Party", Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             screen<Layer.JoiningEvent> { gate ->
                 gate.phase is JoinPhase.Detailed &&
@@ -390,8 +390,8 @@ class AlbumIntegrationTest {
         whenever { confirmJoin() }
         then {
             screen<Layer.Joined>()
-            event<WorldEvent.LibraryAlbumCreated> { it.title == Rig.EVENT_NAME }
-            settled { it.state.albums?.map { album -> album.title } == listOf(Rig.EVENT_NAME) }
+            event<WorldEvent.LibraryAlbumCreated> { it.title == Defaults.EVENT_NAME }
+            settled { it.state.albums?.map { album -> album.title } == listOf(Defaults.EVENT_NAME) }
         }
     }
 
@@ -539,7 +539,7 @@ class AlbumIntegrationTest {
         // One photo before the event's range, one screenshot inside it, and one the member shares.
         whenever {
             library.add("OLD", date = BEFORE_THE_EVENT)
-            library.add("SHOT", LibraryPhotoKind.SCREENSHOT, Rig.PHOTO_DATE)
+            library.add("SHOT", LibraryPhotoKind.SCREENSHOT, Defaults.PHOTO_DATE)
             takePhoto("A")
             cycle()
         }
@@ -767,7 +767,7 @@ class AlbumIntegrationTest {
         lateinit var album: Seen<WorldEvent.LibraryAlbumCreated>
         whenever { library.permission(PhotoGrant.LIMITED) }
         then {
-            album = event<WorldEvent.LibraryAlbumCreated> { it.title == Rig.EVENT_NAME }
+            album = event<WorldEvent.LibraryAlbumCreated> { it.title == Defaults.EVENT_NAME }
             settled { true }
         }
 
@@ -822,7 +822,7 @@ class AlbumIntegrationTest {
         /** The id the photo library gives the photo [DEV_F] shared later, as FR. */
         const val LATER = "imported-$DEV_F-FR"
 
-        /** A capture date before the default event's range ([Rig.WINDOW_START]). */
+        /** A capture date before the default event's range ([Defaults.WINDOW_START]). */
         const val BEFORE_THE_EVENT = "2026-05-01T10:00:00Z"
     }
 }

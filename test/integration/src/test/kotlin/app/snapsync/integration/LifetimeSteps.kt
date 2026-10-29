@@ -50,7 +50,7 @@ suspend fun Given.received(device: String, asset: String, final: Boolean = false
  * An own photo [id], taken and shared — in what the event offers its members — by the extension's cycles. Needs
  * [extensionUploadsOnly].
  */
-suspend fun Given.shared(id: String, date: String = Rig.PHOTO_DATE) {
+suspend fun Given.shared(id: String, date: String = Defaults.PHOTO_DATE) {
     step("photo $id taken", act = { library.add(id, date = date) }, until = { settled { true } })
     step(
         "photo $id shared",

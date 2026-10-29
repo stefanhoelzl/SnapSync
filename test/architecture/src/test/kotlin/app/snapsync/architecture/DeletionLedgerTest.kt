@@ -243,6 +243,33 @@ class DeletionLedgerTest {
     }
 
     /**
+     * The polling waits (3g-b): the integration suite's legacy harness — `rigTest` and its `Rig`, read through
+     * `awaitState`, `eventually`, `neverWithin` and `holdsWithin` — and the client's own `awaitState`. Each read until a
+     * condition held or a bound ran out; every test now waits on the host's events (`behaviour { … }`,
+     * `RigClient.awaitScreen`), so a poll back is a wait that passes early on a state the app only passes through.
+     * Scanned where the harness lived — the suite, the client and the control layer: contracts' `RealTime.eventually`
+     * observes real platforms, which emit no events to wait on, and the screens' Compose tests wait on their own frames.
+     */
+    @Test
+    fun `the polling waits stay dead`() {
+        val files = sources().filter { file -> HARNESS_MODULES.any { "/$it/src/" in file.path } }
+        assertTrue(files.isNotEmpty(), "the polling ledger scanned zero sources — the harness modules moved")
+        val resurrections = buildList {
+            val waits = """\bfun (\w+\.)?(rig""" + "Test|await" + "State|event" + "ually|never" + "Within|holds" +
+                "Within)\\b"
+            declared(files, waits).forEach { add("a polling wait in $it (wait on the host's events — 3g-b)") }
+            declared(files, """\bclass Rig""" + "\\(").forEach {
+                add("the legacy integration harness in $it (`behaviour { … }` drives the JVM host — 3g-b)")
+            }
+            val legacy = listOf("Rig", "RigEvents", "RigOs", "RigTraffic", "RigUploaders")
+                .map { "test/integration/src/test/kotlin/app/snapsync/integration/$it.kt" }
+                .filter { File(repoRoot, it).exists() }
+            addAll(legacy.map { "$it (the legacy harness's helpers — 3g-b)" })
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The membership before its layers (phase 4.2): a service that read and wrote the membership as one `EventConfig`
      * and a refresh that decided inside it; the old zones' join, leave, settings and switch rules, where use cases and
      * entry points now run them; an event that could close, where nothing closes; an invite link's hints that could
@@ -343,5 +370,10 @@ class DeletionLedgerTest {
         val resurrections = retired.filter { (path, _) -> File(repoRoot, path).exists() }
             .map { (path, now) -> "$path ($now — phase 13)" }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    private companion object {
+        /** Where the integration suite's polling harness lived: the suite, the typed client and the control layer. */
+        val HARNESS_MODULES = listOf("test/integration", "test/client", "test/control")
     }
 }

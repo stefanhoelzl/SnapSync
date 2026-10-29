@@ -53,6 +53,13 @@ class JvmRigHost private constructor(
      */
     val violations: List<String> get() = rig.threads.violations.toList()
 
+    /**
+     * Suspends until the app is quiet: no task running, none runnable at the loop's now, no outside work. A test awaits
+     * it before [close], so a teardown never cancels a pass still running — which would make what the test covers a
+     * matter of thread timing.
+     */
+    suspend fun awaitQuiet() = rig.threads.loop.awaitQuiet()
+
     /** Stop serving and tear the app down. The backend process, when there is one, is the JVM's, not this host's. */
     override fun close() {
         server.stop()
@@ -70,18 +77,29 @@ class JvmRigHost private constructor(
          * a test wants. Returns once the server has bound.
          *
          * [time] is where the app's timers get their time: [LoopTime.MOCKED] from the clock mock, which only an advance
-         * moves — starting at [startAt] — or [LoopTime.REAL], the wall clock, for a caller that still waits by polling.
+         * moves — starting at [startAt] — or [LoopTime.REAL], the wall clock.
          * How the lanes take turns is the `snapsync.lanes` system property's ([Interleaving.parse]).
+         *
+         * [serving] is where the world's event streams start: from the host's first event, which `behaviour { … }` reads
+         * whole, or — as a device host serves them — from where the latest act began, for a caller that waits the way it
+         * waits on a device (`RigClient.awaitScreen`).
          */
         suspend fun start(
             backend: String = "mock",
             port: Int = 0,
             time: LoopTime = LoopTime.REAL,
             startAt: Instant? = null,
-        ): JvmRigHost = start(RigBackend.named(backend), port, time, startAt)
+            serving: WorldEvents.Serving = WorldEvents.Serving.FROM_THE_START,
+        ): JvmRigHost = start(RigBackend.named(backend), port, time, startAt, serving)
 
-        internal suspend fun start(backend: RigBackend, port: Int, time: LoopTime, startAt: Instant?): JvmRigHost {
-            val threads = HostThreads.open(time, startAt, backend)
+        internal suspend fun start(
+            backend: RigBackend,
+            port: Int,
+            time: LoopTime,
+            startAt: Instant?,
+            serving: WorldEvents.Serving = WorldEvents.Serving.FROM_THE_START,
+        ): JvmRigHost {
+            val threads = HostThreads.open(time, startAt, backend, serving)
             val scope = CoroutineScope(SupervisorJob() + threads.composition)
             val rig = threads.loop.outside("composing the app") {
                 withContext(threads.composition) { compose(scope, backend, threads) }

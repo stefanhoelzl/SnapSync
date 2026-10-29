@@ -196,7 +196,7 @@ class MembershipChangesIntegrationTest {
         /** A week past [SHORT_END]; long before its photos may be deleted. */
         const val A_WEEK_AFTER_THE_END = "2026-06-09T12:00:00Z"
 
-        /** Starts of the member's range on either side of [Rig.PHOTO_DATE], inside the default event window. */
+        /** Starts of the member's range on either side of [Defaults.PHOTO_DATE], inside the default event window. */
         const val AFTER_THE_PHOTO = "2026-06-03T00:00:00Z"
         const val BEFORE_THE_PHOTO = "2026-05-20T00:00:00Z"
     }

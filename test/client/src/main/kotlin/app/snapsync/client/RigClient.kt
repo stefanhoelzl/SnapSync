@@ -18,7 +18,6 @@ import kotlinx.rpc.withService
 import kotlinx.serialization.json.Json
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * The typed client of the control protocol, for either host — the JVM host or the app on a device or simulator —
@@ -66,31 +65,14 @@ class RigClient(
     suspend fun state(): RigState = levers(HostLevers).state()
 
     /**
-     * Poll [state] until [until] holds, or fail after [timeout] naming the last state seen. A user command and a
-     * fire-and-forget entry point are answered before their work finishes — exactly as a tap is — so a caller
-     * waits on a condition, never on a sleep.
-     */
-    suspend fun awaitState(timeout: Duration = 10.seconds, until: (RigState) -> Boolean): RigState {
-        var last: RigState? = null
-        val reached = withTimeoutOrNull(timeout) {
-            var state = state().also { last = it }
-            while (!until(state)) {
-                delay(POLL)
-                state = state().also { last = it }
-            }
-            state
-        }
-        return reached ?: error("the state did not reach the condition within $timeout; last seen: $last")
-    }
-
-    /**
      * Waits on the host's events ([WorldLevers.events]) for the first that [match] answers a value for, and answers it —
      * or fails once [within] passed, naming [what] it waited for, the last screen it saw and why its connection last
      * dropped. A dropped connection is opened again, and the stream followed again, until then.
      *
      * Where the stream starts is the host's: a device host serves from where its latest act began, so a wait that
-     * follows its act misses nothing of it; the JVM host serves from its start, so there the first match may be from
-     * before the act — a JVM test waits through `behaviour { … }` instead.
+     * follows its act misses nothing of it. The JVM host serves from its start unless it was started to serve as a
+     * device does (`JvmRigHost.start(serving = …)`); from its start, the first match may be from before the act — so
+     * there a test waits through `behaviour { … }`, or on a host started that way.
      */
     suspend fun <T : Any> awaitEvent(within: Duration, what: String, match: (WorldEvent) -> T?): T {
         var screen: UiState? = null
@@ -133,7 +115,6 @@ class RigClient(
 
     private companion object {
         val json = Json { ignoreUnknownKeys = false }
-        val POLL = 50.milliseconds
         val FOLLOW_AGAIN_AFTER = 500.milliseconds
     }
 }

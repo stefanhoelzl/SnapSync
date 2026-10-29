@@ -11,14 +11,16 @@ import app.snapsync.ui.state.UiState
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
  * **What a person does on the screen** (`docs/testing.md`, "Typed services"): every finger's act is one [UiIntent], handed
  * to the host's screen ([ScreenLevers.tap]) — the host knows no other verb. The forms a person fills in several taps
  * are named here, on the caller's side, as the taps they are ([Taps]); only [reconfigure] waits between taps, for the
- * settings to be on screen, as a person waits — through [awaitScreen], which each caller answers its own way (an event
- * on the world's stream, or a poll where a host serves none).
+ * settings to be on screen, as a person waits — through [awaitScreen], which each caller answers from the world's
+ * events: `behaviour { … }` from the events it has read, [RigClient.person] from the host's stream.
  */
 interface Person {
     /** The host's screen. */
@@ -143,14 +145,17 @@ object Taps {
 const val DEFAULT_OPEN_UNTIL_DAYS: Int = 7
 
 /**
- * A person on this host whose screen is read by polling the host's state — what a caller does where the host serves no
- * world events to wait on (a device), or where it waits by polling still.
+ * A person on this host, outside a behaviour — a device, or a JVM host serving its events as a device does — who waits
+ * for the screen on the host's events ([RigClient.awaitScreen]), up to [SCREEN_WAIT].
  */
 fun RigClient.person(zone: TimeZone = TimeZone.currentSystemDefault()): Person = object : Person {
     override val screen: ScreenLevers = levers(ScreenLevers)
     override val zone: TimeZone = zone
 
     override suspend fun awaitScreen(what: String, shown: (UiState) -> Boolean) {
-        awaitState { shown(it.ui) }
+        awaitScreen(SCREEN_WAIT, what, shown)
     }
 }
+
+/** How long a [RigClient.person] waits for the screen a tap leads to: a bound on a hung host, never a pace. */
+val SCREEN_WAIT: Duration = 10.seconds

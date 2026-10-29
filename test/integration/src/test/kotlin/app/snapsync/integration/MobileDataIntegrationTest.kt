@@ -211,7 +211,7 @@ class MobileDataIntegrationTest {
         }
 
         whenever {
-            createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
+            createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END)
             awaitScreen("the join gate") { (it.layer as? Layer.JoiningEvent)?.phase is JoinPhase.Detailed }
             confirmJoin()
         }

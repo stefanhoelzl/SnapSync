@@ -16,9 +16,9 @@ import app.snapsync.ui.state.UiIntent
 
 /** An event created over the join gate, the gate open on its details. Answers the minted event id. */
 suspend fun Given.createdEvent(
-    name: String = Rig.EVENT_NAME,
-    startsAt: String = Rig.WINDOW_START,
-    endsAt: String = Rig.WINDOW_END,
+    name: String = Defaults.EVENT_NAME,
+    startsAt: String = Defaults.WINDOW_START,
+    endsAt: String = Defaults.WINDOW_END,
 ): String {
     lateinit var gate: app.snapsync.control.behaviour.Seen<Layer.JoiningEvent>
     step(
@@ -34,9 +34,9 @@ suspend fun Given.createdEvent(
  * already over is kept open for the days a create keeps it open by default.
  */
 suspend fun Given.registeredEvent(
-    name: String = Rig.EVENT_NAME,
-    startsAt: String = Rig.WINDOW_START,
-    endsAt: String = Rig.WINDOW_END,
+    name: String = Defaults.EVENT_NAME,
+    startsAt: String = Defaults.WINDOW_START,
+    endsAt: String = Defaults.WINDOW_END,
 ): String {
     val event = createdEvent(name, startsAt, endsAt)
     step("its join gate abandoned", act = { tap(UiIntent.CancelJoin) }, until = { screen<Layer.CreateEvent>() })
@@ -49,9 +49,9 @@ suspend fun Given.registeredEvent(
  */
 suspend fun Given.joinedEvent(
     choices: Choices = Choices(),
-    name: String = Rig.EVENT_NAME,
-    startsAt: String = Rig.WINDOW_START,
-    endsAt: String = Rig.WINDOW_END,
+    name: String = Defaults.EVENT_NAME,
+    startsAt: String = Defaults.WINDOW_START,
+    endsAt: String = Defaults.WINDOW_END,
 ): String {
     val event = createdEvent(name, startsAt, endsAt)
     step("joined", act = { confirmJoin(choices) }, until = {
@@ -65,7 +65,7 @@ suspend fun Given.joinedEvent(
  * An event created and joined saving to its album, and the album made in the library. Answers the event's id and the
  * album's, as the library gave it.
  */
-suspend fun Given.joinedSavingToAlbum(name: String = Rig.EVENT_NAME): Pair<String, String> {
+suspend fun Given.joinedSavingToAlbum(name: String = Defaults.EVENT_NAME): Pair<String, String> {
     val event = createdEvent(name)
     lateinit var album: Seen<WorldEvent.LibraryAlbumCreated>
     step(
@@ -146,7 +146,7 @@ suspend fun Given.photos(vararg ids: String) = step(
 
 /** An own photo [id] taken on the event's day lands in the library. */
 suspend fun Acts.takePhoto(id: String) {
-    library.add(id, date = Rig.PHOTO_DATE)
+    library.add(id, date = Defaults.PHOTO_DATE)
 }
 
 /** One upload cycle, as the OS-driven extension runs it. Answers what it tells the system (`completed`, `processing`). */

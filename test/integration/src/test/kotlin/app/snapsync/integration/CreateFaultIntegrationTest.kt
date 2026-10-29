@@ -139,7 +139,7 @@ class CreateFaultIntegrationTest {
                     backend.fail(CREATE, BackendFault.SERVER_ERROR)
                     createTheEvent()
                 },
-                until = { screen<Layer.CreateEvent> { it.error != null && it.form.name == Rig.EVENT_NAME } },
+                until = { screen<Layer.CreateEvent> { it.error != null && it.form.name == Defaults.EVENT_NAME } },
             )
         }
 
@@ -148,9 +148,9 @@ class CreateFaultIntegrationTest {
             screen<Layer.JoiningEvent> { layer ->
                 val phase = layer.phase as? JoinPhase.Detailed
                 val range = layer.range
-                phase?.eventName == Rig.EVENT_NAME && range != null &&
-                    range.windowStart == LocalDateTime.parse(Rig.WINDOW_START) &&
-                    range.windowEnd == LocalDateTime.parse(Rig.WINDOW_END)
+                phase?.eventName == Defaults.EVENT_NAME && range != null &&
+                    range.windowStart == LocalDateTime.parse(Defaults.WINDOW_START) &&
+                    range.windowEnd == LocalDateTime.parse(Defaults.WINDOW_END)
             }
         }
     }
@@ -222,5 +222,5 @@ class CreateFaultIntegrationTest {
 
 /** The host creates the default event, as the create form is filled — a range already over answered with 7 days. */
 suspend fun Acts.createTheEvent() {
-    createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
+    createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END)
 }

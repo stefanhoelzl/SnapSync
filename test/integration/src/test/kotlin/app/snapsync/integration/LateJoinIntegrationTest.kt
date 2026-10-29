@@ -247,7 +247,7 @@ class LateJoinIntegrationTest {
     private fun JoinPhase.ready() = (this as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready
 
     private companion object {
-        /** A week after the default window's end ([Rig.WINDOW_END], 14 June); long before its photos may be deleted. */
+        /** A week after the default window's end ([Defaults.WINDOW_END], 14 June); long before its photos may be deleted. */
         const val A_WEEK_AFTER_THE_END = "2026-06-21T12:00:00Z"
 
         /** A party on the weekend before every behaviour's clock starts (Monday 1 June). */

@@ -173,7 +173,7 @@ class BackDatedEventIntegrationTest {
         const val WEEKEND_END = "2026-05-10T20:00:00"
         const val IN_THE_WEEKEND = "2026-05-09T12:00:00Z"
 
-        /** Two days after the event was created ([Rig.NOW]), inside the week the host kept it open. */
+        /** Two days after the event was created (`NOW`), inside the week the host kept it open. */
         const val DAY_TWO = "2026-06-03T12:00:00Z"
 
         /** Past the week the host chose (created 1 June 12:00, open for 7 days). */

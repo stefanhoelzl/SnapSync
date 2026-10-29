@@ -113,7 +113,7 @@ class ShareableCountIntegrationTest {
     }
 
     /** The create form for the default event, filled and confirmed: the join gate opens on it. */
-    private suspend fun Acts.create() = createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
+    private suspend fun Acts.create() = createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END)
 }
 
 /** The open join gate's shareable-count preview reads [expected]. */

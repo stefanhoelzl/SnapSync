@@ -68,7 +68,11 @@ fun behaviour(backend: String = "mock", startAt: String = NOW, body: suspend Beh
                     world.events().collect { event -> seen.update { it + event } }
                 }
                 val behaviour = Behaviour(client, world, seen)
-                val finished = withTimeoutOrNull(GUARD) { behaviour.body() }
+                // Quiet before the teardown: a pass the last `then` left running is never cut by the close.
+                val finished = withTimeoutOrNull(GUARD) {
+                    behaviour.body()
+                    host.awaitQuiet()
+                }
                 stream.cancel()
                 if (finished == null) throw AssertionError(behaviour.hung())
             }

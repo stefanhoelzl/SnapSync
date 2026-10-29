@@ -312,7 +312,7 @@ class ReinstallIntegrationTest {
     fun a_received_photo_from_before_the_event_is_not_shared_by_a_rejoin_whose_range_covers_it() = behaviour(
         startAt = DURING,
     ) {
-        // FA was taken the day before the event (the fellow member's photos carry `Rig.PHOTO_DATE`); the rejoin's range
+        // FA was taken the day before the event (the fellow member's photos carry `Defaults.PHOTO_DATE`); the rejoin's range
         // starts that morning, and the member's own photo of that evening shows the range really covers the day.
         given {
             extensionUploadsOnly()
@@ -503,12 +503,12 @@ class ReinstallIntegrationTest {
         /** Long enough for the joined screen's status poll (every 2 s) to read again. */
         val STATUS_POLL = 5.seconds
 
-        /** An event that starts the day after `Rig.PHOTO_DATE`, the capture date of every fellow member's photo. */
+        /** An event that starts the day after `Defaults.PHOTO_DATE`, the capture date of every fellow member's photo. */
         const val START = "2026-06-02T00:00:00"
         const val END = "2026-06-07T00:00:00"
         const val DURING = "2026-06-03T12:00:00Z"
 
-        /** A range starting the day before the event, ahead of `Rig.PHOTO_DATE` by hours, as the rig reads a cutoff. */
+        /** A range starting the day before the event, ahead of `Defaults.PHOTO_DATE` by hours, as the rig reads a cutoff. */
         const val THE_MORNING_BEFORE = "2026-06-01T02:00:00Z"
         const val THE_EVENING_BEFORE = "2026-06-01T19:30:00Z"
     }

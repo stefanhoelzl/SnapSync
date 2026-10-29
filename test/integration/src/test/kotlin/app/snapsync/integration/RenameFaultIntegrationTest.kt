@@ -50,7 +50,7 @@ class RenameFaultIntegrationTest {
             rename("Ski Trip")
         }
         then {
-            screen<Layer.Joined> { it.renameState == RenameState.Failed(told) && it.membership.name == Rig.EVENT_NAME }
+            screen<Layer.Joined> { it.renameState == RenameState.Failed(told) && it.membership.name == Defaults.EVENT_NAME }
             neverScreen<Layer.Joined> { it.deleted }
             neverScreen<Layer.CreateEvent>()
         }
@@ -75,7 +75,7 @@ class RenameFaultIntegrationTest {
         }
         then {
             screen<Layer.Joined> { it.renameState == RenameState.Failed(ScreenMessage.EVENT_OVER) }
-            screen<Layer.Joined> { it.deleted && it.membership.name == Rig.EVENT_NAME }
+            screen<Layer.Joined> { it.deleted && it.membership.name == Defaults.EVENT_NAME }
             neverScreen<Layer.CreateEvent>()
         }
     }

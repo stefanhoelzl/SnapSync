@@ -491,7 +491,7 @@ class PhotoAccessIntegrationTest {
     }
 
     private companion object {
-        /** A capture time before the default event's range (`Rig.WINDOW_START`). */
+        /** A capture time before the default event's range (`Defaults.WINDOW_START`). */
         const val BEFORE_THE_RANGE = "2026-05-01T10:00:00Z"
         const val FOREIGN_ASSET = "FQ"
     }
