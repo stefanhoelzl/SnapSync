@@ -138,7 +138,7 @@ coverage {
         // Branches → 64 in phase 4.3 (encryption): the key the old sealing and opening read from the store, each of its
         // reads — a slot holding no key — the crypto suites' (`:test:feature`), until they move into the data layer.
         // Branches → 65 in phase 19 (claim: event-album).
-        integration(instructions = 86, branches = 65)
+        integration(instructions = 87, branches = 65)
     }
     ":domain:wire" {
         skipped(
@@ -156,7 +156,7 @@ coverage {
         // → 93/79 in phase 31, once the polling tests waited on outcome events instead.
         // Branches → 78 in phase 4.4a (selection): the cycle's read that could not be made, and a key resolve that
         // cannot look, are the cycle's unit suite's (`UploadCycleTest`); a member's day reads. Measured 78.19 %.
-        integration(instructions = 93, branches = 78)
+        integration(instructions = 94, branches = 80)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.
@@ -183,7 +183,7 @@ coverage {
         // download opening moved in: a seal withheld for a device that cannot name itself, an opening counted and
         // reported, a membership that cannot be read are their unit suites' (`UploadSealingTest`,
         // `DownloadOpeningTest`).
-        integration(instructions = 82, branches = 57)
+        integration(instructions = 84, branches = 62)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -194,13 +194,11 @@ coverage {
         // → 87/65 in phase 31, once the polling tests waited on outcome events instead.
         // → 86/64 in phase 4.3 (encryption): the key's restore arrived, and its rare answers — a key the store refuses,
         // a membership that cannot be read — are its unit suite's (`RestoreEventKeyTest`).
-        integration(instructions = 86, branches = 64)
+        integration(instructions = 87, branches = 65)
     }
     ":domain:query" {
         unit(alsoCoveredBy = listOf(":test:data"))
-        // Branches 85 → 76 at its creation (phase 4.2): a switch's read of a membership no screen reaches it with —
-        // unreadable, deleted on this very read — is its unit suite's (`:test:data`, zero gate).
-        integration(branches = 76)
+        integration() // at the goal since phase 22 claimed the app specs
     }
     ":domain:format" {
         unit()
@@ -227,7 +225,7 @@ coverage {
         // another event, a restore while nothing is joined — are their unit suite's (`EventKeyTest`). → 86/71 with the
         // seal's and the opening's verdicts: a device that cannot name itself, a locked phone, a download fetched for
         // an event a switch left behind and the fourth failure in a row are their unit suite's (`SealVerdictsTest`).
-        integration(instructions = 86, branches = 71)
+        integration(instructions = 89, branches = 75)
     }
     // Measured once the polling tests were gone (3g-b): steady at 99/100 over five runs — the goal.
     ":domain:inbound" {
@@ -259,9 +257,7 @@ coverage {
     }
     ":domain:presentation" {
         unit(alsoCoveredBy = listOf(":ui:screens"))
-        // → 90/80 in phase 31, once the polling tests waited on outcome events instead. → 91/80 in phase 21, when the
-        // photo-sharing claims drove the settings' range and direction changes and a link's ignored hints.
-        integration(instructions = 91, branches = 80)
+        integration() // at the goal since phase 22 claimed the app specs
     }
     ":app:jvm" {
         unit(alsoCoveredBy = listOf(":test:integration"))
@@ -270,7 +266,7 @@ coverage {
     ":ui:state" {
         unit()
         // → 91/68 in phase 31, once the polling tests waited on outcome events instead.
-        integration(instructions = 91, branches = 68)
+        integration(instructions = 94, branches = 73)
     }
     // `:ui:screens`' Compose tests render the real screens, and with them these components.
     ":ui:components" {
