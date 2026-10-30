@@ -125,6 +125,11 @@ class VerificationFaultIntegrationTest {
         requirement = "A verification problem never loses a photo",
         scenario = "A renewal fails while the proof is still valid",
     )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "A device that cannot be verified is shown, and never blamed on the member",
+        scenario = "A verification about to be renewed is not an alarm",
+    )
     fun a_renewal_that_fails_while_the_proof_is_valid_keeps_sharing_and_tells_nothing() = behaviour {
         given {
             joinedEvent()

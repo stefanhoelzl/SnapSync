@@ -29,6 +29,11 @@ class BackDatedEventIntegrationTest {
         requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest",
         scenario = "A back-dated event",
     )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen shows how many members the event has",
+        scenario = "Not shown once deleted",
+    )
     fun a_weekend_already_over_is_shared_until_it_is_deleted() = behaviour {
         // Created on 1 June for a weekend in May; the sheet is answered with a week.
         val event = given { hostOfTheWeekend() }

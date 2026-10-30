@@ -25,6 +25,11 @@ class NeverLeavesIntegrationTest {
         requirement = "The app never leaves an event on its own",
         scenario = "A finished event stays on screen",
     )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "An ended event is marked without stopping sync",
+        scenario = "Everyone has shared",
+    )
     fun a_finished_event_is_still_joined_and_up_to_date_when_the_member_next_opens_the_app() = behaviour {
         given {
             extensionUploadsOnly()

@@ -422,6 +422,11 @@ class PhotoAccessIntegrationTest {
         requirement = "The system's access dialog is raised only by a deliberate tap",
         scenario = "Opening the app does not prompt",
     )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Only missing access and a blocked network make the status line tappable",
+        scenario = "Never asked",
+    )
     fun opening_the_app_with_access_undecided_asks_nothing_until_the_access_line_is_tapped() = behaviour {
         given {
             joinedEvent()
@@ -443,6 +448,11 @@ class PhotoAccessIntegrationTest {
         spec = "photo-access",
         requirement = "The system's access dialog is raised only by a deliberate tap",
         scenario = "A refused member is taken to Settings",
+    )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Only missing access and a blocked network make the status line tappable",
+        scenario = "Previously refused",
     )
     fun a_refused_member_tapping_the_access_line_is_taken_to_settings_and_asked_nothing() = behaviour {
         given {
