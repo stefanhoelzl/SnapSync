@@ -101,7 +101,9 @@ class AppExperienceIntegrationTest {
         given {
             inFront()
             step("the create held", act = { backend.hold(BackendCall.CREATE) }, until = {})
-            step("Create tapped", act = { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }, until = {
+            step("Create tapped", act = {
+                createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END)
+            }, until = {
                 screen<Layer.CreatingEvent>()
             })
         }
@@ -144,7 +146,7 @@ class AppExperienceIntegrationTest {
         }
 
         whenever {
-            tap(Taps.create(Rig.EVENT_NAME, START, END, 7).dropLast(1) + UiIntent.ConfirmCreate)
+            tap(Taps.create(Defaults.EVENT_NAME, START, END, 7).dropLast(1) + UiIntent.ConfirmCreate)
             backend.release(BackendCall.CREATE)
         }
         then {
@@ -284,8 +286,8 @@ class AppExperienceIntegrationTest {
     private fun Layer.JoiningEvent.range() = (stage as? JoinStage.Loaded)?.range
 
     private companion object {
-        val START: LocalDateTime = LocalDateTime.parse(Rig.WINDOW_START)
-        val END: LocalDateTime = LocalDateTime.parse(Rig.WINDOW_END)
+        val START: LocalDateTime = LocalDateTime.parse(Defaults.WINDOW_START)
+        val END: LocalDateTime = LocalDateTime.parse(Defaults.WINDOW_END)
 
         /** An event lasting 15 days, ahead of the clock. */
         const val FIFTEEN_DAYS_START = "2026-07-15T00:00:00"
