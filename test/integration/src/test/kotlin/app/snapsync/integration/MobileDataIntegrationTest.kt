@@ -245,6 +245,11 @@ class MobileDataIntegrationTest {
         requirement = "The member chooses for the device whether photos may use mobile data",
         scenario = "Chosen before joining",
     )
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen lets the member decide separately whether to share, whether to receive, and whether to keep an album",
+        scenario = "Joining follows the device's mobile-data choice",
+    )
     fun chosen_before_joining() = behaviour {
         given {
             appUploadsOnly()

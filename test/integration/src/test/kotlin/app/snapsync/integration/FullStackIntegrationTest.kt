@@ -511,6 +511,11 @@ class FullStackIntegrationTest {
         requirement = "Each direction runs only if the member chose it",
         scenario = "Share-only receives nothing",
     )
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen lets the member decide separately whether to share, whether to receive, and whether to keep an album",
+        scenario = "Share only",
+    )
     fun upload_only_uploads_own_but_imports_no_foreign() = behaviour {
         given {
             extensionUploadsOnly()
@@ -546,6 +551,11 @@ class FullStackIntegrationTest {
         spec = "sync-status",
         requirement = "Direction arrows show the work left and the transfer running",
         scenario = "Receive-only ignores the member's own gallery",
+    )
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen lets the member decide separately whether to share, whether to receive, and whether to keep an album",
+        scenario = "Receive only",
     )
     fun download_only_imports_foreign_and_reads_in_sync_through_a_zero_total() = behaviour {
         val before = given {
