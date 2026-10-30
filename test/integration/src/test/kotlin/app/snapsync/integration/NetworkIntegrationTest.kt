@@ -151,6 +151,11 @@ class NetworkIntegrationTest {
         requirement = "Without a network, the join screen waits for one",
         scenario = "An invite opened offline loads once the network returns",
     )
+    @Verifies(
+        spec = "join-event",
+        requirement = "The join screen verifies the event before offering to join",
+        scenario = "Offline, the event can be retried",
+    )
     fun an_invite_opened_offline_loads_by_itself_once_the_network_returns() = behaviour {
         lateinit var invite: String
         given {
