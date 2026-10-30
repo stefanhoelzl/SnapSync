@@ -425,7 +425,7 @@ class CreateEventIntegrationTest {
             inFront()
         }
 
-        whenever { createEvent(NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent(NAME, Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             event<WorldEvent.EventCreated> { it.name == NAME }
             screen<Layer.JoiningEvent> { it.phase is JoinPhase.Detailed }
@@ -446,8 +446,8 @@ class CreateEventIntegrationTest {
         /** Longer than the network watch's grace before it reports a change. */
         val NETWORK_GRACE = 6.seconds
 
-        val START: LocalDateTime = LocalDateTime.parse(Rig.WINDOW_START)
-        val END: LocalDateTime = LocalDateTime.parse(Rig.WINDOW_END)
+        val START: LocalDateTime = LocalDateTime.parse(Defaults.WINDOW_START)
+        val END: LocalDateTime = LocalDateTime.parse(Defaults.WINDOW_END)
         val START_PLUS_40_DAYS: LocalDateTime = LocalDateTime.parse("2026-06-24T00:00:00")
 
         /** Today, from 18:00 to 17:00. */

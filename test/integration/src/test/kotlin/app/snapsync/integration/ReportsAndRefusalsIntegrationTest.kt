@@ -33,7 +33,7 @@ class ReportsAndRefusalsIntegrationTest {
     fun a_phone_the_service_cannot_verify_is_told_so_and_offered_a_report() = behaviour {
         given { refusedAs(AttestationRefusal.DEVICE_UNVERIFIABLE) }
 
-        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             screen<Layer.CreateEvent> { it.error == ScreenMessage.DEVICE_UNVERIFIABLE && it.error?.offersReport == true }
             neverScreen<Layer.CreateEvent> { it.error != null && it.error != ScreenMessage.DEVICE_UNVERIFIABLE }
@@ -49,7 +49,7 @@ class ReportsAndRefusalsIntegrationTest {
     fun an_unofficial_copy_is_told_it_is_not_the_official_app() = behaviour {
         given { refusedAs(AttestationRefusal.APP_NOT_GENUINE) }
 
-        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             screen<Layer.CreateEvent> { it.error == ScreenMessage.APP_NOT_GENUINE && it.error?.offersReport == false }
             neverScreen<Layer.CreateEvent> { it.error != null && it.error != ScreenMessage.APP_NOT_GENUINE }
@@ -67,9 +67,9 @@ class ReportsAndRefusalsIntegrationTest {
             refusedAs(AttestationRefusal.DEVICE_MODIFIED)
             step("told it is refused", act = {
                 createEvent(
-                    Rig.EVENT_NAME,
-                    Rig.WINDOW_START,
-                    Rig.WINDOW_END,
+                    Defaults.EVENT_NAME,
+                    Defaults.WINDOW_START,
+                    Defaults.WINDOW_END,
                 )
             }, until = {
                 screen<Layer.CreateEvent> { it.error == ScreenMessage.DEVICE_MODIFIED }
@@ -79,7 +79,7 @@ class ReportsAndRefusalsIntegrationTest {
 
         whenever {
             backend.refuseAttestation()
-            createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
+            createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END)
         }
         then {
             event<WorldEvent.EventCreated>()
@@ -193,7 +193,7 @@ class ReportsAndRefusalsIntegrationTest {
         given {
             refusedAs(AttestationRefusal.DEVICE_UNVERIFIABLE)
             step("told it could not be verified", act = {
-                createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END)
+                createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END)
             }, until = {
                 screen<Layer.CreateEvent> { it.error == ScreenMessage.DEVICE_UNVERIFIABLE }
                 settled { true }

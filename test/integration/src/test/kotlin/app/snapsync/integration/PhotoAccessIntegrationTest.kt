@@ -166,7 +166,7 @@ class PhotoAccessIntegrationTest {
     @Test
     @Verifies(
         spec = "sync-status",
-        requirement = "The joined screen counts what was shared and received",
+        requirement = "The joined screen counts the photos shared and received",
         scenario = "Limited access shows counts",
     )
     fun up_to_date_under_limited_access_counts_the_selection_beside_the_choice_to_widen() = behaviour {

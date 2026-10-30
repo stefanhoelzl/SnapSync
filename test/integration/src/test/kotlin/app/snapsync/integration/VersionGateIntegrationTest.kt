@@ -132,7 +132,7 @@ class VersionGateIntegrationTest {
         // A fresh host is a fresh install: no event, no device registered, the create screen in front.
         given { outdated() }
 
-        whenever { createEvent(Rig.EVENT_NAME, Rig.WINDOW_START, Rig.WINDOW_END) }
+        whenever { createEvent(Defaults.EVENT_NAME, Defaults.WINDOW_START, Defaults.WINDOW_END) }
         then {
             screen<Layer.UpdateRequired>()
             never<WorldEvent.UiChanged> { (it.ui.layer as? Layer.CreateEvent)?.error != null }
