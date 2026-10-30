@@ -5,11 +5,14 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.levers.AttestationRefusal
+import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.presentation.message
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.SyncHealth
@@ -219,6 +222,34 @@ class DeviceRefusalIntegrationTest {
         assertTrue("O=SnapSync Mock" in offered.getValue("attest_chain"), offered.getValue("attest_chain"))
         assertEquals("0".repeat(64), offered["attest_root_key_sha256"])
         assertTrue(menuDump.value.dump.state.keys.none { it.startsWith("attest_") }, "a menu report carries none")
+    }
+
+    @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The front screen tells a refused phone before it tries",
+        scenario = "Offline outranks a refusal",
+    )
+    fun offline_outranks_a_refusal_on_the_front_screen_and_the_refusal_returns_with_the_network() = behaviour {
+        given {
+            refused(DeviceRefusal.DEVICE_MODIFIED)
+            tokenless(DeviceRefusal.DEVICE_MODIFIED.message)
+            inFront()
+        }
+
+        whenever {
+            network(NetworkState.OFFLINE)
+            advance(NetworkWatch.DEFAULT_GRACE)
+        }
+        then { screen<Layer.CreateEvent> { it.network == NetworkNotice.OFFLINE } }
+
+        whenever {
+            network(NetworkState.ONLINE)
+            advance(NetworkWatch.DEFAULT_GRACE)
+        }
+        then {
+            screen<Layer.CreateEvent> { it.network == null && it.error == DeviceRefusal.DEVICE_MODIFIED.message }
+        }
     }
 
     /**
