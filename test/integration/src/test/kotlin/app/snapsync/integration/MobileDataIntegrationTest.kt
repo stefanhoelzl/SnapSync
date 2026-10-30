@@ -377,6 +377,14 @@ class MobileDataIntegrationTest {
             shareFromForeground("P2")
             publicBackend.foreignDevice(DEV_F, listOf("FA", "FB"))
             os.foreground()
+        }
+        then {
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("P2") }
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
+
+        whenever {
             uploadSession.complete()
             downloadSession.finish()
         }
