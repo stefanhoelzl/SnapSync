@@ -99,27 +99,38 @@ class RecognitionWindow private constructor(val from: Timestamp, val until: Time
 }
 
 /**
- * How far this device holds the others' photos: the union position a whole read covers, when this device receives
- * nothing or every foreign photo it serves is settled here and nothing waits to download or import — what it reports,
- * so the event's photos can go once every member has them.
+ * How far this device holds the others' photos: nothing is owed to a membership that receives nothing; one that
+ * receives holds the union position a whole read covers when every foreign photo it serves is settled here and nothing
+ * waits to download or import — what it reports, so the event's photos can go once every member has them.
  */
 sealed interface HeldPosition {
     /** Whether this device holds every photo it is owed — what a switch asks before leaving without a question. */
     val complete: Boolean
 
+    /** What the event is told of it ([ReceivedReport]). */
+    val report: ReceivedReport
+
     class Holds(val position: Long) : HeldPosition {
         override val complete = true
+        override val report: ReceivedReport get() = ReceivedReport.Position(position)
     }
 
-    /** Something is still to arrive: no position is reported. */
+    /**
+     * Something is still to arrive. It is still told — as position `0`, which never moves a recorded position back — so
+     * a device that once said it receives nothing and receives again is never taken for one that is done.
+     */
     data object Lacks : HeldPosition {
         override val complete = false
+        override val report: ReceivedReport get() = ReceivedReport.Position(0)
+    }
+
+    /** The membership shares only: no photo of the others is owed to it, whatever they add later. */
+    data object ReceivesNothing : HeldPosition {
+        override val complete = true
+        override val report: ReceivedReport get() = ReceivedReport.ReceivesNothing
     }
 
     companion object {
-        /** For a membership that does not receive: it holds everything it is owed at the position it read. */
-        fun ofNonReceiving(position: Long): HeldPosition = Holds(position)
-
         /**
          * For one that receives: [settled] of the [foreign] photos the read served are settled here, and [waiting] says
          * whether anything still waits to download or import.
@@ -131,17 +142,54 @@ sealed interface HeldPosition {
     }
 }
 
-/** Whether a held position is worth telling: the backend keeps the highest, so only a higher one is sent. */
+/**
+ * What a device tells its event it received (`reportReceived`): the union [Position] up to which it holds every photo
+ * of the others, or that it [ReceivesNothing] at all — which alone is the received half of being done, so a share-only
+ * phone that settled early and went off holds up nobody. Every report rewrites the second: a position says the device
+ * receives again.
+ */
+sealed interface ReceivedReport {
+    class Position(val position: Long) : ReceivedReport
+
+    data object ReceivesNothing : ReceivedReport
+
+    companion object {
+        /**
+         * Whether a report is due at the end of a wake: a share-only membership tells it at once — it holds up the
+         * event's end otherwise — and one that receives once its event's range has [ended].
+         */
+        fun dueFor(receiving: ReceivingVerdict, ended: Boolean): Boolean = when (receiving) {
+            ReceivingVerdict.SharesOnly -> true
+            is ReceivingVerdict.Receives, ReceivingVerdict.KeyLost -> ended
+        }
+    }
+}
+
+/**
+ * Whether a report is worth sending: the backend keeps the highest position and the latest word on receiving nothing,
+ * so only a higher position, or a change of word, is sent.
+ */
 sealed interface ReportDue {
-    class Report(val position: Long) : ReportDue
+    class Report(val report: ReceivedReport) : ReportDue
 
     data object Unchanged : ReportDue
 
     companion object {
-        /** [found], against the [last] position the backend recorded in this process (`null`: none yet). */
-        fun of(found: Long, last: Long?): ReportDue = when {
-            last != null && found <= last -> Unchanged
-            else -> Report(found)
+        /** [found], against the [last] report the backend recorded in this process (`null`: none yet). */
+        fun of(found: ReceivedReport, last: ReceivedReport?): ReportDue = when (found) {
+            is ReceivedReport.Position -> positioned(found, last)
+            ReceivedReport.ReceivesNothing -> when (last) {
+                ReceivedReport.ReceivesNothing -> Unchanged
+                is ReceivedReport.Position, null -> Report(found)
+            }
+        }
+
+        private fun positioned(found: ReceivedReport.Position, last: ReceivedReport?): ReportDue = when (last) {
+            is ReceivedReport.Position -> when (found.position > last.position) {
+                true -> Report(found)
+                false -> Unchanged
+            }
+            ReceivedReport.ReceivesNothing, null -> Report(found)
         }
     }
 }

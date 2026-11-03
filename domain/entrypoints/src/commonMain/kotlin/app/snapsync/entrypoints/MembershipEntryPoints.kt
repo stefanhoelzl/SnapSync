@@ -21,6 +21,7 @@ import app.snapsync.application.receiving.ForgetOtherEvents
 import app.snapsync.application.receiving.PlanReceiving
 import app.snapsync.application.receiving.ReceivingOf
 import app.snapsync.application.receiving.RecognizeReceivedPhotos
+import app.snapsync.application.receiving.ReportReceivedPosition
 import app.snapsync.application.receiving.StopReason
 import app.snapsync.application.receiving.StopReceiving
 import app.snapsync.data.crypto.EventKeyStore
@@ -277,6 +278,7 @@ class AfterSettings(
     private val receivingOf: ReceivingOf,
     private val plan: PlanReceiving,
     private val stop: StopReceiving,
+    private val report: ReportReceivedPosition,
     private val statuses: MembershipStatuses,
 ) {
     @OptIn(EntryPointCall::class)
@@ -286,7 +288,11 @@ class AfterSettings(
         isolated("uploads") { uploads.onReconfigure() }
         required { album.run("reconfigure", saved, on) }
         when (val receiving = required { receivingOf(saved) }) {
-            is ReceivingVerdict.Receives -> detached { plan(receiving.receiving, UnionTrigger.RECONFIGURE) }
+            // Receiving: the event hears it at once, so what a share-only phase told it never lets it finish early.
+            is ReceivingVerdict.Receives -> {
+                detached { plan(receiving.receiving, UnionTrigger.RECONFIGURE) }
+                detached { report.receivesAgain(saved) }
+            }
             ReceivingVerdict.SharesOnly -> isolated("stop receiving") { stop(StopReason.SharesOnly(saved)) }
             ReceivingVerdict.KeyLost -> Unit
         }

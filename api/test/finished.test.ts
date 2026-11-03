@@ -131,6 +131,38 @@ Deno.test("finished → a late join makes it unfinished; a member who left holds
   assert(await eventFinished(db, E, AFTER));
 });
 
+Deno.test("finished → a member that receives nothing is done once it shared, whatever the others add later", async () => {
+  const db = await emptyStore();
+  await event(db);
+  await sharedMember(db, "a");
+  await sharedMember(db, "shares-only");
+  await recordReceived(db, E, "shares-only", 0, true);
+  const p = await gain(db, "shares-only", "shares-only-A");
+  await recordReceived(db, E, "a", p);
+  assert(await eventFinished(db, E, AFTER));
+  const later = await gain(db, "a", "a-LATER");
+  await recordReceived(db, E, "a", later);
+  assert(
+    await eventFinished(db, E, AFTER),
+    "a photo added after its last report is not owed to it",
+  );
+
+  // It receives again: any report without the flag clears it, and its position counts once more.
+  await recordReceived(db, E, "shares-only", 0);
+  assertFalse(await eventFinished(db, E, AFTER));
+  await recordReceived(db, E, "shares-only", later);
+  assert(await eventFinished(db, E, AFTER));
+});
+
+Deno.test("finished → a member that receives nothing still has to share everything", async () => {
+  const db = await emptyStore();
+  await event(db);
+  await sharedMember(db, "shares-only");
+  await recordReceived(db, E, "shares-only", 0, true);
+  await declare(db, "shares-only", "shares-only-NEW");
+  assertFalse(await eventFinished(db, E, AFTER));
+});
+
 Deno.test("finished → an event nobody joined is never finished", async () => {
   const db = await emptyStore();
   await event(db);

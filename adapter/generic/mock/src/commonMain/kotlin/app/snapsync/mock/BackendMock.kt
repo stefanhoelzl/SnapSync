@@ -378,6 +378,8 @@ internal class BackendState(
         var manifestVersion: Long? = null,
         /** The union position up to which the device said it holds every photo of the others; `null` before any. */
         var receivedPosition: Long? = null,
+        /** Whether the device's last report said it receives nothing (it shares only). */
+        var receivesNothing: Boolean = false,
     )
 
     enum class JoinOutcome { ENROLLED, CLOSED, NO_SUCH_EVENT }
@@ -550,13 +552,15 @@ internal class BackendState(
     }
 
     /**
-     * What a present member said it received: the highest [position] reported, never lowered — `false` for a device
-     * that is not in the event, as the real route answers it.
+     * What a present member said it received: the highest [position] reported, never lowered, and whether it
+     * [receivesNothing] as its LATEST report says — `false` for a device that is not in the event, as the real route
+     * answers it.
      */
-    fun received(eventId: String, deviceId: String, position: Long): Boolean {
+    fun received(eventId: String, deviceId: String, position: Long, receivesNothing: Boolean = false): Boolean {
         val membership = memberships[eventId to deviceId]?.takeUnless { it.departed } ?: return false
         membership.receivedPosition = maxOf(membership.receivedPosition ?: -1L, position)
-        watcher.told(WorldEvent.ReceivedReported(eventId, deviceId, position))
+        membership.receivesNothing = receivesNothing
+        watcher.told(WorldEvent.ReceivedReported(eventId, deviceId, position, receivesNothing))
         return true
     }
 
@@ -794,14 +798,14 @@ internal fun BackendState.sharedAll(eventId: String, deviceId: String, membershi
 
 /**
  * Whether [eventId] is FINISHED now: its open-until date has passed, someone joined it, and every member still in it
- * shared everything and holds every photo of the others up to the union's position.
+ * shared everything and either receives nothing or holds every photo of the others up to the union's position.
  */
 internal fun BackendState.finished(eventId: String): Boolean {
     val event = events[eventId] ?: return false
     if (event.openUntil >= now() || memberships.keys.none { it.first == eventId }) return false
     val head = position(eventId)
     return present(eventId).all { (key, m) ->
-        sharedAll(eventId, key.second, m) && (m.receivedPosition ?: -1L) >= head
+        sharedAll(eventId, key.second, m) && (m.receivesNothing || (m.receivedPosition ?: -1L) >= head)
     }
 }
 

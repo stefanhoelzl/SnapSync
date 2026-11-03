@@ -131,6 +131,25 @@ Deno.test("received → a member's position is recorded, and only ever raised", 
   db.close();
 });
 
+Deno.test("received → a device says it receives nothing, and any later report without the flag clears it", async () => {
+  const db = await storeWithEvent();
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals((await app.request(JOIN(D), { method: "PUT" })).status, 200);
+  const put = (body: unknown) =>
+    app.request(RECEIVED(D), { method: "PUT", body: JSON.stringify(body) });
+  const flag = async () =>
+    (await rows(db, `SELECT receives_nothing FROM memberships`))[0].receives_nothing;
+  assertEquals(await flag(), 0, "a build that never sends it receives");
+  assertEquals((await put({ position: 0, receivesNothing: true })).status, 200);
+  assertEquals(await flag(), 1);
+  assertEquals((await put({ position: 0 })).status, 200);
+  assertEquals(await flag(), 0);
+  const bad = await put({ position: 0, receivesNothing: "yes" });
+  assertEquals(bad.status, 400);
+  assertEquals(await bad.text(), "invalid position");
+  db.close();
+});
+
 Deno.test("received → a device that is not in the event is told so; another device's path is refused", async () => {
   const db = await storeWithEvent();
   const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });

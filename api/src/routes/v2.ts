@@ -495,15 +495,17 @@ export function v2Handlers(
     // What the device has RECEIVED (decision record `changes/back-dated-events`, D4): the union-log position up to
     // which it holds every photo of the others — the half of "done" only the device can see, since only it sees its
     // library. Monotonic (`recordReceived`): a lower position than the one stored changes nothing and is answered
-    // like a recorded one, so an out-of-order retry is harmless. Only a member still IN the event reports; any other
-    // device is told it is not one, like a manifest from a non-member.
-    async reportReceived(c, { params, body: { position } }) {
+    // like a recorded one, so an out-of-order retry is harmless. A share-only device says it receives nothing
+    // (`receivesNothing`), which alone is the received half of done; any report without it says the device receives.
+    // Only a member still IN the event reports; any other device is told it is not one, like a manifest from a
+    // non-member.
+    async reportReceived(c, { params, body: { position, receivesNothing } }) {
       const { eventId } = params;
       const deviceId = ownDevice(c.get("tokenDeviceId"), params.deviceId);
       await gateEvent(db, eventId, "v2 received");
       const member = await tryUpstream(
         `v2 received: record failed for ${eventId}/${deviceId}`,
-        () => recordReceived(db, eventId, deviceId, position),
+        () => recordReceived(db, eventId, deviceId, position, receivesNothing === true),
       );
       if (!member) return c.text("not a member", 409);
       return c.body(null, 200);

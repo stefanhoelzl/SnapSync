@@ -6,7 +6,7 @@ import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.membership.OTHER
 import app.snapsync.data.membership.active
 import app.snapsync.data.receiving.ReceivedReporting
-import app.snapsync.data.receiving.ReportedPositions
+import app.snapsync.data.receiving.ReportedReceived
 import app.snapsync.domain.receiving.HeldPosition
 import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.UnionTrigger
@@ -36,7 +36,7 @@ class HoldingTest {
 
     private fun reportOver(receiver: Receiver = r) = ReportReceivedPosition(
         ReceivedReporting(receiver.device.gateway, receiver.device.identity),
-        ReportedPositions(),
+        ReportedReceived(),
         receiver.device.wallClock,
         receiver.device.membership,
     )
@@ -59,10 +59,14 @@ class HoldingTest {
     }
 
     @Test
-    fun `a membership that receives nothing holds whatever the union lists`() = runTest {
+    fun `a membership that receives nothing is owed nothing, and reads nothing to say so`() = runTest {
         r.listed += Listed("A")
-        r.position = 1
-        assertIs<HeldPosition.Holds>(holds(membership, ReceivingVerdict.SharesOnly, UnionTrigger.LEAVE_CHECK))
+        r.unionAnswer = HttpResult.Unreachable("offline")
+        assertSame(
+            HeldPosition.ReceivesNothing,
+            holds(membership, ReceivingVerdict.SharesOnly, UnionTrigger.LEAVE_CHECK),
+        )
+        assertEquals(0, r.device.transport.requests.size)
     }
 
     @Test
@@ -84,10 +88,11 @@ class HoldingTest {
     @Test
     fun `a position is worth telling only once the event has ended`() {
         val report = reportOver()
-        assertTrue(report.due(membership), "the device's clock is past the event's end")
+        assertTrue(report.due(membership, receives), "the device's clock is past the event's end")
 
         r.device.clock.now = Instant.parse("2026-07-16T12:00:00Z")
-        assertFalse(report.due(membership))
+        assertFalse(report.due(membership, receives))
+        assertTrue(report.due(membership, ReceivingVerdict.SharesOnly), "a share-only membership tells it at once")
     }
 
     @Test
@@ -102,7 +107,23 @@ class HoldingTest {
         assertEquals(2, reports())
 
         report(membership, HeldPosition.Lacks)
-        assertEquals(2, reports(), "a doubt tells nothing")
+        assertEquals(2, reports(), "lacking says position 0, which a higher one told already covers")
+    }
+
+    @Test
+    fun `a share-only membership says it receives nothing once, and receiving again clears it`() = runTest {
+        val report = reportOver()
+        report(membership, HeldPosition.ReceivesNothing)
+        report(membership, HeldPosition.ReceivesNothing)
+        assertEquals(1, reports())
+        assertTrue(r.device.transport.requests.last().body.orEmpty().contains("\"receivesNothing\":true"))
+
+        report.receivesAgain(membership)
+        assertEquals(2, reports(), "a switch to receiving tells the event at once")
+        assertFalse(r.device.transport.requests.last().body.orEmpty().contains("receivesNothing"))
+
+        report(membership, HeldPosition.Lacks)
+        assertEquals(2, reports(), "already told: it receives")
     }
 
     @Test
@@ -111,7 +132,7 @@ class HoldingTest {
         r.receivedAnswer = HttpResult.Unreachable("offline")
 
         val lines = linesOf("ReportReceivedPosition") { report(membership, HeldPosition.Holds(3)) }
-        assertEquals(listOf("the received position was not recorded"), lines.messages)
+        assertEquals(listOf("what this device received was not recorded"), lines.messages)
 
         r.receivedAnswer = app.snapsync.data.backend.ok()
         report(membership, HeldPosition.Holds(3))
@@ -130,6 +151,6 @@ class HoldingTest {
         val unreadable = Receiver().apply { device.databases.lock() }
         reportOver(unreadable)(membership, HeldPosition.Holds(3))
         assertEquals(0, reports(unreadable), "the membership cannot be read")
-        assertNull(ReportedPositions().last(membership.event.id))
+        assertNull(ReportedReceived().last(membership.event.id))
     }
 }

@@ -264,6 +264,7 @@ internal class AppWork(private val core: AppCore) {
                 receiving.receivingOf,
                 receiving.plan,
                 receiving.stop,
+                receiving.report,
                 statuses,
             ),
             statuses,

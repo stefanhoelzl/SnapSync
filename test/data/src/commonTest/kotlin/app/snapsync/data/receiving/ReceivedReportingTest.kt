@@ -8,6 +8,7 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
 import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.domain.receiving.ReceivedReport
 import app.snapsync.ports.HttpResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -32,34 +33,42 @@ class ReceivedReportingTest {
 
     @Test
     fun `a position the backend records is recorded, for this device`() = runTest {
-        assertSame(ReceivedReply.Recorded, reporting.report(EVENT, 12))
+        assertSame(ReceivedReply.Recorded, reporting.report(EVENT, ReceivedReport.Position(12)))
 
         val request = transport.requests.single()
         assertEquals(true, request.url.contains(EVENT.value) && request.url.contains(ME.value), request.url)
         assertEquals(true, request.body?.contains("12") == true, "${request.body}")
+        assertEquals(false, request.body?.contains("receivesNothing") == true, "a position says the device receives")
+    }
+
+    @Test
+    fun `a device that receives nothing says so, naming no position`() = runTest {
+        assertSame(ReceivedReply.Recorded, reporting.report(EVENT, ReceivedReport.ReceivesNothing))
+        val body = transport.requests.single().body.orEmpty()
+        assertEquals(true, body.contains("\"receivesNothing\":true") && body.contains("\"position\":0"), body)
     }
 
     @Test
     fun `a refused or unanswered report is not recorded, and nothing is sent without this device's id`() = runTest {
         for (refusal in listOf(text(409, "not a member"), text(502, "down"), HttpResult.Unreachable("offline"))) {
             answer = refusal
-            assertIs<ReceivedReply.NotRecorded>(reporting.report(EVENT, 12), "$refusal")
+            assertIs<ReceivedReply.NotRecorded>(reporting.report(EVENT, ReceivedReport.Position(12)), "$refusal")
         }
         transport.requests.clear()
         for (read in listOf(DeviceIdRead.Absent, DeviceIdRead.Unavailable("locked"))) {
             identity.read = read
-            assertIs<ReceivedReply.NotRecorded>(reporting.report(EVENT, 12))
+            assertIs<ReceivedReply.NotRecorded>(reporting.report(EVENT, ReceivedReport.Position(12)))
         }
         assertEquals(emptyList(), transport.requests)
     }
 
     @Test
-    fun `the positions recorded and the recognition passes run are this process's memory`() {
-        val reported = ReportedPositions()
+    fun `the reports recorded and the recognition passes run are this process's memory`() {
+        val reported = ReportedReceived()
         assertNull(reported.last(EVENT))
-        reported.recorded(EVENT, 4)
-        reported.recorded(EVENT, 9)
-        assertEquals(9L, reported.last(EVENT))
+        reported.recorded(EVENT, ReceivedReport.Position(4))
+        reported.recorded(EVENT, ReceivedReport.ReceivesNothing)
+        assertEquals(ReceivedReport.ReceivesNothing, reported.last(EVENT))
         assertNull(reported.last(OTHER_EVENT))
 
         val passes = RecognitionPasses()
