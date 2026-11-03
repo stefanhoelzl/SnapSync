@@ -25,6 +25,7 @@ import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
+import app.snapsync.entrypoints.OnCredentialChanged
 import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
@@ -39,7 +40,6 @@ import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.feature.membership.JoinUnion
 import app.snapsync.feature.membership.ShareSetLoad
-import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
@@ -47,7 +47,6 @@ import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.feature.upload.appAdmission
@@ -671,12 +670,6 @@ class AppCore internal constructor(
     /** The foreground-gated network watch and what it tells the member. */
     val network: AppNetwork by lazy { AppNetwork(scope, ports.network, statusCountsPoller) }
 
-    /**
-     * Whether a push's wake joins the wake's work — the upload arm's active-event guard.
-     * The limited-grant read discipline is the uploads' own (the walk runs only under a full grant).
-     */
-    val pushTailGuard: PushTailGuard by lazy { PushTailGuard(services.config, services.log) }
-
     /** What the entry points run (`AppWork`): built once, on first touch, and handed to the ports. */
     internal val work: AppWork by lazy { AppWork(this) }
 
@@ -738,36 +731,17 @@ class AppCore internal constructor(
     }
 
     /**
-     * **The subscriptions every start installs, a background one included.** Start registering the device's APNs
-     * token, and keep the registration alive across a credential change. Installed on **every cold start** — a
+     * **The subscriptions every start installs, a background one included.** Installed on **every cold start** — a
      * foreground launch and a background wake alike (a silent push, a background-`URLSession` relaunch, the upload
      * heartbeat) — by the shared host composition as it composes the graph. Unlike [installPermissionSubscriptions],
-     * which a cold background wake must not install, this one is needed there: a rotated APNs token or a renewed
-     * credential learned in a background wake
-
-     * is published from that wake, never deferred to the next foreground. It is cheap there because the
-     * registration publishes only on a changed (`token`, `env`, `deviceId`) triple, a join, or a fresh credential.
+     * which a cold background wake must not install, these are needed there.
      *
-     * **Once per process, by construction:** its one caller is the host zone's composition, which runs once per
-     * process — so a delivered token is published at most once.
-     *
-     * **ATTEST FIRST.** `PUT /devices/<id>` is gated, and on a fresh install the APNs token can arrive
-     * before this device has attested at all — measured on the SE2, where that `PUT` took a `401`. The publisher
-     * sends it through the gateway's `sendObtainingFirst`, which obtains a token before a PUT that holds none.
-     *
-     * **THE `tokenChanged` ARM IS THE POINT, and it is a JOIN BETWEEN TWO BLIND FEATURES** — trust emits
-     * that a new credential exists, push consumes it. Neither knows the other, and the join is the whole
-     * recovery path for a registration the backend refused: the device publishes a delivered token only when it
-     * differs from the last registration the backend accepted, so without this a refused `PUT` waits for the next
-     * app entry — and a device that receives no silent pushes gets few of them, and none of the wake-driven
-     * attestation renewals that depend on them.
-     *
-     * That is why it lives HERE rather than in the shell. A join is behaviour, not wiring; assembled in
-     * `:app:*` it is untested by law and invisible to the world harness, so nothing would observe it being
-     * removed. Composed here, the same call the device makes is the one the harness makes.
-     *
-     * The registration is composed here over the push ports (see [pushRegistrationFor]); the token source is
-     * the shell's, delivered by the OS.
+     * **Follow the device credential into the push registration** (`OnCredentialChanged`): trust tells that a new
+     * credential exists, and the registration is published again. It is the recovery path for a registration the
+     * backend refused: a delivered token is published only when it differs from the last one the backend accepted, so
+     * without it a refused `PUT` waits for the next app entry — and a device that receives no silent pushes gets few of
+     * them. Composed here rather than in a shell so the same follow the device makes is the one the world harness
+     * makes. Once per process: its one caller is the host zone's composition.
      *
      * **And open the selection observer** and its collector, for the same reason: under a
      * partial grant the observer's first emission is the start's baseline read and every later one a change the member
@@ -779,7 +753,7 @@ class AppCore internal constructor(
      */
     @OptIn(CompositionOnly::class)
     fun installCompositionSubscriptions() {
-        scope.launch { pushRegistration.run(services.pushTokens, attestationStatus.tokenChanged) }
+        observation.follow(attestationStatus.tokenChanged, OnCredentialChanged(runtime, push.register))
         // One selection-change emission → ONE read serving both consumers, the status total and the enqueue:
         // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
         // `refresh` recounts N over the very same snapshot — no second library read on this path, and
@@ -805,9 +779,8 @@ class AppCore internal constructor(
         ports.gallery.observeChanges(true)
     }
 
-    /** The device's push registration — see [pushRegistrationFor]. */
-
-    val pushRegistration: PushRegistration by lazy { pushRegistrationFor(services, backend.pushTokens) }
+    /** The push's use case and lookup — see [PushLayers]. */
+    internal val push: PushLayers by lazy { PushLayers(this) }
 }
 
 /**

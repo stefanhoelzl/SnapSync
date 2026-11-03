@@ -16,6 +16,7 @@ import app.snapsync.application.membership.ReconfigureEvent
 import app.snapsync.application.membership.ReconfigureOutcome
 import app.snapsync.application.membership.RefreshMembership
 import app.snapsync.application.membership.RenameEvent
+import app.snapsync.application.push.RegisterPush
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.KeepOutcome
 import app.snapsync.data.membership.MembershipRead
@@ -32,6 +33,7 @@ import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.push.PushTrigger
 import app.snapsync.domain.request.RequestId
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
@@ -41,7 +43,6 @@ import app.snapsync.feature.download.stopLeftovers
 import app.snapsync.feature.membership.JoinUnion
 import app.snapsync.feature.membership.ReceivedPhotoAdoption
 import app.snapsync.feature.membership.ShareSetLoad
-import app.snapsync.feature.push.PushRegistration
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.upload.ShareSettlement
 import app.snapsync.feature.upload.UploadTransitions
@@ -59,7 +60,6 @@ import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.MembershipTransition
 import app.snapsync.services.membership.asConfig
-import app.snapsync.services.push.PushTokenSource
 
 // ── The membership: what a member's requests do, and how every trigger reads the membership ─────────────────────────
 //
@@ -228,8 +228,7 @@ class AfterJoin(
     private val album: EventAlbum,
     private val downloads: DownloadController,
     private val joinUnion: JoinUnion,
-    private val push: PushRegistration,
-    private val tokens: PushTokenSource,
+    private val registerPush: RegisterPush,
     private val statuses: MembershipStatuses,
 ) {
     suspend fun run(id: RequestId, joined: Membership.Active, on: Run) = on.steps {
@@ -240,7 +239,7 @@ class AfterJoin(
         isolated("downloads") {
             downloads.reconcile(joined.event.id, UnionTrigger.JOIN, known = joinUnion.take(joined.event.id))
         }
-        isolated("push") { push.reRegister(tokens) }
+        isolated("push") { registerPush(PushTrigger.JOINED) }
         required { statuses.join.done(id, JoinCommit.Committed) }
     }
 }

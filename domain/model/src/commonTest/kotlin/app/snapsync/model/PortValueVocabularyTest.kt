@@ -2,7 +2,6 @@ package app.snapsync.model
 
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
-import kotlin.test.assertSame
 
 /**
  * The small values the ports and the commands carry, pinned as their consumers read them: a sealed outcome's cases
@@ -82,20 +81,5 @@ class PortValueVocabularyTest {
     @Test
     fun `a platform error compares by what it carries`() {
         assertValueEquality({ PlatformError("denied") }, PlatformError("restricted"))
-    }
-
-    @Test
-    fun `a push token compares by its value`() {
-        assertValueEquality({ PushToken("abc") }, PushToken("def"))
-    }
-
-    /**
-     * Holding the value IS the whole contract: the platform's payload (an APNs/FCM dictionary) handed through
-     * untouched, read by the core and never compared.
-     */
-    @Test
-    fun `a push message hands its payload through untouched`() {
-        val payload = mapOf<Any?, Any?>("seq" to 3)
-        assertSame(payload, PushMessage(payload).payload)
     }
 }

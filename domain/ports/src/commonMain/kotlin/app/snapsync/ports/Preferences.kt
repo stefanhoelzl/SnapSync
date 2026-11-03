@@ -1,7 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.PrefRead
-
 /**
  * **Small shared key–value preferences** — one external system (on iOS the App-Group `UserDefaults` suite, which
  * both processes read), and nothing decided here. What a key holds, and what its absence means, are the services'

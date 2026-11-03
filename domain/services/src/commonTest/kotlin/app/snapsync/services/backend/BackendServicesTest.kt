@@ -8,7 +8,6 @@ import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.StoredResource
 import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.HttpResult
@@ -214,25 +213,6 @@ class BackendServicesTest {
             servicesAnswering(json(410, CLOSED)).manifest.publish(testEventId("E"), testDeviceId("D"), manifest),
             "a process with no membership to tell records it all the same",
         )
-    }
-
-    @Test
-    fun the_device_is_resolved_at_the_call_and_an_unreadable_one_is_a_failure() = runTest {
-        val store = MapSecureStore()
-        val services = servicesAnswering(ok(), store)
-        val pushTokens = services.pushTokens
-        assertEquals(0, store.reads, "building the service reads no identity — a locked launch composes it")
-        pushTokens.publish(PushEndpoint("apns", "t", "e"))
-        assertTrue(store.reads > 0, "the call resolves the identity")
-        val locked = servicesAnswering(ok(), MapSecureStore(unavailable = true))
-        assertTrue(locked.pushTokens.publish(PushEndpoint("apns", "t", "e")).isFailure)
-    }
-
-    @Test
-    fun a_push_registration_succeeds_only_on_a_served_write() = runTest {
-        val token = PushEndpoint("apns", "t", "sandbox")
-        assertTrue(servicesAnswering(ok(201)).pushTokens.publish(token).isSuccess)
-        assertTrue(servicesAnswering(UNAUTHORIZED).pushTokens.publish(token).isFailure)
     }
 
     // ── the listings ───────────────────────────────────────────────────────────────────────────────

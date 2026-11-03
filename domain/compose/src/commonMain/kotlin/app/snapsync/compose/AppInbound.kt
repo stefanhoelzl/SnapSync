@@ -29,7 +29,6 @@ import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.WakeHandlers
-import app.snapsync.services.push.PushTokenRequest
 import kotlinx.coroutines.Job
 import kotlin.coroutines.CoroutineContext
 
@@ -64,7 +63,7 @@ fun AppCore.inbound(host: HostAssembly) {
             OnForeground(
                 runtime,
                 foreground,
-                PushTokenRequest(ports.pushNotifications),
+                services.pushTokens,
                 work.prelude,
                 host,
                 work.foregroundWork,
@@ -84,9 +83,9 @@ fun AppCore.inbound(host: HostAssembly) {
  */
 @CompositionOnly
 fun AppCore.pushHandlers(): PushHandlers = PushHandlers(
-    OnPushToken(runtime, services.pushTokens),
+    OnPushToken(runtime, services.pushTokens, push.register),
     OnPushTokenFailure(runtime),
-    OnSilentPush(runtime, work.prelude, downloadPushReceiver, pushTailGuard, work.wakeWork),
+    OnSilentPush(runtime, work.prelude, downloadPushReceiver, push.tail, work.wakeWork),
 )
 
 /**

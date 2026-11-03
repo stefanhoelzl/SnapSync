@@ -5,10 +5,10 @@ package app.snapsync.contracts
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.PlatformError
-import app.snapsync.model.PushMessage
-import app.snapsync.model.PushToken
 import app.snapsync.ports.PushHandlers
+import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushNotifications
+import app.snapsync.ports.PushToken
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 

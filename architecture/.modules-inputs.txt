@@ -189,6 +189,7 @@ edge :app:jvm :domain:services
 edge :app:jvm :ui:state
 edge :domain:application :domain:data
 edge :domain:application :domain:domain
+edge :domain:application :domain:inbound
 edge :domain:compose :domain:application
 edge :domain:compose :domain:data
 edge :domain:compose :domain:domain
@@ -247,6 +248,7 @@ edge :domain:presentation :domain:query
 edge :domain:presentation :ui:state
 edge :domain:query :domain:data
 edge :domain:query :domain:domain
+edge :domain:query :domain:inbound
 edge :domain:scheduling :domain:domain
 edge :domain:scheduling :domain:inbound
 edge :domain:scheduling :domain:ports

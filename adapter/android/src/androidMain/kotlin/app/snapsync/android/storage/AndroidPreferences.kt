@@ -2,7 +2,7 @@ package app.snapsync.android.storage
 
 import android.content.Context
 import android.content.SharedPreferences
-import app.snapsync.model.PrefRead
+import app.snapsync.ports.PrefRead
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.WriteOutcome
 

@@ -271,7 +271,7 @@ class LegacyRecordsTest {
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
         values[ALBUM_MAP] = """{"${testEventId("E1").value}":"album-1"}"""
         val locked = object : app.snapsync.ports.Preferences by inMemoryPreferences(values) {
-            override fun get(key: String) = app.snapsync.model.PrefRead.Unavailable("locked")
+            override fun get(key: String) = app.snapsync.ports.PrefRead.Unavailable("locked")
         }
         val db = SharedDatabase(databases.port(), LegacyRecords(inMemoryFiles(shared = shared), locked))
 

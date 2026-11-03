@@ -7,8 +7,8 @@ import app.snapsync.ui.state.Layer
 import kotlin.test.Test
 
 /**
- * The REAL device-side push registration (`PushRegistration` + the push-token service over the backend gateway, installed by the host
- * assembly exactly as the iOS shell installs it) driven through the control protocol against the backend mock,
+ * The REAL device-side push registration (`OnPushToken`, `OnCredentialChanged` and the join's step over `RegisterPush`,
+ * installed by the host assembly exactly as the iOS shell installs it) driven through the control protocol against the backend mock,
  * asserting the backend outcome: each registration it stores. The backend's own promise — a token is published, a
  * rotated one overwrites — is `BackendContract`'s `DEVICE_CONFIG_*` clauses; the backend notify fan-out is Deno-side
  * logic, covered by `api/test/app.test.ts`. What stays here is the wiring: which triggers make the composed app register

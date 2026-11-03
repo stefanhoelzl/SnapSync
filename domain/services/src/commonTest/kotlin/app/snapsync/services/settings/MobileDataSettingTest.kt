@@ -1,6 +1,6 @@
 package app.snapsync.services.settings
 
-import app.snapsync.model.PrefRead
+import app.snapsync.ports.PrefRead
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.WriteOutcome

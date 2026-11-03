@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ports
 
 /** One preference read: a value, a definite absence, or "I could not look". */
 sealed interface PrefRead {

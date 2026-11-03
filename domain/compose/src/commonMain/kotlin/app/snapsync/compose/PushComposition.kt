@@ -1,16 +1,16 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.push.PushRegistration
-import app.snapsync.services.backend.PushTokenPublisher
+import app.snapsync.application.push.RegisterPush
+import app.snapsync.query.push.PushTailLookup
 
 /**
- * The device's push registration over the app's services — built in `compose/`
-
- * rather than by a shell, so the launch/rotation collector and the join's re-registration are the same instance
- * on every composition and the world exercises the real one. It used to be built by the iOS root and reached
- * the core through a `registerPush` lambda the world bound to a counter.
- *
- * A top-level factory rather than an `AppCore` body because `AppCore` is measured (see [shareSetLoadFor]).
+ * The push's layers over [core] (`docs/patterns.md`): the registration a delivered token, a new credential and a join
+ * run, and the lookup that tells whether a silent push's wake joins the tail — each built once, on first touch.
  */
-internal fun pushRegistrationFor(services: AppServices, publisher: PushTokenPublisher): PushRegistration =
-    PushRegistration(publisher, services.pushRecord, services.deviceIdentity)
+internal class PushLayers(private val core: AppCore) {
+    val register: RegisterPush by lazy {
+        RegisterPush(core.services.pushTokens, core.services.pushRecord, core.backend.push)
+    }
+
+    val tail: PushTailLookup by lazy { PushTailLookup(core.services.membership) }
+}

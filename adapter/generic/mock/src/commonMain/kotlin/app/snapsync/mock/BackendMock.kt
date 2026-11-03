@@ -23,13 +23,13 @@ import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.UnionAsset
 import app.snapsync.model.withFinal
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.Routes
+import app.snapsync.wire.models.PushRegistration
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -387,7 +387,7 @@ internal class BackendState(
 
     val events = mutableMapOf<String, Event>()
     val memberships = mutableMapOf<Pair<String, String>, Membership>()
-    val deviceConfigs = mutableMapOf<String, PushEndpoint>()
+    val deviceConfigs = mutableMapOf<String, PushRegistration>()
     val deviceConfigWrites = mutableMapOf<String, Int>()
     val publishes = mutableMapOf<Pair<String, String>, Int>()
 

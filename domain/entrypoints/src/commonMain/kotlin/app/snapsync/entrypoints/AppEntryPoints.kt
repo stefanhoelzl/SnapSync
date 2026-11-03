@@ -3,13 +3,17 @@ package app.snapsync.entrypoints
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.encryption.RestoreEventKey
 import app.snapsync.application.membership.ForgetMembership
+import app.snapsync.application.push.RegisterPush
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.push.PushTokens
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.membership.DevReset
 import app.snapsync.domain.membership.MintsDevReset
 import app.snapsync.domain.membership.RestoreAnswer
+import app.snapsync.domain.push.PushTailVerdict
+import app.snapsync.domain.push.PushTrigger
 import app.snapsync.domain.request.RequestId
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
@@ -20,17 +24,15 @@ import app.snapsync.feature.status.ForegroundWatches
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.OwnUploads
-import app.snapsync.feature.upload.PushTailGuard
 import app.snapsync.feature.upload.StoredUploadSettle
 import app.snapsync.feature.upload.WakeRearm
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PlatformError
-import app.snapsync.model.PushMessage
-import app.snapsync.model.PushToken
 import app.snapsync.model.UnionTrigger
 import app.snapsync.model.WakeId
+import app.snapsync.model.pushEventId
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.FinishedDownload
 import app.snapsync.ports.FinishedTransfer
@@ -38,9 +40,12 @@ import app.snapsync.ports.ImportPlaceholder
 import app.snapsync.ports.ImportSettled
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.ProcessMetricPayload
+import app.snapsync.ports.PushMessage
+import app.snapsync.ports.PushToken
 import app.snapsync.ports.SessionDrain
 import app.snapsync.ports.SessionRelaunch
 import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.push.PushTailLookup
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.GrantedEntryPoint
@@ -57,8 +62,6 @@ import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.push.PushTokenRequest
-import app.snapsync.services.push.PushTokenSource
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.upload.SessionTransfer
@@ -76,7 +79,7 @@ import kotlin.coroutines.CoroutineContext
 class OnForeground(
     runtime: Runtime,
     private val foreground: AppForeground,
-    private val pushTokens: PushTokenRequest,
+    private val pushTokens: PushTokens,
     private val prelude: Prelude,
     private val host: HostAssembly,
     private val work: ForegroundWork,
@@ -129,15 +132,15 @@ class OnSilentPush(
     runtime: Runtime,
     private val prelude: Prelude,
     private val receiver: DownloadPushReceiver,
-    private val guard: PushTailGuard,
+    private val tail: PushTailLookup,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<PushMessage>(runtime) {
     override suspend fun run(arg: PushMessage, on: Run) = on.steps {
         required { prelude.run(on) }
         isolated("receive") { receiver.onSilentPush(arg.payload) }
-        when (guard.joinsTail(arg.payload)) {
-            true -> detached { wake.full(WakeKind.SILENT_PUSH, on) }
-            false -> Unit
+        when (required { tail.of(pushEventId(arg.payload)) }) {
+            PushTailVerdict.Joins -> detached { wake.full(WakeKind.SILENT_PUSH, on) }
+            PushTailVerdict.OtherEvent, PushTailVerdict.NamesNoEvent, PushTailVerdict.MembershipUnreadable -> Unit
         }
     }
 }
@@ -263,9 +266,31 @@ class OnImportSettled(runtime: Runtime, private val markers: ImportMarkers) : In
     override fun Delivery.run(arg: ImportSettled) = markers.settled(arg.correlation, arg.outcome)
 }
 
-/** The platform issued, re-delivered or rotated this device's push token. */
-class OnPushToken(runtime: Runtime, private val tokens: PushTokenSource) : InboundEntryPoint<PushToken>(runtime) {
-    override fun Delivery.run(arg: PushToken) = tokens.deliver(arg.value)
+/**
+ * The platform issued, re-delivered or rotated this device's push token: kept, then registered with the backend if it
+ * differs from the last registration the backend accepted — under the delivery's own background time, so a token
+ * delivered in a background wake is published from it.
+ */
+class OnPushToken(runtime: Runtime, private val tokens: PushTokens, private val register: RegisterPush) :
+    InboundEntryPoint<PushToken>(runtime) {
+    @OptIn(EntryPointCall::class)
+    override fun Delivery.run(arg: PushToken) {
+        tokens.store(arg)
+        detachedSteps { isolated("register") { register(PushTrigger.DELIVERED) } }
+    }
+}
+
+/**
+ * The device obtained a new credential — a mint, a re-attestation, a periodic renewal alike: the registration is
+ * published again whatever the record holds. A `PUT` refused because the device had no valid attestation yet (a fresh
+ * install races attestation, or the backend collected its record) is acceptable now, and without this it would wait for
+ * the next app entry — which a device that receives no silent pushes rarely gets.
+ */
+class OnCredentialChanged(runtime: Runtime, private val register: RegisterPush) : BackgroundEntryPoint<Unit>(runtime) {
+    @OptIn(EntryPointCall::class)
+    override suspend fun run(arg: Unit, on: Run) = on.steps {
+        isolated("register") { register(PushTrigger.CREDENTIAL) }
+    }
 }
 
 /** The platform could not issue a push token: no silent push arrives until it can. */

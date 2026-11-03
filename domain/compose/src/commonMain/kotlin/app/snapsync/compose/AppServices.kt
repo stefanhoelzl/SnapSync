@@ -7,6 +7,8 @@ import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.PendingLeaves
+import app.snapsync.data.push.PushRegistrationRecord
+import app.snapsync.data.push.PushTokens
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
@@ -20,8 +22,6 @@ import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.MembershipTransition
-import app.snapsync.services.push.PushRegistrationRecord
-import app.snapsync.services.push.PushTokenSource
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.staging.StagingService
 import co.touchlab.kermit.Logger
@@ -133,13 +133,10 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     val eventChecks: EventCheckRecord by lazy { EventCheckRecord(sharedDatabase) }
 
     /**
-     * The OS-delivered push token, paired with the push service's kind (its adapter's)
-     * and this build's push environment — fed by the push service's `onToken`, which the host zone registers as the
-     * graph is composed.
+     * The OS-delivered push token, paired with the push service's kind (its adapter's) and this build's push
+     * environment — stored by `OnPushToken`, which the push port delivers to as the graph is composed.
      */
-    val pushTokens: PushTokenSource by lazy {
-        PushTokenSource(ports.pushNotifications.kind, ports.process.build.pushEnvironment)
-    }
+    val pushTokens: PushTokens by lazy { PushTokens(ports.pushNotifications, ports.process.build, deviceIdentity) }
 
     /**
      * The last push registration the backend accepted, against which a delivered token is compared — so a launch that

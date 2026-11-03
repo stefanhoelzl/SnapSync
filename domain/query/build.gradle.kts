@@ -12,6 +12,8 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:domain"))
             implementation(project(":domain:data"))
+            // The structured log: what a lookup answered, labelled with the trigger that asked.
+            implementation(project(":domain:inbound"))
         }
     }
 }

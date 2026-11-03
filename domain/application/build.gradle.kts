@@ -11,6 +11,8 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:domain"))
             implementation(project(":domain:data"))
+            // The structured log: an outcome a use case decided is written where it is decided.
+            implementation(project(":domain:inbound"))
         }
     }
 }

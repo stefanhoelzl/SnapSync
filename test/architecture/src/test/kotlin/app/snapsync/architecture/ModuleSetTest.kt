@@ -154,11 +154,11 @@ class ModuleSetTest {
             // The data layer: the repositories over the ports and the backend's protocol over the transport and the
             // generated wire — translating, never deciding — labelling its lines with the structured log.
             "data" to setOf(":domain:domain", ":domain:ports", ":domain:wire", ":domain:inbound", ":domain:format"),
-            // The application layer: use cases over data and the domain's verdicts.
-            "application" to setOf(":domain:domain", ":domain:data"),
+            // The application layer: use cases over data and the domain's verdicts, writing the structured log.
+            "application" to setOf(":domain:domain", ":domain:data", ":domain:inbound"),
             // The query layer: what the screen reads — the membership, the join's and switch's lookups, and the
             // request-keyed statuses — over data and the domain, writing nothing.
-            "query" to setOf(":domain:domain", ":domain:data"),
+            "query" to setOf(":domain:domain", ":domain:data", ":domain:inbound"),
             // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
             // MIGRATING: the gateway and the device identity the need-shaped services stand on are data's since trust moved.
             "services" to setOf(

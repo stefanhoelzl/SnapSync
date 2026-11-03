@@ -10,10 +10,10 @@ import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.TimestampText
 import app.snapsync.levers.SeededInstall
 import app.snapsync.mock.DownloadSessionMock
-import app.snapsync.model.PrefRead
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.FileArea
+import app.snapsync.ports.PrefRead
 import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
 import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.wire.api.Limits

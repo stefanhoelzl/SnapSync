@@ -4,8 +4,6 @@ import app.snapsync.inbound.Background
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
 import app.snapsync.model.PlatformError
-import app.snapsync.model.PushMessage
-import app.snapsync.model.PushToken
 
 /**
  * **The platform's push service**: ask it for this device's token, and hear the

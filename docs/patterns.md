@@ -57,9 +57,9 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
     override suspend fun run(arg: PushMessage) = steps {
         required { prelude.run() }
         isolated("receive") { receiver.onSilentPush(arg.payload) }
-        when (guard.joinsTail(arg.payload)) {
-            true -> detached { wake.full(WakeKind.SILENT_PUSH) }
-            false -> Unit
+        when (required { tail.of(pushEventId(arg.payload)) }) {
+            PushTailVerdict.Joins -> detached { wake.full(WakeKind.SILENT_PUSH) }
+            PushTailVerdict.OtherEvent, PushTailVerdict.NamesNoEvent, PushTailVerdict.MembershipUnreadable -> Unit
         }
     }
 }

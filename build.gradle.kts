@@ -228,9 +228,13 @@ coverage {
         integration(instructions = 89, branches = 75)
     }
     // Measured once the polling tests were gone (3g-b): steady at 99/100 over five runs — the goal.
+    // Branches → 50 in phase 4.8 (small concepts), when the layers' first suspending `Log` lines reached the suite: the
+    // module's only branch is whether a line was written under a trigger (`Log.emit`), and every layer's work runs
+    // under the runtime's — a line written outside one is reached only by the unit suites (`LogTest`, and the layers'
+    // own suites run outside the runtime). Measured 50.00 % (1/2).
     ":domain:inbound" {
         unit()
-        integration()
+        integration(instructions = 95, branches = 50)
     }
     // Measured once the polling tests were gone and a behaviour ended quiet (3g-b), steady at 95.7/77.4 over five runs;
     // before that, a teardown cut whatever pass a test left running, and `SingleFlight`'s withdrawals moved between

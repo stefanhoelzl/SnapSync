@@ -122,6 +122,7 @@ flowchart LR
   adapter_ios_ui --> ui_state
   domain_application --> domain_data
   domain_application --> domain_domain
+  domain_application --> domain_inbound
   domain_compose --> domain_application
   domain_compose --> domain_data
   domain_compose --> domain_domain
@@ -180,6 +181,7 @@ flowchart LR
   domain_presentation --> ui_state
   domain_query --> domain_data
   domain_query --> domain_domain
+  domain_query --> domain_inbound
   domain_scheduling --> domain_domain
   domain_scheduling --> domain_inbound
   domain_scheduling --> domain_ports

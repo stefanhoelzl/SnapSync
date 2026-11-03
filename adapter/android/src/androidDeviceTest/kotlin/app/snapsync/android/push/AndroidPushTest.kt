@@ -23,10 +23,10 @@ import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.PUSH_KIND_FCM
 import app.snapsync.model.PlatformError
-import app.snapsync.model.PushToken
 import app.snapsync.model.pushEventId
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.PushHandlers
+import app.snapsync.ports.PushToken
 import com.google.firebase.messaging.RemoteMessage
 import java.util.Collections
 import kotlin.test.Test
