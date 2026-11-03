@@ -14,6 +14,7 @@ import app.snapsync.domain.upload.MintsCreatedJob
 import app.snapsync.domain.upload.MintsEndedJob
 import app.snapsync.domain.upload.ReportedFailure
 import app.snapsync.domain.upload.ReportedLanding
+import app.snapsync.domain.upload.FoundResource
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
