@@ -67,7 +67,7 @@ CREATE TABLE memberships (
   device_id        TEXT NOT NULL,
   state            TEXT NOT NULL CHECK (state IN ('sharing', 'settled', 'done', 'left')),
   joined_at        TEXT NOT NULL,
-  manifest_version INTEGER, received_position INTEGER,
+  manifest_version INTEGER, received_position INTEGER, receives_nothing INTEGER NOT NULL DEFAULT 0 CHECK (receives_nothing IN (0, 1)),
   PRIMARY KEY (event_id, device_id)
 ) STRICT;
 

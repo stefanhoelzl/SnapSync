@@ -29,7 +29,7 @@ import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.receiving.ReceivingPlans
 import app.snapsync.data.receiving.RecognitionPasses
 import app.snapsync.data.receiving.RecognitionRecords
-import app.snapsync.data.receiving.ReportedPositions
+import app.snapsync.data.receiving.ReportedReceived
 import app.snapsync.data.receiving.StagingArea
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.domain.asset.AssetId
@@ -164,7 +164,7 @@ internal class Receiver {
     val importer = ScriptedImport()
     val libraryImport = LibraryImport(importer, staging)
     val passes = RecognitionPasses()
-    val reported = ReportedPositions()
+    val reported = ReportedReceived()
 
     private val crypto = fakeCrypto()
     val keys = EventKeyStore(RecordingSecureStore(), EventKeyIds(crypto))

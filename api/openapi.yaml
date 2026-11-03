@@ -432,6 +432,7 @@ paths:
         deviceId: invalid id
         body: invalid position
         position: invalid position
+        receivesNothing: invalid position
       tags: [membership]
       summary: Say up to which union position this device holds every photo of the others.
       description: |
@@ -1322,7 +1323,9 @@ components:
           type: integer
           minimum: 0
     Received:
-      description: The union-log position up to which this device holds every photo of the others.
+      description: |
+        The union-log position up to which this device holds every photo of the others — or, with `receivesNothing`,
+        that it receives nothing from the event at all, which alone is the received half of being done.
       type: object
       required: [position]
       properties:
@@ -1331,6 +1334,12 @@ components:
           format: int64
           minimum: 0
           maximum: 9007199254740991
+        receivesNothing:
+          description: |
+            The device receives nothing from the event (it shares only). Every report rewrites it: absent or false
+            says the device receives, and its position counts again.
+          type: boolean
+          default: false
 
     Manifest:
       description: What a device shares in an event — a full snapshot, replacing the last.

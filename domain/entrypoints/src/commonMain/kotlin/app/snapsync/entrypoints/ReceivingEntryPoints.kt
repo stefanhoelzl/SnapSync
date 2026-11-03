@@ -184,8 +184,9 @@ class ForegroundReceiving(
 }
 
 /**
- * The end of a wake for what this device received: once the event's range has ended, tell it how far this device holds
- * the others' photos ([ReportReceivedPosition]).
+ * The end of a wake for what this device received: a share-only membership tells its event at once that it receives
+ * nothing; one that receives tells, once the event's range has ended, how far it holds the others' photos
+ * ([ReportReceivedPosition]).
  */
 class ReceivedPositionReport(
     private val membership: MembershipBranch,
@@ -197,8 +198,9 @@ class ReceivedPositionReport(
     suspend fun run(on: Run) = on.steps {
         membership(membership, Freshness.Cached) {
             active { joined ->
-                when (required { report.due(joined) }) {
-                    true -> required { reported(joined, on) }
+                val receiving = required { receivingOf(joined) }
+                when (required { report.due(joined, receiving) }) {
+                    true -> required { reported(joined, receiving, on) }
                     false -> Unit
                 }
             }
@@ -206,8 +208,8 @@ class ReceivedPositionReport(
     }
 
     @OptIn(EntryPointCall::class)
-    private suspend fun reported(joined: Membership.Active, on: Run) = on.steps {
-        val held = required { holds(joined, receivingOf(joined), UnionTrigger.RECEIVED_CHECK) }
+    private suspend fun reported(joined: Membership.Active, receiving: ReceivingVerdict, on: Run) = on.steps {
+        val held = required { holds(joined, receiving, UnionTrigger.RECEIVED_CHECK) }
         required { report(joined, held) }
     }
 }

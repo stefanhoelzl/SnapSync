@@ -83,23 +83,45 @@ class ReceivingTest {
 
     @Test
     fun a_member_holds_the_read_position_when_everything_is_settled_and_nothing_waits() {
-        assertEquals(7, assertIs<HeldPosition.Holds>(HeldPosition.ofNonReceiving(7)).position)
-        assertEquals(
-            7,
-            assertIs<HeldPosition.Holds>(HeldPosition.of(7, foreign = 3, settled = 3, waiting = false)).position,
-        )
+        val holds = assertIs<HeldPosition.Holds>(HeldPosition.of(7, foreign = 3, settled = 3, waiting = false))
+        assertEquals(7, holds.position)
+        assertEquals(7, assertIs<ReceivedReport.Position>(holds.report).position)
+        assertEquals(true, holds.complete)
         assertEquals(HeldPosition.Lacks, HeldPosition.of(7, foreign = 3, settled = 2, waiting = false))
         assertEquals(HeldPosition.Lacks, HeldPosition.of(7, foreign = 3, settled = 3, waiting = true))
-        assertEquals(true, HeldPosition.ofNonReceiving(7).complete)
         assertEquals(false, HeldPosition.Lacks.complete)
+        assertEquals(0, assertIs<ReceivedReport.Position>(HeldPosition.Lacks.report).position, "says it receives")
     }
 
     @Test
-    fun only_a_higher_position_is_reported() {
-        assertEquals(4, assertIs<ReportDue.Report>(ReportDue.of(found = 4, last = null)).position)
-        assertEquals(4, assertIs<ReportDue.Report>(ReportDue.of(found = 4, last = 3)).position)
-        assertEquals(ReportDue.Unchanged, ReportDue.of(found = 4, last = 4))
-        assertEquals(ReportDue.Unchanged, ReportDue.of(found = 3, last = 4))
+    fun a_membership_that_shares_only_holds_everything_and_says_it_receives_nothing() {
+        assertEquals(true, HeldPosition.ReceivesNothing.complete)
+        assertEquals(ReceivedReport.ReceivesNothing, HeldPosition.ReceivesNothing.report)
+    }
+
+    @Test
+    fun a_share_only_membership_reports_at_once_and_one_that_receives_after_the_end() {
+        val receives = ReceivingVerdict.of(active(), KeyPresence.NotNeeded)
+        assertEquals(true, ReceivedReport.dueFor(ReceivingVerdict.SharesOnly, ended = false))
+        assertEquals(false, ReceivedReport.dueFor(receives, ended = false))
+        assertEquals(true, ReceivedReport.dueFor(receives, ended = true))
+        assertEquals(true, ReceivedReport.dueFor(ReceivingVerdict.KeyLost, ended = true))
+    }
+
+    @Test
+    fun only_a_higher_position_or_a_change_of_word_is_reported() {
+        fun at(position: Long) = ReceivedReport.Position(position)
+        fun reported(found: ReceivedReport, last: ReceivedReport?) = assertIs<ReportDue.Report>(
+            ReportDue.of(found, last),
+        )
+        assertEquals(4, assertIs<ReceivedReport.Position>(reported(at(4), null).report).position)
+        assertEquals(4, assertIs<ReceivedReport.Position>(reported(at(4), at(3)).report).position)
+        assertEquals(ReportDue.Unchanged, ReportDue.of(at(4), at(4)))
+        assertEquals(ReportDue.Unchanged, ReportDue.of(at(3), at(4)))
+        assertIs<ReceivedReport.Position>(reported(at(0), ReceivedReport.ReceivesNothing).report, "receiving again")
+        assertEquals(ReceivedReport.ReceivesNothing, reported(ReceivedReport.ReceivesNothing, null).report)
+        assertEquals(ReceivedReport.ReceivesNothing, reported(ReceivedReport.ReceivesNothing, at(4)).report)
+        assertEquals(ReportDue.Unchanged, ReportDue.of(ReceivedReport.ReceivesNothing, ReceivedReport.ReceivesNothing))
     }
 
     @Test

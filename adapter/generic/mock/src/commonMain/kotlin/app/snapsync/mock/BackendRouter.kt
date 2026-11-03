@@ -272,14 +272,15 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
     }
 
     private fun received(call: Call): HttpResult {
-        val position = call.decode(Received.serializer())?.position?.takeIf { it >= 0 }
+        val body = call.decode(Received.serializer())?.takeIf { it.position >= 0 }
             ?: return text(BAD_REQUEST, "invalid position")
         val eventId = call.param("eventId")
         if (eventId !in state.events) return eventNotFound()
         return if (state.received(
                 eventId,
                 call.param("deviceId"),
-                position,
+                body.position,
+                body.receivesNothing,
             )
         ) {
             empty(OK)

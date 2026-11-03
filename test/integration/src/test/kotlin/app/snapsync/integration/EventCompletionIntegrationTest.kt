@@ -1,8 +1,10 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.SettledEvent
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
@@ -196,6 +198,47 @@ class EventCompletionIntegrationTest {
         }
     }
 
+    // The share-only phone tells the event it receives nothing — its first wake, at the join — settles on Saturday
+    // evening, and stays off: a photo another member adds afterwards is not owed to it, so the event is finished
+    // without waiting for it.
+    @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "A member's share is settled only after their own range has ended",
+        scenario = "A range that ends early is done early",
+    )
+    fun a_share_only_member_whose_range_ended_early_holds_up_nobody() = behaviour(startAt = DURING) {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent(
+                Choices(direction = Direction.UploadOnly, until = SATURDAY_EVENING),
+                startsAt = SHORT_START,
+                endsAt = SHORT_END,
+            ).also { event ->
+                step("settled on Saturday evening", act = {
+                    advanceTo(AFTER_SATURDAY_EVENING)
+                    cycle()
+                    heartbeat()
+                }, until = {
+                    event<WorldEvent.ManifestPublished> { it.event == event && it.final }
+                    settled { true }
+                })
+                step("the phone off", act = { os.background() }, until = { settled { true } })
+            }
+        }
+
+        // The others share on, and hold everything; this phone does nothing more.
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("FQ"), final = true)
+            publicBackend.foreignDeviceReceived(DEV_F)
+            advanceTo(AFTER_THE_END)
+        }
+        then {
+            never<WorldEvent.ReceivedReported> { it.device != DEV_F }
+            settled { it.of(event)?.finished == true }
+        }
+    }
+
     /** What the backend derives of [event] at this settle. */
     private fun WorldEvent.Settled.of(event: String): SettledEvent? = state.backendEvents?.get(event)
 
@@ -214,6 +257,10 @@ class EventCompletionIntegrationTest {
 
         /** After [SHORT_END], and long before the event's deadline (30 days after its start). */
         const val AFTER_THE_END = "2026-05-22T00:00:00Z"
+
+        /** A share-only member's own range end, Saturday evening inside the event, and the morning after. */
+        const val SATURDAY_EVENING = "2026-05-16T20:00:00Z"
+        const val AFTER_SATURDAY_EVENING = "2026-05-17T09:00:00Z"
 
         /** A guest who joins after the end. */
         const val LATE_GUEST = "1a7e0000-0000-4000-8000-000000000001"

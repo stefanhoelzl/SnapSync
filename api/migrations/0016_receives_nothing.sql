@@ -1,0 +1,17 @@
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════════
+-- 0016 — A DEVICE MAY SAY IT RECEIVES NOTHING (capability `event-lifetime`, "A range that ends early is done early")
+--
+-- ⚠️ FROZEN ONCE APPLIED, like every migration here: the runner records a checksum of these bytes, so
+-- editing this file makes every later apply refuse as `modified` history. A correction is a NEW file.
+--
+-- WHY: a member is DONE once it shared everything and holds every photo of the others up to the union head. A
+-- share-only member holds nothing it is owed, yet its received position fell behind every photo another member
+-- added after its last report — so a share-only phone that settled early and then went off held its event up until
+-- the 30-day cap. A share-only device now says it receives nothing, and that alone is the received half of done.
+--
+--   memberships.receives_nothing   1 while the device's last report said it receives nothing, 0 otherwise. Every
+--                                  report rewrites it: a device that receives again clears it by reporting a
+--                                  position. 0 for every existing row — what a build that never sends it means.
+--
+-- ADDITIVE: a defaulted column; no existing row changes meaning.
+ALTER TABLE memberships ADD COLUMN receives_nothing INTEGER NOT NULL DEFAULT 0 CHECK (receives_nothing IN (0, 1));

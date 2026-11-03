@@ -104,7 +104,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
 | `HeadRead` | `:domain:format` | `:domain:format` Read, Refused | no |
 | `HeartbeatVerdict` | `:domain:domain` | `:domain:domain` Arm, None | no |
-| `HeldPosition` | `:domain:domain` | `:domain:domain` Holds, Lacks | no |
+| `HeldPosition` | `:domain:domain` | `:domain:domain` Holds, Lacks, ReceivesNothing | no |
 | `Hmac` | `:domain:format` | `:domain:data` CryptoHmac; `:domain:format` Recording | no |
 | `HostAssembly` | `:domain:entrypoints` | `:domain:host` HostFirst | no |
 | `HttpResult` | `:domain:ports` | `:domain:ports` Response, Unreachable | no |
@@ -204,6 +204,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ReceivedPhotosRead` | `:domain:data` | `:adapter:generic:mock` Received; `:domain:data` ReceivedPhotos, ReceivedPhotosReader; `:domain:services` NothingReceived; `:test:data` Received; `:test:feature` TestReceived | yes |
 | `ReceivedReadiness` | `:domain:data` | `:domain:data` OldSchema, Ready, Unavailable | no |
 | `ReceivedReply` | `:domain:data` | `:domain:data` NotRecorded, Recorded | no |
+| `ReceivedReport` | `:domain:domain` | `:domain:domain` Position, ReceivesNothing | no |
 | `ReceivingVerdict` | `:domain:domain` | `:domain:domain` Receives | no |
 | `RecognitionOutcome` | `:domain:application` | `:domain:application` LibraryUnreadable, Recognised, Unavailable, UnionUnavailable | no |
 | `RecognitionRead` | `:domain:data` | `:domain:data` NotRecognised, Recognised, Unavailable | no |

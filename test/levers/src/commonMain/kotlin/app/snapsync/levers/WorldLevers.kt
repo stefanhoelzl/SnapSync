@@ -337,7 +337,12 @@ sealed interface WorldEvent {
     /** [device] reported holding every photo of [event]'s other members up to the union's [position]. */
     @Serializable
     @SerialName("backend-received-reported")
-    data class ReceivedReported(val event: String, val device: String, val position: Long) : Backend
+    data class ReceivedReported(
+        val event: String,
+        val device: String,
+        val position: Long,
+        val receivesNothing: Boolean = false,
+    ) : Backend
 
     /** The backend stored [name] as [event]'s name. */
     @Serializable

@@ -456,13 +456,15 @@ function sharedAll(m: string): string {
 }
 
 /**
- * SQL: membership `m` is DONE — it shared everything and holds every photo of the others up to the event's union
+ * SQL: membership `m` is DONE — it shared everything, and either it said it receives nothing (a share-only member:
+ * no photo another member adds later is owed to it) or it holds every photo of the others up to the event's union
  * head. A device that never said what it received (NULL) is not done: only a build that reports can be.
  */
 function doneMember(m: string): string {
-  return `(${sharedAll(m)}) AND COALESCE(${m}.received_position, -1) >= (
+  const shared = sharedAll(m);
+  return `(${shared}) AND (${m}.receives_nothing = 1 OR COALESCE(${m}.received_position, -1) >= (
             SELECT COALESCE(MAX(u.seq), 0) FROM union_log u
-             WHERE u.event_id = ${m}.event_id AND u.kind = 'gained')`;
+             WHERE u.event_id = ${m}.event_id AND u.kind = 'gained'))`;
 }
 
 /**
@@ -526,19 +528,22 @@ export async function eventFinished(db: Db, eventId: string, nowIso: string): Pr
 
 /**
  * Record that a present membership holds every photo of the others up to union position [position] (decision
- * record `changes/back-dated-events`, D4). MONOTONIC: a lower position than the one stored changes nothing, so a
- * late or repeated report cannot move a device backwards. Answers whether the device is a present member.
+ * record `changes/back-dated-events`, D4), and whether it [receivesNothing] at all. The position is MONOTONIC: a
+ * lower one than the one stored changes nothing, so a late or repeated report cannot move a device backwards. The
+ * flag is what the LATEST report says: a share-only device sets it, and one that receives again clears it with any
+ * position. Answers whether the device is a present member.
  */
 export async function recordReceived(
   db: Db,
   eventId: string,
   deviceId: string,
   position: number,
+  receivesNothing = false,
 ): Promise<boolean> {
   const { rowsAffected } = await db.execute(
-    `UPDATE memberships SET received_position = MAX(COALESCE(received_position, -1), ?)
+    `UPDATE memberships SET received_position = MAX(COALESCE(received_position, -1), ?), receives_nothing = ?
       WHERE event_id = ? AND device_id = ? AND state IN ${PRESENT}`,
-    [position, eventId, deviceId],
+    [position, receivesNothing ? 1 : 0, eventId, deviceId],
   );
   return rowsAffected > 0;
 }

@@ -36,7 +36,7 @@ import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.receiving.ReceivingPlans
 import app.snapsync.data.receiving.RecognitionPasses
 import app.snapsync.data.receiving.RecognitionRecords
-import app.snapsync.data.receiving.ReportedPositions
+import app.snapsync.data.receiving.ReportedReceived
 import app.snapsync.data.receiving.StagingArea
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.query.receiving.ReceivingProgress
@@ -124,7 +124,7 @@ internal class ReceivingLayers(private val core: AppCore) {
     val report: ReportReceivedPosition by lazy {
         ReportReceivedPosition(
             ReceivedReporting(core.backend.gateway, core.services.deviceIdentity),
-            ReportedPositions(),
+            ReportedReceived(),
             core.services.wallClock,
             core.services.membership,
         )
