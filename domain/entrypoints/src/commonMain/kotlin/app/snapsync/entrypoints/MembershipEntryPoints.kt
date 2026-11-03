@@ -29,6 +29,7 @@ import app.snapsync.application.upload.StopUploads
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.KeepOutcome
 import app.snapsync.data.membership.MembershipRead
+import app.snapsync.domain.album.AlbumAsk
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.ConfirmedNotJoined
@@ -167,7 +168,7 @@ class OnSettingsChanged(
         membership(membership, Freshness.Cached) {
             active { joined ->
                 when (val saved = required { reconfigure(joined, arg.choice) }) {
-                    is ReconfigureOutcome.Saved -> required { settled.run(arg.id, saved.active, on) }
+                    is ReconfigureOutcome.Saved -> required { settled.run(arg.id, joined, saved.active, on) }
                     is ReconfigureOutcome.NotSaved -> required { statuses.settings.done(arg.id, saved.answer) }
                 }
             }
@@ -242,7 +243,7 @@ class AfterJoin(
         val armed = required { reconcile(UploaderChange.JOIN) }
         isolated("arm") { arm.apply(armed) }
         isolated("status") { statusRefresh.run() }
-        required { album.run("join", joined, on) }
+        required { album.run("join", joined, AlbumAsk.OptIn, on) }
         // The join itself starts receiving the event's history — no opening, no wake.
         when (val receiving = required { receivingOf(joined) }) {
             is ReceivingVerdict.Receives -> isolated(
@@ -287,12 +288,12 @@ class AfterSettings(
     private val statuses: MembershipStatuses,
 ) {
     @OptIn(EntryPointCall::class)
-    suspend fun run(id: RequestId, saved: Membership.Active, on: Run) = on.steps {
+    suspend fun run(id: RequestId, before: Membership.Active, saved: Membership.Active, on: Run) = on.steps {
         isolated("status") { statusRefresh.run() }
         // A kick whatever the direction: the cycle's policy decides what uploads; nothing in flight is cancelled.
         val armed = required { reconcile(UploaderChange.RECONFIGURE) }
         isolated("arm") { arm.apply(armed) }
-        required { album.run("reconfigure", saved, on) }
+        required { album.run("reconfigure", saved, AlbumAsk.ofSave(before, saved), on) }
         when (val receiving = required { receivingOf(saved) }) {
             // Receiving: the event hears it at once, so what a share-only phase told it never lets it finish early.
             is ReceivingVerdict.Receives -> {
@@ -309,20 +310,22 @@ class AfterSettings(
 /**
  * The event album a membership saves into, after a join or a settings change: made when the member wants one and the
  * grant allows it, and the photos already held gathered into it — each its own step, so one that fails leaves the other
- * done. [trigger] names what asked, for the gather's lines.
+ * done. [trigger] names what asked, for the gather's lines; [ask] whether it was the member's opt-in, the only ask that
+ * brings back an album they deleted.
  */
 class EventAlbum(
     private val albums: AlbumCoordinator,
     private val gather: AlbumGather,
     private val access: GalleryAccessState,
 ) {
-    suspend fun run(trigger: String, membership: Membership.Active, on: Run) = on.steps {
+    suspend fun run(trigger: String, membership: Membership.Active, ask: AlbumAsk, on: Run) = on.steps {
         isolated("album") {
             albums.ensureAlbum(
                 membership.event.id,
                 membership.event.name.text,
                 membership.share.saveToAlbum,
                 access.usable,
+                optIn = ask == AlbumAsk.OptIn,
             )
         }
         isolated("album gather") { gather.start(trigger, membership.event.id) }
