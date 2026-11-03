@@ -47,20 +47,6 @@ class PortValueVocabularyTest {
     }
 
     @Test
-    fun `a wake was scheduled refused with a detail or is unsupported`() {
-        assertEveryCaseDistinct(
-            listOf(ScheduleResult.Scheduled, ScheduleResult.Refused("too many"), ScheduleResult.Unsupported),
-        ) {
-            when (it) {
-                ScheduleResult.Scheduled -> "Scheduled"
-                is ScheduleResult.Refused -> "Refused"
-                ScheduleResult.Unsupported -> "Unsupported"
-            }
-        }
-        assertValueEquality({ ScheduleResult.Refused("too many") }, ScheduleResult.Refused("not permitted"))
-    }
-
-    @Test
     fun `the suppression view is ready on an older schema or unavailable with a detail`() {
         assertEveryCaseDistinct(
             listOf(

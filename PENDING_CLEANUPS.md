@@ -387,7 +387,7 @@ version or op gates these — each phase deletes its own uses, and the last one 
     `reload`, `joinedOrRead`, the clock's reads, and `markOver` — the one write: the shared set's publish heard the
     event's photos were deleted (`BackendManifestPublisher`'s `eventOver`, wired in `compose/SnapSyncApp.kt`) — and
     `Membership.asConfig()`. Its readers: upload's
-    `UploadTransitions`, `CycleGateRead`, `WakeRearm` and `ShareSettlement`, the
+    `UploadTransitions`, `CycleGateRead` and `ShareSettlement`, the
     ledger's scope in `compose/AppServices.kt` and the cycle's assembly in `compose/UploadCore.kt` and
     `compose/ExtensionCore.kt` (4.4); downloads' `DownloadPushReceiver` and `ReceivedReport`, with
     the adoption's input in `OnSelectionChanged` and the held-everything read in `OnInviteForOtherEvent` (4.5);

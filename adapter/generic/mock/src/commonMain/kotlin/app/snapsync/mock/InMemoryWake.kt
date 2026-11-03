@@ -1,11 +1,11 @@
 package app.snapsync.mock
 
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.ScheduleResult
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeTrigger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.concurrent.Volatile

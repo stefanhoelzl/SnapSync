@@ -3,9 +3,9 @@ package app.snapsync.dev
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
-import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
+import app.snapsync.ports.UploaderPin
 
 /**
  * A production build's [DevControls]: inert, and never delivering (`docs/architecture.md`, "A build-time-only module

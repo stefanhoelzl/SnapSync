@@ -110,7 +110,7 @@ class CollectDiagnosticDumpTest {
         mobileData = mobileData,
         conditions = DeviceConditionsReadings(conditions),
         appFacts = appFacts,
-        uploadFacts = { mapOf("extension_registrable" to "false", "app_admission" to "Admit") },
+        uploadFacts = { mapOf("extension_registrable" to "NOT_REGISTRABLE", "app_admission" to "Admit") },
         refusalFacts = { refusalFacts },
         budgetBytes = budget,
     )
@@ -251,7 +251,7 @@ class CollectDiagnosticDumpTest {
 
         assertEquals("512", dump.state["build"])
         assertEquals("app+extension", dump.state["uploaders_carried"])
-        assertEquals("false", dump.state["extension_registrable"], "the upload facts, not a single tier")
+        assertEquals("NOT_REGISTRABLE", dump.state["extension_registrable"], "the upload facts, not a single tier")
         assertEquals("Admit", dump.state["app_admission"])
         assertEquals(null, dump.state["upload_tier"], "both uploaders may be active: there is no single tier")
         assertEquals("https://snapsync.stho.net/api/v2", dump.state["upload_base"])

@@ -11,11 +11,11 @@ import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.TimestampText
+import app.snapsync.mock.osUploaderOver
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.UploaderPin
-import app.snapsync.model.extensionRegistrable
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.UploaderPin
 import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.MembershipTransition
@@ -90,7 +90,7 @@ class UploadTransitionsTest {
         val transitions = UploadTransitions(
             configSource = membership(joined = joined, unreadable = unreadable),
             photoAccess = galleryAccess(grantCell),
-            extensionRegistrable = { extensionRegistrable(osSupported, grant.galleryAccess(), pin) },
+            osUploader = osUploaderOver(osSupported, grantCell, pin = { pin }),
             registration = registration,
             appEngine = { engine },
         )

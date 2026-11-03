@@ -4,10 +4,10 @@ import app.snapsync.data.sharing.Contribution
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.ReadPlan
+import app.snapsync.domain.upload.AppUploaderSwitch
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
 import app.snapsync.model.SuppressionReadiness
-import app.snapsync.model.UploaderPin
 
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
 class UploadConfig(
@@ -165,7 +165,7 @@ enum class UploadAdmission {
 /**
  * The **app** process's admission: its uploader creates whenever the member's photos can be read — under a full
  * grant, or a partial one whose selection has been read — on every OS version, beside the extension where one is
- * registered, unless the rig's [pin] turned it off.
+ * registered, unless the rig's [app] switch turned it off.
  *
  * Otherwise ([ReadPlan.NotReadable]) it withholds rather than touching nothing: the narrow settle creates no job and
  * reads no library, and a completion that arrives meanwhile still records through the transport's guarded write. A
@@ -174,8 +174,8 @@ enum class UploadAdmission {
  * and delete their rows (decision record `changes/selection-is-the-walk`, D1). The [plan] is the one discovery reads
  * under, so admission and discovery cannot disagree about whether the selection was read.
  */
-fun appAdmission(plan: ReadPlan<*>, pin: UploaderPin? = null): UploadAdmission =
-    if (plan != ReadPlan.NotReadable && pin?.app != false) UploadAdmission.Admit else UploadAdmission.Withheld
+fun appAdmission(plan: ReadPlan<*>, app: AppUploaderSwitch): UploadAdmission =
+    if (plan != ReadPlan.NotReadable && app == AppUploaderSwitch.ON) UploadAdmission.Admit else UploadAdmission.Withheld
 
 /**
  * The **extension** process's admission: it runs exactly under a full grant, read in its own process.

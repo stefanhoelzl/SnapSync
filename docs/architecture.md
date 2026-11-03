@@ -283,7 +283,7 @@ received-photo recognition withholds what it must) and, once the host is assembl
 | law | enforced by |
 |---|---|
 | One shared composition: a root hands its composition ports and nothing else — `AppPorts` to `snapSyncHost` (app), `ExtensionPorts` to `snapSyncExtension` (extension), each nesting the process's `ProcessPorts` — and the composition's FIRST act is `snapSyncProcess`: it installs the log writers (Kermit's and the structured `Log`'s) and the boot banner, then starts crash reporting before any other wiring, then registers the process metrics' entry point; one crash reporter, one process-metrics source, one `Files`, one `Clock`, one `ThreadLabel` and one `BuildInfo` per process. Its second argument is the process's `Runtime`, which the composition builds over the process's `BackgroundTime`, `ThreadLabel` and `EntryEvents` and every entry point runs under. No root calls it, so none can compose in a process whose crash reporting has not started. The composition builds every service over the ports (`AppServices`; the extension's READ_ONLY identity, read-only suppression view and drop-only credential), and the app's uploader reads the app's own instances. The app root builds the process's ONE `CutoffFormatter` (the zone read once) and hands the same instance to the UI adapter and to `snapSyncHost`. A root never builds the status host or installs subscriptions. Only a process that supplies log sinks installs writers into Kermit's global list (a device root does; the JVM root's processes, many in one JVM, supply none unless their log is read back) | structural (one function) + `PortBundleTest` + **review**. The wiring graph is not unit-tested. It is smoke-tested by the integration surface, over the JVM root |
-| A platform-mechanism decision (today: may the upload extension be registered, `extensionRegistrable`) is a pure, total, unit-tested function of runtime state, re-evaluated when an input changes. Target-fixed facts are not inputs | the compiler (exhaustive `when`) + `ProducerExclusivityTest` (no cell true below iOS 26.1) |
+| A platform-mechanism decision (today: may the upload extension be registered, the domain's `OsUploaderAdmission`) is a pure, total, unit-tested function of runtime state, re-evaluated when an input changes. Target-fixed facts are not inputs | the compiler (exhaustive `when`) + `ProducerExclusivityTest` (no cell true below iOS 26.1) |
 | Upload transitions stop in-flight work only at a leave (no deregister or cancel on revoke/reconfigure/launch; no registration write under a partial grant; enable always goes disable→enable) | `ProducerExclusivityTest` |
 | Shells (`:app:ios`, `:app:ios:extension`, the JVM root `:app:jvm`, the host `:domain:host` and the shared composition `:domain:compose` — core zones, but wiring every root calls — rig-contributed shell source) hold zero decisions: the composition constructs and connects, and every decision, guard, failure arm and piece of per-event state it once held is a feature's or a service's, unit-tested there | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
 | The build's adapter set is chosen at build time: a root builds its real adapters as one lazy device bundle — `AppDevicePorts` or `ExtensionDevicePorts`, each naming exactly the ports its process has, none defaulted — and calls `platformAdapters()` (app) or `extensionPorts()`/`extensionHost()` (extension), compiled from the root's `src/prod`/`src/entries` or — only under `-Psnapsync.rig=true` — from the control channel's source, which hands back the launch-time adapters' ports (`docs/testing.md`), decorates the UI (`RigUi`), supplies its own `DevControls` and runs a requested contract in the extension. No flag is read, no inert stub ships and no shipped binary links a mock | the build scripts + `DevControlsContainmentTest` + `MockContainmentTest` |
@@ -1624,20 +1624,20 @@ before the run answers. Own work runs **outside** the sequences, so no wake wait
 download reconcile never imports; `ImportReceived` is the only drain, plus the once-per-process interrupted-import
 sweep at host assembly (same per-asset claims). There is no download backstop task any more.
 
-**The heartbeat** is the `Heartbeat` service (`services/wake`) over the `Wake` port: a one-shot wake at a **cadence** —
-**busy**, no sooner than 60 s, or **idle**, no sooner than an hour — needing the network, re-requested each time; a
-request at one cadence replaces a pending one at the other. **The cadence rule** (`feature/upload/HeartbeatCadence`,
-applied by `WakeRearm` at the end of every wake's work) keeps one pending **for as long as the device is
-joined**: busy while work remains (uploads a wake left, or staged downloads not yet imported) or while a
-full-grant sharer notices its own new photos only by looking — no library-change wake standing and the OS uploader
-not confirmed registered — until the event's end; idle for every other joined device (receive-only, uploads held
-back, a partial grant, caught up with a library wake, and everyone after the end); none once not joined. Its inputs
-are the uploads' outcome and `CadenceFacts`, which the composition reads fresh (`cadenceFactsOf` in `compose/`: the membership,
-its direction, the grant, and the OS's own registration answer). Decision record:
-`changes/timely-background-receiving` (D1–D3).
+**The heartbeat** is requested through data's `WakeArming` over the `Wake` port: a one-shot wake at a **cadence** —
+**busy**, no sooner than 60 s, or **idle**, no sooner than an hour (`HeartbeatCadence.trigger`, domain) — needing the
+network, re-requested each time; a request at one cadence replaces a pending one at the other. **The cadence rule**
+(the domain's `CadenceFacts.cadence`, applied by the use case `RearmHeartbeat` in `WakeWork`'s `ensure("re-arm")` at
+the end of every wake's work) keeps one pending **for as long as the device is joined**: busy while work remains
+(uploads a wake left, or staged downloads not yet imported) or while a full-grant sharer notices its own new photos only
+by looking — no library-change wake standing and the OS uploader not confirmed registered — until the event's end;
+idle for every other joined device (receive-only, uploads held back, a partial grant, caught up with a library wake,
+and everyone after the end); none once not joined. The use case reads its facts fresh: the membership and its
+direction, the event's phase, the grant (`GrantRead`), the OS uploader's standing (`OsUploader`) and the mobile-data
+choice. Decision record: `changes/timely-background-receiving` (D1–D3).
 
-**The library watch** is the service's other wake: `watchLibrary` requests a one-shot `WakeId.LibraryChanged`,
-delivered within 60 s of a change to the photo library, and answers whether one now stands. `WakeRearm` renews it
+**The library watch** is the arming's other wake: `watchLibrary` requests a one-shot `WakeId.LibraryChanged`,
+delivered within 60 s of a change to the photo library, and answers whether one now stands. `RearmHeartbeat` renews it
 after every wake whose uploads ran for a contributing membership (any trigger but an import-only one, any outcome
 but `SKIPPED`), so a caught-up device still notices the next photo; where one stands (Android), a caught-up sharer
 idles. iOS answers it `Unsupported` — its library-change wake is the upload extension, which counts only once the OS
@@ -1869,7 +1869,7 @@ uploaded the camera roll of a member who had been promised "you won't share your
 **facts** — the app-driven engine, the OS-driven registration where this OS carries it, whether it does, and
 the rig's per-uploader switch source. What each membership transition does (join · re-provision · reconfigure ·
 permission change · launch · leave) is decided by the tested, stateless `UploadTransitions` in `:domain`'s
-feature/upload, from `model/`'s `extensionRegistrable` read fresh at that moment. It calls five verbs: the
+feature/upload, from data's `OsUploader.admission` read fresh at that moment. It calls five verbs: the
 extension's `register()` (the disable → enable ritual — never a bare enable) and `deregister()`, and the app
 engine's `arm()`, `disarm()` (the heartbeat only) and `cancelTransfers()` (a leave only). **None of them clears
 the ledger**: only a leave clears it and only a join loads it, as the membership use-cases' own steps
@@ -1962,7 +1962,7 @@ App deploys **min iOS 18**. There are two uploaders, and **both run** where both
 `openspec/changes/both-uploaders-active`): each decides at its own entry gate whether it may create, and an
 overlap is a duplicate upload of the same object, never a loss. `SnapSyncRoot`'s one switch decides only
 **presence** — whether this OS carries the OS-driven uploader at all (`isOperatingSystemAtLeastVersion(26.1)`).
-Whether the extension may be **registered** is `model/`'s pure `extensionRegistrable` over that fact, the current
+Whether the extension may be **registered** is the domain's `OsUploaderAdmission` over that fact, the current
 photo permission, and the rig's per-uploader switch (always `null` on a production build — its only writer is the
 rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
 

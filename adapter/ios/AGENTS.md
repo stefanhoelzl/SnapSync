@@ -34,7 +34,7 @@ membership's own-photo scope. Three measured platform facts shape the implementa
 2. **The ≥26.1 PhotoKit extension cannot be REGISTERED under `.limited`.** `setUploadJobExtensionEnabled` is refused
    in *both* directions with `PHPhotosErrorAccessUserDenied` 3311 (measured, SE2/26.6; the older "registration
    succeeds and lies" reading is contradicted by measurement). Under a partial grant the app's uploader does the
-   uploading: it creates under any usable grant, and `extensionRegistrable` is false.
+   uploading: it creates under any usable grant, and the extension is not registrable (`OsUploaderAdmission`).
    ⚠️ A registration made under a FULL grant **survives** a downgrade (the deregistration is refused too), and **the
    OS still invokes it** under `.limited`: measured SE2/26.6, 2026-09-21, `process()` ran 4 s after a new photo
    joined the selection. The extension's own entry gate is what stops it (it withholds without `GRANTED`). Never

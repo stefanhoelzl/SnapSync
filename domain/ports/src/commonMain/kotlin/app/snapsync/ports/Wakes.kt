@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ports
 
 import kotlin.time.Duration
 

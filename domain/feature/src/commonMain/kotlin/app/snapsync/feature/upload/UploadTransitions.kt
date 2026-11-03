@@ -1,7 +1,9 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.upload.OsUploader
 import app.snapsync.domain.membership.ConfirmedNotJoined
+import app.snapsync.domain.upload.OsUploaderAdmission
 import app.snapsync.model.GalleryAccess
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.membership.MembershipProjection
@@ -43,7 +45,7 @@ interface AppUploadEngine {
  * The upload arm: **what each membership transition does** to the two uploaders, reconciled in one tested place.
  *
  * It holds **no state**. Every decision is derived afresh from whether a membership exists, the registration fact
- * ([extensionRegistrable] — `model/extensionRegistrable`, read at the moment of the transition) and the current
+ * (`OsUploader.admission`, read at the moment of the transition) and the current
  * grant.
  *
  * Both uploaders run: the app's creates under any usable grant, the extension under a full one, each deciding at
@@ -70,11 +72,11 @@ class UploadTransitions(
     private val configSource: MembershipProjection,
     /** The current grant, read fresh at every transition. */
     private val photoAccess: GalleryAccessState,
-    /** The registration fact — `model/extensionRegistrable` over the OS fact, the grant and the rig's switch. */
-    private val extensionRegistrable: () -> Boolean,
+    /** Whether the extension may be registered now — over the OS fact, the grant and the rig's switch. */
+    private val osUploader: OsUploader,
     /**
      * The OS-driven registration — on every platform; where the OS carries no such mechanism its port answers
-     * `Unsupported` and asks nothing (and [extensionRegistrable] is never true there, so a join never forces it).
+     * `Unsupported` and asks nothing (and the extension is never registrable there, so a join never forces it).
      */
     private val registration: ExtensionRegistration,
     /** The app-driven engine, obtained at first use (it owns a process-lifetime background session). */
@@ -88,7 +90,7 @@ class UploadTransitions(
      * (the membership entry is not run for it), so a re-scan can never wipe the extension's in-flight jobs.
      */
     suspend fun onJoin() = run {
-        if (extensionRegistrable()) registration.register()
+        if (registrable()) registration.register()
         armIfUsable()
     }.also { log.i { "uploads.onJoin" } }
 
@@ -159,7 +161,7 @@ class UploadTransitions(
      */
     private suspend fun compare(deregisterIfOff: Boolean) {
         if (!joined()) return
-        val registrable = extensionRegistrable()
+        val registrable = registrable()
         // The OS's read is trusted only under a full grant; anything else changes nothing. A platform without the
         // registration reads `null`, so it changes nothing either.
         val observed = if (photoAccess.full) registration.isRegistered() else null
@@ -175,6 +177,9 @@ class UploadTransitions(
      * and nothing is armed or registered, because acting on "could not read it" as "not joined" is a false leave
      * and acting on it as "joined" arms for an event we cannot name. The next transition reads it again.
      */
+    /** Whether the extension may be registered now. */
+    private fun registrable(): Boolean = osUploader.admission() == OsUploaderAdmission.REGISTRABLE
+
     private fun joined(): Boolean = when (configSource.read()) {
         is MembershipRead.Joined -> true
         is MembershipRead.NotJoined -> false

@@ -9,11 +9,11 @@ import app.snapsync.levers.WipeWindow
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.metricPayloadOf
 import app.snapsync.model.ProcessMetricReport
-import app.snapsync.model.RegistrationState
 import app.snapsync.model.processMetricEmissions
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.ProcessMetricPayload
+import app.snapsync.ports.RegistrationState
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReport
 import app.snapsync.rig.gallery.addLivePhoto

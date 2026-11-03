@@ -3,7 +3,7 @@ package app.snapsync.rig
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.WakeId
+import app.snapsync.ports.WakeId
 
 /** The heartbeat's `BGTask` identifier, as the operating system hands it to the app. */
 const val UPLOAD_HEARTBEAT_TASK: String = "app.snapsync.upload.heartbeat"

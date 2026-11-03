@@ -9,10 +9,10 @@ import app.snapsync.contracts.Recording
 import app.snapsync.contracts.runEntry
 import app.snapsync.gallery.currentPhotoPermission
 import app.snapsync.model.RegistrationOutcome
-import app.snapsync.model.RegistrationState
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.RegistrationState
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSThread
 import kotlin.time.Duration

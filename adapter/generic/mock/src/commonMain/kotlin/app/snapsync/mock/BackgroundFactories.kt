@@ -1,10 +1,10 @@
 package app.snapsync.mock
 
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Wake
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeTrigger
 import kotlinx.coroutines.flow.MutableStateFlow
 
 // The honest doubles for background execution: when the system wakes the app, and how long it keeps it awake.

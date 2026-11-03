@@ -55,7 +55,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DeletionVerdict` | `:domain:domain` | `:domain:domain` Confirmed, Inconclusive, NotDeleted | no |
 | `Delivered` | `:domain:data` | `:domain:data` None, Token | no |
 | `DeliveryOutcome` | `:domain:application` | `:domain:application` Delivered, Unreadable | no |
-| `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:adapter:generic:mock` Face; `:test:contracts` DevControlsProxy; `:test:rig` RigDevControls | yes |
+| `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:adapter:generic:mock` Face; `:test:contracts` DevControlsProxy; `:test:data` PinOnly; `:test:rig` RigDevControls | yes |
 | `DeviceConditions` | `:domain:ports` | `:adapter:android` AndroidDeviceConditions; `:adapter:generic:mock` InMemoryDeviceConditions; `:adapter:ios:app-only` IosDeviceConditions; `:test:contracts` DeviceConditionsProxy | yes |
 | `DeviceFilesSource` | `:domain:services` | `:domain:services` BackendDeviceFilesSource; `:test:feature` FakeFiles | yes |
 | `DeviceIdRead` | `:domain:data` | `:domain:data` Absent, Ok, Unavailable | no |
@@ -99,6 +99,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Granted` | `:domain:inbound` | `:domain:scheduling` GrantedEntryPoint; `:test:contracts` GrantedProxy; `:test:rig` QuietWake | yes |
 | `Handoff` | `:domain:model` | `:domain:model` Accepted, Refused | no |
 | `HeadRead` | `:domain:format` | `:domain:format` Read, Refused | no |
+| `HeartbeatVerdict` | `:domain:domain` | `:domain:domain` Arm, None | no |
 | `Hmac` | `:domain:format` | `:domain:data` CryptoHmac; `:domain:format` Recording | no |
 | `HostAssembly` | `:domain:entrypoints` | `:domain:host` HostFirst | no |
 | `HttpResult` | `:domain:ports` | `:domain:ports` Response, Unreachable | no |
@@ -183,6 +184,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PushTailVerdict` | `:domain:domain` | `:domain:domain` Joins, MembershipUnreadable, NamesNoEvent, OtherEvent | no |
 | `RangeEdit` | `:domain:presentation` | `:domain:presentation` Day, DragEnd, DragStart, FromHour, FromMinute, Sweep, UntilHour, UntilMinute, UntilMinuteDrag | no |
 | `ReadPlan` | `:domain:domain` | `:domain:domain` NotReadable, Snapshot, Walk | no |
+| `RearmOutcome` | `:domain:application` | `:domain:application` Armed, NotArmed, NotJoined | no |
 | `ReceivedReporter` | `:domain:services` | `:domain:services` BackendReceivedReporter | no |
 | `RecognitionSource` | `:domain:services` | `:domain:services` Recognition, SuppressionService; `:test:feature` Recognised, Suppression | yes |
 | `ReconfigureOutcome` | `:domain:application` | `:domain:application` Saved | no |
@@ -207,7 +209,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ResumePoint` | `:domain:services` | `:domain:services` Deferred, From, Landed | no |
 | `RetryVerdict` | `:domain:domain` | `:domain:domain` Retry, Stands | no |
 | `Running` | `:domain:inbound` | `:domain:scheduling` Expirable; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
-| `ScheduleResult` | `:domain:model` | `:domain:model` Refused, Scheduled, Unsupported | no |
+| `ScheduleResult` | `:domain:ports` | `:domain:ports` Refused, Scheduled, Unsupported | no |
 | `Screen` | `:domain:entrypoints` | — | no |
 | `SealOutcome` | `:domain:data` | `:domain:data` Failed, Sealed | no |
 | `SealVerdict` | `:domain:domain` | `:domain:domain` Plain, Sealed, Withheld | no |
@@ -251,8 +253,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Verdict` | `:domain:feature` | `:domain:feature` Clear, Leave, Settle | no |
 | `VersionObserver` | `:domain:data` | `:domain:data` AppVersionGate, Observers, ServiceConditions, VersionIgnored | no |
 | `VersionVerdict` | `:domain:domain` | `:domain:domain` Clear, NoVerdict, Refuse | no |
-| `Wake` | `:domain:ports` | `:adapter:android` AndroidWake; `:adapter:generic:mock` Face, InMemoryWake; `:adapter:ios:app-only` IosWake; `:domain:services` RecordingWake; `:test:contracts` WakeProxy | yes |
-| `WakeTrigger` | `:domain:model` | `:domain:model` After, LibraryChange | no |
+| `Wake` | `:domain:ports` | `:adapter:android` AndroidWake; `:adapter:generic:mock` Face, InMemoryWake; `:adapter:ios:app-only` IosWake; `:test:contracts` WakeProxy; `:test:data` RecordingWake | yes |
+| `WakeRequest` | `:domain:data` | `:domain:data` Refused, Standing, Unsupported | no |
+| `WakeTrigger` | `:domain:ports` | `:domain:ports` After, LibraryChange | no |
 | `WalkBounds` | `:domain:domain` | `:domain:domain` None, Within | no |
 | `WalkRead` | `:domain:data` | `:domain:data` NotReadable, Walked | no |
 | `Work` | `:domain:model` | `:domain:model` Retry, Upload | no |

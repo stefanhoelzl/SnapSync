@@ -5,12 +5,12 @@ package app.snapsync.background
 import app.snapsync.contracts.grantedOf
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.ScheduleResult
-import app.snapsync.model.WakeCadence
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeNetwork
-import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.ScheduleResult
+import app.snapsync.ports.WakeCadence
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeNetwork
+import app.snapsync.ports.WakeTrigger
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity

@@ -13,10 +13,6 @@ import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
-import app.snapsync.model.WakeCadence
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeNetwork
-import app.snapsync.model.WakeTrigger
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.encodeToJson
 import app.snapsync.ports.FileArea
@@ -34,6 +30,10 @@ import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
+import app.snapsync.ports.WakeCadence
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeNetwork
+import app.snapsync.ports.WakeTrigger
 import app.snapsync.wire.models.PushRegistration
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.KSerializer

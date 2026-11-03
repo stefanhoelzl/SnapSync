@@ -9,6 +9,10 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.ReadPlan
+import app.snapsync.domain.upload.AppUploaderSwitch
+import app.snapsync.domain.upload.ExtensionSwitch
+import app.snapsync.domain.upload.OsSupport
+import app.snapsync.domain.upload.OsUploaderAdmission
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.UploadAdmission
 import app.snapsync.feature.upload.UploadTransitions
@@ -19,11 +23,11 @@ import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
+import app.snapsync.mock.osUploaderOver
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.UploaderPin
-import app.snapsync.model.extensionRegistrable
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.UploaderPin
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.use
 import app.snapsync.services.gallery.GalleryAccessState
@@ -140,7 +144,7 @@ class ProducerExclusivityTest {
         val transitions = UploadTransitions(
             configSource = config,
             photoAccess = GalleryAccessState(grantCell),
-            extensionRegistrable = { extensionRegistrable(osSupported, grant.galleryAccess(), pin) },
+            osUploader = osUploaderOver(osSupported, grantCell, pin = { pin }),
             registration = registration,
             appEngine = { engine },
         )
@@ -204,9 +208,9 @@ class ProducerExclusivityTest {
     fun `the extension is never registrable below 26_1`() {
         // The sharper risk, with no other guard in this module: below 26.1 the registration selector does not
         // exist, so a registrable cell there is a dead process, not a wrong choice.
-        for (permission in GalleryAccess.entries) {
+        for (grant in LibraryGrant.entries) {
             for (pin in listOf(null, UploaderPin(), UploaderPin(app = false), UploaderPin(extension = false))) {
-                assertTrue(!extensionRegistrable(false, permission, pin), "registrable below 26.1: $permission / $pin")
+                assertTrue(!registrable(false, grant, pin), "registrable below 26.1: $grant / $pin")
             }
         }
     }
@@ -219,7 +223,7 @@ class ProducerExclusivityTest {
                 val usable = permission == GalleryAccess.GRANTED || permission == GalleryAccess.LIMITED
                 // A partial grant's selection read (if empty): the plan the composition derives from the grant.
                 val plan = ReadPlan.of(grant.photoAccess(), selection = Unit)
-                val app = appAdmission(plan, pin) == UploadAdmission.Admit
+                val app = appAdmission(plan, if (pin?.app == false) AppUploaderSwitch.OFF else AppUploaderSwitch.ON) == UploadAdmission.Admit
                 assertEquals(usable && pin?.app != false, app, "app under $permission / $pin")
             }
             val ext = extensionAdmission(permission) == UploadAdmission.Admit
@@ -280,7 +284,7 @@ class ProducerExclusivityTest {
         if (switchedOff && couldDeregister) {
             assertTrue(!device.registration.registered, "switching the extension off left it registered — $where")
         }
-        if (step == Step.Join && extensionRegistrable(device.osSupported, device.grant.galleryAccess(), device.pin)) {
+        if (step == Step.Join && registrable(device.osSupported, device.grant, device.pin)) {
             assertTrue(
                 device.registration.registered,
                 "a join where registrable left the extension unregistered — $where",
@@ -288,6 +292,13 @@ class ProducerExclusivityTest {
         }
     }
 }
+
+/** Whether the extension may be registered for [supported], [grant] and [pin] — the domain's verdict, as the app reads it. */
+private fun registrable(supported: Boolean, grant: LibraryGrant, pin: UploaderPin?): Boolean = OsUploaderAdmission.of(
+    if (supported) OsSupport.CARRIED else OsSupport.NOT_CARRIED,
+    grant.photoAccess(),
+    if (pin?.extension == false) ExtensionSwitch.OFF else ExtensionSwitch.ON,
+) == OsUploaderAdmission.REGISTRABLE
 
 private val CLOCK = fixedClock(Instant.parse("2026-01-02T00:00:00Z"))
 

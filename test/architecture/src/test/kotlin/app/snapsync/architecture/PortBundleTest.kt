@@ -58,6 +58,8 @@ class PortBundleTest {
         "SecureStoreRead" to "what a secure-store read found — a sealed answer the SecureStore port returns",
         "WriteOutcome" to "what a write to a store that may refuse it came to — a sealed answer the storage ports return",
         "NetworkAccess" to "whether the app can reach the network, as the operating system says — a value the monitor emits",
+        "WakeTrigger" to "when the operating system may deliver a wake the app asks for — a sealed value handed to Wake",
+        "ScheduleResult" to "what the operating system said to a wake request — a sealed answer the Wake port returns",
         "PrefRead" to "what a preference read found, none, or could not look — a sealed answer the Preferences port returns",
         "FileResult" to "what one file operation came to — a sealed answer the Files port returns",
         "FileAccess" to "a file operation's answer that is never \"not found\" — a sealed answer the Files port returns",

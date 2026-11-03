@@ -16,7 +16,6 @@ import app.snapsync.model.HandlerSlot
 import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.model.PlatformError
 import app.snapsync.model.ProcessingAnswer
-import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionHandlers
@@ -32,6 +31,7 @@ import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.PushToken
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
+import app.snapsync.ports.UploaderPin
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CompletableDeferred

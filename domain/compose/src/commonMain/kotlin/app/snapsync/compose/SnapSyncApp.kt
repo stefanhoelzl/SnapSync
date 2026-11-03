@@ -7,6 +7,7 @@ import app.snapsync.data.backend.Observers
 import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.crypto.UploadSealing
+import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.service.ServiceConditions
 import app.snapsync.data.sharing.Contribution
@@ -18,6 +19,8 @@ import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.sharing.SelectionState
 import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
+import app.snapsync.data.upload.OsUploader
+import app.snapsync.data.upload.UploaderSwitches
 import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.service.ServiceFault
@@ -60,7 +63,6 @@ import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
-import app.snapsync.model.extensionRegistrable
 import app.snapsync.model.selectionPhotos
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
@@ -507,17 +509,17 @@ class AppCore internal constructor(
         ) { membership -> contributionFor(membership).policy }
     }
 
+    /** The photo-library grant as it stands now, in the domain's words. */
+    internal val grant: GrantRead by lazy { GrantRead(ports.gallery.grant) }
+
     /**
-     * Whether the upload extension may be registered now — one pure fact — read fresh wherever it is needed, never
-     * held: it is a function of the runtime grant, so a captured answer would be stale exactly when it mattered.
+     * The OS's own uploader: whether it may be registered now and whether the OS confirms it is — read fresh at every
+     * use, since the grant changes at runtime and a captured answer would be stale exactly when it mattered.
      */
-    val extensionRegistrableNow: () -> Boolean = {
-        extensionRegistrable(
-            osSupportsOsDrivenUpload = ports.extensionRegistry.supported,
-            permission = galleryAccess.grant.value,
-            pin = ports.devControls.uploaderPin(),
-        )
-    }
+    val osUploader: OsUploader by lazy { OsUploader(ports.extensionRegistry, uploaderSwitches, grant) }
+
+    /** The rig's per-uploader switches — on in every shipped build. */
+    internal val uploaderSwitches: UploaderSwitches by lazy { UploaderSwitches(ports.devControls) }
 
     /**
      * Whether the app's uploader may create now — the app process's admission, which its entry gate consumes:
@@ -526,7 +528,7 @@ class AppCore internal constructor(
     val appUploadAdmission: () -> UploadAdmission = {
         // The read plan, not the raw grant: an unread partial-grant selection withholds (`appAdmission`), and it is
         // the same plan discovery reads under.
-        appAdmission(readPlan(), ports.devControls.uploaderPin())
+        appAdmission(readPlan(), uploaderSwitches.app())
     }
 
     /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads; the delegate records the
@@ -550,7 +552,7 @@ class AppCore internal constructor(
         UploadTransitions(
             configSource = services.config,
             photoAccess = galleryAccess,
-            extensionRegistrable = extensionRegistrableNow,
+            osUploader = osUploader,
             registration = extensionRegistration,
             appEngine = { work.uploadEngine },
             log = services.log,

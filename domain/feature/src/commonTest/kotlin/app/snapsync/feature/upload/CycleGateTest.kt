@@ -3,10 +3,10 @@ package app.snapsync.feature.upload
 import app.snapsync.data.sharing.Contribution
 import app.snapsync.domain.sharing.PhotoAccess
 import app.snapsync.domain.sharing.ReadPlan
+import app.snapsync.domain.upload.AppUploaderSwitch
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
 import app.snapsync.model.SuppressionReadiness
-import app.snapsync.model.UploaderPin
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -214,9 +214,9 @@ class CycleGateTest {
             val usable = access == PhotoAccess.FULL || access == PhotoAccess.LIMITED
             val expected = if (usable) UploadAdmission.Admit else UploadAdmission.Withheld
             val plan = ReadPlan.of(access, selection = Unit)
-            assertEquals(expected, appAdmission(plan), "under $access")
-            assertEquals(UploadAdmission.Withheld, appAdmission(plan, UploaderPin(app = false)), "switched off")
-            assertEquals(expected, appAdmission(plan, UploaderPin(extension = false)), "the other switch")
+            assertEquals(expected, appAdmission(plan, AppUploaderSwitch.ON), "under $access")
+            assertEquals(UploadAdmission.Withheld, appAdmission(plan, AppUploaderSwitch.OFF), "switched off")
+            assertEquals(expected, appAdmission(plan, AppUploaderSwitch.ON), "the other switch")
         }
     }
 
@@ -226,13 +226,22 @@ class CycleGateTest {
         // would delete every row (`changes/selection-is-the-walk`, D1). A read EMPTY selection admits — it is a real
         // answer, and a receive-only member's resting state. (That a `null` snapshot is never published as read is
         // the selection snapshots' own, in the data layer.)
-        assertEquals(UploadAdmission.Withheld, appAdmission(ReadPlan.of<Unit>(PhotoAccess.LIMITED, selection = null)))
-        assertEquals(UploadAdmission.Admit, appAdmission(ReadPlan.of(PhotoAccess.LIMITED, selection = Unit)))
+        assertEquals(
+            UploadAdmission.Withheld,
+            appAdmission(ReadPlan.of<Unit>(PhotoAccess.LIMITED, selection = null), AppUploaderSwitch.ON),
+        )
+        assertEquals(
+            UploadAdmission.Admit,
+            appAdmission(ReadPlan.of(PhotoAccess.LIMITED, selection = Unit), AppUploaderSwitch.ON),
+        )
     }
 
     @Test
     fun `under a full grant both processes admit`() {
-        assertEquals(UploadAdmission.Admit, appAdmission(ReadPlan.of<Unit>(PhotoAccess.FULL, selection = null)))
+        assertEquals(
+            UploadAdmission.Admit,
+            appAdmission(ReadPlan.of<Unit>(PhotoAccess.FULL, selection = null), AppUploaderSwitch.ON),
+        )
         assertEquals(UploadAdmission.Admit, extensionAdmission(GalleryAccess.GRANTED))
     }
 

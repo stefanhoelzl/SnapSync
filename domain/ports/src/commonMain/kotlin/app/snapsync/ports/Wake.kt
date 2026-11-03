@@ -2,9 +2,6 @@ package app.snapsync.ports
 
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Granted
-import app.snapsync.model.ScheduleResult
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeTrigger
 
 /**
  * **The operating system's scheduled wakes of this app** (`docs/architecture.md`, "Background execution"): ask it to
