@@ -204,6 +204,42 @@ class AlbumIntegrationTest {
     @Test
     @Verifies(
         spec = "event-album",
+        requirement = "A deleted album is recreated only when the member asks",
+        scenario = "Opting in again recreates it",
+    )
+    fun on_iphone_a_deleted_album_is_recreated_when_the_member_turns_it_on_again() = behaviour {
+        val first = given {
+            val (_, album) = joinedSavingToAlbum(name = "Party")
+            receivedFrom(DEV_F, "FQ", into = {
+                event<WorldEvent.LibraryJoinedAlbum> { it.album == album && it.asset == RECEIVED }
+            })
+            album
+        }
+
+        // Deleting an iPhone album keeps its photos in the library; turning the album off brings nothing back.
+        whenever { library.deleteAlbum(first) }
+        then { settled { true } }
+
+        whenever { reconfigure(Choices(saveToAlbum = false)) }
+        then {
+            screen<Layer.Joined> { !it.membership.savesToAlbum }
+            never<WorldEvent.LibraryAlbumCreated>()
+            settled { true }
+        }
+
+        // Turning it on again is the opt-in: a new album, gathering the photo the deleted one held.
+        whenever { reconfigure(Choices(saveToAlbum = true)) }
+        then {
+            screen<Layer.Joined> { it.membership.savesToAlbum }
+            event<WorldEvent.LibraryAlbumCreated> { it.album != first && it.title == "Party" }
+            event<WorldEvent.LibraryJoinedAlbum> { it.album != first && it.asset == RECEIVED }
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
         requirement = "The album survives leaving and is reused on rejoin",
         scenario = "Rejoin reuses the album",
     )
@@ -374,6 +410,32 @@ class AlbumIntegrationTest {
             os.foreground()
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "A deleted album is recreated only when the member asks",
+        scenario = "A deleted album stays deleted",
+    )
+    fun the_extension_places_into_no_album_and_creates_none_once_the_member_deleted_it() = behaviour {
+        val (_, album) = given {
+            extensionUploadsOnly()
+            joinedSavingToAlbum(name = "Party")
+        }
+
+        // The extension's cycle enqueues the photo; it only ever adds to an album, so with the album gone it adds nothing.
+        whenever {
+            library.deleteAlbum(album)
+            library.add("A")
+            cycle()
+        }
+        then {
+            event<WorldEvent.UploadJobCreated> { it.job.startsWith("A") }
+            never<WorldEvent.LibraryAlbumCreated>()
+            never<WorldEvent.LibraryJoinedAlbum>()
+            settled { true }
+        }
     }
 
     // ---- the album is offered on by default and declinable in one tap ---------------------------------------------
@@ -786,6 +848,36 @@ class AlbumIntegrationTest {
             settled {
                 it.state.albums?.map { held -> held.id to held.photos } == listOf(album.value.album to listOf(RECEIVED))
             }
+        }
+    }
+
+    @Test
+    @Verifies(spec = "event-album", requirement = "Turning the album on gathers what is already there")
+    fun access_that_becomes_usable_while_the_app_runs_gathers_the_photos_already_received() = behaviour {
+        given {
+            joinedEvent(Choices(saveToAlbum = false))
+            receivedFrom(DEV_F, "FQ", into = { settled { it.state.albums.orEmpty().isEmpty() } })
+            step(
+                "photo access taken away",
+                act = { library.permission(PhotoGrant.DENIED) },
+                until = { settled { true } },
+            )
+        }
+
+        // Turned on without usable access: no album can be made yet, and nothing is gathered.
+        whenever { reconfigure(Choices(saveToAlbum = true)) }
+        then {
+            screen<Layer.Joined> { it.membership.savesToAlbum }
+            never<WorldEvent.LibraryAlbumCreated>()
+            settled { it.state.albums.orEmpty().isEmpty() }
+        }
+
+        // Access comes back while the app runs: the album is made, and what was received already is gathered into it.
+        whenever { library.permission(PhotoGrant.GRANTED) }
+        then {
+            event<WorldEvent.LibraryAlbumCreated> { it.title == Defaults.EVENT_NAME }
+            event<WorldEvent.LibraryJoinedAlbum> { it.asset == RECEIVED }
+            settled { it.state.albums?.singleOrNull()?.photos == listOf(RECEIVED) }
         }
     }
 
