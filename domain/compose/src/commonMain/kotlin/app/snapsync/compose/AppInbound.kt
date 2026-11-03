@@ -21,7 +21,6 @@ import app.snapsync.entrypoints.OnUploadSessionEvents
 import app.snapsync.entrypoints.Screen
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
-import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LifecycleHandlers
@@ -40,14 +39,14 @@ import kotlin.coroutines.CoroutineContext
 @CompositionOnly
 fun AppCore.inbound(host: HostAssembly) {
     ports.gallery.inbound(
-        GalleryHandlers(OnImportPlaceholder(runtime, importMarkers), OnImportSettled(runtime, importMarkers)),
+        GalleryHandlers(OnImportPlaceholder(runtime, receiving.markers), OnImportSettled(runtime, receiving.markers)),
     )
     ports.wake.inbound(WakeHandlers(OnScheduledWake(runtime, work.wakeWork)))
     ports.download.inbound(
         DownloadHandlers(
-            OnDownloadFinished(runtime, downloadJobs),
-            OnDownloadCompleted(runtime, downloadJobs),
-            OnDownloadSessionEvents(runtime, downloadDrains, downloadJobs, work.wakeWork),
+            OnDownloadFinished(runtime, receiving.stage, receiving.record, work.downloadStaged),
+            OnDownloadCompleted(runtime, receiving.free),
+            OnDownloadSessionEvents(runtime, downloadDrains, work.wakeWork),
             OnSessionDrained(runtime, downloadDrains),
         ),
     )
@@ -75,7 +74,6 @@ fun AppCore.inbound(host: HostAssembly) {
         ),
     )
     ports.pushNotifications.inbound(pushHandlers())
-    ports.devControls.inbound(DevHandlers(work.devReset))
     ports.links.inbound(LinkHandlers(OnLink(runtime, linkOpening, openedLinks)))
 }
 
@@ -87,7 +85,7 @@ fun AppCore.inbound(host: HostAssembly) {
 fun AppCore.pushHandlers(): PushHandlers = PushHandlers(
     OnPushToken(runtime, services.pushTokens, push.register),
     OnPushTokenFailure(runtime),
-    OnSilentPush(runtime, work.prelude, downloadPushReceiver, push.tail, work.wakeWork),
+    OnSilentPush(runtime, work.prelude, push.tail, work.planJoined, work.wakeWork),
 )
 
 /**

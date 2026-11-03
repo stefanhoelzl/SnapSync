@@ -4,6 +4,8 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
+import app.snapsync.data.receiving.db.DownloadDatabase
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.domain.time.Timestamp
@@ -14,8 +16,6 @@ import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.PrefRead
-import app.snapsync.services.downloads.DOWNLOADS_DB_NAME
-import app.snapsync.services.downloads.db.DownloadDatabase
 import app.snapsync.wire.api.Limits
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive

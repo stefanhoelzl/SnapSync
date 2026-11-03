@@ -33,8 +33,6 @@ class BackendServices(
     val join: EventJoin by lazy { EventJoin(gateway) }
     val manifest: ManifestPublisher by lazy { BackendManifestPublisher(gateway, eventOver) }
     val leave: LeaveNotifier by lazy { LeaveNotifier(gateway, identity) }
-    val received: ReceivedReporter by lazy { BackendReceivedReporter(gateway, identity) }
-    val union: EventUnionSource by lazy { BackendEventUnionSource(gateway) }
     val deviceFiles: DeviceFilesSource by lazy { BackendDeviceFilesSource(gateway) }
     val push: PushEndpointPublisher by lazy { PushEndpointPublisher(gateway, identity) }
 }

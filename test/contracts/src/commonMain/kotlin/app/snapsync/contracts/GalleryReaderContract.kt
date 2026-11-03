@@ -68,7 +68,8 @@ enum class GalleryReaderState {
  * What every [GalleryReader] promises (`docs/architecture.md` — this list IS the specification of the port's
  * obligations). The port is thin: these clauses say what the platform shows, never what the core makes of it —
  * whether a walk is authoritative, which grant may answer a presence question and which albums are denied are the
- * services' (`GalleryDiscovery`, `GalleryAssetPresence`, `GalleryAlbums`), unit-tested over the honest fake.
+ * services' and the data layer's (`GalleryDiscovery`, `LibraryPresence`, `GalleryAlbums`), unit-tested over the
+ * honest fake.
  *
  * Two answers carry everything downstream:
  * - **`NotReadable` is never `Read(empty)`.** A counted zero settles the status screen and an empty

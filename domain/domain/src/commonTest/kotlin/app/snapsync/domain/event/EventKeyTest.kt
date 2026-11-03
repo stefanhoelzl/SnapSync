@@ -1,9 +1,7 @@
 package app.snapsync.domain.event
 
-import app.snapsync.domain.membership.DevReset
 import app.snapsync.domain.membership.KeptKey
 import app.snapsync.domain.membership.Membership
-import app.snapsync.domain.membership.MintsDevReset
 import app.snapsync.domain.membership.MintsKeptKey
 import app.snapsync.domain.membership.Share
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -19,7 +17,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame
-import kotlin.test.assertTrue
 
 /**
  * An encrypted event's key and what it decides (capability `invite-link`): only an event's own key opens it, a lost one
@@ -104,11 +101,10 @@ class EventKeyTest {
         assertEquals(RestoreVerdict.NotLost, RestoreVerdict.of(plain, KeyPresence.NotNeeded, own))
     }
 
-    @OptIn(MintsKeptKey::class, MintsDevReset::class)
+    @OptIn(MintsKeptKey::class)
     @Test
     fun `the key's evidence names the event it was kept for`() {
         assertEquals(encrypted.event.id, KeptKey(encrypted.event.id).event)
-        assertTrue(DevReset() !== DevReset())
         assertFalse(Encryption.Encrypted(ownId) == Encryption.Encrypted(other.id))
     }
 }

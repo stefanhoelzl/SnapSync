@@ -42,51 +42,39 @@ about to exit, and it runs beside your `dev:local` without colliding. It exits w
    `deployments/local.json` and re-running the resolver. Load **`ssh-mac-build`** → *Pointing a build at
    a local backend* for the exact commands. A quick tunnel's hostname is random per session, so the IPA
    is rebuilt per session (~1 min incremental Debug).
-3. **Install, launch, then RESET over the channel** — load **`snapsync-device`** (it has you load the
-   global `device` skill, which owns the per-phone lock — `SE2`, `XS` — every phone command requires) to sign, install
-   and launch, then **`rig-channel`** for
-   `rig dev-controls reset` (`rig-channel`). The reset is not optional; see below.
+3. **Uninstall, then install and launch** — load **`snapsync-device`** (it has you load the global `device` skill,
+   which owns the per-phone lock — `SE2`, `XS` — every phone command requires) to uninstall the app, then sign,
+   install and launch the swapped build. A fresh install is not optional; see below.
 
 Reset is `rm -rf api/.localstore`. This is the deliberate **inverse** of the production rule: no
 whole-zone reset tool exists for bunny because that one zone holds real users' photos; the local store
 holds nothing.
 
-## ⚠️ Crossing backends REQUIRES a device reset — or nothing uploads, silently
+## ⚠️ Crossing backends REQUIRES a fresh install — or nothing uploads, silently
 
-Reset the swapped build **every time you change which backend is baked in — in both directions**,
-including going back to production. `SNAPSYNC_RESET_STATE` is **gone**: production Kotlin declares no
-`SNAPSYNC_*` launch trigger any more, and a build guard fails if one returns. It is the control channel's
-job now, on a build made with `-Psnapsync.rig=true` (load **`rig-channel`**):
-
-```bash
-B=http://127.0.0.1:18101          # the phone's host port (devices.json; the SE2's here)
-test/cli/build/install/rig/bin/rig --url $B dev-controls reset
-```
-
-It answers `{"reset":true}` once the reset ran (the ledger counts it used to return left the protocol with the
-ledger, 11g2): confirm it took from the screen — the device shows the create/join screen again — and from the
-uploads that follow. Needs the phone's port forward up; see `rig-channel`.
+**Uninstall** the app before installing a build with a different backend baked in — **every time, in both
+directions**, including going back to production. There is no reset to run instead: `SNAPSYNC_RESET_STATE` is gone
+(production Kotlin declares no `SNAPSYNC_*` launch trigger, and a build guard fails if one returns), and so is the
+control channel's `dev-controls reset` (phase 4.5, "receiving"). An update in place keeps every store.
 
 On the **A40** no tunnel is needed: `adb -s <serial> reverse tcp:8080 tcp:8080` makes the phone's loopback the
 host's, exactly as on the emulator — build with `-Psnapsync.deployment=local` (load `snapsync-android`).
 
-⚠️ Order matters and nothing enforces it: reset **before** leaving. After a reset the device is unjoined,
-so a leave becomes a no-op rather than a `DELETE` aimed at the backend you are departing.
+⚠️ The uninstall tells no backend anything: a device joined to an event stays its member there until the event is
+swept. Never leave from the swapped build — its leave is a `DELETE` aimed at the backend the event does not live on.
 
 **Why it is not optional:** the upload ledger's key is the **bare filename**, event-independent, and a
 *leave* deliberately keeps it (a `COMPLETED` row stays true across a leave — `photo-sharing`). Point the
 build at a different backend and the bytes are on the one you left while the ledger still says
 `COMPLETED`, so the device uploads **nothing** — no error, no failed request, no log line. Clearing the
 ledger alone is **not enough** either: the discovery cursor is a `PHPersistentChangeToken`, and with it
-retained the next cycle sees no changes and enumerates nothing. The reset clears both, plus the
-membership config (**locally**, notifying no backend) and prunable download rows; it **keeps**
-imported download rows, whose `createdLocalId` suppresses re-uploading photos this device downloaded.
+retained the next cycle sees no changes and enumerates nothing. The uninstall clears both with the container, and the
+membership with them. Photos this device downloaded stay in the library carrying their SnapSync mark, so a rejoin
+recognises them rather than sharing them back.
 
 **The oracle when you forget:** each process logs `[boot] upload base = …` in `debug.log`. A tunnel
 host there beside a cycle reporting `enumeration: 0 seen` (or `N seen, 0 new, N already-uploaded`)
-means the reset did not run. ⚠️ **Order matters and nothing enforces it any more** — each command is
-its own request now, so reset **before** leaving: after a reset the device is unjoined, so a leave is
-a no-op rather than a `DELETE` aimed at the backend you are leaving behind.
+means the app was updated in place rather than installed fresh.
 
 ⚠️ **The rig's relational state lives in `api/.localstore/api.db`** — a real SQLite file beside the
 objects (`docs/architecture.md`), which is where events, memberships, assets and the `uploaded` record now
@@ -110,7 +98,7 @@ stored-file listing and they never re-upload. `rm -rf api/.localstore` when you 
 measured 2026-08-25: a rejoin seeded 167 rows this way, which is correct behaviour and looks exactly
 like "nothing uploaded".
 
-Going **back to production** is the direction with no automatic protection and it needs the same reset;
+Going **back to production** is the direction with no automatic protection and it needs the same fresh install;
 `photo-sharing` then re-seeds already-stored photos as `COMPLETED`, so the cost is one
 reconcile, not a re-upload of the library.
 

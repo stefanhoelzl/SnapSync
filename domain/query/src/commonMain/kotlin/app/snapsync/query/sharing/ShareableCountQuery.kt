@@ -2,7 +2,6 @@ package app.snapsync.query.sharing
 
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.sharing.PreviewRead
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureRange
 
 /**
@@ -14,11 +13,10 @@ class ShareableCountQuery(private val photos: OwnPhotos) {
 
     /**
      * The count for [range], or `null` when no admitted set can be stated — no grant, an undecided one, or a partial
-     * grant whose selection has not been read — which the surface shows as no row, never as a zero. [received] is echo
-     * suppression's set (MIGRATING: its store is still the old zones').
+     * grant whose selection has not been read — which the surface shows as no row, never as a zero.
      */
-    suspend fun count(range: CaptureRange, received: Set<AssetId>): Int? =
-        when (val read = photos.preview(range, received)) {
+    suspend fun count(range: CaptureRange): Int? =
+        when (val read = photos.preview(range)) {
             is PreviewRead.Counted -> read.photos
             PreviewRead.NotReadable -> null
         }

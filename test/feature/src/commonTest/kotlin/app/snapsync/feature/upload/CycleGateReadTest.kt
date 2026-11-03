@@ -7,19 +7,20 @@ import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
+import app.snapsync.data.receiving.ReceivedReadiness
 import app.snapsync.data.sharing.DiscoveryRead
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
-import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestLedger
+import app.snapsync.feature.support.TestReceived
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.photo
 import app.snapsync.feature.support.testClock
@@ -32,12 +33,9 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PauseReason
-import app.snapsync.model.SuppressionReadiness
 import app.snapsync.ports.Clock
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.PlatformDeviceId
-import app.snapsync.services.downloads.RecognitionSource
-import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
@@ -62,18 +60,13 @@ class CycleGateReadTest {
     private val host = "https://edge.example"
     private val cutoff = CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z"))
 
-    /** The suppression store, scripted; records whether the gate asked it, and hands out [suppressed]. */
-    private class Suppression(
-        var readiness: SuppressionReadiness = SuppressionReadiness.Ready,
-        val suppressed: Set<AssetId> = emptySet(),
-        var recognised: Boolean = true,
-    ) : SuppressionSource, RecognitionSource {
-        var readinessAsked = 0
-        var idsAsked = 0
-        override suspend fun readiness(): SuppressionReadiness = readiness.also { readinessAsked++ }
-        override suspend fun suppressedLocalIds(): Set<AssetId> = suppressed.also { idsAsked++ }
-        override suspend fun isRecognised(eventId: EventId): Boolean = recognised
-    }
+    /** The download store's received photos, scripted; records whether the gate asked it, and hands out [suppressed]. */
+    @Suppress("FunctionName")
+    private fun Suppression(
+        readiness: ReceivedReadiness = ReceivedReadiness.Ready,
+        suppressed: Set<AssetId> = emptySet(),
+        recognised: Boolean = true,
+    ) = TestReceived(readiness, suppressed, recognised)
 
     private fun event(eventId: String = "E", saveToAlbum: Boolean = false, keyId: String? = null) = EventConfig(
         testEventId(eventId),
@@ -92,18 +85,17 @@ class CycleGateReadTest {
         records: SharedDatabase = store.db,
         ledger: LedgerService = TestLedger().service,
         identity: DeviceIdentity = testIdentity("11111111-1111-4111-8111-111111111111"),
-        suppression: Suppression = Suppression(),
+        suppression: TestReceived = Suppression(),
         admission: UploadAdmission = UploadAdmission.Admit,
         keys: EventKeyStore = EventKeyStore(inMemorySecureStore(), EventKeyIds(fakeCrypto())),
         clock: Clock = testClock(),
-        library: OwnLibrary = OwnLibrary(clock = clock),
+        library: OwnLibrary = OwnLibrary(clock = clock, received = suppression),
     ) = CycleGateRead(
         records = records,
         ledger = ledger,
         config = configService(joined, store, clock),
         identity = identity,
-        suppression = suppression,
-        recognition = suppression,
+        received = suppression,
         host = host,
         admission = { admission },
         keys = keys,
@@ -152,13 +144,13 @@ class CycleGateReadTest {
             assertTrue(run.membership.saveToAlbum)
             assertEquals(ledger.manifestVersion(), run.membership.manifestVersion)
             assertEquals(1, suppression.readinessAsked, "an admitted cycle asks the suppression store once")
-            assertEquals(0, suppression.idsAsked, "the policy is a supplier: the gate builds none")
+            assertEquals(0, suppression.handlesAsked, "the policy is a supplier: the gate builds none")
         }
 
     @Test
     fun `the membership's contribution reads the suppressed ids and the album exclusions from the cutoff`() = runTest {
         val suppression = Suppression(suppressed = setOf(testAssetId("echo")))
-        val library = OwnLibrary().apply {
+        val library = OwnLibrary(received = suppression).apply {
             add(
                 photo("echo", "2026-01-10T00:00:00Z"),
                 photo("meme", "2026-01-10T00:00:00Z"),
@@ -170,14 +162,14 @@ class CycleGateReadTest {
         }
 
         val run = assertIs<CycleGate.Run>(gate(suppression = suppression, library = library).read())
-        assertEquals(0, suppression.idsAsked, "the gate derives nothing")
+        assertEquals(0, suppression.handlesAsked, "the gate derives nothing")
 
         assertEquals(
             setOf(testAssetId("cam"), testAssetId("first")),
             admitted(run, library),
             "the echo and the album member are out, and the floor is the membership's own cutoff",
         )
-        assertEquals(1, suppression.idsAsked)
+        assertEquals(1, suppression.handlesAsked)
     }
 
     @Test
@@ -216,21 +208,21 @@ class CycleGateReadTest {
 
     @Test
     fun `an old suppression store pauses an admitted cycle`() = runTest {
-        val read = gate(suppression = Suppression(SuppressionReadiness.OldSchema)).read()
+        val read = gate(suppression = Suppression(ReceivedReadiness.OldSchema)).read()
 
         assertEquals(CycleGate.Paused(PauseReason.OLD_SCHEMA), read)
     }
 
     @Test
     fun `an unopenable suppression store skips an admitted cycle`() = runTest {
-        val read = gate(suppression = Suppression(SuppressionReadiness.Unavailable("locked"))).read()
+        val read = gate(suppression = Suppression(ReceivedReadiness.Unavailable("locked"))).read()
 
         assertEquals(CycleGate.Skip("echo-suppression store unavailable (locked)"), read)
     }
 
     @Test
     fun `a process that may not create withholds and never opens the suppression store`() = runTest {
-        val suppression = Suppression(SuppressionReadiness.Unavailable("never asked"))
+        val suppression = Suppression(ReceivedReadiness.Unavailable("never asked"))
 
         val read = gate(suppression = suppression, admission = UploadAdmission.Withheld).read()
 

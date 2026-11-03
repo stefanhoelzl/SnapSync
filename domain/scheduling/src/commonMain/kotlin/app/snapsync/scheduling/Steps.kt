@@ -9,6 +9,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.reflect.KClass
 
 /** The steps of one run. */
 class Steps internal constructor(
@@ -52,6 +53,25 @@ class Steps internal constructor(
 
     /** A pass of [sequence], single-flight across the process. */
     suspend fun <R> run(sequence: Sequence<R>): Pass<R> = runtime.flights.run(sequence)
+
+    /**
+     * Calls [next] until it answers `false` — a drain, one item at a time. Each call OUTLIVES this run: when the run is
+     * cancelled — the operating system's time is up, or its pass yielded to a join — the call in flight runs on to its
+     * end in the process scope, still this entry point's work, and no further one starts. For work the platform cannot
+     * stop once submitted, like a photo-library import, whose own report records what it did.
+     */
+    suspend fun drain(next: suspend () -> Boolean) {
+        do {
+            val more = runtime.outliving(next)
+        } while (more)
+    }
+
+    /**
+     * Awaits the work the inline deliveries of [entry] started and did not await, since the last time it was awaited —
+     * what a delivery the platform makes once persisted only partly before it returned (a staged download's record
+     * write), and whose end a later delivery answers for (the session's drain report).
+     */
+    suspend fun awaitDetachedOf(entry: KClass<*>) = runtime.unawaited.await(entry.simpleName.toString())
 
     /**
      * A step that runs when the others are done **however they ended** — failed, or cancelled because time is up —

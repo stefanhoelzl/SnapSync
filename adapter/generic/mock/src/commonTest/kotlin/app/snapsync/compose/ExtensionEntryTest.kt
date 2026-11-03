@@ -1,6 +1,8 @@
 package app.snapsync.compose
 
 import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.receiving.DownloadDatabaseFile
+import app.snapsync.data.receiving.ReceivedPhotos
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
 import app.snapsync.data.trust.SecureCredentialStore
@@ -32,7 +34,6 @@ import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.use
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Routes
@@ -131,7 +132,9 @@ class ExtensionEntryTest {
         }
         // The app creates and migrates the download store — the extension only ever opens it read-only — and has
         // recognised this membership's received photos, without which the extension shares nothing of it.
-        DownloadService(databases).recognition.mark(testEventId("11111111-1111-4111-8111-111111111111"))
+        ReceivedPhotos(
+            DownloadDatabaseFile(databases),
+        ).markRecognised(testEventId("11111111-1111-4111-8111-111111111111"))
     }
 
     /** The extension's ports over the device's mocks, as its root assembles them. */

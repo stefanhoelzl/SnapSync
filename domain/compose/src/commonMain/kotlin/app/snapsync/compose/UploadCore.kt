@@ -7,6 +7,7 @@ import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
+import app.snapsync.data.receiving.ReceivedPhotosRead
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.CachedCredentialStore
@@ -21,8 +22,6 @@ import app.snapsync.feature.upload.extensionAdmission
 import app.snapsync.ports.GalleryReader
 import app.snapsync.services.backend.BackendUploadRequests
 import app.snapsync.services.backend.ManifestPublisher
-import app.snapsync.services.downloads.RecognitionSource
-import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.gallery.ContributionKeyedResources
 import app.snapsync.services.gallery.galleryAccess
 import app.snapsync.services.identity.requireDeviceId
@@ -114,10 +113,8 @@ internal class UploadServices(
      * its core's (`AppCore.backend`), the extension the one [extensionBackend] composes.
      */
     val manifestPublisher: ManifestPublisher,
-    /** Echo-suppression: required, no default. */
-    val suppression: SuppressionSource,
-    /** Whether the membership's received photos have been recognised: required. */
-    val recognition: RecognitionSource,
+    /** What this process reads of the photos it received — echo suppression and recognition: required, no default. */
+    val received: ReceivedPhotosRead,
     /** Event-album placement. */
     val albumCoordinator: AlbumCoordinator,
     /**
@@ -227,8 +224,7 @@ private fun cycleGateRead(ports: UploadServices) = CycleGateRead(
     ledger = ports.ledger,
     config = ports.config,
     identity = ports.deviceIdentity,
-    suppression = ports.suppression,
-    recognition = ports.recognition,
+    received = ports.received,
     host = ports.host,
     // Each root states its own answer — the app from resolution, the extension from its own grant read.
     admission = ports.process::admission,

@@ -6,7 +6,6 @@ import app.snapsync.contracts.attest.DeviceTokens
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.domain.device.DeviceId
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.mock.DeclaredVersion
@@ -16,9 +15,6 @@ import app.snapsync.mock.StorePage
 import app.snapsync.mock.UploadNetwork
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.UnionAsset
-import app.snapsync.model.UnionResource
-import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.HttpRequest
@@ -145,22 +141,13 @@ class BackendReach(
      * The union the backend serves for [eventId] — read with no token, so the backend logs it as an anonymous full
      * read (decision record `changes/incremental-union`, D5), like a browser's.
      */
-    suspend fun unionOf(eventId: String): List<UnionAsset> {
+    suspend fun unionOf(eventId: String): List<app.snapsync.wire.models.UnionAsset> {
         val reply = send(
-            Routes.EventFiles.request(eventId, snapSyncTrigger = UnionTrigger.FOREGROUND.wire),
+            Routes.EventFiles.request(eventId, snapSyncTrigger = FOREGROUND),
             anonymous = true,
         )
         val page = reply as? EventFilesReply.Page ?: refused("the union", reply)
-        return page.items.map { asset ->
-            UnionAsset(
-                deviceId = requireNotNull(DeviceId.parse(asset.deviceId)) { "not a device id: '${asset.deviceId}'" },
-                assetId = AssetId.parse(asset.assetId)!!,
-                creationDate = asset.creationDate,
-                resources = asset.resources.map {
-                    UnionResource(it.key, it.url.orEmpty(), it.role.value, it.contentType, it.filename)
-                },
-            )
-        }
+        return page.items
     }
 
     /** The event's name, or `null` for an event the backend does not hold (a `404`). */
@@ -201,7 +188,7 @@ class BackendReach(
      */
     suspend fun reportReceived(eventId: String, deviceId: String) {
         val page = send(
-            Routes.EventFiles.request(eventId, snapSyncTrigger = UnionTrigger.FOREGROUND.wire),
+            Routes.EventFiles.request(eventId, snapSyncTrigger = FOREGROUND),
             anonymous = true,
         )
         val position = (page as? EventFilesReply.Page ?: refused("the union", page)).snapSyncCursor.toLong()
@@ -311,3 +298,6 @@ fun heldToken(store: SecureStore, deviceId: String?): String? =
 const val METRICS_ARE_THE_PLATFORMS: String =
     "process-metric reports here are the platform's own — MetricKit's on an iPhone, none on Android — so there is no " +
         "mock of them to play; the JVM host composes one"
+
+/** The union read's trigger header a member sends when it opens the app: a whole read, which the backend logs. */
+private const val FOREGROUND = "foreground"

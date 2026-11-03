@@ -32,7 +32,6 @@ import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.format.InviteLinkText
 import app.snapsync.model.AlbumContents
 import app.snapsync.model.BuildLabel
@@ -54,6 +53,7 @@ import app.snapsync.presentation.range.validUntil
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.JoinDetailsQuery
+import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.CreateForm

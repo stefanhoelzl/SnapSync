@@ -1,7 +1,6 @@
 package app.snapsync.services.databases
 
 import app.snapsync.data.store.LEDGER_DB_NAME
-import app.snapsync.data.store.OwnedDatabase
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.ports.DbResult
@@ -20,9 +19,6 @@ class DatabaseUnavailable(val name: String, val detail: String) :
  * (`PENDING_CLEANUPS.md`). The data layer holds no throw (`docs/patterns.md`, "Invalid program state"), so the shim
  * lives here.
  */
-fun <D, T> OwnedDatabase<D>.use(statements: (D) -> T): T = held(name, execute(statements))
-
-/** [OwnedDatabase.use] over the shared database. */
 fun <T> SharedDatabase.use(statements: (LedgerDatabase) -> T): T = held(LEDGER_DB_NAME, execute(statements))
 
 private fun <T> held(name: String, result: DbResult<T>): T = when (result) {

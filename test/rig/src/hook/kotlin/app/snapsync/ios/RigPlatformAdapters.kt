@@ -64,7 +64,7 @@ import platform.Foundation.writeToFile
  * app composes over are [real] with every system the adapters file mocks swapped for its mock ([rigLaunch], which reads it),
  * and an adapter choice the process refuses composes nothing. Besides, the UI is decorated ([RigUi] — the channel's `screen.tap`
  * reach the core as the intents a tap produces, through the same handlers) and the development controls are the
- * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured, the reset). The `os` service delivers
+ * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured). The `os` service delivers
  * through the platform's own adapters ([IosEntryDriver]) — or a mocked system's operator face.
  *
  * Being compiled INTO `:app:ios` is what lets this file reach the root's adapters without widening anything to

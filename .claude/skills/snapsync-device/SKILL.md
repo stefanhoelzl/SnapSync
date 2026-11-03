@@ -8,7 +8,7 @@ description: >-
   loop. Use together with `device` whenever a task touches SnapSync on a
   physical iPhone: "install on the phone", "launch the app", "read debug.log",
   "test on the SE2", "try it on the XS", "did the upload land", "does the link
-  open the app". To DRIVE a running app — join, create, leave, reset, seed,
+  open the app". To DRIVE a running app — join, create, leave, seed,
   wipe — load `rig-channel`. The A40 (Android) is `snapsync-android`'s.
 ---
 

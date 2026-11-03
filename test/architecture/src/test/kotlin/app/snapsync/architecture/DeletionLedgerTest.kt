@@ -396,6 +396,36 @@ class DeletionLedgerTest {
     }
 
     /**
+     * Receiving before its layers (phase 4.5): a feature controller that held the download store's lock, the union read,
+     * the staging, the import and the adoption at once (`DownloadController`, `ReceivedPhotoAdoption`, `JoinUnion`), over
+     * a services zone of its own (`services/downloads`: the store, its transfer jobs, the extension's suppression view) and
+     * gallery services that decided presence and imported (`GalleryImporter`, `GalleryAssetPresence`). The typestate is
+     * the domain's (`StagedDownload`, `ImportedAsset`), the store and its reads data's (`DownloadStore`, `ReceivedPhotos`,
+     * the extension's read-only `ReceivedPhotosReader`), each operation a use case. And the rig's reset in production:
+     * an entry point (`OnDevReset`) and a use case (`ForgetMembership`) only the control channel reached, with an
+     * evidence type (`DevReset`) and the stores' clears (`MembershipRepository.forget`, `MobileDataStore.clear`) for it —
+     * a reset is a reinstall now.
+     */
+    @Test
+    fun `receiving's retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """(class|interface|object) (Download""" + "Controller|ReceivedPhoto" + "Adoption|Join" +
+                "Union|Download" + "Service|Suppression" + "Service|Download" + "Jobs|Staging" + "Service|Gallery" +
+                "Importer|GalleryAsset" + "Presence|OthersDeclared" + "Union|EventUnion" + "Source)\\b"
+            declared(files, pre).forEach { add("receiving's pre-layer types in $it (the layers' — 4.5)") }
+            if (File(repoRoot, "domain/services/src/commonMain/kotlin/app/snapsync/services/downloads").exists()) {
+                add("a services/downloads package (the download store is the data layer's — 4.5)")
+            }
+            val reset = """class (OnDev""" + "Reset|ForgetMem" + "bership|Dev" + "Reset|Dev" + "Handlers)\\b"
+            declared(files, reset).forEach {
+                add("the rig's reset in production, in $it (a reset is a reinstall — 4.5)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
      * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop

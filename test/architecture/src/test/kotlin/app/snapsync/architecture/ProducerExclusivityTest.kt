@@ -183,7 +183,7 @@ class ProducerExclusivityTest {
             Step.Reconfigure -> { if (joined) transitions.onReconfigure() }
             Step.Leave -> {
                 joined = false
-                membership.forget()
+                membership.leave()
                 transitions.onLeave()
             }
             is Step.Permission -> {
@@ -247,7 +247,7 @@ class ProducerExclusivityTest {
         val reset = MembershipRepository(database)
         for (osSupported in listOf(true, false)) for (registered in listOf(false, true)) {
             for (a in steps) for (b in steps) for (c in steps) {
-                reset.forget()
+                reset.leave()
                 val device = Device(osSupported, registered = registered && osSupported, database)
                 val script = listOf(a, b, c)
                 for (step in script) {

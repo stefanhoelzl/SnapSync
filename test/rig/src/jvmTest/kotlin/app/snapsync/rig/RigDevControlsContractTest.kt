@@ -14,7 +14,7 @@ import kotlin.test.Test
 
 /**
  * A rig build's developer controls — [RigDevControls], the one implementation that switches anything — against the
- * contract, its controls set as the channel's verbs set them and its reset delivered as `dev-controls.reset()` delivers it.
+ * contract, its controls set as the channel's verbs set them.
  */
 class RigDevControlsContractTest {
 
@@ -29,7 +29,7 @@ class RigDevControlsContractTest {
                 pin = DevControlsContract.PINNED
                 encrypts = true
             }
-            return Entered.Ready(DevControlsUnderTest(controls.recorded(log), resetFromChannel = controls::reset))
+            return Entered.Ready(DevControlsUnderTest(controls.recorded(log)))
         }
     }
 

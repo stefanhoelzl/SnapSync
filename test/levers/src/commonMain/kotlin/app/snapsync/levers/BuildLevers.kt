@@ -26,9 +26,6 @@ interface DevControlsLevers {
      */
     suspend fun encryptNewEvents(on: Boolean)
 
-    /** Voids this device's durable sync state, as the development reset does; returns once it is void. */
-    suspend fun reset()
-
     /** The controls as they stand now. */
     suspend fun controls(): DevControlsView
 

@@ -29,7 +29,7 @@ private fun found(value: String, protection: StoredProtection = StoredProtection
  * **Why this is worth a file of its own.** The device id is written **once**, at mint, and never rewritten — the
  * secure item survives app uninstall, so nothing in a device's remaining lifetime will correct a value or a
  * placement that was wrong when it was created. A wrong id orphans that device's `/files/devices/<deviceId>/`
- * partition and makes every photo it already uploaded read back as another member's, which `DownloadController`
+ * partition and makes every photo it already uploaded read back as another member's, which receiving
  * then re-imports into its owner's own library, one duplicate per photo. That is remotely unfixable, and it
  * shipped: on 2026-07-20 an SE2 ran nine hours with the app on one id and the upload extension on another, **both
  * reads reporting success**.

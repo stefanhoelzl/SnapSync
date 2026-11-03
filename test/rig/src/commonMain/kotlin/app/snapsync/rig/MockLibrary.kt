@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.data.receiving.ReceivedPhotosReader
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
 import app.snapsync.data.sharing.OwnPhotos
@@ -93,6 +94,8 @@ private suspend fun MockWorld.mockOwnPhotos(): OwnPhotos {
         selection,
         DenylistedAlbums(library.port()),
         clock,
+        // What this device received, as the extension reads it: read-only, never created or migrated here.
+        ReceivedPhotosReader(device.databases.inspectorPort()),
     )
 }
 

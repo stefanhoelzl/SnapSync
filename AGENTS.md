@@ -67,7 +67,7 @@ prints; never guess a spec path. Where a class lives: grep.
   *declares*: that is readable from Linux (`adapter/ios/AGENTS.md`, "Reading the Apple SDK from Linux").
 - **Testing a backend change against a real device** -> load **`local-backend`** first; it owns the
   three-hop chain and the one step whose omission is silent.
-- **Driving the app on device** — joining, creating, leaving, resetting, seeding, wiping, reading live state —
+- **Driving the app on device** — joining, creating, leaving, seeding, wiping, reading live state —
   over the build-time-only control channel (`-Psnapsync.rig=true`, the `rig` CLI) -> load **`rig-channel`**. It
   needs the same phone lock as `snapsync-device`. There are no `SNAPSYNC_*` launch triggers any more, and a guard
   fails the build if one returns.

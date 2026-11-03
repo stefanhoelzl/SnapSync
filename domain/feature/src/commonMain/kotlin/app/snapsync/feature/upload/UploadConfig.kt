@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.receiving.ReceivedReadiness
 import app.snapsync.data.sharing.Contribution
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.event.EventId
@@ -7,7 +8,6 @@ import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.domain.upload.AppUploaderSwitch
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
-import app.snapsync.model.SuppressionReadiness
 
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
 class UploadConfig(
@@ -124,10 +124,10 @@ sealed interface CycleGate {
  * An unreadable store is [CycleGate.Skip] — "I could not look", upload nothing this run — and an old one
  * [CycleGate.Paused]. Running without suppression is never an answer: it would re-upload downloaded photos.
  */
-fun suppressionGate(run: CycleGate.Run, readiness: SuppressionReadiness): CycleGate = when (readiness) {
-    SuppressionReadiness.Ready -> run
-    SuppressionReadiness.OldSchema -> CycleGate.Paused(PauseReason.OLD_SCHEMA)
-    is SuppressionReadiness.Unavailable -> CycleGate.Skip("echo-suppression store unavailable (${readiness.detail})")
+fun suppressionGate(run: CycleGate.Run, readiness: ReceivedReadiness): CycleGate = when (readiness) {
+    ReceivedReadiness.Ready -> run
+    ReceivedReadiness.OldSchema -> CycleGate.Paused(PauseReason.OLD_SCHEMA)
+    is ReceivedReadiness.Unavailable -> CycleGate.Skip("echo-suppression store unavailable (${readiness.detail})")
 }
 
 /**

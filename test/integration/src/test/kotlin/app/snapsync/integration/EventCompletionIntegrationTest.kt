@@ -128,7 +128,11 @@ class EventCompletionIntegrationTest {
             joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END).also { event ->
                 receivedFrom(DEV_F, "FQ", final = true)
                 afterTheEnd()
-                step("the fellow member holds everything", act = { publicBackend.foreignDeviceReceived(DEV_F) }, until = {
+                step("the fellow member holds everything", act = {
+                    publicBackend.foreignDeviceReceived(
+                        DEV_F,
+                    )
+                }, until = {
                     settled { it.of(event)?.finished == false } // this member has not said what it received yet
                 })
             }

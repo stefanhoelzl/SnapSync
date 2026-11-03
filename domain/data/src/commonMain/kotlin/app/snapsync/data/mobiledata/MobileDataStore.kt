@@ -47,9 +47,6 @@ class MobileDataStore(private val preferences: Preferences) {
     fun write(choice: MobileDataChoice): StoreWrite =
         written(preferences.set(PreferenceKeys.MOBILE_DATA, MobileDataText.spell(choice)))
 
-    /** Forget the choice: the device is back at the default. Only the rig's reset asks (`PENDING_CLEANUPS.md`). */
-    fun clear(): StoreWrite = written(preferences.remove(PreferenceKeys.MOBILE_DATA))
-
     private fun written(outcome: WriteOutcome): StoreWrite = when (outcome) {
         WriteOutcome.Ok -> StoreWrite.Written
         is WriteOutcome.Failed -> StoreWrite.Failed(outcome.detail)

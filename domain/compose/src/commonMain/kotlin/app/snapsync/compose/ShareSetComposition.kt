@@ -1,14 +1,8 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.download.OthersDeclaredUnion
-import app.snapsync.feature.membership.ReceivedPhotoAdoption
+import app.snapsync.entrypoints.OnPhotoGrantUsable
 import app.snapsync.feature.membership.ShareSetLoad
-import app.snapsync.model.GalleryAccess
-import app.snapsync.model.grantsPhotoAccess
-import app.snapsync.ports.GalleryReader
-import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.backend.DeviceFilesSource
-import app.snapsync.services.gallery.MarkedPhotoLookup
 
 /**
  * The join-time load over the app's ports: a provision into a new
@@ -29,42 +23,12 @@ internal fun shareSetLoadFor(services: AppServices, files: DeviceFilesSource): S
 )
 
 /**
- * The join-time adoption: the union over [backend], the download store, and the
- * library's marked photos over [gallery] under the same read plan as upload discovery ([AppCore.readPlan]),
- * written through the download controller's locked write. Every union it reads is offered to [AppCore.joinUnion], so
- * the provision it runs in plans its downloads from the same answer — read, as the controller reads it, net of this
- * device's own declaration ([OthersDeclaredUnion]). A top-level factory for the same reason as [shareSetLoadFor].
+ * The app's answer to a changed photo grant: the received photos an earlier install left are recognised
+ * ([OnPhotoGrantUsable]), and the uploads follow the grant. Neither waits for the other: nothing is shared, and
+ * nothing imported, before the membership is recorded recognised. A top-level extension because `AppCore` is measured
+ * (see [shareSetLoadFor]).
  */
-internal fun receivedPhotoAdoptionFor(
-    services: AppServices,
-    backend: BackendServices,
-    gallery: GalleryReader,
-    core: AppCore,
-): ReceivedPhotoAdoption = ReceivedPhotoAdoption(
-    union = { eventId, cursor, trigger ->
-        OthersDeclaredUnion(backend.union, services.manifestStore).union(eventId, cursor, trigger)
-            .onSuccess { core.joinUnion.offer(eventId, it) }
-    },
-    store = services.downloadStore,
-    library = MarkedPhotoLookup(gallery, core.selection),
-    record = core.downloadController::settleAdopted,
-    identity = services.deviceIdentity,
-    log = services.log,
-)
-
-/**
- * The app's answer to a changed photo grant: the received photos an earlier install left are recognised first
- * ([ReceivedPhotoAdoption.ensureAdoptedUnder]), then the uploads follow the grant. A top-level extension because
- * `AppCore` is measured (see [shareSetLoadFor]).
- */
-internal suspend fun AppCore.onGrantChanged(permission: GalleryAccess) {
-    receivedPhotoAdoption.ensureAdoptedUnder(permission.grantsPhotoAccess, services.config.config.value)
+internal suspend fun AppCore.onGrantChanged() {
+    work.photoGrantUsable.requested()
     uploadTransitions.onPermissionChanged()
 }
-
-/**
- * Whether the download drain may import now: only under a usable grant, and only once
- * the joined membership's received photos have been recognised — which this runs, so every import path waits for it.
- */
-internal suspend fun AppCore.importsReady(): Boolean =
-    receivedPhotoAdoption.ensureAdoptedUnder(galleryAccess.usable, services.config.config.value)

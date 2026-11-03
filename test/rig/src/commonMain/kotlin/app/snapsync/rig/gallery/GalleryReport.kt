@@ -85,11 +85,11 @@ class GalleryReport(
 
         // What this cutoff would admit, over the longest range a member may choose from it. A non-contributing
         // membership is a policy this route must be able to READ too: the deny-everything narrowing is what keeps a
-        // download-only member off a whole-library walk. The operator reads the POLICY here, not the device's echo
-        // state, so the echo set is empty; the album denylist is read as the app reads it.
+        // download-only member off a whole-library walk. The operator reads the POLICY here, over the photos the device
+        // received as the app reads them; the album denylist is read as the app reads it.
         val range = longestRangeFrom(CaptureCutoff(TimestampText.parse(cutoff)))
         val direction = if (includesUpload) Direction.UploadOnly else Direction.DownloadOnly
-        val contribution = photos.contribution(direction, range, received = emptySet())
+        val contribution = photos.contribution(direction, range)
         val mark = TimeSource.Monotonic.markNow()
         // The read the app makes, so this reports what the app would see — including "there is nothing to report".
         // Answering that with an empty asset list would tell an operator the library is empty when the truth is that

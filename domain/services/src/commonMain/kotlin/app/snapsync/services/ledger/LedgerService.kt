@@ -226,7 +226,7 @@ class LedgerService(
     /**
      * The guarded terminal write. One `UPDATE` and one `changes()` read in ONE transaction — asking the
      * database what it just did, in the same transaction, is what makes "did this apply?" answerable
-     * against a writer that takes no lock. Copied deliberately from `DownloadService.applied`,
+     * against a writer that takes no lock. Copied deliberately from the download store's guarded writes,
      * which solved the identical problem for PhotoKit's change and completion blocks. Non-suspending.
      */
     override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean {
@@ -255,13 +255,6 @@ class LedgerService(
      */
     suspend fun rowsNeedingJob(): List<LedgerEntry> =
         queries.selectNeedingJob(event() ?: return emptyList(), NEEDS_JOB_STATES, ::toEntry).executeAsList()
-
-    /**
-     * Delete every row of every event — the device-state reset, not a sync write.
-     */
-    suspend fun clear() {
-        queries.deleteAll()
-    }
 
     /**
      * Delete every row of any event but [eventId] — the join's purge (change `event-scoped-local-state`). Such rows

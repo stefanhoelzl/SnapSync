@@ -20,11 +20,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 - files: `CollectDiagnosticDump.kt`, `ReportedIdentity.kt`
 - top-level types: `CollectDiagnosticDump (class)`
 
-## `feature/download`
-
-- files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `OthersDeclaredUnion.kt`, `ReceivedReport.kt`, `StoreDownloadStatusSource.kt`
-- top-level types: `DownloadArm (class)`, `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `OthersDeclaredUnion (class)`, `ReceivedReport (class)`, `StoreDownloadStatusSource (class)`
-
 ## `feature/links`
 
 - files: `OpenedLinks.kt`
@@ -32,8 +27,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceManifestProducer.kt`, `JoinUnion.kt`, `ReceivedPhotoAdoption.kt`, `ShareSetLoad.kt`
-- top-level types: `DeviceManifestProducer (class)`, `JoinUnion (class)`, `ReceivedPhotoAdoption (class)`, `ShareSetLoad (class)`
+- files: `DeviceManifestProducer.kt`, `ShareSetLoad.kt`
+- top-level types: `DeviceManifestProducer (class)`, `ShareSetLoad (class)`
 
 ## `feature/status`
 

@@ -177,8 +177,8 @@ On a running app the same fact is `rig host state` → `build.uploadBase` (load 
 lands in the repo.
 
 A quick tunnel's hostname is **random per session**, so the IPA is rebuilt per session (~1 min
-incremental Debug). ⚠️ Crossing backends needs a **device reset** (`rig dev-controls reset` over the control
-channel) in **both** directions or nothing uploads, silently — load `local-backend` before doing this.
+incremental Debug). ⚠️ Crossing backends needs a **fresh install** (uninstall the app first, never an update
+in place) in **both** directions or nothing uploads, silently — load `local-backend` before doing this.
 
 `ci.yml` carries a `workflow_dispatch`: it runs every gate, archives Release and delivers the branch to internal
 TestFlight, which is the route to a phone with no cable. It does not replace this loop — it produces no

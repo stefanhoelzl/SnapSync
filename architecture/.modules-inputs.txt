@@ -368,6 +368,7 @@ edge :test:rig :domain:inbound
 edge :test:rig :domain:model
 edge :test:rig :domain:ports
 edge :test:rig :domain:presentation
+edge :test:rig :domain:query
 edge :test:rig :domain:services
 edge :test:rig :domain:wire
 edge :test:rig :test:contracts

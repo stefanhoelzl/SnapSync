@@ -1,12 +1,12 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.data.receiving.ReceivedReadiness
 import app.snapsync.data.sharing.Contribution
 import app.snapsync.domain.sharing.PhotoAccess
 import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.domain.upload.AppUploaderSwitch
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.PauseReason
-import app.snapsync.model.SuppressionReadiness
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -262,18 +262,18 @@ class CycleGateTest {
 
     @Test
     fun `a ready suppression read runs the cycle`() {
-        assertEquals(run, suppressionGate(run, SuppressionReadiness.Ready))
+        assertEquals(run, suppressionGate(run, ReceivedReadiness.Ready))
     }
 
     @Test
     fun `an old suppression store pauses the cycle`() {
         // The extension may not migrate the app's store, and running without it re-uploads downloaded photos.
-        assertEquals(CycleGate.Paused(PauseReason.OLD_SCHEMA), suppressionGate(run, SuppressionReadiness.OldSchema))
+        assertEquals(CycleGate.Paused(PauseReason.OLD_SCHEMA), suppressionGate(run, ReceivedReadiness.OldSchema))
     }
 
     @Test
     fun `an unopenable suppression store skips the cycle naming why`() {
-        val gate = suppressionGate(run, SuppressionReadiness.Unavailable("locked"))
+        val gate = suppressionGate(run, ReceivedReadiness.Unavailable("locked"))
         assertIs<CycleGate.Skip>(gate, "\"I could not look\" uploads nothing this run")
         assertTrue("locked" in gate.detail)
     }

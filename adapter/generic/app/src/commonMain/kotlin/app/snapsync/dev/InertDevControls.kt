@@ -1,14 +1,12 @@
 package app.snapsync.dev
 
-import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.DevControls
-import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.UploaderPin
 
 /**
- * A production build's [DevControls]: inert, and never delivering (`docs/architecture.md`, "A build-time-only module
+ * A production build's [DevControls]: inert (`docs/architecture.md`, "A build-time-only module
  * is contained by compilation"). No uploader is pinned, on every platform and for
  * the process's whole life — the only [DevControls] that does anything is the control channel's, which a production
  * build does not contain.
@@ -22,13 +20,8 @@ import app.snapsync.ports.UploaderPin
 @NeverAnswers(
     Never(member = "createsPlainEvents", answer = "false"),
     Never(member = "uploaderPin", answer = "returns"),
-    Never(handler = "onReset"),
 )
 object InertDevControls : DevControls {
-    /** Registers nothing: this adapter never delivers, so there is no handler to hold. */
-    @CompositionOnly
-    override fun inbound(handlers: DevHandlers) = Unit
-
     override fun uploaderPin(): UploaderPin? = null
 
     override fun createsPlainEvents(): Boolean = true

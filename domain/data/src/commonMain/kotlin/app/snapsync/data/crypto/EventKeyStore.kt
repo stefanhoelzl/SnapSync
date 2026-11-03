@@ -5,7 +5,6 @@ import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.ConfirmedNotJoined
-import app.snapsync.domain.membership.DevReset
 import app.snapsync.domain.membership.KeptKey
 import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.MintsKeptKey
@@ -57,9 +56,6 @@ class EventKeyStore(private val store: SecureStore, private val ids: EventKeyIds
 
     /** No membership names a key: one a failed leave left behind goes. */
     fun forget(@Suppress("UNUSED_PARAMETER") because: ConfirmedNotJoined) = cleared()
-
-    /** The rig resets the device's state. */
-    fun forget(@Suppress("UNUSED_PARAMETER") because: DevReset) = cleared()
 
     private fun written(outcome: WriteOutcome, key: IdentifiedKey, event: EventId): KeepOutcome = when (outcome) {
         WriteOutcome.Ok -> kept(key, event)

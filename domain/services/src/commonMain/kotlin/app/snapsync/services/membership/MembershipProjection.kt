@@ -9,7 +9,6 @@ import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.EncryptionText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.hasEnded
 import app.snapsync.model.shareHasEnded
 import app.snapsync.ports.Clock
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
@@ -59,14 +58,8 @@ class MembershipProjection(private val repository: MembershipRepository, private
     /** Now, on the clock every membership-time decision here reads. */
     fun now(): Timestamp = Timestamp.of(clock.now())
 
-    /** Whether [config]'s event range has ended. */
-    fun hasEnded(config: EventConfig): Boolean = config.hasEnded(now())
-
     /** Whether [config]'s own capture range has ended — what its share is settled by. */
     fun shareHasEnded(config: EventConfig): Boolean = config.shareHasEnded(now())
-
-    /** Whether the membership receives others' photos; `null` while not joined. A deleted one receives nothing more. */
-    fun downloadsEnabled(): Boolean? = config.value?.let { it.direction.includesDownload && !it.deleted }
 
     /** Whether a fresh read finds a membership whose own range has ended. An unreadable one or none is "not ended". */
     fun freshReadShareHasEnded(): Boolean =

@@ -58,11 +58,29 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                7,
-                "the wake's prelude, the key's restore, the rig's reset, the push token's and credential's " +
-                    "registration, the mobile-data change and the wake's re-arm call their use cases",
+                9,
+                "the wake's prelude, a finished download's staging and record, a completed one's free, the key's " +
+                    "restore, the push token's and credential's registration, the mobile-data change and the wake's " +
+                    "re-arm call their use cases",
             ),
-            "MintsDevReset" to Pin(1, "the rig's reset, the one other reason the key is forgotten (PENDING_CLEANUPS, 4.5)"),
+        ),
+        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ReceivingEntryPoints.kt" to mapOf(
+            "EntryPointCall" to Pin(11, "receiving's triggers, ordered as steps, call its use cases (4.5)"),
+        ),
+        "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/receiving/Receiving.kt" to mapOf(
+            "MintsReceivingMembership" to Pin(1, "the one verdict that says a membership receives and holds its key"),
+        ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/receiving/ReceivedPhotos.kt" to mapOf(
+            "MintsRecognised" to Pin(1, "the one read that says the store recorded a membership's recognition"),
+        ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/receiving/ImportQueue.kt" to mapOf(
+            "MintsStagedDownload" to Pin(1, "the one claim of a fully staged photo, under the store's lock"),
+        ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/receiving/ImportedReleases.kt" to mapOf(
+            "MintsImportedAsset" to Pin(1, "the one mint of an imported photo (`importedAsset`), every import's"),
+        ),
+        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ReceivingComposition.kt" to mapOf(
+            "AppProcessOnly" to Pin(2, "the app's download store: its read-write file, the one writer and migrator"),
         ),
         "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to mapOf(
             "KeyMaterial" to Pin(1, "a key's text: its bytes, spelled"),
@@ -80,7 +98,9 @@ class OptInPinsTest {
             "KeyMaterial" to Pin(1, "the cipher: each file's key is derived from the event key's bytes"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/MembershipEntryPoints.kt" to mapOf(
-            "EntryPointCall" to Pin(1, "the membership's entry points and the steps they share call its use cases"),
+            // The file-level opt-in and six on members it already covers (4.5's join and leave steps): redundant, each
+            // counted as written.
+            "EntryPointCall" to Pin(7, "the membership's entry points and the steps they share call its use cases"),
         ),
         "/domain/application/src/commonMain/kotlin/app/snapsync/application/membership/EnrollDevice.kt" to mapOf(
             "MintsEnrolled" to Pin(1, "the one enrolment the server admitted"),

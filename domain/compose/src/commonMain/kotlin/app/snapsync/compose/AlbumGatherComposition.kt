@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.feature.album.AlbumCoordinator
@@ -23,12 +24,13 @@ internal fun albumGather(
     access: GalleryAccessState,
     coordinator: AlbumCoordinator,
     scope: CoroutineScope,
+    downloads: ReceivingCounts,
     policyFor: suspend (Membership) -> SelectionPolicy,
 ): AlbumGather = AlbumGather(
     configSource = services.config,
     ledger = services.ledger,
     policyFor = policyFor,
-    downloads = services.downloadStore,
+    downloads = downloads,
     photoAccess = access,
     coordinator = coordinator,
     scope = scope,

@@ -1,6 +1,5 @@
 package app.snapsync.data.membership
 
-import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.domain.event.EventId
@@ -28,9 +27,3 @@ private fun LedgerDatabase.left(event: Stored.Valid<EventId>): LeaveResult =
         pendingLeaveQueries.recordPendingLeave(event)
         eventCheckQueries.clearChecks(event)
     }
-
-/** Forget the membership held and its checks, owing nothing. */
-internal fun LedgerDatabase.forget(): StoreWrite = StoreWrite.Written.also {
-    membershipQueries.selectMembership().executeAsList().forEach { eventCheckQueries.clearChecks(it.eventId) }
-    membershipQueries.clearMembership()
-}

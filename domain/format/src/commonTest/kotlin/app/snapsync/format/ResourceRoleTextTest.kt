@@ -23,4 +23,11 @@ class ResourceRoleTextTest {
         assertNull(ResourceRoleText.parse("PRIMARY"))
         assertNull(ResourceRoleText.parse(""))
     }
+
+    @Test
+    fun `an object key names its role after its last hyphen, and a key that names none is a primary`() {
+        assertEquals(ResourceRole.LIVE, ResourceRoleText.ofKey("IMG-0001-live.mov"))
+        assertEquals(ResourceRole.PRIMARY, ResourceRoleText.ofKey("IMG-0001-primary.heic"))
+        assertEquals(ResourceRole.PRIMARY, ResourceRoleText.ofKey("IMG_0001.HEIC"), "no key the uploader composes")
+    }
 }

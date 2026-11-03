@@ -3,7 +3,7 @@
 package app.snapsync.feature.status
 
 import app.snapsync.feature.support.OwnLibrary
-import app.snapsync.feature.support.Recognised
+import app.snapsync.feature.support.TestReceived
 import app.snapsync.feature.support.configService
 import app.snapsync.model.EventConfig
 import app.snapsync.services.membership.MembershipProjection
@@ -130,7 +130,7 @@ class StatusCountsPollerTest {
             refreshDownloadLine = { downloadReads++ },
             // No membership: the walk is unreachable, so the tick is exactly the cheap local group — which
             // is also what the poll is specified to read (never the enumeration).
-            recognition = Recognised(),
+            received = TestReceived(recognised = false),
             configSource = membership(null),
             contributionFor = { throw AssertionError("no membership — no policy derivation") },
         )

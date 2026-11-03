@@ -228,7 +228,7 @@ SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18101 xcrun simctl launch "$DEVICE" app.snapsync
 
 `SNAPSYNC_RIG_PORT` is the **only** variable left, and it is read by the rig's hook — a file that does not
 exist in a non-rig build. **There are no `SNAPSYNC_*` launch triggers any more**: production Kotlin declares
-none and a guard fails the build if one returns. Everything they used to do — join, create, leave, reset,
+none and a guard fails the build if one returns. Everything they used to do — join, create, leave,
 seed, wipe — is now a channel verb. Load `rig-channel` for the full surface.
 
 ## The PhotoKit port contracts run here

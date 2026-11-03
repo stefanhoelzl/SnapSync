@@ -2,9 +2,12 @@ package app.snapsync.rig
 
 import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.data.preferences.PreferenceKeys
+import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
+import app.snapsync.data.receiving.db.DownloadDatabase
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
+import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.levers.DeviceLevers
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.KeychainItem
@@ -19,16 +22,12 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.AssetRef
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
-import app.snapsync.model.PlannedResource
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
+import app.snapsync.ports.DbOpen
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.SecureSlot
 import app.snapsync.services.crash.FootprintTrail
-import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
-import app.snapsync.services.staging.StagingService
 
 // The store services the channel implements itself rather than a mock's operator (`docs/testing.md`, "Typed services"):
 // each names what it acts on in the app's own terms — a device log by its process, the staging directory, a Keychain item
@@ -98,23 +97,38 @@ internal class LockedDevice(private val world: MockWorld) : DeviceLevers {
 internal class OlderInstall(private val world: MockWorld) : OlderInstallLevers {
     override suspend fun stagedBacklog(device: String?, asset: String?): Long {
         val who = DeviceId.parse(device ?: LEGACY_DEVICE) ?: throw IllegalArgumentException("device is not a device id")
-        val ref = AssetRef(who, AssetId.parse(asset ?: "LEGACY")!!)
-        val downloads = DownloadService(world.device.databases.inspectorPort())
-        val root = StagingService(world.device.disk.port()).stagingRoot()
-        val primaryKey = "${ref.sourceAssetId}-primary.heic"
-        val liveKey = "${ref.sourceAssetId}-live.mov"
-        val paths = listOf("$root/$primaryKey", "$root/$liveKey")
-        downloads.plan(
-            ref,
-            LibraryAssets.DEFAULT_DATE,
-            listOf(
-                PlannedResource(primaryKey, "https://mock.edge/p", "primary", "image/heic", "IMG.HEIC"),
-                PlannedResource(liveKey, "https://mock.edge/l", "live", "video/quicktime", "IMG.MOV"),
-            ),
+        val id = AssetId.parse(asset ?: "LEGACY")!!
+        val primaryKey = "$id-primary.heic"
+        val liveKey = "$id-live.mov"
+        val paths = listOf("${StagedPath.ROOT}/$primaryKey", "${StagedPath.ROOT}/$liveKey")
+        // An import confirmed before bytes were ever released: the row imported, its resources still staged.
+        val opened = world.device.databases.inspectorPort().open(
+            DOWNLOADS_DB_NAME,
+            DownloadDatabase.Schema,
+            readOnly = false,
         )
-        downloads.markStaged(ref, primaryKey, paths[0])
-        downloads.markStaged(ref, liveKey, paths[1])
-        downloads.markImported(ref, AssetId.parse("LOCAL-${ref.sourceAssetId}")!!)
+        val database = (opened as? DbOpen.Opened)?.database ?: error("downloads.db cannot be opened ($opened)")
+        database.execute { driver ->
+            driver.execute(null, IMPORTED_ROW, 4) {
+                bindString(0, who.value)
+                bindString(1, id.value)
+                bindString(2, LibraryAssets.DEFAULT_DATE)
+                bindString(3, "LOCAL-$id")
+            }
+            listOf(
+                primaryKey to ("primary" to "image/heic"),
+                liveKey to ("live" to "video/quicktime"),
+            ).forEachIndexed { i, (key, kind) ->
+                driver.execute(null, STAGED_RESOURCE, 6) {
+                    bindString(0, who.value)
+                    bindString(1, id.value)
+                    bindString(2, key)
+                    bindString(3, kind.first)
+                    bindString(4, kind.second)
+                    bindString(5, paths[i])
+                }
+            }
+        }
         paths.forEach { world.device.disk.write(FileArea.SHARED, it, LEGACY_BYTES) }
         return paths.size.toLong() * LEGACY_BYTES.size
     }
@@ -127,6 +141,12 @@ internal class OlderInstall(private val world: MockWorld) : OlderInstallLevers {
     private companion object {
         /** The device a backlog is seeded for when the caller names none — a device id like every other. */
         const val LEGACY_DEVICE = "1e6ac700-0000-4000-8000-000000000001"
+
+        const val IMPORTED_ROW = "INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId) " +
+            "VALUES (?, ?, 'IMPORTED', ?, ?)"
+
+        const val STAGED_RESOURCE = "INSERT INTO downloadResource (sourceDeviceId, sourceAssetId, resourceKey, url, role, " +
+            "contentType, originalFilename, stagedPath, enqueued, eventId) VALUES (?, ?, ?, 'https://mock.edge/r', ?, ?, 'IMG', ?, 1, '')"
 
         /** What each staged file holds: enough that freeing it shows in the storage the app takes. */
         val LEGACY_BYTES = ByteArray(64 * 1024) { 's'.code.toByte() }
@@ -143,7 +163,7 @@ internal fun FileSystemMock.appStorageBytes(): Long = bytes { _, path -> path in
 /** The files in the download staging directory, counted over one snapshot of the shared area. */
 internal fun FileSystemMock.stagedFiles(): Int = paths(
     FileArea.SHARED,
-).count { it.startsWith("$DOWNLOAD_STAGING_DIR/") }
+).count { it.startsWith("${StagedPath.ROOT}/") }
 
 private val DIAGNOSTICS: Set<String> =
     listOf(APP_LOG_FILE_NAME, EXTENSION_LOG_FILE_NAME).flatMap { listOf(it, "$it.1") }.toSet() +

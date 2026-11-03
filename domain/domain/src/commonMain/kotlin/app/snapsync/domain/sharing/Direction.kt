@@ -4,7 +4,7 @@ package app.snapsync.domain.sharing
  * This device's chosen **participation direction** for a joined event, first set at join and changeable in place
  * afterward from the event's settings. It masks two independently wired arms:
  * - the **upload** arm (the background-upload producer) runs only when [includesUpload];
- * - the **download** arm (the `DownloadController` reconcile) runs only when [includesDownload].
+ * - the **download** arm (receiving's plan, `ReceivingVerdict`) runs only when [includesDownload].
  *
  * [Both] is the default (today's bidirectional behavior) and the value a membership stored before this field existed
  * reads as. A membership stores a direction by its name.

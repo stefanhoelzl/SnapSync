@@ -4,7 +4,6 @@ import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.Observers
-import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.gallery.GrantRead
@@ -36,12 +35,7 @@ import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.MintedEvent
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
-import app.snapsync.feature.download.DownloadController
-import app.snapsync.feature.download.DownloadPushReceiver
-import app.snapsync.feature.download.OthersDeclaredUnion
-import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.links.readmodel.OpenedLinks
-import app.snapsync.feature.membership.JoinUnion
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
@@ -92,22 +86,17 @@ import app.snapsync.query.encryption.EventKeyQuery
 import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
+import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.query.sharing.ShareableCountQuery
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crash.FootprintSampler
-import app.snapsync.services.downloads.DownloadJobs
-import app.snapsync.services.downloads.ImportMarkers
 import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.gallery.GalleryAssetPresence
-import app.snapsync.services.gallery.GalleryImporter
 import app.snapsync.services.gallery.GalleryKeyedResources
-import app.snapsync.services.gallery.ImportedAssetPresence
-import app.snapsync.services.gallery.PermissionAwareAssetPresence
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.upload.ExtensionRegistration
@@ -370,19 +359,7 @@ class AppCore internal constructor(
             selection = selection,
             albums = DenylistedAlbums(ports.gallery),
             clock = services.wallClock,
-        )
-    }
-
-    /**
-     * The one presence source the download guard holds: full access queries the library, a partial grant
-     * answers from the selection and never says "absent", no grant answers unknown — choosing a source by the grant
-     * is composition, and both halves are available here.
-     */
-    private val assetPresence: ImportedAssetPresence by lazy {
-        PermissionAwareAssetPresence(
-            permission = galleryAccess.grant,
-            library = GalleryAssetPresence(ports.gallery),
-            selection = selection.state,
+            received = receiving.received,
         )
     }
 
@@ -399,7 +376,7 @@ class AppCore internal constructor(
      * no backend LIST.
      */
     suspend fun loadShareableCount(range: CaptureRange): Int? =
-        shareableCount.count(range, services.downloadStore.suppressedLocalIds())
+        shareableCount.count(range)
 
     /** What the photo-library grant means now, over the permission port — the one read every feature takes. */
     val galleryAccess: GalleryAccessState by lazy { GalleryAccessState(ports.gallery.grant) }
@@ -424,69 +401,11 @@ class AppCore internal constructor(
         LedgerBackedSyncStatusSource(ledgerCounts, galleryAccess, gallery.admitted, scope)
     }
 
-    // Download progress for the joined screen's received count and download arrow, scoped to the joined event.
-    val downloadStatusSource: StoreDownloadStatusSource by lazy { downloadStatus() }
+    /** Receiving: its store, the staging, the transfers, the library's import, and its use cases. */
+    internal val receiving: ReceivingLayers by lazy { ReceivingLayers(this) }
 
-    // Background byte transfers → durable staging. The queue, bounded window, and cancellation
-    // lifecycle live in the tested feature; the transport is the shell's adapter thunk.
-    val downloadJobs: DownloadJobs by lazy {
-        // Staging is the port that also releases those bytes, so the two never name different directories;
-        // the jobs record relative paths.
-        DownloadJobs(
-            staging = services.stagedBytes,
-            download = ports.download,
-            // Deliver each staged resource back to the controller — a compose-built lambda whose body is one call (law
-            // "Commands cross one door"). It reads the `downloadController` lazy when INVOKED, not here: the jobs are
-            // built on paths that build nothing else — a background-`URLSession` relaunch touches only `downloadJobs` —
-            // and the callback must reach the controller on those paths too — a staged resource reaches the
-            // controller on every entry point. No launch here: the jobs own it, so they can join the stagings before
-            // the session's OS handler is released.
-            // Staging is recorded here and the import is the tail's: requested detached — a staging holds no OS
-            // handler of its own, and a wake that delivered it requests (and holds) its own tail after its drain.
-            onStaged = { ref, key, path ->
-                val recorded = downloadController.onResourceStaged(ref, key, path)
-                if (recorded) work.downloadStaged.requested()
-            },
-            network = services.mobileData,
-            // The version every request declares — the download redirect's too (`downloadResource`).
-            headers = exchange::versionHeaders,
-            // An encrypted event's bytes are opened before they are staged (the encrypted file format).
-            opening = DownloadOpening(services.membership, services.eventKeyStore, services.fileCipher, process.files),
-        )
-    }
-
-    // The download orchestrator: union → foreign selection → download → import → suppression.
-    val downloadController: DownloadController by lazy {
-        DownloadController(
-            runtime = runtime,
-            // What the others declared: the event's total net of this device's own declaration at each read (change
-            // `count-declared-photos`).
-            union = OthersDeclaredUnion(backend.union, services.manifestStore),
-            store = services.downloadStore,
-            jobs = downloadJobs,
-            importer = GalleryImporter(ports.gallery, services.stagedBytes),
-            presence = assetPresence,
-            // The import-time album: the membership's opt-in gate is the coordinator's rule; this only reads the
-            // current membership's facts.
-            eventAlbum = { albumCoordinator.albumIdFor(services.config.config.value) },
-            onImportedIntoAlbum = { album -> albumCoordinator.onImportedInto(services.config.config.value, album) },
-            stagedBytes = services.stagedBytes,
-            identity = services.deviceIdentity,
-            arm = downloadArm(),
-            checks = services.eventChecks,
-            clock = services.wallClock,
-            readyToImport = { importsReady() },
-        )
-    }
-
-    // The silent-push receiver for the download arm; its active-event
-    // guard is the feature's rule.
-    val downloadPushReceiver: DownloadPushReceiver by lazy {
-        DownloadPushReceiver(
-            configSource = services.config,
-            controller = downloadController,
-        )
-    }
+    /** The joined screen's download progress, for readers outside the core (the status host). */
+    val downloadProgress: StateFlow<DownloadProgress> get() = receiving.progress.progress
 
     /** The album operations over the gallery. */
     private val albumManager: GalleryAlbums by lazy { GalleryAlbums(ports.gallery) }
@@ -506,6 +425,7 @@ class AppCore internal constructor(
             galleryAccess,
             albumCoordinator,
             scope,
+            receiving.counts,
         ) { membership -> contributionFor(membership).policy }
     }
 
@@ -562,10 +482,6 @@ class AppCore internal constructor(
     // The join-time load, built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
     val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.deviceFiles) }
-    internal val receivedPhotoAdoption by lazy { receivedPhotoAdoptionFor(services, backend, ports.gallery, this) }
-
-    /** The union one join has read, handed from its adoption to its reconcile — see [JoinUnion]. */
-    internal val joinUnion = JoinUnion()
 
     /** The member's requests of the membership, each answered on its own status. */
     val membershipStatuses: MembershipStatuses = MembershipStatuses()
@@ -600,9 +516,6 @@ class AppCore internal constructor(
     internal val uploadDrains: SessionDrains = SessionDrains()
     internal val downloadDrains: SessionDrains = SessionDrains()
 
-    /** The download store's import markers — what the gallery's import deliveries write. */
-    internal val importMarkers: ImportMarkers by lazy { ImportMarkers(services.downloadStore, services.log) }
-
     /** The app's own transfer session's service: what its deliveries record, and what a leave cancels. */
     val uploadTransfer: SessionTransfer by lazy {
         SessionTransfer(
@@ -636,7 +549,7 @@ class AppCore internal constructor(
      * readers: the status total and the album gather. The upload cycle reaches the same one through its entry gate.
      */
     private suspend fun contributionFor(membership: Membership): Contribution =
-        ownPhotos.contribution(membership, services.downloadStore.suppressedLocalIds())
+        ownPhotos.contribution(membership)
 
     /**
      * The status-refresh **rule**: cheap local reads before the library
@@ -652,10 +565,10 @@ class AppCore internal constructor(
             ledgerCounts = ledgerCounts,
             gallery = gallery,
             // The sibling feature, reached through a lambda so `feature/status` stays blind to it.
-            refreshDownloadLine = { downloadStatusSource.refresh() },
+            refreshDownloadLine = { receiving.progress.refresh() },
             configSource = services.config,
             contributionFor = ::contributionFor,
-            recognition = services.downloadStore.recognition,
+            received = receiving.received,
             log = services.log,
         )
     }
@@ -711,7 +624,7 @@ class AppCore internal constructor(
      */
     fun installPermissionSubscriptions() {
         // The launch reconcile, then real changes only — see `UploadTransitions.followGrant`.
-        scope.launch { uploadTransitions.followGrant { onGrantChanged(it) } }
+        scope.launch { uploadTransitions.followGrant { onGrantChanged() } }
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.
         scope.launchAlbumGrantSubscription(services, albumGather)
         scope.launch {
@@ -729,7 +642,7 @@ class AppCore internal constructor(
             // would defer every inherited row to the next launch — and on a URLSession-driven relaunch that never
             // foregrounds, potentially every launch. So it waits until the presence source can answer.
             selection.awaitAnswerable(ports.gallery.access().photoAccess())
-            downloadController.sweepInterruptedImports()
+            work.inheritedImports.requested()
         }
     }
 
@@ -767,12 +680,11 @@ class AppCore internal constructor(
             selection.published(
                 // The gallery keeps its latest snapshot, so one read before this collector runs is kept, not lost.
                 ports.gallery.selection,
-                beforePublish = { receivedPhotoAdoption.beforeSelectionPublished(services.config.config.value, it) },
+                beforePublish = { work.selectionRecognition.before(it) },
             ),
             OnSelectionChanged(
                 runtime,
-                receivedPhotoAdoption,
-                services.config,
+                work.selectionRecognitionPass,
                 statusRefresh,
                 work.ownUploads,
                 work.wakeWork,

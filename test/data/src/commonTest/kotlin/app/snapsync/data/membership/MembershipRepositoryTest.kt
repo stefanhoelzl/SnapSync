@@ -1,7 +1,6 @@
 package app.snapsync.data.membership
 
 import app.snapsync.data.store.SharedDatabase
-import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.use
 import app.snapsync.domain.event.DeletesAt
@@ -289,20 +288,6 @@ class MembershipRepositoryTest {
     fun `a leave with no membership held changes nothing`() {
         assertEquals(LeaveResult.NotJoined, repository.leave())
         assertEquals(PendingLeavesRead.Ok(emptySet()), owed())
-    }
-
-    @Test
-    fun `forgetting ends the membership and its checks, and owes no leave`() {
-        repository.enter(enrolled())
-        val checks = EventCheckRecord(shared)
-        checks.stamp(EventCheck.PHOTOS, testEventId(EVENT), TimestampText.parse("2026-07-22T12:00:00Z"))
-
-        assertEquals(StoreWrite.Written, repository.forget())
-        assertIs<MembershipRead.NotJoined>(repository.state.value)
-        assertEquals(PendingLeavesRead.Ok(emptySet()), owed())
-        assertEquals(app.snapsync.domain.membership.CheckedAt.Never, checks.last(EventCheck.PHOTOS, testEventId(EVENT)))
-        device.lock()
-        assertIs<StoreWrite.Failed>(repository.forget())
     }
 
     @Test

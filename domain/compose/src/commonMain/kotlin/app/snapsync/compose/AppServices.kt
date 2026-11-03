@@ -17,13 +17,11 @@ import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.MembershipTransition
-import app.snapsync.services.staging.StagingService
 import co.touchlab.kermit.Logger
 
 /**
@@ -74,15 +72,6 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * to the event [config] says this process is joined to.
      */
     val ledger: LedgerService by lazy { LedgerService(sharedDatabase) { config.config.value?.eventId } }
-
-    /** The download store — the app is its one writer and its one migrator. */
-    val downloadStore: DownloadService by lazy { DownloadService(ports.databases) }
-
-    /**
-     * Where downloaded bytes are staged, and who releases them once their row settles — one service owns both
-     * halves, so the two never name different directories.
-     */
-    val stagedBytes: StagingService by lazy { StagingService(process.files) }
 
     /**
      * The device manifest's skip record, in the shared database — the SAME record the ≥26.1 extension's producer reads.

@@ -9,7 +9,7 @@ import kotlin.test.assertFailsWith
  * The iOS HTTP client the HTTP transport runs over.
  *
  * **A transport failure propagates.** `KtorHttpTransport` turns it into `HttpResult.Unreachable`, which every service above
- * it keeps apart from an answer — `DownloadController.reconcile` keeps last-good state on a failure by contract; a
+ * it keeps apart from an answer — `PlanReceiving` keeps last-good state on a failure by contract; a
  * swallowed error would instead present an empty union as the truth.
  *
  * No server is involved: the request is aimed at a closed local port, which refuses immediately.

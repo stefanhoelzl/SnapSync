@@ -2,9 +2,13 @@ package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.encryption.RestoreEventKey
-import app.snapsync.application.membership.ForgetMembership
 import app.snapsync.application.mobiledata.SetMobileData
 import app.snapsync.application.push.RegisterPush
+import app.snapsync.application.receiving.FreeTransfer
+import app.snapsync.application.receiving.RecordOutcome
+import app.snapsync.application.receiving.RecordStaged
+import app.snapsync.application.receiving.StageDownload
+import app.snapsync.application.receiving.StageOutcome
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.application.wake.RearmHeartbeat
 import app.snapsync.data.crypto.EventKeyStore
@@ -13,34 +17,32 @@ import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.network.NetworkStatus
 import app.snapsync.data.push.PushTokens
+import app.snapsync.data.receiving.ImportMarkerWrites
+import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.wake.WakeArming
 import app.snapsync.domain.event.EventKey
-import app.snapsync.domain.membership.DevReset
-import app.snapsync.domain.membership.MintsDevReset
 import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.push.PushTailVerdict
 import app.snapsync.domain.push.PushTrigger
+import app.snapsync.domain.receiving.TransferFacts
+import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.request.RequestId
-import app.snapsync.feature.download.DownloadController
-import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.links.readmodel.OpenedLinks
-import app.snapsync.feature.membership.ReceivedPhotoAdoption
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.OwnUploads
 import app.snapsync.feature.upload.StoredUploadSettle
-import app.snapsync.feature.upload.stagedImports
 import app.snapsync.feature.upload.uploadsLeft
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PlatformError
-import app.snapsync.model.UnionTrigger
 import app.snapsync.model.pushEventId
+import app.snapsync.model.pushSeq
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.FinishedDownload
 import app.snapsync.ports.FinishedTransfer
@@ -65,13 +67,10 @@ import app.snapsync.scheduling.Pass
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Sequence
+import app.snapsync.scheduling.Steps
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
-import app.snapsync.services.downloads.DownloadJobs
-import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.downloads.ImportMarkers
 import app.snapsync.services.foreground.AppForeground
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.transfer.SessionDrains
@@ -148,15 +147,20 @@ class OnNetworkReturned(runtime: Runtime, private val work: ForegroundWork, priv
 class OnSilentPush(
     runtime: Runtime,
     private val prelude: Prelude,
-    private val receiver: DownloadPushReceiver,
     private val tail: PushTailLookup,
+    private val receive: PlanJoined,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<PushMessage>(runtime) {
     override suspend fun run(arg: PushMessage, on: Run) = on.steps {
         required { prelude.run(on) }
-        isolated("receive") { receiver.onSilentPush(arg.payload) }
         when (required { tail.of(pushEventId(arg.payload)) }) {
-            PushTailVerdict.Joins -> detached { wake.full(WakeKind.SILENT_PUSH, on) }
+            // A push for the joined event: what it announced is read from the position it names (decision record
+            // `changes/incremental-union`, D6) — a burst of pushes after one read costs no further reads.
+            PushTailVerdict.Joins -> {
+                required { receive.run(on, UnionTrigger.PUSH, pushSeq(arg.payload)) }
+                detached { wake.full(WakeKind.SILENT_PUSH, on) }
+            }
+            // Notably a left event, whose backend membership persists and so keeps pushing: never received again.
             PushTailVerdict.OtherEvent, PushTailVerdict.NamesNoEvent, PushTailVerdict.MembershipUnreadable -> Unit
         }
     }
@@ -188,12 +192,12 @@ class OnUploadSessionEvents(runtime: Runtime, private val drains: SessionDrains,
 class OnDownloadSessionEvents(
     runtime: Runtime,
     private val drains: SessionDrains,
-    private val jobs: DownloadJobs,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<SessionRelaunch>(runtime) {
     override suspend fun run(arg: SessionRelaunch, on: Run) = on.steps {
         required { drains.awaitAfter(arg.drainsBefore) }
-        required { jobs.awaitOutstandingStagings() }
+        // The session reports its own events drained, which says nothing about the store writes they caused.
+        required { awaitDetachedOf(OnDownloadFinished::class) }
         detached { wake.afterPrelude(WakeKind.DOWNLOAD_SESSION, on) }
     }
 }
@@ -219,23 +223,51 @@ class OnUploadFinished(
     }
 }
 
-/** A download's bytes arrived: moved to staging before the platform deletes them. */
-class OnDownloadFinished(runtime: Runtime, private val jobs: DownloadJobs) : InboundEntryPoint<FinishedDownload>(
-    runtime,
-) {
-    override fun Delivery.run(arg: FinishedDownload) = jobs.onFinished(arg.tag, arg.facts, arg.tempPath, ::detached)
-}
+/**
+ * A download's bytes arrived: moved to staging before the platform deletes them — on the delivering thread — then
+ * recorded, and the photo imported, after it returns. The session's drain report waits for the record.
+ */
+class OnDownloadFinished(
+    runtime: Runtime,
+    private val stage: StageDownload,
+    private val record: RecordStaged,
+    private val staged: OnDownloadStaged,
+) : InboundEntryPoint<FinishedDownload>(runtime) {
+    @OptIn(EntryPointCall::class)
+    override fun Delivery.run(arg: FinishedDownload) =
+        when (
+            val staged =
+                stage(
+                    arg.tag,
+                    TransferFacts(arg.facts.statusCode, arg.facts.expectedBytes, arg.facts.receivedBytes),
+                    arg.tempPath,
+                )
+        ) {
+            is StageOutcome.Landed -> detachedSteps { recorded(staged) }.let { }
+            is StageOutcome.Dropped -> Unit
+        }
 
-/** A download ended — finished, failed or cancelled: its slot is free. */
-class OnDownloadCompleted(runtime: Runtime, private val jobs: DownloadJobs) : InboundEntryPoint<CompletedDownload>(
-    runtime,
-) {
-    override fun Delivery.run(arg: CompletedDownload) = jobs.onCompleted(arg.tag, arg.error, ::detached)
+    @OptIn(EntryPointCall::class)
+    private suspend fun Steps.recorded(landed: StageOutcome.Landed) = when (required { record(landed) }) {
+        // The import is requested, not run here: the session's drain report waits for the record only.
+        RecordOutcome.Recorded -> required { staged.requested() }
+        is RecordOutcome.NotRecorded -> Unit
+    }
 }
 
 /** A received photo was staged in a running process: it is imported, and nothing else is due for it. */
 class OnDownloadStaged(private val runtime: Runtime, private val importReceived: ImportReceived) {
     suspend fun requested() = runtime.detached("OnDownloadStaged") { on -> on.steps { run(importReceived) } }
+}
+
+/** A download ended — finished, failed or cancelled: its slot is free, and the next queued transfer starts. */
+class OnDownloadCompleted(runtime: Runtime, private val free: FreeTransfer) : InboundEntryPoint<CompletedDownload>(
+    runtime,
+) {
+    @OptIn(EntryPointCall::class)
+    override fun Delivery.run(
+        arg: CompletedDownload,
+    ) = detachedSteps { isolated("free") { free(arg.tag, arg.error) } }.let { }
 }
 
 /**
@@ -271,16 +303,16 @@ class OnKeyRestoreRequested(
 class KeyRestoreRequest(val id: RequestId, val key: EventKey)
 
 /** The library is creating an import's asset, inside its change block: the marker that keeps it from going back up. */
-class OnImportPlaceholder(runtime: Runtime, private val markers: ImportMarkers) :
+class OnImportPlaceholder(runtime: Runtime, private val markers: ImportMarkerWrites) :
     InboundEntryPoint<ImportPlaceholder>(runtime) {
-    override fun Delivery.run(arg: ImportPlaceholder) = markers.placeholder(arg.correlation, arg.created)
+    override fun Delivery.run(arg: ImportPlaceholder) = markers.placeholder(arg.correlation, arg.created).let { }
 }
 
 /** An import came out: persisted here — the library reports it once, even when its requester is gone. */
-class OnImportSettled(runtime: Runtime, private val markers: ImportMarkers) : InboundEntryPoint<ImportSettled>(
+class OnImportSettled(runtime: Runtime, private val markers: ImportMarkerWrites) : InboundEntryPoint<ImportSettled>(
     runtime,
 ) {
-    override fun Delivery.run(arg: ImportSettled) = markers.settled(arg.correlation, arg.outcome)
+    override fun Delivery.run(arg: ImportSettled) = markers.settled(arg.correlation, arg.outcome).let { }
 }
 
 /**
@@ -340,39 +372,18 @@ class OnLink(runtime: Runtime, private val opening: LinkOpening, private val lin
 }
 
 /**
- * The control channel voids this device's durable sync state (a rig build only), so a build pointed at a different
- * backend starts from nothing: the ledger, the download rows that are not a suppression handle, the membership —
- * locally, telling no backend, which belongs to the build left behind — its key, and the mobile-data choice.
+ * The member changed a partial grant's selection: the photos it brought that no pass recognised are recognised, the
+ * selection is walked, then the wake's work follows.
  */
-class OnDevReset(
-    runtime: Runtime,
-    private val ledger: LedgerService,
-    private val downloads: DownloadController,
-    private val forget: ForgetMembership,
-    private val keys: EventKeyStore,
-    private val mobileData: MobileDataStore,
-) : BackgroundEntryPoint<Unit>(runtime) {
-    @OptIn(EntryPointCall::class, MintsDevReset::class)
-    override suspend fun run(arg: Unit, on: Run) = on.steps {
-        isolated("ledger") { ledger.clear() }
-        isolated("downloads") { downloads.onDurableStateReset() }
-        isolated("membership") { forget() }
-        isolated("key") { keys.forget(DevReset()) }
-        isolated("mobile data") { mobileData.clear() }
-    }
-}
-
-/** The member changed a partial grant's selection: the selection is walked, then the wake's work follows. */
 class OnSelectionChanged(
     runtime: Runtime,
-    private val adoption: ReceivedPhotoAdoption,
-    private val config: MembershipProjection,
+    private val recognition: Recognition,
     private val statusRefresh: StatusRefresh,
     private val uploads: OwnUploads,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<Unit>(runtime) {
     override suspend fun run(arg: Unit, on: Run) = on.steps {
-        required { adoption.afterSelectionPublished(config.config.value) }
+        run(recognition)
         isolated("total") { statusRefresh.refreshTotal() }
         isolated("selection walk") { uploads.walkSelection() }
         required { wake.full(WakeKind.SELECTION_CHANGE, on) }
@@ -473,7 +484,7 @@ class ForegroundWork(
     private val transfer: SessionTransfer,
     private val settle: StoredUploadSettle,
     private val statusRefresh: StatusRefresh,
-    private val downloads: DownloadController,
+    private val receiving: ForegroundReceiving,
     private val stateRefresh: StateRefresh,
     private val leftovers: SweepLeftovers,
 ) {
@@ -483,8 +494,7 @@ class ForegroundWork(
             child("staging") { transfer.releaseUnclaimedStaging() }
             child("settle") { settle.settleJoined(config.activeEventId()) }
             child("status") { statusRefresh.run() }
-            child("reconcile") { downloads.reconcileJoined(config.activeEventId(), UnionTrigger.FOREGROUND) }
-            child("reclaim") { downloads.releaseSettledBytes() }
+            receiving.children(this, on)
             child("membership") { stateRefresh.run(on) }
             child("leftovers") { leftovers.run(on) }
         }
@@ -500,14 +510,14 @@ class WakeWork(
     private val importReceived: ImportReceived,
     private val uploadOwn: UploadOwn,
     private val rearm: RearmHeartbeat,
-    private val downloads: DownloadService,
+    private val downloads: ReceivingCounts,
     private val end: EndOfWake,
     private val footprints: FootprintSampler,
 ) {
     @OptIn(EntryPointCall::class)
     suspend fun full(kind: WakeKind, on: Run) = on.steps {
         var uploads: Pass<CycleResult> = Pass.Cut
-        ensure("re-arm") { rearm(uploads.uploadsLeft(), downloads.importableAssets().stagedImports()) }
+        ensure("re-arm") { rearm(uploads.uploadsLeft(), downloads.stagedImports()) }
         ensure("footprint") { footprints.record("after the ${kind.name.lowercase()} wake") }
         run(importReceived)
         uploads = run(uploadOwn)
@@ -522,19 +532,6 @@ class WakeWork(
 }
 
 // ── The sequences a wake runs, single-flight across the process ──────────────────────────────────────────────────────
-
-/**
- * Import what other members sent and is staged here. Yields to a join: an import can wait on a photo-library
- * transaction that never reports, and a new request must not wait behind it — the stalled import runs on, claimed, and
- * the next pass imports the rest.
- */
-class ImportReceived(private val downloads: DownloadController, private val counts: ForegroundCounts) :
-    Sequence<Unit>("import-received", yieldsToJoin = true) {
-    override suspend fun pass(on: Run) = on.steps {
-        required { downloads.importReady() }
-        isolated("counts") { counts.refresh() }
-    }
-}
 
 /** Fill the upload slots from the ledger — what a finished upload's freed slot needs, and nothing more. */
 class TopUp(private val uploads: OwnUploads, private val counts: ForegroundCounts) : Sequence<CycleResult>("top-up") {

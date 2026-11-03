@@ -16,7 +16,6 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
-import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
@@ -24,6 +23,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount

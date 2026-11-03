@@ -1,5 +1,9 @@
 package app.snapsync.status
 
+import app.snapsync.data.receiving.HandlesRead
+import app.snapsync.data.receiving.ReceivedPhotosRead
+import app.snapsync.data.receiving.ReceivedReadiness
+import app.snapsync.data.receiving.RecognitionRead
 import app.snapsync.data.sharing.Contribution
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
@@ -10,6 +14,7 @@ import app.snapsync.data.sharing.WalkRead
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -90,14 +95,29 @@ class OwnDeviceGalleryStatusSourceTest {
         }
     }
 
-    private class Member(val library: Library, val walk: Switchable, val photos: OwnPhotos) {
+    /** What this device received through SnapSync: the photos echo suppression keeps out of the member's own. */
+    private class Received(var ids: Set<AssetId> = emptySet()) : ReceivedPhotosRead {
+        override suspend fun readiness(): ReceivedReadiness = ReceivedReadiness.Ready
+        override suspend fun handles(): HandlesRead = HandlesRead.Ok(ids)
+        override suspend fun recognition(event: EventId): RecognitionRead = RecognitionRead.NotRecognised
+    }
+
+    private class Member(
+        val library: Library,
+        val walk: Switchable,
+        val photos: OwnPhotos,
+        private val received: Received,
+    ) {
         val source = OwnDeviceGalleryStatusSource(photos)
 
         /** What a member of [direction] sharing [RANGE] contributes, having received [received]. */
         suspend fun contribution(
             direction: Direction = Direction.Both,
             received: Set<AssetId> = emptySet(),
-        ): Contribution = photos.contribution(direction, RANGE, received)
+        ): Contribution {
+            this.received.ids = received
+            return photos.contribution(direction, RANGE)
+        }
 
         suspend fun refresh(direction: Direction = Direction.Both, received: Set<AssetId> = emptySet()) =
             source.refresh(contribution(direction, received))
@@ -105,7 +125,13 @@ class OwnDeviceGalleryStatusSourceTest {
 
     private fun member(library: Library, selection: SelectionSnapshots = SelectionSnapshots()): Member {
         val walk = Switchable(GalleryWalk(library, clock))
-        return Member(library, walk, OwnPhotos(library, walk, selection, DenylistedAlbums(library), clock))
+        val received = Received()
+        return Member(
+            library,
+            walk,
+            OwnPhotos(library, walk, selection, DenylistedAlbums(library), clock, received),
+            received,
+        )
     }
 
     private fun member(vararg photos: GalleryAssetResources) = member(Library(MutableStateFlow(photos.toList())))

@@ -50,9 +50,8 @@ internal class AppUploader(private val core: AppCore) {
                 photos = core.ownPhotos,
                 manifestStore = app.manifestStore,
                 manifestPublisher = core.backend.manifest,
-                // Echo-suppression: the download store IS the narrowed suppression read.
-                suppression = app.downloadStore,
-                recognition = app.downloadStore.recognition,
+                // Echo suppression and recognition: the app's received photos, over its read-write store.
+                received = core.receiving.received,
                 albumCoordinator = core.albumCoordinator,
                 // The token the app's credential keeps, the same copy every request it authenticates reads.
                 credentials = app.credentials,

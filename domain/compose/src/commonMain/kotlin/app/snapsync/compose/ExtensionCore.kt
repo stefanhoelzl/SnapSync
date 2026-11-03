@@ -10,6 +10,7 @@ import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
+import app.snapsync.data.receiving.ReceivedPhotosReader
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
 import app.snapsync.data.sharing.OwnPhotos
@@ -38,7 +39,6 @@ import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.downloads.SuppressionService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
@@ -98,7 +98,7 @@ class ComposedExtension internal constructor(
  * What this process builds differently from the app's uploader, each deliberately:
  * - the identity is **READ_ONLY** — this process neither mints nor adopts: guessing is
  *   what once gave one device two identities;
- * - echo suppression is the download store opened **read-only** ([SuppressionService]): the app creates and migrates
+ * - echo suppression is the download store opened **read-only** ([ReceivedPhotosReader]): the app creates and migrates
  *   it, and an older schema pauses the cycle instead;
  * - the credential only **drops** a rejected token (see [extensionBackend]), and the in-memory copy is re-read at every
  *   invocation, since the app renews into the shared item;
@@ -160,8 +160,8 @@ private fun extensionServices(
     val membership = MembershipRepository(records)
     val config = MembershipProjection(membership, process.clock)
     val clock = WallClock(process.clock)
-    // The app's download store, read-only: both the echo suppression and the recognition record.
-    val downloads = SuppressionService(ports.databases)
+    // The app's download store as the extension may read it: read-only, never created or migrated here.
+    val received = ReceivedPhotosReader(ports.databases)
     return UploadServices(
         records = records,
         membership = membership,
@@ -182,14 +182,14 @@ private fun extensionServices(
             SelectionSnapshots(),
             DenylistedAlbums(ports.gallery),
             clock,
+            received,
         ),
         // This process's own grant read — the extension withholds its cycle without a full grant: the OS invokes a
         // surviving registration under a partial grant too, and this is what stops it.
         process = UploaderProcess.Extension(ports.gallery),
         manifestStore = DeviceManifestService(records),
         manifestPublisher = extensionBackend(exchange, attestStore, identity).manifest,
-        suppression = downloads,
-        recognition = downloads,
+        received = received,
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(albums, AlbumMapService(records)),
         // A retry re-reads the shared item: the app may have renewed the token this copy still holds.

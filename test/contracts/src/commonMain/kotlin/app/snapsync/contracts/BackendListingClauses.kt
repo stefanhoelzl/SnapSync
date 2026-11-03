@@ -2,7 +2,6 @@ package app.snapsync.contracts
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.model.UnionTrigger
 import app.snapsync.model.uploadKey
 import app.snapsync.wire.api.DeviceFilesReply
 import app.snapsync.wire.api.EventFilesReply
@@ -213,8 +212,9 @@ private const val ANOTHER_EVENT = "0e1a5e00-0000-4000-8000-000000000001"
 
 /** A read of this state's event union as its member reads it, from [cursor] (`null`: all of it). */
 private suspend fun EdgeSubject<BackendClient>.union(cursor: Long? = null, urls: Boolean = false): EventFilesReply {
-    val trigger = if (cursor == null) UnionTrigger.FOREGROUND else UnionTrigger.PUSH
-    return port.send(Routes.EventFiles.request(seeded.eventId, cursor?.toString(), urls, trigger.wire))
+    // The trigger header a member sends: a whole read is a foreground's, a delta a push's.
+    val trigger = if (cursor == null) "foreground" else "push"
+    return port.send(Routes.EventFiles.request(seeded.eventId, cursor?.toString(), urls, trigger))
 }
 
 /** [union], which must be served. */

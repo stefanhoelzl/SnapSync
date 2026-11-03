@@ -1,7 +1,6 @@
 package app.snapsync.data.membership
 
 import app.snapsync.data.store.SharedDatabase
-import app.snapsync.data.store.StoreWrite
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.membership.ConfirmedDeletion
 import app.snapsync.domain.membership.Enrolled
@@ -86,15 +85,6 @@ class MembershipRepository(private val db: SharedDatabase) {
     fun leave(): LeaveResult = written<LeaveResult>(
         db.execute { it.transactionWithResult { it.leave() } },
         LeaveResult::Failed,
-    )
-
-    /**
-     * Forget the membership held, locally — owing the backend no leave, and its check times with it: what a device that
-     * starts from nothing does, its membership belonging to a backend it no longer talks to.
-     */
-    fun forget(): StoreWrite = written<StoreWrite>(
-        db.execute { it.transactionWithResult { it.forget() } },
-        StoreWrite::Failed,
     )
 
     /** A write's answer — [failed] with the store's detail when it could not be made; after any other, a re-read. */

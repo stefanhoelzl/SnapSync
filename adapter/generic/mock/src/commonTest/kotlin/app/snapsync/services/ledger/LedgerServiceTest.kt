@@ -513,16 +513,12 @@ class LedgerServiceTest {
     }
 
     @Test
-    fun `the reset family advances the version and never resets it - and a bump is exactly one`() = runTest {
+    fun `a reset advances the version and never resets it - and a bump is exactly one`() = runTest {
         ledger.recordUnlessSettled(entry())
         val afterRecord = ledger.manifestVersion()
-        ledger.clear()
-        val afterClear = ledger.manifestVersion()
-        assertTrue(afterClear > afterRecord, "clear deletes rows, so it advances")
-        assertNull(ledger.get(entry().key), "and it deleted them")
         ledger.resetTo(testEventId(JOINED), listOf(entry(key = "B"), entry(key = "C")))
         val afterReset = ledger.manifestVersion()
-        assertTrue(afterReset > afterClear, "resetTo inserts rows, so it advances")
+        assertTrue(afterReset > afterRecord, "resetTo inserts rows, so it advances")
 
         ledger.bumpManifestVersion()
 

@@ -17,17 +17,16 @@ plugins {
 // production module's main code can assert.
 //
 // The statement lists `DatabasesContract`'s schema clauses run (`SchemaStatementsTask`): read from the SQLDelight
-// code `:domain:data` and `:domain:services` generate for their databases, so a query added there is run here with
+// code `:domain:data` generates for its databases, so a query added there is run here with
 // nothing to remember. A fixture per argument type; a type with none fails this task naming the statement.
 // The date roles' fixture instant, fully qualified: a fixture names only its own type, which the statement's file
 // imports.
 val epoch = "app.snapsync.domain.time.Timestamp.of(kotlin.time.Instant.fromEpochSeconds(0))"
 
 val generateSchemaStatements = tasks.register<SchemaStatementsTask>("generateSchemaStatements") {
-    dependsOn(":domain:data:generateSqlDelightInterface", ":domain:services:generateSqlDelightInterface")
+    dependsOn(":domain:data:generateSqlDelightInterface")
     generatedCode.from(
         project(":domain:data").layout.buildDirectory.dir("generated/sqldelight/code"),
-        project(":domain:services").layout.buildDirectory.dir("generated/sqldelight/code"),
     )
     outputDir.set(layout.buildDirectory.dir("generated/schemaStatements/kotlin"))
     packageName.set("app.snapsync.contracts")

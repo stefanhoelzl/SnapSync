@@ -2,6 +2,8 @@ package app.snapsync.feature.diagnostics
 
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
+import app.snapsync.data.receiving.DownloadRead
+import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.trust.RefusalFacts
 import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.domain.network.NetworkAccess
@@ -19,7 +21,6 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.device.DeviceConditionsReadings
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
@@ -56,7 +57,7 @@ class CollectDiagnosticDump(
     private val environment: DiagnosticEnvironment,
     private val logs: LogTailService,
     private val ledger: LedgerService,
-    private val downloads: DownloadService,
+    private val downloads: ReceivingCounts,
     private val config: MembershipProjection,
     private val permission: GalleryAccessState,
     /** The device's network, read fresh for the report — not the screen's notice, which lags by its grace period. */
@@ -189,7 +190,10 @@ class CollectDiagnosticDump(
         val aggregates = ledger.aggregates()
         // Both sides read in one round-trip each, so a dump reports one state of each store rather than a
         // composite of several — the disagreement this section's KDoc warns reads as a bug at 2am.
-        val downloadCounts = downloads.counts()
+        val downloadCounts = when (val read = downloads.census()) {
+            is DownloadRead.Ok -> read.value
+            is DownloadRead.Unavailable -> error("the download store cannot be read: ${read.detail}")
+        }
         return mapOf(
             "photos_pending" to aggregates.pending.toString(),
             "photos_completed" to aggregates.completed.toString(),

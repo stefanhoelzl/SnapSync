@@ -5,7 +5,6 @@ import app.snapsync.application.membership.ClaimStateCheck
 import app.snapsync.application.membership.DeliverPendingLeaves
 import app.snapsync.application.membership.EnrollDevice
 import app.snapsync.application.membership.EnterMembership
-import app.snapsync.application.membership.ForgetMembership
 import app.snapsync.application.membership.LeaveEvent
 import app.snapsync.application.membership.ReconfigureEvent
 import app.snapsync.application.membership.RefreshMembership
@@ -34,7 +33,6 @@ internal class MembershipLayers(private val core: AppCore) {
     val rename: RenameEvent by lazy { RenameEvent(membership, core.backend.rename) }
     val deliver: DeliverPendingLeaves by lazy { DeliverPendingLeaves(core.services.pendingLeaves, core.backend.leave) }
     val claimState: ClaimStateCheck by lazy { ClaimStateCheck(core.services.eventChecks, core.services.wallClock) }
-    val forget: ForgetMembership by lazy { ForgetMembership(membership) }
     val restoreKey: RestoreEventKey by lazy {
         RestoreEventKey(membership, core.services.eventKeyStore, core.services.eventKeyIds)
     }

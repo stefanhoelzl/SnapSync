@@ -1,6 +1,8 @@
 package app.snapsync.data.sharing
 
 import app.snapsync.data.gallery.photoAccess
+import app.snapsync.data.receiving.HandlesRead
+import app.snapsync.data.receiving.ReceivedPhotosRead
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.membership.Membership
@@ -28,8 +30,8 @@ import app.snapsync.ports.GalleryReader
  * there is no path to a walk: the selection is the gallery. The upload extension never reads a selection, so under a
  * partial grant its plan is that nothing can be read.
  *
- * [received] is echo suppression's set — the photos this device received through SnapSync — supplied by the caller
- * while its store is still the old zones' (MIGRATING; receiving moves it into the layers).
+ * Echo suppression is read here too, from [received] — the photos this device received through SnapSync, which are
+ * never the member's own: a record of them that cannot be read lets nothing be read, so nothing is admitted.
  */
 class OwnPhotos(
     private val gallery: GalleryReader,
@@ -37,26 +39,37 @@ class OwnPhotos(
     private val selection: SelectionSnapshots,
     private val albums: DenylistedAlbums,
     private val clock: WallClock,
+    private val received: ReceivedPhotosRead,
 ) {
 
     /** What [membership] contributes now: its policy, and the read it is to be applied to. */
-    suspend fun contribution(membership: Membership, received: Set<AssetId>): Contribution = contribution(
+    suspend fun contribution(membership: Membership): Contribution = contribution(
         membership.share.direction,
         membership.share.range.sharedAt(clock.now(), membership.event.range.start),
-        received,
     )
 
     /**
      * What a membership of [direction] sharing [range] — as it is shared now — contributes: the policy, derived for the
      * read the grant allows (the album denylist is read only when the library is walked), paired with that read.
      */
-    suspend fun contribution(direction: Direction, range: CaptureRange, received: Set<AssetId>): Contribution {
+    suspend fun contribution(
+        direction: Direction,
+        range: CaptureRange,
+    ): Contribution = when (val handles = received.handles()) {
+        is HandlesRead.Ok -> contribution(direction, range, handles.ids)
+        is HandlesRead.Unavailable -> Contribution(
+            SelectionPolicy.of(SelectionInputs(direction, range, emptySet(), emptySet())),
+            ReadPlan.NotReadable,
+        )
+    }
+
+    private suspend fun contribution(direction: Direction, range: CaptureRange, handles: Set<AssetId>): Contribution {
         val plan = plan()
         val denied = when (plan.readsAlbums(direction)) {
             true -> albums.members(range.from)
             false -> emptySet()
         }
-        return Contribution(SelectionPolicy.of(SelectionInputs(direction, range, received, denied)), plan)
+        return Contribution(SelectionPolicy.of(SelectionInputs(direction, range, handles, denied)), plan)
     }
 
     /** The read [contribution] is applied to, made: its candidates before admission, and the way to their resources. */
@@ -79,8 +92,8 @@ class OwnPhotos(
      * How many of the member's photos [range] would share, sharing switched on — the preview a member sees while
      * choosing. It counts what WILL be shared: photos waiting for the event's start are counted.
      */
-    suspend fun preview(range: CaptureRange, received: Set<AssetId>): PreviewRead =
-        when (val read = discover(contribution(Direction.UploadOnly, range, received))) {
+    suspend fun preview(range: CaptureRange): PreviewRead =
+        when (val read = discover(contribution(Direction.UploadOnly, range))) {
             is DiscoveryRead.Discovered -> PreviewRead.Counted(read.discovery.admitted.size)
             DiscoveryRead.NotReadable -> PreviewRead.NotReadable
         }

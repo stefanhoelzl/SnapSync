@@ -144,7 +144,7 @@ class LegacyRecordsTest {
     @Test
     fun `a copied source is never copied again - its leftover is deleted at the next open`() = runTest {
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
-        membershipOf(app()).forget() // copied, then forgotten
+        membershipOf(app()).leave() // copied, then left
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray() // a delete the crash never made
         values[ALBUM_MAP] = "{}" // and a key the same crash left
 

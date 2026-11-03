@@ -12,7 +12,6 @@ import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
@@ -96,19 +95,13 @@ class MembershipServicesTest {
     }
 
     @Test
-    fun `downloads run only for a membership that receives and is not deleted`() {
+    fun `the active event is the joined one's, and none while not joined`() {
         val store = SharedStore()
         val config = projection(store)
-        assertNull(config.downloadsEnabled(), "no membership: unknown, never a yes")
-        for ((membership, enabled) in listOf(
-            joined to true,
-            joined.copy(direction = Direction.UploadOnly) to false,
-            joined.copy(deleted = true) to false,
-        )) {
-            store.persist(membership)
-            config.reload()
-            assertEquals(enabled, config.downloadsEnabled(), "$membership")
-        }
+        assertNull(config.activeEventId(), "no membership: no event to scope a read to")
+        store.persist(joined)
+        config.reload()
+        assertEquals(joined.eventId, config.activeEventId())
     }
 
     @Test

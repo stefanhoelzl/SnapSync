@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.format.LINK_ORIGIN
@@ -323,6 +324,32 @@ class ProtectedStoresIntegrationTest {
         then {
             neverScreen<Layer.Joined> { it.health != SyncHealth.KeyLost }
             neverScreen<Layer.JoiningEvent>()
+        }
+    }
+
+    // A settings change re-drives receiving — and with the key lost it starts nothing, and stops nothing either.
+    @Test
+    @Verifies(spec = "sync-status", requirement = "A device that lost the event's key asks for its invite")
+    fun a_settings_change_while_the_key_is_lost_downloads_nothing() = behaviour {
+        given {
+            joinedEvent()
+            step("the event's key lost", act = { keychain.forget(KeychainItem.EVENT_KEY) }, until = {})
+            step(
+                "the joined screen asks for the invite",
+                act = { os.foreground() },
+                until = {
+                    screen<Layer.Joined> { it.health == SyncHealth.KeyLost }
+                    settled { true }
+                },
+            )
+            fellowMember(DEV_F, "FQ")
+        }
+
+        whenever { reconfigure(Choices(saveToAlbum = false)) }
+        then {
+            never<WorldEvent.DownloadStarted>()
+            neverScreen<Layer.Joined> { it.health != SyncHealth.KeyLost }
+            settled { true }
         }
     }
 

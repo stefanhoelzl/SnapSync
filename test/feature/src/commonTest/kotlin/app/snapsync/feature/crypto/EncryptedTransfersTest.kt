@@ -6,6 +6,9 @@ import app.snapsync.data.crypto.Landing
 import app.snapsync.data.crypto.OpenAnswer
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.receiving.Landed
+import app.snapsync.data.receiving.StagingArea
+import app.snapsync.data.receiving.TransferTag
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
@@ -14,10 +17,10 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.KeyMaterial
+import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
-import app.snapsync.feature.support.RecordingDownload
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestEventKeys
@@ -51,17 +54,14 @@ import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.Transfer
 import app.snapsync.ports.TransferHandlers
 import app.snapsync.ports.TransferNetwork
-import app.snapsync.ports.TransferOutcome
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
-import app.snapsync.services.downloads.DownloadJobs
 import app.snapsync.services.gallery.GalleryResourceRef
 import app.snapsync.services.gallery.KeyedRead
 import app.snapsync.services.gallery.KeyedResources
-import app.snapsync.services.staging.StagingService
 import app.snapsync.services.upload.OsQueueTransfer
 import app.snapsync.services.upload.SessionTransfer
 import app.snapsync.services.upload.TransferRecord
@@ -71,13 +71,13 @@ import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -111,6 +111,28 @@ class EncryptedTransfersTest {
         val cipher = FileCipher(crypto, files)
         val sealing = UploadSealing(membership, keys.store, testIdentity(id), cipher)
         val opening = DownloadOpening(membership, keys.store, cipher, files)
+
+        /**
+         * A finished download of [DEVICE_A]'s resource, as receiving keeps it: its bytes at [temp] landed where the
+         * opening says and then opened ([app.snapsync.application.receiving.StageDownload] and `RecordStaged`). Answers
+         * the staged path, or `null` when nothing was staged.
+         */
+        suspend fun received(temp: String): String? {
+            val tag = TransferTag.parse("$DEVICE_A\n$ASSET\n$KEY\n$EVENT")!!
+            val landing = opening.landing(tag.stagedAt.value)
+            assertEquals(Landed.Kept, StagingArea(files).land(temp, StagedPath(landing.stagedAt)))
+            val answer = opening.open(
+                landing,
+                tag.ref.sourceDeviceId,
+                tag.ref.sourceAssetId,
+                tag.role,
+                EventId.parse(EVENT),
+            )
+            return when (answer) {
+                OpenAnswer.Opened -> tag.stagedAt.value
+                OpenAnswer.NotOpened -> null
+            }
+        }
     }
 
     /** The app's session, sending files, remembering what it was asked to send. */
@@ -221,22 +243,7 @@ class EncryptedTransfersTest {
         // Another member downloads those bytes and stages them opened.
         val receiver = Device(DEVICE_B, minted.linkKey, minted.keyId)
         receiver.files.write(FileArea.SHARED, "os-tmp/1", sealed)
-        val staged = mutableListOf<String>()
-        val jobs = DownloadJobs(
-            staging = StagingService(receiver.files),
-            download = RecordingDownload(),
-            onStaged = { _, _, path -> staged += path },
-            network = mobileDataAnswering { TransferNetwork.ANY },
-            headers = { emptyMap() },
-            opening = receiver.opening,
-        )
-        jobs.onFinished(
-            "$DEVICE_A\n$ASSET\n$KEY\n$EVENT",
-            HEALTHY,
-            "mem:/shared/os-tmp/1",
-        ) { body -> launch { body() } }
-        advanceUntilIdle()
-        val path = staged.single()
+        val path = assertNotNull(receiver.received("mem:/shared/os-tmp/1"))
         assertContentEquals(photo, assertIs<FileResult.Ok<ByteArray>>(receiver.files.read(FileArea.SHARED, path)).value)
         assertEquals(FileResult.Ok(false), receiver.files.exists(FileArea.SHARED, "$path.sealed"))
     }
@@ -289,26 +296,11 @@ class EncryptedTransfersTest {
     fun a_download_that_does_not_open_is_never_staged_and_leaves_nothing_behind() = runTest {
         val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val receiver = Device(DEVICE_B, minted.linkKey, minted.keyId)
-        val staged = mutableListOf<String>()
-        val jobs = DownloadJobs(
-            staging = StagingService(receiver.files),
-            download = RecordingDownload(),
-            onStaged = { _, _, path -> staged += path },
-            network = mobileDataAnswering { TransferNetwork.ANY },
-            headers = { emptyMap() },
-            opening = receiver.opening,
-        )
         // Plaintext, as a build predating encryption would have stored it — or anything else that is not a file of this key.
         repeat(5) { attempt ->
             receiver.files.write(FileArea.SHARED, "os-tmp/$attempt", photo)
-            jobs.onFinished(
-                "$DEVICE_A\n$ASSET\n$KEY\n$EVENT",
-                HEALTHY,
-                "mem:/shared/os-tmp/$attempt",
-            ) { body -> launch { body() } }
+            assertNull(receiver.received("mem:/shared/os-tmp/$attempt"))
         }
-        advanceUntilIdle()
-        assertTrue(staged.isEmpty())
         assertTrue(
             receiver.files.operations.none {
                 it.startsWith("write") && !it.contains("os-tmp") && !it.contains("eventconfig")
@@ -346,7 +338,6 @@ class EncryptedTransfersTest {
         const val DEVICE_B = "B0000000-0000-4000-8000-00000000000B"
         const val ASSET = "ASSET1"
         const val KEY = "ASSET1-primary.heic"
-        val HEALTHY = TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1L)
     }
 
     private object OfferedJob : OsUploadJobHandle
@@ -401,23 +392,9 @@ class EncryptedTransfersTest {
     @Test
     fun a_plain_events_download_is_staged_as_it_arrived() = runTest {
         val receiver = Device(DEVICE_B, linkKey = null, keyId = null)
-        val staged = mutableListOf<String>()
-        val jobs = DownloadJobs(
-            staging = StagingService(receiver.files),
-            download = RecordingDownload(),
-            onStaged = { _, _, path -> staged += path },
-            network = mobileDataAnswering { TransferNetwork.ANY },
-            headers = { emptyMap() },
-            opening = receiver.opening,
-        )
         receiver.files.write(FileArea.SHARED, "os-tmp/0", photo)
-        jobs.onFinished(
-            "$DEVICE_A\n$ASSET\n$KEY\n$EVENT",
-            HEALTHY,
-            "mem:/shared/os-tmp/0",
-        ) { body -> launch { body() } }
-        advanceUntilIdle()
-        assertEquals(1, staged.size, "nothing to open: the bytes are the photo")
+        val path = assertNotNull(receiver.received("mem:/shared/os-tmp/0"), "nothing to open: the bytes are the photo")
+        assertContentEquals(photo, assertIs<FileResult.Ok<ByteArray>>(receiver.files.read(FileArea.SHARED, path)).value)
     }
 }
 

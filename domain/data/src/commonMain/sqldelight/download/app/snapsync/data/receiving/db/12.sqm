@@ -1,0 +1,34 @@
+import app.snapsync.data.store.Stored;
+import app.snapsync.domain.asset.AssetId;
+import app.snapsync.domain.device.DeviceId;
+import app.snapsync.domain.receiving.DownloadState;
+
+-- v12 -> v13: receiving moved into the layers, and `downloads.db` into the data layer (`docs/architecture.md`, "The
+-- core and its zones"). `downloadAsset.state` is the domain's `DownloadState` — the data layer reads no old zone's
+-- vocabulary — and a column's Kotlin type lives in the `CREATE TABLE` of a migration that may never be edited
+-- (`MigrationPinTest`), so the table is re-created here, the way 10.sqm re-created it.
+--
+-- NOTHING a device stores changes: the same columns, SQL types, constraints and index, the same rows.
+--
+-- ROW-PRESERVING, every column copied as it is. DOWNGRADE: the table an earlier build reads is the same table.
+
+CREATE TABLE downloadAsset_v12 AS SELECT * FROM downloadAsset;
+
+DROP INDEX downloadAsset_createdLocalId;
+DROP TABLE downloadAsset;
+
+CREATE TABLE downloadAsset (
+    sourceDeviceId TEXT AS Stored<DeviceId> NOT NULL,
+    sourceAssetId  TEXT AS Stored<AssetId> NOT NULL,
+    state          TEXT AS DownloadState NOT NULL,
+    creationDate   TEXT NOT NULL,
+    createdLocalId TEXT AS Stored<AssetId>,
+    PRIMARY KEY (sourceDeviceId, sourceAssetId)
+);
+
+INSERT INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId)
+SELECT sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId FROM downloadAsset_v12;
+
+DROP TABLE downloadAsset_v12;
+
+CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId);

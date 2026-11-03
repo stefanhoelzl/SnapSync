@@ -16,7 +16,7 @@ import app.snapsync.model.DeviceManifestAsset
  */
 internal class PublicBackend(private val world: MockWorld, private val reach: BackendReach) : PublicBackendLevers {
     override suspend fun union(event: String?): List<UnionEntry> = reach.unionOf(named(event)).map { a ->
-        UnionEntry(a.deviceId.value, a.assetId.value, a.resources.map { it.role })
+        UnionEntry(a.deviceId, a.assetId, a.resources.map { it.role.value })
     }
 
     override suspend fun event(event: String?): EventRecord {

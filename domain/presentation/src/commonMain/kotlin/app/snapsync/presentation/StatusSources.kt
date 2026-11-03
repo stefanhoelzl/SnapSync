@@ -9,7 +9,6 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
@@ -18,6 +17,7 @@ import app.snapsync.model.Store
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.network.NetworkStatusQuery
+import app.snapsync.query.receiving.DownloadProgress
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 

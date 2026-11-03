@@ -3,6 +3,8 @@ package app.snapsync.feature.upload
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.receiving.ReceivedPhotosRead
+import app.snapsync.data.receiving.RecognitionRead
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.SharedRecordsReadiness
@@ -12,8 +14,6 @@ import app.snapsync.model.DeviceIdentityAbsent
 import app.snapsync.model.PauseReason.LEGACY_RECORDS
 import app.snapsync.model.SecureStoreUnavailable
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.downloads.RecognitionSource
-import app.snapsync.services.downloads.SuppressionSource
 import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
@@ -33,9 +33,8 @@ class CycleGateRead(
     private val ledger: LedgerService,
     private val config: MembershipProjection,
     private val identity: DeviceIdentity,
-    private val suppression: SuppressionSource,
-    /** Whether the joined membership's received photos have been recognised — read after the suppression store is ready. */
-    private val recognition: RecognitionSource,
+    /** What this process reads of the photos it received: whether it can, and whether they are recognised. */
+    private val received: ReceivedPhotosRead,
     /** The build-time upload host; blank when the build carries none, which the gate treats as "cannot upload". */
     private val host: String,
     /** Whether THIS process may create now — each uploader states its own, read once per gate. */
@@ -56,9 +55,9 @@ class CycleGateRead(
         if (records.readiness() == SharedRecordsReadiness.LegacyPending) return CycleGate.Paused(LEGACY_RECORDS)
         val gate = entryGate()
         if (gate !is CycleGate.Run) return gate
-        val ready = suppressionGate(gate, suppression.readiness())
+        val ready = suppressionGate(gate, received.readiness())
         if (ready !is CycleGate.Run) return ready
-        return recognitionGate(ready, recognition.isRecognised(ready.membership.eventId))
+        return recognitionGate(ready, received.recognition(ready.membership.eventId) is RecognitionRead.Recognised)
     }
 
     /** The gate from the membership, the identity and the admission — everything but the suppression read. */
@@ -90,7 +89,7 @@ class CycleGateRead(
                     // A supplier, not a value: the derivation reads ports and this translation must stay port-pure.
                     // Closing over them is not calling them. Derived when the cycle asks, not at the gate: a cycle
                     // that crosses the event's start shares what the start admits from then on.
-                    contribution = { photos.contribution(membership, suppression.suppressedLocalIds()) },
+                    contribution = { photos.contribution(membership) },
                     saveToAlbum = membership.share.saveToAlbum,
                     manifestVersion = version.getOrDefault(0L),
                 )

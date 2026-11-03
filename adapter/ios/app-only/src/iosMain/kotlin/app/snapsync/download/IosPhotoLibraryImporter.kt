@@ -112,9 +112,10 @@ internal class IosPhotoLibraryImporter(
         val callerQos = qosLabel()
         // NOTHING BOUNDS THIS WAIT, and that is the decision, not an omission.
         //
-        // The bound that used to sit here existed to protect `DownloadController`'s mutex: the import ran
-        // under it, and the SNAPSYNC-6 field hang held it from 09:03:37 until the process died. The import
-        // no longer runs under that lock, so there is nothing left for a per-import clock to protect — and
+        // The bound that used to sit here existed to protect the download store's lock (then
+        // `DownloadController`'s mutex): the import ran under it, and the SNAPSYNC-6 field hang held it from
+        // 09:03:37 until the process died. The import no longer runs under that lock, so there is nothing left
+        // for a per-import clock to protect — and
         // the wake it would otherwise bound is bounded already by the operating system's own expiry signal,
         // which ends the wake's background time at once and deliberately lets this work run on.
         //

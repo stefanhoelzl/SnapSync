@@ -1,8 +1,6 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AssetPresence
 import app.snapsync.ports.GalleryAlbum
-import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.WriteOutcome
@@ -19,43 +17,6 @@ import kotlin.test.assertTrue
  * [ScriptedGallery], because what these services must NOT ask the gallery is as much the point as what they answer.
  */
 class GalleryServicesTest {
-
-    private fun photo(id: String) = platformPhoto(id)
-
-    // ---- GalleryAssetPresence -----------------------------------------------------------------------
-
-    @Test
-    fun `a full grant answers present and absent for every id asked`() = runTest {
-        val presence = GalleryAssetPresence(ScriptedGallery(assets = listOf(photo("A"))))
-        assertEquals(
-            mapOf(testAssetId("A") to AssetPresence.PRESENT, testAssetId("GONE") to AssetPresence.ABSENT),
-            presence.presence(setOf(testAssetId("A"), testAssetId("GONE"))),
-        )
-    }
-
-    @Test
-    fun `no other grant may say absent and none asks the gallery`() = runTest {
-        for (access in LibraryGrant.entries - LibraryGrant.GRANTED) {
-            val gallery = ScriptedGallery(access = access, assets = listOf(photo("A")))
-            assertEquals(
-                mapOf(testAssetId("A") to AssetPresence.UNKNOWN, testAssetId("GONE") to AssetPresence.UNKNOWN),
-                GalleryAssetPresence(gallery).presence(setOf(testAssetId("A"), testAssetId("GONE"))),
-                "$access: a partial view's miss is not evidence of absence",
-            )
-            assertTrue(gallery.calls.isEmpty(), "$access")
-        }
-    }
-
-    @Test
-    fun `an unreadable gallery answers unknown and asking about nothing answers nothing`() = runTest {
-        assertEquals(
-            mapOf(testAssetId("A") to AssetPresence.UNKNOWN),
-            GalleryAssetPresence(ScriptedGallery(readable = false)).presence(setOf(testAssetId("A"))),
-        )
-        val gallery = ScriptedGallery()
-        assertEquals(emptyMap(), GalleryAssetPresence(gallery).presence(emptySet()))
-        assertTrue(gallery.calls.isEmpty())
-    }
 
     // ---- GalleryAlbums ------------------------------------------------------------------------------
 

@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.snapsync.data.gallery.assetId
 import app.snapsync.data.gallery.facts
+import app.snapsync.data.gallery.role
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
@@ -47,7 +48,6 @@ import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.ports.WakeId
-import app.snapsync.services.gallery.role
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState

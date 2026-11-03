@@ -76,4 +76,10 @@ class HeartbeatTest {
             )
         }
     }
+
+    @Test
+    fun photos_staged_to_import_remain_while_any_waits() {
+        assertEquals(StagedImports.NONE, StagedImports.of(0))
+        assertEquals(StagedImports.REMAIN, StagedImports.of(3))
+    }
 }

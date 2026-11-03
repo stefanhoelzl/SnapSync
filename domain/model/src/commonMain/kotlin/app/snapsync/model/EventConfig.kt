@@ -22,9 +22,6 @@ import app.snapsync.domain.time.Timestamp
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.UseSerializers
 
-/** Whether the event's range has ended at [now]: strictly after its end. */
-fun EventConfig.hasEnded(now: Timestamp): Boolean = now > endsAt.at
-
 /**
  * Whether this membership's OWN capture range has ended at [now] — strictly after its [EventConfig.maxPhotoDate] —
  * which is when its share may be settled. For most members it is the event's end; earlier for a range that ends before

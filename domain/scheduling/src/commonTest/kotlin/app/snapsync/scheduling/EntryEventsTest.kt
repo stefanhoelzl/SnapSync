@@ -139,7 +139,7 @@ class EntryEventsTest {
         val world = World(this)
         val topUp = CompletableDeferred<Unit>()
         var job: kotlinx.coroutines.Job? = null
-        OnReport(world) { job = detached { topUp.await() } }.deliver(Unit)
+        OnReport(world) { job = detachedSteps { required { topUp.await() } } }.deliver(Unit)
         assertEquals(listOf("delivered OnReport", "answered OnReport"), world.entries.seen())
         runCurrent()
         assertTrue(job?.isActive == true, "the detached work runs on, its job the caller's to wait for")

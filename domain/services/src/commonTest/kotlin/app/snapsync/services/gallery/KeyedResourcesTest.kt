@@ -57,7 +57,7 @@ class KeyedResourcesTest {
         ).range
 
     private fun ownPhotos(gallery: ScriptedGallery, selection: SelectionSnapshots = SelectionSnapshots()) =
-        OwnPhotos(gallery, GalleryWalk(gallery, clock), selection, DenylistedAlbums(gallery), clock)
+        OwnPhotos(gallery, GalleryWalk(gallery, clock), selection, DenylistedAlbums(gallery), clock, NothingReceived)
 
     private suspend fun selectionOf(vararg ids: String): SelectionSnapshots = SelectionSnapshots().also { snapshots ->
         snapshots.published(flowOf(SelectionSnapshot(ids.map { platformPhoto(it) }))) {}.collect()
@@ -154,7 +154,7 @@ class KeyedResourcesTest {
         val gallery = ScriptedGallery(assets = listOf(platformPhoto("A"), livePhoto))
         val photos = ownPhotos(gallery)
         val read = assertIs<DiscoveryRead.Discovered>(
-            photos.discover(photos.contribution(Direction.UploadOnly, range, emptySet())),
+            photos.discover(photos.contribution(Direction.UploadOnly, range)),
         )
         gallery.calls.clear()
 
@@ -170,7 +170,7 @@ class KeyedResourcesTest {
             val gallery = ScriptedGallery(assets = listOf(platformPhoto("A")))
             val photos = ownPhotos(gallery)
             val read = assertIs<DiscoveryRead.Discovered>(
-                photos.discover(photos.contribution(Direction.UploadOnly, range, emptySet())),
+                photos.discover(photos.contribution(Direction.UploadOnly, range)),
             )
             gallery.readable = false
             assertTrue(read.uploadable(read.discovery.admitted).isEmpty())
@@ -181,7 +181,7 @@ class KeyedResourcesTest {
         val gallery = ScriptedGallery(access = LibraryGrant.LIMITED)
         val photos = ownPhotos(gallery, selectionOf("S1", "S2"))
         val read = assertIs<DiscoveryRead.Discovered>(
-            photos.discover(photos.contribution(Direction.UploadOnly, range, emptySet())),
+            photos.discover(photos.contribution(Direction.UploadOnly, range)),
         )
 
         val resources = read.uploadable(read.discovery.admitted.filter { it.facts.assetId != testAssetId("S2") })

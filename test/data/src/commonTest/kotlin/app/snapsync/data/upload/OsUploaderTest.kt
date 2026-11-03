@@ -4,10 +4,8 @@ import app.snapsync.domain.upload.AppUploaderSwitch
 import app.snapsync.domain.upload.ExtensionSwitch
 import app.snapsync.domain.upload.OsUploaderAdmission
 import app.snapsync.domain.upload.OsUploaderStanding
-import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.osUploaderOver
 import app.snapsync.ports.DevControls
-import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.RegistrationState
 import app.snapsync.ports.UploaderPin
@@ -59,9 +57,6 @@ class OsUploaderTest {
 
     /** The rig's switches and nothing else. */
     private class PinOnly(private val pin: UploaderPin?) : DevControls {
-        @CompositionOnly
-        override fun inbound(handlers: DevHandlers) = Unit
-
         override fun uploaderPin(): UploaderPin? = pin
 
         override fun createsPlainEvents(): Boolean = false

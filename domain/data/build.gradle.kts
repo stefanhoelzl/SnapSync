@@ -48,5 +48,14 @@ sqldelight {
             // upsert-with-WHERE (Ledger.sq `recordUnlessSettled`) needs SQLite ≥ 3.24.
             dialect(libs.sqldelight.dialect.sqlite)
         }
+        // The download store, `downloads.db` (`docs/architecture.md`, "Storage"): receiving's record of the others'
+        // photos, which the app alone writes and migrates and the upload extension opens read-only. The same rules as
+        // above: its schema is its chain from the baseline `4.sqm`, every `.sqm` pinned (`MigrationPinTest`).
+        create("DownloadDatabase") {
+            packageName.set("app.snapsync.data.receiving.db")
+            srcDirs.setFrom("src/commonMain/sqldelight/download")
+            deriveSchemaFromMigrations.set(true)
+            dialect(libs.sqldelight.dialect.sqlite)
+        }
     }
 }

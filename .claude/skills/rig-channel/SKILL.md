@@ -3,10 +3,10 @@ name: rig-channel
 description: >-
   Drive the app running on a phone (SE2, XS, or the A40), over HTTP — the build-time-only
   control channel (:test:rig, -Psnapsync.rig=true). This is how you join, create,
-  leave, reset device state, seed or wipe the photo library, read the selection
+  leave, seed or wipe the photo library, read the selection
   policy, force an OS callback, and read live UiState. Use when the task means
   "join an event on device", "create an event", "seed photos", "wipe the
-  gallery", "reset the device", "make the app foreground / silent-push / run the
+  gallery", "make the app foreground / silent-push / run the
   background task", "why did no upload cycle run", "read the extension's log", or
   anything touching the typed services (`rig`), GET /device or the rig's port forward — or the SAME
   protocol served by the JVM host over mocks (`:test:rig:runJvmHost`, no
@@ -123,7 +123,6 @@ GET  /health                            rig=up, port, boot instant — liveness 
 GET  /device                            what THIS host honours and refuses (= `rig rig advertise`), each refusal with
                                         its reason; 500 names a gap
 
-$R dev-controls reset                      void durable sync state
 $R dev-controls pin --app false --extension true   switch one uploader off (see below); `unpin` for both
 $R screen tap --intent '<UiIntent JSON>'   what a finger does — the ONE person verb, e.g. '{"type":"LeaveEvent"}'
 $R screen shown                            what the screen shows now
@@ -198,8 +197,8 @@ git diff test/contracts/recordings/        # review it like code, then commit it
   `$R --timeout 0 contract run --name UploadExtensionRegistry > …/UploadExtensionRegistry@IOS_DEVICE_APP.GRANTED.rec`; then switch the
   app to **Limited** access in Settings, relaunch, and record `…LIMITED.rec`; then switch back. The body's
   `# file:` header names the file each run belongs in. The full-grant run disables and re-enables the extension
-  (wiping in-flight upload jobs), so it is refused while the device is a member of an event — reset first
-  (`rig dev-controls reset`), deliberately.
+  (wiping in-flight upload jobs), so it is refused while the device is a member of an event — leave first
+  (`screen tap --intent '{"type":"LeaveEvent"}'`), deliberately.
   On the **XS** (below iOS 26.1) the same verb records `…UploadExtensionRegistry@IOS_DEVICE_APP.BELOW_IOS_26_1.rec`
   whatever the grant: there is no mechanism, so it asks iOS nothing but whether the OS carries it — which every
   grant's recording now holds as its first call too.
@@ -452,18 +451,16 @@ matters this much, because it is the only one that cannot be undone.
 
 ## Resetting durable state
 
-```
-$R dev-controls reset
-```
+There is no reset verb any more: the channel's `dev-controls reset` went with phase 4.5 ("receiving"), because a reset
+the app does not own would have to reach inside every store's lock. **Uninstall and reinstall** the app — that voids
+every store in its container, the membership with them — then install the rig build again (`snapsync-device`,
+`snapsync-android`, `ios-simulator`). On iOS the Keychain outlives the uninstall: the device id stays, and an event
+key left there is inert, since no membership names it.
 
-Voids the ledger, the discovery cursor, the membership config (**locally** — no backend is notified), and
-prunable download rows. **Keeps** every row carrying an import handle, so downloaded photos are not
-re-uploaded. Answers `{"reset":true}` — the ledger counts it once returned went with the ledger's removal from the
-protocol; what cleared shows on the screen and in the uploads that follow.
-
-⚠️ **Order matters and nothing enforces it any more.** Crossing backends, reset **before** leaving: after a
-reset the device is unjoined, so a leave is a no-op rather than a `DELETE` aimed at the backend you are
-leaving behind. There is no coordinator imposing that order now that each command is its own request.
+⚠️ Uninstalling deletes the app's container but **not the photos it imported**: they stay in the library, carrying
+their SnapSync mark, and the next join of the same event recognises them instead of downloading them again. A device
+joined to an event is NOT left by the uninstall: leave first (`screen tap --intent '{"type":"LeaveEvent"}'`) while it
+still talks to the backend it joined on.
 
 ## Some systems mocked in the real app — launch-time adapters
 
@@ -487,7 +484,7 @@ $R adapters clear                         # back to all real; exits
   Secure Enclave; a mocked library needs mocked uploads; a REAL extension registration keeps every system the
   extension writes real — so mock `extension-registry` with anything shared, and drive the extension with
   `extension-host process`. A choice that does not parse fails, naming the problem.
-- **Refused while joined**: leave or `rig dev-controls reset` first, so no membership is carried into another set
+- **Refused while joined**: leave first, so no membership is carried into another set
   of systems.
 - **An invalid adapters file composes NOTHING** (a script wrote a bad one, or a state file is unreadable): `/health`
   says `adapters=REFUSED …`, everything that would reach the app is refused naming why, the `adapters` service (and
@@ -850,7 +847,7 @@ What the operating system tells the app about the device, and what the app hands
   creates is PLAIN — its invite the fragment form; a rig build encrypts by default, its invite carrying `#k=` — unlike a
   shipped one, which creates plain events until encrypted creation is re-enabled (`PENDING_CLEANUPS.md`). The mocked
   download session's fixed JPEG does not open as an encrypted file, so a mocked-download world stages nothing of an
-  encrypted event: create a plain one to see downloads land on a device; the JVM host seals them itself), `reset()`,
+  encrypted event: create a plain one to see downloads land on a device; the JVM host seals them itself),
   read `controls()`.
 - `build` (`BuildLevers`) — `declare(version)` (the marketing version the build declares on every request — play an
   old build, or an update), read `declared()`; only where the backend is the mock, which reads it.

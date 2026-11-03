@@ -130,28 +130,6 @@ class CompositionSeamTest {
         "CollectDiagnosticDump.refusalFacts" to
             "the latest refused attestation's facts the credential's status holds in memory (AttestationStatus." +
             "refusalFacts) — read for a report offered from \"Report this\" (capability `privacy-security`)",
-        "DownloadArm.enabled" to
-            "the membership's direction, three-valued (no membership → null → no arm), derived in compose/ over " +
-            "the MembershipProjection the composition already reads",
-        "DownloadController.readyToImport" to
-            "this core's photo permission and the sibling ReceivedPhotoAdoption.ensureAdopted — feature-blindness " +
-            "(capability `receiving-photos`: nothing imports before a usable grant has recognised the received photos)",
-        "DownloadController.eventAlbum" to
-            "the current membership's event album — the album feature's AlbumCoordinator.albumIdFor over the " +
-            "MembershipProjection, a sibling feature this one may not name; read from the in-process map, nothing leaves",
-        "DownloadController.onImportedIntoAlbum" to
-            "tells the album feature's AlbumCoordinator.onImportedInto that an import landed in the event album, so a " +
-            "folder album is marked filled (`android-event-album` D4) — a sibling feature this one may not name; " +
-            "writes the in-process album map, nothing leaves",
-        "StoreDownloadStatusSource.currentEvent" to
-            "the joined membership's event id, read in compose/ off the MembershipProjection the composition already " +
-            "holds, so the received count is scoped to it (capability `sync-status`) — null with no membership",
-        "StoreDownloadStatusSource.receives" to
-            "whether the membership receives — the same three-valued MembershipProjection.downloadsEnabled the download arm " +
-            "reads, so the others' declared photos count only for a member who fetches them; nothing leaves",
-        "ReceivedPhotoAdoption.record" to
-            "the sibling DownloadController.settleAdopted — its locked write over the DownloadStore port — " +
-            "feature-blindness",
         "ReadingLedgerCountsSource.read" to
             "a read-only LedgerStore.assetProgress() mapped to LedgerCounts in compose/, so ledger types never " +
             "reach feature/status (stated at the class); the store is the LedgerStore port",
@@ -282,9 +260,12 @@ class CompositionSeamTest {
         // removed the albumExclusions / selectionScope / suppressedLocalIds / albumExcludedAssetIds lambdas — the
         // read is now OwnPhotos', a service, not a seam. 26 since the small concepts moved (4.8): the heartbeat's
         // facts (WakeRearm.facts) and the extension's registrability (UploadTransitions.extensionRegistrable) are
-        // types now. Lower it only with a removal like those, never to pass.
+        // types now. 19 since receiving moved (4.5): the download arm's direction (DownloadArm.enabled), the controller's
+        // import readiness, event album and album callback, the received status source's event and direction, and the
+        // adoption's record went with the controller — receiving's steps are use cases now. Lower it only with a removal
+        // like those, never to pass.
         assertTrue(
-            found.size >= 26,
+            found.size >= 19,
             "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
                 "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
         )

@@ -7,6 +7,12 @@ import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.SqlSchema
+import app.snapsync.data.receiving.db.DownloadAsset
+import app.snapsync.data.receiving.db.DownloadDatabase
+import app.snapsync.data.receiving.db.DownloadResource
+import app.snapsync.data.receiving.db.EventRef
+import app.snapsync.data.receiving.db.Recognised
+import app.snapsync.data.receiving.db.UnionCursor
 import app.snapsync.data.store.AssetIdColumnAdapter
 import app.snapsync.data.store.DeviceIdColumnAdapter
 import app.snapsync.data.store.EventIdColumnAdapter
@@ -27,12 +33,6 @@ import app.snapsync.domain.time.Timestamp
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.OpenDatabase
-import app.snapsync.services.downloads.db.DownloadAsset
-import app.snapsync.services.downloads.db.DownloadDatabase
-import app.snapsync.services.downloads.db.DownloadResource
-import app.snapsync.services.downloads.db.EventRef
-import app.snapsync.services.downloads.db.Recognised
-import app.snapsync.services.downloads.db.UnionCursor
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.time.Instant

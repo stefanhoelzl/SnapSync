@@ -9,7 +9,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.OwnLibrary
-import app.snapsync.feature.support.Recognised
+import app.snapsync.feature.support.TestReceived
 import app.snapsync.feature.support.captureRange
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.photo
@@ -55,7 +55,7 @@ class StatusRefreshTest {
 
     /** The real derivation, over [library]. */
     private fun derivedBy(library: OwnLibrary): suspend (Membership) -> Contribution =
-        { library.photos.contribution(it, received = emptySet()) }
+        { library.photos.contribution(it) }
 
     /** Records the ORDER of every step, which is the whole subject of this file. */
     private fun harness(
@@ -74,7 +74,7 @@ class StatusRefreshTest {
             },
             gallery = gallery ?: OwnDeviceGalleryStatusSource(library.photos),
             refreshDownloadLine = { steps += "downloads" },
-            recognition = Recognised(listOfNotNull(activeConfig?.eventId)),
+            received = TestReceived(recognised = activeConfig != null),
             configSource = membership(activeConfig),
             contributionFor = { m ->
                 steps += "policy"
@@ -105,7 +105,7 @@ class StatusRefreshTest {
             ledgerCounts = ReadingLedgerCountsSource { LedgerCounts(done = emptySet(), pending = emptySet()) },
             gallery = gallery,
             refreshDownloadLine = {},
-            recognition = Recognised(),
+            received = TestReceived(recognised = false),
             configSource = membership(config),
             contributionFor = derivedBy(library),
         ).run()
@@ -129,7 +129,7 @@ class StatusRefreshTest {
             ledgerCounts = counts,
             gallery = gallery,
             refreshDownloadLine = {},
-            recognition = Recognised(listOf(config.eventId)),
+            received = TestReceived(),
             configSource = membership(config),
             contributionFor = derivedBy(library),
         ).run()
@@ -191,7 +191,7 @@ class StatusRefreshTest {
             },
             gallery = gallery,
             refreshDownloadLine = { steps += "downloads" },
-            recognition = Recognised(listOf(config.eventId)),
+            received = TestReceived(),
             configSource = membership(config),
             contributionFor = {
                 steps += "policy"
