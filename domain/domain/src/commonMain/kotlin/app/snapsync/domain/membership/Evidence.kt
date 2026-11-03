@@ -41,10 +41,10 @@ value class Enrolled @MintsEnrolled constructor(val membership: Membership.Activ
 
 /** The leave of [event] committed: the membership, its pending leave and its checks, in one transaction. */
 @JvmInline
-value class LeftMembership @MintsLeftMembership constructor(val event: EventId)
+value class LeftMembership @MintsLeftMembership constructor(val event: EventId) : EndsUploads
 
 /** The store answered with no membership — never an unreadable one: what is left over may be swept. */
-class ConfirmedNotJoined @MintsConfirmedNotJoined constructor()
+class ConfirmedNotJoined @MintsConfirmedNotJoined constructor() : EndsUploads
 
 /** Only the key store's keep mints a [KeptKey]. */
 @RequiresOptIn("Only the key store's keep says the join's key is kept.", level = RequiresOptIn.Level.ERROR)

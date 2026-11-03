@@ -176,25 +176,3 @@ fun registrationOutcome(
     enabling && errorCode == PHOTOS_ERROR_ACCESS_USER_DENIED -> RegistrationOutcome.EnableRefusedByGrant
     else -> RegistrationOutcome.Failed(enabling, errorDomain, errorCode)
 }
-
-/**
- * What the platform answered a registration write — the `ExtensionRegistry` port's raw answer, which
- * [registrationOutcome] classifies. The port decides nothing: it reports whether the write took and, if not, which
- * error, or that this platform has no such registration at all.
- */
-sealed interface RegistrationAnswer {
-    /** The platform answered the write: whether it took ([ok]) and, if not, its error [domain] and [code]. */
-    data class Answered(val ok: Boolean, val domain: String?, val code: Long?) : RegistrationAnswer
-
-    /**
-     * This platform has no upload-extension registration — iOS below 26.1 (whose selector does not exist), the JVM,
-     * Android. Nothing was asked of the operating system.
-     */
-    data object Unsupported : RegistrationAnswer
-}
-
-/** Classify [answer] to a write that was [enabling] — [registrationOutcome] over its facts. */
-fun registrationOutcome(enabling: Boolean, answer: RegistrationAnswer): RegistrationOutcome = when (answer) {
-    is RegistrationAnswer.Answered -> registrationOutcome(enabling, answer.ok, answer.domain, answer.code)
-    RegistrationAnswer.Unsupported -> RegistrationOutcome.Unsupported(enabling)
-}

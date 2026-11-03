@@ -1,7 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.RegistrationAnswer
-
 /**
  * **The OS's record of whether this app's background-upload extension is registered**. One external system,
  * deciding nothing: on iOS ≥26.1 `PHPhotoLibrary`'s

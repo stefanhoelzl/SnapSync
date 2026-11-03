@@ -68,7 +68,8 @@ class OsQueueTest {
 
     private val world = SessionWorld()
     private val queue = RecordingQueue()
-    private val tier = OsQueueTier(queue, world.requests, world.sealing, mobileDataAnswering { world.network }, world.record)
+    private val tier =
+        OsQueueTier(queue, world.requests, world.sealing, mobileDataAnswering { world.network }, world.record)
     private val drain = OsQueueDrain(queue, JobOwners(world.reads), JobAcknowledgement(queue), world.record)
 
     private fun job(url: String?, state: UploadJobState = UploadJobState.FAILED, resource: GalleryResourceHandle? = Held) =
@@ -92,8 +93,10 @@ class OsQueueTest {
         assertSame(SessionWorld.Handle, handle)
         assertEquals(TransferNetwork.UNRESTRICTED_ONLY, target.network)
         assertTrue(target.url.contains("/events/${world.event.value}/files/devices/"))
-        assertEquals(target.url.substringAfter("backend.test").substringBefore('?'),
-            assertIs<UploadRow.Requested>(world.row()).destination?.path)
+        assertEquals(
+            target.url.substringAfter("backend.test").substringBefore('?'),
+            assertIs<UploadRow.Requested>(world.row()).destination?.path,
+        )
     }
 
     @Test
@@ -104,7 +107,14 @@ class OsQueueTest {
 
         val unkeyed = SessionWorld()
         unkeyed.joined(Encryption.Encrypted(unkeyed.ids.mint().id))
-        val other = OsQueueTier(queue, unkeyed.requests, unkeyed.sealing, mobileDataAnswering { unkeyed.network }, unkeyed.record)
+        val other =
+            OsQueueTier(
+                queue,
+                unkeyed.requests,
+                unkeyed.sealing,
+                mobileDataAnswering { unkeyed.network },
+                unkeyed.record,
+            )
         val withheld = other.create(unkeyed.event, unkeyed.discovered(), SessionWorld.Handle)
         assertEquals(SealVerdict.Withheld.Because.KEY_LOST, assertIs<CreateAnswer.Withheld>(withheld).because)
         assertEquals(1, queue.created.size)
@@ -132,7 +142,10 @@ class OsQueueTest {
         assertIs<CreateAnswer.Unaddressed>(tier.create(world.event, world.discovered("A2"), SessionWorld.Handle))
         assertIs<RetryAnswer.Unaddressed>(tier.retry(world.event, offered))
         world.identity.read = DeviceIdRead.Unavailable("locked")
-        assertEquals(CreateAnswer.Unaddressed("locked"), tier.create(world.event, world.discovered("A2"), SessionWorld.Handle))
+        assertEquals(
+            CreateAnswer.Unaddressed("locked"),
+            tier.create(world.event, world.discovered("A2"), SessionWorld.Handle),
+        )
         assertEquals(RetryAnswer.Unaddressed("locked"), tier.retry(world.event, offered))
         assertEquals(emptyList(), queue.retried)
     }

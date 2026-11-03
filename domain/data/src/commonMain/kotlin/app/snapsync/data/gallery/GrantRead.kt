@@ -1,6 +1,8 @@
 package app.snapsync.data.gallery
 
 import app.snapsync.domain.sharing.PhotoAccess
+import app.snapsync.domain.upload.FullGrant
+import app.snapsync.domain.upload.MintsFullGrant
 import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.flow.StateFlow
 
@@ -10,4 +12,19 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class GrantRead(private val grant: StateFlow<LibraryGrant>) {
     fun access(): PhotoAccess = grant.value.photoAccess()
+
+    /** Whether the grant is full right now — the one mint of [FullGrant], read afresh at each ask. */
+    @OptIn(MintsFullGrant::class)
+    fun full(): FullGrantRead = when (access()) {
+        PhotoAccess.FULL -> FullGrantRead.Full(FullGrant())
+        PhotoAccess.LIMITED, PhotoAccess.NONE -> FullGrantRead.NotFull
+    }
+}
+
+/** Whether the member's photo grant is full right now. */
+sealed interface FullGrantRead {
+    class Full(val grant: FullGrant) : FullGrantRead
+
+    /** A partial grant, or none: the upload extension may not be registered. */
+    data object NotFull : FullGrantRead
 }

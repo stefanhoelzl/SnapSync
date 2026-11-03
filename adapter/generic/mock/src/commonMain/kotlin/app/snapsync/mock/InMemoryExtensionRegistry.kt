@@ -1,9 +1,9 @@
 package app.snapsync.mock
 
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.RegistrationAnswer
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

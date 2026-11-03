@@ -4,7 +4,7 @@ package app.snapsync.mock
 
 import app.snapsync.contracts.grantedOf
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.RegistrationAnswer
+import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.WakeHandlers

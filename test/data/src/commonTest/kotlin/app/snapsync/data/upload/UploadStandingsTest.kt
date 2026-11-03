@@ -57,10 +57,16 @@ class UploadStandingsTest {
 
     @Test
     fun `stored bytes resume at their offset, landed ones are landed, and none start at zero`() = runTest {
-        assertEquals(ResumePoint.From(1_048_576), standing(HttpResult.Response(200, mapOf("Upload-Offset" to "1048576"), "")))
+        assertEquals(
+            ResumePoint.From(1_048_576),
+            standing(HttpResult.Response(200, mapOf("Upload-Offset" to "1048576"), "")),
+        )
         assertEquals(ResumePoint.Landed, standing(ok(204)))
         assertEquals(ResumePoint.From(0), standing(text(404, "")))
-        assertEquals(ResumePoint.From(0), standing(HttpResult.Response(200, mapOf("Upload-Offset" to "not a number"), "")))
+        assertEquals(
+            ResumePoint.From(0),
+            standing(HttpResult.Response(200, mapOf("Upload-Offset" to "not a number"), "")),
+        )
     }
 
     @Test

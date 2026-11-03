@@ -1,9 +1,10 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.RegistrationAnswer
-import app.snapsync.model.RegistrationOutcome
-import app.snapsync.model.registrationOutcome
+import app.snapsync.domain.upload.RegistrationReply
+import app.snapsync.domain.upload.RegistrationVerdict
+import app.snapsync.domain.upload.RegistrationWrite
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -39,10 +40,10 @@ enum class ExtensionRegistryState {
 
 /**
  * What every [ExtensionRegistry] promises (`docs/architecture.md` — this list IS the specification of the port's
- * obligations): a write reports what the platform did — judged here as `registrationOutcome` classifies it — and a
+ * obligations): a write reports what the platform did — judged here as the core's `RegistrationVerdict` classifies it — and a
  * successful write is what the OS then reads back.
  *
- * The expected answers are the measured ones `RegistrationOutcome` documents — a disable with no record is `3201`, and
+ * The expected answers are the measured ones `RegistrationVerdict` documents — a disable with no record is `3201`, and
  * a partial grant refuses both directions with `3311` (SE2, iOS 26.6). This contract makes them evidence rather than
  * prose: the device's recording holds iOS's answer, and every CI build replays it against the current adapter. The
  * read-back is asserted only under a full grant, because it is grant-dependent.
@@ -87,8 +88,8 @@ object ExtensionRegistryContract :
         ) { registry ->
             assertTrue(registry.supported, "an OS that holds a record carries the mechanism")
             assertEquals(
-                RegistrationOutcome.Applied(enabling = true),
-                registrationOutcome(true, registry.setEnabled(true)),
+                RegistrationVerdict.Applied(RegistrationWrite.ENABLE),
+                verdict(RegistrationWrite.ENABLE, registry.setEnabled(true)),
             )
             assertEquals(
                 RegistrationState.REGISTERED,
@@ -108,8 +109,8 @@ object ExtensionRegistryContract :
             },
         ) { registry ->
             assertEquals(
-                RegistrationOutcome.Applied(enabling = false),
-                registrationOutcome(false, registry.setEnabled(false)),
+                RegistrationVerdict.Applied(RegistrationWrite.DISABLE),
+                verdict(RegistrationWrite.DISABLE, registry.setEnabled(false)),
             )
             assertEquals(
                 RegistrationState.NOT_REGISTERED,
@@ -126,8 +127,8 @@ object ExtensionRegistryContract :
             },
         ) { registry ->
             assertEquals(
-                RegistrationOutcome.NothingToDisable,
-                registrationOutcome(false, registry.setEnabled(false)),
+                RegistrationVerdict.NothingToDisable,
+                verdict(RegistrationWrite.DISABLE, registry.setEnabled(false)),
                 "a disable that finds no record is the clean device's answer (3201), never a failure",
             )
         }
@@ -139,7 +140,10 @@ object ExtensionRegistryContract :
                 on<ExtensionRegistry>().answers(ExtensionRegistry::setEnabled).with(RegistrationAnswer.Answered::class)
             },
         ) { registry ->
-            assertEquals(RegistrationOutcome.EnableRefusedByGrant, registrationOutcome(true, registry.setEnabled(true)))
+            assertEquals(
+                RegistrationVerdict.EnableRefusedByGrant,
+                verdict(RegistrationWrite.ENABLE, registry.setEnabled(true)),
+            )
         }
 
         clause(
@@ -167,9 +171,20 @@ object ExtensionRegistryContract :
             },
         ) { registry ->
             assertEquals(
-                RegistrationOutcome.DisableRefusedByGrant,
-                registrationOutcome(false, registry.setEnabled(false)),
+                RegistrationVerdict.DisableRefusedByGrant,
+                verdict(RegistrationWrite.DISABLE, registry.setEnabled(false)),
             )
         }
     }
+
+    /** [answer] to [write], as the core classifies it. */
+    private fun verdict(write: RegistrationWrite, answer: RegistrationAnswer): RegistrationVerdict =
+        RegistrationVerdict.of(
+            write,
+            when (answer) {
+                is RegistrationAnswer.Answered ->
+                    if (answer.ok) RegistrationReply.Took else RegistrationReply.Refused(answer.code)
+                RegistrationAnswer.Unsupported -> RegistrationReply.NotCarried
+            },
+        )
 }

@@ -12,6 +12,7 @@ import app.snapsync.model.RegistrationOutcome
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSThread
@@ -78,7 +79,10 @@ private fun requestRun(request: String, registry: () -> ExtensionRegistry): Stri
     var enabled: RegistrationOutcome? = null
     runEntry {
         registry().setEnabled(false)
-        enabled = registrationOutcome(true, registry().setEnabled(true))
+        enabled = when (val answer = registry().setEnabled(true)) {
+            is RegistrationAnswer.Answered -> registrationOutcome(true, answer.ok, answer.domain, answer.code)
+            RegistrationAnswer.Unsupported -> RegistrationOutcome.Unsupported(enabling = true)
+        }
     }
     if (enabled == RegistrationOutcome.Applied(enabling = true)) return null
     deleteContractRunFile(requestPath)

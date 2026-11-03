@@ -1,7 +1,7 @@
 package app.snapsync.services.upload
 
-import app.snapsync.model.RegistrationAnswer
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

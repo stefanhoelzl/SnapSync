@@ -3,10 +3,10 @@ package app.snapsync.mock
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.upload.OsUploader
 import app.snapsync.data.upload.UploaderSwitches
-import app.snapsync.model.RegistrationAnswer
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import app.snapsync.ports.UploaderPin
 import kotlinx.coroutines.flow.StateFlow

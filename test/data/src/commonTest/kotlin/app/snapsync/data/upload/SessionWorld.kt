@@ -2,6 +2,7 @@ package app.snapsync.data.upload
 
 import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.Held
+import app.snapsync.data.RecordingSecureStore
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
@@ -10,19 +11,18 @@ import app.snapsync.data.backend.ok
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
-import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.data.membership.sharedOver
-import app.snapsync.data.RecordingSecureStore
 import app.snapsync.data.token
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.Encryption
+import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
@@ -110,7 +110,10 @@ internal class SessionWorld(takesResources: Boolean = false) {
 
     /** [asset]'s row, recorded as the walk records it, and read back as needing a job. */
     fun discovered(asset: String = "A1"): UploadRow.Discovered {
-        walk.discover(event, listOf(FoundResource(key(asset), RowDetail(CaptureDate.Undated, "video/quicktime", "IMG.MOV"))))
+        walk.discover(
+            event,
+            listOf(FoundResource(key(asset), RowDetail(CaptureDate.Undated, "video/quicktime", "IMG.MOV"))),
+        )
         return row(asset) as UploadRow.Discovered
     }
 
@@ -167,12 +170,21 @@ internal class MemFiles : Files {
         if (unplaced || unplacedSuffixes.any(path::endsWith)) FileResult.AreaUnavailable else FileResult.Ok("/os/$path")
 
     override fun move(area: FileArea, from: String, to: String): FileResult<Unit> =
-        held.remove(from)?.let { held[to] = it; FileResult.Ok(Unit) } ?: FileResult.NotFound
+        held.remove(from)?.let {
+            held[to] = it
+            FileResult.Ok(Unit)
+        } ?: FileResult.NotFound
 
     override fun adopt(osPath: String, area: FileArea, to: String): FileResult<Unit> = FileResult.NotFound
 
     override fun list(area: FileArea, directory: String): FileAccess<List<String>> =
-        if (unlistable) FileResult.Failed("unreadable") else FileResult.Ok(held.keys.filter { it.startsWith("$directory/") })
+        if (unlistable) {
+            FileResult.Failed(
+                "unreadable",
+            )
+        } else {
+            FileResult.Ok(held.keys.filter { it.startsWith("$directory/") })
+        }
 }
 
 /** A library whose export writes [bytes] where it was asked to, or fails when [fails]. */
