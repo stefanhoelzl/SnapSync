@@ -369,7 +369,8 @@ compiler holds it — `invoke` carries an `EntryPointCall` opt-in only an entry 
 (`OptInPinsTest`) — and so there is no shared `UseCase` interface, since a call through it would skip the marker. The
 first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the membership's are
 `application.membership`'s (`EnrollDevice`, `EnterMembership`, `LeaveEvent`, `RefreshMembership`, `ReconfigureEvent`,
-`RenameEvent`, `DeliverPendingLeaves`, `ClaimStateCheck`). A use case answers an `XOutcome`;
+`RenameEvent`, `DeliverPendingLeaves`, `ClaimStateCheck`), and the small concepts' (`RegisterPush`, `SetMobileData`,
+`RearmHeartbeat`). A use case answers an `XOutcome`, and logs what it decided through the structured log;
 `:domain:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
 
 ---
