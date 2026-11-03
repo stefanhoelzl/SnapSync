@@ -62,12 +62,8 @@ class UploadRequests(
         val url = exchange.url(path)
         val bearer = token.held()?.let { mapOf("Authorization" to "Bearer ${it.secret}") }.orEmpty()
         val headers = mapOf("Content-Type" to detail.contentType) + exchange.versionHeaders() + bearer
-        return BuiltRequest(url, headers, DestinationPath(pathOf(url)))
+        return BuiltRequest(url, headers, Destinations.pathOf(url))
     }
-
-    /** The path of [url], without its query — what the platform's job names on its way back. */
-    private fun pathOf(url: String): String =
-        "/" + url.substringAfter("://").substringAfter('/', missingDelimiterValue = "").substringBefore('?')
 }
 
 /** What building an upload's request came to. */
