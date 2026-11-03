@@ -8,6 +8,7 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.TimestampText
+import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.GalleryAlbum
@@ -126,6 +127,21 @@ class AlbumCoordinatorTest {
         assertNull(id)
         assertEquals("album-OLD", store.get(testEventId(event.value))) // the map is untouched
         assertEquals(0, manager.createCount)
+    }
+
+    @Test
+    fun `an unreadable album map makes no album — the one it lost sight of stays the only one`() = runTest {
+        val databases = DatabasesMock()
+        val manager = FakeAlbumManager(createResult = "album-NEW", existingIds = mutableSetOf("album-OLD"))
+        AlbumMapService(testShared(databases.port())).put(testEventId(event.value), "album-OLD")
+        databases.lock()
+
+        val coordinator = AlbumCoordinator(GalleryAlbums(manager), AlbumMapService(testShared(databases.port())))
+        assertNull(coordinator.ensureAlbum(testEventId(event.value), "Birthday", saveToAlbum = true))
+        assertEquals(0, manager.createCount)
+
+        databases.lock(false)
+        assertEquals("album-OLD", AlbumMapService(testShared(databases.port())).get(testEventId(event.value)))
     }
 
     @Test

@@ -5,6 +5,7 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.model.AlbumContents
 import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.services.album.AlbumLookup
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
 import co.touchlab.kermit.Logger
@@ -72,7 +73,13 @@ class AlbumCoordinator(
         optIn: Boolean = true,
     ): String? {
         if (!hasUsableAccess || !saveToAlbum) return null
-        store.get(eventId)?.let { existing ->
+        val stored = when (val found = store.lookup(eventId)) {
+            is AlbumLookup.Stored -> found.album
+            AlbumLookup.None -> null
+            // Not known to be absent, so not made: a new album would sit beside the one the map lost sight of.
+            AlbumLookup.Unreadable -> return null.also { log.w { "ensureAlbum: no album made for event=$eventId" } }
+        }
+        stored?.let { existing ->
             if (contents.absentWhileEmpty && !store.filled(eventId)) {
                 log.i { "ensureAlbum: reused album=$existing for event=$eventId (not filled yet)" }
                 return existing

@@ -11,6 +11,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 |---|---|---|---|
 | `AdmissionVerdict` | `:domain:domain` | `:domain:domain` Discovered, NotReadable | no |
 | `AdmitOutcome` | `:domain:application` | `:domain:application` Admitted | no |
+| `AlbumLookup` | `:domain:services` | `:domain:services` None, Stored, Unreadable | no |
 | `Answered` | `:domain:inbound` | `:adapter:ios:ext-safe` ContractOr; `:domain:scheduling` AnsweredEntryPoint; `:test:contracts` AnsweredProxy; `:test:launch-adapters` Completed | yes |
 | `AssetResources` | `:domain:data` | `:domain:data` GalleryResources, SnapshotResources | no |
 | `AttestationHealthVerdict` | `:domain:domain` | `:domain:domain` Attested, Unattested | no |
