@@ -1,7 +1,9 @@
 package app.snapsync.services.upload
 
+import app.snapsync.model.RegistrationOutcome
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import co.touchlab.kermit.Logger
 
@@ -97,7 +99,13 @@ class OsDrivenRegistration(
      * adapter's line; the adapter reports raw answers now (phase 11f).
      */
     private suspend fun write(enabled: Boolean) {
-        val outcome = registrationOutcome(enabled, registry.setEnabled(enabled))
+        val outcome = outcomeOf(enabled, registry.setEnabled(enabled))
         log.log(outcome.severity, log.tag, null, outcome.message)
+    }
+
+    /** [answer] to a write that was [enabling], classified by the old zone's [registrationOutcome] (MIGRATING). */
+    private fun outcomeOf(enabling: Boolean, answer: RegistrationAnswer): RegistrationOutcome = when (answer) {
+        is RegistrationAnswer.Answered -> registrationOutcome(enabling, answer.ok, answer.domain, answer.code)
+        RegistrationAnswer.Unsupported -> RegistrationOutcome.Unsupported(enabling)
     }
 }

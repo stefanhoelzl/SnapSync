@@ -197,7 +197,9 @@ class SessionTierTest {
             val encrypted = SessionWorld()
             encrypted.joinedEncrypted()
             encrypted.library.writes = false
-            assertIs<CreateAnswer.Failed>(encrypted.tier.create(encrypted.event, encrypted.discovered(), SessionWorld.Handle))
+            assertIs<CreateAnswer.Failed>(
+                encrypted.tier.create(encrypted.event, encrypted.discovered(), SessionWorld.Handle),
+            )
 
             assertEquals(emptyList(), world.session.made + encrypted.session.made)
             assertEquals(emptyList(), world.files.held.keys.filter { it.startsWith(UPLOAD_STAGING_DIR) })

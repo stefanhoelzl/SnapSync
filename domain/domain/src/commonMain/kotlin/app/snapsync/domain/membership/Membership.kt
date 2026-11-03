@@ -22,7 +22,7 @@ sealed interface Membership {
     /**
      * The server confirmed the event's photos deleted. The membership stays, shown as over, until the member leaves.
      */
-    data class Deleted(override val event: Event, override val share: Share) : Membership
+    data class Deleted(override val event: Event, override val share: Share) : Membership, EndsUploads
 }
 
 /**

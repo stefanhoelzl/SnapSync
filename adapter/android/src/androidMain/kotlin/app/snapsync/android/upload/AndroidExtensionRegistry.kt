@@ -2,8 +2,8 @@ package app.snapsync.android.upload
 
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
-import app.snapsync.model.RegistrationAnswer
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 
 /**

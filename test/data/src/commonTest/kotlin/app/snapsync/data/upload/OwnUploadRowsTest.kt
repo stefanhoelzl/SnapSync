@@ -60,11 +60,16 @@ class OwnUploadRowsTest {
 
     @Test
     fun `a walk's finds are recorded as needing a job, with their detail, in key order`() {
-        assertEquals(StoreWrite.Written, walk.discover(event, listOf(found("B"), found("A"), found("A", ResourceRole.LIVE))))
+        assertEquals(
+            StoreWrite.Written,
+            walk.discover(event, listOf(found("B"), found("A"), found("A", ResourceRole.LIVE))),
+        )
 
         val read = all()
-        assertEquals(listOf(key("A"), key("A", ResourceRole.LIVE), key("B")).map(UploadKeyText::of).sorted(),
-            read.map { UploadKeyText.of(it.key) })
+        assertEquals(
+            listOf(key("A"), key("A", ResourceRole.LIVE), key("B")).map(UploadKeyText::of).sorted(),
+            read.map { UploadKeyText.of(it.key) },
+        )
         read.forEach { assertIs<UploadRow.Discovered>(it) }
         assertEquals(captured, only("A").detail.captured)
         assertEquals("image/heic", only("A").detail.contentType)
@@ -103,7 +108,9 @@ class OwnUploadRowsTest {
         walk.discover(event, listOf(found("A")))
         moves.requested(event, CreatedJob(key("A")), to)
 
-        val second = assertIs<RowTransition.Superseded>(moves.requested(event, CreatedJob(key("A")), DestinationPath("/x")))
+        val second = assertIs<RowTransition.Superseded>(
+            moves.requested(event, CreatedJob(key("A")), DestinationPath("/x")),
+        )
 
         assertEquals(to, assertIs<UploadRow.Requested>(second.now).destination)
     }
@@ -128,8 +135,12 @@ class OwnUploadRowsTest {
         moves.requested(event, CreatedJob(key("A")), to)
         moves.landed(event, ReportedLanding(key("A")))
 
-        assertIs<UploadRow.Completed>(assertIs<RowTransition.Superseded>(moves.returned(event, ReportedFailure(key("A")))).now)
-        assertIs<UploadRow.Discovered>(assertIs<RowTransition.Superseded>(moves.landed(event, ReportedLanding(key("B")))).now)
+        assertIs<UploadRow.Completed>(
+            assertIs<RowTransition.Superseded>(moves.returned(event, ReportedFailure(key("A")))).now,
+        )
+        assertIs<UploadRow.Discovered>(
+            assertIs<RowTransition.Superseded>(moves.landed(event, ReportedLanding(key("B")))).now,
+        )
     }
 
     @Test
