@@ -28,11 +28,12 @@ suspend fun Given.downloadStarted(device: String = DEV_F, asset: String = "FQ"):
 
 /**
  * [device] shares exactly [assets] to the joined event, and each arrives in the library: downloaded, staged and
- * imported. The member's whole share — an asset it shared before and [assets] leaves out is withdrawn.
+ * imported. The member's whole share — an asset it shared before and [assets] leaves out is withdrawn — settled when
+ * [final].
  */
-suspend fun Given.receivedFrom(device: String, vararg assets: String) {
+suspend fun Given.receivedFrom(device: String, vararg assets: String, final: Boolean = false) {
     step("$device shares ${assets.joinToString()}", act = {
-        publicBackend.foreignDevice(device, assets.toList())
+        publicBackend.foreignDevice(device, assets.toList(), final = final)
         os.foreground()
     }, until = {
         event<WorldEvent.DownloadStarted>()

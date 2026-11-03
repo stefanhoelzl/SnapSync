@@ -3,6 +3,7 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.SettledEvent
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -115,6 +116,85 @@ class EventCompletionIntegrationTest {
         then { event<WorldEvent.MemberLeft> { it.event == event } }
     }
 
+    @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest",
+        scenario = "Everyone has everything",
+    )
+    fun once_this_member_has_everything_after_the_end_the_event_is_finished() = behaviour(startAt = DURING) {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END).also { event ->
+                receivedFrom(DEV_F, "FQ", final = true)
+                afterTheEnd()
+                step("the fellow member holds everything", act = { publicBackend.foreignDeviceReceived(DEV_F) }, until = {
+                    settled { it.of(event)?.finished == false } // this member has not said what it received yet
+                })
+            }
+        }
+
+        // The first wake after the end settles this member's share and tells how far it received: the event is finished,
+        // so the next sweep deletes its photos without waiting 3 days.
+        whenever {
+            cycle()
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.ManifestPublished> { it.event == event && it.final }
+            event<WorldEvent.ReceivedReported> { it.event == event && it.device != DEV_F }
+            settled { it.of(event)?.finished == true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "A member's share is settled only after their own range has ended",
+        scenario = "A late guest's photos reopen the others",
+    )
+    fun a_late_guest_s_photos_keep_the_event_unfinished_until_they_are_in_this_library() = behaviour(startAt = DURING) {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent(startsAt = SHORT_START, endsAt = SHORT_END).also { event ->
+                receivedFrom(DEV_F, "FQ", final = true)
+                afterTheEnd()
+                step("everyone done", act = {
+                    publicBackend.foreignDeviceReceived(DEV_F)
+                    cycle()
+                    os.foreground()
+                }, until = { settled { it.of(event)?.finished == true } })
+            }
+        }
+
+        // A late guest joins and shares; the guest and the fellow member both hold everything: only this member, who
+        // has not received the guest's photo, keeps the event unfinished.
+        whenever {
+            publicBackend.foreignDevice(LATE_GUEST, listOf("GQ"), final = true)
+            publicBackend.foreignDeviceReceived(LATE_GUEST)
+            publicBackend.foreignDeviceReceived(DEV_F)
+        }
+        then { settled { it.of(event)?.finished == false } }
+
+        // Once the guest's photo is in this library, and this member has said so, the event is finished again.
+        whenever { os.foreground() }
+        then {
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
+        whenever {
+            downloadSession.finish()
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.LibraryAssetCreated> { it.asset == imported("GQ", LATE_GUEST) }
+            settled { it.of(event)?.finished == true }
+        }
+    }
+
+    /** What the backend derives of [event] at this settle. */
+    private fun WorldEvent.Settled.of(event: String): SettledEvent? = state.backendEvents?.get(event)
+
     /** The member puts the phone away until after the short event's end, and whatever the app does about it is done. */
     private suspend fun Given.afterTheEnd() = step("away until after the end", act = {
         os.background()
@@ -130,5 +210,8 @@ class EventCompletionIntegrationTest {
 
         /** After [SHORT_END], and long before the event's deadline (30 days after its start). */
         const val AFTER_THE_END = "2026-05-22T00:00:00Z"
+
+        /** A guest who joins after the end. */
+        const val LATE_GUEST = "1a7e0000-0000-4000-8000-000000000001"
     }
 }

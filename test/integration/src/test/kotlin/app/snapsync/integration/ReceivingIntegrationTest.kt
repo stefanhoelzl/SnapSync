@@ -226,6 +226,34 @@ class ReceivingIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "event-lifetime",
+        requirement = "A member who leaves keeps contributing what they shared",
+        scenario = "A late joiner sees a departed member's photos",
+    )
+    fun a_guest_joining_after_a_member_left_receives_that_members_photos() = behaviour {
+        given {
+            val event = createdEvent()
+            step("$DEV_F shares FA, then leaves", act = {
+                publicBackend.foreignDevice(DEV_F, listOf("FA"), event = event)
+                publicBackend.foreignDeviceLeave(DEV_F, event)
+            }, until = {
+                event<WorldEvent.MemberLeft> { it.event == event }
+                settled { true }
+            })
+        }
+
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined>()
+            event<WorldEvent.DownloadStarted> { it.names("FA") }
+        }
+
+        whenever { downloadSession.finish() }
+        then { event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FA") } }
+    }
+
     /** Whether this download is of the fellow member's photo [asset]. */
     private fun WorldEvent.DownloadStarted.names(asset: String) = description.split("\n").getOrNull(1) == asset
 
