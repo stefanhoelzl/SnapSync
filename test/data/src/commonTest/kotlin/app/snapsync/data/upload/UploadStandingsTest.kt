@@ -12,6 +12,7 @@ import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.upload.ResumePoint
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.ports.HttpResult
 import app.snapsync.testids.testDeviceId

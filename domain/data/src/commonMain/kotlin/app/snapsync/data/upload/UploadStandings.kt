@@ -5,6 +5,7 @@ import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.upload.ResumePoint
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.UploadKeyText
@@ -76,16 +77,4 @@ class UploadStandings(private val gateway: BackendGateway, private val identity:
         log.i("no device id to ask with — deferred", "key" of UploadKeyText.of(key), "detail" of detail)
         return ResumePoint.Deferred
     }
-}
-
-/** Where a failed upload's file goes on from. */
-sealed interface ResumePoint {
-    /** The backend already holds these bytes whole — the last attempt's answer was lost on the way back. */
-    data object Landed : ResumePoint
-
-    /** Send from byte [offset]: `0` sends the file whole. */
-    data class From(val offset: Long) : ResumePoint
-
-    /** The backend could not be asked: create nothing now. */
-    data object Deferred : ResumePoint
 }
