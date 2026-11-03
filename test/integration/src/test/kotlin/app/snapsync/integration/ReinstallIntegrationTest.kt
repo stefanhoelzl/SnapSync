@@ -7,7 +7,6 @@ import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
-import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
@@ -16,6 +15,7 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.seconds
+import app.snapsync.domain.network.NetworkNotice.Companion.GRACE as NETWORK_GRACE
 
 /**
  * Deleting the app and installing it again: the download record goes with the app, and the SnapSync mark on each
@@ -252,7 +252,7 @@ class ReinstallIntegrationTest {
             rejoinedUnrecognised(event)
             step("offline", act = { network.set(NetworkState.OFFLINE) }, until = {})
             // A missing network is published only once it has lasted the watch's grace.
-            step("told so", act = { advance(NetworkWatch.DEFAULT_GRACE) }, until = {
+            step("told so", act = { advance(NETWORK_GRACE) }, until = {
                 screen<Layer.Joined> { it.health is SyncHealth.NoNetwork }
                 settled { true }
             })

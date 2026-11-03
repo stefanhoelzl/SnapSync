@@ -1,33 +1,29 @@
 package app.snapsync.compose
 
-import app.snapsync.feature.status.ForegroundWatches
-import app.snapsync.feature.status.NetworkWatch
-import app.snapsync.feature.status.StatusCountsPoller
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
+import app.snapsync.data.network.NetworkReadings
+import app.snapsync.data.network.NetworkStatus
+import app.snapsync.entrypoints.ForegroundNetwork
 import app.snapsync.ports.NetworkMonitor
-import app.snapsync.services.network.NetworkReadings
-import kotlinx.coroutines.CoroutineScope
+import app.snapsync.query.network.NetworkStatusLookup
+import app.snapsync.query.network.NetworkStatusQuery
+import app.snapsync.scheduling.GatedWatch
+import app.snapsync.scheduling.Runtime
 
 /**
- * The app's network watch — the app says when it cannot reach the network — over the [NetworkMonitor] port: the
- * foreground-gated watch, the bundle the lifecycle's entry points start and stop it in beside the counts poll, and the
- * read-model presentation and the network's return read.
-
+ * The app's network watch — the app says when it cannot reach the network — over the [NetworkMonitor] port: what it
+ * tells, the foreground's watch the lifecycle's entry points start and stop, and the screen's read of it.
  *
  * Its own class rather than `AppCore` members for the reason [shareSetLoadFor] gives: `AppCore` is measured, and the
  * `compose` tier's `LargeClass` ceiling is what keeps it from absorbing every composition in the graph.
  */
-class AppNetwork internal constructor(
-    scope: CoroutineScope,
-    monitor: NetworkMonitor,
-    statusPoller: StatusCountsPoller,
-) {
-    /** Follows the network only while started — the platform's monitor runs only while the app is in front. */
-    internal val watch: NetworkWatch = NetworkWatch(scope, NetworkReadings(monitor))
-
-    /** What runs only while the screen is visible — started by `OnForeground`'s work, stopped by `OnBackground`. */
-    internal val watches: ForegroundWatches = ForegroundWatches(statusPoller, watch)
-
+class AppNetwork internal constructor(runtime: Runtime, monitor: NetworkMonitor) {
     /** What the member is told about the network, and when a missing one returns. */
-    val status: NetworkStatusSource get() = watch
+    internal val status: NetworkStatus = NetworkStatus()
+
+    /** Followed only while the app is in front — the platform's monitor runs only then. */
+    internal val foreground: ForegroundNetwork =
+        ForegroundNetwork(GatedWatch(runtime), NetworkReadings(monitor), status)
+
+    /** The screen's read of [status]. */
+    val query: NetworkStatusQuery = NetworkStatusLookup(status)
 }

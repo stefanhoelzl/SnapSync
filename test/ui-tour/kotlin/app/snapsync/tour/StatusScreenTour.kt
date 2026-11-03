@@ -55,7 +55,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
+import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.model.EventConfig
@@ -63,7 +63,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.query.membership.JoinDetails
-import app.snapsync.model.NetworkAccess
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.model.ReportContext
@@ -282,7 +282,7 @@ abstract class StatusScreenTour {
                 versionRefusal = MutableStateFlow(refusal),
                 verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
                 store = Store("App Store", STORE_URL),
-                network = object : NetworkStatusSource {
+                network = object : NetworkStatusQuery {
                     override val access: StateFlow<NetworkAccess> = MutableStateFlow(
                         NetworkAccess.Online(restricted = false),
                     )

@@ -10,13 +10,13 @@ import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
 import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadTarget

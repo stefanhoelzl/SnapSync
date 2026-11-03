@@ -2,7 +2,7 @@
 
 package app.snapsync.network
 
-import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.channels.awaitClose

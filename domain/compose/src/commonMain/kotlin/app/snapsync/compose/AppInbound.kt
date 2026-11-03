@@ -66,10 +66,12 @@ fun AppCore.inbound(host: HostAssembly) {
                 services.pushTokens,
                 work.prelude,
                 host,
+                network.foreground,
+                statusCountsPoller,
                 work.foregroundWork,
                 work.wakeWork,
             ),
-            OnBackground(runtime, foreground, network.watches, footprints),
+            OnBackground(runtime, foreground, network.foreground, statusCountsPoller, footprints),
         ),
     )
     ports.pushNotifications.inbound(pushHandlers())

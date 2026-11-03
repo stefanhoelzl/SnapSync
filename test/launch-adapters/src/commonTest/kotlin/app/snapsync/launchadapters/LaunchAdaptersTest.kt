@@ -12,13 +12,13 @@ import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.Clock
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.SystemUi
 import app.snapsync.ports.Ui

@@ -2,7 +2,7 @@
 
 package app.snapsync.network
 
-import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.NetworkAccess
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take

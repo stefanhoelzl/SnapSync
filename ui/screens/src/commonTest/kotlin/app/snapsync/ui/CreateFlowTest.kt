@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
@@ -39,7 +40,6 @@ import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
-import app.snapsync.model.NetworkAccess
 import app.snapsync.presentation.onIntent
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.LocalReduceMotion

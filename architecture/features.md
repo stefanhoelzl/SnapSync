@@ -37,8 +37,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/status`
 
-- files: `ForegroundCounts.kt`, `ForegroundWatches.kt`, `LedgerBackedSyncStatusSource.kt`, `LedgerCountsSource.kt`, `NetworkStatusSource.kt`, `NetworkWatch.kt`, `OwnDeviceGalleryStatusSource.kt`, `StatusCountsPoller.kt`, `StatusRefresh.kt`, `SyncStatusSource.kt`
-- top-level types: `ForegroundCounts (class)`, `ForegroundWatches (class)`, `LedgerCounts (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `NetworkStatusSource (interface)`, `NetworkWatch (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `StatusCountsPoller (class)`, `StatusRefresh (class)`, `SyncStatusSource (interface)`
+- files: `ForegroundCounts.kt`, `LedgerBackedSyncStatusSource.kt`, `LedgerCountsSource.kt`, `OwnDeviceGalleryStatusSource.kt`, `StatusCountsPoller.kt`, `StatusRefresh.kt`, `SyncStatusSource.kt`
+- top-level types: `ForegroundCounts (class)`, `LedgerCounts (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `StatusCountsPoller (class)`, `StatusRefresh (class)`, `SyncStatusSource (interface)`
 
 ## `feature/upload`
 

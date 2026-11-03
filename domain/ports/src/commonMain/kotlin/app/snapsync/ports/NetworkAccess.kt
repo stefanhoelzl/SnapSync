@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ports
 
 /**
  * Whether this app can reach the network right now, as the operating system tells it (the `NetworkMonitor` port).

@@ -1,6 +1,8 @@
 package app.snapsync.feature.diagnostics
 
+import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.trust.RefusalFacts
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.format.TimestampText
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
@@ -12,7 +14,6 @@ import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.device.DeviceConditionsReadings
@@ -21,7 +22,6 @@ import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.network.NetworkReadings
 import app.snapsync.services.settings.MobileDataSetting
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope

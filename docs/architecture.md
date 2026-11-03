@@ -1682,11 +1682,13 @@ SE2), so:
   the change and the baseline path drop a snapshot built under a grant that has since become full.
 - The denylisted-album lookup is asked only under a full grant (it can only answer the empty set otherwise).
 - Ledger counts refresh after a sequence's steps only while foregrounded (foreground entry re-reads them anyway).
-- The network is watched only while foregrounded: `ForegroundWork` starts `feature/status`'s `NetworkWatch` beside
-  the counts poller and `OnBackground` stops it, so the `NetworkMonitor` port's cold flow — and the platform's
-  monitor behind it — runs only while a screen shows the result. Presentation reads it as the read-model
-  `NetworkStatusSource`: the access to show (a missing network after the watch's grace, its return at once, `Online`
-  whenever stopped) and `returned`, the moment a shown notice clears (capability `sync-status`; decision record
+- The network is watched only while foregrounded: `ForegroundWork` starts the network's `ForegroundNetwork` beside
+  the counts poller and `OnBackground` stops both, so the `NetworkMonitor` port's cold flow — read through data's
+  `NetworkReadings`, and the platform's monitor behind it — runs only while a screen shows the result. The watch is
+  scheduling's `GatedWatch` (latest-wins); when a reading is told is the domain's `NetworkNotice` (a missing network
+  after its grace, its return at once), and what is told is data's `NetworkStatus` (`Online` whenever stopped).
+  Presentation reads it as the query `NetworkStatusQuery`: the access to show and `returned`, the moment a shown
+  notice clears, which `OnNetworkReturned` follows (capability `sync-status`; decision record
   `changes/tell-when-offline`, D1–D2). `Online` carries whether the network is restricted (mobile data, a hotspot,
   Low Data Mode / Data Saver), which the status line reads for "Waiting for Wi-Fi…" (capability `mobile-data`).
 - **A photo transfer carries the device's network rule** (capability `mobile-data`; decision records

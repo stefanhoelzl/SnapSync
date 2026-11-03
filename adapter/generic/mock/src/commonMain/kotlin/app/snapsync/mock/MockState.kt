@@ -13,7 +13,6 @@ import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -25,6 +24,7 @@ import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryResource
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.ports.SecureSlot
