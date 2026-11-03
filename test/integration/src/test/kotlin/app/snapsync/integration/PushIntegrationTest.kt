@@ -2,6 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.PreferenceItem
+import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import kotlin.test.Test
 
@@ -88,6 +90,49 @@ class PushIntegrationTest {
     }
 
     /**
+     * A phone locked since it restarted cannot read its device id, so nothing could address this device: the token is
+     * kept and nothing is published — and once the phone is unlocked, the next delivery registers it.
+     */
+    @Test
+    fun a_token_delivered_on_a_phone_locked_since_it_restarted_is_registered_once_it_is_unlocked() = behaviour {
+        given {
+            joinedEvent()
+            step("the phone restarted and is not unlocked yet", act = {
+                device.lock()
+                host.relaunch(scene = false)
+            }, until = { settled { true } })
+        }
+        whenever { os.pushToken(TOKEN1) }
+        then {
+            never<WorldEvent.DeviceRegistered>()
+            settled { true }
+        }
+
+        whenever {
+            device.unlock()
+            os.pushToken(TOKEN1)
+        }
+        then { event<WorldEvent.DeviceRegistered> { it.token == TOKEN1 } }
+    }
+
+    /** A registration the backend accepted but the record could not keep reads as never made: the next one sends it. */
+    @Test
+    fun a_registration_the_record_cannot_keep_is_published_again_at_the_next_delivery() = behaviour {
+        given {
+            joinedEvent()
+            inFront()
+            step(
+                "the record refuses every write",
+                act = { preferences.fail(PreferenceItem.PUSH_REGISTRATION, StoreFault.WRITE, ALWAYS) },
+                until = {},
+            )
+            pushToken(TOKEN1)
+        }
+        whenever { os.pushToken(TOKEN1) }
+        then { event<WorldEvent.DeviceRegistered> { it.token == TOKEN1 } }
+    }
+
+    /**
      * The credential-recovery loop: the backend rejects the token the registration carried, the app obtains a new one,
      * and the SAME call is sent once more and stored. That it is retried exactly once, and never without a token, is
      * `CredentialedBackendTest`'s (`:domain:services`).
@@ -106,5 +151,6 @@ class PushIntegrationTest {
     private companion object {
         const val TOKEN1 = "DEADBEEF"
         const val TOKEN2 = "FEEDFACE"
+        const val ALWAYS = 1_000
     }
 }

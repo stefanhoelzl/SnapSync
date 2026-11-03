@@ -350,6 +350,30 @@ class DeletionLedgerTest {
     }
 
     /**
+     * The small concepts before their layers (phase 4.8). Push: a registration that collected a merged flow of token
+     * deliveries and credential changes for the life of the process — launched by the composition, deciding inside its
+     * collector which trigger publishes — over a replaying token relay, a `fun interface` publisher answering `Result`, and a
+     * guard answering a `Boolean` an entry point branched on. The triggers are entry points (`OnPushToken`,
+     * `OnCredentialChanged`, the join's step), the decision the domain's (`PushRegistrationVerdict`, `PushTailVerdict`).
+     */
+    @Test
+    fun `the small concepts' retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """(class|interface|object) (Push""" + "TokenSource|PushToken" + "Request|PushToken" +
+                "Publisher|BackendPushToken" + "Publisher|PushTail" + "Guard)\\b"
+            declared(files, pre).forEach { add("the small concepts' pre-layer types in $it (the layers' — 4.8)") }
+            declared(files, """class Push""" + "Registration\\(\\s*private val publisher").forEach {
+                add("a collecting push registration in $it (RegisterPush, run by its entry points — 4.8)")
+            }
+            declared(files, """fun (push""" + "RegistrationFor|registration" + "Key)\\b").forEach {
+                add("a push derivation the layers replaced in $it (PushLayers, PushEndpoint.keyFor — 4.8)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
      * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop

@@ -1,6 +1,7 @@
 package app.snapsync.rig
 
 import app.snapsync.data.crypto.EncryptionSlots
+import app.snapsync.data.preferences.PreferenceKeys
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
@@ -26,7 +27,6 @@ import app.snapsync.ports.FileArea
 import app.snapsync.ports.SecureSlot
 import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.downloads.DownloadService
-import app.snapsync.services.preferences.PreferenceKeys
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 

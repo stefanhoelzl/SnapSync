@@ -11,7 +11,6 @@ import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
@@ -328,7 +327,7 @@ internal class BackendRouter(private val state: BackendState) : HttpTransport {
     private fun putDevice(call: Call): HttpResult {
         val config = call.decode(DeviceConfig.serializer()) ?: return text(BAD_REQUEST, "invalid body")
         val deviceId = call.param("deviceId")
-        config.pushToken?.let { state.deviceConfigs[deviceId] = PushEndpoint(it.kind, it.token, it.env) }
+        config.pushToken?.let { state.deviceConfigs[deviceId] = it }
         state.deviceConfigWrites[deviceId] = (state.deviceConfigWrites[deviceId] ?: 0) + 1
         state.watcher.told(WorldEvent.DeviceRegistered(deviceId, config.pushToken?.token))
         return empty(CREATED)

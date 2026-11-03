@@ -216,6 +216,29 @@ class EntryIntegrationTest {
         }
     }
 
+    /**
+     * A phone locked since it restarted cannot read the membership: a push for the joined event then fetches nothing
+     * and joins no tail — an unreadable membership is not "no event", and not this event either — and still releases.
+     */
+    @Test
+    @Verifies(spec = "delivery", requirement = "A locked phone delays uploads and never ends the membership")
+    fun a_silent_push_on_a_phone_locked_since_it_restarted_joins_no_tail_and_releases() = behaviour {
+        val event = given {
+            joinedEvent().also {
+                step("the phone restarted and is not unlocked yet", act = {
+                    device.lock()
+                    host.relaunch(scene = false)
+                }, until = { settled { true } })
+            }
+        }
+        whenever { os.silentPush(event) }
+        then {
+            event<WorldEvent.CompletionReleased>()
+            never<WorldEvent.BackendReceived> { it.operation == UNION }
+            never<WorldEvent.WakeScheduled>()
+        }
+    }
+
     @Test
     fun a_silent_push_naming_no_event_still_releases() = behaviour {
         given {

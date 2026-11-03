@@ -122,6 +122,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `KeyedRead` | `:domain:services` | `:domain:services` NotReadable, Resolved | no |
 | `KeyedResources` | `:domain:services` | `:adapter:generic:mock` Resources; `:domain:services` ContributionKeyedResources, GalleryKeyedResources; `:test:feature` ObservedKeys | yes |
 | `Landing` | `:domain:data` | `:domain:data` Plain, Sealed | no |
+| `LastRegistration` | `:domain:domain` | `:domain:domain` None, Recorded, Unavailable | no |
 | `LeaveFact` | `:domain:data` | `:domain:data` Confirmed, Unanswered | no |
 | `LeaveOutcome` | `:domain:application` | `:domain:application` Left | no |
 | `LeaveResult` | `:domain:data` | `:domain:data` Failed, Left, NotJoined | no |
@@ -138,6 +139,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LogWriter` | `:domain:inbound` | `:adapter:generic:mock` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:model` CapturingLogWriter; `:domain:scheduling` RecordingLog; `:domain:services` CapturingLogWriter, CrashLines, CrashLogWriter, SinkLines, SinkLogWriter; `:test:feature` CapturingLogWriter | yes |
 | `ManifestPublisher` | `:domain:services` | `:domain:services` BackendManifestPublisher; `:test:feature` FakeUploader | yes |
 | `MarkResult` | `:domain:data` | `:domain:data` Failed, Marked, Superseded | no |
+| `MemberOf` | `:domain:domain` | `:domain:domain` Event, Nothing, Unreadable | no |
 | `Membership` | `:domain:domain` | `:domain:domain` Active, Deleted | no |
 | `MembershipRead` | `:domain:data` | `:domain:data` Joined, NotJoined, Unavailable | no |
 | `MembershipUpdate` | `:domain:domain` | `:domain:domain` Changed, Unchanged | no |
@@ -165,14 +167,16 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PixelArea` | `:domain:domain` | `:domain:domain` Known, Unknown | no |
 | `PlatformDeviceId` | `:domain:ports` | `:adapter:android` AndroidPlatformDeviceId; `:adapter:generic:app` NoPlatformDeviceId; `:test:contracts` PlatformDeviceIdProxy | no |
 | `Port` | `:domain:ports` | `:test:architecture` None | yes |
-| `PrefRead` | `:domain:model` | `:domain:model` Absent, Unavailable, Value | no |
+| `PrefRead` | `:domain:ports` | `:domain:ports` Absent, Unavailable, Value | no |
 | `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences; `:domain:services` Prefs; `:test:contracts` PreferencesProxy | yes |
 | `PreviewRead` | `:domain:data` | `:domain:data` Counted, NotReadable | no |
 | `ProcessInfo` | `:domain:ports` | `:adapter:android` AndroidProcessInfo; `:adapter:generic:mock` InMemoryProcessInfo, Reading; `:adapter:ios:app-only` IosProcessInfo; `:test:contracts` ProcessInfoProxy | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` Face, HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics; `:test:contracts` ProcessMetricsProxy | no |
 | `ProveResult` | `:domain:ports` | `:domain:ports` Ok | no |
-| `PushNotifications` | `:domain:ports` | `:adapter:android` AndroidPushNotifications; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosPushNotifications; `:test:contracts` PushNotificationsProxy | no |
-| `PushTokenPublisher` | `:domain:services` | `:domain:services` BackendPushTokenPublisher; `:test:feature` FakePushTokenPublisher | yes |
+| `PushNotifications` | `:domain:ports` | `:adapter:android` AndroidPushNotifications; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosPushNotifications; `:test:contracts` PushNotificationsProxy; `:test:data` Service | yes |
+| `PushPublishReply` | `:domain:data` | `:domain:data` Accepted, NoIdentity, Refused | no |
+| `PushRegistrationOutcome` | `:domain:application` | `:domain:application` Deferred, NoToken, NotRegistered, Registered, Unchanged | no |
+| `PushTailVerdict` | `:domain:domain` | `:domain:domain` Joins, MembershipUnreadable, NamesNoEvent, OtherEvent | no |
 | `RangeEdit` | `:domain:presentation` | `:domain:presentation` Day, DragEnd, DragStart, FromHour, FromMinute, Sweep, UntilHour, UntilMinute, UntilMinuteDrag | no |
 | `ReadPlan` | `:domain:domain` | `:domain:domain` NotReadable, Snapshot, Walk | no |
 | `ReceivedReporter` | `:domain:services` | `:domain:services` BackendReceivedReporter | no |
@@ -184,6 +188,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Refused` | `:domain:ports` | `:domain:ports` Failed, NotAvailable, UnknownKey | no |
 | `RegistrationAnswer` | `:domain:model` | `:domain:model` Answered, Unsupported | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable, Unsupported | no |
+| `RegistrationRead` | `:domain:data` | `:domain:data` Held, NoIdentity, NoToken | no |
 | `RejectionVerdict` | `:domain:domain` | `:domain:domain` AlreadyReplaced, Drop | no |
 | `RenameFact` | `:domain:data` | `:domain:data` EventOver, Renamed | no |
 | `RenameOutcome` | `:domain:application` | `:domain:application` EventOver, Failed, InvalidName, NotCurrent, Renamed | no |
@@ -202,7 +207,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Screen` | `:domain:entrypoints` | — | no |
 | `SealOutcome` | `:domain:data` | `:domain:data` Failed, Sealed | no |
 | `SealVerdict` | `:domain:domain` | `:domain:domain` Plain, Sealed, Withheld | no |
-| `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:data` RecordingSecureStore; `:test:feature` LockableSecureStore | yes |
+| `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:data` RecordingSecureStore | yes |
 | `SecureStoreRead` | `:domain:ports` | `:domain:ports` Absent, Found, Unavailable | no |
 | `SegmentLength` | `:domain:data` | `:domain:data` Ciphertext, Plaintext | no |
 | `SegmentRead` | `:domain:format` | `:domain:format` Last, More | no |

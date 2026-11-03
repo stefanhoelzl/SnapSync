@@ -3,7 +3,6 @@ package app.snapsync.model
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 /**
@@ -31,13 +30,6 @@ class PushPayloadTest {
     fun `an eventId that names no event is no eventId`() {
         // The backend issues every event id as a canonical UUID: any other string reaches no arm, like an absent one.
         assertEquals(null, pushEventId(mapOf("eventId" to "E1")))
-    }
-
-    @Test
-    fun `an endpoint is its kind as well as its token and environment`() {
-        // The same token under another push service is another registration (the registration key leads with it).
-        assertNotEquals(PushEndpoint(PUSH_KIND_APNS, "T", "e"), PushEndpoint(PUSH_KIND_FCM, "T", "e"))
-        assertEquals(PushEndpoint(PUSH_KIND_FCM, "T", "e"), PushEndpoint("fcm", "T", "e"))
     }
 
     @Test

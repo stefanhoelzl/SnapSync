@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.levers.StoreFault
-import app.snapsync.model.PrefRead
+import app.snapsync.ports.PrefRead
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.WriteOutcome
 

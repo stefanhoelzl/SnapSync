@@ -6,6 +6,7 @@ import app.snapsync.data.event.EventRename
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.EventJoin
 import app.snapsync.data.membership.LeaveNotifier
+import app.snapsync.data.push.PushEndpointPublisher
 import app.snapsync.domain.event.EventId
 
 /**
@@ -35,5 +36,5 @@ class BackendServices(
     val received: ReceivedReporter by lazy { BackendReceivedReporter(gateway, identity) }
     val union: EventUnionSource by lazy { BackendEventUnionSource(gateway) }
     val deviceFiles: DeviceFilesSource by lazy { BackendDeviceFilesSource(gateway) }
-    val pushTokens: PushTokenPublisher by lazy { BackendPushTokenPublisher(gateway, identity) }
+    val push: PushEndpointPublisher by lazy { PushEndpointPublisher(gateway, identity) }
 }

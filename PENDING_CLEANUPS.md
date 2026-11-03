@@ -240,8 +240,8 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
     membership read's "still in its legacy file" answer (`MembershipRepository.read`, `domain/data/.../membership/`).
   - `PauseReason.LEGACY_RECORDS` and its check at the head of `CycleGateRead.read`.
-  - `PushRegistrationRecord.fromLegacyFile` (`push-registration/last-registered.txt` into the Preferences key) and
-    its `files` parameter.
+  - `PushRegistrationRecord.legacy` / `moved` (`domain/data/.../push/`: `push-registration/last-registered.txt` into the
+    Preferences key) and its `files` parameter.
   - `model/ConfigFile.kt` (the envelope codec), read only by the copy.
 - **Why:** a device that updated mid-event must keep its membership, its pending leaves and its albums — one the version
   gate refused too, which updates later.
@@ -372,7 +372,7 @@ version or op gates these — each phase deletes its own uses, and the last one 
   `DeviceIdentityAbsent` out of the step that asked. Its callers: `ShareSetLoad` and `ReceivedPhotoAdoption` (4.4b,
   4.5); upload's `StoredUploadSettle`, `CycleGateRead`, `UploadStandings` and the cycle's assembly in
   `compose/UploadCore.kt` (4.4); downloads' `myDeviceId` in `compose/SnapSyncApp.kt` and `BackendReceivedReporter` in
-  `services/backend/Membership.kt` (4.5); push's `PushRegistration` and `BackendPushTokenPublisher` (4.8).
+  `services/backend/Membership.kt` (4.5). Push's two (4.8) are gone: its layers read `DeviceIdentity.id()`.
 - **Why:** converting every caller to the sealed `DeviceIdRead` in 4.1 would have rewritten the error handling of four
   concepts 4.1 does not own, each to be rewritten again as a use case in its own phase.
 - **Remove:** each phase moves its callers onto `DeviceIdentity.id()`'s sealed read — a use case answering its
@@ -387,7 +387,7 @@ version or op gates these — each phase deletes its own uses, and the last one 
     `reload`, `joinedOrRead`, the clock's reads, and `markOver` — the one write: the shared set's publish heard the
     event's photos were deleted (`BackendManifestPublisher`'s `eventOver`, wired in `compose/SnapSyncApp.kt`) — and
     `Membership.asConfig()`. Its readers: upload's
-    `UploadTransitions`, `CycleGateRead`, `PushTailGuard`, `WakeRearm` and `ShareSettlement`, the
+    `UploadTransitions`, `CycleGateRead`, `WakeRearm` and `ShareSettlement`, the
     ledger's scope in `compose/AppServices.kt` and the cycle's assembly in `compose/UploadCore.kt` and
     `compose/ExtensionCore.kt` (4.4); downloads' `DownloadPushReceiver` and `ReceivedReport`, with
     the adoption's input in `OnSelectionChanged` and the held-everything read in `OnInviteForOtherEvent` (4.5);

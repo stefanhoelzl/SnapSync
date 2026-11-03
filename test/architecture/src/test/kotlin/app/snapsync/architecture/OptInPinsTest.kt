@@ -57,7 +57,11 @@ class OptInPinsTest {
             "AppProcessOnly" to Pin(1, "the app's credential, the one that attests"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
-            "EntryPointCall" to Pin(3, "the wake's prelude, the key's restore and the rig's reset call their use cases"),
+            "EntryPointCall" to Pin(
+                5,
+                "the wake's prelude, the key's restore, the rig's reset and the push token's and credential's " +
+                    "registration call their use cases",
+            ),
             "MintsDevReset" to Pin(1, "the rig's reset, the one other reason the key is forgotten (PENDING_CLEANUPS, 4.5)"),
         ),
         "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to mapOf(

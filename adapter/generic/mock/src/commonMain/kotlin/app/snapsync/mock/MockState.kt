@@ -14,7 +14,6 @@ import app.snapsync.model.CrashLevel
 import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
 import app.snapsync.model.NetworkAccess
-import app.snapsync.model.PushEndpoint
 import app.snapsync.model.WakeCadence
 import app.snapsync.model.WakeId
 import app.snapsync.model.WakeNetwork
@@ -35,6 +34,7 @@ import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
+import app.snapsync.wire.models.PushRegistration
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -586,7 +586,7 @@ private class BackendDto(
                     it.receivedPosition,
                 )
         }
-        deviceConfigs.forEach { (device, config) -> state.deviceConfigs[device] = PushEndpoint(config.first, config.second, config.third) }
+        deviceConfigs.forEach { (device, config) -> state.deviceConfigs[device] = PushRegistration(config.first, config.second, config.third) }
         state.deviceConfigWrites.putAll(deviceConfigWrites)
         publishes.forEach { state.publishes[it.event to it.device] = it.count }
         pushes.forEachIndexed { i, push -> state.pushes += SentPush(push.first, push.second, push.third, pushSeqs.getOrNull(i)) }
