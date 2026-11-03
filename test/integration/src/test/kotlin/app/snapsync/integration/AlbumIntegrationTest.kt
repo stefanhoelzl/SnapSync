@@ -923,6 +923,43 @@ class AlbumIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "The album is created as soon as it can be, under full or limited access",
+    )
+    fun access_returning_while_the_album_map_cannot_be_read_makes_no_second_album() = behaviour {
+        given {
+            joinedSavingToAlbum(name = "Party")
+            step(
+                "photo access taken away",
+                act = { library.permission(PhotoGrant.DENIED) },
+                until = { settled { true } },
+            )
+        }
+
+        // Access comes back while the store that remembers the album cannot be read: the album is not known to be
+        // absent, so no new one is made beside it.
+        whenever {
+            databases.unreadable("ledger.db", on = true)
+            library.permission(PhotoGrant.GRANTED)
+        }
+        then {
+            never<WorldEvent.LibraryAlbumCreated>()
+            settled { true }
+        }
+
+        // Readable again: the same album is used, still the only one.
+        whenever {
+            databases.unreadable("ledger.db", on = false)
+            os.foreground()
+        }
+        then {
+            never<WorldEvent.LibraryAlbumCreated>()
+            settled { it.state.albums?.size == 1 }
+        }
+    }
+
+    @Test
     @Verifies(spec = "event-album", requirement = "Turning the album on gathers what is already there")
     fun access_that_becomes_usable_while_the_app_runs_gathers_the_photos_already_received() = behaviour {
         given {

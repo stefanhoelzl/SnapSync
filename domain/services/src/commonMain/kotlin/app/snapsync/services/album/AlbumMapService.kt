@@ -19,15 +19,22 @@ class AlbumMapService(
 ) {
 
     /**
-     * The stored album `localIdentifier` for [eventId], or `null` if none was ever created.
-     *
-     * Absence: null covers "never created" and "map unreadable" alike — both send the coordinator down the
-     * ensure-then-remember path, which is why this map is described as a self-healing cache. A wrong null costs one
-     * redundant lookup, never a lost photo.
+     * What the map holds for [eventId], telling a map that cannot be read apart from one that holds no album: an
+     * unreadable map is no reason to make a new album, which would be a second one beside the album the map lost
+     * sight of.
      */
-    fun get(eventId: EventId): String? = runCatchingCancellable {
+    fun lookup(eventId: EventId): AlbumLookup = runCatchingCancellable {
         db.use { it.eventAlbumQueries.selectAlbum(Stored.Valid(eventId)).executeAsOneOrNull() }
-    }.getOrElse { null.also { _ -> log.w(it) { "event-album map unreadable — no album placement this pass" } } }
+    }.fold(
+        onSuccess = { album -> album?.let(AlbumLookup::Stored) ?: AlbumLookup.None },
+        onFailure = { AlbumLookup.Unreadable.also { _ -> log.w(it) { "event-album map unreadable" } } },
+    )
+
+    /**
+     * The stored album `localIdentifier` for [eventId], or `null` if none was ever created or the map is unreadable —
+     * for the readers that only add to an album that exists, where either way nothing is placed this pass.
+     */
+    fun get(eventId: EventId): String? = (lookup(eventId) as? AlbumLookup.Stored)?.album
 
     /** Remember [albumLocalId] as [eventId]'s album (overwrites any prior mapping). A new album has held nothing yet. */
     fun put(eventId: EventId, albumLocalId: String) {
@@ -49,4 +56,16 @@ class AlbumMapService(
         runCatchingCancellable { db.use { it.eventAlbumQueries.markFilled(Stored.Valid(eventId)) } }
             .onFailure { log.w(it) { "event=$eventId not marked filled" } }
     }
+}
+
+/** What the event-album map holds for one event. */
+sealed interface AlbumLookup {
+    /** The album made for the event, by its `localIdentifier`. */
+    data class Stored(val album: String) : AlbumLookup
+
+    /** No album was ever made for the event. */
+    data object None : AlbumLookup
+
+    /** The map could not be read: whether an album exists is unknown. */
+    data object Unreadable : AlbumLookup
 }

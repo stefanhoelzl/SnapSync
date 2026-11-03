@@ -22,7 +22,14 @@ class AlbumMapServiceTest {
     @Test
     fun `nothing stored reads as no album`() {
         assertNull(service().get(testEventId("E")))
+        assertEquals(AlbumLookup.None, service().lookup(testEventId("E")))
         assertFalse(service().filled(testEventId("E")))
+    }
+
+    @Test
+    fun `a stored album is looked up as stored`() {
+        service().put(testEventId("E"), "album-1")
+        assertEquals(AlbumLookup.Stored("album-1"), service().lookup(testEventId("E")))
     }
 
     @Test
@@ -65,7 +72,8 @@ class AlbumMapServiceTest {
         databases.lock()
         val service = service()
 
-        assertNull(service.get(testEventId("E")), "unreadable: ensure-then-remember again, never a lost photo")
+        assertEquals(AlbumLookup.Unreadable, service.lookup(testEventId("E")), "unreadable is not 'no album'")
+        assertNull(service.get(testEventId("E")), "unreadable: nothing placed this pass, never a lost photo")
         assertFalse(
             service.filled(testEventId("E")),
             "unreadable reads as not filled: the album is used, never read as deleted",
