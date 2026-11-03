@@ -229,10 +229,16 @@ data class WakeView(val heartbeatsScheduled: Int, val pending: List<PendingWake>
 
 /**
  * One wake request: [wake] (`heartbeat`, `library-changed`), and for a timed one its [cadence] (`busy`, `idle`) and the
- * delay it may not fire before, [earliestSeconds].
+ * delay it may not fire before, [earliestSeconds], and the network it waits for, [network] (`none`, `any`,
+ * `unrestricted`).
  */
 @Serializable
-data class PendingWake(val wake: String, val cadence: String? = null, val earliestSeconds: Long? = null)
+data class PendingWake(
+    val wake: String,
+    val cadence: String? = null,
+    val earliestSeconds: Long? = null,
+    val network: String? = null,
+)
 
 /** **The operating system's background-time holds**: the table of what the app holds, and their expiry. */
 @Rpc

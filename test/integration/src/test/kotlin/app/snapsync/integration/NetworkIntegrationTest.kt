@@ -100,6 +100,31 @@ class NetworkIntegrationTest {
         then { event<WorldEvent.BackendReceived>() }
     }
 
+    // A drop inside the grace was never shown, so its end is no return: nothing is told, and nothing resumes.
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The app says when it cannot reach the network",
+        scenario = "A brief drop shows nothing",
+    )
+    fun a_drop_shorter_than_the_grace_shows_nothing_and_resumes_nothing() = behaviour {
+        given {
+            joinedEvent()
+            inFront()
+            step("offline briefly", act = {
+                network(NetworkState.OFFLINE, backendReachable = true)
+                advance(NetworkWatch.DEFAULT_GRACE / 2)
+            }, until = {})
+        }
+
+        whenever { network(NetworkState.ONLINE) }
+        then {
+            neverScreen<Layer.Joined> { it.health is SyncHealth.NoNetwork }
+            never<WorldEvent.BackendReceived>()
+            settled { true }
+        }
+    }
+
     // The requirement's own condition — the app resumes its work when the network returns *while it is open* — seen from
     // the other side: in the background, the return resumes nothing.
     @Test

@@ -95,7 +95,12 @@ class WakeOperator internal constructor(private val mock: WakeMock) : WakeLevers
 
 /** A wake request as the operating system holds it, on the wire. */
 internal fun pendingWake(id: WakeId, trigger: WakeTrigger): PendingWake = when (trigger) {
-    is WakeTrigger.After -> PendingWake(wakeName(id), trigger.cadence.name.lowercase(), trigger.earliest.inWholeSeconds)
+    is WakeTrigger.After -> PendingWake(
+        wakeName(id),
+        trigger.cadence.name.lowercase(),
+        trigger.earliest.inWholeSeconds,
+        trigger.network.name.lowercase(),
+    )
     is WakeTrigger.LibraryChange -> PendingWake(wakeName(id))
 }
 
