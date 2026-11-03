@@ -42,7 +42,7 @@ internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnos
     },
     uploadFacts = {
         mapOf(
-            "extension_registrable" to extensionRegistrableNow().toString(),
+            "extension_registrable" to osUploader.admission().name,
             "app_admission" to appUploadAdmission().name,
         )
     },

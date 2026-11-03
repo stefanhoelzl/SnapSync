@@ -6,8 +6,6 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Running
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
@@ -25,6 +23,8 @@ import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeTrigger
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.wire.api.ChallengeReply
 import app.snapsync.wire.api.Routes

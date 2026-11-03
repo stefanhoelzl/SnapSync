@@ -158,12 +158,8 @@ class CompositionSeamTest {
         "StatusCountsPoller.refreshCheapLocalReads" to "this core's own StatusRefresh.refreshCheapLocalReads()",
         "StatusRefresh.refreshDownloadLine" to "the sibling download status source's refresh — feature-blindness",
         "StatusRefresh.contributionFor" to "the membership's ONE contribution (OwnPhotos), derived in compose/",
-        // The app's own uploads, as a wake and a finished upload take them (`OwnUploads`, `WakeRearm`).
+        // The app's own uploads, as a finished upload takes them (`OwnUploads`).
         "OwnUploads.admission" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
-        "WakeRearm.facts" to
-            "this core's own facts for the heartbeat's cadence (cadenceFactsOf): the membership and grant already " +
-            "held in memory, and the extension registration SERVICE's answer over its port — reads the re-arm may " +
-            "not name",
         "ShareSettlement.publishFinal" to
             "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
         "JoinedMembership.contribution" to "the membership's ONE contribution (OwnPhotos), derived when the cycle asks",
@@ -174,8 +170,6 @@ class CompositionSeamTest {
             "the sibling DeviceManifestProducer (its publish is the ManifestPublisher backend service, over the Backend PORT)",
         "UploadCycle.placeInAlbum" to
             "the sibling AlbumCoordinator.place (its PhotoKit touches are the AlbumManager port's)",
-        "UploadTransitions.extensionRegistrable" to
-            "model/'s pure registrability fact over the OS fact, the grant and the rig pin",
         "UploadTransitions.appEngine" to "the entry points' UploadEngine — this core's own uploads and the uploader behind them",
     )
 
@@ -286,9 +280,11 @@ class CompositionSeamTest {
         )
         // The floor is the true count, minus nothing: 28 since the selection moved into the layers (4.4a), which
         // removed the albumExclusions / selectionScope / suppressedLocalIds / albumExcludedAssetIds lambdas — the
-        // read is now OwnPhotos', a service, not a seam. Lower it only with a removal like that one, never to pass.
+        // read is now OwnPhotos', a service, not a seam. 26 since the small concepts moved (4.8): the heartbeat's
+        // facts (WakeRearm.facts) and the extension's registrability (UploadTransitions.extensionRegistrable) are
+        // types now. Lower it only with a removal like those, never to pass.
         assertTrue(
-            found.size >= 28,
+            found.size >= 26,
             "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
                 "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
         )

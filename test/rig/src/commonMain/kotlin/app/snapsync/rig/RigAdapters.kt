@@ -5,11 +5,11 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DevControlsView
 import app.snapsync.mock.devControlsView
-import app.snapsync.model.UploaderPin
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
+import app.snapsync.ports.UploaderPin
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CompletableDeferred

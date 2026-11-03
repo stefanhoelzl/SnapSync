@@ -2,7 +2,6 @@ package app.snapsync.ports
 
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.UploaderPin
 
 /**
  * **The build's development controls** — the inputs only a test build can carry (`docs/architecture.md`, "A

@@ -3,8 +3,8 @@ package app.snapsync.android.upload
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
 import app.snapsync.model.RegistrationAnswer
-import app.snapsync.model.RegistrationState
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationState
 
 /**
  * Android's [ExtensionRegistry]: there is no upload extension to register — the app's

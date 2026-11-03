@@ -18,13 +18,13 @@ import app.snapsync.model.BeforeListen
 import app.snapsync.model.HandlerSlot
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
-import app.snapsync.model.ScheduleResult
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeNetwork
-import app.snapsync.model.WakeTrigger
 import app.snapsync.model.runCatchingCancellable
+import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeNetwork
+import app.snapsync.ports.WakeTrigger
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred

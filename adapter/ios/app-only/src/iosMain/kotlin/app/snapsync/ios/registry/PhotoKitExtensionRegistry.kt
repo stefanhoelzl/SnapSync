@@ -4,11 +4,11 @@ package app.snapsync.ios.registry
 
 import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.model.RegistrationAnswer
-import app.snapsync.model.RegistrationState
 import app.snapsync.model.logAt
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationState
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.BetaInteropApi

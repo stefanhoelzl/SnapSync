@@ -1,7 +1,6 @@
 package app.snapsync.ports
 
 import app.snapsync.model.RegistrationAnswer
-import app.snapsync.model.RegistrationState
 
 /**
  * **The OS's record of whether this app's background-upload extension is registered**. One external system,

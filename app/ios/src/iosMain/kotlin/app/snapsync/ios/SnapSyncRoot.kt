@@ -134,7 +134,7 @@ object SnapSyncRoot {
      *
      * This is the whole of what the shell still decides about uploads. It is **presence**, not behaviour:
      * whether the extension may be registered is derived from this fact plus the current permission plus the
-     * rig's switch, by the pure `extensionRegistrable` in `:domain model/`, re-evaluated at every transition;
+     * rig's switch, by the domain's `OsUploaderAdmission` (read through data's `OsUploader`), re-evaluated at every transition;
      * the app's uploader runs on every OS, beside the extension.
      */
     internal val osSupportsOsDrivenUpload: Boolean = osCarriesOsDrivenUpload()

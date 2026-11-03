@@ -30,9 +30,6 @@ import app.snapsync.feature.download.ReceivedReport
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.feature.upload.OwnUploads
 import app.snapsync.feature.upload.ShareSettlement
-import app.snapsync.feature.upload.WakeRearm
-import app.snapsync.feature.upload.cadenceFacts
-import app.snapsync.services.wake.Heartbeat
 
 /**
  * What the app's entry points run (`domain/entrypoints`, `docs/patterns.md`): the work a wake and the foreground share,
@@ -72,26 +69,8 @@ internal class AppWork(private val core: AppCore) {
         )
     }
 
-    /** The heartbeat the wake's re-arm keeps pending, and a disarm cancels. */
-    private val heartbeat: Heartbeat by lazy {
-        Heartbeat(core.ports.wake, transferNetwork = core.services.mobileData::transferNetwork, log = core.services.log)
-    }
-
-    private val wakeRearm: WakeRearm by lazy {
-        WakeRearm(
-            heartbeat,
-            core.services.downloadStore,
-            facts = {
-                cadenceFacts(
-                    core.services.config,
-                    core.galleryAccess.grant.value,
-                    core.extensionRegistrableNow(),
-                    core.extensionRegistration,
-                )
-            },
-            log = core.services.log,
-        )
-    }
+    /** The wakes the app asks for, and the re-arm each wake ends with. */
+    private val wake: WakeLayers = WakeLayers(core)
 
     /** The membership's use cases, queries and branch. */
     internal val membership: MembershipLayers = MembershipLayers(core)
@@ -125,7 +104,8 @@ internal class AppWork(private val core: AppCore) {
             prelude,
             importReceived,
             uploadOwn,
-            wakeRearm,
+            wake.rearm,
+            core.services.downloadStore,
             endOfWake,
             core.footprints,
         )
@@ -155,7 +135,7 @@ internal class AppWork(private val core: AppCore) {
         UploadEngine(
             core.runtime,
             wakeWork,
-            heartbeat,
+            wake.arming,
             core.uploadTransfer,
         )
     }

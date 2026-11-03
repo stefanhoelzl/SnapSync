@@ -2,10 +2,10 @@ package app.snapsync.compose
 
 import app.snapsync.model.Platform
 import app.snapsync.model.RegistrationAnswer
-import app.snapsync.model.RegistrationState
 import app.snapsync.model.Store
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

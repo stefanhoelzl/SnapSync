@@ -19,11 +19,11 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.Running
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeTrigger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

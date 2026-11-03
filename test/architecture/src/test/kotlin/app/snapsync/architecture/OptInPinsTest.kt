@@ -58,9 +58,9 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                6,
+                7,
                 "the wake's prelude, the key's restore, the rig's reset, the push token's and credential's " +
-                    "registration and the mobile-data change call their use cases",
+                    "registration, the mobile-data change and the wake's re-arm call their use cases",
             ),
             "MintsDevReset" to Pin(1, "the rig's reset, the one other reason the key is forgotten (PENDING_CLEANUPS, 4.5)"),
         ),

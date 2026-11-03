@@ -6,12 +6,14 @@ import app.snapsync.application.membership.ForgetMembership
 import app.snapsync.application.mobiledata.SetMobileData
 import app.snapsync.application.push.RegisterPush
 import app.snapsync.application.trust.RefreshAttestation
+import app.snapsync.application.wake.RearmHeartbeat
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.network.NetworkStatus
 import app.snapsync.data.push.PushTokens
+import app.snapsync.data.wake.WakeArming
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.membership.DevReset
 import app.snapsync.domain.membership.MintsDevReset
@@ -31,13 +33,13 @@ import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.OwnUploads
 import app.snapsync.feature.upload.StoredUploadSettle
-import app.snapsync.feature.upload.WakeRearm
+import app.snapsync.feature.upload.stagedImports
+import app.snapsync.feature.upload.uploadsLeft
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.model.CycleResult
 import app.snapsync.model.PlatformError
 import app.snapsync.model.UnionTrigger
-import app.snapsync.model.WakeId
 import app.snapsync.model.pushEventId
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.FinishedDownload
@@ -50,6 +52,7 @@ import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushToken
 import app.snapsync.ports.SessionDrain
 import app.snapsync.ports.SessionRelaunch
+import app.snapsync.ports.WakeId
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.push.PushTailLookup
@@ -65,6 +68,7 @@ import app.snapsync.scheduling.Sequence
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.downloads.DownloadJobs
+import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.downloads.ImportMarkers
 import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.ledger.LedgerService
@@ -72,7 +76,6 @@ import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.upload.SessionTransfer
-import app.snapsync.services.wake.Heartbeat
 import kotlinx.coroutines.Job
 import kotlin.coroutines.CoroutineContext
 
@@ -413,12 +416,12 @@ interface HostAssembly {
 class UploadEngine(
     private val runtime: Runtime,
     private val wake: WakeWork,
-    private val heartbeat: Heartbeat,
+    private val arming: WakeArming,
     private val transfer: SessionTransfer,
 ) : AppUploadEngine {
     override suspend fun arm() = runtime.detached("OnArm") { on -> wake.full(WakeKind.ARM, on) }
 
-    override suspend fun disarm() = heartbeat.cancel()
+    override suspend fun disarm() = arming.cancelAll()
 
     override suspend fun cancelTransfers() = transfer.cancelAll()
 }
@@ -496,13 +499,15 @@ class WakeWork(
     private val prelude: Prelude,
     private val importReceived: ImportReceived,
     private val uploadOwn: UploadOwn,
-    private val rearm: WakeRearm,
+    private val rearm: RearmHeartbeat,
+    private val downloads: DownloadService,
     private val end: EndOfWake,
     private val footprints: FootprintSampler,
 ) {
+    @OptIn(EntryPointCall::class)
     suspend fun full(kind: WakeKind, on: Run) = on.steps {
         var uploads: Pass<CycleResult> = Pass.Cut
-        ensure("re-arm") { rearm.after(uploads) }
+        ensure("re-arm") { rearm(uploads.uploadsLeft(), downloads.importableAssets().stagedImports()) }
         ensure("footprint") { footprints.record("after the ${kind.name.lowercase()} wake") }
         run(importReceived)
         uploads = run(uploadOwn)

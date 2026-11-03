@@ -10,8 +10,8 @@ import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeTrigger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 

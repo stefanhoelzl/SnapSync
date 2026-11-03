@@ -17,11 +17,11 @@ import app.snapsync.launchadapters.randomDeviceId
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.WakeId
 import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.ports.WakeId
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue

@@ -5,12 +5,12 @@ package app.snapsync.mock
 import app.snapsync.contracts.grantedOf
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.RegistrationAnswer
-import app.snapsync.model.RegistrationState
-import app.snapsync.model.ScheduleResult
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeNetwork
-import app.snapsync.model.WakeTrigger
+import app.snapsync.ports.RegistrationState
+import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeNetwork
+import app.snapsync.ports.WakeTrigger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

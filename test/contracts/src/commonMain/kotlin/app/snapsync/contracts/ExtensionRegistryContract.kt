@@ -2,9 +2,9 @@ package app.snapsync.contracts
 
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.model.RegistrationOutcome
-import app.snapsync.model.RegistrationState
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationState
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

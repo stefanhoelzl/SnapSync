@@ -1,8 +1,8 @@
 package app.snapsync.services.upload
 
-import app.snapsync.model.RegistrationState
 import app.snapsync.model.registrationOutcome
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.RegistrationState
 import co.touchlab.kermit.Logger
 
 /**

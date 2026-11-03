@@ -2,7 +2,7 @@ package app.snapsync.mock
 
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.model.RegistrationAnswer
-import app.snapsync.model.RegistrationState
+import app.snapsync.ports.RegistrationState
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

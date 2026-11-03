@@ -156,9 +156,9 @@ coverage {
         // → 93/79 in phase 31, once the polling tests waited on outcome events instead.
         // Branches → 78 in phase 4.4a (selection): the cycle's read that could not be made, and a key resolve that
         // cannot look, are the cycle's unit suite's (`UploadCycleTest`); a member's day reads. Measured 78.19 %.
-        // Branches → 79 in phase 4.8 (small concepts): the network watch moved to the layers, taking 14 of its 16
-        // covered branches with it; no branch left here lost coverage. Measured 79.89 %.
-        integration(instructions = 94, branches = 79)
+        // Branches → 78 in phase 4.8 (small concepts): the network watch and the heartbeat's cadence and re-arm moved
+        // to the layers, taking their covered branches with them; no branch left here lost coverage. Measured 78.84 %.
+        integration(instructions = 94, branches = 78)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.

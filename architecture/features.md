@@ -42,6 +42,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `HeartbeatCadence.kt`, `LedgerWriter.kt`, `OwnUploads.kt`, `ShareSettlement.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WakeRearm.kt`
-- top-level types: `AppUploadEngine (interface)`, `CadenceFacts (class)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OwnUploads (class)`, `ShareSettlement (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WakeRearm (class)`, `WalkOutcome (class)`
+- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `LedgerWriter.kt`, `OwnUploads.kt`, `ShareSettlement.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WakeFacts.kt`
+- top-level types: `AppUploadEngine (interface)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OwnUploads (class)`, `ShareSettlement (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkOutcome (class)`
 

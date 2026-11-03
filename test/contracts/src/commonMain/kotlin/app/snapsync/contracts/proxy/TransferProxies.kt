@@ -4,8 +4,6 @@ import app.snapsync.contracts.CallLog
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Running
-import app.snapsync.model.WakeId
-import app.snapsync.model.WakeTrigger
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.ports.Download
@@ -22,6 +20,8 @@ import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
+import app.snapsync.ports.WakeId
+import app.snapsync.ports.WakeTrigger
 
 /**
  * The [Completion] handle an adapter hands its owner, recorded under the port handing it out ([r] is that port's

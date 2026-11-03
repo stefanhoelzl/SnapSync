@@ -361,6 +361,10 @@ class DeletionLedgerTest {
      * Mobile data: a service holding a `StateFlow` seeded at composition, set from a lambda in the command door and
      * handed to the transfers as function references. The choice is the domain's (`MobileDataChoice`), its store data's
      * (`MobileDataStore`), a change a request (`OnMobileDataChanged`, `SetMobileData`) answered on a status.
+     * Wake: a heartbeat service handed a function for its network, a cadence rule as top-level functions over booleans
+     * whose facts the composition supplied as a lambda, and the extension's registrability as one more composition
+     * lambda. The rule is the domain's (`CadenceFacts`, `OsUploaderAdmission`), the wakes data's (`WakeArming`), the
+     * re-arm a use case (`RearmHeartbeat`).
      */
     @Test
     fun `the small concepts' retired items stay dead`() {
@@ -368,13 +372,24 @@ class DeletionLedgerTest {
         val resurrections = buildList {
             val pre = """(class|interface|object) (Push""" + "TokenSource|PushToken" + "Request|PushToken" +
                 "Publisher|BackendPushToken" + "Publisher|PushTail" + "Guard|Network" + "Watch|Foreground" +
-                "Watches|NetworkStatus" + "Source|MobileData" + "Setting)\\b"
+                "Watches|NetworkStatus" + "Source|MobileData" + "Setting|Wake" + "Rearm)\\b"
             declared(files, pre).forEach { add("the small concepts' pre-layer types in $it (the layers' — 4.8)") }
             declared(files, """class Push""" + "Registration\\(\\s*private val publisher").forEach {
                 add("a collecting push registration in $it (RegisterPush, run by its entry points — 4.8)")
             }
             declared(files, """fun (push""" + "RegistrationFor|registration" + "Key)\\b").forEach {
                 add("a push derivation the layers replaced in $it (PushLayers, PushEndpoint.keyFor — 4.8)")
+            }
+            declared(files, """fun (heartbeat""" + "Cadence|cadence" + "Facts|extension" + "Registrable)\\b").forEach {
+                add("a wake rule the domain holds now in $it (CadenceFacts.cadence, OsUploaderAdmission — 4.8)")
+            }
+            declared(
+                files,
+                """val extension""" + "RegistrableNow\\b|class Heart" + "beat\\(\\s*private val wake",
+            ).forEach {
+                add(
+                    "the heartbeat's old service or the composition's registrable lambda in $it (WakeArming, OsUploader — 4.8)",
+                )
             }
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")

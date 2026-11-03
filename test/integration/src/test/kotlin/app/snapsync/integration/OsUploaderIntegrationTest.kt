@@ -255,6 +255,36 @@ class OsUploaderIntegrationTest {
     }
 
     /**
+     * A leave made under a partial grant: iOS refuses to deregister its uploader there (`3311`), and the leave goes
+     * ahead all the same — the record a full grant made survives, and its own entry gate withholds without a full grant.
+     */
+    @Test
+    @Verifies(spec = "delivery", requirement = "Leaving or switching stops every transfer for the old event")
+    fun a_leave_under_limited_access_leaves_though_ios_keeps_its_uploaders_record() = behaviour {
+        given {
+            iosUploaderCarried()
+            createdEvent()
+            step("joined with full access", act = { confirmJoin() }, until = {
+                event<WorldEvent.ExtensionRegistered> { it.on }
+                settled { true }
+            })
+            step("narrowed to an empty selection", act = { library.permission(PhotoGrant.LIMITED) }, until = {
+                settled { true }
+            })
+        }
+        whenever { tap(UiIntent.LeaveEvent) }
+        then {
+            screen<Layer.CreateEvent>()
+            never<WorldEvent.ExtensionRegistered> { !it.on }
+            settled { true }
+        }
+        var registered: Boolean? = null
+        whenever { registered = extensionRegistry.registered() }
+        then { settled { true } }
+        assertEquals(true, registered, "iOS refused the deregistration, so its record survives")
+    }
+
+    /**
      * The phone runs iOS 26.1 or later, which carries iOS's own background uploader: a fact the app reads at launch, so the
      * process is started again over it, in front, as a member opening the app finds it.
      */

@@ -37,7 +37,6 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.Store
-import app.snapsync.model.WakeId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.AssetFilter
@@ -47,6 +46,7 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferOutcome
+import app.snapsync.ports.WakeId
 import app.snapsync.services.gallery.role
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
