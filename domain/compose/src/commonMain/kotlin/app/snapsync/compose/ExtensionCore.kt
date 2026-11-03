@@ -9,6 +9,7 @@ import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.identity.StoredDeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
 import app.snapsync.data.sharing.OwnPhotos
@@ -42,7 +43,6 @@ import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.upload.Uploader
 import kotlinx.coroutines.CoroutineDispatcher
 
@@ -167,7 +167,7 @@ private fun extensionServices(
         membership = membership,
         config = config,
         // The same shared choice the app's menu writes, read per job.
-        mobileData = MobileDataSetting(ports.preferences),
+        mobileData = MobileDataStore(ports.preferences),
         deviceIdentity = identity,
         host = build.uploadHost,
         // Scoped to the joined event this process last read; each invocation re-reads the config first.

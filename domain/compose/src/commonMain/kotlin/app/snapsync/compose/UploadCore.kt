@@ -6,6 +6,7 @@ import app.snapsync.data.crypto.FileCipher
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.CachedCredentialStore
@@ -28,7 +29,6 @@ import app.snapsync.services.identity.requireDeviceId
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.upload.TransferSetup
 import app.snapsync.services.upload.Uploader
 import co.touchlab.kermit.Logger
@@ -71,7 +71,7 @@ internal class UploadServices(
     /** The three-state membership read. Read fresh once per cycle. */
     val config: MembershipProjection,
     /** The device's mobile-data choice, read as each upload job is created. */
-    val mobileData: MobileDataSetting,
+    val mobileData: MobileDataStore,
     /**
      * The device identity: the app's mints, the extension's only reads. Unreadable while protected data is
      * unavailable — never a placeholder; it keeps its first success, so this is one Keychain read per process in
@@ -156,7 +156,7 @@ internal fun uploadCycle(process: ProcessServices, ports: UploadServices): Uploa
             resources = keys,
             gallery = ports.gallery,
             files = process.files,
-            network = ports.mobileData::transferNetwork,
+            network = ports.mobileData,
             sealing = UploadSealing(
                 ports.membership,
                 ports.keys,

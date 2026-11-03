@@ -442,15 +442,16 @@ version or op gates these — each phase deletes its own uses, and the last one 
 ### The rig's reset in production (app)
 - **What:** `OnDevReset` (`domain/entrypoints/.../AppEntryPoints.kt`), `ForgetMembership`
   (`domain/application/.../membership/`) and the key's `EventKeyStore.forget(DevReset)` with its evidence `DevReset`
-  (`domain/domain/.../membership/Evidence.kt`, minted in `OnDevReset`), delivered through `DevControls`' reset —
-  production code only a rig build's control channel reaches (`POST /device/reset`).
-- **Why:** the reset was rebuilt over the layers in phases 4.2 and 4.3 rather than moved into `:test:rig`, so the
-  control channel kept working while the membership and the key moved.
+  (`domain/domain/.../membership/Evidence.kt`, minted in `OnDevReset`), and the mobile-data choice's
+  `MobileDataStore.clear()` (`domain/data/.../mobiledata/`), delivered through `DevControls`' reset — production code
+  only a rig build's control channel reaches (`POST /device/reset`).
+- **Why:** the reset was rebuilt over the layers in phases 4.2, 4.3 and 4.8 rather than moved into `:test:rig`, so the
+  control channel kept working while the membership, the key and the mobile-data choice moved.
 - **Remove (phase 4.5):** the reset must run inside the composition — under `DownloadController`'s lock, over the
   same in-memory states the app holds — so `:test:rig` cannot build its own instances. A `RigReset` the rig composes
   is handed the composition's layer instances (the membership and key stores, the download controller, the ledger,
   the mobile-data choice); then delete `OnDevReset`, `ForgetMembership`, `MembershipRepository.forget`,
-  `EventKeyStore.forget(DevReset)`, `DevReset` and the `DevControls` reset delivery.
+  `EventKeyStore.forget(DevReset)`, `DevReset`, `MobileDataStore.clear()` and the `DevControls` reset delivery.
 
 ## One-off ops
 

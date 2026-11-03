@@ -184,6 +184,8 @@ private fun gateHost(
             versionRefusal = refusal,
             store = store,
             requests = commands.requests.flows,
+            network = AlwaysOnline,
+            mobileData = AlwaysAllowed,
         ),
         scope,
         commands = commands,

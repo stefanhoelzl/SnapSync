@@ -16,6 +16,7 @@ import app.snapsync.entrypoints.OnInviteForOtherEvent
 import app.snapsync.entrypoints.OnJoinConfirmed
 import app.snapsync.entrypoints.OnKeyRestoreRequested
 import app.snapsync.entrypoints.OnLeaveConfirmed
+import app.snapsync.entrypoints.OnMobileDataChanged
 import app.snapsync.entrypoints.OnRenameRequested
 import app.snapsync.entrypoints.OnSettingsChanged
 import app.snapsync.entrypoints.Prelude
@@ -238,6 +239,11 @@ internal class AppWork(private val core: AppCore) {
     /** The member renamed the joined event. */
     internal val renameRequested: OnRenameRequested by lazy {
         OnRenameRequested(core.runtime, membership.branch, membership.rename, statuses)
+    }
+
+    /** The member switched whether photos may use mobile data. */
+    internal val mobileDataChanged: OnMobileDataChanged by lazy {
+        OnMobileDataChanged(core.runtime, core.mobileData.set, core.services.mobileData, core.mobileData.statuses)
     }
 
     /** The control channel voids this device's durable state (a rig build only). */

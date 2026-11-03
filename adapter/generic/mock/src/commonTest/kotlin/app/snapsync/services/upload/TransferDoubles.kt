@@ -34,6 +34,7 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.mock.mobileDataAnswering
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
 import app.snapsync.model.TerminalOutcome
@@ -187,7 +188,7 @@ internal fun setup(
     files: Files = SharedArea(),
     network: () -> TransferNetwork = { TransferNetwork.ANY },
     sealing: UploadSealing = plainSealing(),
-) = TransferSetup(record, resources, library, files, network, sealing)
+) = TransferSetup(record, resources, library, files, mobileDataAnswering(network), sealing)
 
 /** The event the transfers' requests address. */
 internal val TEST_EVENT: EventId = EventId.parse("0f0e8a5c-3f1b-4c2d-9e7a-1b2c3d4e5f60")!!

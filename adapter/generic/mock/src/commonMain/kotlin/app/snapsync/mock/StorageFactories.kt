@@ -1,11 +1,14 @@
 package app.snapsync.mock
 
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.Files
+import app.snapsync.ports.PrefRead
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.TransferNetwork
 
 // The thin storage ports' mocks: port-typed factories over `internal` classes, as every fake here
 // (`docs/testing.md`). Their own file because `Factories.kt` is at its function ceiling.
@@ -23,6 +26,22 @@ fun inMemoryFiles(
 /** [values] is the caller's own cell. */
 fun inMemoryPreferences(values: MutableMap<String, String> = mutableMapOf()): Preferences =
     InMemoryPreferences(values, StoreRefusals())
+
+/**
+ * The device's mobile-data choice over preferences that hold whatever [network] answers at each read — the rule a
+ * transfer created now follows, so a test that changes it governs only the transfers made after the change.
+ */
+fun mobileDataAnswering(network: () -> TransferNetwork): MobileDataStore =
+    MobileDataStore(
+        object : Preferences by inMemoryPreferences() {
+            override fun get(key: String): PrefRead = PrefRead.Value(
+                when (network()) {
+                    TransferNetwork.ANY -> "on"
+                    TransferNetwork.UNRESTRICTED_ONLY -> "off"
+                },
+            )
+        },
+    )
 
 /**
  * [items] is the caller's own cell (slot → value and protection); [unavailable] is a store that cannot be read at

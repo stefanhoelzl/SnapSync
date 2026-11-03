@@ -2,6 +2,7 @@ package app.snapsync.services.upload
 
 import app.snapsync.data.crypto.UploadSeal
 import app.snapsync.data.crypto.UploadSealing
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.model.UploadCreateOutcome
 import app.snapsync.model.UploadFailure
 import app.snapsync.model.UploadRequest
@@ -12,7 +13,6 @@ import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.TransferFailure
-import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferSession
 import app.snapsync.services.gallery.KeyedResources
 import co.touchlab.kermit.Logger
@@ -49,7 +49,7 @@ class TransferSetup(
      * The networks an upload made or re-pointed NOW may use — read at that moment, so a change of the member's choice
      * governs the uploads that start after it, never the ones already handed to the platform.
      */
-    val network: () -> TransferNetwork,
+    val network: MobileDataStore,
     /**
      * How each upload is sealed (the encrypted file format, `docs/architecture.md`): not at all in a plain event; in an
      * encrypted one, sealed into the staged file where the uploader sends files, else by the edge from the one file's

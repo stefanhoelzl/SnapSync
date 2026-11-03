@@ -3,10 +3,12 @@ package app.snapsync.entrypoints
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.encryption.RestoreEventKey
 import app.snapsync.application.membership.ForgetMembership
+import app.snapsync.application.mobiledata.SetMobileData
 import app.snapsync.application.push.RegisterPush
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.network.NetworkStatus
 import app.snapsync.data.push.PushTokens
@@ -14,6 +16,8 @@ import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.membership.DevReset
 import app.snapsync.domain.membership.MintsDevReset
 import app.snapsync.domain.membership.RestoreAnswer
+import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.push.PushTailVerdict
 import app.snapsync.domain.push.PushTrigger
 import app.snapsync.domain.request.RequestId
@@ -47,6 +51,7 @@ import app.snapsync.ports.PushToken
 import app.snapsync.ports.SessionDrain
 import app.snapsync.ports.SessionRelaunch
 import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.push.PushTailLookup
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Delivery
@@ -65,7 +70,6 @@ import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.services.upload.SessionTransfer
 import app.snapsync.services.wake.Heartbeat
@@ -343,7 +347,7 @@ class OnDevReset(
     private val downloads: DownloadController,
     private val forget: ForgetMembership,
     private val keys: EventKeyStore,
-    private val mobileData: MobileDataSetting,
+    private val mobileData: MobileDataStore,
 ) : BackgroundEntryPoint<Unit>(runtime) {
     @OptIn(EntryPointCall::class, MintsDevReset::class)
     override suspend fun run(arg: Unit, on: Run) = on.steps {
@@ -369,6 +373,26 @@ class OnSelectionChanged(
         isolated("total") { statusRefresh.refreshTotal() }
         isolated("selection walk") { uploads.walkSelection() }
         required { wake.full(WakeKind.SELECTION_CHANGE, on) }
+    }
+}
+
+/** A change of the device's mobile-data choice the member made: [id] is answered on the mobile-data status. */
+class MobileDataRequest(val id: RequestId, val choice: MobileDataChoice)
+
+/**
+ * The member switched whether photos may use mobile data: saved, and answered with the
+ * choice now in effect — the one asked for, or, when it could not be saved, the one still governing the transfers.
+ */
+class OnMobileDataChanged(
+    runtime: Runtime,
+    private val setMobileData: SetMobileData,
+    private val store: MobileDataStore,
+    private val statuses: MobileDataStatuses,
+) : BackgroundEntryPoint<MobileDataRequest>(runtime) {
+    @OptIn(EntryPointCall::class)
+    override suspend fun run(arg: MobileDataRequest, on: Run) = on.steps {
+        ensure("answer") { statuses.change.settle(arg.id, MobileDataOutcome.NotSaved(store.read())) }
+        required { statuses.change.done(arg.id, setMobileData(arg.choice)) }
     }
 }
 

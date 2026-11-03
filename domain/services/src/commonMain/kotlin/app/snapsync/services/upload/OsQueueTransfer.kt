@@ -157,7 +157,7 @@ class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: Trans
                     return@body
                 }
             }
-            val answer = queue.retry(offered, UploadTarget(request.url, headers, setup.network()))
+            val answer = queue.retry(offered, UploadTarget(request.url, headers, setup.network.transferNetwork()))
             if (answer is ChangeOutcome.Refused) {
                 log.w { "retryJob: the retry was refused for ${job.key} (code=${answer.code} ${answer.detail})" }
             }
@@ -186,7 +186,10 @@ class OsQueueTransfer(private val queue: OsUploadQueue, private val setup: Trans
                     return@body UploadCreateOutcome.FAILED
                 }
             }
-            queue.create(handle, UploadTarget(request.url, headers, setup.network())).uploadCreateOutcome()
+            queue.create(
+                handle,
+                UploadTarget(request.url, headers, setup.network.transferNetwork()),
+            ).uploadCreateOutcome()
                 .also { if (it == UploadCreateOutcome.LIMIT_EXCEEDED) log.w { "job limit reached — deferring the rest" } }
         }.also { log.i { "platform.createJob(key=${resource.filename}) = $it" } }
 

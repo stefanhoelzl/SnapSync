@@ -49,6 +49,8 @@ class IntentInvalidProgramStateTest {
                     FakePermissionSource().permission,
                     FakeConfig().config,
                     requests = commands.requests.flows,
+                    network = AlwaysOnline,
+                    mobileData = AlwaysAllowed,
                 ),
                 scope,
                 commands = commands,

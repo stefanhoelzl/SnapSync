@@ -3,6 +3,8 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.creation.readmodel.CreationStatus
@@ -15,6 +17,7 @@ import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
+import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.BuildLine
@@ -74,8 +77,8 @@ class StatusContainerHostMenuTest {
         val reports = mutableListOf<String>()
         var outcome: suspend () -> ReportOutcome = { ReportOutcome.SENT }
 
-        /** The device's mobile-data choice, as the setting service holds it; [saves] plays a write that lands or not. */
-        val mobileData = MutableStateFlow(true)
+        /** The device's mobile-data choice, as the device holds it; [saves] plays a write that lands or not. */
+        var mobileData = MobileDataChoice.ALLOWED
         val permission = MutableStateFlow(GalleryAccess.GRANTED)
         var saves = true
     }
@@ -91,9 +94,19 @@ class StatusContainerHostMenuTest {
                         world.outcome()
                     },
                 )
+                val changes = base.requests.mobileData.change
+                val choice = object : MobileDataQuery {
+                    override fun current(): MobileDataChoice = world.mobileData
+                    override val changes = changes.status
+                }
                 val host = object : UserCommands by base {
-                    override suspend fun setMobileData(on: Boolean) =
-                        world.saves.also { if (it) world.mobileData.value = on }
+                    override fun setMobileData(choice: MobileDataChoice) =
+                        base.requests.ask(changes, MobileDataOutcome.NotSaved(world.mobileData)) {
+                            when (world.saves) {
+                                true -> MobileDataOutcome.Saved(choice).also { world.mobileData = choice }
+                                false -> MobileDataOutcome.NotSaved(world.mobileData)
+                            }
+                        }
                 }.let { commands ->
                     StatusContainerHost(
                         StatusSources(
@@ -101,7 +114,8 @@ class StatusContainerHostMenuTest {
                             world.permission,
                             world.config,
                             creation = world.creation,
-                            mobileData = world.mobileData,
+                            network = AlwaysOnline,
+                            mobileData = choice,
                             requests = base.requests.flows,
                         ),
                         scope,
@@ -155,7 +169,11 @@ class StatusContainerHostMenuTest {
         host.stateWhere(
             "switched off, menu still open",
         ) { it.overlays.menuOpen && !it.mobileData.on && !it.mobileData.notSaved }
-        assertFalse(world.mobileData.value, "the device's choice was saved")
+        assertEquals(MobileDataChoice.WIFI_ONLY, world.mobileData, "the device's choice was saved")
+
+        host.onIntent(UiIntent.MobileData(true))
+        host.stateWhere("switched back on") { it.overlays.menuOpen && it.mobileData.on }
+        assertEquals(MobileDataChoice.ALLOWED, world.mobileData)
     }
 
     @Test
@@ -176,7 +194,7 @@ class StatusContainerHostMenuTest {
     fun `the mobile-data choice is shown with no event`() {
         val world = World().apply {
             config.value = null
-            mobileData.value = false
+            mobileData = MobileDataChoice.WIFI_ONLY
         }
         onHost(world) { host, _ ->
             host.onIntent(UiIntent.MenuOpen)

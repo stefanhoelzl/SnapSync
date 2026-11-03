@@ -2,6 +2,8 @@
 
 package app.snapsync.tour
 
+import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.Encryption
@@ -15,6 +17,8 @@ import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.request.RequestId
+import app.snapsync.query.mobiledata.MobileDataQuery
+import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.membership.JoinDetailsQuery
@@ -288,6 +292,10 @@ abstract class StatusScreenTour {
                     )
                     override val returned: Flow<Unit> = emptyFlow()
                 },
+                mobileData = object : MobileDataQuery {
+                    override fun current(): MobileDataChoice = MobileDataChoice.ALLOWED
+                    override val changes = MobileDataStatuses().change.status
+                },
                 requests = RequestStatusFlows(
                     join = statuses.join.status,
                     settings = statuses.settings.status,
@@ -324,7 +332,8 @@ abstract class StatusScreenTour {
 
                 override suspend fun sendDiagnostics(note: String, context: ReportContext) = ReportOutcome.SENT
 
-                override suspend fun setMobileData(on: Boolean) = true
+                override fun setMobileData(choice: MobileDataChoice) =
+                    answered(MobileDataStatuses().change, MobileDataOutcome.Saved(choice))
 
                 override fun restoreKey(key: EventKey) = answered(statuses.restore, RestoreAnswer.NothingChanged)
             },

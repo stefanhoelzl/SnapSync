@@ -99,6 +99,8 @@ class GuardedIntentTest {
                             MutableStateFlow(GalleryAccess.GRANTED),
                             config,
                             requests = commands.requests.flows,
+                            network = AlwaysOnline,
+                            mobileData = AlwaysAllowed,
                         ),
                         scope,
                         joinDetails = joinDetails {

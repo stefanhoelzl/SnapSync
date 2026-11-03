@@ -7,6 +7,7 @@ import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.PendingLeaves
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.push.PushRegistrationRecord
 import app.snapsync.data.push.PushTokens
 import app.snapsync.data.store.SharedDatabase
@@ -22,7 +23,6 @@ import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.MembershipTransition
-import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.services.staging.StagingService
 import co.touchlab.kermit.Logger
 
@@ -123,7 +123,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * The device's mobile-data choice (decision record `changes/archive/2026-10-07-mobile-data-per-device`, D1) —
      * over the shared preferences, which the upload extension reads too.
      */
-    val mobileData: MobileDataSetting by lazy { MobileDataSetting(ports.preferences) }
+    val mobileData: MobileDataStore by lazy { MobileDataStore(ports.preferences) }
 
     /**
      * When a background wake last asked the event for its photos and its state (decision record

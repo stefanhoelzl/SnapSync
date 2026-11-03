@@ -89,6 +89,7 @@ import app.snapsync.ports.Wake
 import app.snapsync.query.encryption.EventKeyQuery
 import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.sharing.ShareableCountQuery
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
@@ -408,7 +409,7 @@ class AppCore internal constructor(
     val keyQuery: EventKeyQuery by lazy { EventKeyQuery(services.membership, services.eventKeyStore, scope) }
 
     /** The device's mobile-data choice, for the status host's menu and waiting line. */
-    val mobileDataChoice: StateFlow<Boolean> get() = services.mobileData.allowed
+    val mobileDataQuery: MobileDataQuery get() = mobileData.query
 
     /** What the event album holds on this phone, for the status host's album wording. */
     val albumContents: AlbumContents get() = albumManager.contents
@@ -444,7 +445,7 @@ class AppCore internal constructor(
                 val recorded = downloadController.onResourceStaged(ref, key, path)
                 if (recorded) work.downloadStaged.requested()
             },
-            network = services.mobileData::transferNetwork,
+            network = services.mobileData,
             // The version every request declares — the download redirect's too (`downloadResource`).
             headers = exchange::versionHeaders,
             // An encrypted event's bytes are opened before they are staged (the encrypted file format).
@@ -609,7 +610,7 @@ class AppCore internal constructor(
                 resources = GalleryKeyedResources(ports.gallery),
                 gallery = ports.gallery,
                 files = process.files,
-                network = services.mobileData::transferNetwork,
+                network = services.mobileData,
                 sealing = UploadSealing(
                     services.membership,
                     services.eventKeyStore,
@@ -781,6 +782,9 @@ class AppCore internal constructor(
 
     /** The push's use case and lookup — see [PushLayers]. */
     internal val push: PushLayers by lazy { PushLayers(this) }
+
+    /** The mobile-data choice's use case, status and query — see [MobileDataLayers]. */
+    internal val mobileData: MobileDataLayers by lazy { MobileDataLayers(this) }
 }
 
 /**

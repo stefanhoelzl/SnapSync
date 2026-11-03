@@ -1,5 +1,6 @@
 package app.snapsync.services.downloads
 
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AssetRef
 import app.snapsync.model.PendingDownload
@@ -12,9 +13,12 @@ import app.snapsync.ports.FileLocation
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.FileTail
 import app.snapsync.ports.Files
+import app.snapsync.ports.PrefRead
+import app.snapsync.ports.Preferences
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
+import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.staging.DOWNLOAD_STAGING_DIR
 import app.snapsync.services.staging.StagingService
 import app.snapsync.testids.testAssetId
@@ -138,7 +142,16 @@ class DownloadJobsTest {
             staging = StagingService(AcceptingFiles(adopts)),
             download = transport,
             onStaged = { ref, key, path -> deliver(ref, key, path) },
-            network = { network },
+            network = MobileDataStore(
+                object : Preferences {
+                    override fun get(key: String): PrefRead =
+                        PrefRead.Value(if (network == TransferNetwork.ANY) "on" else "off")
+
+                    override fun set(key: String, value: String): WriteOutcome = WriteOutcome.Ok
+
+                    override fun remove(key: String): WriteOutcome = WriteOutcome.Ok
+                },
+            ),
             headers = { emptyMap() },
         ).also {
             transport.jobs = it

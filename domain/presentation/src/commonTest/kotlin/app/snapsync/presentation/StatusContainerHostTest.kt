@@ -327,6 +327,8 @@ private fun host(
         configFake.config,
         requests = commands.requests.flows,
         verification = verification,
+        network = AlwaysOnline,
+        mobileData = AlwaysAllowed,
     ),
     scope,
     joinDetails = joinDetails(loadJoinDetails),
@@ -373,6 +375,8 @@ class StatusContainerHostTest {
                 FakeSyncStatusSource(SyncStatus.Loading),
                 FakePermissionSource().permission,
                 FakeConfig().config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             backgroundScope,
             commands = TestCommands(),
@@ -414,6 +418,8 @@ class StatusContainerHostTest {
                     creation = MutableStateFlow(creation),
                     foreground = foreground,
                     requests = commands.requests.flows,
+                    network = AlwaysOnline,
+                    mobileData = AlwaysAllowed,
                 ),
                 scope,
                 commands = commands,
@@ -512,6 +518,8 @@ class StatusContainerHostTest {
                 FakeSyncStatusSource(snapshot(completed = 0, total = 0)),
                 FakePermissionSource(GalleryAccess.GRANTED).permission,
                 config.config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             backgroundScope,
             cutoffFormatter = movableCutoffFormatter(clock),
@@ -598,6 +606,8 @@ class StatusContainerHostTest {
                     cfg.config,
                     download = MutableStateFlow(download),
                     requests = commands.requests.flows,
+                    network = AlwaysOnline,
+                    mobileData = AlwaysAllowed,
                 ),
                 scope,
                 cutoffFormatter = fixedCutoffFormatter(),
@@ -794,6 +804,8 @@ class StatusContainerHostTest {
                     FakePermissionSource(GalleryAccess.GRANTED).permission,
                     config.config,
                     requests = commands.requests.flows,
+                    network = AlwaysOnline,
+                    mobileData = AlwaysAllowed,
                 ),
                 backgroundScope,
                 commands = commands,
@@ -852,6 +864,8 @@ class StatusContainerHostTest {
                 FakePermissionSource(GalleryAccess.GRANTED).permission,
                 config.config,
                 creation = creationStatus,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
@@ -1535,6 +1549,8 @@ class StatusContainerHostTest {
                 FakeSyncStatusSource(SyncStatus.Loading),
                 FakePermissionSource(GalleryAccess.GRANTED).permission,
                 FakeConfig(null).config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             backgroundScope,
             joinDetails = joinDetails { JoinDetails.NotFound },
@@ -1649,7 +1665,13 @@ class StatusContainerHostTest {
         var leaves = 0
         val configFake = FakeConfig()
         val containerHost = StatusContainerHost(
-            StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
+            StatusSources(
+                FakeSyncStatusSource(),
+                FakePermissionSource().permission,
+                configFake.config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
+            ),
             backgroundScope,
             commands = TestCommands(leave = { leaves++ }),
             cutoffFormatter = fixedCutoffFormatter(),
@@ -1678,7 +1700,13 @@ class StatusContainerHostTest {
     fun `invite url derives from config and round-trips to the same event`() = runTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val host = StatusContainerHost(
-            StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
+            StatusSources(
+                FakeSyncStatusSource(),
+                FakePermissionSource().permission,
+                configFake.config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
+            ),
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
@@ -1697,7 +1725,13 @@ class StatusContainerHostTest {
     fun `no configured event means no joined state to carry an invite url`() = runTest {
         val configFake = FakeConfig(null)
         val host = StatusContainerHost(
-            StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
+            StatusSources(
+                FakeSyncStatusSource(),
+                FakePermissionSource().permission,
+                configFake.config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
+            ),
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
@@ -1743,7 +1777,13 @@ class StatusContainerHostTest {
     fun `the joined state carries the persisted config the name comes from`() = runTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val host = StatusContainerHost(
-            StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
+            StatusSources(
+                FakeSyncStatusSource(),
+                FakePermissionSource().permission,
+                configFake.config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
+            ),
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             queries = noQueries,
@@ -1762,7 +1802,13 @@ class StatusContainerHostTest {
         val shared = mutableListOf<Pair<String, String>>()
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val containerHost = StatusContainerHost(
-            StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
+            StatusSources(
+                FakeSyncStatusSource(),
+                FakePermissionSource().permission,
+                configFake.config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
+            ),
             backgroundScope,
             commands = TestCommands(share = { url, title -> shared += url to title }),
             cutoffFormatter = fixedCutoffFormatter(),
@@ -1787,7 +1833,13 @@ class StatusContainerHostTest {
         val shared = mutableListOf<Pair<String, String>>()
         val configFake = FakeConfig(null)
         val containerHost = StatusContainerHost(
-            StatusSources(FakeSyncStatusSource(), FakePermissionSource().permission, configFake.config),
+            StatusSources(
+                FakeSyncStatusSource(),
+                FakePermissionSource().permission,
+                configFake.config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
+            ),
             backgroundScope,
             commands = TestCommands(share = { url, title -> shared += url to title }),
             cutoffFormatter = fixedCutoffFormatter(),
@@ -2319,6 +2371,8 @@ class StatusContainerHostJoinGateTest {
                             FakePermissionSource().permission,
                             FakeConfig().config,
                             requests = commands.requests.flows,
+                            network = AlwaysOnline,
+                            mobileData = AlwaysAllowed,
                         ),
                         scope,
                         commands = commands,
@@ -2442,6 +2496,8 @@ class StatusContainerHostJoinedFactsTest {
                 FakeSyncStatusSource(snapshot(completed = 3, total = 3)),
                 FakePermissionSource(GalleryAccess.GRANTED).permission,
                 FakeConfig(running).config,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             backgroundScope,
             cutoffFormatter = movableCutoffFormatter(clock),
@@ -2478,6 +2534,8 @@ class StatusContainerHostJoinedFactsTest {
                 FakePermissionSource(GalleryAccess.GRANTED).permission,
                 FakeConfig().config,
                 download = MutableStateFlow(DownloadProgress(40, 52, inFlight = 1)),
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
@@ -2538,6 +2596,8 @@ class StatusContainerHostRefusalTest {
                     foreground = foreground,
                     verification = DeviceVerification(refusal = refusal),
                     requests = commands.requests.flows,
+                    network = AlwaysOnline,
+                    mobileData = AlwaysAllowed,
                 ),
                 scope,
                 commands = commands,

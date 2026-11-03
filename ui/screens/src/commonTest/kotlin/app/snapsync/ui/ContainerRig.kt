@@ -30,6 +30,8 @@ import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureRange
@@ -58,6 +60,8 @@ import app.snapsync.query.RequestStatuses
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.mobiledata.MobileDataQuery
+import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.wheel_end_hour
@@ -116,6 +120,8 @@ internal class ContainerRig(
     private val statuses = MembershipStatuses()
     private var lastRequest = 0L
 
+    private val mobileDataStatuses = MobileDataStatuses()
+
     private fun <T> answered(on: RequestStatuses<T>, answer: T?): RequestId = RequestId(++lastRequest).also { id ->
         on.begun(id)
         answer?.let { on.done(id, it) }
@@ -137,6 +143,10 @@ internal class ContainerRig(
                 override val returned: Flow<Unit> = emptyFlow()
             },
             foreground = foreground,
+            mobileData = object : MobileDataQuery {
+                override fun current(): MobileDataChoice = MobileDataChoice.ALLOWED
+                override val changes = mobileDataStatuses.change.status
+            },
             requests = RequestStatusFlows(
                 join = statuses.join.status,
                 settings = statuses.settings.status,
@@ -190,9 +200,9 @@ internal class ContainerRig(
                 return ReportOutcome.SENT
             }
 
-            override suspend fun setMobileData(on: Boolean): Boolean {
-                record("setMobileData:$on")
-                return true
+            override fun setMobileData(choice: MobileDataChoice): RequestId {
+                record("setMobileData:${choice == MobileDataChoice.ALLOWED}")
+                return answered(mobileDataStatuses.change, MobileDataOutcome.Saved(choice))
             }
 
             override fun restoreKey(key: EventKey): RequestId {

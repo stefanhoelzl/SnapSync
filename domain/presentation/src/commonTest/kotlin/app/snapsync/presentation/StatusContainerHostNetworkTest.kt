@@ -6,6 +6,7 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -21,6 +22,8 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.mobiledata.MobileDataQuery
+import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
@@ -88,7 +91,10 @@ class StatusContainerHostNetworkTest {
                 creation = MutableStateFlow(creation),
                 verification = DeviceVerification(MutableStateFlow(attested)),
                 network = network,
-                mobileData = MutableStateFlow(mobileData),
+                mobileData = object : MobileDataQuery {
+                    override fun current() = if (mobileData) MobileDataChoice.ALLOWED else MobileDataChoice.WIFI_ONLY
+                    override val changes = MobileDataStatuses().change.status
+                },
                 requests = commands.requests.flows,
             ),
             scope,

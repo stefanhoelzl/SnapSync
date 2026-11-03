@@ -110,6 +110,8 @@ class ServiceFaultReductionTest {
                 ),
                 pending = MutableStateFlow(pending),
                 requests = commands.requests.flows,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             scope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),

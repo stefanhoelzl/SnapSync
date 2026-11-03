@@ -92,6 +92,8 @@ class CreateFormClockTest {
                 creation = MutableStateFlow(creation),
                 foreground = foreground,
                 requests = commands.requests.flows,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             scope,
             commands = commands,

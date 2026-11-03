@@ -306,6 +306,8 @@ class RangeIntentsTest {
                 MutableStateFlow(null),
                 creation = MutableStateFlow(CreationStatus.Idle),
                 requests = commands.requests.flows,
+                network = AlwaysOnline,
+                mobileData = AlwaysAllowed,
             ),
             scope,
             commands = commands,

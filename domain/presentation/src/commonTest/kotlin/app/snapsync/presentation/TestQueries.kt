@@ -22,6 +22,9 @@ import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.mobiledata.MobileDataOutcome
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
@@ -31,16 +34,22 @@ import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
+import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.mobiledata.MobileDataQuery
+import app.snapsync.query.mobiledata.MobileDataStatuses
+import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 /** A query bundle whose shareable count is [count]; by default no count is available. */
@@ -105,6 +114,9 @@ internal class TestRequests {
         switch = statuses.switch.status,
         rename = statuses.rename.status,
     )
+
+    /** The mobile-data choice's changes, answered as the live door's work answers them. */
+    val mobileData = MobileDataStatuses()
     private var next = 0L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
 
@@ -180,7 +192,8 @@ internal class TestCommands(
     override suspend fun sendDiagnostics(note: String, context: ReportContext) = sendDiagnostics.invoke(note, context)
 
     // The menu's mobile-data switch saves; a test about it overrides this.
-    override suspend fun setMobileData(on: Boolean) = true
+    override fun setMobileData(choice: MobileDataChoice) =
+        requests.ask(requests.mobileData.change, MobileDataOutcome.NotSaved(choice)) { MobileDataOutcome.Saved(choice) }
 
     // Restoring a lost key is answered nowhere the screen reads; a test about it overrides this.
     override fun restoreKey(key: EventKey) =
@@ -194,4 +207,16 @@ internal fun testDiagnostics(log: (String) -> Unit = {}, onIntentError: (Throwab
 /** A sync snapshot that holds [status] and never moves — for a test about something other than the snapshot. */
 internal class FixedSync(status: SyncStatus) : SyncStatusSource {
     override val status: StateFlow<SyncStatus> = MutableStateFlow(status)
+}
+
+/** A host whose photos may always use mobile data, and whose choice no test changes. */
+internal object AlwaysAllowed : MobileDataQuery {
+    override fun current(): MobileDataChoice = MobileDataChoice.ALLOWED
+    override val changes: StateFlow<RequestStatus<MobileDataOutcome>> = MutableStateFlow(RequestStatus.Idle)
+}
+
+/** A host with no network watch: online, and never returning from anything. */
+internal object AlwaysOnline : NetworkStatusQuery {
+    override val access: StateFlow<NetworkAccess> = MutableStateFlow(NetworkAccess.Online(restricted = false))
+    override val returned: Flow<Unit> = emptyFlow()
 }
