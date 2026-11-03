@@ -6,6 +6,7 @@ import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
@@ -233,6 +234,76 @@ class AlbumIntegrationTest {
             screen<Layer.Joined> { it.membership.savesToAlbum }
             event<WorldEvent.LibraryAlbumCreated> { it.album != first && it.title == "Party" }
             event<WorldEvent.LibraryJoinedAlbum> { it.album != first && it.asset == RECEIVED }
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "A deleted album is recreated only when the member asks",
+        scenario = "A deleted album stays deleted",
+    )
+    fun a_settings_change_that_leaves_the_album_on_does_not_bring_a_deleted_album_back() = behaviour {
+        val album = given {
+            val (_, album) = joinedSavingToAlbum(name = "Party")
+            album
+        }
+
+        whenever { library.deleteAlbum(album) }
+        then { settled { true } }
+
+        // Receiving turned off: a saved change, but not the album turned on — so not the member asking for it again.
+        whenever { reconfigure(Choices(direction = Direction.UploadOnly)) }
+        then {
+            screen<Layer.Joined> { !it.membership.receives }
+            never<WorldEvent.LibraryAlbumCreated>()
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "event-album",
+        requirement = "A deleted album is recreated only when the member asks",
+        scenario = "On Android later photos arrive in the camera folder",
+    )
+    fun on_android_a_settings_change_that_leaves_the_album_on_keeps_a_deleted_folder_deleted() = behaviour {
+        val album = given {
+            androidLibrary()
+            val (_, album) = joinedSavingToAlbum(name = "Party")
+            receivedFrom(DEV_F, "FQ", into = {
+                event<WorldEvent.LibraryJoinedAlbum> { it.album == album && it.asset == RECEIVED }
+            })
+            album
+        }
+
+        whenever { library.deleteAlbum(album) }
+        then { settled { true } }
+
+        // Sharing turned off, receiving kept: a saved change that leaves the album on.
+        whenever { reconfigure(Choices(direction = Direction.DownloadOnly)) }
+        then {
+            screen<Layer.Joined> { !it.membership.shares }
+            never<WorldEvent.LibraryAlbumCreated>()
+            settled { true }
+        }
+
+        // The next received photo still lands in the camera folder: no new folder was made for it.
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("FR"))
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
+
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.LibraryAssetCreated> { it.asset == LATER }
+            never<WorldEvent.LibraryJoinedAlbum>()
+            never<WorldEvent.LibraryAlbumCreated>()
             settled { true }
         }
     }

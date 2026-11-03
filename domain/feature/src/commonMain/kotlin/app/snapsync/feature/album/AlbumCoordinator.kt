@@ -59,9 +59,10 @@ class AlbumCoordinator(
      * on an [optIn], recreates and overwrites the map if the stored id is dangling (the user deleted the album).
      * **App-only** — the sole-creator invariant that removes the cross-process create race (design D3).
      *
-     * [optIn] says whether this call is the member's deliberate opt-in — a join, a rejoin or a settings Save —
-     * rather than the grant subscription's replay at a launch. Only an opt-in recreates a deleted album: the member
-     * deleted it, so it comes back only when they ask for it again.
+     * [optIn] says whether this call is the member's deliberate opt-in — a join, a rejoin, or a settings Save that
+     * turned the album on (`AlbumAsk`) — rather than the grant subscription's replay at a launch or a Save that left
+     * the album as it was. Only an opt-in recreates a deleted album: the member deleted it, so it comes back only when
+     * they ask for it again.
      */
     suspend fun ensureAlbum(
         eventId: EventId,
