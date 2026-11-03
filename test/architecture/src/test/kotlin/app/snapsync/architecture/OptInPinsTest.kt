@@ -94,6 +94,9 @@ class OptInPinsTest {
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyStore.kt" to mapOf(
             "MintsKeptKey" to Pin(1, "the one keep that says a join's key is kept"),
         ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/upload/StoredRows.kt" to mapOf(
+            "MintsUploadRow" to Pin(1, "the one mapper that reads an upload row as its state's type"),
+        ),
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/FileCipher.kt" to mapOf(
             "KeyMaterial" to Pin(1, "the cipher: each file's key is derived from the event key's bytes"),
         ),
