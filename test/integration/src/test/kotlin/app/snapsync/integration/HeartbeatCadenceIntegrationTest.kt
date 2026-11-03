@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Choices
 import app.snapsync.control.Verifies
+import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.PhotoGrant
@@ -115,6 +116,52 @@ class HeartbeatCadenceIntegrationTest {
         }
     }
 
+    /**
+     * With mobile data off, the busy heartbeat's work is transfers that wait for an unrestricted network anyway, so it
+     * waits for one too — and is what resumes them, in the background, once the phone reaches such a Wi-Fi.
+     */
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "Reaching Wi-Fi sends what waited",
+    )
+    fun with_mobile_data_off_the_busy_heartbeat_waits_for_an_unrestricted_network() = behaviour(startAt = DURING) {
+        given {
+            photoAccess(PhotoGrant.GRANTED)
+            joinedEvent(Choices(direction = Direction.UploadOnly), startsAt = SHORT_START, endsAt = SHORT_END)
+            fellowMember(DEV_F, "FQ")
+            mobileDataOff()
+        }
+        whenever { heartbeat() }
+        then {
+            event<WorldEvent.WakeScheduled> { it.wake.cadence == BUSY && it.wake.network == UNRESTRICTED }
+            never<WorldEvent.WakeScheduled> { it.wake.cadence == BUSY && it.wake.network != UNRESTRICTED }
+        }
+    }
+
+    /** An idle heartbeat moves no photo: it waits for any connection, whatever the mobile-data choice. */
+    @Test
+    @Verifies(spec = "mobile-data", requirement = "Everything but photo transfers keeps working on any network")
+    fun with_mobile_data_off_the_idle_heartbeat_waits_for_any_network() = behaviour {
+        given {
+            joinedEvent(Choices(direction = Direction.DownloadOnly))
+            mobileDataOff()
+        }
+        whenever { heartbeat() }
+        then {
+            event<WorldEvent.WakeScheduled> { it.wake.cadence == IDLE && it.wake.network == ANY }
+            never<WorldEvent.WakeScheduled> { it.wake.network != ANY }
+        }
+    }
+
+    /** The app menu's switch turned off, and whatever it changed done. */
+    private suspend fun Given.mobileDataOff() =
+        step("mobile data off", act = { tap(UiIntent.MobileData(false)) }, until = {
+            event<WorldEvent.UiChanged> { !it.ui.mobileData.on }
+            settled { true }
+        })
+
     @Test
     @Verifies(spec = "delivery", requirement = "Leaving or switching stops every transfer for the old event")
     fun leaving_withdraws_the_heartbeat() = behaviour {
@@ -133,6 +180,8 @@ class HeartbeatCadenceIntegrationTest {
         const val HEARTBEAT = "heartbeat"
         const val BUSY = "busy"
         const val IDLE = "idle"
+        const val UNRESTRICTED = "unrestricted"
+        const val ANY = "any"
         const val HOURLY = 3600L
         const val SHORT_START = "2026-05-15T00:00:00"
         const val SHORT_END = "2026-05-20T00:00:00"

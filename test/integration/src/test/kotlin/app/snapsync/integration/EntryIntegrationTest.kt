@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 
 /**
@@ -181,6 +182,36 @@ class EntryIntegrationTest {
             event<WorldEvent.CompletionReleased>()
             // The download arm's guard refuses it, and no tail runs for it, so nothing re-arms.
             never<WorldEvent.BackendReceived> { it.operation == UNION }
+            never<WorldEvent.WakeScheduled>()
+        }
+    }
+
+    /**
+     * Leave is local first: the backend may still count this device a member of the event it left, and keep pushing it
+     * for that event. Joined to another event since, such a push must fetch nothing and wake no tail for the new one.
+     */
+    @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Only new photos are announced by a silent wake, and never only by it",
+        scenario = "A left event's wakes are ignored",
+    )
+    fun a_silent_push_for_a_left_event_reaches_no_arm_and_joins_no_tail() = behaviour {
+        val left = given {
+            joinedEvent().also {
+                step("left", act = { tap(UiIntent.LeaveEvent) }, until = {
+                    screen<Layer.CreateEvent>()
+                    settled { true }
+                })
+                joinedEvent()
+                backgroundLaunch()
+            }
+        }
+        whenever { os.silentPush(left) }
+        then {
+            event<WorldEvent.CompletionReleased>()
+            never<WorldEvent.BackendReceived> { it.operation == UNION }
+            // A tail for the joined event would re-arm its heartbeat.
             never<WorldEvent.WakeScheduled>()
         }
     }
