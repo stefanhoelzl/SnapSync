@@ -4,12 +4,12 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.data.upload.CreateAnswer
 import app.snapsync.data.upload.KeyLookup
 import app.snapsync.data.upload.OwnPhotoResources
+import app.snapsync.data.upload.RecentWalk
 import app.snapsync.data.upload.SendFrom
 import app.snapsync.data.upload.UploadTier
 import app.snapsync.data.upload.WalkRecord
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.TopUpPlan
-import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.inbound.Log
@@ -25,17 +25,20 @@ private val log = Log("CreateJobs")
  * the staged files on disk. Cancelled when the operating system's time is up, between two creations: each creation
  * and its record are one step the tier makes non-cancellable.
  *
- * A row is sent from the resource the walk just read when it is [inHand]; otherwise its photo is looked up again. A
- * photo that resolves to nothing has left the library — or, under a partial grant, the selection — and its row is
- * withdrawn by key; a library that cannot be read now is evidence of nothing, and the row is kept.
+ * A row is sent from the resource the walk just read when that walk handed it over ([RecentWalk]); otherwise its photo
+ * is looked up again. A photo that resolves to nothing has left the library — or, under a partial grant, the
+ * selection — and its row is withdrawn by key; a library that cannot be read now is evidence of nothing, and the row is
+ * kept.
  */
 class CreateJobs(
     private val tier: UploadTier,
     private val resources: OwnPhotoResources,
     private val walk: WalkRecord,
+    private val recent: RecentWalk,
 ) {
     @EntryPointCall
-    suspend operator fun invoke(event: EventId, plan: TopUpPlan, inHand: Map<UploadKey, SendFrom>): UploadPass {
+    suspend operator fun invoke(event: EventId, plan: TopUpPlan): UploadPass {
+        val inHand = recent.take()
         for (row in plan.rows) {
             currentCoroutineContext().ensureActive()
             if (created(event, row, inHand[row.key]) == CreateAnswer.Full) return UploadPass.WORK_LEFT

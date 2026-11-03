@@ -77,9 +77,10 @@ class UploadUseCasesTest {
     private val library = Library(LibraryAssets.photo("A1", DURING))
     private val resources = OwnPhotoResources(library.own)
     private val walk = WalkOwnPhotos(library.own, world.reads, resources)
-    private val record = RecordWalk(world.walk)
+    private val recent = app.snapsync.data.upload.RecentWalk()
+    private val record = RecordWalk(world.walk, recent)
     private val plan = PlanTopUp(world.reads)
-    private val create = CreateJobs(world.tier, resources, world.walk)
+    private val create = CreateJobs(world.tier, resources, world.walk, recent)
 
     private fun key(asset: String) = UploadKey.of(AssetId.parse(asset)!!, ResourceRole.PRIMARY, "IMG.JPG")
 
@@ -98,28 +99,28 @@ class UploadUseCasesTest {
         val walked = assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution()))
 
         assertEquals(listOf(key("A1")), walked.diff.fresh.map { it.key })
-        assertTrue(record(world.event, walked.diff).added)
+        assertTrue(record(world.event, walked).added)
         val planned = plan(world.event, library.contribution().policy)
         assertEquals(listOf(key("A1")), planned.rows.map { it.key })
 
-        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned, walked.handles))
+        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned))
         assertIs<UploadRow.Requested>(rowOf("A1"))
 
         val again = assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution()))
         assertEquals(emptyList(), again.diff.fresh)
-        assertEquals(false, record(world.event, again.diff).added)
+        assertEquals(false, record(world.event, again).added)
     }
 
     @Test
     fun `a photo that left the library is withdrawn by the walk that shows it gone`() = runTest {
         world.joined()
-        record(world.event, assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution())).diff)
+        record(world.event, assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution())))
         library.photos.value = emptyList()
 
         val gone = assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution()))
 
         assertEquals(listOf(key("A1")), gone.diff.departed)
-        record(world.event, gone.diff)
+        record(world.event, gone)
         assertNull(rowOf("A1"))
     }
 
@@ -132,7 +133,7 @@ class UploadUseCasesTest {
 
         world.databases.lock()
         assertIs<WalkOutcome.Unwalked>(walk(world.event, library.contribution()))
-        assertTrue(record(world.event, unread.diff).added.not(), "nothing to add, and a failed write logged")
+        assertTrue(record(world.event, unread).added.not(), "nothing to add, and a failed write logged")
         assertEquals(emptyList(), plan(world.event, library.contribution().policy).rows)
     }
 
@@ -150,7 +151,7 @@ class UploadUseCasesTest {
         val planned = plan(world.event, library.contribution().policy)
         assertEquals(listOf(key("A1"), key("GONE")), planned.rows.map { it.key })
 
-        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned, emptyMap()))
+        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned))
         assertIs<UploadRow.Requested>(rowOf("A1"))
         assertNull(rowOf("GONE"), "a photo that resolves to nothing has left the library")
 
@@ -158,7 +159,8 @@ class UploadUseCasesTest {
         world.session.answer = CreateOutcome.LIMIT_EXCEEDED
         val full = plan(world.event, library.contribution().policy)
         assertEquals(listOf(key("A2")), full.rows.map { it.key })
-        assertEquals(UploadPass.WORK_LEFT, create(world.event, full, mapOf(key("A2") to SessionWorld.From)))
+        recent.put(mapOf(key("A2") to SessionWorld.From))
+        assertEquals(UploadPass.WORK_LEFT, create(world.event, full))
         assertIs<UploadRow.Discovered>(rowOf("A2"), "a refused create leaves the row needing a job")
     }
 
@@ -169,7 +171,7 @@ class UploadUseCasesTest {
         val planned = plan(world.event, library.contribution().policy)
         library.grant.value = LibraryGrant.DENIED
 
-        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned, emptyMap()))
+        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned))
 
         assertIs<UploadRow.Discovered>(rowOf("A1"))
         assertEquals(emptyList(), world.session.made)
