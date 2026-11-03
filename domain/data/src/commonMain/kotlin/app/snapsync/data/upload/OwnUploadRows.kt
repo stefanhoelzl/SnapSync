@@ -2,6 +2,7 @@ package app.snapsync.data.upload
 
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.upload.DestinationPath
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.ports.DbResult
@@ -25,6 +26,13 @@ class OwnUploadRows(private val db: SharedDatabase) {
         },
     )
 
+    /** The row of [event] whose upload was addressed to [destination] — how an OS-held job finds its row again. */
+    fun byDestination(event: EventId, destination: DestinationPath): RowRead = rowRead(
+        db.execute {
+            it.ledgerQueries.selectByDestinationPath(event.value, destination.path, mapper::stored).executeAsOneOrNull()
+        },
+    )
+
     /** How many of [event]'s rows have a job in flight. */
     fun inFlight(event: EventId): CountRead = counted(
         db.execute { it.ledgerQueries.countInState(event.value, LedgerState.REQUESTED).executeAsOne() },
@@ -33,6 +41,16 @@ class OwnUploadRows(private val db: SharedDatabase) {
     private fun counted(read: DbResult<Long>): CountRead = when (read) {
         is DbResult.Ok -> CountRead.Counted(read.value.toInt())
         is DbResult.Failed -> CountRead.Unavailable(read.detail)
+    }
+
+    private fun rowRead(read: DbResult<StoredRows.Mapped?>): RowRead = when (read) {
+        is DbResult.Ok -> found(read.value?.row)
+        is DbResult.Failed -> RowRead.Unavailable(read.detail)
+    }
+
+    private fun found(row: UploadRow?): RowRead = when (row) {
+        null -> RowRead.Absent
+        is UploadRow -> RowRead.Found(row)
     }
 
     private fun rowsRead(read: DbResult<List<StoredRows.Mapped>>): RowsRead = when (read) {
@@ -47,6 +65,15 @@ sealed interface RowsRead {
 
     /** The ledger could not be read now (a locked device). [detail] is diagnostics only. */
     data class Unavailable(val detail: String) : RowsRead
+}
+
+/** One row a read found, that there is none, or that it could not read. */
+sealed interface RowRead {
+    class Found(val row: UploadRow) : RowRead
+
+    data object Absent : RowRead
+
+    data class Unavailable(val detail: String) : RowRead
 }
 
 /** A count a read made, or that it could not read. */
