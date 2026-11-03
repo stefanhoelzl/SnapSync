@@ -9,6 +9,7 @@ import app.cash.sqldelight.db.SqlSchema
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.inMemoryDatabases
+import app.snapsync.mock.mobileDataAnswering
 import app.snapsync.model.AssetPresence
 import app.snapsync.model.AssetRef
 import app.snapsync.ports.DatabaseHandlers
@@ -102,9 +103,13 @@ fun downloadJobs(
     download: Download = RecordingDownload(),
     staging: StagingService = StagingService(RecordingFiles()),
     network: () -> TransferNetwork = { TransferNetwork.ANY },
-): DownloadJobs = DownloadJobs(staging, download, onStaged = { _, _, _ -> }, network = network, headers = {
-    emptyMap()
-})
+): DownloadJobs = DownloadJobs(
+    staging,
+    download,
+    onStaged = { _, _, _ -> },
+    network = mobileDataAnswering(network),
+    headers = { emptyMap() },
+)
 
 /**
  * [Databases] over real in-memory SQLite that records every statement a service's driver ran, and the transaction it

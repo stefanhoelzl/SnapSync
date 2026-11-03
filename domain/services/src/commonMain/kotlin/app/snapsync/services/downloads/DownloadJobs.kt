@@ -3,6 +3,7 @@ package app.snapsync.services.downloads
 import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.crypto.Landing
 import app.snapsync.data.crypto.OpenAnswer
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
@@ -12,7 +13,6 @@ import app.snapsync.model.PendingDownload
 import app.snapsync.model.roleFromUploadKey
 import app.snapsync.ports.Download
 import app.snapsync.ports.StartResult
-import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.staging.StagingService
 import co.touchlab.kermit.Logger
@@ -136,7 +136,7 @@ class DownloadJobs(
      * The networks a download started NOW may use — read as each one starts, so a change of
      * the member's choice governs only the downloads that start after it.
      */
-    private val network: () -> TransferNetwork,
+    private val network: MobileDataStore,
     /**
      * The headers every download carries (`BackendExchange.versionHeaders`): the version the app declares on every
      * request — the download redirect's too (`api/openapi.yaml`, `downloadResource`). Read per transfer.
@@ -300,7 +300,7 @@ class DownloadJobs(
                 log.w { "skipping unfetchable download url for ${next.resource.resourceKey}" }
                 continue
             }
-            when (download.start(next.resource.url, headers(), tag, network())) {
+            when (download.start(next.resource.url, headers(), tag, network.transferNetwork())) {
                 StartResult.Started -> inFlight += tag
                 StartResult.NotStarted -> log.w { "the download was not started for ${next.resource.resourceKey} — left pending" }
             }

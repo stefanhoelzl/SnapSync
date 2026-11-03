@@ -1,7 +1,9 @@
 package app.snapsync.feature.diagnostics
 
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.trust.RefusalFacts
+import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.format.TimestampText
 import app.snapsync.model.AppFacts
@@ -22,7 +24,6 @@ import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.settings.MobileDataSetting
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
@@ -61,7 +62,7 @@ class CollectDiagnosticDump(
     /** The device's network, read fresh for the report — not the screen's notice, which lags by its grace period. */
     private val network: NetworkReadings,
     /** The device's mobile-data choice — a device fact, so a report without an event carries it too. */
-    private val mobileData: MobileDataSetting,
+    private val mobileData: MobileDataStore,
     /** The device's power, battery, thermal state and background allowance. */
     private val conditions: DeviceConditionsReadings,
     /** The facts only the composition holds — the device id, the zone, the footprint, the selection's size. */
@@ -218,7 +219,7 @@ class CollectDiagnosticDump(
         }
         buildMap {
             put(DiagnosticKeys.NETWORK, access.await()) { it.label }
-            put(DiagnosticKeys.MOBILE_DATA, mobileData.describe())
+            put(DiagnosticKeys.MOBILE_DATA, mobileData.stored().label)
             putConditions(reading.await())
             put(DiagnosticKeys.DEVICE_ID, app.deviceId) { it }
             put(DiagnosticKeys.TIME_ZONE, app.timeZone) { it }
@@ -287,4 +288,12 @@ private val NetworkAccess.label: String
         is NetworkAccess.Online -> if (restricted) "online_restricted" else "online"
         NetworkAccess.Offline -> "offline"
         NetworkAccess.Blocked -> "blocked"
+    }
+
+/** How the report names what the mobile-data choice holds: `on` (nothing stored is on), `off`, or `unreadable`. */
+private val StoredChoice.label: String
+    get() = when (this) {
+        StoredChoice.ABSENT, StoredChoice.ON -> "on"
+        StoredChoice.OFF -> "off"
+        StoredChoice.OTHER, StoredChoice.UNREADABLE -> "unreadable"
     }

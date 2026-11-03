@@ -16,6 +16,8 @@ import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.domain.request.RequestId
@@ -166,7 +168,10 @@ class StatusContainerHost(
     private val pending = sources.pending
     private val versionRefusal = sources.versionRefusal
     private val network = sources.network
-    private val mobileData = sources.mobileData
+    private val mobileDataQuery = sources.mobileData
+
+    /** The choice the menu's switch shows: read as the screen is built, then moved only by a change's answer. */
+    private val mobileData = MutableStateFlow(mobileDataQuery.current() == MobileDataChoice.ALLOWED)
     private val requests = sources.requests
     private val renameFlow: StateFlow<RequestStatus<RenameResult>> = requests.rename
     private val store = sources.store
@@ -714,7 +719,13 @@ class StatusContainerHost(
          */
         fun onMobileData(on: Boolean) = intent {
             local.update { it.copy(mobileDataNotSaved = false) }
-            if (!commands.setMobileData(on)) local.update { it.copy(mobileDataNotSaved = true) }
+            val id = commands.setMobileData(if (on) MobileDataChoice.ALLOWED else MobileDataChoice.WIFI_ONLY)
+            val outcome = mobileDataQuery.changes.answerTo(id)
+            mobileData.value = outcome.inEffect == MobileDataChoice.ALLOWED
+            when (outcome) {
+                is MobileDataOutcome.Saved -> Unit
+                is MobileDataOutcome.NotSaved -> local.update { it.copy(mobileDataNotSaved = true) }
+            }
         }
 
         /** The menu's "Report a problem": the menu gives way to the sheet in one edit, so the two never stack. */

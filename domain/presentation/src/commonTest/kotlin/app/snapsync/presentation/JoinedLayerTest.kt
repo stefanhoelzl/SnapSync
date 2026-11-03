@@ -101,6 +101,8 @@ class JoinedLayerTest {
                     inviteKey?.let { KeyPresence.Held(heldKey(it)) } ?: KeyPresence.NotNeeded,
                 ),
             ),
+            network = AlwaysOnline,
+            mobileData = AlwaysAllowed,
         ),
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),

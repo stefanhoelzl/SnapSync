@@ -5,7 +5,6 @@ import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchVerdict
-import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
@@ -17,11 +16,10 @@ import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Store
 import app.snapsync.query.RequestStatus
+import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.network.NetworkStatusQuery
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Every read-model [StatusContainerHost] reduces over, in one bundle.
@@ -85,15 +83,15 @@ class StatusSources(
     val versionRefusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),
     /**
      * Whether the app can reach the network, as the member is told, and when a missing one comes back: the app says
-     * when it cannot reach the network. Defaults to always-online, so a host that does not exercise it constructs
-     * unchanged.
+     * when it cannot reach the network.
      */
-    val network: NetworkStatusQuery = AlwaysOnline,
+    val network: NetworkStatusQuery,
     /**
      * The device's mobile-data choice: what the menu's switch shows, and whether work on a
-     * restricted network reads as waiting for Wi-Fi. Inert default: photos may use any network.
+     * restricted network reads as waiting for Wi-Fi — read once the screen is built, then moved by the member's
+     * changes as they are answered.
      */
-    val mobileData: StateFlow<Boolean> = MutableStateFlow(true),
+    val mobileData: MobileDataQuery,
     /**
      * This build's store page, or `null` when it carries none. A build constant supplied by the
      * composition root, not a source — it is here because the ONE screen that needs it is the refusal
@@ -145,12 +143,6 @@ class StatusDiagnostics(
      */
     val onIntentError: (Throwable) -> Unit,
 )
-
-/** A host with no network watch: online, and never returning from anything. */
-private object AlwaysOnline : NetworkStatusQuery {
-    override val access: StateFlow<NetworkAccess> = MutableStateFlow(NetworkAccess.Online(restricted = false))
-    override val returned: Flow<Unit> = emptyFlow()
-}
 
 /**
  * The attestation's verdict, as the status host reads it: its two halves travel together.

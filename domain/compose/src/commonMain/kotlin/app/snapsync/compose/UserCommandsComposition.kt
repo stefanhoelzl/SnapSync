@@ -9,10 +9,12 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.entrypoints.JoinRequest
 import app.snapsync.entrypoints.KeyRestoreRequest
+import app.snapsync.entrypoints.MobileDataRequest
 import app.snapsync.entrypoints.RenameRequest
 import app.snapsync.entrypoints.SettingsRequest
 import app.snapsync.entrypoints.SwitchRequest
@@ -193,8 +195,13 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
 
     // The device's mobile-data choice from the app menu: one shared preference, read by
     // each transfer as it is created, so the change governs only what starts after it.
-    override suspend fun setMobileData(on: Boolean): Boolean =
-        awaitingOnCoreLane("tap.setMobileData", params = "on=$on") { services.mobileData.set(on) }
+    override fun setMobileData(choice: MobileDataChoice): RequestId = requested(
+        "tap.setMobileData",
+        "choice=$choice",
+        nextId(),
+        mobileData.statuses.change,
+        work.mobileDataChanged,
+    ) { id -> MobileDataRequest(id, choice) }
 
     // Rename the joined event: unlike `reconfigure`, which edits only this device's settings, this rewrites the SHARED
     // event — every member picks the new name up on their next refresh (`OnRenameRequested`). Answered on the rename

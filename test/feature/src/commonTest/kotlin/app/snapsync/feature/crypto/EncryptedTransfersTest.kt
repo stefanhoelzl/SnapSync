@@ -31,6 +31,7 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.mock.mobileDataAnswering
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.Resource
@@ -176,7 +177,7 @@ class EncryptedTransfersTest {
         resources = noDiscovery,
         gallery = exporting(device.files),
         files = device.files,
-        network = { TransferNetwork.ANY },
+        network = mobileDataAnswering { TransferNetwork.ANY },
         sealing = device.sealing,
     )
 
@@ -225,7 +226,7 @@ class EncryptedTransfersTest {
             staging = StagingService(receiver.files),
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
-            network = { TransferNetwork.ANY },
+            network = mobileDataAnswering { TransferNetwork.ANY },
             headers = { emptyMap() },
             opening = receiver.opening,
         )
@@ -293,7 +294,7 @@ class EncryptedTransfersTest {
             staging = StagingService(receiver.files),
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
-            network = { TransferNetwork.ANY },
+            network = mobileDataAnswering { TransferNetwork.ANY },
             headers = { emptyMap() },
             opening = receiver.opening,
         )
@@ -405,7 +406,7 @@ class EncryptedTransfersTest {
             staging = StagingService(receiver.files),
             download = RecordingDownload(),
             onStaged = { _, _, path -> staged += path },
-            network = { TransferNetwork.ANY },
+            network = mobileDataAnswering { TransferNetwork.ANY },
             headers = { emptyMap() },
             opening = receiver.opening,
         )

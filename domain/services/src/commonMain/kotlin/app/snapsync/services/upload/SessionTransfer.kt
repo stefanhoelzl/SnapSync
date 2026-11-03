@@ -83,7 +83,7 @@ class SessionTransfer(
                 log.w { "createJob: malformed destination URL — not creating" }
                 return@body UploadCreateOutcome.FAILED
             }
-            val target = UploadTarget(request.url, request.headers, setup.network())
+            val target = UploadTarget(request.url, request.headers, setup.network.transferNetwork())
             val handle = resource.data.galleryHandle()
             when (val seal = setup.sealOf(request)) {
                 UploadSeal.Plain -> if (session.takesResources && handle != null) {

@@ -8,6 +8,7 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.request.RequestId
 
 /**
@@ -95,8 +96,8 @@ interface UserCommands {
 
     suspend fun sendDiagnostics(note: String, context: ReportContext): ReportOutcome
 
-    /** The device's mobile-data choice, from the app menu: answers whether it was saved. */
-    suspend fun setMobileData(on: Boolean): Boolean
+    /** The device's mobile-data choice, from the app menu: answered, with the choice in effect, under the returned id. */
+    fun setMobileData(choice: MobileDataChoice): RequestId
 
     fun restoreKey(key: EventKey): RequestId
 }

@@ -146,6 +146,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `MembershipUpdate` | `:domain:domain` | `:domain:domain` Changed, Unchanged | no |
 | `MetricNode` | `:domain:ports` | `:domain:ports` Leaf | no |
 | `MintAnswerVerdict` | `:domain:domain` | `:domain:domain` Accept, NoVerdict, Refused | no |
+| `MobileDataOutcome` | `:domain:domain` | `:domain:domain` NotSaved, Saved | no |
+| `MobileDataQuery` | `:domain:query` | `:domain:presentation` AlwaysAllowed; `:domain:query` MobileDataLookup | no |
 | `NetworkAccess` | `:domain:domain` | `:domain:domain` Blocked, Offline, Online; `:domain:ports` Blocked, Offline, Online | no |
 | `NetworkAccess` | `:domain:ports` | `:domain:domain` Blocked, Offline, Online; `:domain:ports` Blocked, Offline, Online | no |
 | `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor; `:test:contracts` NetworkMonitorProxy | yes |
@@ -170,7 +172,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PlatformDeviceId` | `:domain:ports` | `:adapter:android` AndroidPlatformDeviceId; `:adapter:generic:app` NoPlatformDeviceId; `:test:contracts` PlatformDeviceIdProxy | no |
 | `Port` | `:domain:ports` | `:test:architecture` None | yes |
 | `PrefRead` | `:domain:ports` | `:domain:ports` Absent, Unavailable, Value | no |
-| `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences; `:domain:services` Prefs; `:test:contracts` PreferencesProxy | yes |
+| `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences; `:test:contracts` PreferencesProxy | yes |
 | `PreviewRead` | `:domain:data` | `:domain:data` Counted, NotReadable | no |
 | `ProcessInfo` | `:domain:ports` | `:adapter:android` AndroidProcessInfo; `:adapter:generic:mock` InMemoryProcessInfo, Reading; `:adapter:ios:app-only` IosProcessInfo; `:test:contracts` ProcessInfoProxy | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` Face, HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics; `:test:contracts` ProcessMetricsProxy | no |

@@ -163,7 +163,14 @@ class StatusContainerHostSurfacesTest {
         reportDestination: ReportDestination,
         albumContents: AlbumContents,
     ) = StatusContainerHost(
-        StatusSources(FakeSync(), MutableStateFlow(GalleryAccess.GRANTED), config, requests = commands.requests.flows),
+        StatusSources(
+            FakeSync(),
+            MutableStateFlow(GalleryAccess.GRANTED),
+            config,
+            requests = commands.requests.flows,
+            network = AlwaysOnline,
+            mobileData = AlwaysAllowed,
+        ),
         scope,
         commands = commands,
         cutoffFormatter = CutoffFormatter(

@@ -1,8 +1,10 @@
 package app.snapsync.diagnostics
 
+import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -33,11 +35,12 @@ import app.snapsync.model.StandbyBucket
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.NetworkAccess
+import app.snapsync.ports.PrefRead
+import app.snapsync.ports.Preferences
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
-import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,7 +88,7 @@ class CollectDiagnosticDumpTest {
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
         conditions: DeviceConditions = DeviceConditionsMock().port(),
         appFacts: () -> AppFacts = { APP_FACTS },
-        mobileData: MobileDataSetting = MobileDataSetting(inMemoryPreferences()),
+        mobileData: MobileDataStore = MobileDataStore(inMemoryPreferences()),
     ) = CollectDiagnosticDump(
         environment = environment,
         // The REAL log tail over the two log files: the app's in its private area, the extension's in the shared one.
@@ -261,12 +264,33 @@ class CollectDiagnosticDumpTest {
     @Test
     fun `the mobile-data choice is a device fact reported with no event joined`() = runTest {
         // Decision record `changes/archive/2026-10-07-mobile-data-per-device`, D5.
-        val setting = MobileDataSetting(inMemoryPreferences())
-        setting.set(false)
+        val setting = MobileDataStore(inMemoryPreferences())
+        setting.write(MobileDataChoice.WIFI_ONLY)
         val dump = collector(config = null, mobileData = setting).collect(NOTE, SCREEN)
 
         assertEquals("false", dump.state["joined"])
         assertEquals("off", dump.state[DiagnosticKeys.MOBILE_DATA])
+    }
+
+    @Test
+    fun `the mobile-data choice reads on untouched, and unreadable for a value no build writes`() = runTest {
+        val values = mutableMapOf<String, String>()
+        val untouched = collector(config = null, mobileData = MobileDataStore(inMemoryPreferences(values)))
+        assertEquals("on", untouched.collect(NOTE, SCREEN).state[DiagnosticKeys.MOBILE_DATA])
+
+        MobileDataStore(inMemoryPreferences(values)).write(MobileDataChoice.ALLOWED)
+        val chosen = collector(config = null, mobileData = MobileDataStore(inMemoryPreferences(values)))
+        assertEquals("on", chosen.collect(NOTE, SCREEN).state[DiagnosticKeys.MOBILE_DATA])
+
+        val locked = object : Preferences by inMemoryPreferences(values) {
+            override fun get(key: String): PrefRead = PrefRead.Unavailable("locked")
+        }
+        val unread = collector(config = null, mobileData = MobileDataStore(locked))
+        assertEquals("unreadable", unread.collect(NOTE, SCREEN).state[DiagnosticKeys.MOBILE_DATA])
+
+        values.keys.forEach { values[it] = "maybe" }
+        val foreign = collector(config = null, mobileData = MobileDataStore(inMemoryPreferences(values)))
+        assertEquals("unreadable", foreign.collect(NOTE, SCREEN).state[DiagnosticKeys.MOBILE_DATA])
     }
 
     @Test

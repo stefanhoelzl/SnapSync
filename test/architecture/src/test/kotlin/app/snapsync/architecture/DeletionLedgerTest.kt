@@ -358,6 +358,9 @@ class DeletionLedgerTest {
      * Network: a feature class that launched its own collection, held the grace rule inside it and was the screen's read
      * model too, bundled with the counts poller. The rule is the domain's (`NetworkNotice`), the watch scheduling's
      * (`GatedWatch`), what is told data's (`NetworkStatus`), the screen's read a query (`NetworkStatusQuery`).
+     * Mobile data: a service holding a `StateFlow` seeded at composition, set from a lambda in the command door and
+     * handed to the transfers as function references. The choice is the domain's (`MobileDataChoice`), its store data's
+     * (`MobileDataStore`), a change a request (`OnMobileDataChanged`, `SetMobileData`) answered on a status.
      */
     @Test
     fun `the small concepts' retired items stay dead`() {
@@ -365,7 +368,7 @@ class DeletionLedgerTest {
         val resurrections = buildList {
             val pre = """(class|interface|object) (Push""" + "TokenSource|PushToken" + "Request|PushToken" +
                 "Publisher|BackendPushToken" + "Publisher|PushTail" + "Guard|Network" + "Watch|Foreground" +
-                "Watches|NetworkStatus" + "Source)\\b"
+                "Watches|NetworkStatus" + "Source|MobileData" + "Setting)\\b"
             declared(files, pre).forEach { add("the small concepts' pre-layer types in $it (the layers' — 4.8)") }
             declared(files, """class Push""" + "Registration\\(\\s*private val publisher").forEach {
                 add("a collecting push registration in $it (RegisterPush, run by its entry points — 4.8)")

@@ -1561,7 +1561,7 @@ class (readable after first unlock; see `DataProtectionEntitlementTest`):
 | `upload-staging/` | bytes staged for the app's background `URLSession` uploads | `IosUrlSessionUploadPlatform` |
 | `download-staging/` | downloaded bytes awaiting import, under `<eventId>/<sourceDeviceId>/` (a transfer an earlier build started stages without the event folder). The download store keeps each path **relative** to the container (schema 4 rewrote the absolute ones) | `StagingService` over `IosFiles` |
 | `ext-debug.log` (+ `.1`) | the extension's verbatim log (the app's is `Documents/debug.log` in its own container) | log writers; read by `LogTailService` |
-| defaults `app.snapsync.settings.mobileData` | the device's mobile-data choice | `MobileDataSetting` over `IosPreferences` (`AndroidPreferences` on Android) |
+| defaults `app.snapsync.settings.mobileData` | the device's mobile-data choice | `MobileDataStore` over `IosPreferences` (`AndroidPreferences` on Android) |
 | defaults `app.snapsync.push.lastRegistered` | the last push registration the backend accepted (token, env, device id); dies with the install, so a reinstall publishes | `PushRegistrationRecord` over `IosPreferences` |
 | legacy: `eventconfig.json`, `device-manifest/last-uploaded.json`, `membership/pending-leaves.txt`, `push-registration/last-registered.txt`, defaults `app.snapsync.album.map` / `.filled` / `app.snapsync.check.*` | where the shared records lived before they moved; an updated device's app copies each once and deletes it (`PENDING_CLEANUPS.md`) | `LegacyRecords`, `PushRegistrationRecord` |
 
@@ -1693,7 +1693,7 @@ SE2), so:
   Low Data Mode / Data Saver), which the status line reads for "Waiting for Wi-Fi…" (capability `mobile-data`).
 - **A photo transfer carries the device's network rule** (capability `mobile-data`; decision records
   `changes/archive/2026-10-04-mobile-data-for-photos` and `changes/archive/2026-10-07-mobile-data-per-device`): `TransferNetwork`, read
-  from the device's choice (`MobileDataSetting`, one key in the shared `Preferences` both iOS processes read — an
+  from the device's choice (`MobileDataStore`, one key in the shared `Preferences` both iOS processes read — an
   unreadable one holds to Wi-Fi) the moment a transfer is CREATED and
   handed over on `UploadTarget.network` / `Download.start` — so a change of the choice governs only later transfers,
   with no state of its own. Whoever owns "when may this run" honours it: iOS's request flags (`applyTransferNetwork`,
