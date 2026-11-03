@@ -97,6 +97,10 @@ class OptInPinsTest {
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/upload/StoredRows.kt" to mapOf(
             "MintsUploadRow" to Pin(1, "the one mapper that reads an upload row as its state's type"),
         ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/upload/JobRecord.kt" to mapOf(
+            "MintsCreatedJob" to Pin(1, "the platform accepted a create: the one translation both tiers record through"),
+            "MintsEndedJob" to Pin(1, "the platform reported a job ended: the one translation both tiers record through"),
+        ),
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/FileCipher.kt" to mapOf(
             "KeyMaterial" to Pin(1, "the cipher: each file's key is derived from the event key's bytes"),
         ),

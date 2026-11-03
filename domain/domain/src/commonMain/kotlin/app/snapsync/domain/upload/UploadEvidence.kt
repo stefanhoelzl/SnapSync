@@ -13,7 +13,10 @@ import kotlin.jvm.JvmInline
 annotation class MintsCreatedJob
 
 /** Only the transfer tiers' translation of an ended job mints a [ReportedFailure] or a [ReportedLanding]. */
-@RequiresOptIn("Only the platform's report of an ended job says how an upload ended.", level = RequiresOptIn.Level.ERROR)
+@RequiresOptIn(
+    "Only the platform's report of an ended job says how an upload ended.",
+    level = RequiresOptIn.Level.ERROR,
+)
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.CONSTRUCTOR)
 annotation class MintsEndedJob
