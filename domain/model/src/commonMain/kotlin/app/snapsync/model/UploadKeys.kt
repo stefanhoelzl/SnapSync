@@ -40,10 +40,7 @@ const val RESOURCE_META_MIME: String = "mimeContentType"
  * no `-`, though an `assetId` may). Defaults to [ResourceRole.PRIMARY] for an unrecognised token (never
  * produced by [uploadKey]).
  */
-fun roleFromUploadKey(filename: String): ResourceRole {
-    val wire = filename.substringBeforeLast('.').substringAfterLast('-')
-    return ResourceRoleText.parse(wire) ?: ResourceRole.PRIMARY
-}
+fun roleFromUploadKey(filename: String): ResourceRole = ResourceRoleText.ofKey(filename)
 
 /**
  * Recover the `assetId` from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): drop the extension,

@@ -17,7 +17,6 @@ import app.snapsync.model.PUSH_KIND_APNS
 import app.snapsync.model.PlatformError
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.DevControls
-import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.Lifecycle
@@ -280,8 +279,6 @@ class ScreenOperator internal constructor(private val mock: ScreenMock) : Screen
 
 /** The build's development controls: the per-uploader pin and new events' encryption are the channel's to set. */
 class DevControlsMock {
-    internal val handlers = HandlerSlot<DevHandlers>("DevControls", BeforeListen.Thrown)
-
     // In-process plumbing — the hosts' own; the channel's is the [operator].
 
     /** The per-uploader switch; `null`, as on every shipped build, unless the channel pins one. */
@@ -290,22 +287,10 @@ class DevControlsMock {
     /** Whether an event this device creates is encrypted — `true`, as on every shipped build; `false` creates a plain one. */
     @Volatile var encrypts: Boolean = true
 
-    /** The channel's reset; returns once the device's state is void. */
-    suspend fun reset() {
-        val done = Answered()
-        handlers.require("a reset").onReset.handle(Unit, done)
-        done.ended.await()
-    }
-
     fun port(): DevControls = Face()
 
     /** The port face a process is handed. */
     internal inner class Face : DevControls {
-        @CompositionOnly
-        override fun inbound(handlers: DevHandlers) {
-            this@DevControlsMock.handlers.set(handlers)
-        }
-
         override fun uploaderPin(): UploaderPin? = pin
 
         override fun createsPlainEvents(): Boolean = !encrypts
@@ -330,8 +315,6 @@ class DevControlsOperator internal constructor(private val mock: DevControlsMock
     override suspend fun encryptNewEvents(on: Boolean) {
         mock.encrypts = on
     }
-
-    override suspend fun reset() = mock.reset()
 
     override suspend fun controls(): DevControlsView = devControlsView(mock.pin, mock.encrypts)
 }

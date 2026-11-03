@@ -3,6 +3,7 @@
 package app.snapsync.album
 
 import app.snapsync.data.gallery.assetId
+import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -16,16 +17,16 @@ import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
+import app.snapsync.feature.support.receivedImported
+import app.snapsync.feature.support.receivingCounts
 import app.snapsync.feature.support.testClock
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
-import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.PlannedAsset
-import app.snapsync.model.PlannedResource
+import app.snapsync.ports.DbOpen
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
@@ -35,7 +36,6 @@ import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.album.AlbumMapService
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
@@ -51,6 +51,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -109,12 +110,12 @@ class AlbumGatherTest {
         val manager: RecordingAlbumManager,
         granted: Boolean,
         scope: CoroutineScope,
+        downloadsOpen: DbOpen? = null,
     ) {
         val store = SharedStore()
         val config: MembershipProjection = configService(cfg, store)
-        private val databases = inMemoryDatabases()
+        private val databases = inMemoryDatabases(listOfNotNull(downloadsOpen?.let { DOWNLOADS_DB_NAME to it }).toMap())
         val ledger = LedgerService(testShared(databases)) { testEventId(LEDGER_EVENT) }
-        val downloads = DownloadService(databases)
         val grant = MutableStateFlow(if (granted) LibraryGrant.GRANTED else LibraryGrant.DENIED)
         val albums = AlbumMapService(testShared()).apply { put(testEventId("E2"), "ALBUM-2") }
         val gather = AlbumGather(
@@ -123,9 +124,9 @@ class AlbumGatherTest {
             // The one derivation, by the real `OwnPhotos` — after the event, so the range is shared whole.
             policyFor = { membership ->
                 OwnLibrary(clock = testClock(Instant.parse("2026-10-01T00:00:00Z")))
-                    .photos.contribution(membership, received = emptySet()).policy
+                    .photos.contribution(membership).policy
             },
-            downloads = downloads,
+            downloads = receivingCounts(databases),
             photoAccess = galleryAccess(grant),
             coordinator = AlbumCoordinator(GalleryAlbums(manager), albums),
             scope = scope,
@@ -139,15 +140,13 @@ class AlbumGatherTest {
         }
 
         /** A received photo, imported; [eventId] is the event whose reconcile tagged it, `null` for none. */
-        suspend fun imported(device: String, assetId: String, localId: String, eventId: String? = "E2") {
-            val ref = AssetRef(testDeviceId(device), testAssetId(assetId))
-            val resources = listOf(PlannedResource("$assetId.heic", "u", "primary", "image/heic", "a.heic"))
-            downloads.planAll(
-                listOf(PlannedAsset(ref, "2026-09-10T00:00:00Z", resources)),
+        fun imported(device: String, assetId: String, localId: String, eventId: String? = "E2") {
+            databases.receivedImported(
+                testDeviceId(device),
+                testAssetId(assetId),
+                testAssetId(localId),
                 eventId?.let(::testEventId),
-                members = listOf(ref),
             )
-            downloads.markImported(ref, testAssetId(localId))
         }
     }
 
@@ -157,7 +156,16 @@ class AlbumGatherTest {
         granted: Boolean = true,
         kind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION,
         creates: Boolean = false,
-    ) = Rig(cfg, RecordingAlbumManager(failingCall, creates, kind), granted, this)
+        downloadsOpen: DbOpen? = null,
+    ) = Rig(cfg, RecordingAlbumManager(failingCall, creates, kind), granted, this, downloadsOpen)
+
+    @Test
+    fun `a download store that cannot be read fails the gather rather than gathering no received photo`() = runTest {
+        val r = rig(downloadsOpen = DbOpen.Failed("locked"))
+        r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z", eventId = "E1")
+        assertFailsWith<IllegalStateException> { r.gather.gather(testEventId("E2")) }
+        assertEquals(emptySet(), r.manager.added, "nothing placed from a read that could not be made")
+    }
 
     @Test
     fun `a photo carried over from an earlier event is gathered when this window admits it`() = runTest {

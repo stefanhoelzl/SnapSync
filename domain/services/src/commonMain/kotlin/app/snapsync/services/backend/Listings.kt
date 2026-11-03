@@ -5,14 +5,9 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.StoredResource
-import app.snapsync.model.UnionAsset
-import app.snapsync.model.UnionPage
-import app.snapsync.model.UnionResource
-import app.snapsync.model.UnionTrigger
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
 import app.snapsync.wire.api.DeviceFilesReply
-import app.snapsync.wire.api.EventFilesReply
 import app.snapsync.wire.api.Malformed
 import app.snapsync.wire.api.Routes
 
@@ -41,18 +36,6 @@ fun interface DeviceFilesSource {
  * either and silently seeds nonsense.
  */
 class DeviceListingShapeException(message: String) : Exception(message)
-
-/**
- * The event-wide union: every contributing device's **complete** assets, each tagged with its `deviceId` and
- * carrying per-resource download `url`s. Failures surface as a failed [Result] (never thrown) so the download
- * controller can keep its last good state rather than crash. Own-vs-foreign selection is the caller's concern.
- *
- * Read from a [cursor] it answers only what was gained since, all of it for `null` (decision record
- * `changes/incremental-union`, D3); [trigger] says why, and the backend records it.
- */
-fun interface EventUnionSource {
-    suspend fun union(eventId: EventId, cursor: Long?, trigger: UnionTrigger): Result<UnionPage>
-}
 
 /**
  * [DeviceFilesSource] over the backend's per-device listing, which answers in **identity terms** — `assetId`,
@@ -90,50 +73,4 @@ class BackendDeviceFilesSource(private val gateway: BackendGateway) : DeviceFile
             )
             else -> Result.failure(IllegalStateException("list device $deviceId in $eventId: $reply"))
         }
-}
-
-/**
- * [EventUnionSource] over the backend's union read: any answer but a [EventFilesReply.Page] is a failed [Result].
- *
- * It reads with `urls=false` and builds each resource's download address itself (decision record
- * `changes/incremental-union`, D1): the route `downloadResource` on this build's backend, which redirects to the bytes.
- */
-class BackendEventUnionSource(private val gateway: BackendGateway) : EventUnionSource {
-
-    override suspend fun union(eventId: EventId, cursor: Long?, trigger: UnionTrigger): Result<UnionPage> {
-        val request = Routes.EventFiles.request(
-            eventId.value,
-            cursor?.toString(),
-            urls = false,
-            snapSyncTrigger = trigger.wire,
-        )
-        val what = "union $eventId (${trigger.wire}, from ${cursor ?: "start"})"
-        return when (val reply = gateway.send(request)) {
-            // A non-canonical asset id, or a position that is not a number, is a page the app could not continue from.
-            is EventFilesReply.Page -> runCatchingCancellable {
-                UnionPage(
-                    reply.items.map { asset(eventId, it) },
-                    reply.snapSyncCursor.toLong(),
-                    // A value that is no count is the absence of one: the screen reads as it did before the header.
-                    reply.snapSyncDeclared?.toLongOrNull(),
-                )
-            }
-            else -> Result.failure(IllegalStateException("$what: $reply"))
-        }
-    }
-
-    private fun asset(eventId: EventId, dto: app.snapsync.wire.models.UnionAsset): UnionAsset {
-        val assetId = requireNotNull(AssetId.parse(dto.assetId)) { "not a canonical asset id" }
-        // A malformed id refuses the asset, as a malformed asset id always has.
-        val deviceId = requireNotNull(DeviceId.parse(dto.deviceId)) { "not a device id: '${dto.deviceId}'" }
-        return UnionAsset(
-            deviceId = deviceId,
-            assetId = assetId,
-            creationDate = dto.creationDate,
-            resources = dto.resources.map {
-                val path = Routes.DownloadResource.path(eventId.value, dto.deviceId, assetId.value, it.role.value)
-                UnionResource(it.key, gateway.open.url(path), it.role.value, it.contentType, it.filename)
-            },
-        )
-    }
 }

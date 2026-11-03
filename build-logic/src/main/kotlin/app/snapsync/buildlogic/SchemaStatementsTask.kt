@@ -32,7 +32,7 @@ abstract class SchemaStatementsTask : DefaultTask() {
 
     /**
      * SQLDelight's generated code roots (`build/generated/sqldelight/code` of each module that owns a schema — the data
-     * layer's `ledger.db` and the services zone's `downloads.db` while they live apart).
+     * layer's `ledger.db` and `downloads.db`).
      */
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)

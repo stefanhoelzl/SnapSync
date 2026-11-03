@@ -10,15 +10,16 @@ import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.ResourceRoleText
-import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.GalleryLevers
 import app.snapsync.levers.MovingFile
 import app.snapsync.levers.MovingPhoto
 import app.snapsync.levers.OsLevers
 import app.snapsync.levers.RigLevers
+import app.snapsync.levers.ScreenLevers
 import app.snapsync.levers.SeedKind
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.UiIntent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.runBlocking
@@ -128,9 +129,15 @@ class Journeys {
 
     /** Journey 1 — create an event, confirm the join it opens, and reach the joined screen. */
     private suspend fun createAndJoin(a: RigClient): String {
-        // The contracts ran on this app first and leave photos behind; the durable sync state is cleared so the
-        // journey starts unjoined.
-        a.levers(DevControlsLevers).reset()
+        // The contracts ran on this app first and leave photos behind; the journey starts unjoined, leaving any event
+        // the install is still a member of. There is no reset to clear the rest: a reset is a reinstall (phase 4.5),
+        // and every journey run installs the app fresh.
+        if (a.levers(ScreenLevers).shown()?.layer is Layer.Joined) {
+            a.person().tap(UiIntent.LeaveEvent)
+            a.awaitScreen(JOIN, "the event this install was still a member of, left") {
+                it.layer !is Layer.Joined
+            }
+        }
         val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
         // Today through three days out: contains the seeded photos, which are dated an hour ahead of now.
         val startsAt = today.plus(-1, DateTimeUnit.DAY).atTime(LocalTime(0, 0))

@@ -16,7 +16,6 @@ import app.snapsync.data.membership.PendingLeavesRead
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.data.membership.name
-import app.snapsync.data.store.StoreWrite
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.ShareChoice
@@ -194,16 +193,6 @@ class MembershipChangesTest {
         answering(text(404, "event not found"))
         assertEquals(RenameOutcome.Failed(fault = null), rename(active(), testEventId(EVENT), "x"))
         assertIs<Membership.Active>(held())
-    }
-
-    // ---- forgetting ----
-
-    @Test
-    fun `forgetting ends the membership and tells no backend`() {
-        assertEquals(StoreWrite.Written, ForgetMembership(device.membership)())
-        assertIs<MembershipRead.NotJoined>(device.membership.read())
-        assertEquals(PendingLeavesRead.Ok(emptySet()), PendingLeaves(device.shared).outstanding())
-        assertEquals(emptyList(), device.transport.calls)
     }
 
     // ---- the leaves owed, and the hourly read ----

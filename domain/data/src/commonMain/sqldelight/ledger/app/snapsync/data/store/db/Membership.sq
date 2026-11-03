@@ -16,9 +16,6 @@ INSERT OR REPLACE INTO membership (
     :membersActive, :membersSettled, :membersWaiting, :keyId, :openUntil, :deleted
 );
 
-clearMembership:
-DELETE FROM membership;
-
 -- The membership's writes after its entry are compare-and-set: each names the event it was decided for and changes the
 -- row only while it still holds that event, not deleted — a decision made over a membership a switch, a leave or a
 -- deletion replaced meanwhile changes nothing. `changes()` then says whether it took effect.

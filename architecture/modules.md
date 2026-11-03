@@ -376,6 +376,7 @@ flowchart LR
   test_rig --> domain_model
   test_rig --> domain_ports
   test_rig --> domain_presentation
+  test_rig --> domain_query
   test_rig --> domain_services
   test_rig --> domain_wire
   test_rig --> test_contracts

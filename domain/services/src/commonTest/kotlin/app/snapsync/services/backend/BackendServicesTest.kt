@@ -9,7 +9,6 @@ import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.StoredResource
-import app.snapsync.model.UnionTrigger
 import app.snapsync.ports.HttpResult
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.identityOf
@@ -40,20 +39,6 @@ class BackendServicesTest {
         """{"eventId":"${testEventId("E1").value}","name":"$name","createdAt":"2026-06-01T00:00:00Z","startsAt":"2026-07-01T00:00:00Z",""" +
             """"endsAt":"2026-07-08T00:00:00Z","openUntil":"2026-07-08T00:00:00Z","capacity":40,""" +
             """"deletesAt":"2026-07-31T00:00:00Z","closedAt":null,"completedAt":null}"""
-
-    // ── what the device received ───────────────────────────────────────────────────────────────────
-
-    @Test
-    fun a_received_position_is_reported_only_when_the_backend_recorded_it() = runTest {
-        assertEquals(true, servicesAnswering(text(200, "")).received.report(testEventId("E"), 7))
-        assertEquals(false, servicesAnswering(text(409, "not a member")).received.report(testEventId("E"), 7))
-        assertEquals(false, servicesAnswering(text(502, "upstream")).received.report(testEventId("E"), 7))
-        assertEquals(false, servicesAnswering(offline).received.report(testEventId("E"), 7))
-        assertEquals(
-            false,
-            servicesAnswering(ok(), MapSecureStore(unavailable = true)).received.report(testEventId("E"), 7),
-        )
-    }
 
     // ── create ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -252,69 +237,6 @@ class BackendServicesTest {
             text(502, "upstream"),
         ).deviceFiles.list(testEventId("E"), testDeviceId("D")).exceptionOrNull()
         assertTrue(refused != null && refused !is DeviceListingShapeException)
-    }
-
-    @Test
-    fun the_union_is_served_or_a_failure_never_an_empty_one() = runTest {
-        val page = json(
-            200,
-            """[{"deviceId":"${testDeviceId("D2").value}","assetId":"A","creationDate":"c","resources":[""" +
-                """{"role":"primary","contentType":"image/jpeg","key":"A-primary.jpg","filename":"IMG.JPG"}]}]""",
-            mapOf("SnapSync-Cursor" to "7"),
-        )
-        suspend fun read(
-            reply: HttpResult,
-        ) = servicesAnswering(reply).union.union(testEventId("E"), 3, UnionTrigger.PUSH)
-        val served = read(page).getOrThrow()
-        assertEquals(7, served.cursor)
-        assertEquals(listOf(testAssetId("A")), served.assets.map { it.assetId })
-        assertTrue(read(text(404, "event not found")).isFailure)
-        assertTrue(read(offline).isFailure)
-        val strangerDevice = json(
-            200,
-            """[{"deviceId":"D2","assetId":"A","creationDate":"c","resources":[]}]""",
-            mapOf("SnapSync-Cursor" to "7"),
-        )
-        assertTrue(read(strangerDevice).isFailure, "an asset of no device is no asset")
-        val strangerAsset = json(
-            200,
-            """[{"deviceId":"${testDeviceId("D2").value}","assetId":"a/b","creationDate":"c","resources":[]}]""",
-            mapOf("SnapSync-Cursor" to "7"),
-        )
-        assertTrue(read(strangerAsset).isFailure, "an asset whose id is not canonical is no asset")
-        assertTrue(
-            read(json(200, "[]")).isFailure,
-            "a page without its position is one the app could not continue from",
-        )
-    }
-
-    // Change `count-declared-photos`: the event's declared total rides on the page; a backend without it, or a value
-    // that is no count, reads as none.
-    @Test
-    fun the_unions_declared_total_is_read_and_its_absence_is_none() = runTest {
-        suspend fun declared(headers: Map<String, String>) =
-            servicesAnswering(json(200, "[]", mapOf("SnapSync-Cursor" to "7") + headers))
-                .union.union(testEventId("E"), null, UnionTrigger.FOREGROUND).getOrThrow().declared
-        assertEquals(200L, declared(mapOf("SnapSync-Declared" to "200")))
-        assertEquals(null, declared(emptyMap()))
-        assertEquals(null, declared(mapOf("SnapSync-Declared" to "many")))
-    }
-
-    @Test
-    fun the_union_is_read_without_urls_and_each_address_built_on_the_builds_backend() = runTest {
-        val transport = ScriptedTransport {
-            json(
-                200,
-                """[{"deviceId":"${testDeviceId("D2").value}","assetId":"A1","creationDate":"c","resources":[""" +
-                    """{"role":"live","contentType":"video/quicktime","key":"k","filename":"IMG.MOV"}]}]""",
-                mapOf("SnapSync-Cursor" to "1"),
-            )
-        }
-        val resource = servicesOver(transport).union.union(testEventId("E"), null, UnionTrigger.FOREGROUND)
-            .getOrThrow().assets.single().resources.single()
-        assertEquals("GET /events/${testEventId("E")}/files?urls=false null", transport.calls.single())
-        assertEquals("foreground", transport.requests.single().headers["SnapSync-Trigger"])
-        assertEquals("$BASE/events/${testEventId("E")}/files/devices/${testDeviceId("D2")}/A1/live", resource.url)
     }
 
     private companion object {

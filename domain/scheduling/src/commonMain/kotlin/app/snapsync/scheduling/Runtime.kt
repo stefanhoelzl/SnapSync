@@ -107,6 +107,9 @@ class Runtime(
 
     internal val flights = SingleFlight(this)
 
+    /** The work inline deliveries started and did not await, by entry point, since each was last awaited. */
+    internal val unawaited = UnawaitedWork()
+
     /**
      * Starts [body] as the run of the delivery [trigger], answering [completion] when it ends. The run holds background
      * time when [time] says so. Answers the [Running] the delivering adapter expires.
@@ -340,14 +343,12 @@ class Delivery internal constructor(
     private val work: EntryWork,
 ) {
     /**
-     * Work this delivery starts and does not await: it continues in the process scope, under its own background-time
-     * hold, labelled with this delivery's trigger. Answers its job, for a caller that must be able to wait for it.
+     * Work this delivery starts and does not await, as a list of steps (`docs/patterns.md`, "Steps"): it continues in
+     * the process scope as a run of this delivery's trigger, under its own background-time hold. Answers its job, for a
+     * caller that must be able to wait for it — and it is tracked as this entry point's unawaited work.
      */
-    fun detached(block: suspend () -> Unit): Job = runtime.detached(trigger, work, block)
-
-    /** [detached] work that is a list of steps (`docs/patterns.md`, "Steps"), as a run of this delivery's trigger. */
     fun detachedSteps(block: suspend Steps.() -> Unit): Job =
-        runtime.detached(trigger, work, { Run(runtime, trigger).steps(block) })
+        runtime.unawaited.track(trigger.label, runtime.detached(trigger, work, { Run(runtime, trigger).steps(block) }))
 
     /**
      * Where work this delivery's handling starts elsewhere runs — a tap's intents, on the screen's container: labelled

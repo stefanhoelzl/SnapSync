@@ -3,9 +3,10 @@
 package app.snapsync.mock
 
 import app.snapsync.contracts.inboundOf
+import app.snapsync.data.receiving.ImportCorrelation
+import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.NOT_AN_IMAGE
-import app.snapsync.model.AssetRef
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Gallery
@@ -14,7 +15,6 @@ import app.snapsync.ports.GalleryImportRequest
 import app.snapsync.ports.ImportFile
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.ResourceKind
-import app.snapsync.services.gallery.correlation
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
@@ -45,7 +45,7 @@ class PhotoLibraryImportTest {
     private suspend fun Gallery.importOnce(): ImportOutcome =
         import(
             GalleryImportRequest(
-                ref.correlation(),
+                ImportCorrelation.of(ref),
                 listOf(file()),
                 Instant.parse("2026-06-30T10:00:00Z"),
                 album = null,
@@ -125,7 +125,7 @@ class PhotoLibraryImportTest {
         val importer = importer(device.library)
         fun at(path: String) = (device.disk.port().locate(FileArea.SHARED, path) as FileResult.Ok).value
         fun request(id: String, path: String) = GalleryImportRequest(
-            AssetRef(testDeviceId("DEV-F"), testAssetId(id)).correlation(),
+            ImportCorrelation.of(AssetRef(testDeviceId("DEV-F"), testAssetId(id))),
             listOf(ImportFile(at(path), "image/jpeg", ResourceKind.PHOTO, "IMG.JPG")),
             Instant.parse("2026-06-30T10:00:00Z"),
             album = null,

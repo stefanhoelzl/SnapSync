@@ -1,18 +1,15 @@
 package app.snapsync.rig
 
-import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.levers.DevControlsView
 import app.snapsync.mock.devControlsView
 import app.snapsync.ports.DevControls
-import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.Ui
 import app.snapsync.ports.UiHandlers
 import app.snapsync.ports.UploaderPin
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
-import kotlinx.coroutines.CompletableDeferred
 
 // The control channel's adapters (`docs/testing.md`, "The control channel"): what a rig build's `platformAdapters()`
 // supplies in place of the production ones. A production build contains none of this — the source is compiled only
@@ -52,21 +49,14 @@ class RigUi(
 
 /**
  * A rig build's development controls, as the `dev-controls` service ([levers]) moves them: the per-uploader switch,
- * encrypted creation, and the reset it delivers.
+ * and encrypted creation.
  */
 class RigDevControls : DevControls {
-    private var handlers: DevHandlers? = null
-
     /** The per-uploader switch; `null` (both uploaders, as a shipped build runs) until the channel sets one. */
     var pin: UploaderPin? = null
 
     /** Whether an event this device creates is encrypted; `true`, as a shipped build, until the channel sets it. */
     var encrypts: Boolean = true
-
-    @CompositionOnly
-    override fun inbound(handlers: DevHandlers) {
-        this.handlers = handlers
-    }
 
     override fun uploaderPin(): UploaderPin? = pin
 
@@ -86,25 +76,6 @@ class RigDevControls : DevControls {
             encrypts = on
         }
 
-        override suspend fun reset() = this@RigDevControls.reset()
-
         override suspend fun controls(): DevControlsView = devControlsView(pin, encrypts)
-    }
-
-    /** `dev-controls.reset()`: void this device's durable sync state; returns once it is void. */
-    suspend fun reset() {
-        val handlers = checkNotNull(
-            handlers,
-        ) { "no composition registered for the DevControls port — nothing would reset" }
-        val done = CompletableDeferred<Unit>()
-        handlers.onReset.handle(
-            Unit,
-            object : Completion {
-                override fun complete() {
-                    done.complete(Unit)
-                }
-            },
-        )
-        done.await()
     }
 }

@@ -1,8 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.inbound.Background
-import app.snapsync.inbound.CompositionOnly
-
 /**
  * **The build's development controls** — the inputs only a test build can carry (`docs/architecture.md`, "A
  * build-time-only module is contained by compilation"). A production build's adapter answers the inert values
@@ -10,9 +7,9 @@ import app.snapsync.inbound.CompositionOnly
  * made with `-Psnapsync.rig=true` and into no other. So a shipped process cannot be switched, structurally rather
  * than by a runtime check.
  *
- * An event port for the one command it delivers ([DevHandlers.onReset]); the reads are read at every use.
+ * It delivers nothing: its reads are read at every use.
  */
-interface DevControls : EventPort<DevHandlers> {
+interface DevControls : Port {
     /**
      * The per-uploader switch, read at every use (the channel changes it live). **Always `null` in a production
      * build**, so what a shipped process uploads with is a function of the device and its grant (decision record
@@ -29,12 +26,3 @@ interface DevControls : EventPort<DevHandlers> {
      */
     fun createsPlainEvents(): Boolean
 }
-
-/** What the development controls tell the core. Built only by a composition. */
-class DevHandlers @CompositionOnly constructor(
-    /**
-     * Void this device's durable sync state without telling any backend (the channel's `POST /device/reset`); the
-     * completion is answered once it is void.
-     */
-    val onReset: Background<Unit>,
-)

@@ -121,9 +121,6 @@ SELECT key, assetId, state, creationDate, role, contentType, originalFilename
 FROM ledgerRow
 WHERE eventId = :eventId;
 
-deleteAll:
-DELETE FROM ledgerRow;
-
 -- Every row of one event: the first half of `resetTo`.
 deleteEvent:
 DELETE FROM ledgerRow

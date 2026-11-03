@@ -5,10 +5,8 @@ import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.event.KeyMaterial
 import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.ConfirmedNotJoined
-import app.snapsync.domain.membership.DevReset
 import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.MintsConfirmedNotJoined
-import app.snapsync.domain.membership.MintsDevReset
 import app.snapsync.domain.membership.MintsLeftMembership
 import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.format.EventKeyText
@@ -139,20 +137,19 @@ class EventKeyStoreTest {
         assertIs<KeyFact.Kept>(keys.state.value, "what the slot still holds — inert: no membership names it")
     }
 
-    @OptIn(MintsLeftMembership::class, MintsConfirmedNotJoined::class, MintsDevReset::class)
+    @OptIn(MintsLeftMembership::class, MintsConfirmedNotJoined::class)
     @Test
-    fun `a leave, a sweep and the rig's reset each forget the key`() {
+    fun `a leave and a sweep each forget the key`() {
         for (forget in listOf<() -> KeyFact>(
             { keys.forget(LeftMembership(testEventId(EVENT))) },
             { keys.forget(ConfirmedNotJoined()) },
-            { keys.forget(DevReset()) },
         )) {
             secure.answers[SLOT] = found(EventKeyText.encode(ids.mint().key))
             keys.reload()
             assertEquals(KeyFact.Absent, forget())
             assertEquals(KeyFact.Absent, keys.state.value)
         }
-        assertEquals(3, secure.deletes.count { it == SLOT })
+        assertEquals(2, secure.deletes.count { it == SLOT })
     }
 
     @Test

@@ -126,7 +126,7 @@ class InterruptedImportIntegrationTest {
         // The first import fails, and the pass its staging requested ends with it — so the retry below is a pass of its
         // own, never one the staging's pass is joined by. What the bytes are for is: every retry — here the next wake's
         // tail, whose first unit is the import drain — imports off those same bytes, and would fail had the failure
-        // taken them (DownloadControllerTest pins the failure keeping them, step by step).
+        // taken them (the import's own unit tests pin the failure keeping them, step by step).
         val before = given {
             joinedEvent()
             downloadStarted(foreignDevice, foreignAsset).also {

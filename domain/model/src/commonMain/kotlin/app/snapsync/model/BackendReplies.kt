@@ -2,7 +2,6 @@ package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.domain.device.DeviceId
 import kotlinx.serialization.Serializable
 
 /**
@@ -18,68 +17,3 @@ data class MemberCounts(val active: Int, val settled: Int, val waiting: Int? = n
 
 /** One resource a device has stored (`GET /files/devices/<id>`), in the terms the backend addresses it by. */
 data class DeviceFile(val assetId: AssetId, val role: ResourceRole, val filename: String)
-
-/** One resource of a foreign asset in the event-wide union (`GET /events/<id>/files`). */
-class UnionResource(
-    val key: String,
-    val url: String,
-    val role: String,
-    val contentType: String,
-    val originalFilename: String,
-)
-
-/** One **complete** asset in the event-wide union, tagged with its owning device and capture date. */
-class UnionAsset(
-    val deviceId: DeviceId,
-    val assetId: AssetId,
-    val creationDate: String,
-    val resources: List<UnionResource>,
-)
-
-/**
- * One answer of the event-wide union (decision record `changes/incremental-union`, D3): its [assets] — all of them for a
- * full read, only those gained after the cursor it was asked from for a delta — and the [cursor] it covers, which the
- * next delta starts from. The cursor is the backend's; the app stores it and sends it back, and reads nothing into it
- * beyond its order.
- */
-class UnionPage(
-    val assets: List<UnionAsset>,
-    val cursor: Long,
-    /**
-     * The event's declared total the read answered (change `count-declared-photos`): every asset the whole union
-     * serves plus what members still in the event declared and have not finished — `null` from a backend that
-     * predates it.
-     */
-    val declared: Long? = null,
-)
-
-/**
- * Why the app reads the union (decision record `changes/incremental-union`, D5–D6) — what it tells the backend, which
- * records it, and whether the read is [full]. A push and a background wake read only what is new; every other reason
- * reads everything, because someone waits on the answer or a decision rests on it.
- */
-enum class UnionTrigger(val wire: String, val full: Boolean) {
-    /** A silent push announced a photo. */
-    PUSH("push", full = false),
-
-    /** A background wake with no push behind it. */
-    WAKE("wake", full = false),
-
-    /** The app came to the foreground: the member is looking, and a full read heals anything a delta missed. */
-    FOREGROUND("foreground", full = true),
-
-    /** Joining an event. */
-    JOIN("join", full = true),
-
-    /** Photo access became usable: the received photos already in the library are recognised against all of it. */
-    GRANT("grant", full = true),
-
-    /** A settings change began receiving, with no position for a membership that never received. */
-    RECONFIGURE("reconfigure", full = true),
-
-    /** Whether a leaving member had everything — a doubt is a no. */
-    LEAVE_CHECK("leave-check", full = true),
-
-    /** Up to which position this device holds every photo of the others — what it reports once the event has ended. */
-    RECEIVED_CHECK("received-check", full = true),
-}

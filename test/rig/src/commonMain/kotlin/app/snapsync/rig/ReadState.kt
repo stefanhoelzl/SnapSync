@@ -18,7 +18,7 @@ import app.snapsync.ui.state.UiState
  */
 internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: RigHooks): RigState {
     core.ledgerCounts.refresh()
-    val progress = core.downloadStatusSource.progress.value
+    val progress = core.downloadProgress.value
     // The invite URL and the inline create error live INSIDE the UI state, so the rig
     // reports exactly what the screen is rendering. The membership's own facts — its direction and capture range —
     // are not on the screen as such; they are read from the membership the screen is reduced from.

@@ -1,32 +1,40 @@
 package app.snapsync.compose
 
+import app.snapsync.application.receiving.RecognitionAsk
 import app.snapsync.entrypoints.AfterJoin
 import app.snapsync.entrypoints.AfterSettings
 import app.snapsync.entrypoints.DeletedTransfers
 import app.snapsync.entrypoints.EndOfWake
 import app.snapsync.entrypoints.Enrolling
 import app.snapsync.entrypoints.EventAlbum
+import app.snapsync.entrypoints.ForegroundReceiving
 import app.snapsync.entrypoints.ForegroundWork
+import app.snapsync.entrypoints.HeldCheck
 import app.snapsync.entrypoints.ImportReceived
 import app.snapsync.entrypoints.Joining
 import app.snapsync.entrypoints.Leaving
-import app.snapsync.entrypoints.OnDevReset
 import app.snapsync.entrypoints.OnDownloadStaged
+import app.snapsync.entrypoints.OnInheritedImports
 import app.snapsync.entrypoints.OnInviteForOtherEvent
 import app.snapsync.entrypoints.OnJoinConfirmed
 import app.snapsync.entrypoints.OnKeyRestoreRequested
 import app.snapsync.entrypoints.OnLeaveConfirmed
 import app.snapsync.entrypoints.OnMobileDataChanged
+import app.snapsync.entrypoints.OnPhotoGrantUsable
 import app.snapsync.entrypoints.OnRenameRequested
 import app.snapsync.entrypoints.OnSettingsChanged
+import app.snapsync.entrypoints.PhotoCheck
+import app.snapsync.entrypoints.PlanJoined
 import app.snapsync.entrypoints.Prelude
+import app.snapsync.entrypoints.ReceivedPositionReport
+import app.snapsync.entrypoints.Recognition
+import app.snapsync.entrypoints.SelectionRecognition
 import app.snapsync.entrypoints.StateRefresh
 import app.snapsync.entrypoints.SweepLeftovers
 import app.snapsync.entrypoints.TopUp
 import app.snapsync.entrypoints.UploadEngine
 import app.snapsync.entrypoints.UploadOwn
 import app.snapsync.entrypoints.WakeWork
-import app.snapsync.feature.download.ReceivedReport
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.feature.upload.OwnUploads
 import app.snapsync.feature.upload.ShareSettlement
@@ -47,8 +55,35 @@ internal class AppWork(private val core: AppCore) {
         )
     }
 
+    private val receiving get() = core.receiving
+
     private val foregroundCounts: ForegroundCounts by lazy { ForegroundCounts(core.foreground, core.ledgerCounts) }
-    internal val importReceived: ImportReceived by lazy { ImportReceived(core.downloadController, foregroundCounts) }
+
+    /** A recognition pass before a drain imports, or once a grant became usable. */
+    private val recognitionBeforeImporting: Recognition by lazy {
+        Recognition(
+            membership.branch,
+            receiving.recognitionNeeded,
+            receiving.recognize,
+            RecognitionAsk.BEFORE_IMPORTING,
+        )
+    }
+
+    /** A recognition pass after a selection was published. */
+    internal val selectionRecognitionPass: Recognition by lazy {
+        Recognition(membership.branch, receiving.recognitionNeeded, receiving.recognize, RecognitionAsk.AFTER_SELECTION)
+    }
+
+    internal val importReceived: ImportReceived by lazy {
+        ImportReceived(
+            membership.branch,
+            recognitionBeforeImporting,
+            receiving.importReady,
+            core.albumCoordinator,
+            receiving.importNext,
+            foregroundCounts,
+        )
+    }
     internal val topUp: TopUp by lazy { TopUp(ownUploads, foregroundCounts) }
     private val uploadOwn: UploadOwn by lazy { UploadOwn(ownUploads, foregroundCounts) }
 
@@ -77,14 +112,17 @@ internal class AppWork(private val core: AppCore) {
 
     private val statuses get() = core.membershipStatuses
 
+    /** Plan what the joined membership receives — a push's, an opening's. */
+    internal val planJoined: PlanJoined by lazy { PlanJoined(membership.branch, receiving.receivingOf, receiving.plan) }
+
     private val stateRefresh: StateRefresh by lazy {
-        StateRefresh(membership.branch, DeletedTransfers(core.uploadTransitions, core.downloadController))
+        StateRefresh(membership.branch, DeletedTransfers(core.uploadTransitions, receiving.stop))
     }
 
     private val endOfWake: EndOfWake by lazy {
         EndOfWake(
             membership.branch,
-            core.downloadController,
+            PhotoCheck(membership.branch, receiving.receivingOf, receiving.planIfDue, receiving.plan),
             membership.deliver,
             ShareSettlement(
                 core.services.config,
@@ -95,7 +133,7 @@ internal class AppWork(private val core: AppCore) {
             ),
             membership.claimState,
             stateRefresh,
-            ReceivedReport(core.services.config, core.downloadController, core.backend.received),
+            ReceivedPositionReport(membership.branch, receiving.receivingOf, receiving.holds, receiving.report),
         )
     }
 
@@ -105,7 +143,7 @@ internal class AppWork(private val core: AppCore) {
             importReceived,
             uploadOwn,
             wake.rearm,
-            core.services.downloadStore,
+            receiving.counts,
             endOfWake,
             core.footprints,
         )
@@ -118,12 +156,12 @@ internal class AppWork(private val core: AppCore) {
             core.uploadTransfer,
             storedUploadSettleFor(core.services, core.backend.deviceFiles),
             core.statusRefresh,
-            core.downloadController,
+            ForegroundReceiving(planJoined, receiving.sweepUnclaimed, receiving.releaseImported),
             stateRefresh,
             SweepLeftovers(
                 membership.branch,
                 core.services.eventKeyStore,
-                core.downloadController,
+                receiving.stop,
                 core.uploadTransitions,
                 core.services.transition,
             ),
@@ -143,6 +181,21 @@ internal class AppWork(private val core: AppCore) {
     /** A staging recorded in a running process asks for the import, and nothing else. */
     internal val downloadStaged: OnDownloadStaged by lazy { OnDownloadStaged(core.runtime, importReceived) }
 
+    /** The photo grant became usable: the received photos an earlier install left are recognised. */
+    internal val photoGrantUsable: OnPhotoGrantUsable by lazy {
+        OnPhotoGrantUsable(core.runtime, recognitionBeforeImporting)
+    }
+
+    /** A selection about to be published withholds the recognition its unrecognised marked photos need. */
+    internal val selectionRecognition: SelectionRecognition by lazy {
+        SelectionRecognition(membership.query, receiving.withhold)
+    }
+
+    /** The process's one recovery of what a dead process's imports left, once the grant can be read. */
+    internal val inheritedImports: OnInheritedImports by lazy {
+        OnInheritedImports(core.runtime, receiving.settleInterrupted, importReceived)
+    }
+
     /** A reopened invite of the joined event offered its key back. */
     internal val keyRestoreRequested: OnKeyRestoreRequested by lazy {
         OnKeyRestoreRequested(core.runtime, membership.restoreKey, foregroundWork, wakeWork, statuses)
@@ -158,16 +211,16 @@ internal class AppWork(private val core: AppCore) {
                 membership.enroll,
                 Joining(
                     core.services.transition,
-                    core.joinUnion,
                     core.shareSetLoad,
-                    core.receivedPhotoAdoption,
+                    receiving.forgetOtherEvents,
+                    receiving.recognize,
                     membership.enter,
                     AfterJoin(
                         core.uploadTransitions,
                         core.statusRefresh,
                         eventAlbum,
-                        core.downloadController,
-                        core.joinUnion,
+                        receiving.receivingOf,
+                        receiving.plan,
                         core.push.register,
                         statuses,
                     ),
@@ -184,7 +237,7 @@ internal class AppWork(private val core: AppCore) {
         OnLeaveConfirmed(
             core.runtime,
             membership.leave,
-            Leaving(core.uploadTransitions, core.downloadController, core.services.eventKeyStore, membership.deliver),
+            Leaving(core.uploadTransitions, receiving.stop, core.services.eventKeyStore, membership.deliver),
         )
     }
 
@@ -193,8 +246,7 @@ internal class AppWork(private val core: AppCore) {
         OnInviteForOtherEvent(
             core.runtime,
             membership.switchLookup,
-            core.downloadController,
-            core.services.config,
+            HeldCheck(membership.branch, receiving.receivingOf, receiving.holds),
             statuses,
         )
     }
@@ -209,7 +261,9 @@ internal class AppWork(private val core: AppCore) {
                 core.statusRefresh,
                 core.uploadTransitions,
                 eventAlbum,
-                core.downloadController,
+                receiving.receivingOf,
+                receiving.plan,
+                receiving.stop,
                 statuses,
             ),
             statuses,
@@ -224,17 +278,5 @@ internal class AppWork(private val core: AppCore) {
     /** The member switched whether photos may use mobile data. */
     internal val mobileDataChanged: OnMobileDataChanged by lazy {
         OnMobileDataChanged(core.runtime, core.mobileData.set, core.services.mobileData, core.mobileData.statuses)
-    }
-
-    /** The control channel voids this device's durable state (a rig build only). */
-    internal val devReset: OnDevReset by lazy {
-        OnDevReset(
-            core.runtime,
-            core.services.ledger,
-            core.downloadController,
-            membership.forget,
-            core.services.eventKeyStore,
-            core.services.mobileData,
-        )
     }
 }

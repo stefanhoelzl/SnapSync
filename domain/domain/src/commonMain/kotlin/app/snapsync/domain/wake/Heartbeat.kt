@@ -86,7 +86,19 @@ enum class UploadsLeft {
 }
 
 /** Whether staged downloads still wait to be imported: work left, which keeps the heartbeat busy. */
-enum class StagedImports { REMAIN, NONE }
+enum class StagedImports {
+    REMAIN,
+    NONE,
+    ;
+
+    companion object {
+        /** Whether [staged] photos wait to be imported. */
+        fun of(staged: Int): StagedImports = when (staged) {
+            0 -> NONE
+            else -> REMAIN
+        }
+    }
+}
 
 /** Whether a library-change wake stands — a standing "wake me when a photo is added". */
 enum class LibraryWatch { STANDING, NONE }

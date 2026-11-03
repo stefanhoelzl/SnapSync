@@ -10,7 +10,6 @@ import app.snapsync.model.Crumb
 import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DevControls
-import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.Lifecycle
@@ -64,12 +63,6 @@ internal class DevControlsProxy(private val inner: DevControls, log: CallLog) : 
 
     override fun uploaderPin() = r.returns("uploaderPin", inner.uploaderPin())
     override fun createsPlainEvents() = r.answer("createsPlainEvents", inner.createsPlainEvents())
-
-    @CompositionOnly
-    override fun inbound(handlers: DevHandlers) = r.returns(
-        "inbound",
-        inner.inbound(DevHandlers(BackgroundProxy(handlers.onReset, r, "onReset"))),
-    )
 }
 
 /** [ExtensionHost] as its clause's [CallLog] sees it. */

@@ -9,7 +9,6 @@ import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.CreateOutcome
-import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.LifecycleHandlers
 import app.snapsync.ports.LinkDelivery
@@ -120,23 +119,6 @@ class EntryDispatchTest {
             screen.shown.value,
             "the live screen renders what the app answered",
         )
-    }
-
-    @Test
-    fun `the channel's reset reaches the reset handler`() = runTest {
-        val dev = DevControlsMock()
-        dev.port().inbound(
-            DevHandlers(
-                onReset = backgroundOf { _, done ->
-                    ran += "reset"
-                    done.complete()
-                },
-            ),
-        )
-
-        dev.operator.reset()
-
-        assertEquals(listOf("reset"), ran)
     }
 
     @Test

@@ -16,9 +16,9 @@ class ShareableCountQueryTest {
     @Test
     fun `a readable library is counted, and an unreadable one has no count - never a zero`() = runTest {
         val readable = Library(LibraryAssets.photo("A", DURING), LibraryAssets.screenshot("S", DURING))
-        assertEquals(1, ShareableCountQuery(readable.own).count(range(), received = emptySet()))
+        assertEquals(1, ShareableCountQuery(readable.own).count(range()))
 
         val unread = Library(LibraryAssets.photo("A", DURING), grant = LibraryGrant.LIMITED)
-        assertNull(ShareableCountQuery(unread.own).count(range(), received = emptySet()))
+        assertNull(ShareableCountQuery(unread.own).count(range()))
     }
 }

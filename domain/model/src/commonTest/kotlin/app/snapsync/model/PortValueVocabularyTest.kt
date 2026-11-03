@@ -47,24 +47,6 @@ class PortValueVocabularyTest {
     }
 
     @Test
-    fun `the suppression view is ready on an older schema or unavailable with a detail`() {
-        assertEveryCaseDistinct(
-            listOf(
-                SuppressionReadiness.Ready,
-                SuppressionReadiness.OldSchema,
-                SuppressionReadiness.Unavailable("locked"),
-            ),
-        ) {
-            when (it) {
-                SuppressionReadiness.Ready -> "Ready"
-                SuppressionReadiness.OldSchema -> "OldSchema"
-                is SuppressionReadiness.Unavailable -> "Unavailable"
-            }
-        }
-        assertValueEquality({ SuppressionReadiness.Unavailable("locked") }, SuppressionReadiness.Unavailable("corrupt"))
-    }
-
-    @Test
     fun `a platform error compares by what it carries`() {
         assertValueEquality({ PlatformError("denied") }, PlatformError("restricted"))
     }

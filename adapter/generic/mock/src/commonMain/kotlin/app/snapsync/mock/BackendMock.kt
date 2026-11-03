@@ -23,7 +23,6 @@ import app.snapsync.model.DeviceFile
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.UnionAsset
 import app.snapsync.model.withFinal
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpTransport
@@ -273,11 +272,11 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
         state.storedFiles.filterKeys { it.second == deviceId }.values.flatten().mapTo(mutableSetOf(), ::storedKey)
     }
 
-    /** The event's union — every member's complete assets, departed members included; `null` for an unknown event. */
-    fun unionOf(eventId: String): List<UnionAsset>? = state.locked {
+    /** The event's union — each member's complete assets by device, departed members included; `null` for an unknown event. */
+    fun unionOf(eventId: String): List<Pair<String, AssetId>>? = state.locked {
         state.union(
             eventId,
-        )?.map { (deviceId, asset) -> UnionAsset(deviceIdOf(deviceId), asset.assetId, asset.creationDate, emptyList()) }
+        )?.map { (deviceId, asset) -> deviceId to asset.assetId }
     }
 
     /** Whether the backend holds [eventId]. */

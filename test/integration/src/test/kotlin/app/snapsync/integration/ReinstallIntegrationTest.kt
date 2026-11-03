@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.Expectations
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.levers.BackendFault
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
@@ -306,6 +307,53 @@ class ReinstallIntegrationTest {
     @Test
     @Verifies(
         spec = "receiving-photos",
+        requirement = "A deleted received photo never comes back",
+        scenario = "A rejoin that cannot reach the event receives nothing twice",
+    )
+    fun a_photo_downloaded_again_is_not_saved_while_recognition_cannot_read_the_event() = behaviour {
+        given {
+            val event = joinedEvent().also { received("FA") }
+            reinstalled()
+            gateOpenOn(event)
+            // The rejoin's recognition cannot read the event, but the plan that follows it can: FA downloads again, and
+            // lands while the access dialog is still open.
+            step("rejoined, its recognition's read failing", act = {
+                backend.fail(UNION, BackendFault.SERVER_ERROR, times = 1)
+                confirmJoin()
+            }, until = {
+                screen<Layer.Joined>()
+                event<WorldEvent.DownloadStarted>()
+                settled { true }
+            })
+            step("FA downloaded again", act = { downloadSession.finish() }, until = { settled { true } })
+        }
+
+        // Access granted while the event cannot be read: nothing is saved — the photo the library holds is not
+        // recognised yet, and saving the downloaded one would be a second copy.
+        whenever {
+            backend.failUnion(true)
+            library.permission(PhotoGrant.GRANTED)
+            os.foreground()
+        }
+        then {
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { true }
+        }
+
+        // The event is read at last: the photo is recognised, and still saved only once.
+        whenever {
+            backend.failUnion(false)
+            os.foreground()
+        }
+        then {
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { it.state.libraryPhotos == listOf(imported("FA", OTHER)) }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "receiving-photos",
         requirement = "Received photos are never shared back",
         scenario = "A received photo from before the event is recognised after a reinstall",
     )
@@ -454,9 +502,9 @@ class ReinstallIntegrationTest {
         step("the rejoin's downloads finished", act = { downloadSession.finish() }, until = { settled { true } })
         // Closing the dialog makes the app active: iOS delivers the foreground right after the grant, and on the SE2
         // its import ran while the grant's adoption was still reading names (2026-10-01). Every import drain now waits
-        // for the membership's adoption (`DownloadControllerTest` pins that order). The grant's adoption is the app's
-        // answer to it, and it runs before the uploads are armed: the settle is that pass done, so a cycle forced next
-        // (as a test may) cannot overtake it, as none can on a phone.
+        // for the membership's adoption (`ImportNextStaged` requires the `Recognised` it mints). The grant's adoption
+        // is the app's answer to it, and it runs before the uploads are armed: the settle is that pass done, so a cycle
+        // forced next (as a test may) cannot overtake it, as none can on a phone.
         step("photo access granted, and the app in front", act = {
             library.permission(PhotoGrant.GRANTED)
             os.foreground()

@@ -30,15 +30,12 @@ class MobileDataStoreTest {
     }
 
     @Test
-    fun `a written choice is what every instance reads, and a clear returns to the default`() {
+    fun `a written choice is what every instance reads`() {
         assertEquals(StoreWrite.Written, store().write(MobileDataChoice.WIFI_ONLY))
         assertEquals(MobileDataChoice.WIFI_ONLY, store().read())
         assertEquals(PhotoNetwork.UNRESTRICTED_ONLY, store().photoNetwork())
         assertEquals(TransferNetwork.UNRESTRICTED_ONLY, store().transferNetwork())
         assertEquals("off", values.values.single())
-
-        assertEquals(StoreWrite.Written, store().clear())
-        assertEquals(MobileDataChoice.ALLOWED, store().read())
     }
 
     @Test
@@ -56,13 +53,11 @@ class MobileDataStoreTest {
     }
 
     @Test
-    fun `a write or clear the store refuses answers so`() {
+    fun `a write the store refuses answers so`() {
         val refusing = object : Preferences by inMemoryPreferences(values) {
             override fun set(key: String, value: String): WriteOutcome = WriteOutcome.Failed("locked")
-            override fun remove(key: String): WriteOutcome = WriteOutcome.Failed("locked")
         }
         assertEquals(StoreWrite.Failed("locked"), store(refusing).write(MobileDataChoice.WIFI_ONLY))
-        assertEquals(StoreWrite.Failed("locked"), store(refusing).clear())
         assertEquals(MobileDataChoice.ALLOWED, store().read())
     }
 }

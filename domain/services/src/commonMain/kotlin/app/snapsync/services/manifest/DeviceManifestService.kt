@@ -1,5 +1,6 @@
 package app.snapsync.services.manifest
 
+import app.snapsync.data.receiving.OwnDeclarations
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
 import app.snapsync.domain.event.EventId
@@ -24,7 +25,7 @@ import co.touchlab.kermit.Logger
 class DeviceManifestService(
     private val db: SharedDatabase,
     private val log: Logger = Logger.withTag("deviceManifest"),
-) {
+) : OwnDeclarations {
 
     /**
      * Absence: null covers "nothing uploaded yet" and "could not read the record" alike. Both skip the skip-if-unchanged
@@ -61,7 +62,7 @@ class DeviceManifestService(
      * (change `count-declared-photos`). `0` when the record is another event's or there is none: nothing of this
      * device's is in that event's declared total. `null` when it cannot be read or decoded.
      */
-    fun publishedCount(eventId: EventId): Int? {
+    override fun publishedCount(eventId: EventId): Int? {
         val record = runCatchingCancellable {
             db.use {
                 it.uploadedManifestQueries.selectUploaded { event, version, manifest ->

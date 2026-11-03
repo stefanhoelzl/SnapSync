@@ -18,7 +18,7 @@ import io.ktor.client.plugins.HttpTimeout
  * 5 s therefore sits ~3× above the slowest real answer and far below any suspension artifact, and it
  * bounds the network portion of a wake's own work — now that no handler deadline exists, it is what stops a
  * stalled request from holding an OS handler until the OS's own expiry. A fast failure costs a retry and never
- * correctness — `DownloadController.reconcile` keeps last-good state on a union failure by contract.
+ * correctness — `PlanReceiving` keeps last-good state on a union failure by contract.
  *
  * Corollary kept deliberately: with this ceiling in place, a request still reported as minutes long
  * **is** the suspension signal, at no extra cost.

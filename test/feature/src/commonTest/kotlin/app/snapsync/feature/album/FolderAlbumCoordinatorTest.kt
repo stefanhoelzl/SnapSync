@@ -3,8 +3,10 @@
 package app.snapsync.feature.album
 
 import app.snapsync.data.gallery.assetId
+import app.snapsync.data.receiving.ImportCorrelation
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.inboundOf
@@ -14,7 +16,6 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.PhotoLibraryMock
 import app.snapsync.model.AlbumId
-import app.snapsync.model.AssetRef
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
@@ -27,7 +28,6 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.gallery.correlation
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
@@ -74,7 +74,7 @@ class FolderAlbumCoordinatorTest {
         val file = ImportFile("staged:/$name", "image/jpeg", ResourceKind.PHOTO, "$name.JPG")
         val result = gallery.import(
             GalleryImportRequest(
-                AssetRef(testDeviceId("other"), testAssetId(name)).correlation(),
+                ImportCorrelation.of(AssetRef(testDeviceId("other"), testAssetId(name))),
                 listOf(file),
                 Instant.parse("2026-09-30T10:00:00Z"),
                 album?.let(::PlatformAlbumId),

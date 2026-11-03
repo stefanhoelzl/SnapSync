@@ -1,12 +1,13 @@
 package app.snapsync.feature.album
 
 import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.receiving.DownloadRead
+import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
@@ -36,7 +37,7 @@ const val GATHER_BATCH_SIZE: Int = 500
  *  - **own** — the device manifest projection: [LedgerService.manifestRows] admitted by the membership's
  *    **current** policy, exactly what the device tells the event it contributes;
  *  - **foreign** — the other-device assets of this event's union that this device has imported
- *    ([DownloadService.importedLocalIdsOf]): every reconcile tags the event's whole foreign union in the store, so
+ *    ([ReceivingCounts.importedOf]): every plan tags the event's whole foreign union in the store, so
  *    the store says which imports are in THIS event without a union read of the gather's own, and an import made
  *    for another event is never gathered.
  *
@@ -61,7 +62,7 @@ class AlbumGather(
     private val ledger: LedgerService,
     /** The membership's one selection policy — the same derivation every other consumer uses. */
     private val policyFor: suspend (Membership) -> SelectionPolicy,
-    private val downloads: DownloadService,
+    private val downloads: ReceivingCounts,
     /** The photo grant: a gather without usable access (`grantsPhotoAccess`) could only fail its adds. */
     private val photoAccess: GalleryAccessState,
     private val coordinator: AlbumCoordinator,
@@ -127,7 +128,10 @@ class AlbumGather(
             !photoAccess.usable -> log.i { "gather: photo access not usable — skipping event=$eventId" }
             else -> {
                 val own = if (coordinator.placesOwnPhotos) ownSet(membership) else emptyList()
-                val foreign = downloads.importedLocalIdsOf(eventId).sorted()
+                val foreign = when (val read = downloads.importedOf(eventId)) {
+                    is DownloadRead.Ok -> read.value.sorted()
+                    is DownloadRead.Unavailable -> error("the received photos cannot be read: ${read.detail}")
+                }
                 log.i { "gather: placing ${own.size} own and ${foreign.size} received asset(s) for event=$eventId" }
                 own.chunked(batchSize).forEach { batch -> coordinator.place(eventId, batch) }
                 foreign.chunked(batchSize).forEach { batch -> coordinator.placeReceived(eventId, batch) }

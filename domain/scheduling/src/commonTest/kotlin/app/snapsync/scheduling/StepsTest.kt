@@ -130,6 +130,55 @@ class StepsTest {
     }
 
     @Test
+    fun `a drain calls its step until it answers no more`() = runTest {
+        val world = World(this)
+        var calls = 0
+        OnSteps(world) { drain { ++calls < 3 } }.handle(Unit, CountingCompletion())
+        settle()
+        assertEquals(3, calls)
+    }
+
+    private class OnStaged(world: World, private val release: CompletableDeferred<Unit>, private val done: MutableList<String>) :
+        InboundEntryPoint<String>(world.runtime) {
+        override fun Delivery.run(arg: String) {
+            detachedSteps {
+                required { release.await() }
+                required { done += arg }
+            }
+        }
+    }
+
+    @Test
+    fun `a run awaits what an inline delivery started and did not await - once`() = runTest {
+        val world = World(this)
+        val release = CompletableDeferred<Unit>()
+        val done = mutableListOf<String>()
+        val staged = OnStaged(world, release, done)
+        staged.deliver("finished")
+        OnStaged(world, CompletableDeferred(Unit), done).deliver("earlier")
+        runCurrent()
+        staged.deliver("second")
+        var awaited: List<String>? = null
+        OnSteps(world) {
+            awaitDetachedOf(OnStaged::class)
+            awaited = done.toList()
+        }.handle(Unit, CountingCompletion())
+        runCurrent()
+        assertEquals(null, awaited, "the run waits for the delivery's work")
+        release.complete(Unit)
+        settle()
+        assertEquals(listOf("earlier", "finished", "second"), awaited)
+
+        var again = false
+        OnSteps(world) {
+            awaitDetachedOf(OnStaged::class)
+            again = true
+        }.handle(Unit, CountingCompletion())
+        settle()
+        assertTrue(again, "what was awaited is forgotten: nothing is left to wait for")
+    }
+
+    @Test
     fun `an observed flow hands each emission to its entry point - one run at a time`() = runTest {
         val world = World(this)
         val seen = mutableListOf<String>()

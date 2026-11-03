@@ -27,8 +27,6 @@ class ConfinementGateTest {
 
     /** Classes that receive OS callbacks through a Kotlin interface, by file and class name. */
     private val receivers = mapOf(
-        "domain/services/src/commonMain/kotlin/app/snapsync/services/downloads/DownloadJobs.kt" to
-            "DownloadJobs", // DownloadTransportHost, from the URLSession delegate queue
         "domain/services/src/commonMain/kotlin/app/snapsync/services/transfer/SessionDrains.kt" to
             "SessionDrains", // a session's drain reports, from the URLSession delegate queue
         "adapter/generic/app/src/commonMain/kotlin/app/snapsync/selection/SelectionSnapshotLane.kt" to

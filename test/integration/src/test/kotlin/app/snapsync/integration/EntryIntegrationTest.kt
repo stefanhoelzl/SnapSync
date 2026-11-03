@@ -282,15 +282,6 @@ class EntryIntegrationTest {
         then { settled { true } }
     }
 
-    // ---- DevControls ----------------------------------------------------------------------------------------------
-
-    @Test
-    fun the_dev_reset_voids_the_membership() = behaviour {
-        given { joinedEvent() }
-        whenever { devControls.reset() }
-        then { screen<Layer.CreateEvent>() }
-    }
-
     // ---- The selection observer -----------------------------------------------------------------------------------
 
     /**

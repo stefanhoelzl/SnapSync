@@ -3,10 +3,8 @@ package app.snapsync.mock
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.upload.OsUploader
 import app.snapsync.data.upload.UploaderSwitches
-import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.RegistrationAnswer
 import app.snapsync.ports.DevControls
-import app.snapsync.ports.DevHandlers
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.RegistrationState
@@ -33,9 +31,6 @@ fun osUploaderOver(
     },
     UploaderSwitches(
         object : DevControls {
-            @CompositionOnly
-            override fun inbound(handlers: DevHandlers) = Unit
-
             override fun uploaderPin(): UploaderPin? = pin()
 
             override fun createsPlainEvents(): Boolean = false

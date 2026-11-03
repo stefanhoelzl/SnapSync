@@ -358,7 +358,7 @@ free. Each concept's evidence arrives with its phase; the membership's are `Enro
 device), `ConfirmedNotJoined` (the store answered with no membership), `LeftMembership` (the leave's transaction landed)
 and `ConfirmedDeletion` (the event's photos are deleted, by the server's word or the membership's own deadline); the
 selection's are `AdmittedAsset` (the policy admitted a read's photo, minted by `SelectionPolicy.admit`) and `AdmittedRow`
-(it admitted a ledger row's asset, by `admitRecorded`).
+(it admitted a ledger row's asset, by `admitRecorded`); receiving's are `ReceivingMembership` (an active membership that receives and holds its key, by `ReceivingVerdict`), `Recognised` (the membership's received photos were recognised against a union read, minted by the store's recognition read once a pass recorded it, `ReceivedPhotosRead.recognition`) — which every import requires — and the typestate's `StagedDownload` and `ImportedAsset`, minted by the store that recorded each transition (`ImportQueue`, `ImportedReleases`).
 
 ---
 
@@ -370,7 +370,7 @@ compiler holds it — `invoke` carries an `EntryPointCall` opt-in only an entry 
 first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the membership's are
 `application.membership`'s (`EnrollDevice`, `EnterMembership`, `LeaveEvent`, `RefreshMembership`, `ReconfigureEvent`,
 `RenameEvent`, `DeliverPendingLeaves`, `ClaimStateCheck`), and the small concepts' (`RegisterPush`, `SetMobileData`,
-`RearmHeartbeat`). A use case answers an `XOutcome`, and logs what it decided through the structured log;
+`RearmHeartbeat`), and receiving's (`application.receiving`: `PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and their kin). A use case answers an `XOutcome`, and logs what it decided through the structured log;
 `:domain:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
 
 ---

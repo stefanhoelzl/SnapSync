@@ -129,7 +129,7 @@ class EntryMockContractBindingsTest {
             }
             mock.pin = DevControlsContract.PINNED
             mock.encrypts = true
-            return Entered.Ready(DevControlsUnderTest(mock.port().recorded(log)) { mock.reset() })
+            return Entered.Ready(DevControlsUnderTest(mock.port().recorded(log)))
         }
     }
 

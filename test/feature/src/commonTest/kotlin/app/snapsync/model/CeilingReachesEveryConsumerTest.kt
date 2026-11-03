@@ -86,7 +86,7 @@ class CeilingReachesEveryConsumerTest {
 
     @Test
     fun `the join preview counts only the in-window asset`() = runTest {
-        val preview = assertIs<PreviewRead.Counted>(library.photos.preview(window, received = emptySet()))
+        val preview = assertIs<PreviewRead.Counted>(library.photos.preview(window))
         assertEquals(1, preview.photos)
     }
 
@@ -97,7 +97,7 @@ class CeilingReachesEveryConsumerTest {
         val fromUpload = uploaded()
         val fromManifest = projectDeviceManifest(testDeviceId("dev"), ledgerRows(), contribution().policy)
             .assets.map { it.assetId }.toSet()
-        val fromPreview = assertIs<PreviewRead.Counted>(library.photos.preview(window, emptySet())).photos
+        val fromPreview = assertIs<PreviewRead.Counted>(library.photos.preview(window)).photos
 
         assertEquals(fromUpload, counted())
         assertEquals(fromUpload, fromManifest)

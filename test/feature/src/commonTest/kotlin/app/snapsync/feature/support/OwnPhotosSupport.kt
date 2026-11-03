@@ -134,7 +134,12 @@ class ObservedKeys(private val inner: KeyedResources) : KeyedResources {
  * key resolve ([keys]) reads through a second, unobserved face of the same library and the same selection, so a
  * resolve is never mistaken for a discovery read.
  */
-class OwnLibrary(grant: LibraryGrant = LibraryGrant.GRANTED, clock: Clock = testClock()) {
+class OwnLibrary(
+    grant: LibraryGrant = LibraryGrant.GRANTED,
+    clock: Clock = testClock(),
+    /** What this device received through SnapSync — echo suppression's set, read by [photos] itself. */
+    val received: TestReceived = TestReceived(),
+) {
     val mock = PhotoLibraryMock(access = grant)
     val gallery = ObservedGallery(mock.port())
     val selection = SelectionSnapshots()
@@ -143,7 +148,7 @@ class OwnLibrary(grant: LibraryGrant = LibraryGrant.GRANTED, clock: Clock = test
     val keys = ObservedKeys(ContributionKeyedResources(ownPhotos(mock.port())))
 
     private fun ownPhotos(port: GalleryReader) =
-        OwnPhotos(port, GalleryWalk(port, wallClock), selection, DenylistedAlbums(port), wallClock)
+        OwnPhotos(port, GalleryWalk(port, wallClock), selection, DenylistedAlbums(port), wallClock, received)
 
     fun add(vararg assets: GalleryAssetResources) = assets.forEach(mock::add)
 
@@ -155,10 +160,13 @@ class OwnLibrary(grant: LibraryGrant = LibraryGrant.GRANTED, clock: Clock = test
     /** [id] is filed in another app's album titled [title]. */
     suspend fun inAlbum(title: String, id: String) = mock.operator.placeIn(title, id)
 
-    /** What a membership of [direction] sharing [range] contributes, [received] its echo set. */
+    /** What a membership of [direction] sharing [range] contributes, [received] its echo set from now on. */
     suspend fun contribution(
         range: CaptureRange,
         received: Set<AssetId> = emptySet(),
         direction: Direction = Direction.Both,
-    ): Contribution = photos.contribution(direction, range, received)
+    ): Contribution {
+        this.received.handles = received
+        return photos.contribution(direction, range)
+    }
 }

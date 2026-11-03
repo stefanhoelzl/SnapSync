@@ -1,8 +1,13 @@
 package app.snapsync.data.sharing
 
 import app.snapsync.data.membership.share
+import app.snapsync.data.receiving.HandlesRead
+import app.snapsync.data.receiving.ReceivedPhotosRead
+import app.snapsync.data.receiving.ReceivedReadiness
+import app.snapsync.data.receiving.RecognitionRead
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.WalkBounds
@@ -104,7 +109,10 @@ internal class Library(
         }
     }
 
-    val own = OwnPhotos(reader, counted, selection, DenylistedAlbums(reader), wallClock)
+    /** What this device received: nothing, unless a test says otherwise. */
+    val received = Received()
+
+    val own = OwnPhotos(reader, counted, selection, DenylistedAlbums(reader), wallClock, received)
 
     /** The member picks [photos] — the selection the observer reads under a partial grant. */
     suspend fun select(vararg photos: GalleryAssetResources) {
@@ -115,7 +123,7 @@ internal class Library(
     fun albumReads(): List<String> = calls.filter { it.startsWith("album") }
 
     suspend fun contribution(direction: Direction = Direction.Both, range: CaptureRange = range()): Contribution =
-        own.contribution(direction, range, received = emptySet())
+        own.contribution(direction, range)
 }
 
 internal fun ids(vararg text: String): List<AssetId> = text.map(::testAssetId)
@@ -127,4 +135,13 @@ internal fun DiscoveryRead.Discovered.admittedIds(): List<AssetId> = discovery.a
 internal fun GalleryRead<List<GalleryAssetResources>>.resolvedIds(): List<String>? = when (this) {
     is GalleryRead.Read -> value.map { it.asset.id.value }
     GalleryRead.NotReadable -> null
+}
+
+/** The received photos as a sharing reader sees them: the handles [handles] answers, never written. */
+internal class Received(var handles: HandlesRead = HandlesRead.Ok(emptySet())) : ReceivedPhotosRead {
+    override suspend fun readiness(): ReceivedReadiness = ReceivedReadiness.Ready
+
+    override suspend fun handles(): HandlesRead = handles
+
+    override suspend fun recognition(event: EventId): RecognitionRead = RecognitionRead.NotRecognised
 }

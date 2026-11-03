@@ -52,21 +52,9 @@ class ConfirmedNotJoined @MintsConfirmedNotJoined constructor()
 @Target(AnnotationTarget.CONSTRUCTOR)
 annotation class MintsKeptKey
 
-/** Only the rig's reset mints a [DevReset]. */
-@RequiresOptIn("Only the rig's reset says the device's state is being reset.", level = RequiresOptIn.Level.ERROR)
-@Retention(AnnotationRetention.BINARY)
-@Target(AnnotationTarget.CONSTRUCTOR)
-annotation class MintsDevReset
-
 /**
  * [event]'s key is kept — or, for a plain event, the slot cleared — before the event counts this device: what an
  * enrolment requires, so a membership never names a key that is not kept.
  */
 @JvmInline
 value class KeptKey @MintsKeptKey constructor(val event: EventId)
-
-/**
- * The rig's reset is running — the one other reason the key may be forgotten (`PENDING_CLEANUPS.md`: it moves into the
- * rig in 4.5).
- */
-class DevReset @MintsDevReset constructor()

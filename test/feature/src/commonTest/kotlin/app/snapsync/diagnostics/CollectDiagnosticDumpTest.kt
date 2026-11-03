@@ -2,6 +2,8 @@ package app.snapsync.diagnostics
 
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
+import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
+import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.mobiledata.MobileDataChoice
@@ -13,6 +15,7 @@ import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
+import app.snapsync.feature.support.receivingCounts
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.DeviceConditionsMock
@@ -32,13 +35,13 @@ import app.snapsync.model.Fact
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.ReportContext
 import app.snapsync.model.StandbyBucket
+import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.PrefRead
 import app.snapsync.ports.Preferences
 import app.snapsync.services.device.DeviceConditionsReadings
-import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.testids.testAssetId
@@ -47,6 +50,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -83,7 +87,7 @@ class CollectDiagnosticDumpTest {
         config: EventConfig? = null,
         permission: LibraryGrant = LibraryGrant.GRANTED,
         ledger: LedgerService = LedgerService(testShared()) { testEventId(LEDGER_EVENT) },
-        downloads: DownloadService = DownloadService(inMemoryDatabases()),
+        downloads: ReceivingCounts = receivingCounts(inMemoryDatabases()),
         environment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
         network: NetworkAccess = NetworkAccess.Online(restricted = false),
         conditions: DeviceConditions = DeviceConditionsMock().port(),
@@ -493,6 +497,12 @@ class CollectDiagnosticDumpTest {
         )
         assertEquals("1", dump.ledger["photos_pending"])
         assertEquals("1", dump.ledger["photos_completed"])
+    }
+
+    @Test
+    fun `a download store that cannot be read is never reported as nothing received`() = runTest {
+        val locked = receivingCounts(inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("locked"))))
+        assertFailsWith<IllegalStateException> { collector(downloads = locked).collect(NOTE, SCREEN) }
     }
 
     @Test

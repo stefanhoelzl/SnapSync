@@ -175,7 +175,8 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
         databases.lock(false)
         inspected.use { database ->
             if (config == null) {
-                database.membershipQueries.clearMembership()
+                database.membershipQueries.selectMembership().executeAsOneOrNull()
+                    ?.let { database.membershipQueries.deleteMembership(it.eventId) }
             } else {
                 database.membershipQueries.saveRow(config)
             }

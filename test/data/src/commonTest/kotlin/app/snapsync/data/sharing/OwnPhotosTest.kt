@@ -2,6 +2,7 @@ package app.snapsync.data.sharing
 
 import app.snapsync.data.membership.event
 import app.snapsync.data.membership.share
+import app.snapsync.data.receiving.HandlesRead
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -120,13 +121,13 @@ class OwnPhotosTest {
         val membership = event().let { Membership.Active(it, share(it, from = "2026-07-10T00:00:00Z")) }
 
         library.clock.now = Instant.parse("2026-07-12T12:00:00Z")
-        val waiting = library.own.contribution(membership, received = emptySet())
+        val waiting = library.own.contribution(membership)
         val waitingFrom = assertIs<WalkBounds.Within>(waiting.policy.walkBounds).range.from
         assertEquals(CaptureCutoff(at("2026-07-14T18:00:00Z")), waitingFrom)
         assertEquals(emptyList(), assertIs<DiscoveryRead.Discovered>(library.own.discover(waiting)).admittedIds())
 
         library.clock.now = Instant.parse(NOW)
-        val started = library.own.contribution(membership, received = emptySet())
+        val started = library.own.contribution(membership)
         val startedFrom = assertIs<WalkBounds.Within>(started.policy.walkBounds).range.from
         assertEquals(CaptureCutoff(at("2026-07-10T00:00:00Z")), startedFrom)
         assertEquals(ids("EARLY"), assertIs<DiscoveryRead.Discovered>(library.own.discover(started)).admittedIds())
@@ -138,14 +139,23 @@ class OwnPhotosTest {
         library.photos.value += LibraryAssets.photo("EARLY", BEFORE)
         library.clock.now = Instant.parse("2026-07-12T12:00:00Z")
 
-        val counted = library.own.preview(range(from = "2026-07-10T00:00:00Z"), received = emptySet())
+        val counted = library.own.preview(range(from = "2026-07-10T00:00:00Z"))
         assertEquals(3, assertIs<PreviewRead.Counted>(counted).photos, "A, B and EARLY, though the event lies ahead")
 
-        val echoed = library.own.preview(range(from = "2026-07-10T00:00:00Z"), received = ids("B").toSet())
+        library.received.handles = HandlesRead.Ok(ids("B").toSet())
+        val echoed = library.own.preview(range(from = "2026-07-10T00:00:00Z"))
         assertEquals(2, assertIs<PreviewRead.Counted>(echoed).photos, "a photo this device received is not its own")
 
         val denied = library(LibraryGrant.DENIED)
-        assertSame(PreviewRead.NotReadable, denied.own.preview(range(), received = emptySet()))
+        assertSame(PreviewRead.NotReadable, denied.own.preview(range()))
+    }
+
+    @Test
+    fun `a record of what was received that cannot be read lets nothing be read`() = runTest {
+        val library = library()
+        library.received.handles = HandlesRead.Unavailable("locked")
+        assertSame(DiscoveryRead.NotReadable, library.own.discover(library.contribution()))
+        assertEquals(emptyList(), library.calls, "nothing of the library is read")
     }
 
     @Test

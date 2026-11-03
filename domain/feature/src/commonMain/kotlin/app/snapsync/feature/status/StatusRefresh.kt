@@ -1,10 +1,11 @@
 package app.snapsync.feature.status
 
 import app.snapsync.data.membership.MembershipRead
+import app.snapsync.data.receiving.ReceivedPhotosRead
+import app.snapsync.data.receiving.RecognitionRead
 import app.snapsync.data.sharing.Contribution
 import app.snapsync.domain.membership.Membership
 import app.snapsync.model.runCatchingCancellable
-import app.snapsync.services.downloads.RecognitionSource
 import app.snapsync.services.membership.MembershipProjection
 import co.touchlab.kermit.Logger
 
@@ -30,9 +31,9 @@ import co.touchlab.kermit.Logger
  * the foreground's claim to decide nothing true of its own order and false of what it called.
  *
  * **Two features, one rule, and the sibling reached through a lambda.** The counts and the total are
- * `feature/status`; the "downloaded X of Y" line is `feature/download`. Features are mutually blind, so
- * [refreshDownloadLine] arrives as an injected effect the composition builds: passing the call rather than the
- * collaborator is what keeps one feature blind to its sibling.
+ * `feature/status`; the "downloaded X of Y" line is receiving's query (`ReceivingProgress`). The two are blind to
+ * each other, so [refreshDownloadLine] arrives as an injected effect the composition builds: passing the call rather
+ * than the collaborator is what keeps the feature blind to its sibling.
  */
 class StatusRefresh(
     /** Own-device completeness and in-flight, from one consistent ledger read. */
@@ -54,7 +55,7 @@ class StatusRefresh(
      * any of them could count as the member's own, so `N` is not counted — it keeps what it last honestly held, and an
      * uncounted `N` keeps the screen on its neutral line. The same record the upload gate reads.
      */
-    private val recognition: RecognitionSource,
+    private val received: ReceivedPhotosRead,
     private val log: Logger = Logger.withTag("status"),
 ) {
 
@@ -97,7 +98,7 @@ class StatusRefresh(
         }
         // Before recognition the admitted set would include received photos nothing has recognised yet — a count the
         // upload gate (which withholds until then) would never match.
-        if (!recognition.isRecognised(membership.event.id)) {
+        if (received.recognition(membership.event.id) !is RecognitionRead.Recognised) {
             return log.i { "status: received photos not recognised yet — N not counted" }
         }
         // NO GRANT CHECK. The read seam answers both halves — where candidates come from AND whether an

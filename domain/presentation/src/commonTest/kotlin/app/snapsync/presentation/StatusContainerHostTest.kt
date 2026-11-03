@@ -18,7 +18,6 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.download.readmodel.DownloadProgress
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
@@ -29,6 +28,7 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
