@@ -12,7 +12,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-@OptIn(MintsUploadRow::class, MintsCreatedJob::class, MintsReportedFailure::class)
+@OptIn(MintsUploadRow::class, MintsCreatedJob::class, MintsEndedJob::class)
 class UploadRowTest {
 
     private val asset = AssetId.parse("A1")!!
@@ -57,5 +57,6 @@ class UploadRowTest {
     fun `the platform's word names the key it is about`() {
         assertEquals(key, CreatedJob(key).key)
         assertEquals(key, ReportedFailure(key).key)
+        assertEquals(key, ReportedLanding(key).key)
     }
 }

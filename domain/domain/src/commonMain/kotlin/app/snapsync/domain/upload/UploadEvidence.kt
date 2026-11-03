@@ -12,11 +12,11 @@ import kotlin.jvm.JvmInline
 @Target(AnnotationTarget.CONSTRUCTOR)
 annotation class MintsCreatedJob
 
-/** Only the transfer tiers' translation of an ended job mints a [ReportedFailure]. */
-@RequiresOptIn("Only the platform's report of an ended job says an upload failed.", level = RequiresOptIn.Level.ERROR)
+/** Only the transfer tiers' translation of an ended job mints a [ReportedFailure] or a [ReportedLanding]. */
+@RequiresOptIn("Only the platform's report of an ended job says how an upload ended.", level = RequiresOptIn.Level.ERROR)
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.CONSTRUCTOR)
-annotation class MintsReportedFailure
+annotation class MintsEndedJob
 
 /** The platform accepted a job uploading [key]: its row may be recorded as requested (write-after-act). */
 @JvmInline
@@ -24,4 +24,8 @@ value class CreatedJob @MintsCreatedJob constructor(val key: UploadKey)
 
 /** The platform reported [key]'s job ended without its bytes landing: its row may return to needing a job. */
 @JvmInline
-value class ReportedFailure @MintsReportedFailure constructor(val key: UploadKey)
+value class ReportedFailure @MintsEndedJob constructor(val key: UploadKey)
+
+/** The platform reported [key]'s bytes landed: its row is settled. */
+@JvmInline
+value class ReportedLanding @MintsEndedJob constructor(val key: UploadKey)

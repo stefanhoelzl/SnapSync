@@ -224,6 +224,42 @@ FROM ledgerRow
 WHERE eventId = :eventId AND state IN :needsJobStates
 ORDER BY key;
 
+-- Every row of one event, whatever its state — what the upload's own rows read (`OwnUploadRows.rows`): the walk's
+-- presence diff, the manifest's projection and the policy's row admission all start from the whole set.
+selectRows:
+SELECT key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+FROM ledgerRow
+WHERE eventId = :eventId
+ORDER BY key;
+
+-- Record a walk's new row — ONLY for a key with no row yet (capability `photo-sharing`). A key that has a row keeps it:
+-- a `DISCOVERED` one already says this, a `REQUESTED` one records a live job a rewrite would orphan, a `COMPLETED` one
+-- bytes the backend holds. The guard is the statement's `DO NOTHING`, so no read-then-write races the other process.
+-- `:state` is bound from Kotlin (the discovered state), never spelled here. No insert, no trigger: the manifest
+-- version advances only for a row that lands.
+recordDiscovered:
+INSERT INTO ledgerRow (
+    eventId, key, assetId, state, creationDate, role, contentType, originalFilename, destinationPath
+)
+VALUES (
+    :eventId, :key, :assetId, :state, :creationDate, :role, :contentType, :originalFilename, NULL
+)
+ON CONFLICT(eventId, key) DO NOTHING;
+
+-- The write-after-act transition (decision record `changes/archive/2026-09-22-both-uploaders-active`, D2): the
+-- platform accepted a job for the row, so it moves from `:from` (the state that needs one) to `:to` (requested), with the
+-- destination the job was addressed to — and only while it is still in `:from`. Two processes that each created a job
+-- for one row both reach here; the second matches nothing and reads what the first wrote.
+markRequested:
+UPDATE ledgerRow
+SET state = :to, destinationPath = :destinationPath
+WHERE eventId = :eventId AND key = :key AND state = :from;
+
+-- How many of one event's rows are in `:state` — the extension's "invoke me again" counts the in-flight ones only.
+countInState:
+SELECT COUNT(*) FROM ledgerRow
+WHERE eventId = :eventId AND state = :state;
+
 -- The manifest version, 0 before the first change. One read, taken FIRST by the upload cycle's entry gate.
 selectManifestVersion:
 SELECT COALESCE((SELECT value FROM manifestVersion WHERE id = 0), 0);
