@@ -28,14 +28,10 @@ class OsQueueTier(
     private val record: JobRecord,
 ) : UploadTier {
     /** Make [row]'s upload into [event] a job sending [handle]'s bytes, and record its row requested once it exists. */
-    override suspend fun create(
-        event: EventId,
-        row: UploadRow.Discovered,
-        handle: GalleryResourceHandle,
-    ): CreateAnswer =
+    override suspend fun create(event: EventId, row: UploadRow.Discovered, from: SendFrom): CreateAnswer =
         when (val built = requests.first(event, row.key, row.detail)) {
             is RequestBuilt.Built -> when (val target = target(event, row.key, built.request)) {
-                is Target.To -> made(event, row.key, handle, built.request, target.target)
+                is Target.To -> made(event, row.key, from.handle, built.request, target.target)
                 is Target.Withheld -> CreateAnswer.Withheld(target.because)
             }
             RequestBuilt.NoIdentity -> CreateAnswer.Unaddressed("no device id is held here")

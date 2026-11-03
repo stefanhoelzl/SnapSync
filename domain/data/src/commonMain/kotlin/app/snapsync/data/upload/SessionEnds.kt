@@ -23,18 +23,25 @@ class SessionEnds(
     private val log = Log("SessionEnds")
 
     /**
-     * The session says the transfer tagged [tag] ended — with [failure], or none for a landing: recorded durably, right
+     * The session says a transfer ended ([end]): recorded durably, right
      * here, before returning, for the session tells it once and the process's runtime after its callback is not ours
-     * to assume. Non-suspending for that reason. Its staged file goes now, unless it failed and will resume.
+     * to assume. Non-suspending for that reason. Its staged file goes now, unless it failed and will resume. With no
+     * event joined — a leave came first — no row is its, and nothing is recorded.
      */
-    fun finished(event: EventId, tag: String, failure: TransferFailure?): FinishedAnswer {
-        val ended = endOf(failure)
-        kept(tag, StagedFile.after(ended))
-        return when (val key = UploadKeyText.parse(tag)) {
+    fun finished(event: EventId?, end: SessionEnd): FinishedAnswer {
+        val ended = endOf(end.failure)
+        kept(end.tag, StagedFile.after(ended))
+        return when (event) {
+            null -> FinishedAnswer.Unjoined
+            is EventId -> recorded(event, end.tag, ended)
+        }
+    }
+
+    private fun recorded(event: EventId, tag: String, ended: TransferEnd): FinishedAnswer =
+        when (val key = UploadKeyText.parse(tag)) {
             null -> FinishedAnswer.Unknown(tag)
             is UploadKey -> FinishedAnswer.Recorded(record.ended(event, key, ended))
         }
-    }
 
     /**
      * Cancel every live transfer and delete its staged file — what a leave stops. Asks the session which transfers
@@ -61,6 +68,9 @@ class SessionEnds(
     }
 }
 
+/** The session's report that the transfer tagged [tag] ended — with [failure], or none for a landing. */
+class SessionEnd(val tag: String, val failure: TransferFailure?)
+
 /** What recording a session transfer's end came to. */
 sealed interface FinishedAnswer {
     /** The end was recorded on the transfer's row — [recorded] is what the ledger made of it. */
@@ -68,4 +78,7 @@ sealed interface FinishedAnswer {
 
     /** The transfer's tag spells no upload key: no row is its. */
     data class Unknown(val tag: String) : FinishedAnswer
+
+    /** No event is joined — a leave came first: no row can be this transfer's. */
+    data object Unjoined : FinishedAnswer
 }

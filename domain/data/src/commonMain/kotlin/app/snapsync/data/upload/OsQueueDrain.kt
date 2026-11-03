@@ -4,7 +4,6 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.TransferEnd
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
-import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.OsUploadJob
 import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.UploadJobState
@@ -58,7 +57,7 @@ class OsQueueDrain(
 
     private fun ended(event: EventId, job: OsUploadJob, key: UploadKey, end: TransferEnd): ReturnedJob? = when (end) {
         TransferEnd.LANDED -> null.also { record.ended(event, key, end) }
-        TransferEnd.FAILED -> ReturnedJob(key, record.ended(event, key, end), job.resource)
+        TransferEnd.FAILED -> ReturnedJob(key, record.ended(event, key, end), job.resource?.let(::SendFrom))
     }
 
     /** A terminal job's state as the transfer's end: only a success landed its bytes. */
@@ -74,11 +73,11 @@ class OsQueueDrain(
 class OfferedRetry internal constructor(internal val job: OsUploadJob, val row: UploadRow)
 
 /**
- * A terminal job whose upload failed, recorded and acknowledged: [recorded] is what the ledger made of it, [handle]
+ * A terminal job whose upload failed, recorded and acknowledged: [recorded] is what the ledger made of it, [from]
  * the resource the queue still holds — none for a retry-spent job, whose photo is looked up again to re-create it.
  */
 class ReturnedJob internal constructor(
     val key: UploadKey,
     val recorded: RowTransition,
-    val handle: GalleryResourceHandle?,
+    val from: SendFrom?,
 )

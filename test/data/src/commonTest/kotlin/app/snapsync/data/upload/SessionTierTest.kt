@@ -34,7 +34,7 @@ class SessionTierTest {
         world.joined()
         world.network = TransferNetwork.UNRESTRICTED_ONLY
 
-        val answer = world.tier.create(world.event, world.discovered(), SessionWorld.Handle)
+        val answer = world.tier.create(world.event, world.discovered(), SessionWorld.From)
 
         assertEquals(RowTransition.Transitioned, assertIs<CreateAnswer.Created>(answer).recorded)
         val made = world.session.made.single()
@@ -51,7 +51,7 @@ class SessionTierTest {
         val world = SessionWorld()
         world.joined()
 
-        assertIs<CreateAnswer.Created>(world.tier.create(world.event, world.discovered(), SessionWorld.Handle))
+        assertIs<CreateAnswer.Created>(world.tier.create(world.event, world.discovered(), SessionWorld.From))
 
         val file = assertIs<TransferSource.File>(world.session.made.single().source)
         assertEquals("/os/${world.staged.path(world.tag())}", file.path)
@@ -67,7 +67,7 @@ class SessionTierTest {
         val world = SessionWorld(takesResources = true)
         world.joinedEncrypted()
 
-        assertIs<CreateAnswer.Created>(world.tier.create(world.event, world.discovered(), SessionWorld.Handle))
+        assertIs<CreateAnswer.Created>(world.tier.create(world.event, world.discovered(), SessionWorld.From))
 
         assertIs<TransferSource.File>(world.session.made.single().source)
         val staged = world.staged.path(world.tag())
@@ -80,7 +80,7 @@ class SessionTierTest {
         val world = SessionWorld()
         world.joined(Encryption.Encrypted(world.ids.mint().id))
 
-        val answer = world.tier.create(world.event, world.discovered(), SessionWorld.Handle)
+        val answer = world.tier.create(world.event, world.discovered(), SessionWorld.From)
 
         assertEquals(SealVerdict.Withheld.Because.KEY_LOST, assertIs<CreateAnswer.Withheld>(answer).because)
         assertEquals(emptyList(), world.session.made)
@@ -94,9 +94,9 @@ class SessionTierTest {
         val row = world.discovered()
 
         world.identity.read = DeviceIdRead.Absent
-        assertIs<CreateAnswer.Unaddressed>(world.tier.create(world.event, row, SessionWorld.Handle))
+        assertIs<CreateAnswer.Unaddressed>(world.tier.create(world.event, row, SessionWorld.From))
         world.identity.read = DeviceIdRead.Unavailable("locked")
-        assertEquals(CreateAnswer.Unaddressed("locked"), world.tier.create(world.event, row, SessionWorld.Handle))
+        assertEquals(CreateAnswer.Unaddressed("locked"), world.tier.create(world.event, row, SessionWorld.From))
         assertEquals(emptyList(), world.session.made)
     }
 
@@ -106,7 +106,7 @@ class SessionTierTest {
         world.joined()
         world.session.answer = CreateOutcome.LIMIT_EXCEEDED
 
-        assertEquals(CreateAnswer.Full, world.tier.create(world.event, world.discovered(), SessionWorld.Handle))
+        assertEquals(CreateAnswer.Full, world.tier.create(world.event, world.discovered(), SessionWorld.From))
 
         assertTrue(world.staged.path(world.tag()) in world.files.held)
         assertIs<UploadRow.Discovered>(world.row())
@@ -119,7 +119,7 @@ class SessionTierTest {
         world.files.unreadable = true
         world.session.answer = CreateOutcome.FAILED
 
-        assertIs<CreateAnswer.Failed>(world.tier.create(world.event, world.discovered(), SessionWorld.Handle))
+        assertIs<CreateAnswer.Failed>(world.tier.create(world.event, world.discovered(), SessionWorld.From))
 
         assertFalse(world.session.made.single().target.headers.containsKey(sha))
         assertFalse(world.staged.path(world.tag()) in world.files.held)
@@ -131,11 +131,11 @@ class SessionTierTest {
         world.joined()
         val row = world.discovered()
         world.session.answer = CreateOutcome.LIMIT_EXCEEDED
-        world.tier.create(world.event, row, SessionWorld.Handle)
+        world.tier.create(world.event, row, SessionWorld.From)
         world.session.answer = CreateOutcome.CREATED
         world.standing(HttpResult.Response(200, mapOf("Upload-Offset" to "4096"), ""))
 
-        assertIs<CreateAnswer.Created>(world.tier.create(world.event, row, SessionWorld.Handle))
+        assertIs<CreateAnswer.Created>(world.tier.create(world.event, row, SessionWorld.From))
 
         assertEquals(1, world.library.exports, "the same bytes, never exported again")
         val resumed = world.session.made.last()
@@ -150,14 +150,14 @@ class SessionTierTest {
             world.joined()
             val row = world.discovered()
             world.session.answer = CreateOutcome.FAILED
-            world.tier.create(world.event, row, SessionWorld.Handle)
+            world.tier.create(world.event, row, SessionWorld.From)
 
             world.standing(ok(204))
-            world.tier.create(world.event, row, SessionWorld.Handle)
+            world.tier.create(world.event, row, SessionWorld.From)
             assertEquals(9_999, assertIs<TransferSource.File>(world.session.made.last().source).from)
 
             world.standing(HttpResult.Unreachable("offline"))
-            assertEquals(CreateAnswer.NotNow, world.tier.create(world.event, row, SessionWorld.Handle))
+            assertEquals(CreateAnswer.NotNow, world.tier.create(world.event, row, SessionWorld.From))
             assertEquals(2, world.session.made.size)
         }
 
@@ -169,13 +169,13 @@ class SessionTierTest {
         val digest = world.staged.digestPath(world.tag())
 
         world.files.held[digest] = "${"a".repeat(64)} 10".encodeToByteArray()
-        world.tier.create(world.event, row, SessionWorld.Handle)
+        world.tier.create(world.event, row, SessionWorld.From)
         assertEquals(1, world.library.exports)
 
         world.files.held[world.staged.path(world.tag())] = ByteArray(1)
         world.files.held[digest] = "not a digest".encodeToByteArray()
-        world.tier.create(world.event, world.discovered("A2"), SessionWorld.Handle)
-        world.tier.create(world.event, row, SessionWorld.Handle)
+        world.tier.create(world.event, world.discovered("A2"), SessionWorld.From)
+        world.tier.create(world.event, row, SessionWorld.From)
         assertEquals(3, world.library.exports)
     }
 
@@ -187,18 +187,18 @@ class SessionTierTest {
             val row = world.discovered()
 
             world.library.fails = true
-            assertIs<CreateAnswer.Failed>(world.tier.create(world.event, row, SessionWorld.Handle))
+            assertIs<CreateAnswer.Failed>(world.tier.create(world.event, row, SessionWorld.From))
             world.library.fails = false
 
             world.files.unplaced = true
-            assertIs<CreateAnswer.Failed>(world.tier.create(world.event, row, SessionWorld.Handle))
+            assertIs<CreateAnswer.Failed>(world.tier.create(world.event, row, SessionWorld.From))
             world.files.unplaced = false
 
             val encrypted = SessionWorld()
             encrypted.joinedEncrypted()
             encrypted.library.writes = false
             assertIs<CreateAnswer.Failed>(
-                encrypted.tier.create(encrypted.event, encrypted.discovered(), SessionWorld.Handle),
+                encrypted.tier.create(encrypted.event, encrypted.discovered(), SessionWorld.From),
             )
 
             assertEquals(emptyList(), world.session.made + encrypted.session.made)
@@ -211,10 +211,10 @@ class SessionTierTest {
         world.joined()
         val row = world.discovered()
         world.session.answer = CreateOutcome.FAILED
-        world.tier.create(world.event, row, SessionWorld.Handle)
+        world.tier.create(world.event, row, SessionWorld.From)
 
         world.files.existsFails = true
-        world.tier.create(world.event, row, SessionWorld.Handle)
+        world.tier.create(world.event, row, SessionWorld.From)
 
         assertEquals(2, world.library.exports)
     }
@@ -226,10 +226,10 @@ class SessionTierTest {
         val row = world.discovered()
 
         world.library.fails = true
-        assertIs<CreateAnswer.Failed>(world.tier.create(world.event, row, SessionWorld.Handle))
+        assertIs<CreateAnswer.Failed>(world.tier.create(world.event, row, SessionWorld.From))
         world.library.fails = false
         world.files.unplacedSuffixes += ".plain"
-        assertIs<CreateAnswer.Failed>(world.tier.create(world.event, row, SessionWorld.Handle))
+        assertIs<CreateAnswer.Failed>(world.tier.create(world.event, row, SessionWorld.From))
 
         assertEquals(emptyList(), world.session.made)
     }
