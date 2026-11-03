@@ -1,6 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.NetworkAccess
 import kotlinx.coroutines.flow.Flow
 
 /**

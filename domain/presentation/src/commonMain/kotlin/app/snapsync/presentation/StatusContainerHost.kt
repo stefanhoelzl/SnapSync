@@ -16,6 +16,7 @@ import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
@@ -36,7 +37,6 @@ import app.snapsync.model.BuildLabel
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome

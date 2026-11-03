@@ -668,7 +668,7 @@ class AppCore internal constructor(
     }
 
     /** The foreground-gated network watch and what it tells the member. */
-    val network: AppNetwork by lazy { AppNetwork(scope, ports.network, statusCountsPoller) }
+    val network: AppNetwork by lazy { AppNetwork(runtime, ports.network) }
 
     /** What the entry points run (`AppWork`): built once, on first touch, and handed to the ports. */
     internal val work: AppWork by lazy { AppWork(this) }

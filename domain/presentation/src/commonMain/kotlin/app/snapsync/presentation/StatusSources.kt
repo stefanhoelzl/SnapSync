@@ -5,19 +5,19 @@ import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.download.readmodel.DownloadProgress
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.Store
 import app.snapsync.query.RequestStatus
+import app.snapsync.query.network.NetworkStatusQuery
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,7 +88,7 @@ class StatusSources(
      * when it cannot reach the network. Defaults to always-online, so a host that does not exercise it constructs
      * unchanged.
      */
-    val network: NetworkStatusSource = AlwaysOnline,
+    val network: NetworkStatusQuery = AlwaysOnline,
     /**
      * The device's mobile-data choice: what the menu's switch shows, and whether work on a
      * restricted network reads as waiting for Wi-Fi. Inert default: photos may use any network.
@@ -147,7 +147,7 @@ class StatusDiagnostics(
 )
 
 /** A host with no network watch: online, and never returning from anything. */
-private object AlwaysOnline : NetworkStatusSource {
+private object AlwaysOnline : NetworkStatusQuery {
     override val access: StateFlow<NetworkAccess> = MutableStateFlow(NetworkAccess.Online(restricted = false))
     override val returned: Flow<Unit> = emptyFlow()
 }

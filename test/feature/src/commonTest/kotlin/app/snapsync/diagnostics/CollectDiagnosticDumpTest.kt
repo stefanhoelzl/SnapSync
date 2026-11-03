@@ -1,5 +1,6 @@
 package app.snapsync.diagnostics
 
+import app.snapsync.data.network.NetworkReadings
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -27,16 +28,15 @@ import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
 import app.snapsync.model.LedgerEntry
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.StandbyBucket
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.downloads.DownloadService
 import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
-import app.snapsync.services.network.NetworkReadings
 import app.snapsync.services.settings.MobileDataSetting
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId

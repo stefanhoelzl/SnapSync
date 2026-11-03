@@ -29,8 +29,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.TransferFailure
 import kotlin.time.Instant
 

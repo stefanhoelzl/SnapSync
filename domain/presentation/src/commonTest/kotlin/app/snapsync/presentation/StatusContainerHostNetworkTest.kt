@@ -6,22 +6,22 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.JoinPhase
@@ -53,7 +53,7 @@ import kotlin.time.Instant
  */
 class StatusContainerHostNetworkTest {
 
-    private class FakeNetwork(initial: NetworkAccess = NetworkAccess.Online(restricted = false)) : NetworkStatusSource {
+    private class FakeNetwork(initial: NetworkAccess = NetworkAccess.Online(restricted = false)) : NetworkStatusQuery {
         override val access = MutableStateFlow(initial)
         val returns = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         override val returned: Flow<Unit> = returns

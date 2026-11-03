@@ -19,10 +19,10 @@ import app.snapsync.contracts.ThreadLabelState
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.EntryEvents
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.ThreadLabel

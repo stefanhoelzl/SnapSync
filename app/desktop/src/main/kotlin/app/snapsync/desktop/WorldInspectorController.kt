@@ -36,7 +36,6 @@ import app.snapsync.mock.id
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.Store
 import app.snapsync.model.WakeId
 import app.snapsync.model.runCatchingCancellable
@@ -45,6 +44,7 @@ import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.services.gallery.role

@@ -2,7 +2,7 @@ package app.snapsync.mock
 
 import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.NetworkState
-import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow

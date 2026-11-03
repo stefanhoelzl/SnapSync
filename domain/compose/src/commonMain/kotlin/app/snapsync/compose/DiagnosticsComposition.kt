@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.data.network.NetworkReadings
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.diagnostics.asFact
 import app.snapsync.model.AppFacts
@@ -10,7 +11,6 @@ import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.services.device.DeviceConditionsReadings
-import app.snapsync.services.network.NetworkReadings
 
 /**
  * The diagnostic dump assembly — reads only: this graph's state and the device's,

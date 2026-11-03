@@ -1,9 +1,9 @@
 package app.snapsync.mock
 
 import app.snapsync.model.CrashEvent
-import app.snapsync.model.NetworkAccess
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.ProcessInfo
 import kotlinx.coroutines.flow.MutableStateFlow

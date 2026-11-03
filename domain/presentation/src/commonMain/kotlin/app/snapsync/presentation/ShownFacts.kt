@@ -2,11 +2,11 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.LINK_ORIGIN
-import app.snapsync.model.NetworkAccess
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.NetworkNotice

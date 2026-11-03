@@ -30,18 +30,17 @@ import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.status.readmodel.NetworkStatusSource
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.Store
@@ -59,6 +58,7 @@ import app.snapsync.query.RequestStatuses
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
@@ -132,7 +132,7 @@ internal class ContainerRig(
             versionRefusal = MutableStateFlow(refusal),
             verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
             store = Store("App Store", RIG_STORE_URL),
-            network = object : NetworkStatusSource {
+            network = object : NetworkStatusQuery {
                 override val access: StateFlow<NetworkAccess> = MutableStateFlow(network)
                 override val returned: Flow<Unit> = emptyFlow()
             },

@@ -355,13 +355,17 @@ class DeletionLedgerTest {
      * collector which trigger publishes — over a replaying token relay, a `fun interface` publisher answering `Result`, and a
      * guard answering a `Boolean` an entry point branched on. The triggers are entry points (`OnPushToken`,
      * `OnCredentialChanged`, the join's step), the decision the domain's (`PushRegistrationVerdict`, `PushTailVerdict`).
+     * Network: a feature class that launched its own collection, held the grace rule inside it and was the screen's read
+     * model too, bundled with the counts poller. The rule is the domain's (`NetworkNotice`), the watch scheduling's
+     * (`GatedWatch`), what is told data's (`NetworkStatus`), the screen's read a query (`NetworkStatusQuery`).
      */
     @Test
     fun `the small concepts' retired items stay dead`() {
         val files = sources()
         val resurrections = buildList {
             val pre = """(class|interface|object) (Push""" + "TokenSource|PushToken" + "Request|PushToken" +
-                "Publisher|BackendPushToken" + "Publisher|PushTail" + "Guard)\\b"
+                "Publisher|BackendPushToken" + "Publisher|PushTail" + "Guard|Network" + "Watch|Foreground" +
+                "Watches|NetworkStatus" + "Source)\\b"
             declared(files, pre).forEach { add("the small concepts' pre-layer types in $it (the layers' — 4.8)") }
             declared(files, """class Push""" + "Registration\\(\\s*private val publisher").forEach {
                 add("a collecting push registration in $it (RegisterPush, run by its entry points — 4.8)")

@@ -134,7 +134,6 @@ internal class AppWork(private val core: AppCore) {
         ForegroundWork(
             prelude,
             core.services.config,
-            core.network.watches,
             core.uploadTransfer,
             storedUploadSettleFor(core.services, core.backend.deviceFiles),
             core.statusRefresh,

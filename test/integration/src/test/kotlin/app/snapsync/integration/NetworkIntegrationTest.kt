@@ -2,7 +2,6 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
-import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
@@ -12,6 +11,7 @@ import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.SyncHealth
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.milliseconds
+import app.snapsync.domain.network.NetworkNotice.Companion.GRACE as NETWORK_GRACE
 
 /**
  * **The app says when it cannot reach the network** (decision record `changes/tell-when-offline`), over the real
@@ -46,7 +46,7 @@ class NetworkIntegrationTest {
         // Slow to warn: a missing network is told only once it has lasted the grace — not a moment before.
         whenever { network(NetworkState.BLOCKED) }
         then { neverScreen<Layer.Joined> { it.health is SyncHealth.NoNetwork } }
-        whenever { advance(NetworkWatch.DEFAULT_GRACE - 1.milliseconds) }
+        whenever { advance(NETWORK_GRACE - 1.milliseconds) }
         then { neverScreen<Layer.Joined> { it.health is SyncHealth.NoNetwork } }
         whenever { advance(1.milliseconds) }
         then { screen<Layer.Joined> { it.health == SyncHealth.NoNetwork(NetworkNotice.BLOCKED) } }
@@ -73,7 +73,7 @@ class NetworkIntegrationTest {
 
         whenever {
             network(NetworkState.OFFLINE)
-            advance(NetworkWatch.DEFAULT_GRACE)
+            advance(NETWORK_GRACE)
         }
         then { neverScreen<Layer.Joined> { it.health != SyncHealth.NeedsAccess(canAsk = false) } }
     }
@@ -90,7 +90,7 @@ class NetworkIntegrationTest {
             inFront()
             // Only this device is offline: the fellow member below still reaches the backend.
             step("offline", act = { network(NetworkState.OFFLINE, backendReachable = true) }, until = {})
-            step("told so", act = { advance(NetworkWatch.DEFAULT_GRACE) }, until = {
+            step("told so", act = { advance(NETWORK_GRACE) }, until = {
                 screen<Layer.Joined> { it.health is SyncHealth.NoNetwork }
             })
         }
@@ -113,7 +113,7 @@ class NetworkIntegrationTest {
             inFront()
             step("offline briefly", act = {
                 network(NetworkState.OFFLINE, backendReachable = true)
-                advance(NetworkWatch.DEFAULT_GRACE / 2)
+                advance(NETWORK_GRACE / 2)
             }, until = {})
         }
 
@@ -134,7 +134,7 @@ class NetworkIntegrationTest {
             joinedEvent()
             inFront()
             step("offline", act = { network(NetworkState.OFFLINE) }, until = {})
-            step("told so", act = { advance(NetworkWatch.DEFAULT_GRACE) }, until = {
+            step("told so", act = { advance(NETWORK_GRACE) }, until = {
                 screen<Layer.Joined> { it.health is SyncHealth.NoNetwork }
             })
             step("in the background", act = { os.background() }, until = { settled { true } })
@@ -157,7 +157,7 @@ class NetworkIntegrationTest {
 
         whenever {
             network(NetworkState.OFFLINE)
-            advance(NetworkWatch.DEFAULT_GRACE)
+            advance(NETWORK_GRACE)
         }
         then { screen<Layer.CreateEvent> { it.network == NetworkNotice.OFFLINE } }
 
@@ -188,7 +188,7 @@ class NetworkIntegrationTest {
             inFront()
             step("offline, and told so", act = {
                 network(NetworkState.OFFLINE)
-                advance(NetworkWatch.DEFAULT_GRACE)
+                advance(NETWORK_GRACE)
             }, until = { screen<Layer.CreateEvent> { it.network == NetworkNotice.OFFLINE } })
         }
 

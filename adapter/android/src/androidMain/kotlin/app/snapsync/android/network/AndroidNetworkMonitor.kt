@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow

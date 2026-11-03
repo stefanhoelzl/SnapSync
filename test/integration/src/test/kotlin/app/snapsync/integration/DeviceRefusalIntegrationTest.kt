@@ -5,7 +5,6 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.feature.status.NetworkWatch
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
@@ -21,6 +20,7 @@ import app.snapsync.ui.state.step
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import app.snapsync.domain.network.NetworkNotice.Companion.GRACE as NETWORK_GRACE
 
 /**
  * A phone the service refuses as not genuine is told why, end to end, over the REAL composed core, driven through
@@ -239,13 +239,13 @@ class DeviceRefusalIntegrationTest {
 
         whenever {
             network(NetworkState.OFFLINE)
-            advance(NetworkWatch.DEFAULT_GRACE)
+            advance(NETWORK_GRACE)
         }
         then { screen<Layer.CreateEvent> { it.network == NetworkNotice.OFFLINE } }
 
         whenever {
             network(NetworkState.ONLINE)
-            advance(NetworkWatch.DEFAULT_GRACE)
+            advance(NETWORK_GRACE)
         }
         then {
             screen<Layer.CreateEvent> { it.network == null && it.error == DeviceRefusal.DEVICE_MODIFIED.message }

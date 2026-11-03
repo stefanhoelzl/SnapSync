@@ -28,6 +28,7 @@ import app.snapsync.domain.event.EventRange
 import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -36,7 +37,6 @@ import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.NetworkAccess
 import app.snapsync.model.UserCommands
 import app.snapsync.presentation.url
 import app.snapsync.query.membership.JoinDetails

@@ -53,6 +53,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `DbOpen` | `:domain:ports` | `:domain:ports` Failed, Missing, OldSchema, Opened | no |
 | `DbResult` | `:domain:ports` | `:domain:ports` Failed, Ok | no |
 | `DeletionVerdict` | `:domain:domain` | `:domain:domain` Confirmed, Inconclusive, NotDeleted | no |
+| `Delivered` | `:domain:data` | `:domain:data` None, Token | no |
 | `DeliveryOutcome` | `:domain:application` | `:domain:application` Delivered, Unreadable | no |
 | `DevControls` | `:domain:ports` | `:adapter:generic:app` InertDevControls; `:adapter:generic:mock` Face; `:test:contracts` DevControlsProxy; `:test:rig` RigDevControls | yes |
 | `DeviceConditions` | `:domain:ports` | `:adapter:android` AndroidDeviceConditions; `:adapter:generic:mock` InMemoryDeviceConditions; `:adapter:ios:app-only` IosDeviceConditions; `:test:contracts` DeviceConditionsProxy | yes |
@@ -145,9 +146,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `MembershipUpdate` | `:domain:domain` | `:domain:domain` Changed, Unchanged | no |
 | `MetricNode` | `:domain:ports` | `:domain:ports` Leaf | no |
 | `MintAnswerVerdict` | `:domain:domain` | `:domain:domain` Accept, NoVerdict, Refused | no |
-| `NetworkAccess` | `:domain:model` | `:domain:model` Blocked, Offline, Online | no |
+| `NetworkAccess` | `:domain:domain` | `:domain:domain` Blocked, Offline, Online; `:domain:ports` Blocked, Offline, Online | no |
+| `NetworkAccess` | `:domain:ports` | `:domain:domain` Blocked, Offline, Online; `:domain:ports` Blocked, Offline, Online | no |
 | `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor; `:test:contracts` NetworkMonitorProxy | yes |
-| `NetworkStatusSource` | `:domain:feature` | `:domain:feature` NetworkWatch; `:domain:presentation` AlwaysOnline, FakeNetwork | yes |
+| `NetworkStatusQuery` | `:domain:query` | `:domain:presentation` AlwaysOnline, FakeNetwork; `:domain:query` NetworkStatusLookup | yes |
 | `NewEventKey` | `:domain:data` | `:domain:data` Encrypted, Plain | no |
 | `NotEnrolled` | `:domain:application` | `:domain:application` AlreadyJoined, EventOver, Failed, InvalidRange, JoinedElsewhere, Unverified, WrongLink | no |
 | `NotEntered` | `:domain:application` | `:domain:application` AlreadyJoined, Failed | no |

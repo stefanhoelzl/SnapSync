@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.NetworkAccess
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
 import kotlinx.coroutines.flow.first
 import kotlin.test.assertEquals

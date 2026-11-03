@@ -7,6 +7,8 @@ import app.snapsync.application.push.RegisterPush
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.network.NetworkReadings
+import app.snapsync.data.network.NetworkStatus
 import app.snapsync.data.push.PushTokens
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.membership.DevReset
@@ -20,7 +22,7 @@ import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.feature.membership.ReceivedPhotoAdoption
 import app.snapsync.feature.status.ForegroundCounts
-import app.snapsync.feature.status.ForegroundWatches
+import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.upload.AppUploadEngine
 import app.snapsync.feature.upload.OwnUploads
@@ -48,6 +50,7 @@ import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.push.PushTailLookup
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Delivery
+import app.snapsync.scheduling.GatedWatch
 import app.snapsync.scheduling.GrantedEntryPoint
 import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Pass
@@ -82,6 +85,8 @@ class OnForeground(
     private val pushTokens: PushTokens,
     private val prelude: Prelude,
     private val host: HostAssembly,
+    private val network: ForegroundNetwork,
+    private val counts: StatusCountsPoller,
     private val work: ForegroundWork,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<Unit>(runtime) {
@@ -93,6 +98,9 @@ class OnForeground(
         isolated("membership") { prelude.membership() }
         isolated("key") { prelude.key() }
         required { host.assemble() }
+        // What only a visible screen needs, until the app leaves the front (`OnBackground`).
+        required { network.start() }
+        required { counts.start() }
         isolated("own work") { work.run(on) }
         required { wake.full(WakeKind.FOREGROUND, on) }
     }
@@ -102,14 +110,16 @@ class OnForeground(
 class OnBackground(
     runtime: Runtime,
     private val foreground: AppForeground,
-    private val watches: ForegroundWatches,
+    private val network: ForegroundNetwork,
+    private val counts: StatusCountsPoller,
     private val footprints: FootprintSampler,
 ) : InboundEntryPoint<Unit>(runtime) {
     private val log = Log("OnBackground")
 
     override fun Delivery.run(arg: Unit) {
         foreground.left()
-        watches.stop()
+        network.stop()
+        counts.stop()
         log.unlabelled.i("app entering background")
         footprints.record("entering background")
     }
@@ -412,11 +422,27 @@ class Prelude(
     fun key() = keys.reload()
 }
 
+/**
+ * The network watch the screen reads while the app is in front ([NetworkStatus]): started by the foreground's work, so
+ * the platform's monitor runs only then, and stopped — the notice forgotten — when the app leaves the front.
+ */
+class ForegroundNetwork(
+    private val gate: GatedWatch,
+    private val readings: NetworkReadings,
+    private val status: NetworkStatus,
+) {
+    fun start() = gate.start(readings.watch(), status::waitBefore, status::publish)
+
+    fun stop() {
+        gate.stop()
+        status.hide()
+    }
+}
+
 /** The foreground's own work — and a returned network's, which is the same. */
 class ForegroundWork(
     private val prelude: Prelude,
     private val config: MembershipProjection,
-    private val watches: ForegroundWatches,
     private val transfer: SessionTransfer,
     private val settle: StoredUploadSettle,
     private val statusRefresh: StatusRefresh,
@@ -426,7 +452,6 @@ class ForegroundWork(
 ) {
     suspend fun run(on: Run) = on.steps {
         required { prelude.run(on) }
-        required { watches.start() }
         concurrently {
             child("staging") { transfer.releaseUnclaimedStaging() }
             child("settle") { settle.settleJoined(config.activeEventId()) }
