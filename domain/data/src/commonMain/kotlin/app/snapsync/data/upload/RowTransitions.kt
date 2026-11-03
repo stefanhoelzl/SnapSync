@@ -8,6 +8,7 @@ import app.snapsync.domain.upload.DestinationPath
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.ReportedFailure
 import app.snapsync.domain.upload.ReportedLanding
+import app.snapsync.domain.upload.StoredBytes
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.UploadKeyText
@@ -42,6 +43,13 @@ class RowTransitions(private val db: SharedDatabase) {
     /** The platform reported [landing]: its requested row is settled. */
     fun landed(event: EventId, landing: ReportedLanding): RowTransition =
         transition(event, landing.key) { queries, key -> queries.markTerminal(LedgerState.COMPLETED, event.value, key) }
+
+    /**
+     * The backend lists [stored]'s bytes: its requested row is settled — bytes can land long before the OS acknowledges
+     * their job, and sometimes the acknowledgement never reaches the ledger. A row in any other state is left as it is.
+     */
+    fun listed(event: EventId, stored: StoredBytes): RowTransition =
+        transition(event, stored.key) { queries, key -> queries.markTerminal(LedgerState.COMPLETED, event.value, key) }
 
     /** [write] for [key] and its `changes()` read in one transaction — and, when it moved nothing, the row as it is. */
     private fun transition(event: EventId, key: UploadKey, write: (LedgerQueries, String) -> Unit): RowTransition {

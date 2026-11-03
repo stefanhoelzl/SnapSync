@@ -22,9 +22,13 @@ class SessionTier(
     private val sealing: UploadSealing,
     private val create: SessionCreate,
     private val fromFiles: FileUploads,
-) {
+) : UploadTier {
     /** Make [row]'s upload into [event] a transfer of [handle]'s bytes, and record its row requested once it exists. */
-    suspend fun create(event: EventId, row: UploadRow.Discovered, handle: GalleryResourceHandle): CreateAnswer =
+    override suspend fun create(
+        event: EventId,
+        row: UploadRow.Discovered,
+        handle: GalleryResourceHandle,
+    ): CreateAnswer =
         when (val built = requests.first(event, row.key, row.detail)) {
             is RequestBuilt.Built -> sealed(SessionUpload(event, row.key, handle, built.request))
             RequestBuilt.NoIdentity -> CreateAnswer.Unaddressed("no device id is held here")

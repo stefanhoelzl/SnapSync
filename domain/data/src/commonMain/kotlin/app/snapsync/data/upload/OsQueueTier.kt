@@ -26,9 +26,13 @@ class OsQueueTier(
     private val sealing: UploadSealing,
     private val network: MobileDataStore,
     private val record: JobRecord,
-) {
+) : UploadTier {
     /** Make [row]'s upload into [event] a job sending [handle]'s bytes, and record its row requested once it exists. */
-    suspend fun create(event: EventId, row: UploadRow.Discovered, handle: GalleryResourceHandle): CreateAnswer =
+    override suspend fun create(
+        event: EventId,
+        row: UploadRow.Discovered,
+        handle: GalleryResourceHandle,
+    ): CreateAnswer =
         when (val built = requests.first(event, row.key, row.detail)) {
             is RequestBuilt.Built -> when (val target = target(event, row.key, built.request)) {
                 is Target.To -> made(event, row.key, handle, built.request, target.target)

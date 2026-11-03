@@ -4,7 +4,9 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.DestinationPath
 import app.snapsync.domain.upload.LedgerState
+import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
+import app.snapsync.format.UploadKeyText
 import app.snapsync.ports.DbResult
 
 /**
@@ -33,10 +35,25 @@ class OwnUploadRows(private val db: SharedDatabase) {
         },
     )
 
+    /** [key]'s row of [event]. */
+    fun row(event: EventId, key: UploadKey): RowRead = rowRead(
+        db.execute { it.ledgerQueries.get(event.value, UploadKeyText.of(key), mapper::stored).executeAsOneOrNull() },
+    )
+
     /** How many of [event]'s rows have a job in flight. */
     fun inFlight(event: EventId): CountRead = counted(
         db.execute { it.ledgerQueries.countInState(event.value, LedgerState.REQUESTED).executeAsOne() },
     )
+
+    /**
+     * The manifest version: one counter that advances on every change that could alter the device manifest's projection
+     * — 0 before the first. An upload pass reads it FIRST, so a change its projection misses carries a higher one.
+     */
+    fun manifestVersion(): VersionRead =
+        when (val read = db.execute { it.ledgerQueries.selectManifestVersion().executeAsOne() }) {
+            is DbResult.Ok -> VersionRead.Read(read.value)
+            is DbResult.Failed -> VersionRead.Unavailable(read.detail)
+        }
 
     private fun counted(read: DbResult<Long>): CountRead = when (read) {
         is DbResult.Ok -> CountRead.Counted(read.value.toInt())
@@ -74,6 +91,13 @@ sealed interface RowRead {
     data object Absent : RowRead
 
     data class Unavailable(val detail: String) : RowRead
+}
+
+/** The manifest version a read found, or that it could not read. */
+sealed interface VersionRead {
+    data class Read(val version: Long) : VersionRead
+
+    data class Unavailable(val detail: String) : VersionRead
 }
 
 /** A count a read made, or that it could not read. */

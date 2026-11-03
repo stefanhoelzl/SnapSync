@@ -110,7 +110,8 @@ class OwnPhotos(
             ReadPlan.NotReadable -> GalleryRead.NotReadable
         }
 
-    private fun plan(): ReadPlan<SelectionState.Read> = ReadPlan.of(gallery.access().photoAccess(), selection.read)
+    /** The plan the grant allows now — what a contribution reads under, and what the app's uploader is admitted by. */
+    fun plan(): ReadPlan<SelectionState.Read> = ReadPlan.of(gallery.access().photoAccess(), selection.read)
 
     private fun walked(read: WalkRead): Candidates = when (read) {
         is WalkRead.Walked -> Candidates(CandidateSet.Walked(read.assets, read.takenAt), read.resources)

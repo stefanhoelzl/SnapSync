@@ -9,12 +9,12 @@ import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.upload.CreatedJob
 import app.snapsync.domain.upload.DestinationPath
+import app.snapsync.domain.upload.FoundResource
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.MintsCreatedJob
 import app.snapsync.domain.upload.MintsEndedJob
 import app.snapsync.domain.upload.ReportedFailure
 import app.snapsync.domain.upload.ReportedLanding
-import app.snapsync.domain.upload.FoundResource
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
