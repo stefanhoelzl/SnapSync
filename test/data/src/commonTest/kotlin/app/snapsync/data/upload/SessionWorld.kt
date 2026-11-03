@@ -126,6 +126,11 @@ internal class SessionWorld(takesResources: Boolean = false) {
     }
 
     object Handle : GalleryResourceHandle
+
+    companion object {
+        /** Where a test's uploads send from: [Handle]. */
+        val From = SendFrom(Handle)
+    }
 }
 
 /** The shared area as a map, with switches for what the area cannot do now. */
@@ -228,4 +233,36 @@ internal class RecordingSession(override val takesResources: Boolean) : Transfer
     }
 
     object Handle : TransferHandle
+}
+
+/** The OS's upload queue, recording what it was asked and presenting what a test sets. */
+internal class RecordingQueue : app.snapsync.ports.OsUploadQueue {
+    val created = mutableListOf<Pair<GalleryResourceHandle, UploadTarget>>()
+    val retried = mutableListOf<Pair<app.snapsync.ports.OsUploadJob, UploadTarget>>()
+    val acknowledged = mutableListOf<app.snapsync.ports.OsUploadJob>()
+    var answer = CreateOutcome.CREATED
+    var change: app.snapsync.ports.ChangeOutcome = app.snapsync.ports.ChangeOutcome.Applied
+    var offered: List<app.snapsync.ports.OsUploadJob> = emptyList()
+    var terminals: List<app.snapsync.ports.OsUploadJob> = emptyList()
+
+    override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome {
+        created += resource to target
+        return answer
+    }
+
+    override suspend fun retryOffered(): List<app.snapsync.ports.OsUploadJob> = offered
+
+    override suspend fun terminals(): List<app.snapsync.ports.OsUploadJob> = terminals
+
+    override suspend fun retry(job: app.snapsync.ports.OsUploadJob, target: UploadTarget): app.snapsync.ports.ChangeOutcome {
+        retried += job to target
+        return change
+    }
+
+    override suspend fun acknowledge(job: app.snapsync.ports.OsUploadJob): app.snapsync.ports.ChangeOutcome {
+        acknowledged += job
+        return change
+    }
+
+    object JobHandle : app.snapsync.ports.OsUploadJobHandle
 }

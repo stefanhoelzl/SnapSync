@@ -3,12 +3,16 @@ package app.snapsync.data.upload
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.text
 import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.data.sharing.DURING
+import app.snapsync.data.sharing.DiscoveryRead
+import app.snapsync.data.sharing.Library
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.mock.LibraryAssets
+import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.ResourceKind
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -24,17 +28,20 @@ class WalkAndListingTest {
     private val world = SessionWorld()
 
     @Test
-    fun `a read's resources are keyed under their role, with the capture date, name and type their rows record`() {
-        val walked = WalkedResources.of(
-            listOf(
-                LibraryAssets.photo("A1", "2026-07-15T10:00:00Z"),
-                LibraryAssets.livePhoto("A2"),
-                LibraryAssets.photo(
-                    "A3",
-                    resources = listOf(LibraryAssets.Resource(ResourceKind.VIDEO, "video/mp4", "V.MP4")),
-                ),
+    fun `a read's resources are keyed under their role, with the capture date, name and type their rows record`() = runTest {
+        val library = Library(
+            LibraryAssets.photo("A1", DURING),
+            LibraryAssets.livePhoto("A2", DURING),
+            LibraryAssets.photo(
+                "A3",
+                DURING,
+                resources = listOf(LibraryAssets.Resource(ResourceKind.VIDEO, "video/mp4", "V.MP4")),
             ),
         )
+        val resources = OwnPhotoResources(library.own)
+        val read = assertIs<DiscoveryRead.Discovered>(library.own.discover(library.contribution()))
+
+        val walked = resources.of(read, read.discovery.admitted)
 
         assertEquals(
             listOf(ResourceRole.PRIMARY, ResourceRole.PRIMARY, ResourceRole.LIVE, ResourceRole.PRIMARY),
@@ -43,8 +50,33 @@ class WalkAndListingTest {
         val first = walked.first().found
         assertEquals("A1", first.key.asset.value)
         assertIs<CaptureDate.Dated>(first.detail.captured)
-        assertEquals(LibraryAssets.photo("A1").resources.single().contentType, first.detail.contentType)
-        assertEquals(ResourceKind.PHOTO, LibraryAssets.photo("A1").resources.single().kind)
+        assertEquals("image/jpeg", first.detail.contentType)
+    }
+
+    @Test
+    fun `a row's photo is found again, gone, or not readable now`() = runTest {
+        val library = Library(LibraryAssets.photo("A1", DURING))
+        val resources = OwnPhotoResources(library.own)
+        val key = UploadKey.of(AssetId.parse("A1")!!, ResourceRole.PRIMARY, "IMG.JPG")
+
+        assertIs<KeyLookup.Found>(resources.find(key))
+        assertEquals(KeyLookup.Gone, resources.find(UploadKey.of(AssetId.parse("A1")!!, ResourceRole.LIVE, "IMG.MOV")))
+        library.grant.value = LibraryGrant.DENIED
+        assertEquals(KeyLookup.NotReadable, resources.find(key))
+
+        library.grant.value = LibraryGrant.GRANTED
+        val read = assertIs<DiscoveryRead.Discovered>(library.own.discover(library.contribution()))
+        library.grant.value = LibraryGrant.DENIED
+        assertEquals(
+            emptyList(),
+            resources.of(read, read.discovery.admitted),
+            "a library no longer readable yields none",
+        )
+
+        library.grant.value = LibraryGrant.GRANTED
+        library.photos.value = emptyList()
+        val gone = assertIs<DiscoveryRead.Discovered>(library.own.discover(library.contribution()))
+        assertEquals(emptyList(), resources.of(gone, gone.discovery.admitted))
     }
 
     @Test
@@ -65,7 +97,7 @@ class WalkAndListingTest {
     @Test
     fun `what the backend lists for this device settles its in-flight rows`() = runTest {
         world.joined()
-        world.tier.create(world.event, world.discovered(), SessionWorld.Handle)
+        world.tier.create(world.event, world.discovered(), SessionWorld.From)
         world.transport.answer = {
             json(200, """[{"assetId":"A1","role":"primary","filename":"IMG.MOV"},{"assetId":"A9","role":"live","filename":"x.mov"},{"assetId":"bad id!","role":"live","filename":"x"}]""")
         }

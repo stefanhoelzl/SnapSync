@@ -20,7 +20,7 @@ class SessionEndsTest {
 
     private suspend fun SessionWorld.sent(asset: String = "A1"): String {
         joined()
-        tier.create(event, discovered(asset), SessionWorld.Handle)
+        tier.create(event, discovered(asset), SessionWorld.From)
         return tag(asset)
     }
 
@@ -29,7 +29,7 @@ class SessionEndsTest {
         val world = SessionWorld()
         val tag = world.sent()
 
-        val answer = world.ends.finished(world.event, tag, failure = null)
+        val answer = world.ends.finished(world.event, SessionEnd(tag, null))
 
         assertEquals(RowTransition.Transitioned, assertIs<FinishedAnswer.Recorded>(answer).recorded)
         assertIs<UploadRow.Completed>(world.row())
@@ -42,7 +42,7 @@ class SessionEndsTest {
         val world = SessionWorld()
         val tag = world.sent()
 
-        world.ends.finished(world.event, tag, TransferFailure("timed out"))
+        world.ends.finished(world.event, SessionEnd(tag, TransferFailure("timed out")))
 
         assertIs<UploadRow.Discovered>(world.row())
         assertTrue(world.staged.path(tag) in world.files.held)
@@ -56,11 +56,22 @@ class SessionEndsTest {
         world.files.undeletable += world.staged.path("stuck")
         world.files.held[world.staged.path("stuck")] = ByteArray(1)
 
-        assertEquals(FinishedAnswer.Unknown("odd"), world.ends.finished(world.event, "odd", failure = null))
-        world.ends.finished(world.event, "stuck", failure = null)
+        assertEquals(FinishedAnswer.Unknown("odd"), world.ends.finished(world.event, SessionEnd("odd", null)))
+        world.ends.finished(world.event, SessionEnd("stuck", null))
 
         assertFalse(world.staged.path("odd") in world.files.held)
         assertTrue(world.staged.path("stuck") in world.files.held, "a file the area refuses to delete stays, logged")
+    }
+
+    @Test
+    fun `an end after a leave belongs to no row, and its file still goes`() = runTest {
+        val world = SessionWorld()
+        val tag = world.sent()
+
+        assertEquals(FinishedAnswer.Unjoined, world.ends.finished(null, SessionEnd(tag, null)))
+
+        assertFalse(world.staged.path(tag) in world.files.held)
+        assertIs<UploadRow.Requested>(world.row())
     }
 
     @Test
@@ -84,7 +95,7 @@ class SessionEndsTest {
         val failed = world.sent("A1")
         world.session.answer = CreateOutcome.CREATED
         val sending = world.sent("A2")
-        world.ends.finished(world.event, world.sent("A3"), failure = null)
+        world.ends.finished(world.event, SessionEnd(world.sent("A3"), null))
         val landed = world.tag("A3")
         world.files.held[world.staged.path(landed)] = ByteArray(1)
         world.files.held[world.staged.path("orphan.plain")] = ByteArray(1)

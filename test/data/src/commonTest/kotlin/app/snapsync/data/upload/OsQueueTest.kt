@@ -12,11 +12,8 @@ import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.OsUploadJob
-import app.snapsync.ports.OsUploadJobHandle
-import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.UploadJobState
-import app.snapsync.ports.UploadTarget
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,37 +30,6 @@ import kotlin.test.assertTrue
 @OptIn(MintsLeftMembership::class)
 class OsQueueTest {
 
-    private class RecordingQueue : OsUploadQueue {
-        val created = mutableListOf<Pair<GalleryResourceHandle, UploadTarget>>()
-        val retried = mutableListOf<Pair<OsUploadJob, UploadTarget>>()
-        val acknowledged = mutableListOf<OsUploadJob>()
-        var answer = CreateOutcome.CREATED
-        var change: ChangeOutcome = ChangeOutcome.Applied
-        var offered: List<OsUploadJob> = emptyList()
-        var terminals: List<OsUploadJob> = emptyList()
-
-        override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome {
-            created += resource to target
-            return answer
-        }
-
-        override suspend fun retryOffered(): List<OsUploadJob> = offered
-
-        override suspend fun terminals(): List<OsUploadJob> = terminals
-
-        override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
-            retried += job to target
-            return change
-        }
-
-        override suspend fun acknowledge(job: OsUploadJob): ChangeOutcome {
-            acknowledged += job
-            return change
-        }
-    }
-
-    private object JobHandle : OsUploadJobHandle
-
     private object Held : GalleryResourceHandle
 
     private val world = SessionWorld()
@@ -73,11 +39,11 @@ class OsQueueTest {
     private val drain = OsQueueDrain(queue, JobOwners(world.reads), JobAcknowledgement(queue), world.record)
 
     private fun job(url: String?, state: UploadJobState = UploadJobState.FAILED, resource: GalleryResourceHandle? = Held) =
-        OsUploadJob(JobHandle, url, "video/quicktime", state, null, resource)
+        OsUploadJob(RecordingQueue.JobHandle, url, "video/quicktime", state, null, resource)
 
     /** [asset]'s row given a job, and that job's destination URL. */
     private suspend fun requested(asset: String = "A1"): String {
-        tier.create(world.event, world.discovered(asset), SessionWorld.Handle)
+        tier.create(world.event, world.discovered(asset), SessionWorld.From)
         return queue.created.last().second.url
     }
 
@@ -86,7 +52,7 @@ class OsQueueTest {
         world.joined()
         world.network = TransferNetwork.UNRESTRICTED_ONLY
 
-        val answer = tier.create(world.event, world.discovered(), SessionWorld.Handle)
+        val answer = tier.create(world.event, world.discovered(), SessionWorld.From)
 
         assertEquals(RowTransition.Transitioned, assertIs<CreateAnswer.Created>(answer).recorded)
         val (handle, target) = queue.created.single()
@@ -102,7 +68,7 @@ class OsQueueTest {
     @Test
     fun `an encrypted event's job carries the one file's key for the edge to seal with, or is withheld`() = runTest {
         world.joinedEncrypted()
-        tier.create(world.event, world.discovered(), SessionWorld.Handle)
+        tier.create(world.event, world.discovered(), SessionWorld.From)
         assertTrue(EncryptedFileFormat.FILE_KEY_HEADER in queue.created.single().second.headers)
 
         val unkeyed = SessionWorld()
@@ -115,7 +81,7 @@ class OsQueueTest {
                 mobileDataAnswering { unkeyed.network },
                 unkeyed.record,
             )
-        val withheld = other.create(unkeyed.event, unkeyed.discovered(), SessionWorld.Handle)
+        val withheld = other.create(unkeyed.event, unkeyed.discovered(), SessionWorld.From)
         assertEquals(SealVerdict.Withheld.Because.KEY_LOST, assertIs<CreateAnswer.Withheld>(withheld).because)
         assertEquals(1, queue.created.size)
     }
@@ -125,9 +91,9 @@ class OsQueueTest {
         world.joined()
         val row = world.discovered()
         queue.answer = CreateOutcome.LIMIT_EXCEEDED
-        assertEquals(CreateAnswer.Full, tier.create(world.event, row, SessionWorld.Handle))
+        assertEquals(CreateAnswer.Full, tier.create(world.event, row, SessionWorld.From))
         queue.answer = CreateOutcome.FAILED
-        assertIs<CreateAnswer.Failed>(tier.create(world.event, row, SessionWorld.Handle))
+        assertIs<CreateAnswer.Failed>(tier.create(world.event, row, SessionWorld.From))
         assertIs<UploadRow.Discovered>(world.row())
     }
 
@@ -139,12 +105,12 @@ class OsQueueTest {
         val offered = drain.offered(world.event).single()
 
         world.identity.read = DeviceIdRead.Absent
-        assertIs<CreateAnswer.Unaddressed>(tier.create(world.event, world.discovered("A2"), SessionWorld.Handle))
+        assertIs<CreateAnswer.Unaddressed>(tier.create(world.event, world.discovered("A2"), SessionWorld.From))
         assertIs<RetryAnswer.Unaddressed>(tier.retry(world.event, offered))
         world.identity.read = DeviceIdRead.Unavailable("locked")
         assertEquals(
             CreateAnswer.Unaddressed("locked"),
-            tier.create(world.event, world.discovered("A2"), SessionWorld.Handle),
+            tier.create(world.event, world.discovered("A2"), SessionWorld.From),
         )
         assertEquals(RetryAnswer.Unaddressed("locked"), tier.retry(world.event, offered))
         assertEquals(emptyList(), queue.retried)
@@ -190,8 +156,8 @@ class OsQueueTest {
             assertIs<UploadRow.Completed>(world.row("A1"))
             assertEquals(failed.indices.map { world.key("B$it") }, returned.map { it.key })
             returned.forEach { assertEquals(RowTransition.Transitioned, it.recorded) }
-            assertNull(returned.first().handle, "a retry-spent job holds no resource")
-            assertSame(Held, returned.last().handle)
+            assertNull(returned.first().from, "a retry-spent job holds no resource")
+            assertSame(Held, returned.last().from?.handle)
             failed.indices.forEach { assertIs<UploadRow.Discovered>(world.row("B$it")) }
             assertEquals(queue.terminals, queue.acknowledged)
         }

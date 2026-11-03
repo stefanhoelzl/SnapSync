@@ -4,7 +4,6 @@ import app.snapsync.data.crypto.UploadSeal
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.UploadRow
-import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 
@@ -24,13 +23,9 @@ class SessionTier(
     private val fromFiles: FileUploads,
 ) : UploadTier {
     /** Make [row]'s upload into [event] a transfer of [handle]'s bytes, and record its row requested once it exists. */
-    override suspend fun create(
-        event: EventId,
-        row: UploadRow.Discovered,
-        handle: GalleryResourceHandle,
-    ): CreateAnswer =
+    override suspend fun create(event: EventId, row: UploadRow.Discovered, from: SendFrom): CreateAnswer =
         when (val built = requests.first(event, row.key, row.detail)) {
-            is RequestBuilt.Built -> sealed(SessionUpload(event, row.key, handle, built.request))
+            is RequestBuilt.Built -> sealed(SessionUpload(event, row.key, from.handle, built.request))
             RequestBuilt.NoIdentity -> CreateAnswer.Unaddressed("no device id is held here")
             is RequestBuilt.IdentityUnreadable -> CreateAnswer.Unaddressed(built.detail)
         }
