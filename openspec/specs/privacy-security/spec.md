@@ -413,8 +413,8 @@ each platform's provider. It SHALL be updated in the same release as any change 
   linked to no person and no other app, and that it can stay the same when the app is installed again
 
 ### Requirement: The notification token is used only to announce new photos
-The token Apple gives the app for waking it SHALL be used only to tell that device that new photos are
-ready in its event.
+The token the phone's platform gives the app for waking it — Apple's on an iPhone, Google's (Firebase Cloud
+Messaging) on Android — SHALL be used only to tell that device that new photos are ready in its event.
 
 #### Scenario: Another member shares a photo
 - **WHEN** another member's photo arrives in the event
