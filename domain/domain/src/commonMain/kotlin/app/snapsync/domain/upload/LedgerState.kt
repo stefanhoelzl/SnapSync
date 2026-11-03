@@ -45,4 +45,26 @@ enum class LedgerState {
      * `changes/archive/2026-08-26-fix-lost-upload-acks`.
      */
     COMPLETED,
+
+    ;
+
+    companion object {
+        /** Whether a row in [state] needs an upload job — the one classification; a new state fails to compile here. */
+        fun needsJob(state: LedgerState): Boolean = when (state) {
+            DISCOVERED -> true
+            REQUESTED, COMPLETED -> false
+        }
+
+        /** Whether a row in [state] is settled: nothing further is owed for its key. */
+        fun isDone(state: LedgerState): Boolean = when (state) {
+            COMPLETED -> true
+            DISCOVERED, REQUESTED -> false
+        }
+
+        /** The states that need a job, bound into every state-scoped statement rather than spelled there. */
+        val needingJob: List<LedgerState> get() = entries.filter(::needsJob)
+
+        /** The settled states, bound the same way. */
+        val done: List<LedgerState> get() = entries.filter(::isDone)
+    }
 }

@@ -10,4 +10,10 @@ class LedgerStateTest {
         // A ledger row stores its state by name; renaming one strands every stored row.
         assertEquals(listOf("DISCOVERED", "REQUESTED", "COMPLETED"), LedgerState.entries.map { it.name })
     }
+
+    @Test
+    fun `only a discovered row needs a job, and only a completed one is done`() {
+        assertEquals(listOf(LedgerState.DISCOVERED), LedgerState.needingJob)
+        assertEquals(listOf(LedgerState.COMPLETED), LedgerState.done)
+    }
 }
