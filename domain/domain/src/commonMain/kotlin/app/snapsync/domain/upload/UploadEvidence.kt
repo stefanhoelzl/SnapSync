@@ -32,3 +32,13 @@ value class ReportedFailure @MintsEndedJob constructor(val key: UploadKey)
 /** The platform reported [key]'s bytes landed: its row is settled. */
 @JvmInline
 value class ReportedLanding @MintsEndedJob constructor(val key: UploadKey)
+
+/** Only the backend's listing of this device's stored resources mints a [StoredBytes]. */
+@RequiresOptIn("Only the backend's listing says a resource's bytes are stored.", level = RequiresOptIn.Level.ERROR)
+@Retention(AnnotationRetention.BINARY)
+@Target(AnnotationTarget.CONSTRUCTOR)
+annotation class MintsStoredBytes
+
+/** The backend lists [key]'s bytes among this device's stored resources: its in-flight row may be settled. */
+@JvmInline
+value class StoredBytes @MintsStoredBytes constructor(val key: UploadKey)

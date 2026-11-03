@@ -85,20 +85,23 @@ sealed interface UploadGate {
 
     companion object {
         /** The entry, from what it [read], whether the build has a [host], the key's [presence] and the [admission]. */
-        fun entry(read: GateRead, host: UploadHost, presence: KeyPresence, admission: UploadAdmission): UploadGate =
-            when (read) {
-                is GateRead.Unreadable -> Unreadable(read.detail)
-                is GateRead.Read -> hosted(read, host, presence, admission)
-            }
+        fun entry(read: GateRead, host: UploadHost, presence: KeyPresence, admission: UploadAdmission): GateStep =
+            GateStep.of(
+                when (read) {
+                    is GateRead.Unreadable -> Unreadable(read.detail)
+                    is GateRead.Read -> hosted(read, host, presence, admission)
+                },
+            )
 
         /**
          * A running pass against the echo-suppression store's [readiness]: uploading without it would send downloaded
          * photos back.
          */
-        fun suppression(run: Run, readiness: EchoReadiness): UploadGate = when (readiness) {
-            EchoReadiness.Ready -> run
-            EchoReadiness.OldSchema -> Paused(UploadPause.OLD_SCHEMA)
-            is EchoReadiness.Unavailable -> Unreadable("echo-suppression store unavailable (${readiness.detail})")
+        fun suppression(run: Run, readiness: EchoReadiness): GateStep = when (readiness) {
+            EchoReadiness.Ready -> GateStep.Proceed(run)
+            EchoReadiness.OldSchema -> GateStep.Stop(Paused(UploadPause.OLD_SCHEMA))
+            is EchoReadiness.Unavailable ->
+                GateStep.Stop(Unreadable("echo-suppression store unavailable (${readiness.detail})"))
         }
 
         /** A running pass once the membership's received photos are [recognised] — never before. */
@@ -141,4 +144,19 @@ sealed interface EchoReadiness {
     data object OldSchema : EchoReadiness
 
     data class Unavailable(val detail: String) : EchoReadiness
+}
+
+/** One step of the gate: it stopped the pass at [Stop.gate], or the pass may go on to the next read. */
+sealed interface GateStep {
+    class Stop(val gate: UploadGate) : GateStep
+
+    class Proceed(val run: UploadGate.Run) : GateStep
+
+    companion object {
+        /** [gate] as a step: a [UploadGate.Run] goes on, any other stops the pass there. */
+        fun of(gate: UploadGate): GateStep = when (gate) {
+            is UploadGate.Run -> Proceed(gate)
+            else -> Stop(gate)
+        }
+    }
 }
