@@ -5,8 +5,8 @@ import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerQueries
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.upload.FoundResource
 import app.snapsync.domain.upload.LedgerState
-import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.TimestampText
@@ -82,6 +82,3 @@ class WalkRecord(private val db: SharedDatabase) {
         const val KEY_CHUNK = 500
     }
 }
-
-/** What a walk found of one resource: its key and the detail the device manifest says of it. */
-class FoundResource(val key: UploadKey, val detail: RowDetail)

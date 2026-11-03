@@ -24,6 +24,7 @@ import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.upload.FoundResource
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
