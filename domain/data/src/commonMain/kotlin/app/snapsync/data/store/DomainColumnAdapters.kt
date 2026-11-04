@@ -2,6 +2,8 @@ package app.snapsync.data.store
 
 import app.cash.sqldelight.ColumnAdapter
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.album.AlbumFill
+import app.snapsync.domain.album.EventAlbumId
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
@@ -126,5 +128,25 @@ object AlbumChoiceColumnAdapter : ColumnAdapter<AlbumChoice, Long> {
     override fun encode(value: AlbumChoice): Long = when (value) {
         AlbumChoice.SaveToAlbum -> 1L
         AlbumChoice.LibraryOnly -> 0L
+    }
+}
+
+/** An event album's column: the id exactly as the platform wrote it. */
+object EventAlbumIdColumnAdapter : ColumnAdapter<EventAlbumId, String> {
+    override fun decode(databaseValue: String): EventAlbumId = EventAlbumId(databaseValue)
+
+    override fun encode(value: EventAlbumId): String = value.value
+}
+
+/** An event album's mark: 1 once it has held a photo, 0 before — any other value reads as not yet filled. */
+object AlbumFillColumnAdapter : ColumnAdapter<AlbumFill, Long> {
+    override fun decode(databaseValue: Long): AlbumFill = when (databaseValue == 1L) {
+        true -> AlbumFill.Filled
+        false -> AlbumFill.NotYetFilled
+    }
+
+    override fun encode(value: AlbumFill): Long = when (value) {
+        AlbumFill.Filled -> 1L
+        AlbumFill.NotYetFilled -> 0L
     }
 }

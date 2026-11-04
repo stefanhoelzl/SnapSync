@@ -71,9 +71,9 @@ class MigrationPinTest {
         // Not merged yet: the id columns read as a `Stored` (the `InvalidProgramState` change).
         "ledger/app/snapsync/data/store/db/17.sqm" to
             "0e02ac6aa4c4831be3c55745267c54402ed6edd57c2698403aa38b7344caaa03",
-        // Not merged yet: phase 4.7 (the album) types `membership.saveToAlbum` as the member's `AlbumChoice`.
+        // Not merged yet: phase 4.7 (the album) types `membership.saveToAlbum` and `eventAlbum`'s columns as domain values.
         "ledger/app/snapsync/data/store/db/18.sqm" to
-            "35c6806cc8f315419a4dbf9cc074e62bc82a14d79880722eeb06537ebbd09307",
+            "3c3af3b1baaa30f425b2d4064e87ba944c244a8ba8d8f89f236027edf93c1a43",
     )
 
     @Test

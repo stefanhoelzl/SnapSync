@@ -2,6 +2,8 @@ package app.snapsync.services.album
 
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
+import app.snapsync.domain.album.AlbumFill
+import app.snapsync.domain.album.EventAlbumId
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.databases.use
@@ -24,7 +26,7 @@ class AlbumMapService(
      * sight of.
      */
     fun lookup(eventId: EventId): AlbumLookup = runCatchingCancellable {
-        db.use { it.eventAlbumQueries.selectAlbum(Stored.Valid(eventId)).executeAsOneOrNull() }
+        db.use { it.eventAlbumQueries.selectAlbum(Stored.Valid(eventId)).executeAsOneOrNull()?.value }
     }.fold(
         onSuccess = { album -> album?.let(AlbumLookup::Stored) ?: AlbumLookup.None },
         onFailure = { AlbumLookup.Unreadable.also { _ -> log.w(it) { "event-album map unreadable" } } },
@@ -38,7 +40,9 @@ class AlbumMapService(
 
     /** Remember [albumLocalId] as [eventId]'s album (overwrites any prior mapping). A new album has held nothing yet. */
     fun put(eventId: EventId, albumLocalId: String) {
-        runCatchingCancellable { db.use { it.eventAlbumQueries.rememberAlbum(Stored.Valid(eventId), albumLocalId) } }
+        runCatchingCancellable {
+            db.use { it.eventAlbumQueries.rememberAlbum(Stored.Valid(eventId), EventAlbumId(albumLocalId)) }
+        }
             .onFailure { log.w(it) { "album=$albumLocalId for event=$eventId not remembered" } }
     }
 
@@ -48,7 +52,7 @@ class AlbumMapService(
      * unreadable store reads as not filled: the album is then used, never wrongly read as deleted.
      */
     fun filled(eventId: EventId): Boolean = runCatchingCancellable {
-        db.use { it.eventAlbumQueries.selectFilled(Stored.Valid(eventId)).executeAsOneOrNull() } == true
+        db.use { it.eventAlbumQueries.selectFilled(Stored.Valid(eventId)).executeAsOneOrNull() } == AlbumFill.Filled
     }.getOrDefault(false)
 
     /** Mark [eventId]'s album as having held a photo. */
