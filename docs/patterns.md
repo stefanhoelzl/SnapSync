@@ -278,7 +278,8 @@ backend's routes say and how a store keeps a value. Today it holds trust (`docs/
 the credential stores, the device identity, the attestation handshake, the version gate — and the membership: the
 `ledger.db` store, the membership row's repository, the leaves owed, the check times, the event's read and rename, the
 enrolment and the leave told to the backend; and the selection: `OwnPhotos`, where a member's contribution is derived,
-read under the grant's plan and admitted — the one place every consumer of their photos asks; and the upload
+read under the grant's plan and admitted — the one place every consumer of their photos asks — and the device
+manifest's record and publish (`ManifestRecord`, `ManifestPublication`); and the upload
 (`data/upload`): the upload rows and their guarded transitions, a pass's gate reads, the request, and the two
 transfer tiers behind `UploadTier` (`SessionTier`, `OsQueueTier`). Its edges are the domain,
 the format, the ports, the generated wire and the inbound log — never an old zone, never `application`.
@@ -302,7 +303,7 @@ the format, the ports, the generated wire and the inbound log — never an old z
 - **The claim: ≤ 3 cyclomatic, ≤ 3 cognitive** per function (`config/detekt/data.yml`). A `when` whose every entry is
   one expression counts once (`_base.yml`): it selects over a fact's cases. A function that needs more is deciding.
 - **The old zones reach it one way while their concepts move** (MIGRATING). A shim that keeps an old zone's shape for
-  callers a later phase owns — the throwing `requireDeviceId()` over the sealed device-id read — lives in the old zone,
+  callers a later phase owns — the membership as an `EventConfig` flow (`MembershipProjection`) — lives in the old zone,
   never in the layer, and is listed in `PENDING_CLEANUPS.md` with the phases that delete its callers.
 
 Its suites run over the ports' mocks in `:test:data` (no core module may name a mock), credited to it; its pure
@@ -360,7 +361,9 @@ free. Each concept's evidence arrives with its phase; the membership's are `Enro
 device), `ConfirmedNotJoined` (the store answered with no membership), `LeftMembership` (the leave's transaction landed)
 and `ConfirmedDeletion` (the event's photos are deleted, by the server's word or the membership's own deadline); the
 selection's are `AdmittedAsset` (the policy admitted a read's photo, minted by `SelectionPolicy.admit`) and `AdmittedRow`
-(it admitted a ledger row's asset, by `admitRecorded`); the upload's are `CreatedJob` (the platform accepted a job:
+(it admitted a ledger row's asset, by `admitRecorded`); settling's is `SettledShare` (a look since the member's own range
+ended, or a policy that shares nothing, minted by `ShareDeclaration.of`), which a manifest's settled declaration carries;
+the upload's are `CreatedJob` (the platform accepted a job:
 its row may be recorded requested), `ReportedLanding` and `ReportedFailure` (the platform reported its end),
 `StoredBytes` (the backend's listing holds its bytes) and `FullGrant` (the grant's read found full access — what
 registering the extension requires); receiving's are `ReceivingMembership` (an active membership that receives and holds its key, by `ReceivingVerdict`), `Recognised` (the membership's received photos were recognised against a union read, minted by the store's recognition read once a pass recorded it, `ReceivedPhotosRead.recognition`) — which every import requires — and the typestate's `StagedDownload` and `ImportedAsset`, minted by the store that recorded each transition (`ImportQueue`, `ImportedReleases`).
@@ -377,7 +380,7 @@ first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the
 `RenameEvent`, `DeliverPendingLeaves`, `ClaimStateCheck`), and the small concepts' (`RegisterPush`, `SetMobileData`,
 `RearmHeartbeat`), the upload's, `application.upload`'s (`DeriveContribution`, `WalkOwnPhotos`, `RecordWalk`,
 `PlanTopUp`, `CreateJobs`, `SettlePresentedJobs`, `RecordFinishedUpload`, `SettleStoredUploads`,
-`ReconcileUploader`, `StopUploads`), and receiving's (`application.receiving`: `PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and their kin), and the album's (`application.album`: `EnsureEventAlbum`, `PlaceOwnPhotos`, `PlaceReceivedPhotos`, `AlbumForImport`, `MarkAlbumFilled`, `OwnAlbumPhotos`, `ReceivedAlbumPhotos`). A use case answers an `XOutcome`, and logs what it decided through the structured log;
+`ReconcileUploader`, `StopUploads`), the manifest's, `application.sharing`'s (`PublishManifest`, `CheckSettleNeed`), receiving's (`application.receiving`: `PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and their kin), and the album's (`application.album`: `EnsureEventAlbum`, `PlaceOwnPhotos`, `PlaceReceivedPhotos`, `AlbumForImport`, `MarkAlbumFilled`, `OwnAlbumPhotos`, `ReceivedAlbumPhotos`). A use case answers an `XOutcome`, and logs what it decided through the structured log;
 `:domain:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
 
 ---
@@ -459,7 +462,7 @@ return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encod
   `check`, `error`, `requireNotNull`, `checkNotNull`, `TODO` or `!!`, and none of the standard library's reads that throw
   on an empty or missing value (`first`, `last`, `single`, `reduce`, `getValue`, `getOrThrow`). A conversion that throws
   on bad text (`String.toInt()`) is review's: syntax cannot tell it from one that cannot. The old zones join as phase 4
-  moves them; until then their throwing reads live in the old zones (`use`, `held`, `requireDeviceId` —
+  moves them; until then their throwing reads live in the old zones (`held` —
   `PENDING_CLEANUPS.md`).
 
 ---

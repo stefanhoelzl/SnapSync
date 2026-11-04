@@ -4,6 +4,7 @@ import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.anEvent
 import app.snapsync.domain.membership.Membership
@@ -14,6 +15,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.sharing.MintsAdmittedRow
 import app.snapsync.domain.sharing.PhotoAccess
 import app.snapsync.domain.sharing.ReadPlan
@@ -27,6 +29,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertSame
+
+private val DEVICE = requireNotNull(DeviceId.parse("00000000-0000-4000-9000-0000000000a1"))
 
 @OptIn(MintsUploadRow::class, MintsAdmittedRow::class)
 class CycleVerdictsTest {
@@ -142,7 +146,7 @@ class CycleVerdictsTest {
     @Test
     fun `the gate - unreadable touches nothing, no host or membership is not joined, deleted or lost withholds`() {
         val active = active()
-        val read = GateRead.Read(active, version = 7)
+        val read = GateRead.Read(active, ManifestVersion(7), DEVICE)
         val held = KeyPresence.NotNeeded
 
         assertEquals(
@@ -152,18 +156,19 @@ class CycleVerdictsTest {
         assertEquals(UploadGate.NotJoined, entry(read, UploadHost.NONE, held, UploadAdmission.ADMIT))
         assertEquals(
             UploadGate.NotJoined,
-            entry(GateRead.Read(null, 0), UploadHost.CARRIED, held, UploadAdmission.ADMIT),
+            entry(GateRead.Read(null, ManifestVersion(0), DEVICE), UploadHost.CARRIED, held, UploadAdmission.ADMIT),
         )
         val deleted = Membership.Deleted(active.event, active.share)
         assertIs<UploadGate.Withheld>(
-            entry(GateRead.Read(deleted, 0), UploadHost.CARRIED, held, UploadAdmission.ADMIT),
+            entry(GateRead.Read(deleted, ManifestVersion(0), DEVICE), UploadHost.CARRIED, held, UploadAdmission.ADMIT),
         )
         assertIs<UploadGate.Withheld>(
             entry(read, UploadHost.CARRIED, KeyPresence.Lost, UploadAdmission.ADMIT),
         )
         assertIs<UploadGate.Withheld>(entry(read, UploadHost.CARRIED, held, UploadAdmission.WITHHELD))
         val run = assertIs<UploadGate.Run>(entry(read, UploadHost.CARRIED, held, UploadAdmission.ADMIT))
-        assertEquals(7, run.version)
+        assertEquals(ManifestVersion(7), run.version)
+        assertEquals(DEVICE, run.device, "the device the entry read, which the publish speaks for")
         assertSame(active, run.membership)
     }
 
@@ -176,7 +181,7 @@ class CycleVerdictsTest {
 
     @Test
     fun `a running gate waits for echo suppression and recognition`() {
-        val run = UploadGate.Run(active(), 1)
+        val run = UploadGate.Run(active(), ManifestVersion(1), DEVICE)
 
         assertSame(run, suppression(run, EchoReadiness.Ready))
         assertEquals(UploadGate.Paused(UploadPause.OLD_SCHEMA), suppression(run, EchoReadiness.OldSchema))
@@ -191,6 +196,6 @@ class CycleVerdictsTest {
         assertEquals(SKIPPED, UploadGate.NotJoined.pass)
         assertEquals(SKIPPED, UploadGate.Withheld(active().event.id).pass)
         assertEquals(PAUSED, UploadGate.Paused(UploadPause.LEGACY_RECORDS).pass)
-        assertEquals(CAUGHT_UP, UploadGate.Run(active(), 1).pass)
+        assertEquals(CAUGHT_UP, UploadGate.Run(active(), ManifestVersion(1), DEVICE).pass)
     }
 }

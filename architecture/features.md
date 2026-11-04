@@ -22,16 +22,11 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceManifestProducer.kt`, `ManifestPublish.kt`, `ShareSetLoad.kt`
-- top-level types: `DeviceManifestProducer (class)`, `ManifestPublish (class)`, `ShareSetLoad (class)`
+- files: `ShareSetLoad.kt`
+- top-level types: `ShareSetLoad (class)`
 
 ## `feature/status`
 
 - files: `ForegroundCounts.kt`, `LedgerBackedSyncStatusSource.kt`, `LedgerCountsSource.kt`, `OwnDeviceGalleryStatusSource.kt`, `StatusCountsPoller.kt`, `StatusRefresh.kt`, `SyncStatusSource.kt`
 - top-level types: `ForegroundCounts (class)`, `LedgerCounts (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `StatusCountsPoller (class)`, `StatusRefresh (class)`, `SyncStatusSource (interface)`
-
-## `feature/upload`
-
-- files: `ShareSettlement.kt`
-- top-level types: `ShareSettlement (class)`
 

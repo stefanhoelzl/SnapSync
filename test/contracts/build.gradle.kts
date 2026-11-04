@@ -52,6 +52,7 @@ val generateSchemaStatements = tasks.register<SchemaStatementsTask>("generateSch
             "AlbumChoice" to "AlbumChoice.entries.first()",
             "AlbumFill" to "AlbumFill.entries.first()",
             "EventAlbumId" to "EventAlbumId(\"f\")",
+            "PublishedDeclaration" to "PublishedDeclaration.entries.first()",
             "Boolean" to "true",
         ),
     )

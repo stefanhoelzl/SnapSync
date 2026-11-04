@@ -86,7 +86,7 @@ class RowsResetAndProgressTest {
         moves.requested(event, CreatedJob(key("SENDING")), DestinationPath("/sending"))
         moves.requested(event, CreatedJob(key("DONE")), DestinationPath("/done"))
         moves.landed(event, ReportedLanding(key("DONE")))
-        val before = assertIs<VersionRead.Read>(reads.manifestVersion()).version
+        val before = assertIs<VersionRead.Read>(reads.manifestVersion()).version.value
 
         assertEquals(StoreWrite.Written, reset.purgeExcept(event))
 
@@ -94,7 +94,11 @@ class RowsResetAndProgressTest {
         assertIs<UploadRow.Discovered>(rows.getValue(key("SENDING")), "the stranded upload needs a job again")
         assertIs<UploadRow.Completed>(rows.getValue(key("DONE")), "what was stored stays stored")
         assertTrue(rowsOf(other).isEmpty(), "another event's rows are purged")
-        assertEquals(before + 1, assertIs<VersionRead.Read>(reads.manifestVersion()).version, "only the purge's delete")
+        assertEquals(
+            before + 1,
+            assertIs<VersionRead.Read>(reads.manifestVersion()).version.value,
+            "only the purge's delete",
+        )
     }
 
     @Test

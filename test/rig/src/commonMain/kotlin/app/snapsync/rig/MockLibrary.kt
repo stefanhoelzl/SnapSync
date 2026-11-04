@@ -13,8 +13,8 @@ import app.snapsync.levers.GalleryView
 import app.snapsync.levers.SeedKind
 import app.snapsync.levers.SeedOutcome
 import app.snapsync.mock.LibraryAssets
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.ManifestResource
+import app.snapsync.mock.MockManifestAsset
+import app.snapsync.mock.MockManifestResource
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.SelectionSnapshot
 import app.snapsync.rig.gallery.GalleryReport
@@ -104,12 +104,12 @@ internal fun foreignAsset(
     assetId: String,
     filename: String = "IMG.HEIC",
     contentType: String = "image/heic",
-): DeviceManifestAsset {
+): MockManifestAsset {
     val key = uploadKey(AssetId.parse(assetId)!!, ResourceRole.PRIMARY, filename)
-    return DeviceManifestAsset(
+    return MockManifestAsset(
         assetId = AssetId.parse(assetId)!!,
         creationDate = LibraryAssets.DEFAULT_DATE,
-        resources = listOf(ManifestResource(ResourceRole.PRIMARY, contentType, key, filename)),
+        resources = listOf(MockManifestResource(ResourceRole.PRIMARY, contentType, key, filename)),
     )
 }
 

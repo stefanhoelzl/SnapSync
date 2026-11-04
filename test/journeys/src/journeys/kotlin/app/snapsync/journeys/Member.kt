@@ -14,12 +14,13 @@ import app.snapsync.format.FileHead
 import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.http.KtorHttpTransport
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.ManifestResource
-import app.snapsync.model.encodeToJson
 import app.snapsync.model.uploadKey
 import app.snapsync.wire.api.Limits
+import app.snapsync.wire.models.Manifest
+import app.snapsync.wire.models.ManifestAsset
+import app.snapsync.wire.models.ManifestResource
+import app.snapsync.wire.models.Role
+import app.snapsync.wire.runtime.WireJson
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
@@ -80,31 +81,34 @@ class Member(private val http: HttpClient, backend: String) {
      * order.
      */
     suspend fun share(eventId: String, photos: List<List<Part>>, creationDate: String): List<AssetId> {
-        val assets = photos.map { parts ->
+        val ids = photos.map { parts ->
             // The canonical id an iOS device mints for a PhotoKit local identifier.
             val assetId = AssetId.parse("${UUID.randomUUID().toString().uppercase()}_L0_001")!!
             parts.forEach { upload(eventId, assetId, it) }
-            DeviceManifestAsset(assetId, creationDate, parts.map { it.resource(assetId) })
+            assetId to parts
+        }
+        val assets = ids.map { (assetId, parts) ->
+            ManifestAsset(assetId.value, creationDate, parts.map { it.resource(assetId) })
         }
         // The backend refuses a manifest without a version; 0 is always admitted (equal is, and a join clears it).
-        val manifest = DeviceManifest(requireNotNull(DeviceId.parse(deviceId)), assets, version = 0)
+        val manifest = Manifest(requireNotNull(DeviceId.parse(deviceId)).value, assets, version = 0, `final` = false)
         val token = token()
         checked(
             "publish manifest",
             http.put("$backend/events/$eventId/devices/$deviceId/manifest") {
                 served(token)
                 contentType(ContentType.Application.Json)
-                setBody(manifest.encodeToJson())
+                setBody(WireJson.encodeToString(Manifest.serializer(), manifest))
             },
         )
-        return assets.map { it.assetId }
+        return ids.map { it.first }
     }
 
     /** One file of a photo, as a device uploads it: its [role], [contentType], camera [filename] and [bytes]. */
     class Part(val role: ResourceRole, val contentType: String, val filename: String, val bytes: ByteArray) {
         fun resource(assetId: AssetId) =
             ManifestResource(
-                role = role,
+                role = Role.fromValue(ResourceRoleText.of(role)) ?: error("no described role for $role"),
                 contentType = contentType,
                 key = uploadKey(assetId, role, filename),
                 filename = filename,

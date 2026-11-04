@@ -848,6 +848,26 @@ class StatusLineIntegrationTest {
     @Test
     @Verifies(
         spec = "sync-status",
+        requirement = "An ended event is marked without stopping sync",
+        scenario = "Everyone has shared",
+    )
+    fun everyone_has_shared_even_while_a_member_has_not_received_everything() = behaviour(startAt = DURING_MAY) {
+        given {
+            extensionUploadsOnly()
+            joinedEvent(startsAt = MAY_START, endsAt = MAY_END)
+            // The fellow member has shared and settled, but has not said it holds everything.
+            received(DEV_F, "FQ", final = true)
+            laterInThePocket(AFTER_MAY_END)
+            step("this device's share settled", act = { cycle() }, until = { settled { true } })
+        }
+
+        whenever { reopened() }
+        then { screen<Layer.Joined> { it.sharingNote == SharingNote.EveryoneShared } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
         requirement = "A back-dated event says until when guests can join",
         scenario = "A back-dated event",
     )

@@ -138,8 +138,9 @@ internal class OlderInstalls(private val world: MockWorld) {
                 // A leave copied from 0.4's line carries no marker, so it says it had not received everything — the
                 // `received` column 16.sqm dropped (v0.6:domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt:43,161).
                 now.ledger.of("pendingLeave").forEach { db.insert("pendingLeave", mapOf("received" to "0") + it) }
+                // The manifest record as 0.6 kept it: its body, before 18.sqm's facts.
+                now.ledger.of("uploadedManifest").forEach { db.insert("uploadedManifest", it - MANIFEST_FACTS) }
                 listOf(
-                    "uploadedManifest",
                     "eventAlbum",
                     "eventCheck",
                     "legacyImport",
@@ -392,6 +393,9 @@ internal class OlderInstalls(private val world: MockWorld) {
 
         /** The membership's columns 14.sqm added. */
         val OPEN_UNTIL_FACTS = setOf("openUntil", "membersWaiting", "deleted")
+
+        /** The manifest record's columns 18.sqm added. */
+        val MANIFEST_FACTS = setOf("declaration", "assets")
 
         const val CONFIG_FILE = "eventconfig.json"
         const val MANIFEST_FILE = "device-manifest/last-uploaded.json"

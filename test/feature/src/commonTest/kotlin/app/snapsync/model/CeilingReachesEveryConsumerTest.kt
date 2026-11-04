@@ -4,15 +4,23 @@ import app.snapsync.data.sharing.Contribution
 import app.snapsync.data.sharing.DiscoveryRead
 import app.snapsync.data.sharing.PreviewRead
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.sharing.CaptureRange
-import app.snapsync.domain.upload.LedgerState
+import app.snapsync.domain.sharing.DeviceManifest
+import app.snapsync.domain.sharing.ManifestVersion
+import app.snapsync.domain.sharing.ShareDeclaration
+import app.snapsync.domain.upload.MintsUploadRow
+import app.snapsync.domain.upload.RowDetail
+import app.snapsync.domain.upload.UploadKey
+import app.snapsync.domain.upload.UploadRow
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
-import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.OwnLibrary
-import app.snapsync.feature.support.PublishedManifests
 import app.snapsync.feature.support.captureRange
 import app.snapsync.feature.support.photo
+import app.snapsync.format.TimestampText
 import app.snapsync.testids.testAssetId
+import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,15 +57,31 @@ class CeilingReachesEveryConsumerTest {
     private suspend fun contribution(range: CaptureRange = window): Contribution = library.contribution(range)
 
     /** The settled upload rows those photos would have produced — what the manifest is published from. */
-    private val manifests = PublishedManifests().apply {
-        ledger.put(LEDGER_EVENT, "IN-primary.heic", LedgerState.COMPLETED, "2026-07-04T12:00:00Z")
-        ledger.put(LEDGER_EVENT, "AFTER-primary.heic", LedgerState.COMPLETED, "2026-07-20T12:00:00Z")
-        ledger.put(LEDGER_EVENT, "BEFORE-primary.heic", LedgerState.COMPLETED, "2026-06-01T12:00:00Z")
-    }
+    @OptIn(MintsUploadRow::class)
+    private fun settled(asset: String, taken: String): UploadRow = UploadRow.Completed(
+        UploadKey.of(testAssetId(asset), ResourceRole.PRIMARY, "IMG.HEIC"),
+        RowDetail(CaptureDate.Dated(TimestampText.parse(taken)), "image/heic", "IMG.HEIC"),
+    )
 
-    /** The assets the published device manifest lists. */
-    private suspend fun listed(): Set<AssetId> =
-        checkNotNull(manifests.of(contribution().policy)).assets.mapTo(mutableSetOf()) { it.assetId }
+    private val rows = listOf(
+        settled("IN", "2026-07-04T12:00:00Z"),
+        settled("AFTER", "2026-07-20T12:00:00Z"),
+        settled("BEFORE", "2026-06-01T12:00:00Z"),
+    )
+
+    /** The assets the device manifest lists, admitted by the membership's policy. */
+    private suspend fun listed(): Set<AssetId> {
+        val policy = contribution().policy
+        val admitted = policy.admitRecorded(rows.map { it.recorded })
+        val manifest = DeviceManifest.of(
+            testDeviceId("D"),
+            rows,
+            admitted,
+            ManifestVersion(1),
+            ShareDeclaration.Sharing,
+        )
+        return manifest.assets.mapTo(mutableSetOf()) { it.asset }
+    }
 
     /** The admitted set the byte upload reads: one discovery, admitted by the membership's policy. */
     private suspend fun uploaded(range: CaptureRange = window): Set<AssetId> {

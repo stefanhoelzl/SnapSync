@@ -20,10 +20,7 @@ import app.snapsync.levers.StoredDeviceConfig
 import app.snapsync.levers.UnionFetch
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.DeviceFile
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.withFinal
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
@@ -236,7 +233,7 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
             MembershipRecord(
                 departed = membership?.departed == true,
                 publishes = state.publishes[e to d] ?: 0,
-                manifest = membership?.let { (it.manifest ?: DeviceManifest(deviceIdOf(d), emptyList())).published() },
+                manifest = membership?.let { (it.manifest ?: MockManifest(deviceIdOf(d), emptyList())).published() },
             )
         }
     }
@@ -286,7 +283,7 @@ class BackendOperator internal constructor(private val state: BackendState) : Ba
     fun eventNameOf(eventId: String): String? = state.locked { state.events[eventId]?.name }
 
     /** Another member joining [eventId] and publishing [manifest] there — the routes' rules, without the requests. */
-    fun seedMember(eventId: String, manifest: DeviceManifest) {
+    fun seedMember(eventId: String, manifest: MockManifest) {
         state.locked {
             state.join(eventId, manifest.deviceId.value)
             state.publish(eventId, manifest.deviceId.value, manifest)
@@ -316,7 +313,7 @@ private fun resolved(id: String?): String = requireNotNull(id) {
 }
 
 /** A held manifest as the operator reads it. */
-private fun DeviceManifest.published() = PublishedManifest(
+private fun MockManifest.published() = PublishedManifest(
     assets = assets.map { a -> PublishedAsset(a.assetId.value, a.resources.map { ResourceRoleText.of(it.role) }) },
     final = final,
     version = version,
@@ -374,7 +371,7 @@ internal class BackendState(
 
     class Membership(
         var departed: Boolean = false,
-        var manifest: DeviceManifest? = null,
+        var manifest: MockManifest? = null,
         var manifestVersion: Long? = null,
         /** The union position up to which the device said it holds every photo of the others; `null` before any. */
         var receivedPosition: Long? = null,
@@ -497,7 +494,7 @@ internal class BackendState(
         return JoinOutcome.ENROLLED
     }
 
-    fun publish(eventId: String, deviceId: String, manifest: DeviceManifest): PublishOutcome {
+    fun publish(eventId: String, deviceId: String, manifest: MockManifest): PublishOutcome {
         val event = events[eventId] ?: return PublishOutcome.NO_SUCH_EVENT
         if (event.completed) return PublishOutcome.COMPLETED
         val membership = memberships[eventId to deviceId] ?: return PublishOutcome.NOT_A_MEMBER
@@ -597,7 +594,7 @@ internal class BackendState(
         after: Long?,
         reader: String?,
         trigger: String?,
-    ): Pair<List<Pair<String, DeviceManifestAsset>>, Long>? {
+    ): Pair<List<Pair<String, MockManifestAsset>>, Long>? {
         val all = union(eventId) ?: return null
         val position = position(eventId)
         val page = if (after == null) {
@@ -623,7 +620,7 @@ internal class BackendState(
     }
 
     /** Every member's complete assets — an asset is served once every resource it declares has landed. */
-    fun union(eventId: String): List<Pair<String, DeviceManifestAsset>>? {
+    fun union(eventId: String): List<Pair<String, MockManifestAsset>>? {
         if (eventId !in events) return null
         return memberships.filterKeys { it.first == eventId }.flatMap { (key, membership) ->
             val deviceId = key.second

@@ -13,8 +13,6 @@ import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashLevel
 import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
-import app.snapsync.model.deviceManifestFromJson
-import app.snapsync.model.encodeToJson
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryAssetResources
@@ -581,7 +579,7 @@ private class BackendDto(
             state.memberships[it.event to it.device] =
                 BackendState.Membership(
                     it.departed,
-                    it.manifest?.let(::deviceManifestFromJson),
+                    it.manifest?.let(::mockManifestFromJson),
                     it.manifestVersion,
                     it.receivedPosition,
                 )

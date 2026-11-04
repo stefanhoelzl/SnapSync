@@ -53,7 +53,6 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.status.StatusRefresh
-import app.snapsync.feature.upload.ShareSettlement
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.query.membership.MembershipQuery
@@ -459,8 +458,7 @@ class EndOfWake(
     private val membership: MembershipBranch,
     private val photoCheck: PhotoCheck,
     private val deliver: DeliverPendingLeaves,
-    private val settlement: ShareSettlement,
-    private val walkAndPublish: WalkAndPublish,
+    private val settle: SettleShare,
     private val claim: ClaimStateCheck,
     private val stateRefresh: StateRefresh,
     private val received: ReceivedPositionReport,
@@ -471,7 +469,7 @@ class EndOfWake(
             false -> Unit
         }
         isolated("pending leaves") { deliver() }
-        required { finalShare(on) }
+        required { settle.run(on) }
         membership(membership, Freshness.Cached) {
             active { joined ->
                 when (required { claim(joined, kind.boundsEventRead) }) {
@@ -481,13 +479,5 @@ class EndOfWake(
             }
         }
         isolated("received report") { received.run(on) }
-    }
-
-    /** This device's share published final once its own range has ended — the walk → publish marks it so. */
-    private suspend fun finalShare(on: Run) = on.steps {
-        when (required { settlement.due() }) {
-            true -> run(walkAndPublish)
-            false -> Unit
-        }
     }
 }

@@ -74,6 +74,9 @@ class MigrationPinTest {
         // Not merged yet: phase 4.7 (the album) types `membership.saveToAlbum` and `eventAlbum`'s columns as domain values.
         "ledger/app/snapsync/data/store/db/18.sqm" to
             "3c3af3b1baaa30f425b2d4064e87ba944c244a8ba8d8f89f236027edf93c1a43",
+        // Phase 4.4c (sharing: manifest): the manifest record keeps what it declared and how many photos as columns.
+        "ledger/app/snapsync/data/store/db/19.sqm" to
+            "154b83c49f5c6269175515fd1c2aa1f93bac11e5da49d3bff54784025118f3e3",
     )
 
     @Test

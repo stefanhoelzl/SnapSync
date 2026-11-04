@@ -1,6 +1,7 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.sharing.PublishManifest
 import app.snapsync.application.upload.CreateJobs
 import app.snapsync.application.upload.DeriveContribution
 import app.snapsync.application.upload.PlanTopUp
@@ -15,10 +16,10 @@ import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.UploadGateRead
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.SettlingLook
 import app.snapsync.domain.upload.ExtensionAnswer
 import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadPass
-import app.snapsync.feature.membership.ManifestPublish
 import app.snapsync.inbound.Log
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.scheduling.AnsweredEntryPoint
@@ -67,7 +68,7 @@ class ExtensionPass(
     private val contribute: DeriveContribution,
     private val settle: SettlePresentedJobs,
     private val uploads: ExtensionUploads,
-    private val publish: ManifestPublish,
+    private val publish: PublishManifest,
     private val rows: OwnUploadRows,
 ) {
     @OptIn(EntryPointCall::class)
@@ -100,7 +101,7 @@ class ExtensionPass(
     @OptIn(EntryPointCall::class)
     private suspend fun declined(run: UploadGate.Run, contribution: Contribution, on: Run): UploadPass = on.steps {
         required { settle(run.membership.event.id, Presented.Judged(contribution.policy)) }
-        isolated("publish") { publish.publish(run.membership.event.id, contribution.policy, run.version) }
+        isolated("publish") { publish(run, contribution.policy, SettlingLook.NothingToLook) }
         UploadPass.SKIPPED
     }
 
@@ -122,7 +123,7 @@ class ExtensionUploads(
     private val plan: PlanTopUp,
     private val create: CreateJobs,
     private val album: AlbumPlacement,
-    private val publish: ManifestPublish,
+    private val publish: PublishManifest,
 ) {
     @OptIn(EntryPointCall::class)
     suspend fun run(run: UploadGate.Run, contribution: Contribution, on: Run): UploadPass = on.steps {
@@ -132,7 +133,7 @@ class ExtensionUploads(
         required { record(event, walked) }
         val planned = required { plan(event, contribution.policy) }
         val created = required { create(event, planned, album.before(run.membership, on)) }
-        isolated("publish") { publish.publish(event, contribution.policy, run.version) }
+        isolated("publish") { publish(run, contribution.policy, walked.look) }
         created
     }
 }

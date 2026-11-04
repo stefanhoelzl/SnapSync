@@ -209,7 +209,7 @@ class OwnUploadRowsTest {
 
     @Test
     fun `the manifest version moves with what the manifest declares, never with an upload's progress`() {
-        fun version() = assertIs<VersionRead.Read>(reads.manifestVersion()).version
+        fun version() = assertIs<VersionRead.Read>(reads.manifestVersion()).version.value
         val bare = RowDetail(CaptureDate.Undated, "image/heic", "IMG_0001.HEIC")
         walk.discover(event, listOf(found("A", with = bare)))
         val discovered = version()

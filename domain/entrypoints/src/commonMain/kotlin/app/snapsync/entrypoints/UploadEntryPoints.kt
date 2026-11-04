@@ -2,6 +2,8 @@ package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.album.PlaceOwnPhotos
+import app.snapsync.application.sharing.CheckSettleNeed
+import app.snapsync.application.sharing.PublishManifest
 import app.snapsync.application.upload.BeforeJob
 import app.snapsync.application.upload.CreateJobs
 import app.snapsync.application.upload.DeriveContribution
@@ -16,11 +18,12 @@ import app.snapsync.data.wake.WakeArming
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.PhotoAccess
+import app.snapsync.domain.sharing.SettleNeed
+import app.snapsync.domain.sharing.SettlingLook
 import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.upload.UploaderArming
 import app.snapsync.domain.upload.UploaderChange
-import app.snapsync.feature.membership.ManifestPublish
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.InboundEntryPoint
@@ -90,7 +93,7 @@ class WalkAndPublish(
     private val walk: WalkOwnPhotos,
     private val record: RecordWalk,
     private val album: AlbumPlacement,
-    private val publish: ManifestPublish,
+    private val publish: PublishManifest,
 ) : Sequence<WalkPass>("walk-and-publish") {
     @OptIn(EntryPointCall::class)
     override suspend fun pass(on: Run) = on.steps {
@@ -115,13 +118,38 @@ class WalkAndPublish(
         val walked = required { walk(event, contribution) }
         required { album.place(run.membership, walked.diff.dated, on) }
         val recorded = required { record(event, walked) }
-        isolated("publish") { publish.publish(event, contribution.policy, run.version) }
+        isolated("publish") { publish(run, contribution.policy, walked.look) }
         WalkPass(UploadPass.CAUGHT_UP, recorded.added)
     }
 
+    @OptIn(EntryPointCall::class)
     private suspend fun declined(run: UploadGate.Run, contribution: Contribution, on: Run) = on.steps {
-        isolated("publish") { publish.publish(run.membership.event.id, contribution.policy, run.version) }
+        isolated("publish") { publish(run, contribution.policy, SettlingLook.NothingToLook) }
         WalkPass(UploadPass.SKIPPED, added = false)
+    }
+}
+
+/**
+ * **This device's share settled at the end of a wake**: once the member's own range has ended and no settled share
+ * was sent, the walk → publish runs — its look, taken now, is what settles it. Under a partial grant a wake walks
+ * nothing of its own, so this is what makes sure every device eventually says it has settled; a selection not read yet
+ * is no look, and the next wake tries again. Nothing while not joined, or once the event's photos are deleted.
+ */
+class SettleShare(
+    private val membership: MembershipBranch,
+    private val need: CheckSettleNeed,
+    private val walkAndPublish: WalkAndPublish,
+) {
+    @OptIn(EntryPointCall::class)
+    suspend fun run(on: Run) = on.steps {
+        membership(membership, Freshness.Cached) {
+            active { joined ->
+                when (required { need(joined) }) {
+                    SettleNeed.DUE -> run(walkAndPublish).let { }
+                    SettleNeed.NOT_DUE -> Unit
+                }
+            }
+        }
     }
 }
 

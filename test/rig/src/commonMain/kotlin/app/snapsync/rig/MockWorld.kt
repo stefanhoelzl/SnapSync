@@ -10,11 +10,11 @@ import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.DevControlsLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockDevice
+import app.snapsync.mock.MockManifest
+import app.snapsync.mock.MockManifestResource
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.StorePage
 import app.snapsync.mock.UploadNetwork
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.ManifestResource
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.HttpRequest
@@ -196,7 +196,7 @@ class BackendReach(
         if (reply != ReportReceivedReply.Recorded) refused("$deviceId's received report", reply)
     }
 
-    suspend fun publish(eventId: String, manifest: DeviceManifest) {
+    suspend fun publish(eventId: String, manifest: MockManifest) {
         val reply = send(Routes.PublishManifest.request(eventId, manifest.deviceId.value, manifest.onWire()))
         if (reply != PublishManifestReply.Published) refused("publish ${manifest.deviceId}'s manifest", reply)
     }
@@ -209,7 +209,7 @@ class BackendReach(
     suspend fun upload(
         deviceId: String,
         assetId: AssetId,
-        resource: ManifestResource,
+        resource: MockManifestResource,
         bytes: ByteArray = SEEDED_BYTES,
         eventId: String? = null,
     ) {
@@ -267,7 +267,7 @@ class BackendReach(
 private fun Role.inApp(): ResourceRole = ResourceRoleText.parse(value)!!
 
 /** A seeded member's snapshot as the backend takes it; an unstamped one is version 0, the oldest. */
-private fun DeviceManifest.onWire(): Manifest = Manifest(
+private fun MockManifest.onWire(): Manifest = Manifest(
     deviceId = deviceId.value,
     assets = assets.map { asset ->
         ManifestAsset(

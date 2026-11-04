@@ -4,14 +4,10 @@ import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.membership.DeletionVerdict
 import app.snapsync.domain.membership.Membership
-import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.EncryptionText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.shareHasEnded
-import app.snapsync.ports.Clock
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
@@ -19,9 +15,9 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * The membership as the old zones read it — MIGRATING (`PENDING_CLEANUPS.md`): the `EventConfig` each of them was
  * written against, projected from the data layer's [MembershipRepository], until each moves under the layers and reads
- * the membership itself. It reads, and writes only [markOver] — the server's word an old zone's request heard.
+ * the membership itself. It only reads.
  */
-class MembershipProjection(private val repository: MembershipRepository, private val clock: Clock) {
+class MembershipProjection(private val repository: MembershipRepository) {
 
     /** The membership as a config, `null` while none is held as far as this process can tell. */
     val config: StateFlow<EventConfig?> = ConfigFlow(repository)
@@ -32,21 +28,6 @@ class MembershipProjection(private val repository: MembershipRepository, private
     /** The membership as the store holds it now. */
     fun read(): MembershipRead = repository.read()
 
-    /**
-     * The server answered the shared set's publish that [event]'s photos were deleted — its positive word: the active
-     * membership of that event is marked so, and stays, shown as over. MIGRATING with the publisher
-     * (`PENDING_CLEANUPS.md`); one that cannot be written is the next refresh's to mark.
-     */
-    fun markOver(event: EventId) {
-        val active = (read() as? MembershipRead.Joined)?.membership as? Membership.Active ?: return
-        if (active.event.id == event) {
-            repository.markDeleted(
-                active,
-                DeletionVerdict.answeredOver(active.event).evidence,
-            )
-        }
-    }
-
     /** Re-read the membership: another process may have changed it. */
     fun reload() = repository.reload()
 
@@ -55,16 +36,6 @@ class MembershipProjection(private val repository: MembershipRepository, private
 
     /** The joined event's id, or `null` while not joined — the scope every per-event read takes. */
     fun activeEventId(): EventId? = config.value?.eventId
-
-    /** Now, on the clock every membership-time decision here reads. */
-    fun now(): Timestamp = Timestamp.of(clock.now())
-
-    /** Whether [config]'s own capture range has ended — what its share is settled by. */
-    fun shareHasEnded(config: EventConfig): Boolean = config.shareHasEnded(now())
-
-    /** Whether a fresh read finds a membership whose own range has ended. An unreadable one or none is "not ended". */
-    fun freshReadShareHasEnded(): Boolean =
-        read().config()?.let(::shareHasEnded) == true
 }
 
 /** [this] membership as the config the old zones read. */

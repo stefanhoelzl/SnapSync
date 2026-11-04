@@ -42,7 +42,6 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.use
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.asConfig
@@ -228,7 +227,7 @@ fun configService(
     clock: Clock = testClock(),
 ): MembershipProjection {
     store.persist(initial)
-    return MembershipProjection(MembershipRepository(store.db), clock)
+    return MembershipProjection(MembershipRepository(store.db))
 }
 
 /** [config] as the one membership row, written raw — how a test seeds what a join would have written. */
@@ -324,3 +323,7 @@ class TestLedger(val databases: Databases = inMemoryDatabases()) {
 
 /** The open database's driver, held outside an execute — a test's own reach, for what no query exposes. */
 fun OpenDatabase.driver(): SqlDriver = (execute { it } as DbResult.Ok).value
+
+/** [statements]' answer on this shared database, set up to succeed. */
+private fun <T> SharedDatabase.use(statements: (LedgerDatabase) -> T): T =
+    (execute(statements) as DbResult.Ok<T>).value

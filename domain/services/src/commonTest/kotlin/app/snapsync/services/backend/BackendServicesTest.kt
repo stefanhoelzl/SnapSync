@@ -1,27 +1,17 @@
 package app.snapsync.services.backend
 
 import app.snapsync.data.backend.BackendGateway
-import app.snapsync.domain.asset.ResourceRole
-import app.snapsync.domain.event.EventId
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.model.CreateOutcome
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.ManifestResource
 import app.snapsync.ports.HttpResult
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.identityOf
-import app.snapsync.testids.testAssetId
-import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.models.EventCreate
-import app.snapsync.wire.models.Manifest
-import app.snapsync.wire.models.Role
 import app.snapsync.wire.runtime.WireJson
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * What each backend answer MEANS to the app — the need-shaped services' mappings over the gateway's replies. How an
@@ -66,7 +56,6 @@ class BackendServicesTest {
             BackendGateway(exchangeOver(transport), ScriptedCredential(null)),
             identityOf("D", MapSecureStore()),
             zone = { zone },
-            eventOver = null,
         )
         fun lastZone() = WireJson.decodeFromString(EventCreate.serializer(), transport.requests.last().body!!).zone
         services.creation.create("Party", "s", null)
@@ -127,78 +116,5 @@ class BackendServicesTest {
             CreateOutcome.Transient(ServiceFault.UNREACHABLE),
             servicesAnswering(tooOld).creation.create("n", "s", null),
         )
-    }
-
-    // ── membership ─────────────────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun a_publish_is_confirmed_only_by_a_served_write() = runTest {
-        val manifest = DeviceManifest(testDeviceId("D"), emptyList(), version = 1)
-        assertTrue(servicesAnswering(ok()).manifest.publish(testEventId("E"), testDeviceId("D"), manifest))
-        assertEquals(
-            false,
-            servicesAnswering(
-                text(409, "not a member"),
-            ).manifest.publish(testEventId("E"), testDeviceId("D"), manifest),
-        )
-        assertEquals(
-            false,
-            servicesAnswering(offline).manifest.publish(testEventId("E"), testDeviceId("D"), manifest),
-        )
-        assertEquals(
-            false,
-            servicesAnswering(text(502, "upstream")).manifest.publish(testEventId("E"), testDeviceId("D"), manifest),
-        )
-        val transport = ScriptedTransport()
-        assertEquals(
-            false,
-            servicesOver(
-                transport,
-            ).manifest.publish(testEventId("E"), testDeviceId("D"), DeviceManifest(testDeviceId("D"), emptyList())),
-            "a snapshot its producer did not stamp is never sent",
-        )
-        assertEquals(emptyList(), transport.calls)
-    }
-
-    @Test
-    fun a_publish_sends_the_snapshot_as_the_description_shapes_it() = runTest {
-        val transport = ScriptedTransport()
-        val asset = DeviceManifestAsset(
-            testAssetId("A"),
-            "2026-07-01T00:00:00Z",
-            listOf(
-                ManifestResource(ResourceRole.PRIMARY, "image/heic", "A-primary.heic", "IMG.HEIC"),
-                ManifestResource(ResourceRole.LIVE, "video/quicktime", "A-live.mov", "IMG.MOV"),
-            ),
-        )
-        val manifest = DeviceManifest(testDeviceId("D"), listOf(asset), version = 4, final = true)
-        servicesOver(transport).manifest.publish(testEventId("E"), testDeviceId("D"), manifest)
-        val sent = WireJson.decodeFromString(Manifest.serializer(), transport.requests.single().body!!)
-        assertEquals(4, sent.version)
-        assertTrue(sent.`final`)
-        assertEquals(listOf(Role.PRIMARY, Role.LIVE), sent.assets.single().resources.map { it.role })
-        assertEquals("A", sent.assets.single().assetId)
-    }
-
-    /** A closed event's asset sets are fixed: its refusal is final, so it counts as published and is not re-sent. */
-    @Test
-    fun a_publish_refused_because_the_event_closed_is_recorded_as_done() = runTest {
-        val manifest = DeviceManifest(testDeviceId("D"), emptyList(), version = 1)
-        val over = mutableListOf<EventId>()
-        val completed = servicesOver(ScriptedTransport { json(410, CLOSED) }, eventOver = { over += it })
-        assertTrue(completed.manifest.publish(testEventId("E"), testDeviceId("D"), manifest))
-        assertEquals(listOf(testEventId("E")), over, "the service's word that the photos were deleted is passed on")
-        over.clear()
-        val fixed = servicesOver(ScriptedTransport { json(409, CLOSED) }, eventOver = { over += it })
-        assertTrue(fixed.manifest.publish(testEventId("E"), testDeviceId("D"), manifest))
-        assertTrue(over.isEmpty(), "a set fixed before events stopped closing says nothing about deletion")
-        assertTrue(
-            servicesAnswering(json(410, CLOSED)).manifest.publish(testEventId("E"), testDeviceId("D"), manifest),
-            "a process with no membership to tell records it all the same",
-        )
-    }
-
-    private companion object {
-        const val CLOSED = """{"error":"closed"}"""
     }
 }

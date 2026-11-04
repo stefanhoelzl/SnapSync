@@ -1,6 +1,8 @@
 package app.snapsync.compose
 
 import app.snapsync.application.album.PlaceOwnPhotos
+import app.snapsync.application.sharing.CheckSettleNeed
+import app.snapsync.application.sharing.PublishManifest
 import app.snapsync.application.upload.CreateJobs
 import app.snapsync.application.upload.DeriveContribution
 import app.snapsync.application.upload.PlanTopUp
@@ -16,8 +18,11 @@ import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.receiving.ReceivedPhotosRead
+import app.snapsync.data.sharing.ManifestPublication
+import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.upload.JobRecord
 import app.snapsync.data.upload.OwnPhotoResources
@@ -32,13 +37,7 @@ import app.snapsync.data.upload.UploaderAdmission
 import app.snapsync.data.upload.WalkRecord
 import app.snapsync.domain.upload.UploadHost
 import app.snapsync.entrypoints.AlbumPlacement
-import app.snapsync.feature.membership.DeviceManifestProducer
-import app.snapsync.feature.membership.ManifestPublish
 import app.snapsync.ports.GalleryReader
-import app.snapsync.services.backend.ManifestPublisher
-import app.snapsync.services.identity.requireDeviceId
-import app.snapsync.services.manifest.DeviceManifestService
-import app.snapsync.services.membership.MembershipProjection
 
 /**
  * **What one process's uploads are built over** — the app's and the upload extension's alike: its stores, its
@@ -48,15 +47,16 @@ import app.snapsync.services.membership.MembershipProjection
 internal class UploadServices(
     val records: SharedDatabase,
     val membership: MembershipRepository,
-    val config: MembershipProjection,
     val mobileData: MobileDataStore,
     val deviceIdentity: DeviceIdentity,
     val host: String,
     val gallery: GalleryReader,
     val photos: OwnPhotos,
     val admission: UploaderAdmission,
-    val manifestStore: DeviceManifestService,
-    val manifestPublisher: ManifestPublisher,
+    /** The record of this device's last published manifest, which both processes read. */
+    val manifestRecord: ManifestRecord,
+    /** The clock a share's range is judged ended by. */
+    val clock: WallClock,
     /** What this process reads of the photos it received — echo suppression and recognition: required, no default. */
     val received: ReceivedPhotosRead,
     /** Placing own photos in the event album — the one album operation both processes hold; neither makes one here. */
@@ -111,23 +111,19 @@ internal class UploadLayers(process: ProcessServices, private val services: Uplo
     val plan: PlanTopUp by lazy { PlanTopUp(rows) }
     val album: AlbumPlacement by lazy { AlbumPlacement(services.placeOwn) }
 
-    /**
-     * The device manifest's publish — phase 4.4c's step. Its producer resolves the device id on first in-pass use —
-     * after the gate's probe has succeeded — never at composition, where a locked device would throw out of assembly.
-     */
-    val publish: ManifestPublish by lazy {
-        ManifestPublish(
+    /** The device manifest's publish: the step every look at the member's photos ends with. */
+    val publish: PublishManifest by lazy {
+        PublishManifest(
             rows,
-            lazy {
-                DeviceManifestProducer(
-                    services.manifestStore,
-                    services.manifestPublisher,
-                    services.deviceIdentity.requireDeviceId(),
-                )
-            },
-            services.config,
+            services.manifestRecord,
+            ManifestPublication(services.gateway),
+            services.membership,
+            services.clock,
         )
     }
+
+    /** Whether the end of a wake owes the share a settling look. */
+    val settleNeed: CheckSettleNeed by lazy { CheckSettleNeed(services.manifestRecord, services.clock) }
 
     /** Job creation through this process's [tier]. */
     fun create(tier: UploadTier): CreateJobs = CreateJobs(rows, tier, resources, walkRecord, recent)

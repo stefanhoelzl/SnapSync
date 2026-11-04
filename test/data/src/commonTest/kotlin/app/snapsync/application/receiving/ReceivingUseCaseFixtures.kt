@@ -22,7 +22,6 @@ import app.snapsync.data.receiving.ImportedReleases
 import app.snapsync.data.receiving.LibraryImport
 import app.snapsync.data.receiving.LibraryPresence
 import app.snapsync.data.receiving.MarkedPhotos
-import app.snapsync.data.receiving.OwnDeclarations
 import app.snapsync.data.receiving.ReceivedPhotos
 import app.snapsync.data.receiving.ReceivingCleanup
 import app.snapsync.data.receiving.ReceivingCounts
@@ -31,9 +30,9 @@ import app.snapsync.data.receiving.RecognitionPasses
 import app.snapsync.data.receiving.RecognitionRecords
 import app.snapsync.data.receiving.ReportedReceived
 import app.snapsync.data.receiving.StagingArea
+import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.domain.receiving.MintsReceivingMembership
@@ -146,14 +145,8 @@ internal class Receiver {
     val received = ReceivedPhotos(file)
     val checks = EventCheckRecord(device.shared)
 
-    /** What this device declared to the event, as the union's netting reads it. */
-    var ownDeclared: Int? = 0
-    val union = EventUnion(
-        device.gateway,
-        object : OwnDeclarations {
-            override fun publishedCount(eventId: EventId): Int? = ownDeclared
-        },
-    )
+    /** The union, netted of what this device declared — nothing yet: its manifest record is empty. */
+    val union = EventUnion(device.gateway, ManifestRecord(device.shared))
 
     val library = MutableStateFlow<List<GalleryAssetResources>>(emptyList())
     val grant = MutableStateFlow(LibraryGrant.GRANTED)

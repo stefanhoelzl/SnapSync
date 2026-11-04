@@ -8,8 +8,8 @@ import kotlin.test.assertFailsWith
  * **`by lazy` does not memoize a thrown initializer** — pinned here rather than inherited.
  *
  * The iOS composition root holds its device identity as `private val deviceId: String by lazy { … }`, and a
- * resolve that threw must be retried on the next access. On a **locked** device the secure store raises
- * `SecureStoreUnavailable` rather than serving an id — deliberately, since minting there would hand the
+ * resolve that threw must be retried on the next access. On a **locked** device the secure store cannot be read
+ * rather than serving an id — deliberately, since minting there would hand the
  * device a second identity — so a failed touch is an ordinary, recoverable state that the next unlocked
  * access resolves. If `lazy` cached the failure instead, one early touch would poison the value for the
  * life of the process, and the device would run identity-less until relaunch — silently, since nothing

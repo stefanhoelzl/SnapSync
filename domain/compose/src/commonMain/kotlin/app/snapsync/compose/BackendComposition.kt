@@ -5,7 +5,6 @@ import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.trust.AttestationIssuer
 import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
-import app.snapsync.domain.event.EventId
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.ports.Clock
 import app.snapsync.services.backend.BackendServices
@@ -40,11 +39,9 @@ internal fun backendServicesFor(
     services: AppServices,
     attestation: AttestingCredential,
     exchange: BackendExchange,
-    eventOver: suspend (EventId) -> Unit,
 ): BackendServices =
     BackendServices(
         BackendGateway(exchange, attestation),
         services.deviceIdentity,
         zone = { services.process.clock.timeZone().id },
-        eventOver = eventOver,
     )

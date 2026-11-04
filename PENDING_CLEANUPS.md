@@ -366,50 +366,24 @@ also carries the stamp, and keeps it).
 **Unlock condition:** the concept that owns each caller has moved into the layers (`docs/patterns.md`). No release,
 version or op gates these — each phase deletes its own uses, and the last one deletes the shim.
 
-### The old zones' throwing device-id read (app)
-- **What:** `DeviceIdentity.requireDeviceId()` (`domain/services/…/services/identity/RequireDeviceId.kt`): the device
-  id as the old zones read it before trust moved into its layers (4.1) — thrown as `SecureStoreUnavailable` or
-  `DeviceIdentityAbsent` out of the step that asked. Its callers: the manifest producer's assembly in
-  `compose/UploadCore.kt` (4.4c). Push's two (4.8), receiving's three (4.5) and the uploads' (4.4b) are gone: their
-  layers read `DeviceIdentity.id()`.
-- **Why:** converting every caller to the sealed `DeviceIdRead` in 4.1 would have rewritten the error handling of four
-  concepts 4.1 does not own, each to be rewritten again as a use case in its own phase.
-- **Remove:** each phase moves its callers onto `DeviceIdentity.id()`'s sealed read — a use case answering its
-  outcome — and deletes their `requireDeviceId` calls. The phase that removes the last one deletes the file, this
-  entry, and `DeviceIdentityAbsent` from `model/SecureStoreFailures.kt` (its only thrower).
-
 ### The membership as the old zones read it (app)
 - **What:** the old zones still read the membership as an `EventConfig` flow, and still stop what a failed leave left
   behind themselves.
   - `domain/services/.../membership/MembershipProjection.kt`: `MembershipProjection` over the data layer's
     `MembershipRepository` — `config` (a hand-written `StateFlow`, its opt-in pinned in `OptInPinsTest`), `read`,
-    `reload`, `joinedOrRead`, the clock's reads, and `markOver` — the one write: the shared set's publish heard the
-    event's photos were deleted (`BackendManifestPublisher`'s `eventOver`, wired in `compose/SnapSyncApp.kt`) — and
-    `Membership.asConfig()`. Its readers: the final share's `ShareSettlement` and the manifest's `ManifestPublish`
-    (4.4c), with their assembly in `compose/UploadCore.kt` and `compose/ExtensionCore.kt`, and `ForegroundWork`'s stored-
-    upload settle (4.4b's `SettleStoredUploads` takes the joined event from it) in
-    `domain/entrypoints/.../AppEntryPoints.kt`; `StatusRefresh` (4.9) and `CollectDiagnosticDump` (4.10);
-    presentation's `config` source (4.9). Receiving's (4.5) and the album's (4.7) are gone: their triggers branch on
-    `MembershipQuery`.
+    `reload`, `joinedOrRead`, `activeEventId` — and `Membership.asConfig()`. It writes nothing. Its readers:
+    `ForegroundWork`'s stored-upload settle (4.4b's `SettleStoredUploads` takes the joined event from it) in
+    `domain/entrypoints/.../AppEntryPoints.kt`; `StatusRefresh` (4.9) and `CollectDiagnosticDump` (4.10); presentation's
+    `config` source (4.9). Receiving's (4.5) and the album's (4.7) are gone: their triggers branch on
+    `MembershipQuery`; and the manifest's (4.4c): its publish and its end-of-wake settle read the membership the upload
+    gate read, and the publish's "over" marks it through the data layer's `markDeleted`.
   - `domain/services/.../membership/MembershipTransition.kt`: the join-in-progress guard a sweep of leftovers waits
     out, held by `SweepLeftovers` (`domain/entrypoints/.../MembershipEntryPoints.kt`) around the key's, the
     downloads' and the uploads' (`StopUploads`) leftover sweeps.
 - **Why:** phase 4.2 moved the membership into the layers; the concepts that read it move in their own phases.
 - **Remove:** each phase moves its readers onto `MembershipRead` (the query's `MembershipQuery`, or a use case's
-  answer) and its leftover sweep into a use case — 4.4 moves the publisher and with it `markOver`, into a use case
-  over the data layer's `markDeleted`; the phase that removes the last reader deletes both files and this entry.
-
-### The old zones' throwing database read (app)
-- **What:** `use` and `DatabaseUnavailable` (`domain/services/…/services/databases/DatabaseUnavailable.kt`): a store's
-  statements as the old zones run them — a failed open or statement thrown as `DatabaseUnavailable` out of the step that
-  asked, where the data layer answers a `DbResult`. They moved out of `:domain:data`'s `OwnedDatabase` and
-  `SharedDatabase`, which hold no throw (`docs/patterns.md`, "Invalid program state"). Its callers:
-  `DeviceManifestService` (4.4c). Receiving's (4.5), the uploads' (4.4b) and the album's (4.7) are gone: their
-  stores answer values.
-- **Why:** converting every caller to the `DbResult` would have rewritten the error handling of four concepts the
-  `InvalidProgramState` change does not own, each to be rewritten again in its own phase.
-- **Remove:** each phase moves its store into the data layer, answering what it read and wrote as values, and deletes
-  its `use` calls; the phase that removes the last one deletes the file and this entry.
+  answer) and its leftover sweep into a use case; the phase that removes the last reader deletes both files and this
+  entry.
 
 ### The selection as the old zones reach it (app)
 - **What:** the old zones reach the member's own photos (`OwnPhotos`, `domain/data/.../sharing/`) through edges that
@@ -423,10 +397,9 @@ version or op gates these — each phase deletes its own uses, and the last one 
 ### The old zones' throwing read of a stored id (app)
 - **What:** `held` (`domain/services/…/services/databases/StoredIds.kt`): an id column as the old zones read it — the
   id, or a throw when the column spells none, as the column's adapter threw before it answered a `Stored`
-  (`ledger.db` v18, `downloads.db` v11). Its callers: `DeviceManifestService` (4.4c);
-  `LegacyRecords` (with its legacy copy, `Legacy homes of the shared records`). Receiving's (4.5), the uploads'
-  (4.4b) and the album's (4.7) are gone: the data layer reads its id columns as `Stored` values, dropping a row that
-  spells none.
+  (`ledger.db` v18, `downloads.db` v11). Its callers: `LegacyRecords` (with its legacy copy, `Legacy homes of the shared
+  records`). Receiving's (4.5), the uploads' (4.4b), the album's (4.7) and the manifest record's (4.4c) are gone: the data
+  layer reads its id columns as `Stored` values, dropping a row that spells none.
 - **Why:** each store decides what a row that spells no id means when it moves into the data layer, as the membership's
   did (an unreadable membership, a leave that fails); deciding it now would have rewritten stores other phases own.
 - **Remove:** each phase reads its columns as values — a `when` over the `Stored` — and deletes its `held` calls; the
@@ -434,18 +407,16 @@ version or op gates these — each phase deletes its own uses, and the last one 
 
 ### What was received as the old zones reach it (app)
 - **What:** phase 4.5 moved receiving into the layers (`domain/data/.../receiving/`); the old zones that read it
-  reach the data layer directly, through edges that stay theirs until their concepts move:
-  - `DeviceManifestService` (`domain/services/.../manifest/`) implements the data layer's `OwnDeclarations` — how many
-    photos this device declared to an event, which `EventUnion` nets the union's declared total by (4.4c);
+  reach the data layer directly, through edges that stay theirs until their concepts move (the manifest's, 4.4c, is
+  gone: `EventUnion` reads the data layer's `ManifestRecord` itself):
   - `StatusRefresh` (`domain/feature/.../status/`, 4.9) reads `ReceivedPhotosRead` — the store's readiness and what it
     received (the uploads' gate, 4.4b, reads it in the data layer, `UploadGateRead`);
   - `CollectDiagnosticDump` (`domain/feature/.../diagnostics/`, 4.10) reads `ReceivingCounts`; the album's (4.7) reads it
     through `ReceivedAlbumPhotos`.
 - **Why:** each reader is its own phase's concept; rewriting them over a use case's answer here would have rewritten
   them twice.
-- **Remove:** each phase moves its reader into a use case or query over the same data-layer read, and the manifest's
-  phase moves `publishedCount` into the data layer's own manifest store; the phase that removes the last edge deletes
-  this entry.
+- **Remove:** each phase moves its reader into a use case or query over the same data-layer read; the phase that
+  removes the last edge deletes this entry.
 
 ## One-off ops
 

@@ -17,6 +17,7 @@ import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.receiving.ReceivedPhotosReader
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
+import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.store.SharedDatabase
@@ -47,8 +48,6 @@ import app.snapsync.ports.SecureStore
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.manifest.DeviceManifestService
-import app.snapsync.services.membership.MembershipProjection
 import kotlinx.coroutines.CoroutineDispatcher
 
 /**
@@ -193,7 +192,6 @@ private fun extensionServices(
     // The extension never copies the records' legacy homes: it pauses until the app has (see `UploadGateRead`).
     val records = SharedDatabase(ports.databases, legacy = null)
     val membership = MembershipRepository(records)
-    val config = MembershipProjection(membership, process.clock)
     val clock = WallClock(process.clock)
     // The app's download store as the extension may read it: read-only, never created or migrated here.
     val received = ReceivedPhotosReader(ports.databases)
@@ -201,7 +199,6 @@ private fun extensionServices(
     return UploadServices(
         records = records,
         membership = membership,
-        config = config,
         // The same shared choice the app's menu writes, read per job.
         mobileData = MobileDataStore(ports.preferences),
         deviceIdentity = identity,
@@ -220,8 +217,8 @@ private fun extensionServices(
         // This process's own grant read — the extension withholds its cycle without a full grant: the OS invokes a
         // surviving registration under a partial grant too, and this is what stops it.
         admission = ExtensionUploaderAdmission(ports.gallery),
-        manifestStore = DeviceManifestService(records),
-        manifestPublisher = backend.manifest,
+        manifestRecord = ManifestRecord(records),
+        clock = clock,
         received = received,
         // The extension only ever ADDS its own photos to the event album: it holds no way to make one — the app is
         // its sole creator.
@@ -255,6 +252,4 @@ internal fun extensionBackend(
         BackendGateway(exchange, DropOnlyCredential(attestStore)),
         identity,
         zone = { null },
-        // No membership to mark: the app's next read of the event marks it.
-        eventOver = null,
     )

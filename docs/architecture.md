@@ -97,7 +97,7 @@ neither reaches an old zone — `data`'s only edges are the domain, the format, 
 | `inbound/` | how work **enters** the core: the four inbound kinds an event port delivers through (`Inbound`, `Background`, `Granted`, `Answered`), the handles they carry (`Completion`, `Running`), the `Trigger` that names the work, the structured `Log`, and the opt-in markers (`@InboundImplementation`, `@CompositionOnly`, `@AppProcessOnly`) — `docs/patterns.md` | nothing project-internal |
 | `ports/` | every port interface — outbound, and the event ports the platform delivers through (`EventPort<H>`, registered with `inbound(handlers)`), with their `*Handlers` bundles typed by the inbound kinds — and nothing else (`PortsHoldInterfacesOnlyTest`). Every port extends the `Port` marker (`PortBundleTest`), `BuildInfo` among them: what the running build is | `model/`, `inbound/` |
 | `scheduling/` | how work **runs**: the process's `Runtime` (the supervised scope, the background-time holds, the expiry, `outliving`, `endProcess` — an `InvalidProgramState` handed to the last resort), the entry-point bases, the `Run` they hand their bodies (`on.steps { }`), single-flight `Sequence`s, `Observation` — `docs/patterns.md` | `inbound/`, `ports/` (`BackgroundTime`, `ThreadLabel`, `EntryEvents`), `domain/` (`InvalidProgramState`) |
-| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means — each a **concrete** class a feature takes as it is, with an interface only where there are several implementations or a decorator. The storage services (`DeviceManifestService`, `LogTailService`, `AlbumMapService`), over the shared database (its `.sq` files and generated code are `:domain:data`'s); the gallery services (`GalleryAccessState` — what the grant means; `GalleryAlbums`); the transfer services (`SessionDrains`); the app's foreground facts (`AppForeground`); the backend services; and the process's crash reporting (`CrashReporting`, `ProcessAccount`) and log writers (`SinkLogWriter` for Kermit lines, `SinkLines` for the structured `Log`) | `model/`, `domain/`, `format/`, `ports/`, `inbound/`, `wire/`, and `data/` (migrating) |
+| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means — each a **concrete** class a feature takes as it is, with an interface only where there are several implementations or a decorator. The storage services (`LogTailService`, `AlbumMapService`), over the shared database (its `.sq` files and generated code are `:domain:data`'s); the gallery services (`GalleryAccessState` — what the grant means; `GalleryAlbums`); the transfer services (`SessionDrains`); the app's foreground facts (`AppForeground`); the backend services; and the process's crash reporting (`CrashReporting`, `ProcessAccount`) and log writers (`SinkLogWriter` for Kermit lines, `SinkLines` for the structured `Log`) | `model/`, `domain/`, `format/`, `ports/`, `inbound/`, `wire/`, and `data/` (migrating) |
 | `feature/` | business rules, one package per feature, mutually blind. A type consumed outside `feature/` lives in that feature's `readmodel` package (`feature/<feature>/readmodel/`) — the package is the definition of a read-model. **Features see services, never ports**: the compiler holds it, since the zone does not depend on `ports/` | `model/`, `services/`, `scheduling/` |
 | `presentation/` | the UI-state reduction: `StatusContainerHost` reduces the facts its taps act on into a `ScreenModel` (the `UiState` it shows plus the facts behind it, `Shown`) and shows only its `UiState`; the create draft and the range calendar's rules are presentation's, so the screen states what it is told | `model/`, `domain/`, `:domain:format`, `query/`, `feature/` read-model packages only, and `:ui:state` |
 | `entrypoints/` | one **entry point** per operating-system trigger, named for it (`OnSilentPush`), each a short list of steps that orders and never decides (`AppEntryPoints.kt`, `ExtensionEntryPoints.kt`), the work several share (`WakeWork`, `ForegroundWork`, `Prelude`), the membership's requests and the steps they share (`MembershipEntryPoints.kt`), the upload's sequences and steps (`UploadEntryPoints.kt`: `TopUp`, `WalkAndPublish`, `UploadOwn`, `AlbumPlacement`, `UploaderArm`, `OnUploaderChange`) and the wake's `ImportReceived` | `inbound/`, `scheduling/`, `model/`, `domain/`, `application/`, `data/`, `query/`, `ports/` (the deliveries' vocabulary — it calls no port), `feature/` and `services/` (migrating) |
@@ -804,8 +804,9 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   event (below) keeps its row until its deadline precisely so it can answer "completed" instead of `404`.
 - **Completion, with no close** (`changes/early-event-completion`, `changes/back-dated-events`). Every event is
   **open until** a date fixed at its create (`open_until`): its range end, or — for an event created after its
-  end — the date its host chose, at most the window maximum after the later of the end and now. After `ends_at`
-  each device publishes its manifest with `final: true` — its membership becomes `settled`; the bytes may still be
+  end — the date its host chose, at most the window maximum after the later of the end and now. Once the member's own
+  range has ended and its device has looked at what it shares since then (or shares nothing, so has nothing to look at)
+  the device publishes its manifest with `final: true` — its membership becomes `settled`; the bytes may still be
   uploading — and reports the union position up to which it holds every photo of the others
   (`PUT …/received`, monotonic, `received_position`) — a share-only device says instead, at once and whenever, that
   it receives nothing (`receivesNothing`, `receives_nothing`; any later report without it clears it). Nothing closes
@@ -827,7 +828,7 @@ The generated snapshot is `api/schema.sql` (section "Database" below).
   reads, to name the dates as the host chose them. An absent or unusable zone stores NULL (rendered in UTC)
   and never refuses the create; it is never on the wire.
 - **Membership is one state column** (migration 0008), never inferred from objects: `sharing` (joined,
-  not settled), `settled` (its last publish after the end declared its share settled; it follows each
+  not settled), `settled` (its last publish declared its share settled; it follows each
   publish both ways), `done` (left having everything: settled, every declared role landed, and the
   device's `?received=true` — it holds every photo of the others), `left` (left with anything missing).
   `sharing`/`settled` are PRESENT (pushed, counted in the waiting line, they hold an event unfinished);
@@ -1161,7 +1162,7 @@ event as the server last served it and the member's own share of it. The concept
   only then asks whether to switch, so an invite that cannot be joined never leaves the joined event.
 
 **What has not moved yet stays in `feature/membership/`**, each piece until its phase moves it into the layers: the
-join-time share-set load (`ShareSetLoad`, 4.4b) and the device manifest (`DeviceManifestProducer`, 4.4c). The
+join-time share-set load (`ShareSetLoad`, 4.4b). The
 membership itself (its row, its use cases, its queries) is already the layers'.
 
 **A member's request answers on its status** (`docs/patterns.md`, "Queries and requests"): the join, a settings
@@ -1198,7 +1199,7 @@ process can never move a photo twice. The concept lives in the layers:
   its releases (`ImportQueue`, `ImportedReleases`), the recognition's records (`RecognitionRecords`), the counts
   (`ReceivingCounts`), the staging area (`StagingArea`), the library import with its marker writes (`LibraryImport`,
   `ImportMarkerWrites`), the union read (`EventUnion`, which nets the declared total by this device's own,
-  `OwnDeclarations`) and the reported position (`ReceivedReporting`). What was received is read by `ReceivedPhotos` —
+  `ManifestRecord`) and the reported position (`ReceivedReporting`). What was received is read by `ReceivedPhotos` —
   and by the upload extension through `ReceivedPhotosReader`, which opens the store read-only and can write nothing.
   `OwnPhotos` reads it itself (`ReceivedPhotosRead.handles`): no caller passes the echo-suppression set in.
 - **application** runs each operation (`application/receiving/`): `PlanReceiving` (and `PlanIfDue`, the hourly
@@ -1261,7 +1262,7 @@ not listed is `404` (no `405`) and makes no upstream request.
 | `PATCH` | `/events/<eventId>` `{name}` (`changeEvent`) | the only write to an existing event row; last-write-wins; no ownership check | `200` (metadata shape) · `400` · `404` · `410` an event closed before open-until dates, or completed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>` | **join**: the only route that creates or reactivates a membership; one conditional insert, admitting any device; clears `manifest_version` and `final`; idempotent | `200` · `404` · `410` an event closed before open-until dates, or completed · `502` |
 | `DELETE` | `/events/<eventId>/devices/<deviceId>` | **leave** (`?received=true\|false`): a present membership becomes `done` or `left`; closes nothing and wakes nobody; idempotent, a repeated leave keeps the first state (a completed event answers `200` too); assets retained; frees no slot | `200` · `404` · `502` |
-| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), honoured only after `endsAt` and only for a present membership; closes nothing; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to an event closed before open-until dates) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to such an event · `410` completed · `502` |
+| `PUT` | `/events/<eventId>/devices/<deviceId>/manifest` | **contribution**: full-state replace of the membership's asset set in one transaction, ordered by `version`; `final` → `settled` (both required: absent is `400`), stored whenever it arrives, only for a present membership, and a later non-final reverts it; closes nothing; writes no resource rows; enrols nobody | `200` (applied, or refused as older with nothing written, or the same set to an event closed before open-until dates) · `400` · `404` · `409` not a member · `409 {error:"closed"}` changed set to such an event · `410` completed · `502` |
 | `PUT` | `/events/<eventId>/devices/<deviceId>/received` `{position, receivesNothing?}` | the union-log position up to which the device holds every photo of the others (`received_position`, monotonic: a lower one changes nothing), or that it receives nothing at all (`receives_nothing`, as the latest report says); only a present member | `200` · `400 invalid position` · `404` · `409` not a member · `502` |
 | `PUT` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>?filename=<name>` (the download redirect's path; the PUT is gated) | accepted only from a **present** member (`sharing`/`settled` — an ended event still takes its members' bytes, a completed one has none); stores bytes at `files/<eventId>/<sha256 of event/device/asset/role>` — one write when under one part, S3 multipart parts otherwise ([Resumable uploads](#resumable-uploads)) — then records the `resources` row. With `x-snapsync-sha256` (the file's SHA-256) a dropped upload keeps what arrived, and a **partial PUT** (`Content-Range: bytes X-(N-1)/N`, RFC 9110 §14.5) continues it: a lower `X` discards the overlap, a higher one is `409` + `Upload-Offset`. **A failed record fails the request.** If this completed the asset, wakes the event's other members. **An encrypted event takes only encrypted files** (`routes/encrypted-upload.ts`, read in the same statement as the membership): a body whose 9-byte prefix names the event's key id passes untouched; with the iOS extension's `x-snapsync-file-key` + `x-snapsync-file-head` (ONE file's key and opening bytes, never the event key; never logged) the edge seals the plaintext itself, byte for byte as a device would; anything else is refused before a byte is stored. A plain event refuses those headers | `201` · `400` bad role / missing filename / file-key headers on a plain event or malformed / a malformed `x-snapsync-sha256` or `Content-Range`, a range without the sha256, or the body broke off mid-upload (`upload aborted`) · `403` not a present member, or a file head of another key · `409` + `Upload-Offset` a resume from past what is stored, or one a newer request took over · `422` an encrypted event's body that is not a file of its key · `502` (`OPTIONS` → `204`) |
 | `GET` | `/events/<eventId>/files/devices/<deviceId>/<assetId>/<role>/upload` with `x-snapsync-sha256` | **where an upload stands**, asked before a device retries one ([Resumable uploads](#resumable-uploads)); gated like the PUT; `Cache-Control: no-store, no-cache, max-age=0` | `204` these bytes landed · `200` + `Upload-Offset: X` — send from `X` · `404` nothing stored for these bytes · `400` · `403` not a present member · `502` |
@@ -1464,14 +1465,22 @@ The body of `PUT /api/v2/events/<eventId>/devices/<deviceId>/manifest`, one full
   manifest retracts the asset, even if its upload is in flight. Under a partial grant, a read selection
   snapshot counts as an authoritative walk.
 - **An empty manifest is valid and published.** A manifest is **suppressed** (the previous one stays)
-  whenever the pass cannot trust the ledger — its gate stopped it, or `ManifestPublish` could not read the rows. Suppression and "empty" are logged differently.
-- **Writer**: `ManifestPublish` (`feature/membership`), the step a pass's walk ends with (`WalkAndPublish`, the
+  whenever the pass cannot trust the ledger — its gate stopped it, or `PublishManifest` could not read the rows. Suppression and "empty" are logged differently.
+- **Writer**: `PublishManifest` (`application/sharing`), the step a pass's walk ends with (`WalkAndPublish`, the
   extension's `ExtensionUploads`), in whichever process runs it (app on every iOS version, the extension on iOS
   26.1+), carrying the `version` the pass's gate read first. Two concurrent publishes are ordered by `version` (the
   ledger's manifest counter, which advances on any change that could alter the projection, including a
-  reconfigure save and the join-time load). A pass skips the publish only when event id, version and
-  snapshot all match the last **successful** write (the shared database's `uploadedManifest`, which never
-  moves to an older version of its event). A refused (older) publish counts as published.
+  reconfigure save, a join — the backend's join forgets the version and `final` — and the join-time load). A pass
+  skips the publish only when event id, version and snapshot all match the last **successful** write (the shared
+  database's `uploadedManifest`, which never moves to an older version of its event). A refused (older) publish counts
+  as published.
+- **Settling is evidence** (`changes/settling-needs-a-real-look`): `final` is set only from `SettledShare`, minted by
+  `ShareDeclaration.of` from a look that succeeded and began after the member's own range ended, or from a policy that
+  shares nothing. Once the range has ended and a settled share was sent, a publish whose look proves nothing (it could
+  not read, or began earlier) is skipped rather than sent as sharing, which would only take the settlement back. The end
+  of a wake (`SettleShare`) walks and publishes while no settled share was sent. Under a partial grant the selection
+  the app holds is the look: its observer keeps it current, so a read of it is as of now — as a walk the memo answers
+  is, the library being unchanged since.
 - The job-creation limit never withholds the manifest.
 
 ### Byte store (bunny Storage zone)

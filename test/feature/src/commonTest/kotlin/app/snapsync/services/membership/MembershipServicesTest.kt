@@ -15,7 +15,6 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
-import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
 import app.snapsync.testids.testEventId
@@ -28,8 +27,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.time.Instant
 
 /**
  * The membership's services the old zones still hold (`PENDING_CLEANUPS.md`): the projection they read it through, the
@@ -48,9 +45,8 @@ class MembershipServicesTest {
         deletesAt = DeletesAt(TimestampText.parse("2026-08-05T12:00:00Z")),
     )
 
-    /** The membership [store] holds, projected for the old zones at [now]. */
-    private fun projection(store: SharedStore, now: String = "2026-07-10T00:00:00Z") =
-        MembershipProjection(MembershipRepository(store.db), fixedClock(Instant.parse(now)))
+    /** The membership [store] holds, projected for the old zones. */
+    private fun projection(store: SharedStore) = MembershipProjection(MembershipRepository(store.db))
 
     /** What a read of a store holding no membership proves. */
     private fun none(): ConfirmedNotJoined =
@@ -91,7 +87,6 @@ class MembershipServicesTest {
         val store = SharedStore().apply { membershipUnreadable() }
         val config = projection(store)
         assertNull(config.joinedOrRead())
-        assertFalse(config.freshReadShareHasEnded())
     }
 
     @Test
@@ -102,31 +97,6 @@ class MembershipServicesTest {
         store.persist(joined)
         config.reload()
         assertEquals(joined.eventId, config.activeEventId())
-    }
-
-    @Test
-    fun `a fresh read says whether the share's range has ended`() {
-        val store = SharedStore()
-        assertFalse(projection(store).freshReadShareHasEnded(), "no membership")
-        store.persist(joined)
-        assertFalse(projection(store).freshReadShareHasEnded())
-        assertTrue(projection(store, now = "2026-07-14T00:00:00Z").freshReadShareHasEnded())
-    }
-
-    @Test
-    fun `the server's word heard by a publish marks the joined event deleted, and nothing else`() {
-        val store = SharedStore()
-        val config = projection(store)
-        config.markOver(testEventId("E"))
-        assertNull(config.joinedOrRead(), "no membership: nothing to mark")
-
-        store.persist(joined)
-        config.markOver(testEventId("F"))
-        assertEquals(joined, config.joinedOrRead(), "another event's word marks nothing")
-
-        config.markOver(testEventId("E"))
-        config.reload()
-        assertEquals(joined.copy(deleted = true), config.joinedOrRead(), "the app never leaves an event on its own")
     }
 
     // ---- a join in progress ----

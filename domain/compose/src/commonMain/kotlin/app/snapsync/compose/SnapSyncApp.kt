@@ -312,7 +312,7 @@ class AppCore internal constructor(
      * through [BackendServices.manifest] like every other caller.
      */
     val backend: BackendServices by lazy {
-        backendServicesFor(services, attestation, exchange, eventOver = { services.config.markOver(it) })
+        backendServicesFor(services, attestation, exchange)
     }
 
     // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read,

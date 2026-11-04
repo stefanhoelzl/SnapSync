@@ -7,6 +7,7 @@ import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.upload.GateRead
 
 /**
@@ -39,14 +40,14 @@ class PassEntryRead(
             )
     }
 
-    private fun versioned(version: Long, read: MembershipRead, id: DeviceIdRead): GateRead = when (read) {
+    private fun versioned(version: ManifestVersion, read: MembershipRead, id: DeviceIdRead): GateRead = when (read) {
         is MembershipRead.Joined -> identified(read.membership, version, id)
         is MembershipRead.NotJoined -> identified(null, version, id)
         is MembershipRead.Unavailable -> unreadable(listOfNotNull("config: ${read.detail}", identityFailure(id)))
     }
 
-    private fun identified(membership: Membership?, version: Long, id: DeviceIdRead): GateRead = when (id) {
-        is DeviceIdRead.Ok -> GateRead.Read(membership, version)
+    private fun identified(membership: Membership?, version: ManifestVersion, id: DeviceIdRead): GateRead = when (id) {
+        is DeviceIdRead.Ok -> GateRead.Read(membership, version, id.value)
         DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> unreadable(listOfNotNull(identityFailure(id)))
     }
 
