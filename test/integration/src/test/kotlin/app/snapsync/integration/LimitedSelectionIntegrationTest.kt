@@ -227,7 +227,13 @@ class LimitedSelectionIntegrationTest {
                     library.permission(PhotoGrant.GRANTED)
                     os.foreground()
                 },
-                until = { screen<Layer.Joined> { it.sharedTotal() == 1 } },
+                // The count drops before the full grant's walk withdraws the screenshot: wait for the withdrawal
+                // itself, and for that work to end — a narrowing that lands first finds nothing withdrawn to return.
+                until = {
+                    screen<Layer.Joined> { it.sharedTotal() == 1 }
+                    event<WorldEvent.UnionChanged> { it.asset == "SHOT" && !it.gained }
+                    settled { true }
+                },
             )
         }
 
