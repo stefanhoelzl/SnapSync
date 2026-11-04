@@ -65,14 +65,11 @@ sealed interface ImportAlbumVerdict {
     data object CameraFolder : ImportAlbumVerdict
 
     companion object {
-        fun of(choice: AlbumChoice, album: EventAlbumId, standing: AlbumStanding): ImportAlbumVerdict =
-            when (choice) {
-                AlbumChoice.LibraryOnly -> CameraFolder
-                AlbumChoice.SaveToAlbum -> when (standing) {
-                    AlbumStanding.Present -> Into(album)
-                    AlbumStanding.Deleted -> CameraFolder
-                }
-            }
+        /** The album a membership that chose one files into: [album] while it is there, else none. */
+        fun of(album: EventAlbumId, standing: AlbumStanding): ImportAlbumVerdict = when (standing) {
+            AlbumStanding.Present -> Into(album)
+            AlbumStanding.Deleted -> CameraFolder
+        }
     }
 }
 

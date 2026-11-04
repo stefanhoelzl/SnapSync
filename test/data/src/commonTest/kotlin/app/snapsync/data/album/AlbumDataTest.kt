@@ -34,7 +34,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /** The photo library's album calls, scripted and recorded; every other read is the in-memory library's. */
-private class AlbumLibrary(
+internal class AlbumLibrary(
     override val albumKind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION,
     private val created: String? = "album-new",
     private val existing: Set<String> = emptySet(),
