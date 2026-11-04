@@ -5,6 +5,7 @@ import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.SealVerdict
 import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.MintsLeftMembership
+import app.snapsync.domain.upload.Ownerless
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.mock.mobileDataAnswering
@@ -178,6 +179,26 @@ class OsQueueTest {
 
         assertEquals(queue.terminals + queue.offered, queue.acknowledged)
         assertNull(world.row())
+    }
+
+    @Test
+    fun `an ownerless job on a byte route is a withdrawn row's, and any other destination is unmappable`() = runTest {
+        world.joined()
+        val owners = JobOwners(world.reads)
+        val base = "https://backend.test/api/v2"
+        suspend fun why(url: String?) = assertIs<JobOwner.None>(owners.of(world.event, job(url))).why
+
+        assertEquals(Ownerless.WITHDRAWN, why("$base/events/${world.event.value}/files/devices/D1/A1/primary?f=x"))
+        assertEquals(Ownerless.WITHDRAWN, why("$base/files/devices/D1/A1/primary"), "an earlier build's event-less job")
+        for (other in listOf(
+            "$base/v1/files/A1-primary.heic",
+            "$base/files/devices/D1/A1/primary/extra",
+            "$base/files/devices/A1/primary",
+            "$base/events/E/devices/D1/A1/primary",
+        )) {
+            assertEquals(Ownerless.UNMAPPABLE, why(other), other)
+        }
+        assertEquals(Ownerless.UNMAPPABLE, why(null), "a job the queue presents with no destination")
     }
 
     @Test

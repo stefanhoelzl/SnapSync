@@ -7,6 +7,7 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.text
 import app.snapsync.data.gallery.GrantRead
+import app.snapsync.data.sharing.BEFORE
 import app.snapsync.data.sharing.DURING
 import app.snapsync.data.sharing.Library
 import app.snapsync.data.upload.DeviceListing
@@ -139,6 +140,27 @@ class UploadUseCasesTest {
     }
 
     @Test
+    fun `a walk withdraws only within its window - a row before the range or still bare is kept`() = runTest {
+        world.joined()
+        world.walk.discover(
+            world.event,
+            listOf(
+                FoundResource(key("EARLY"), dated(BEFORE)),
+                FoundResource(key("BARE"), RowDetail(CaptureDate.Undated, "image/jpeg", "IMG.JPG")),
+                FoundResource(key("GONE"), dated(DURING)),
+            ),
+        )
+
+        val walked = walk(world.event, library.contribution())
+
+        assertEquals(listOf(key("GONE")), walked.diff.departed, "only the in-range row the walk did not see")
+        record(world.event, walked)
+        assertIs<UploadRow.Discovered>(rowOf("EARLY"), "a row before the range is not the walk's to judge")
+        assertIs<UploadRow.Discovered>(rowOf("BARE"), "a bare row is never withdrawn by a walk")
+        assertNull(rowOf("GONE"))
+    }
+
+    @Test
     fun `a walk that cannot read the library or the rows writes nothing`() = runTest {
         world.joined()
         library.grant.value = LibraryGrant.DENIED
@@ -181,6 +203,23 @@ class UploadUseCasesTest {
         recent.put(mapOf(key("A2") to SessionWorld.From))
         assertEquals(UploadPass.WORK_LEFT, create(world.event, full, before))
         assertIs<UploadRow.Discovered>(rowOf("A2"), "a refused create leaves the row needing a job")
+    }
+
+    @Test
+    fun `the platform's first refusal ends the top-up - no later row is tried, placed or looked up`() = runTest {
+        world.joined()
+        world.walk.discover(world.event, listOf("A1", "A2", "A3").map { FoundResource(key(it), dated(DURING)) })
+        recent.put(mapOf(key("A1") to SessionWorld.From))
+        world.session.answer = CreateOutcome.LIMIT_EXCEEDED
+
+        assertEquals(
+            UploadPass.WORK_LEFT,
+            create(world.event, plan(world.event, library.contribution().policy), before),
+        )
+
+        assertEquals(1, world.session.made.size, "one refusal is the signal")
+        assertEquals(listOf(AssetId.parse("A1")!!), placed)
+        listOf("A1", "A2", "A3").forEach { assertIs<UploadRow.Discovered>(rowOf(it), it) }
     }
 
     @Test

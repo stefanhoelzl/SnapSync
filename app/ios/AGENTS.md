@@ -12,16 +12,19 @@ for both modules and catches iOS-only Kotlin breakage without a Mac.
 ## Rules for editing the roots
 
 - **The roots pass facts, never decisions.** Neither root is the direction gate: whether a membership uploads at all
-  is decided inside `UploadCycle` from its required `Contribution`. The upload lifecycle (join, re-provision,
-  reconfigure, permission change, launch, leave) is decided by the tested `UploadTransitions`. Do not add an
+  is decided inside every upload pass, by the policy `DeriveContribution` derives from the membership. The upload
+  lifecycle (join, reconfigure, grant change, launch) is decided by the tested `UploaderChange` and applied by
+  `ReconcileUploader` and `UploaderArm`; only `StopUploads`, given `EndsUploads` evidence (a leave, a deleted event),
+  stops uploads. Do not add an
   `if (…)` branch here. The last time the lifecycle lived in this module, joining an event silently tore the upload
   arm down and started nothing, because nothing here is tested.
 - **The app scope's `CoroutineExceptionHandler` is non-negotiable.** A `SupervisorJob` does nothing for a throwable
   no child handles, which on Kotlin/Native terminates with `SIGABRT` before first paint. The handler logs to
   `debug.log` and lets the app live.
 - `SnapSyncRoot` owns a process-lifetime `SupervisorJob`, not `rememberCoroutineScope` (which dies with the view).
-- **Ledger writers belong to code, not to a process.** Outside the app's uploader (`compose/AppUploader.kt`, through
-  `uploadCycle`), `:app:ios` constructs no `LedgerWriter`.
+- **Ledger writers belong to code, not to a process.** The upload rows' writers (`WalkRecord`, `RowTransitions`,
+  `JobRecord`, `UploadRowsReset`) are built only in the shared composition (`compose/UploadCore.kt`'s `UploadLayers`,
+  `compose/AppUploader.kt`); `:app:ios` constructs none.
 - Keep every new entry point wrapped as the existing ones are, or its downstream log lines lose the
   `[<Trigger>]` prefix.
 - **`-lsqlite3`** is required in `OTHER_LDFLAGS` of every target that links SQLDelight's native driver. A missing

@@ -91,7 +91,7 @@ middle of an event.
 - **Why:** 0.4 uploads and lists there. An OS upload job that 0.4 enqueued also survives the update to a newer
   build and still targets the old route.
   - Once the floor is 0.5, such a job carries 0.4's version header and is refused `426` anyway.
-  - The app then re-creates the job on the new route (`UploadJobDecisions`, `terminalDisposition`). This costs a
+  - The app then re-creates the job on the new route (`OsQueueDrain` returns it, the top-up re-creates it). This costs a
     re-upload, never a lost photo.
 - **Remove:**
   - Delete both routes.
@@ -103,9 +103,8 @@ middle of an event.
     - `OlderInstalls.kt`'s `startedByZeroFour`, the 0.4 upload in flight the update test's ledger.db v12 case lands
       there (with the ledger chain squashed to a v13 baseline, as the parked rows above need).
     - `test/rig/.../MockWorld.kt`.
-    - The `LedgerStoreContract` clause "a row keeps the destination its own request carried across a route
+    - `OwnUploadRowsTest`'s case "a row is found by the destination its own request carried, across a route
       change".
-    - The doc note in `domain/services/.../backend/BackendUploadRequests.kt`.
 - **Also blocks:** concurrent multi-event membership.
 - **Record:** `openspec/changes/archive/2026-10-06-per-event-storage-layout` (design D4/D5).
 
@@ -240,7 +239,7 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
     `app.snapsync.album.map` / `.filled` and `app.snapsync.check.*`.
   - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
     membership read's "still in its legacy file" answer (`MembershipRepository.read`, `domain/data/.../membership/`).
-  - `PauseReason.LEGACY_RECORDS` and its check at the head of `CycleGateRead.read`.
+  - `UploadPause.LEGACY_RECORDS` and its check at the head of `UploadGateRead.read` (`domain/data/.../upload/`).
   - `PushRegistrationRecord.legacy` / `moved` (`domain/data/.../push/`: `push-registration/last-registered.txt` into the
     Preferences key) and its `files` parameter.
   - `model/ConfigFile.kt` (the envelope codec), read only by the copy.
@@ -370,9 +369,9 @@ version or op gates these — each phase deletes its own uses, and the last one 
 ### The old zones' throwing device-id read (app)
 - **What:** `DeviceIdentity.requireDeviceId()` (`domain/services/…/services/identity/RequireDeviceId.kt`): the device
   id as the old zones read it before trust moved into its layers (4.1) — thrown as `SecureStoreUnavailable` or
-  `DeviceIdentityAbsent` out of the step that asked. Its callers: `ShareSetLoad` (4.4b); upload's
-  `StoredUploadSettle`, `CycleGateRead`, `UploadStandings` and the cycle's assembly in `compose/UploadCore.kt` (4.4).
-  Push's two (4.8) and receiving's three (4.5) are gone: their layers read `DeviceIdentity.id()`.
+  `DeviceIdentityAbsent` out of the step that asked. Its callers: the manifest producer's assembly in
+  `compose/UploadCore.kt` (4.4c). Push's two (4.8), receiving's three (4.5) and the uploads' (4.4b) are gone: their
+  layers read `DeviceIdentity.id()`.
 - **Why:** converting every caller to the sealed `DeviceIdRead` in 4.1 would have rewritten the error handling of four
   concepts 4.1 does not own, each to be rewritten again as a use case in its own phase.
 - **Remove:** each phase moves its callers onto `DeviceIdentity.id()`'s sealed read — a use case answering its
@@ -386,14 +385,14 @@ version or op gates these — each phase deletes its own uses, and the last one 
     `MembershipRepository` — `config` (a hand-written `StateFlow`, its opt-in pinned in `OptInPinsTest`), `read`,
     `reload`, `joinedOrRead`, the clock's reads, and `markOver` — the one write: the shared set's publish heard the
     event's photos were deleted (`BackendManifestPublisher`'s `eventOver`, wired in `compose/SnapSyncApp.kt`) — and
-    `Membership.asConfig()`. Its readers: upload's
-    `UploadTransitions`, `CycleGateRead` and `ShareSettlement`, the
-    ledger's scope in `compose/AppServices.kt` and the cycle's assembly in `compose/UploadCore.kt` and
-    `compose/ExtensionCore.kt` (4.4); `AlbumGather` (4.6); `StatusRefresh` and `CollectDiagnosticDump` (4.7);
+    `Membership.asConfig()`. Its readers: the final share's `ShareSettlement` and the manifest's `ManifestPublish`
+    (4.4c), with their assembly in `compose/UploadCore.kt` and `compose/ExtensionCore.kt`, and `ForegroundWork`'s stored-
+    upload settle (4.4b's `SettleStoredUploads` takes the joined event from it) in
+    `domain/entrypoints/.../AppEntryPoints.kt`; `AlbumGather` (4.6); `StatusRefresh` and `CollectDiagnosticDump` (4.7);
     presentation's `config` source (4.9). Receiving's (4.5) are gone: its triggers branch on `MembershipQuery`.
   - `domain/services/.../membership/MembershipTransition.kt`: the join-in-progress guard a sweep of leftovers waits
-    out, held by `UploadTransitions.stopLeftovers` and by the key's and the downloads' leftover sweeps in
-    `SweepLeftovers` (`domain/entrypoints/.../MembershipEntryPoints.kt`).
+    out, held by `SweepLeftovers` (`domain/entrypoints/.../MembershipEntryPoints.kt`) around the key's, the
+    downloads' and the uploads' (`StopUploads`) leftover sweeps.
 - **Why:** phase 4.2 moved the membership into the layers; the concepts that read it move in their own phases.
 - **Remove:** each phase moves its readers onto `MembershipRead` (the query's `MembershipQuery`, or a use case's
   answer) and its leftover sweep into a use case — 4.4 moves the publisher and with it `markOver`, into a use case
@@ -403,9 +402,9 @@ version or op gates these — each phase deletes its own uses, and the last one 
 - **What:** `use` and `DatabaseUnavailable` (`domain/services/…/services/databases/DatabaseUnavailable.kt`): a store's
   statements as the old zones run them — a failed open or statement thrown as `DatabaseUnavailable` out of the step that
   asked, where the data layer answers a `DbResult`. They moved out of `:domain:data`'s `OwnedDatabase` and
-  `SharedDatabase`, which hold no throw (`docs/patterns.md`, "Invalid program state"). Its callers: `LedgerService`
-  and `DeviceManifestService` (4.4); `AlbumMapService` (4.6). Receiving's (4.5) are gone: its store answers a
-  `DownloadRead`.
+  `SharedDatabase`, which hold no throw (`docs/patterns.md`, "Invalid program state"). Its callers:
+  `DeviceManifestService` (4.4c); `AlbumMapService` (4.6). Receiving's (4.5) and the uploads' (4.4b) are gone: their
+  stores answer values.
 - **Why:** converting every caller to the `DbResult` would have rewritten the error handling of four concepts the
   `InvalidProgramState` change does not own, each to be rewritten again in its own phase.
 - **Remove:** each phase moves its store into the data layer, answering what it read and wrote as values, and deletes
@@ -414,23 +413,18 @@ version or op gates these — each phase deletes its own uses, and the last one 
 ### The selection as the old zones reach it (app)
 - **What:** the old zones reach the member's own photos (`OwnPhotos`, `domain/data/.../sharing/`) through edges that
   stay theirs until their concepts move:
-  - ledger rows are judged through `admittedAssetIds` (`domain/model/.../LedgerAdmission.kt`), the rows' translation
-    to `SelectionPolicy.admitRecorded`: `UploadCycle` (4.4b), `projectDeviceManifest` (4.4c), `AlbumGather` (4.7);
-  - the cycle's discovery, key resolve and resources (`UploadCycle`, `KeyedResources` and `uploadable` in
-    `domain/services/.../gallery/KeyedResources.kt`, 4.4b); the status total (`OwnDeviceGalleryStatusSource`,
-    `StatusRefresh`, 4.9).
-- **Why:** phase 4.4a moved the selection into the layers; the ledger, the uploads and the status move in their own
-  phases. Receiving's (4.5) are gone: `OwnPhotos` reads what was received itself, and recognition reads the grant's
-  plan in `MarkedPhotos`.
-- **Remove:** 4.4b moves the ledger and the cycle and deletes `admittedAssetIds` once its last caller judges rows as
-  `RecordedAsset`s, and `KeyedResources` with the upload keys; the phase that removes the last edge deletes this entry.
+  - the status total (`OwnDeviceGalleryStatusSource`, `StatusRefresh`, 4.9).
+- **Why:** phase 4.4a moved the selection into the layers; the status moves in its own phase. Receiving's (4.5) are
+  gone: `OwnPhotos` reads what was received itself, and recognition reads the grant's plan in `MarkedPhotos`; the
+  uploads' (4.4b) too: their rows are judged as `RecordedAsset`s and their walk reads `OwnPhotos` itself.
+- **Remove:** the phase that moves the status total deletes this entry.
 
 ### The old zones' throwing read of a stored id (app)
 - **What:** `held` (`domain/services/…/services/databases/StoredIds.kt`): an id column as the old zones read it — the
   id, or a throw when the column spells none, as the column's adapter threw before it answered a `Stored`
-  (`ledger.db` v18, `downloads.db` v11). Its callers: `LedgerService` and `DeviceManifestService` (4.4);
-  `AlbumMapService` (4.6); `LegacyRecords` (with its legacy copy, `Legacy homes of the shared records`). Receiving's
-  (4.5) are gone: `data/receiving` reads its id columns as `Stored` values, dropping a row that spells none.
+  (`ledger.db` v18, `downloads.db` v11). Its callers: `DeviceManifestService` (4.4c); `AlbumMapService` (4.6);
+  `LegacyRecords` (with its legacy copy, `Legacy homes of the shared records`). Receiving's (4.5) and the uploads'
+  (4.4b) are gone: the data layer reads its id columns as `Stored` values, dropping a row that spells none.
 - **Why:** each store decides what a row that spells no id means when it moves into the data layer, as the membership's
   did (an unreadable membership, a leave that fails); deciding it now would have rewritten stores other phases own.
 - **Remove:** each phase reads its columns as values — a `when` over the `Stored` — and deletes its `held` calls; the
@@ -441,8 +435,8 @@ version or op gates these — each phase deletes its own uses, and the last one 
   reach the data layer directly, through edges that stay theirs until their concepts move:
   - `DeviceManifestService` (`domain/services/.../manifest/`) implements the data layer's `OwnDeclarations` — how many
     photos this device declared to an event, which `EventUnion` nets the union's declared total by (4.4c);
-  - `CycleGateRead` and `UploadConfig.suppressionGate` (`domain/feature/.../upload/`, 4.4b) and `StatusRefresh`
-    (`domain/feature/.../status/`, 4.9) read `ReceivedPhotosRead` — the store's readiness and what it received;
+  - `StatusRefresh` (`domain/feature/.../status/`, 4.9) reads `ReceivedPhotosRead` — the store's readiness and what it
+    received (the uploads' gate, 4.4b, reads it in the data layer, `UploadGateRead`);
   - `AlbumGather` (`domain/feature/.../album/`, 4.6) and `CollectDiagnosticDump` (`domain/feature/.../diagnostics/`,
     4.7) read `ReceivingCounts`.
 - **Why:** each reader is its own phase's concept; rewriting them over a use case's answer here would have rewritten

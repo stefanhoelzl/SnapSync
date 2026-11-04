@@ -2,7 +2,9 @@ package app.snapsync.model
 
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.UploadKeyText
 
 // A platform resource-type value is read by the platform, in `:adapter:ios:ext-safe`'s
 // `PhotoKitResourceKind.kt`, and what each kind is to the upload is the gallery services'. It used to sit here as a `when` over the raw
@@ -12,18 +14,12 @@ import app.snapsync.format.ResourceRoleText
 // `docs/architecture.md`, "Ports are the I/O boundary named for the need").
 
 /**
- * Pure construction of an asset resource's ledger key / object name — the single place the role-based
- * `"<assetId>-<role>.<ext>"` layout lives, `assetId` being the canonical [AssetId]. Kept platform-free so
- * the layout is unit-tested in `commonTest` instead of trapped inside the PhotoKit adapter; the adapter (and
- * the device listing's seam) only supply the raw fields. Shared by the upload producer (`:app:ios:extension`) and the manifest synthesis
- * so a manifest's `filename` is byte-identical to what the producer uploads under.
+ * An asset resource's key / object name as the old zones spell it — the format's one layout (`UploadKeyText`, over the
+ * domain's [UploadKey]), so the key the downloads and the mocks name is byte-identical to the one an upload lands
+ * under. MIGRATING: its callers (the downloads' jobs, the mocks) move onto [UploadKey] with their concepts (phase 4.5).
  */
 fun uploadKey(assetId: AssetId, role: ResourceRole, originalFilename: String): String =
-    "$assetId-${ResourceRoleText.of(role)}.${fileExtension(originalFilename)}"
-
-/** The lowercased filename extension, or `bin` when the original filename carries none. */
-fun fileExtension(originalFilename: String): String =
-    originalFilename.substringAfterLast('.', "").ifEmpty { "bin" }.lowercase()
+    UploadKeyText.of(UploadKey.of(assetId, role, originalFilename))
 
 /**
  * Recover the [ResourceRole] from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): the role token
