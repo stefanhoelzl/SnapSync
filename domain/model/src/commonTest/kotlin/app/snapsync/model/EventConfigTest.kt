@@ -329,37 +329,4 @@ class EventConfigTest {
         assertEquals(true, "" >= "")
         assertEquals(false, "" >= "2026-07-06T14:32:11Z")
     }
-
-    // ── the start gate (capability `photo-sharing`, "Nothing is shared before the event starts") ──
-
-    private val startsBefore = EventConfig(
-        testEventId("E"),
-        "E",
-        CaptureCutoff(TimestampText.parse("2026-07-08T18:00:00Z")),
-        startsAt = EventStart(TimestampText.parse("2026-07-10T18:00:00Z")),
-        endsAt = EventEnd(TimestampText.parse("2026-07-12T18:00:00Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-12T18:00:00Z")),
-        deletesAt = DeletesAt(TimestampText.parse("2026-08-12T18:00:00Z")),
-    )
-
-    @Test
-    fun `before the start a floor reaching before it is held at the start`() {
-        assertEquals(
-            CaptureCutoff(startsBefore.startsAt.at),
-            startsBefore.sharingFloor(TimestampText.parse("2026-07-09T12:00:00Z")),
-        )
-    }
-
-    @Test
-    fun `from the start on the member's own floor applies`() {
-        assertEquals(startsBefore.minPhotoDate, startsBefore.sharingFloor(TimestampText.parse("2026-07-10T18:00:00Z")))
-        assertEquals(startsBefore.minPhotoDate, startsBefore.sharingFloor(TimestampText.parse("2026-07-20T00:00:00Z")))
-    }
-
-    @Test
-    fun `a floor after the start is never lowered`() {
-        val late = startsBefore.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-11T09:00:00Z")))
-        assertEquals(late.minPhotoDate, late.sharingFloor(TimestampText.parse("2026-07-09T12:00:00Z")))
-        assertEquals(late.minPhotoDate, late.sharingFloor(TimestampText.parse("2026-07-11T12:00:00Z")))
-    }
 }

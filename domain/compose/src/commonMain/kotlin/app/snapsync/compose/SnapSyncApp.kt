@@ -28,8 +28,6 @@ import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnCredentialChanged
 import app.snapsync.entrypoints.OnSelectionChanged
-import app.snapsync.feature.album.AlbumCoordinator
-import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.creation.readmodel.MintedEvent
@@ -90,7 +88,6 @@ import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.ui.state.UiIntent
@@ -379,7 +376,7 @@ class AppCore internal constructor(
     val mobileDataQuery: MobileDataQuery get() = mobileData.query
 
     /** What the event album holds on this phone, for the status host's album wording. */
-    val albumContents: AlbumContents get() = albumManager.contents
+    val albumContents: AlbumContents get() = album.contents
 
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant
@@ -397,29 +394,6 @@ class AppCore internal constructor(
 
     /** The joined screen's download progress, for readers outside the core (the status host). */
     val downloadProgress: StateFlow<DownloadProgress> get() = receiving.progress.progress
-
-    /** The album operations over the gallery. */
-    private val albumManager: GalleryAlbums by lazy { GalleryAlbums(ports.gallery) }
-
-    // Event album: the coordinator over the shared leave-surviving map.
-    // The APP is the SOLE creator (on the permission grant); both processes only add.
-    val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(albumManager, services.albumMapStore)
-    }
-
-    // The event album's gather: place what the device already holds for the event.
-    // Built HERE and nowhere in the extension's graph, so "the extension never gathers" holds by
-    // construction. Started, never awaited, by the act that triggered it.
-    val albumGather: AlbumGather by lazy {
-        albumGather(
-            services,
-            appUploader.layers.rows,
-            galleryAccess,
-            albumCoordinator,
-            scope,
-            receiving.counts,
-        ) { membership -> contributionFor(membership).policy }
-    }
 
     /** The photo-library grant as it stands now, in the domain's words. */
     internal val grant: GrantRead by lazy { GrantRead(ports.gallery.grant) }
@@ -562,6 +536,7 @@ class AppCore internal constructor(
      * collector. Call it once; each call installs a fresh set of collectors. The selection observer is not one of
      * them: it opens on every start ([installCompositionSubscriptions]).
      */
+    @OptIn(CompositionOnly::class)
     fun installPermissionSubscriptions() {
         // The launch reconcile, then real changes only: the value the launch reconciled against is no change, and a
         // change that lands during the launch reconcile is still delivered (the prefix dropped is exactly that value).
@@ -570,8 +545,8 @@ class AppCore internal constructor(
             work.uploaderChange.deliver(UploaderChange.LAUNCH)
             galleryAccess.grant.dropWhile { it == atLaunch }.collect { onGrantChanged() }
         }
-        // The event album's grant subscription: ensure the album, then let the gather judge the emission.
-        scope.launchAlbumGrantSubscription(services, albumGather)
+        // The event album follows the grant: ensured whenever access is usable, gathered into once it became usable.
+        observation.follow(album.accessChanges.changes, album.onAccessChanged)
         scope.launch {
             // THE ONE ADJUDICATION CALL SITE. Once per process, here, and
             // nowhere else — not in `reconcile`, not in `importReady`, not in `onResourceStaged`. Only a

@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  * typed catch is its business), and above it every expected failure IS a value (`docs/architecture.md`, "A port
  * answers every expected failure as a value").
  *
- * The old zones still hold the catch-alls they were written with (`runCatchingCancellable`, `bestEffort`, `contained`,
+ * The old zones still hold the catch-alls they were written with (`runCatchingCancellable`, `contained`,
  * a broad or typed `catch`): [BASELINE] counts them per file, EXACT in both directions — a new one
  * fails, and one removed must be removed here too, so the count only falls. Phase 4 empties it as each zone moves under
  * entry points and sequences, and deletes the helpers with the last use.
@@ -26,7 +26,6 @@ class CatchSitesTest {
         Regex("""catch\s*\(\s*\w+\s*:\s*(?:Throwable|Exception)\s*\)"""),
         Regex("""\brunCatching\s*\{"""),
         Regex("""\brunCatchingCancellable\b"""),
-        Regex("""\.bestEffort\("""),
         Regex("""\.contained\("""),
     )
 
@@ -122,7 +121,6 @@ class CatchSitesTest {
             "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/databases/IosDatabases.kt" to 3,
             "/app/desktop/src/main/kotlin/app/snapsync/desktop/MirrorHarness.kt" to 4,
             "/app/desktop/src/main/kotlin/app/snapsync/desktop/WorldInspectorController.kt" to 2,
-            "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/album/AlbumCoordinator.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/diagnostics/CollectDiagnosticDump.kt" to 3,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/status/LedgerCountsSource.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/status/OwnDeviceGalleryStatusSource.kt" to 2,
@@ -138,7 +136,6 @@ class CatchSitesTest {
             // as "no invite".
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to 1,
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to 2,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/album/AlbumMapService.kt" to 5,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt" to 5,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/manifest/DeviceManifestService.kt" to 6,
             "/domain/wire/src/commonMain/kotlin/app/snapsync/wire/runtime/Wire.kt" to 1,

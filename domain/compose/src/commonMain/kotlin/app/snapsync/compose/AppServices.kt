@@ -15,7 +15,6 @@ import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
-import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
@@ -95,9 +94,6 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
 
     /** An encrypted event's files, sealed and opened a segment at a time over this process's files. */
     val fileCipher: FileCipher by lazy { FileCipher(process.crypto, process.files) }
-
-    /** The event album's leave-surviving `eventId → album` map. */
-    val albumMapStore: AlbumMapService by lazy { AlbumMapService(sharedDatabase) }
 
     /**
      * The device's mobile-data choice (decision record `changes/archive/2026-10-07-mobile-data-per-device`, D1) —

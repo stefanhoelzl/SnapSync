@@ -146,26 +146,6 @@ enum class FillMarkVerdict {
 /** What the library did with an add to an album. */
 enum class AlbumAdd { Added, NotAdded }
 
-/** What a gather of the photos already held places, for a membership it was asked for. */
-sealed interface GatherScopeVerdict {
-    /** Received photos always; the member's own only where they go into the album ([OwnPhotoHome]). */
-    data class Gather(val own: OwnPhotoHome) : GatherScopeVerdict
-
-    data object NotWanted : GatherScopeVerdict
-
-    /** No usable photo access: every add would fail. */
-    data object NoAccess : GatherScopeVerdict
-
-    companion object {
-        fun of(choice: AlbumChoice, access: PhotoAccess, contents: AlbumContents): GatherScopeVerdict =
-            when (AlbumWishVerdict.of(choice, access)) {
-                AlbumWishVerdict.Wanted -> Gather(contents.ownPhotos)
-                AlbumWishVerdict.NotWanted -> NotWanted
-                AlbumWishVerdict.NoAccess -> NoAccess
-            }
-    }
-}
-
 /** What a change of the photo grant does for the joined membership's album. */
 enum class GrantVerdict {
     /** No usable access now: nothing. */

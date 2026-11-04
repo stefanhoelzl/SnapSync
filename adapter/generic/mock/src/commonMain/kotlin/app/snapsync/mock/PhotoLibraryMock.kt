@@ -11,7 +11,6 @@ import app.snapsync.levers.NOT_AN_IMAGE
 import app.snapsync.levers.ParkedImport
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.AlbumId
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryHandlers
@@ -331,7 +330,7 @@ internal class LibraryState(
 
     val attempts = mutableMapOf<String, Int>()
     var albumCounter = 0
-    val created = mutableMapOf<AlbumId, Album>()
+    val created = mutableMapOf<String, Album>()
     val createdLog = mutableListOf<Pair<String, String>>()
     val addedLog = mutableListOf<Pair<String, List<PlatformAssetId>>>()
     val deletedAlbums = mutableSetOf<String>()
@@ -351,7 +350,7 @@ internal class LibraryState(
     @Volatile var albumKind = LibraryAlbumKind.COLLECTION
 
     /** Under [LibraryAlbumKind.FOLDER], the app's album folder each photo in one lives in; a photo in none is in the camera folder. */
-    val folderOf = mutableMapOf<PlatformAssetId, AlbumId>()
+    val folderOf = mutableMapOf<PlatformAssetId, String>()
 
     /** What this library imported — the photos the app saved itself, which it may move. */
     val ownImports = mutableSetOf<PlatformAssetId>()

@@ -421,6 +421,12 @@ class DeletionLedgerTest {
             declared(files, reset).forEach {
                 add("the rig's reset in production, in $it (a reset is a reinstall — 4.5)")
             }
+            // The event album's pre-layer types: a coordinator that both decided the album's rules and did its library
+            // and map I/O, the gather it launched on the composition scope, and their store and gallery services.
+            val album = """class (Album""" + "Coordinator|Album" + "Gather|AlbumMap" + "Service|Gallery" + "Albums)\\b"
+            declared(files, album).forEach {
+                add("the album's pre-layer types in $it (verdicts, data, use cases and a gather pass — 4.7)")
+            }
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
     }

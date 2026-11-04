@@ -1,5 +1,6 @@
 package app.snapsync.services.databases
 
+import app.snapsync.data.album.AlbumMap
 import app.snapsync.data.membership.EventCheck
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.membership.MembershipRead
@@ -9,6 +10,9 @@ import app.snapsync.data.membership.PendingLeavesRead
 import app.snapsync.data.store.LegacySource
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.SharedRecordsReadiness
+import app.snapsync.domain.album.AlbumEntry
+import app.snapsync.domain.album.AlbumFill
+import app.snapsync.domain.album.EventAlbumId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.membership.CheckedAt
@@ -26,7 +30,6 @@ import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
-import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testEventId
@@ -210,8 +213,8 @@ class LegacyRecordsTest {
             "only the line naming an event is a leave",
         )
         assertEquals(
-            "album-2",
-            AlbumMapService(app()).get(testEventId("E2")),
+            AlbumEntry.Mapped(EventAlbumId("album-2"), AlbumFill.NotYetFilled),
+            AlbumMap(app()).entry(testEventId("E2")),
             "only the key naming an event is an album",
         )
         assertEquals(SharedRecordsReadiness.Ready, app().readiness())
@@ -261,12 +264,11 @@ class LegacyRecordsTest {
         values[ALBUM_MAP] = """{"${testEventId("E1").value}":"album-1","${testEventId("E2").value}":"album-2"}"""
         values[ALBUM_FILLED] = """["${testEventId("E2").value}"]"""
 
-        val albums = AlbumMapService(app())
+        val albums = AlbumMap(app())
 
-        assertEquals("album-1", albums.get(testEventId("E1")))
-        assertFalse(albums.filled(testEventId("E1")))
-        assertEquals("album-2", albums.get(testEventId("E2")))
-        assertTrue(albums.filled(testEventId("E2")))
+        val first = AlbumEntry.Mapped(EventAlbumId("album-1"), AlbumFill.NotYetFilled)
+        assertEquals(first, albums.entry(testEventId("E1")))
+        assertEquals(AlbumEntry.Mapped(EventAlbumId("album-2"), AlbumFill.Filled), albums.entry(testEventId("E2")))
         assertTrue(values.isEmpty(), "both keys are gone")
     }
 
@@ -275,7 +277,7 @@ class LegacyRecordsTest {
         values[ALBUM_MAP] = "not json"
         values[ALBUM_FILLED] = "not json"
 
-        assertNull(AlbumMapService(app()).get(testEventId("E1")))
+        assertEquals(AlbumEntry.None, AlbumMap(app()).entry(testEventId("E1")))
         assertTrue(values.isEmpty())
     }
 

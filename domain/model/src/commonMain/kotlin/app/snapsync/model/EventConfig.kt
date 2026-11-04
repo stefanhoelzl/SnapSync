@@ -30,18 +30,6 @@ import kotlinx.serialization.UseSerializers
 fun EventConfig.shareHasEnded(now: Timestamp): Boolean = now > maxPhotoDate.at
 
 /**
- * The capture floor this membership shares from at [now] — nothing is shared before the event starts: its own
- * [EventConfig.minPhotoDate] once the event has started, and never earlier than the event's start before then.
- *
- * A member's range MAY start before the event (`CaptureRange`), so the old theorem — a floor at or after a future
- * start admits no photo, since no photo is taken in the future — no longer holds on its own. Raising the floor to the
- * start while the start lies ahead restores it exactly; from the start on, the photos taken before it come into scope
- * on the next ordinary occasion, with no wake-up of their own.
- */
-fun EventConfig.sharingFloor(now: Timestamp): CaptureCutoff =
-    if (now < startsAt.at) CaptureCutoff(maxOf(minPhotoDate.at, startsAt.at)) else minPhotoDate
-
-/**
  * The **persisted, joined-event state** : the joined `eventId`, the
  * human-readable event `name`, and this device's chosen capture-date [minPhotoDate] cutoff for the event. The name is
  * **required, with no default**: the join gate only provisions from a loaded phase that carries a name, and the backend
@@ -166,7 +154,4 @@ data class EventConfig(
      * so a config persisted before it existed decodes as plain — the truth, since no earlier event was encrypted.
      */
     val keyId: String? = null,
-) {
-    /** Whether this membership's photos are stored encrypted. */
-    val encrypted: Boolean get() = keyId != null
-}
+)

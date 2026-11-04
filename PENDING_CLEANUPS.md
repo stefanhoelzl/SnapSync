@@ -388,8 +388,9 @@ version or op gates these — each phase deletes its own uses, and the last one 
     `Membership.asConfig()`. Its readers: the final share's `ShareSettlement` and the manifest's `ManifestPublish`
     (4.4c), with their assembly in `compose/UploadCore.kt` and `compose/ExtensionCore.kt`, and `ForegroundWork`'s stored-
     upload settle (4.4b's `SettleStoredUploads` takes the joined event from it) in
-    `domain/entrypoints/.../AppEntryPoints.kt`; `AlbumGather` (4.6); `StatusRefresh` and `CollectDiagnosticDump` (4.7);
-    presentation's `config` source (4.9). Receiving's (4.5) are gone: its triggers branch on `MembershipQuery`.
+    `domain/entrypoints/.../AppEntryPoints.kt`; `StatusRefresh` (4.9) and `CollectDiagnosticDump` (4.10);
+    presentation's `config` source (4.9). Receiving's (4.5) and the album's (4.7) are gone: their triggers branch on
+    `MembershipQuery`.
   - `domain/services/.../membership/MembershipTransition.kt`: the join-in-progress guard a sweep of leftovers waits
     out, held by `SweepLeftovers` (`domain/entrypoints/.../MembershipEntryPoints.kt`) around the key's, the
     downloads' and the uploads' (`StopUploads`) leftover sweeps.
@@ -403,7 +404,7 @@ version or op gates these — each phase deletes its own uses, and the last one 
   statements as the old zones run them — a failed open or statement thrown as `DatabaseUnavailable` out of the step that
   asked, where the data layer answers a `DbResult`. They moved out of `:domain:data`'s `OwnedDatabase` and
   `SharedDatabase`, which hold no throw (`docs/patterns.md`, "Invalid program state"). Its callers:
-  `DeviceManifestService` (4.4c); `AlbumMapService` (4.6). Receiving's (4.5) and the uploads' (4.4b) are gone: their
+  `DeviceManifestService` (4.4c). Receiving's (4.5), the uploads' (4.4b) and the album's (4.7) are gone: their
   stores answer values.
 - **Why:** converting every caller to the `DbResult` would have rewritten the error handling of four concepts the
   `InvalidProgramState` change does not own, each to be rewritten again in its own phase.
@@ -422,9 +423,10 @@ version or op gates these — each phase deletes its own uses, and the last one 
 ### The old zones' throwing read of a stored id (app)
 - **What:** `held` (`domain/services/…/services/databases/StoredIds.kt`): an id column as the old zones read it — the
   id, or a throw when the column spells none, as the column's adapter threw before it answered a `Stored`
-  (`ledger.db` v18, `downloads.db` v11). Its callers: `DeviceManifestService` (4.4c); `AlbumMapService` (4.6);
-  `LegacyRecords` (with its legacy copy, `Legacy homes of the shared records`). Receiving's (4.5) and the uploads'
-  (4.4b) are gone: the data layer reads its id columns as `Stored` values, dropping a row that spells none.
+  (`ledger.db` v18, `downloads.db` v11). Its callers: `DeviceManifestService` (4.4c);
+  `LegacyRecords` (with its legacy copy, `Legacy homes of the shared records`). Receiving's (4.5), the uploads'
+  (4.4b) and the album's (4.7) are gone: the data layer reads its id columns as `Stored` values, dropping a row that
+  spells none.
 - **Why:** each store decides what a row that spells no id means when it moves into the data layer, as the membership's
   did (an unreadable membership, a leave that fails); deciding it now would have rewritten stores other phases own.
 - **Remove:** each phase reads its columns as values — a `when` over the `Stored` — and deletes its `held` calls; the
@@ -437,8 +439,8 @@ version or op gates these — each phase deletes its own uses, and the last one 
     photos this device declared to an event, which `EventUnion` nets the union's declared total by (4.4c);
   - `StatusRefresh` (`domain/feature/.../status/`, 4.9) reads `ReceivedPhotosRead` — the store's readiness and what it
     received (the uploads' gate, 4.4b, reads it in the data layer, `UploadGateRead`);
-  - `AlbumGather` (`domain/feature/.../album/`, 4.6) and `CollectDiagnosticDump` (`domain/feature/.../diagnostics/`,
-    4.7) read `ReceivingCounts`.
+  - `CollectDiagnosticDump` (`domain/feature/.../diagnostics/`, 4.10) reads `ReceivingCounts`; the album's (4.7) reads it
+    through `ReceivedAlbumPhotos`.
 - **Why:** each reader is its own phase's concept; rewriting them over a use case's answer here would have rewritten
   them twice.
 - **Remove:** each phase moves its reader into a use case or query over the same data-layer read, and the manifest's

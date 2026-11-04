@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  * So production source (under `domain/`, `adapter/`, `app/`, `ui/`, outside test source sets) may not call
  * `runCatching`, and may catch `Throwable`/`Exception` only where the SAME `try` catches `CancellationException`
  * first, or where the handler rethrows what it caught (log-and-rethrow). Everything else goes through
- * `runCatchingCancellable` (`model/`) or `Logger.bestEffort` (`ports/`).
+ * `runCatchingCancellable` (`model/`).
  *
  * **Nothing catches an `InvalidProgramState`** (`docs/patterns.md`, "Invalid program state"): it is an `Error`, so a
  * catch of `Exception` passes it on, and a catch of `Throwable` must catch it first in the same `try` — to rethrow it,
@@ -95,7 +95,7 @@ class CatchGateTest {
             found.isEmpty(),
             "these catch sites can swallow cancellation (law \"Catch sites keep cancellation\") or an " +
                 "InvalidProgramState (`docs/patterns.md`, \"Invalid program state\"). Use " +
-                "`runCatchingCancellable` (model/) or `Logger.bestEffort` (ports/); a handler that must catch " +
+                "`runCatchingCancellable` (model/); a handler that must catch " +
                 "broadly either catches `CancellationException` and `InvalidProgramState` first in the same `try` " +
                 "and rethrows them, or " +
                 "rethrows what it caught. Only an ObjC boundary may catch everything, and it is named in this gate.\n" +

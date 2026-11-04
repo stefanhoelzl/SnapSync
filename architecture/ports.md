@@ -11,7 +11,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 |---|---|---|---|
 | `AdmissionVerdict` | `:domain:domain` | `:domain:domain` Discovered, NotReadable | no |
 | `AdmitOutcome` | `:domain:application` | `:domain:application` Admitted | no |
-| `AlbumLookup` | `:domain:services` | `:domain:services` None, Stored, Unreadable | no |
+| `AlbumEntry` | `:domain:domain` | `:domain:domain` Mapped, None, Unreadable | no |
+| `AlbumPhotosRead` | `:domain:application` | `:domain:application` Read, Unavailable | no |
+| `AlbumWishVerdict` | `:domain:domain` | `:domain:domain` NoAccess, NotWanted, Wanted | no |
 | `Answered` | `:domain:inbound` | `:adapter:ios:ext-safe` ContractOr; `:domain:scheduling` AnsweredEntryPoint; `:test:contracts` AnsweredProxy; `:test:launch-adapters` Completed | yes |
 | `AssetResources` | `:domain:data` | `:domain:data` GalleryResources, SnapshotResources | no |
 | `AttestationHealthVerdict` | `:domain:domain` | `:domain:domain` Attested, Unattested | no |
@@ -70,6 +72,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EndsUploads` | `:domain:domain` | `:domain:domain` ConfirmedNotJoined, Deleted, LeftMembership | no |
 | `EnrollFact` | `:domain:data` | `:domain:data` Admitted, EventOver, Failed, Unverified | no |
 | `EnrollOutcome` | `:domain:application` | `:domain:application` Enrolled | no |
+| `EnsureAlbumOutcome` | `:domain:application` | `:domain:application` Created, KeptDeleted, NoAccess, NotCreated, NotWanted, Reused, Unreadable | no |
 | `EnterOutcome` | `:domain:application` | `:domain:application` Entered | no |
 | `EnterResult` | `:domain:data` | `:domain:data` AlreadyJoined, Entered, Failed, JoinedElsewhere | no |
 | `EntryEvent` | `:domain:ports` | `:domain:ports` Answered, Delivered, Done | no |
@@ -96,7 +99,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Gallery` | `:domain:ports` | `:adapter:android` AndroidGallery; `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery; `:test:contracts` GalleryProxy | yes |
 | `GalleryImport` | `:domain:ports` | `:test:contracts` GalleryImportProxy, GalleryProxy; `:test:data` RecordingImport, ScriptedImport | yes |
 | `GalleryRead` | `:domain:ports` | `:domain:ports` NotReadable, Read | no |
-| `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Library; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:services` GrantOnlyReader, ScriptedGallery; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:data` ExportingLibrary; `:test:feature` FakeAlbumManager, ObservedGallery, RecordingAlbumManager | yes |
+| `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Library; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:services` GrantOnlyReader; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:data` AlbumLibrary, ExportingLibrary; `:test:feature` ObservedGallery | yes |
 | `GalleryResourceHandle` | `:domain:ports` | `:adapter:android` MediaStoreResource; `:adapter:generic:mock` InMemoryResource, NotThisPlatformsHandle; `:adapter:ios:ext-safe` NotAPhoto, PhotoKitResource, ReplayOther, ReplayPhoto, StandInPhoto; `:domain:services` TestHandle; `:test:data` Handle, Held; `:test:feature` TestPhoto | yes |
 | `GateRead` | `:domain:domain` | `:domain:domain` Read, Unreadable | no |
 | `GateStep` | `:domain:domain` | `:domain:domain` Proceed, Stop | no |
@@ -110,6 +113,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `HostAssembly` | `:domain:entrypoints` | `:domain:host` HostFirst | no |
 | `HttpResult` | `:domain:ports` | `:domain:ports` Response, Unreachable | no |
 | `HttpTransport` | `:domain:ports` | `:adapter:generic:app` KtorHttpTransport; `:adapter:generic:mock` BackendRouter; `:domain:services` ScriptedTransport; `:test:architecture` Probe; `:test:contracts` HttpTransportProxy; `:test:data` FakeClient, ScriptedTransport | yes |
+| `ImportAlbumVerdict` | `:domain:domain` | `:domain:domain` CameraFolder, Into | no |
 | `ImportOutcome` | `:domain:ports` | `:domain:ports` Failed, Imported | no |
 | `ImportReadiness` | `:domain:application` | `:domain:application` NotReady, Ready | no |
 | `ImportReport` | `:domain:domain` | `:domain:domain` Failed, Imported | no |
@@ -165,6 +169,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `NetworkAccess` | `:domain:ports` | `:domain:domain` Blocked, Offline, Online; `:domain:ports` Blocked, Offline, Online | no |
 | `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor; `:test:contracts` NetworkMonitorProxy | yes |
 | `NetworkStatusQuery` | `:domain:query` | `:domain:presentation` AlwaysOnline, FakeNetwork; `:domain:query` NetworkStatusLookup | yes |
+| `NewAlbum` | `:domain:data` | `:domain:data` Created, NotCreated | no |
 | `NewEventKey` | `:domain:data` | `:domain:data` Encrypted, Plain | no |
 | `NotEnrolled` | `:domain:application` | `:domain:application` AlreadyJoined, EventOver, Failed, InvalidRange, JoinedElsewhere, Unverified, WrongLink | no |
 | `NotEntered` | `:domain:application` | `:domain:application` AlreadyJoined, Failed | no |
@@ -181,10 +186,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `OsUploadJobHandle` | `:domain:ports` | `:adapter:generic:mock` Job; `:adapter:ios:ext-safe` PhotoKitJob, Presented; `:test:data` JobHandle | yes |
 | `OsUploadQueue` | `:domain:ports` | `:adapter:generic:mock` Face; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:test:contracts` OsUploadQueueProxy; `:test:data` RecordingQueue | yes |
 | `OwnDeclarations` | `:domain:data` | `:domain:services` DeviceManifestService | no |
+| `OwnPlacementVerdict` | `:domain:domain` | `:domain:domain` Place, Skip | no |
 | `Parsed` | `:domain:data` | `:domain:data` Ok, Refused | no |
 | `Pass` | `:domain:scheduling` | `:domain:scheduling` Completed, Cut | no |
 | `PendingLeavesRead` | `:domain:data` | `:domain:data` Ok, Unavailable | no |
 | `PixelArea` | `:domain:domain` | `:domain:domain` Known, Unknown | no |
+| `PlaceOutcome` | `:domain:application` | `:domain:application` NotPlaced, Placed, Skipped | no |
 | `Placement` | `:domain:data` | `:domain:data` At, Unplaced | no |
 | `PlanOutcome` | `:domain:application` | `:domain:application` NothingNew, Planned, Unavailable, UnionUnavailable | no |
 | `PlatformDeviceId` | `:domain:ports` | `:adapter:android` AndroidPlatformDeviceId; `:adapter:generic:app` NoPlatformDeviceId; `:test:contracts` PlatformDeviceIdProxy | no |
@@ -205,6 +212,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ReadPlan` | `:domain:domain` | `:domain:domain` NotReadable, Snapshot, Walk | no |
 | `RearmOutcome` | `:domain:application` | `:domain:application` Armed, NotArmed, NotJoined | no |
 | `ReceivedPhotosRead` | `:domain:data` | `:adapter:generic:mock` Received; `:domain:data` ReceivedPhotos, ReceivedPhotosReader; `:domain:services` NothingReceived; `:test:data` Received; `:test:feature` TestReceived | yes |
+| `ReceivedPlacementVerdict` | `:domain:domain` | `:domain:domain` Place, Skip | no |
 | `ReceivedReadiness` | `:domain:data` | `:domain:data` OldSchema, Ready, Unavailable | no |
 | `ReceivedReply` | `:domain:data` | `:domain:data` NotRecorded, Recorded | no |
 | `ReceivedReport` | `:domain:domain` | `:domain:domain` Position, ReceivesNothing | no |
@@ -263,6 +271,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `StopReason` | `:domain:application` | `:domain:application` Deleted, Left, NotJoined, SharesOnly | no |
 | `StoreWrite` | `:domain:data` | `:domain:data` Failed, Written | no |
 | `Stored` | `:domain:data` | `:domain:data` Invalid, Valid | no |
+| `StoredAlbumVerdict` | `:domain:domain` | `:domain:domain` KeptDeleted, Recreate, Reuse | no |
 | `SwitchFacts` | `:domain:domain` | `:domain:domain` Deleted, EveryoneShared, Undecided | no |
 | `SwitchVerdict` | `:domain:domain` | `:domain:domain` Ask, Quiet, Stay | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |

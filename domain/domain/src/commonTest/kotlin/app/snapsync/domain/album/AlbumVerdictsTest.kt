@@ -141,33 +141,6 @@ class AlbumVerdictsTest {
         assertEquals(FillMarkVerdict.Leave, FillMarkVerdict.afterMove(AlbumContents.SharedAndReceived, AlbumAdd.Added))
     }
 
-    // ---- gathering -------------------------------------------------------------------------------------------------
-
-    @Test
-    fun `a gather places received photos, and own ones where the album takes them`() {
-        assertEquals(
-            GatherScopeVerdict.Gather(OwnPhotoHome.IntoAlbum),
-            GatherScopeVerdict.of(AlbumChoice.SaveToAlbum, PhotoAccess.LIMITED, AlbumContents.SharedAndReceived),
-        )
-        assertEquals(
-            GatherScopeVerdict.Gather(OwnPhotoHome.StayInCameraFolder),
-            GatherScopeVerdict.of(AlbumChoice.SaveToAlbum, PhotoAccess.FULL, AlbumContents.Received),
-        )
-    }
-
-    @Test
-    fun `a gather places nothing when not chosen or without usable access`() {
-        val contents = AlbumContents.SharedAndReceived
-        assertEquals(
-            GatherScopeVerdict.NotWanted,
-            GatherScopeVerdict.of(AlbumChoice.LibraryOnly, PhotoAccess.FULL, contents),
-        )
-        assertEquals(
-            GatherScopeVerdict.NoAccess,
-            GatherScopeVerdict.of(AlbumChoice.SaveToAlbum, PhotoAccess.NONE, contents),
-        )
-    }
-
     // ---- the photo grant -------------------------------------------------------------------------------------------
 
     @Test

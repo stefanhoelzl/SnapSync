@@ -29,7 +29,11 @@ class OptInPinsTest {
             "InboundImplementation" to Pin(4, "the four entry-point bases, each implementing its inbound kind"),
         ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt" to mapOf(
-            "CompositionOnly" to Pin(1, "the app's composition: its handler bundles and the selection it follows"),
+            "CompositionOnly" to Pin(
+                2,
+                "the app's composition: its handler bundles and the selection it follows, and the UI launch's follow of " +
+                    "the photo grant for the event album",
+            ),
             "AppProcessOnly" to Pin(1, "the app's own photos walk behind the memo; the extension walks afresh"),
         ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt" to mapOf(
@@ -127,6 +131,9 @@ class OptInPinsTest {
         ),
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/FileCipher.kt" to mapOf(
             "KeyMaterial" to Pin(1, "the cipher: each file's key is derived from the event key's bytes"),
+        ),
+        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AlbumEntryPoints.kt" to mapOf(
+            "EntryPointCall" to Pin(1, "the album's gather and the grant's follower call its use cases"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/MembershipEntryPoints.kt" to mapOf(
             // The file-level opt-in and six on members it already covers (4.5's join and leave steps): redundant, each
