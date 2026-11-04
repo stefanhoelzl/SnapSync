@@ -21,7 +21,6 @@ import app.snapsync.domain.upload.OsSupport
 import app.snapsync.domain.upload.OsUploaderAdmission
 import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.format.TimestampText
-import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences

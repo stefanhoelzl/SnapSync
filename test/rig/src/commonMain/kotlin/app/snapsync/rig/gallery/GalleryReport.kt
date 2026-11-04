@@ -1,6 +1,7 @@
 package app.snapsync.rig.gallery
 
 import app.snapsync.data.gallery.facts
+import app.snapsync.data.gallery.role
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.asset.AssetFacts
 import app.snapsync.domain.asset.AssetId
@@ -35,7 +36,6 @@ import app.snapsync.levers.GalleryView
 import app.snapsync.levers.PolicyView
 import app.snapsync.levers.ResourceView
 import app.snapsync.ports.GalleryRead
-import app.snapsync.data.gallery.role
 import kotlin.time.TimeSource
 
 /**

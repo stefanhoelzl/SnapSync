@@ -37,7 +37,6 @@ import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.wake.UploadsLeft
 import app.snapsync.feature.links.readmodel.OpenedLinks
-import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.inbound.Log
@@ -68,7 +67,6 @@ import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Pass
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
-import app.snapsync.scheduling.Sequence
 import app.snapsync.scheduling.Steps
 import app.snapsync.scheduling.orIfCut
 import app.snapsync.services.crash.FootprintSampler

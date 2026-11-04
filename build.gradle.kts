@@ -111,10 +111,10 @@ coverage {
         // facts they read — which the suite covered — left for the domain and the data layer. Measured 74.37 / 43.12 %.
         // → 71/42 in phase 4.5 (receiving): the union, import and download-record vocabulary the suite covered left for
         // the domain and the data layer. Measured 71.35 / 42.69 %.
-        // → 70/38 in phase 4.4b (uploads): the upload engine's model — its resources, requests, outcomes and the
-        // cycle's results, which the suite covered — left for the domain and the data layer, and the dead leftovers
-        // with it.
-        integration(instructions = 70, branches = 38)
+        // → 67/37 in phase 4.4b (uploads), landed after 4.5: the upload engine's model — its resources, requests,
+        // outcomes and the cycle's results, which the suite covered — left for the domain and the data layer, and the
+        // dead leftovers with it. Measured 67.02 / 37.41 %.
+        integration(instructions = 67, branches = 37)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -162,9 +162,10 @@ coverage {
         // to the layers, taking their covered branches with them; no branch left here lost coverage. Measured 78.84 %.
         // Instructions → 93 in phase 4.5 (receiving): the download controller, its arm and the adoption — which the
         // suite covered — moved to the layers; what stays is the same code measured without them. Measured 93.11 %.
-        // → 93/77 in phase 4.4b (uploads): the upload cycle, its gate and its writer — which the suite covered — moved
-        // to the data and application layers and the entry points; what stays is the same code measured without them.
-        integration(instructions = 93, branches = 77)
+        // → 90/74 in phase 4.4b (uploads), landed after 4.5: the upload cycle, its gate and its writer — which the
+        // suite covered — moved to the data and application layers and the entry points; what stays is the same
+        // code measured without them. Measured 90.07 / 74.89 %.
+        integration(instructions = 90, branches = 74)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.

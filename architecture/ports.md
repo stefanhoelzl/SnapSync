@@ -262,7 +262,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `StopReason` | `:domain:application` | `:domain:application` Deleted, Left, NotJoined, SharesOnly | no |
 | `StoreWrite` | `:domain:data` | `:domain:data` Failed, Written | no |
 | `Stored` | `:domain:data` | `:domain:data` Invalid, Valid | no |
-| `SuppressionReadiness` | `:domain:model` | `:domain:model` OldSchema, Ready, Unavailable | no |
 | `SwitchFacts` | `:domain:domain` | `:domain:domain` Deleted, EveryoneShared, Undecided | no |
 | `SwitchVerdict` | `:domain:domain` | `:domain:domain` Ask, Quiet, Stay | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
