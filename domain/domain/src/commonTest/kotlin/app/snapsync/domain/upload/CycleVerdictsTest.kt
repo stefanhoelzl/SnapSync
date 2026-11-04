@@ -1,5 +1,6 @@
 package app.snapsync.domain.upload
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
@@ -49,7 +50,7 @@ class CycleVerdictsTest {
                 event.range.end,
             ),
         ).range
-        return Membership.Active(event, Share(range, Direction.Both, saveToAlbum = false))
+        return Membership.Active(event, Share(range, Direction.Both, album = AlbumChoice.LibraryOnly))
     }
 
     @Test

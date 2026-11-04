@@ -1,6 +1,7 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.album.PlaceOwnPhotos
 import app.snapsync.application.upload.BeforeJob
 import app.snapsync.application.upload.CreateJobs
 import app.snapsync.application.upload.DeriveContribution
@@ -19,7 +20,6 @@ import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.upload.UploaderArming
 import app.snapsync.domain.upload.UploaderChange
-import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.ManifestPublish
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.scheduling.Delivery
@@ -155,15 +155,14 @@ class UploadOwn(
  * dated: creating a job records it requested durably, and once dated a row is no longer bare, so a death between the
  * two would leave the photo unplaced by this path. Placed first, a creation that fails or is cut leaves the row as it
  * was, and the next pass places it again for free: adding an asset already in the collection is a no-op (measured,
- * simulator, iOS 26.5). Only for a membership that opted in; best-effort, never gating a creation. MIGRATING: the album
- * moves into the layers in phase 4.7.
+ * simulator, iOS 26.5). Whether and where is [PlaceOwnPhotos]' — the one album use case both processes hold;
+ * best-effort,
+ * never gating a creation.
  */
-class AlbumPlacement(private val albums: AlbumCoordinator) {
+class AlbumPlacement(private val own: PlaceOwnPhotos) {
+    @OptIn(EntryPointCall::class)
     suspend fun place(membership: Membership.Active, assets: Set<AssetId>, on: Run) = on.steps {
-        when (membership.share.saveToAlbum && assets.isNotEmpty()) {
-            true -> isolated("album") { albums.place(membership.event.id, assets.sorted()) }
-            false -> Unit
-        }
+        isolated("album") { own(membership, assets.sorted()) }
     }
 
     /** Each photo placed just before its own job is created — once it is found, and only while its row needs one. */

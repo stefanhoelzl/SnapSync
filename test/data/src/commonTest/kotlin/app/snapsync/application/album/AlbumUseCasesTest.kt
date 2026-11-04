@@ -151,6 +151,14 @@ class AlbumUseCasesTest {
         assertEquals(emptyList(), library.added)
     }
 
+    @Test
+    fun `own photos stay in the camera folder on a folder phone, the album chosen and there`() = runTest {
+        map.remember(event, album)
+        val folder = AlbumLibrary(LibraryAlbumKind.FOLDER)
+        assertEquals(PlaceOutcome.Skipped, PlaceOwnPhotos(map, AlbumFiling(folder))(saving, assets))
+        assertEquals(emptyList(), folder.added)
+    }
+
     // ---- placing received photos -----------------------------------------------------------------------------------
 
     @Test

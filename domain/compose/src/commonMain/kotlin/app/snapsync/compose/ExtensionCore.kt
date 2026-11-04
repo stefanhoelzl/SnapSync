@@ -1,6 +1,9 @@
 package app.snapsync.compose
 
+import app.snapsync.application.album.PlaceOwnPhotos
 import app.snapsync.application.upload.SettlePresentedJobs
+import app.snapsync.data.album.AlbumFiling
+import app.snapsync.data.album.AlbumMap
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.BuildTarget
@@ -30,7 +33,6 @@ import app.snapsync.entrypoints.ExtensionPass
 import app.snapsync.entrypoints.ExtensionUploads
 import app.snapsync.entrypoints.OnProcess
 import app.snapsync.entrypoints.OnTerminate
-import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.Databases
 import app.snapsync.ports.ExtensionHandlers
@@ -44,9 +46,7 @@ import app.snapsync.ports.Preferences
 import app.snapsync.ports.SecureStore
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
-import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.gallery.GalleryAlbums
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
 import kotlinx.coroutines.CoroutineDispatcher
@@ -187,7 +187,6 @@ private fun extensionServices(
 ): UploadServices {
     // Read only: the extension never mints an identity.
     val identity = StoredDeviceIdentity(ports.secureStore)
-    val albums = GalleryAlbums(ports.gallery)
     val build = ports.process.build
     // No version gate: the extension has no screen to show a refusal on.
     val exchange = BackendExchange(ports.http, BuildTarget(build), VersionIgnored)
@@ -224,8 +223,9 @@ private fun extensionServices(
         manifestStore = DeviceManifestService(records),
         manifestPublisher = backend.manifest,
         received = received,
-        // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
-        albumCoordinator = AlbumCoordinator(albums, AlbumMapService(records)),
+        // The extension only ever ADDS its own photos to the event album: it holds no way to make one — the app is
+        // its sole creator.
+        placeOwn = PlaceOwnPhotos(AlbumMap(records), AlbumFiling(ports.gallery)),
         // A retry re-reads the shared item: the app may have renewed the token this copy still holds.
         credentials = attestStore,
         // It cannot attest: a token the backend refused stays missing until the app renews it.

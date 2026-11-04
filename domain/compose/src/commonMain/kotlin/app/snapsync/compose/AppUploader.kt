@@ -46,7 +46,7 @@ internal class AppUploader(private val core: AppCore) {
             manifestPublisher = core.backend.manifest,
             // Echo suppression and recognition: the app's received photos, over its read-write store.
             received = core.receiving.received,
-            albumCoordinator = core.albumCoordinator,
+            placeOwn = core.album.placeOwn,
             // The token the app's credential keeps, the same copy every request it authenticates reads.
             credentials = app.credentials,
             credential = core.attestation,

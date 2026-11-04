@@ -90,22 +90,26 @@ class AlbumVerdictsTest {
     // ---- placing ---------------------------------------------------------------------------------------------------
 
     @Test
-    fun `own photos are placed into the album that exists, on a phone whose albums take them`() {
+    fun `own photos go into an album only when one is chosen on a phone whose albums take them`() {
         assertEquals(
-            OwnPlacementVerdict.Place(album, assets),
-            OwnPlacementVerdict.of(AlbumChoice.SaveToAlbum, AlbumContents.SharedAndReceived, mapped, assets),
+            OwnPhotoHome.IntoAlbum,
+            OwnPlacementVerdict.home(AlbumChoice.SaveToAlbum, AlbumContents.SharedAndReceived),
         )
+        assertEquals(
+            OwnPhotoHome.StayInCameraFolder,
+            OwnPlacementVerdict.home(AlbumChoice.SaveToAlbum, AlbumContents.Received),
+        )
+        AlbumContents.entries.forEach {
+            assertEquals(OwnPhotoHome.StayInCameraFolder, OwnPlacementVerdict.home(AlbumChoice.LibraryOnly, it))
+        }
     }
 
     @Test
-    fun `own photos are never placed when not chosen, on a folder phone, with no album, or with nothing to place`() {
-        val skip = OwnPlacementVerdict.Skip
-        val contents = AlbumContents.SharedAndReceived
-        assertEquals(skip, OwnPlacementVerdict.of(AlbumChoice.LibraryOnly, contents, mapped, assets))
-        assertEquals(skip, OwnPlacementVerdict.of(AlbumChoice.SaveToAlbum, AlbumContents.Received, mapped, assets))
-        assertEquals(skip, OwnPlacementVerdict.of(AlbumChoice.SaveToAlbum, contents, AlbumEntry.None, assets))
-        assertEquals(skip, OwnPlacementVerdict.of(AlbumChoice.SaveToAlbum, contents, AlbumEntry.Unreadable, assets))
-        assertEquals(skip, OwnPlacementVerdict.of(AlbumChoice.SaveToAlbum, contents, mapped, emptyList()))
+    fun `own photos are placed into the album that exists, never with no album or nothing to place`() {
+        assertEquals(OwnPlacementVerdict.Place(album, assets), OwnPlacementVerdict.of(mapped, assets))
+        assertEquals(OwnPlacementVerdict.Skip, OwnPlacementVerdict.of(AlbumEntry.None, assets))
+        assertEquals(OwnPlacementVerdict.Skip, OwnPlacementVerdict.of(AlbumEntry.Unreadable, assets))
+        assertEquals(OwnPlacementVerdict.Skip, OwnPlacementVerdict.of(mapped, emptyList()))
     }
 
     @Test
