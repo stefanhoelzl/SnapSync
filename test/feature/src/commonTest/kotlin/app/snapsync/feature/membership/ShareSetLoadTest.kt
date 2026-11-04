@@ -1,19 +1,21 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.store.LEDGER_DB_NAME
-import app.snapsync.domain.device.DeviceId
-import app.snapsync.domain.event.EventId
+import app.snapsync.data.upload.DeviceListing
+import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.upload.LedgerState
+import app.snapsync.domain.upload.UploadRow
 import app.snapsync.feature.support.CapturingLogWriter
+import app.snapsync.feature.support.ScriptedBackend
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
+import app.snapsync.levers.WriteKind
+import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.inMemoryDatabases
-import app.snapsync.model.LedgerEntry
-import app.snapsync.model.StoredResource
 import app.snapsync.ports.DbOpen
-import app.snapsync.services.backend.DeviceFilesSource
-import app.snapsync.services.backend.DeviceListingShapeException
+import app.snapsync.ports.HttpResult
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
@@ -22,6 +24,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -35,85 +38,75 @@ class ShareSetLoadTest {
     private val eventId = "7a3f9c21-0000-4000-8000-000000000001"
     private val earlierEvent = "7a3f9c21-0000-4000-8000-000000000000"
 
-    private class FakeFiles(var result: Result<List<StoredResource>>) : DeviceFilesSource {
-        var lastDeviceId: DeviceId? = null
-        var lastEventId: EventId? = null
-        override suspend fun list(eventId: EventId, deviceId: DeviceId): Result<List<StoredResource>> {
-            lastEventId = eventId
-            lastDeviceId = deviceId
-            return result
-        }
-    }
+    private fun listing(body: String) = ScriptedBackend { ScriptedBackend.json(200, body) }
+
+    private fun load(
+        backend: ScriptedBackend,
+        ledger: TestLedger,
+        identity: DeviceIdentity = testIdentity(deviceId),
+        recorder: CapturingLogWriter = CapturingLogWriter(),
+    ) = ShareSetLoad(DeviceListing(backend.gateway, identity), ledger.reset, recorder.logger("ShareSetLoadTest"))
 
     /**
      * What a device carries into a join: an earlier event's rows — work in flight, work waiting, a stale belief —
-     * and, for a rejoin, one row of the event being joined. The ledger is joined to [eventId], as it will be once
-     * the join saves its config.
+     * and, for a rejoin, one row of the event being joined.
      */
-    private suspend fun leftovers() = TestLedger(joined = eventId).apply {
-        service.resetTo(
-            testEventId(earlierEvent),
-            listOf(
-                LedgerEntry("R-primary.heic", testAssetId("R"), LedgerState.REQUESTED),
-                LedgerEntry("D-primary.heic", testAssetId("D"), LedgerState.DISCOVERED),
-                LedgerEntry("S-primary.heic", testAssetId("S"), LedgerState.COMPLETED),
-            ),
-        )
-        service.recordUnlessSettled(LedgerEntry("J-primary.heic", testAssetId("J"), LedgerState.COMPLETED))
+    private fun leftovers() = TestLedger().apply {
+        put(earlierEvent, "R-primary.heic", LedgerState.REQUESTED)
+        put(earlierEvent, "D-primary.heic", LedgerState.DISCOVERED)
+        put(earlierEvent, "S-primary.heic", LedgerState.COMPLETED)
+        put(eventId, "J-primary.heic", LedgerState.COMPLETED)
     }
 
     @Test
     fun `a confirmed listing becomes exactly the joined event's rows and purges every other event`() = runTest {
-        val files = FakeFiles(
-            Result.success(
-                listOf(
-                    StoredResource("A-primary.heic", testAssetId("A")),
-                    StoredResource("A-live.mov", testAssetId("A")),
-                ),
-            ),
+        val backend = listing(
+            """[{"assetId":"A","role":"primary","filename":"IMG.HEIC"},{"assetId":"A","role":"live","filename":"IMG.MOV"}]""",
         )
         val ledger = leftovers()
 
-        ShareSetLoad(files, ledger.service, testIdentity(deviceId)).load(testEventId(eventId))
+        load(backend, ledger).load(testEventId(eventId))
 
         // Listed for this device IN THE JOINED EVENT: another event's bytes are not this one's.
-        assertEquals(testEventId(eventId) to testDeviceId(deviceId), files.lastEventId to files.lastDeviceId)
-        assertEquals(setOf("A-primary.heic", "A-live.mov"), ledger.rows().keys)
-        assertTrue(ledger.rows().values.all { it.state == LedgerState.COMPLETED })
-        assertEquals(setOf(eventId), ledger.eventsHeld(), "the earlier event's rows are purged")
+        val asked = backend.requests.single().url
+        assertTrue(testEventId(eventId).value in asked && testDeviceId(deviceId).value in asked, asked)
+        assertEquals(setOf("A-primary.heic", "A-live.mov"), ledger.rowsOf(eventId).keys)
+        assertTrue(ledger.rowsOf(eventId).values.all { it is UploadRow.Completed })
+        assertEquals(setOf(testEventId(eventId).value), ledger.eventsHeld(), "the earlier event's rows are purged")
     }
 
     @Test
-    fun `the seeded assetId is the one the backend reported never parsed from the key`() = runTest {
-        val files = FakeFiles(Result.success(listOf(StoredResource("K-primary.heic", testAssetId("reported")))))
-        val ledger = TestLedger(joined = eventId).service
-
-        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(testEventId(eventId))
-
-        assertEquals(testAssetId("reported"), ledger.get("K-primary.heic")?.assetId)
-    }
-
-    @Test
-    fun `seeded rows are bare`() = runTest {
+    fun `a seeded row is keyed by the asset the backend reported and is bare`() = runTest {
         // A listing carries no capture date; the first walk after the join fills the detail.
-        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", testAssetId("A")))))
-        val ledger = TestLedger(joined = eventId).service
+        val ledger = TestLedger()
 
-        ShareSetLoad(files, ledger, testIdentity(deviceId)).load(testEventId(eventId))
+        load(listing("""[{"assetId":"reported","role":"primary","filename":"K.HEIC"}]"""), ledger)
+            .load(testEventId(eventId))
 
-        assertEquals("", ledger.get("A-primary.heic")?.creationDate)
+        val row = ledger.rowsOf(eventId).values.single()
+        assertEquals(testAssetId("reported"), row.key.asset)
+        assertEquals(CaptureDate.Undated, row.detail.captured)
     }
 
     @Test
     fun `an empty listing leaves the joined event empty`() = runTest {
         val ledger = leftovers()
-        ShareSetLoad(
-            FakeFiles(Result.success(emptyList())),
-            ledger.service,
-            testIdentity(deviceId),
-        ).load(testEventId(eventId))
-        assertTrue(ledger.service.manifestRows().isEmpty())
+        load(listing("[]"), ledger).load(testEventId(eventId))
         assertTrue(ledger.eventsHeld().isEmpty())
+    }
+
+    @Test
+    fun `a purge the store refuses is an error, never a failed join`() = runTest {
+        val recorder = CapturingLogWriter()
+        val device = DatabasesMock()
+        val ledger = TestLedger(device.port())
+        ledger.put(earlierEvent, "R-primary.heic", LedgerState.REQUESTED)
+        device.fail(LEDGER_DB_NAME, "ledgerRow", WriteKind.DELETE)
+
+        load(ScriptedBackend { HttpResult.Unreachable("offline") }, ledger, recorder = recorder)
+            .load(testEventId(eventId))
+
+        assertEquals(listOf(Severity.Error, Severity.Warn), recorder.severities)
     }
 
     @Test
@@ -121,12 +114,8 @@ class ShareSetLoadTest {
         val recorder = CapturingLogWriter()
         val ledger = leftovers()
 
-        ShareSetLoad(
-            FakeFiles(Result.failure(Exception("offline"))),
-            ledger.service,
-            testIdentity(deviceId),
-            recorder.logger("ShareSetLoadTest"),
-        ).load(testEventId(eventId))
+        load(ScriptedBackend { HttpResult.Unreachable("offline") }, ledger, recorder = recorder)
+            .load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
         assertEquals(listOf(Severity.Warn), recorder.severities)
@@ -136,14 +125,9 @@ class ShareSetLoadTest {
     fun `a listing this build cannot read purges other events and is an error`() = runTest {
         val recorder = CapturingLogWriter()
         val ledger = leftovers()
-        val files = FakeFiles(Result.failure(DeviceListingShapeException("v1 shape")))
 
-        ShareSetLoad(
-            files,
-            ledger.service,
-            testIdentity(deviceId),
-            recorder.logger("ShareSetLoadTest"),
-        ).load(testEventId(eventId))
+        load(listing("""[{"assetId":"bad id!","role":"primary","filename":"x"}]"""), ledger, recorder = recorder)
+            .load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
         assertEquals(listOf(Severity.Error), recorder.severities)
@@ -153,54 +137,35 @@ class ShareSetLoadTest {
     fun `a listing that never answers times out purges other events and warns`() = runTest {
         val recorder = CapturingLogWriter()
         val ledger = leftovers()
-        val hanging = object : DeviceFilesSource {
-            override suspend fun list(
-                eventId: EventId,
-                deviceId: DeviceId,
-            ): Result<List<StoredResource>> = awaitCancellation()
-        }
 
-        ShareSetLoad(
-            hanging,
-            ledger.service,
-            testIdentity(deviceId),
-            recorder.logger("ShareSetLoadTest"),
-        ).load(testEventId(eventId))
+        load(ScriptedBackend { awaitCancellation() }, ledger, recorder = recorder).load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
         assertEquals(listOf(Severity.Warn), recorder.severities)
     }
 
     @Test
-    fun `a device-id read that throws is a failed fetch not a failed join`() = runTest {
+    fun `a device id that cannot be read is a failed listing not a failed join`() = runTest {
         val ledger = leftovers()
-        ShareSetLoad(
-            FakeFiles(Result.success(emptyList())),
-            ledger.service,
-            unreadableIdentity(),
-        ).load(testEventId(eventId))
+        load(listing("[]"), ledger, identity = unreadableIdentity()).load(testEventId(eventId))
         assertKeptOnlyTheJoinedEvent(ledger)
     }
 
     @Test
     fun `a ledger that cannot be opened is an error not a failed join`() = runTest {
         val recorder = CapturingLogWriter()
-        val ledger = TestLedger(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked"))), joined = eventId)
-        val files = FakeFiles(Result.success(listOf(StoredResource("A-primary.heic", testAssetId("A")))))
+        val ledger = TestLedger(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked"))))
 
-        ShareSetLoad(
-            files,
-            ledger.service,
-            testIdentity(deviceId),
-            recorder.logger("ShareSetLoadTest"),
-        ).load(testEventId(eventId))
+        load(listing("""[{"assetId":"A","role":"primary","filename":"A.HEIC"}]"""), ledger, recorder = recorder)
+            .load(testEventId(eventId))
 
         assertEquals(listOf(Severity.Error), recorder.severities, "the load returns, having said why it seeded nothing")
         assertTrue(ledger.eventsHeld().isEmpty())
     }
 
-    private suspend fun assertKeptOnlyTheJoinedEvent(ledger: TestLedger) {
-        assertEquals(setOf(eventId), ledger.eventsHeld())
-        assertEquals(setOf("J-primary.heic"), ledger.rows().keys)
+    private fun assertKeptOnlyTheJoinedEvent(ledger: TestLedger) {
+        assertEquals(setOf(testEventId(eventId).value), ledger.eventsHeld())
+        assertIs<UploadRow.Completed>(ledger.rowsOf(eventId).values.single())
+        assertEquals(setOf("J-primary.heic"), ledger.rowsOf(eventId).keys)
     }
 }

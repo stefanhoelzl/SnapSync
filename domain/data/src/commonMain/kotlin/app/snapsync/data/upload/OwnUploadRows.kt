@@ -102,7 +102,12 @@ sealed interface VersionRead {
 
 /** A count a read made, or that it could not read. */
 sealed interface CountRead {
-    data class Counted(val count: Int) : CountRead
+    /** The count, or `null` for one that could not be read. */
+    val count: Int?
 
-    data class Unavailable(val detail: String) : CountRead
+    data class Counted(override val count: Int) : CountRead
+
+    data class Unavailable(val detail: String) : CountRead {
+        override val count: Int? get() = null
+    }
 }

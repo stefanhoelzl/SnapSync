@@ -24,7 +24,7 @@ import app.snapsync.services.device.DeviceConditionsReadings
 internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnosticDump(
     environment = diagnosticEnvironment(ports.process.build, ports.extensionRegistry),
     logs = services.deviceLogs,
-    ledger = services.ledger,
+    progress = appUploader.progress,
     downloads = receiving.counts,
     config = services.config,
     permission = galleryAccess,
@@ -43,7 +43,7 @@ internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnos
     uploadFacts = {
         mapOf(
             "extension_registrable" to osUploader.admission().name,
-            "app_admission" to appUploadAdmission().name,
+            "app_admission" to appUploader.admission.admission().name,
         )
     },
     refusalFacts = { attestationStatus.refusalFacts() },

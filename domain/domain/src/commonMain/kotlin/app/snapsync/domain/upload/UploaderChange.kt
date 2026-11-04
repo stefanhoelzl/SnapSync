@@ -63,6 +63,9 @@ enum class UploaderArming {
     ARM,
     DISARM,
 
+    /** Left as it was — a transition that could not read the membership it needs defers to the next one. */
+    UNCHANGED,
+
     ;
 
     companion object {

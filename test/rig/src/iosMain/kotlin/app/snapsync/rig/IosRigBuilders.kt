@@ -57,7 +57,7 @@ fun rigServices(
     world.servedServices(
         osServices,
         hooks.world.acts,
-        reconcileUploads = { core().uploadTransitions.onOverrideChanged() },
+        reconcileUploads = { core().reconcileUploaders() },
     ) +
         world.servedHostServices(
             listOf(

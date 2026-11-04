@@ -1,5 +1,6 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.data.gallery.facts
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.asset.AssetFacts
 import app.snapsync.domain.asset.AssetId
@@ -24,17 +25,17 @@ import app.snapsync.domain.sharing.SelectionCalibration
 import app.snapsync.domain.sharing.SelectionRule
 import app.snapsync.domain.sharing.VideoFloor
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.TimestampText
+import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.AssetView
 import app.snapsync.levers.CalibrationView
 import app.snapsync.levers.CensusView
 import app.snapsync.levers.GalleryView
 import app.snapsync.levers.PolicyView
 import app.snapsync.levers.ResourceView
-import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
-import app.snapsync.model.Resource
 import app.snapsync.ports.GalleryRead
-import app.snapsync.services.gallery.resourcesFrom
+import app.snapsync.data.gallery.role
 import kotlin.time.TimeSource
 
 /**
@@ -137,12 +138,24 @@ class GalleryReport(
     private suspend fun heldResources(
         of: app.snapsync.data.sharing.AssetResources,
         facts: List<AssetFacts>,
-    ): Map<AssetId, List<Resource>> = when (val read = of.of(facts.mapTo(linkedSetOf()) { it.assetId })) {
-        is GalleryRead.Read -> resourcesFrom(read.value).groupBy { it.assetId }
+    ): Map<AssetId, List<HeldResource>> = when (val read = of.of(facts.mapTo(linkedSetOf()) { it.assetId })) {
+        is GalleryRead.Read -> read.value.associate { asset ->
+            val id = asset.asset.facts().assetId
+            id to asset.resources.map {
+                HeldResource(
+                    it.contentType,
+                    UploadKeyText.of(UploadKey.of(id, it.kind.role(), it.originalFilename)),
+                    it.originalFilename,
+                )
+            }
+        }
         GalleryRead.NotReadable -> emptyMap()
     }
 
-    private fun view(asset: AssetFacts, admitted: Boolean, rules: List<SelectionRule>, held: List<Resource>?) = AssetView(
+    /** One held resource as the report shows it: its type, the key its upload lands under, its original name. */
+    private class HeldResource(val contentType: String, val key: String, val originalFilename: String)
+
+    private fun view(asset: AssetFacts, admitted: Boolean, rules: List<SelectionRule>, held: List<HeldResource>?) = AssetView(
         assetId = asset.assetId.value,
         captureDate = TimestampText.captureText(asset.captureDate),
         pixelArea = (asset.pixelArea as? PixelArea.Known)?.pixels,
@@ -154,8 +167,8 @@ class GalleryReport(
         // The FIRST rule that refuses is the reported reason; reporting all of them would read as "these all applied".
         // The album denylist is the one rule whose ids this report does not hold, so it is the reason left over.
         refusedBy = if (admitted) null else rules.firstOrNull { !it.admits(asset) }?.let(::describe) ?: DENYLISTED,
-        resources = held?.takeIf { admitted }?.map { ResourceView(it.contentType, it.filename) },
-        originalFilenames = held?.mapNotNull { it.metadata[RESOURCE_META_ORIGINAL_FILENAME] },
+        resources = held?.takeIf { admitted }?.map { ResourceView(it.contentType, it.key) },
+        originalFilenames = held?.map { it.originalFilename },
     )
 
     /**

@@ -49,9 +49,8 @@ kotlin {
             api(project(":domain:inbound"))
             api(project(":domain:feature"))
             api(project(":domain:compose"))
-            // The relocated, JVM-covered upload orchestration (UploadCycle + the BackgroundTransfer seam
-            // + UploadConfig). The extension-safe iOS adapters implement its seams and
-            // UploadExtensionRoot composes its UploadCycle.
+            // The JVM-covered upload layers (the data tier, the use cases and their entry points).
+            // The extension-safe iOS adapters implement their ports and UploadExtensionRoot composes them.
             // The extension framework's contents are decided by linkage (migration step 4): the
             // extension-safe iOS adapters (:adapter:ios:ext-safe — the discovery walk + cursor store,
             // the SQLite `Databases` adapter, the Keychain config/attest/device-id/album

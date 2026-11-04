@@ -4,6 +4,7 @@ package app.snapsync.album
 
 import app.snapsync.data.gallery.assetId
 import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
+import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -12,9 +13,9 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
-import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.OwnLibrary
 import app.snapsync.feature.support.SharedStore
+import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.feature.support.receivedImported
@@ -25,7 +26,6 @@ import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.model.EventConfig
-import app.snapsync.model.LedgerEntry
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
@@ -37,7 +37,6 @@ import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.WriteOutcome
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
@@ -109,18 +108,24 @@ class AlbumGatherTest {
         cfg: EventConfig?,
         val manager: RecordingAlbumManager,
         granted: Boolean,
+        rowsLocked: Boolean,
         scope: CoroutineScope,
         downloadsOpen: DbOpen? = null,
     ) {
         val store = SharedStore()
         val config: MembershipProjection = configService(cfg, store)
-        private val databases = inMemoryDatabases(listOfNotNull(downloadsOpen?.let { DOWNLOADS_DB_NAME to it }).toMap())
-        val ledger = LedgerService(testShared(databases)) { testEventId(LEDGER_EVENT) }
+        private val databases = inMemoryDatabases(
+            listOfNotNull(
+                downloadsOpen?.let { DOWNLOADS_DB_NAME to it },
+                DbOpen.Failed("locked").takeIf { rowsLocked }?.let { LEDGER_DB_NAME to it },
+            ).toMap(),
+        )
+        val ledger = TestLedger(databases)
         val grant = MutableStateFlow(if (granted) LibraryGrant.GRANTED else LibraryGrant.DENIED)
         val albums = AlbumMapService(testShared()).apply { put(testEventId("E2"), "ALBUM-2") }
         val gather = AlbumGather(
             configSource = config,
-            ledger = ledger,
+            rows = ledger.rows,
             // The one derivation, by the real `OwnPhotos` — after the event, so the range is shared whole.
             policyFor = { membership ->
                 OwnLibrary(clock = testClock(Instant.parse("2026-10-01T00:00:00Z")))
@@ -133,11 +138,9 @@ class AlbumGatherTest {
             batchSize = 2,
         )
 
-        suspend fun own(assetId: String, creationDate: String, eventId: String = "E1") {
-            ledger.recordUnlessSettled(
-                LedgerEntry("$assetId.HEIC", testAssetId(assetId), LedgerState.COMPLETED, creationDate = creationDate),
-            )
-        }
+        /** An own photo [assetId] captured at [creationDate], uploaded for the joined event [eventId]. */
+        fun own(assetId: String, creationDate: String, eventId: String = "E2") =
+            ledger.put(eventId, "$assetId-primary.heic", LedgerState.COMPLETED, creationDate)
 
         /** A received photo, imported; [eventId] is the event whose reconcile tagged it, `null` for none. */
         fun imported(device: String, assetId: String, localId: String, eventId: String? = "E2") {
@@ -156,13 +159,14 @@ class AlbumGatherTest {
         granted: Boolean = true,
         kind: LibraryAlbumKind = LibraryAlbumKind.COLLECTION,
         creates: Boolean = false,
+        rowsLocked: Boolean = false,
         downloadsOpen: DbOpen? = null,
-    ) = Rig(cfg, RecordingAlbumManager(failingCall, creates, kind), granted, this, downloadsOpen)
+    ) = Rig(cfg, RecordingAlbumManager(failingCall, creates, kind), granted, rowsLocked, this, downloadsOpen)
 
     @Test
     fun `a download store that cannot be read fails the gather rather than gathering no received photo`() = runTest {
         val r = rig(downloadsOpen = DbOpen.Failed("locked"))
-        r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z", eventId = "E1")
+        r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z")
         assertFailsWith<IllegalStateException> { r.gather.gather(testEventId("E2")) }
         assertEquals(emptySet(), r.manager.added, "nothing placed from a read that could not be made")
     }
@@ -170,7 +174,7 @@ class AlbumGatherTest {
     @Test
     fun `a photo carried over from an earlier event is gathered when this window admits it`() = runTest {
         val r = rig()
-        r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z", eventId = "E1")
+        r.own("OWN_1_L0_001", "2026-09-10T00:00:00Z")
         r.gather.gather(testEventId("E2"))
         assertEquals(
             setOf(testAssetId("OWN_1_L0_001")),
@@ -189,11 +193,19 @@ class AlbumGatherTest {
     }
 
     @Test
+    fun `no own photo is gathered while the upload rows cannot be read`() = runTest {
+        val r = rig(rowsLocked = true)
+        r.own("OWN", "2026-09-10T00:00:00Z")
+        r.gather.gather(testEventId("E2"))
+        assertTrue(r.manager.added.isEmpty())
+    }
+
+    @Test
     fun `a departed own photo whose row is gone is not gathered`() = runTest {
         val r = rig()
         r.own("GONE", "2026-09-10T00:00:00Z")
         // A photo that left the library loses its row to the walk's deletion (capability `photo-sharing`).
-        r.ledger.deleteKeys(listOf("GONE.HEIC"))
+        r.ledger.delete("E2", "GONE-primary.heic")
         r.gather.gather(testEventId("E2"))
         assertTrue(r.manager.added.isEmpty())
     }
@@ -341,7 +353,7 @@ class AlbumGatherTest {
     @Test
     fun `a usable emission while joined ensures the album and then judges the emission`() = runTest {
         val r = rig(cfg = config(eventId = "E3"), creates = true)
-        r.own("OWN", "2026-09-10T00:00:00Z")
+        r.own("OWN", "2026-09-10T00:00:00Z", eventId = "E3")
         r.gather.onAccessChanged(usable = false)
         r.gather.onAccessChanged(usable = true)
         advanceUntilIdle()

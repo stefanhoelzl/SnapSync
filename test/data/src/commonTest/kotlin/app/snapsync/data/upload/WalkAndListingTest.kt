@@ -99,7 +99,7 @@ class WalkAndListingTest {
         world.joined()
         world.tier.create(world.event, world.discovered(), SessionWorld.From)
         world.transport.answer = {
-            json(200, """[{"assetId":"A1","role":"primary","filename":"IMG.MOV"},{"assetId":"A9","role":"live","filename":"x.mov"},{"assetId":"bad id!","role":"live","filename":"x"}]""")
+            json(200, """[{"assetId":"A1","role":"primary","filename":"IMG.MOV"},{"assetId":"A9","role":"live","filename":"x.mov"}]""")
         }
         val listing =
             DeviceListing(
@@ -138,14 +138,21 @@ class WalkAndListingTest {
             text(401, "unattested"),
             text(403, "not this device"),
             text(502, "down"),
-            text(418, "?"),
             app.snapsync.ports.HttpResult.Response(503, mapOf("Retry-After" to "60"), ""),
             app.snapsync.data.backend.appTooOld("9.9"),
+            text(418, "?"),
+            json(200, """{"v1":"shape"}"""),
             app.snapsync.ports.HttpResult.Unreachable("offline"),
         ).forEach { answer ->
             world.transport.answer = { answer }
             assertIs<ListingRead.Unavailable>(listing.stored(world.event), "$answer")
         }
+
+        // A listing that decodes but names an asset this build cannot read will not heal: told apart, and none seeded.
+        world.transport.answer = {
+            json(200, """[{"assetId":"A1","role":"primary","filename":"x"},{"assetId":"bad id!","role":"live","filename":"x"}]""")
+        }
+        assertIs<ListingRead.Unreadable>(listing.stored(world.event))
 
         world.identity.read = DeviceIdRead.Absent
         assertIs<ListingRead.Unavailable>(listing.stored(world.event))

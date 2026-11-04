@@ -5,7 +5,6 @@ import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.Observers
 import app.snapsync.data.crypto.NewEventKeys
-import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.service.ServiceConditions
@@ -15,7 +14,6 @@ import app.snapsync.data.sharing.GalleryWalk
 import app.snapsync.data.sharing.MemoizedWalk
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.sharing.SelectionSnapshots
-import app.snapsync.data.sharing.SelectionState
 import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
 import app.snapsync.data.upload.OsUploader
@@ -24,8 +22,8 @@ import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
-import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnCredentialChanged
 import app.snapsync.entrypoints.OnSelectionChanged
@@ -44,9 +42,6 @@ import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.feature.upload.UploadAdmission
-import app.snapsync.feature.upload.UploadTransitions
-import app.snapsync.feature.upload.appAdmission
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.AlbumContents
@@ -96,14 +91,8 @@ import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.gallery.GalleryKeyedResources
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.transfer.SessionDrains
-import app.snapsync.services.upload.ExtensionRegistration
-import app.snapsync.services.upload.OsDrivenRegistration
-import app.snapsync.services.upload.Resuming
-import app.snapsync.services.upload.SessionTransfer
-import app.snapsync.services.upload.TransferSetup
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -113,6 +102,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.launch
 
 /**
@@ -178,7 +168,7 @@ class AppPorts(
     val wake: Wake,
     /** The OS's record of the upload extension's registration — present on every platform; one without the
      *  OS-driven mechanism (iOS below 26.1, the JVM, Android) answers `Unsupported` and asks the OS nothing. The
-     *  disable→enable ritual over it is composed here ([AppCore.extensionRegistration]). */
+     *  disable→enable ritual over it is the data layer's `ExtensionRegistrar`. */
     val extensionRegistry: ExtensionRegistry,
     /** The runtime inputs only a rig build can set — the per-uploader pin, the invite-link hints and the reset. All
      *  inert in a production build (see [DevControls]). */
@@ -328,18 +318,16 @@ class AppCore internal constructor(
         backendServicesFor(services, attestation, exchange, eventOver = { services.config.markOver(it) })
     }
 
-    /**
-     * What makes the app's file uploads resume where a failed attempt stopped (`docs/architecture.md`, "Resumable
-     * uploads") — shared by the cycle that starts them and the transfer that records their end, which must agree on
-     * keeping a failed upload's staged file.
-     */
-    internal val uploadResuming: Resuming by lazy { uploadResumingFor(services, backend, process.crypto) }
-
     // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read,
     // counted by the status source over the gallery's admitted set. Read-only;
     // on any failure the last good value is retained.
     val ledgerCounts: ReadingLedgerCountsSource by lazy {
-        ReadingLedgerCountsSource { LedgerCounts.of(services.ledger.assetProgress()) }
+        // Per photo of the joined event — none while nothing is joined.
+        ReadingLedgerCountsSource {
+            LedgerCounts.of(
+                services.config.activeEventId()?.let(appUploader.progress::progress),
+            )
+        }
     }
 
     /**
@@ -422,6 +410,7 @@ class AppCore internal constructor(
     val albumGather: AlbumGather by lazy {
         albumGather(
             services,
+            appUploader.layers.rows,
             galleryAccess,
             albumCoordinator,
             scope,
@@ -441,47 +430,14 @@ class AppCore internal constructor(
     /** The rig's per-uploader switches — on in every shipped build. */
     internal val uploaderSwitches: UploaderSwitches by lazy { UploaderSwitches(ports.devControls) }
 
-    /**
-     * Whether the app's uploader may create now — the app process's admission, which its entry gate consumes:
-     * the upload cycle owns its entry decision.
-     */
-    val appUploadAdmission: () -> UploadAdmission = {
-        // The read plan, not the raw grant: an unread partial-grant selection withholds (`appAdmission`), and it is
-        // the same plan discovery reads under.
-        appAdmission(readPlan(), uploaderSwitches.app())
-    }
-
-    /** [appUploadAdmission] as a Boolean — what the app pump's completion re-pump reads; the delegate records the
-     *  terminal fact before it returns. */
-    val appMayCreate: () -> Boolean = { appUploadAdmission().admits }
-
-    // The upload arm: what each membership transition does to the two
-    // uploaders. Stateless — every decision is derived from the registration fact, the grant and whether a
-    // membership exists, at the moment of the transition; the root defaults nothing.
-    /** The OS-driven mechanism's registration ritual, over the registry port. */
-    val extensionRegistration: ExtensionRegistration by lazy {
-        OsDrivenRegistration(ports.extensionRegistry, services.log)
-    }
-
     internal val linkOpening: LinkOpening by lazy { LinkOpening(process.logger("links")) }
 
     /** The link the app was last opened with, until the screen has opened it. */
     val openedLinks: OpenedLinks = OpenedLinks()
 
-    val uploadTransitions: UploadTransitions by lazy {
-        UploadTransitions(
-            configSource = services.config,
-            photoAccess = galleryAccess,
-            osUploader = osUploader,
-            registration = extensionRegistration,
-            appEngine = { work.uploadEngine },
-            log = services.log,
-        )
-    }
-
     // The join-time load, built in `shareSetLoadFor`. Public for
     // the world harness, whose operator provision runs this instance rather than a copy.
-    val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.deviceFiles) }
+    val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.gateway, appUploader.reset) }
 
     /** The member's requests of the membership, each answered on its own status. */
     val membershipStatuses: MembershipStatuses = MembershipStatuses()
@@ -516,33 +472,6 @@ class AppCore internal constructor(
     internal val uploadDrains: SessionDrains = SessionDrains()
     internal val downloadDrains: SessionDrains = SessionDrains()
 
-    /** The app's own transfer session's service: what its deliveries record, and what a leave cancels. */
-    val uploadTransfer: SessionTransfer by lazy {
-        SessionTransfer(
-            ports.uploadSession,
-            TransferSetup(
-                record = services.ledger,
-                resources = GalleryKeyedResources(ports.gallery),
-                gallery = ports.gallery,
-                files = process.files,
-                network = services.mobileData,
-                sealing = UploadSealing(
-                    services.membership,
-                    services.eventKeyStore,
-                    services.deviceIdentity,
-                    services.fileCipher,
-                ),
-                log = services.log,
-            ),
-            uploadResuming,
-        )
-    }
-
-    /**
-     * What the member's photos may be read as right now — the plan discovery reads under, and the app's upload
-     * admission withholds on. A call and not a value because the answer changes between cycles.
-     */
-    fun readPlan(): ReadPlan<SelectionState.Read> = ReadPlan.of(ports.gallery.access().photoAccess(), selection.read)
 
     /**
      * What [membership] contributes now — the ONE derivation ([OwnPhotos.contribution]), for this composition's own
@@ -589,6 +518,9 @@ class AppCore internal constructor(
     /** What the entry points run (`AppWork`): built once, on first touch, and handed to the ports. */
     internal val work: AppWork by lazy { AppWork(this) }
 
+    /** The uploaders reconciled by comparison, as at a launch — the rig's, after its uploader pin moved. */
+    fun reconcileUploaders() = work.uploaderChange.deliver(UploaderChange.LAUNCH)
+
     /** The user-tap command bundle — see [userCommandsFor]. */
     val userCommands: UserCommands by lazy { userCommandsFor() }
 
@@ -623,8 +555,13 @@ class AppCore internal constructor(
      * them: it opens on every start ([installCompositionSubscriptions]).
      */
     fun installPermissionSubscriptions() {
-        // The launch reconcile, then real changes only — see `UploadTransitions.followGrant`.
-        scope.launch { uploadTransitions.followGrant { onGrantChanged() } }
+        // The launch reconcile, then real changes only: the value the launch reconciled against is no change, and a
+        // change that lands during the launch reconcile is still delivered (the prefix dropped is exactly that value).
+        scope.launch {
+            val atLaunch = galleryAccess.grant.value
+            work.uploaderChange.deliver(UploaderChange.LAUNCH)
+            galleryAccess.grant.dropWhile { it == atLaunch }.collect { onGrantChanged() }
+        }
         // The event album's grant subscription: ensure the album, then let the gather judge the emission.
         scope.launchAlbumGrantSubscription(services, albumGather)
         scope.launch {
@@ -686,7 +623,7 @@ class AppCore internal constructor(
                 runtime,
                 work.selectionRecognitionPass,
                 statusRefresh,
-                work.ownUploads,
+                work.walkAndPublish,
                 work.wakeWork,
             ),
         )

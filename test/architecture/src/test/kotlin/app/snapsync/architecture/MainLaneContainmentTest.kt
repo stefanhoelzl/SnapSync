@@ -133,8 +133,8 @@ class MainLaneContainmentTest {
 
     @Test
     fun `runBlocking appears only where an answered delivery is answered`() {
-        // Code forms only. The bare word is legitimate in prose — `Reconciler` and `UploadCycle` both
-        // explain the extension's OS-imposed `runBlocking` cap — and a gate that policed comments would
+        // Code forms only. The bare word is legitimate in prose — `Reconciler`, for one, explains
+        // the extension's OS-imposed `runBlocking` cap — and a gate that policed comments would
         // be answered by rewording rather than by fixing anything.
         val offenders = productionFiles()
             .filterNot { file -> runBlockingAllowed.any { file.path.endsWith(it) } }

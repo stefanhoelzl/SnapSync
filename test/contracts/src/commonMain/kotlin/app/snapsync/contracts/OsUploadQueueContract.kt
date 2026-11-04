@@ -60,7 +60,7 @@ class QueueUnderTest(
 
 /**
  * What every [OsUploadQueue] owes the upload services (`docs/architecture.md` — this list IS the specification). What a
- * job MEANS for the ledger is the services' (`OsQueueTransfer`, tested over doubles); what is contracted here is that
+ * job MEANS for the ledger is the data layer's (`OsQueueTier`, tested over doubles); what is contracted here is that
  * the queue makes what it is asked and refuses what it cannot, defers at its limit, presents each settled job under the
  * destination and type it was made with until acknowledged, offers a first refusal for its one free retry, and answers
  * only for the jobs it presented.

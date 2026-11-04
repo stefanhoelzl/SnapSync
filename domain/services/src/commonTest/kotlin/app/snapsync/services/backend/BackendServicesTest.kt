@@ -8,7 +8,6 @@ import app.snapsync.model.CreateOutcome
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.ManifestResource
-import app.snapsync.model.StoredResource
 import app.snapsync.ports.HttpResult
 import app.snapsync.services.identity.MapSecureStore
 import app.snapsync.services.identity.identityOf
@@ -22,7 +21,6 @@ import app.snapsync.wire.runtime.WireJson
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -198,45 +196,6 @@ class BackendServicesTest {
             servicesAnswering(json(410, CLOSED)).manifest.publish(testEventId("E"), testDeviceId("D"), manifest),
             "a process with no membership to tell records it all the same",
         )
-    }
-
-    // ── the listings ───────────────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun the_device_listing_recomposes_each_storage_key() = runTest {
-        val listed = servicesAnswering(
-            json(200, """[{"assetId":"A","role":"primary","filename":"IMG_1.HEIC"}]"""),
-        ).deviceFiles.list(testEventId("E"), testDeviceId("D"))
-        assertEquals(listOf(StoredResource("A-primary.heic", testAssetId("A"))), listed.getOrThrow())
-    }
-
-    @Test
-    fun a_listed_live_resource_recomposes_its_own_key_and_a_non_canonical_asset_is_a_shape_failure() = runTest {
-        val live = servicesAnswering(json(200, """[{"assetId":"A","role":"live","filename":"IMG_1.MOV"}]"""))
-        assertEquals(
-            listOf(StoredResource("A-live.mov", testAssetId("A"))),
-            live.deviceFiles.list(testEventId("E"), testDeviceId("D")).getOrThrow(),
-        )
-        val odd = servicesAnswering(json(200, """[{"assetId":"a/b","role":"primary","filename":"IMG.JPG"}]"""))
-        assertIs<DeviceListingShapeException>(
-            odd.deviceFiles.list(testEventId("E"), testDeviceId("D")).exceptionOrNull(),
-        )
-    }
-
-    @Test
-    fun a_listing_that_does_not_decode_is_no_answer_retried_never_a_permanent_shape_failure() = runTest {
-        for (body in listOf("""[{"role":"primary"}]""", "<html>log in to this Wi-Fi</html>")) {
-            val unread = servicesAnswering(json(200, body)).deviceFiles.list(testEventId("E"), testDeviceId("D"))
-            assertTrue(unread.isFailure && unread.exceptionOrNull() !is DeviceListingShapeException, body)
-        }
-        val transient = servicesAnswering(
-            offline,
-        ).deviceFiles.list(testEventId("E"), testDeviceId("D")).exceptionOrNull()
-        assertTrue(transient != null && transient !is DeviceListingShapeException)
-        val refused = servicesAnswering(
-            text(502, "upstream"),
-        ).deviceFiles.list(testEventId("E"), testDeviceId("D")).exceptionOrNull()
-        assertTrue(refused != null && refused !is DeviceListingShapeException)
     }
 
     private companion object {

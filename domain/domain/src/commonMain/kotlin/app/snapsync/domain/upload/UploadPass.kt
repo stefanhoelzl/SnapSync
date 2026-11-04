@@ -29,9 +29,15 @@ enum class UploadPass {
      * What the upload extension answers the operating system after this pass, holding [inFlight] jobs: invoked lazily,
      * it would leave an upload that quietly finished unrecorded until the next library change — so while a job is in
      * flight it asks to be invoked again. Only an in-flight job counts: a row the policy no longer admits never
-     * finishes, and must not keep the extension waking.
+     * finishes, and must not keep the extension waking. A count that could not be read (`null`) cannot say whether to
+     * be invoked again: the pass [ExtensionAnswer.COULD_NOT_LOOK].
      */
-    fun extensionAnswer(inFlight: Int): ExtensionAnswer = when (this) {
+    fun extensionAnswer(inFlight: Int?): ExtensionAnswer = when (inFlight) {
+        null -> ExtensionAnswer.COULD_NOT_LOOK
+        else -> answered(inFlight)
+    }
+
+    private fun answered(inFlight: Int): ExtensionAnswer = when (this) {
         WORK_LEFT, PAUSED -> ExtensionAnswer.INVOKE_AGAIN
         SKIPPED -> ExtensionAnswer.REST
         CAUGHT_UP -> ExtensionAnswer.of(inFlight)
@@ -65,6 +71,12 @@ enum class ExtensionAnswer {
 
     /** Work remains, or a job is in flight: invoke again (the OS throttles, so this polls at its cadence). */
     INVOKE_AGAIN,
+
+    /**
+     * The pass could not look — its membership, its records or what it holds in flight could not be read (a device
+     * locked since boot): it uploaded and claimed nothing, and says so.
+     */
+    COULD_NOT_LOOK,
 
     ;
 

@@ -7,12 +7,12 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
+import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.OwnLibrary
+import app.snapsync.feature.support.PublishedManifests
 import app.snapsync.feature.support.captureRange
 import app.snapsync.feature.support.photo
-import app.snapsync.feature.support.resourcesOf
 import app.snapsync.testids.testAssetId
-import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,9 +48,16 @@ class CeilingReachesEveryConsumerTest {
 
     private suspend fun contribution(range: CaptureRange = window): Contribution = library.contribution(range)
 
-    /** The COMPLETED ledger rows those photos would have produced — what the manifest projects from. */
-    private fun ledgerRows(): List<LedgerEntry> =
-        resourcesOf(inWindow, postCeiling, preCutoff).map { it.toLedgerRow(LedgerState.COMPLETED) }
+    /** The settled upload rows those photos would have produced — what the manifest is published from. */
+    private val manifests = PublishedManifests().apply {
+        ledger.put(LEDGER_EVENT, "IN-primary.heic", LedgerState.COMPLETED, "2026-07-04T12:00:00Z")
+        ledger.put(LEDGER_EVENT, "AFTER-primary.heic", LedgerState.COMPLETED, "2026-07-20T12:00:00Z")
+        ledger.put(LEDGER_EVENT, "BEFORE-primary.heic", LedgerState.COMPLETED, "2026-06-01T12:00:00Z")
+    }
+
+    /** The assets the published device manifest lists. */
+    private suspend fun listed(): Set<AssetId> =
+        checkNotNull(manifests.of(contribution().policy)).assets.mapTo(mutableSetOf()) { it.assetId }
 
     /** The admitted set the byte upload reads: one discovery, admitted by the membership's policy. */
     private suspend fun uploaded(range: CaptureRange = window): Set<AssetId> {
@@ -73,8 +80,7 @@ class CeilingReachesEveryConsumerTest {
         // The projection used to take a bare `startDate` and apply the floor alone — so AFTER was listed
         // in `device.json`, entered the event union, and was offered to every other member as bytes that
         // were never uploaded. A 404 for everyone.
-        val manifest = projectDeviceManifest(testDeviceId("dev"), ledgerRows(), contribution().policy)
-        assertEquals(listOf(testAssetId("IN")), manifest.assets.map { it.assetId })
+        assertEquals(setOf(testAssetId("IN")), listed())
     }
 
     @Test
@@ -95,8 +101,7 @@ class CeilingReachesEveryConsumerTest {
         // The property the whole change exists to make true. Stated over the SAME library the four
         // consumers see, so a future rule added to one of them fails here rather than on a device.
         val fromUpload = uploaded()
-        val fromManifest = projectDeviceManifest(testDeviceId("dev"), ledgerRows(), contribution().policy)
-            .assets.map { it.assetId }.toSet()
+        val fromManifest = listed()
         val fromPreview = assertIs<PreviewRead.Counted>(library.photos.preview(window)).photos
 
         assertEquals(fromUpload, counted())

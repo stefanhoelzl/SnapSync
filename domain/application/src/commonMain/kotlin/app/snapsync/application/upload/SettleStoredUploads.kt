@@ -30,7 +30,12 @@ class SettleStoredUploads(
     private val transitions: RowTransitions,
 ) {
     @EntryPointCall
-    suspend operator fun invoke(event: EventId) = when (val inFlight = rows.inFlight(event)) {
+    suspend operator fun invoke(event: EventId?) = when (event) {
+        null -> Unit
+        is EventId -> joined(event)
+    }
+
+    private suspend fun joined(event: EventId) = when (val inFlight = rows.inFlight(event)) {
         is CountRead.Counted -> if (inFlight.count > 0) listed(event) else Unit
         is CountRead.Unavailable -> log.w(
             "the upload rows could not be read — nothing settled",
@@ -46,6 +51,10 @@ class SettleStoredUploads(
         is ListingRead.Listed -> settled(event, read)
         is ListingRead.Unavailable -> log.w(
             "the device listing could not be read — nothing settled",
+            "detail" of read.detail,
+        )
+        is ListingRead.Unreadable -> log.e(
+            "the device listing was not understood — nothing settled",
             "detail" of read.detail,
         )
         null -> log.w("the device listing timed out — nothing settled")

@@ -1,8 +1,8 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeToJson
@@ -67,8 +67,9 @@ class DeviceManifestProducer(
      */
     suspend fun produce(
         eventId: EventId,
-        policy: SelectionPolicy,
         rows: List<LedgerEntry>,
+        /** The assets the membership's policy admits among [rows]. */
+        admitted: Set<AssetId>,
         manifestVersion: Long,
         /**
          * Whether this snapshot declares the share SETTLED — a member's share is settled only after their own range
@@ -77,7 +78,7 @@ class DeviceManifestProducer(
          */
         settled: Boolean = false,
     ): Boolean {
-        val manifest = projectDeviceManifest(deviceId, rows, policy).withVersion(manifestVersion).withFinal(settled)
+        val manifest = projectDeviceManifest(deviceId, rows, admitted).withVersion(manifestVersion).withFinal(settled)
         val json = manifest.encodeToJson()
         // Skip-if-unchanged, keyed by EVENT. The projected JSON is event-independent (`{deviceId,
         // assets, version}`), so without the event id in the record a **switch** to a new event would compare

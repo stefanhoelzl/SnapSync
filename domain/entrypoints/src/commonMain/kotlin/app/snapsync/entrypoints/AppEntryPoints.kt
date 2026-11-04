@@ -10,6 +10,8 @@ import app.snapsync.application.receiving.RecordStaged
 import app.snapsync.application.receiving.StageDownload
 import app.snapsync.application.receiving.StageOutcome
 import app.snapsync.application.trust.RefreshAttestation
+import app.snapsync.application.upload.RecordFinishedUpload
+import app.snapsync.application.upload.SettleStoredUploads
 import app.snapsync.application.wake.RearmHeartbeat
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRepository
@@ -19,7 +21,9 @@ import app.snapsync.data.network.NetworkStatus
 import app.snapsync.data.push.PushTokens
 import app.snapsync.data.receiving.ImportMarkerWrites
 import app.snapsync.data.receiving.ReceivingCounts
-import app.snapsync.data.wake.WakeArming
+import app.snapsync.data.upload.SessionEnd
+import app.snapsync.data.upload.StagingSweep
+import app.snapsync.data.upload.UploaderAdmission
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.mobiledata.MobileDataChoice
@@ -29,17 +33,15 @@ import app.snapsync.domain.push.PushTrigger
 import app.snapsync.domain.receiving.TransferFacts
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.upload.UploadAdmission
+import app.snapsync.domain.upload.UploadPass
+import app.snapsync.domain.wake.UploadsLeft
 import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.feature.status.StatusCountsPoller
 import app.snapsync.feature.status.StatusRefresh
-import app.snapsync.feature.upload.AppUploadEngine
-import app.snapsync.feature.upload.OwnUploads
-import app.snapsync.feature.upload.StoredUploadSettle
-import app.snapsync.feature.upload.uploadsLeft
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
-import app.snapsync.model.CycleResult
 import app.snapsync.model.PlatformError
 import app.snapsync.model.pushEventId
 import app.snapsync.model.pushSeq
@@ -68,13 +70,13 @@ import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Sequence
 import app.snapsync.scheduling.Steps
+import app.snapsync.scheduling.orIfCut
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.transfer.SessionDrains
-import app.snapsync.services.upload.SessionTransfer
 import kotlinx.coroutines.Job
 import kotlin.coroutines.CoroutineContext
 
@@ -210,15 +212,16 @@ class OnSessionDrained(runtime: Runtime, private val drains: SessionDrains) : In
 /** An upload ended: recorded at once — the platform tells it once — and its freed slot filled. */
 class OnUploadFinished(
     runtime: Runtime,
-    private val transfer: SessionTransfer,
-    private val uploads: OwnUploads,
+    private val finished: RecordFinishedUpload,
+    private val admission: UploaderAdmission,
     private val topUp: TopUp,
 ) : InboundEntryPoint<FinishedTransfer>(runtime) {
+    @OptIn(EntryPointCall::class)
     override fun Delivery.run(arg: FinishedTransfer) {
-        transfer.recordFinished(arg.tag, arg.failure)
-        when (uploads.mayFillSlot()) {
-            true -> detachedSteps { run(topUp) }
-            false -> Unit
+        finished(SessionEnd(arg.tag, arg.failure))
+        when (admission.admission()) {
+            UploadAdmission.ADMIT -> detachedSteps { run(topUp) }
+            UploadAdmission.WITHHELD -> Unit
         }
     }
 }
@@ -379,13 +382,13 @@ class OnSelectionChanged(
     runtime: Runtime,
     private val recognition: Recognition,
     private val statusRefresh: StatusRefresh,
-    private val uploads: OwnUploads,
+    private val walkAndPublish: WalkAndPublish,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<Unit>(runtime) {
     override suspend fun run(arg: Unit, on: Run) = on.steps {
         run(recognition)
         isolated("total") { statusRefresh.refreshTotal() }
-        isolated("selection walk") { uploads.walkSelection() }
+        run(walkAndPublish)
         required { wake.full(WakeKind.SELECTION_CHANGE, on) }
     }
 }
@@ -421,20 +424,6 @@ class OnMetricReport(runtime: Runtime, private val account: ProcessAccount) :
 /** Assembling the status host: a person reached the app. The host zone's; the foreground asks for it first. */
 interface HostAssembly {
     fun assemble()
-}
-
-/** The uploads' arm, for a membership transition: the wake's work, started inside the process. */
-class UploadEngine(
-    private val runtime: Runtime,
-    private val wake: WakeWork,
-    private val arming: WakeArming,
-    private val transfer: SessionTransfer,
-) : AppUploadEngine {
-    override suspend fun arm() = runtime.detached("OnArm") { on -> wake.full(WakeKind.ARM, on) }
-
-    override suspend fun disarm() = arming.cancelAll()
-
-    override suspend fun cancelTransfers() = transfer.cancelAll()
 }
 
 /**
@@ -481,18 +470,19 @@ class ForegroundNetwork(
 class ForegroundWork(
     private val prelude: Prelude,
     private val config: MembershipProjection,
-    private val transfer: SessionTransfer,
-    private val settle: StoredUploadSettle,
+    private val staging: StagingSweep,
+    private val settle: SettleStoredUploads,
     private val statusRefresh: StatusRefresh,
     private val receiving: ForegroundReceiving,
     private val stateRefresh: StateRefresh,
     private val leftovers: SweepLeftovers,
 ) {
+    @OptIn(EntryPointCall::class)
     suspend fun run(on: Run) = on.steps {
         required { prelude.run(on) }
         concurrently {
-            child("staging") { transfer.releaseUnclaimedStaging() }
-            child("settle") { settle.settleJoined(config.activeEventId()) }
+            child("staging") { staging.releaseUnclaimed(config.activeEventId()) }
+            child("settle") { settle(config.activeEventId()) }
             child("status") { statusRefresh.run() }
             receiving.children(this, on)
             child("membership") { stateRefresh.run(on) }
@@ -516,8 +506,8 @@ class WakeWork(
 ) {
     @OptIn(EntryPointCall::class)
     suspend fun full(kind: WakeKind, on: Run) = on.steps {
-        var uploads: Pass<CycleResult> = Pass.Cut
-        ensure("re-arm") { rearm(uploads.uploadsLeft(), downloads.stagedImports()) }
+        var uploads: Pass<UploadPass> = Pass.Cut
+        ensure("re-arm") { rearm(leftOf(uploads), downloads.stagedImports()) }
         ensure("footprint") { footprints.record("after the ${kind.name.lowercase()} wake") }
         run(importReceived)
         uploads = run(uploadOwn)
@@ -529,34 +519,12 @@ class WakeWork(
         required { prelude.run(on) }
         required { full(kind, on) }
     }
+
+    /** What the heartbeat reads of a wake's uploads: a cut pass says nothing about whether work remains, so it does. */
+    private fun leftOf(uploads: Pass<UploadPass>): UploadsLeft = uploads.orIfCut(UploadPass.WORK_LEFT).left()
 }
 
 // ── The sequences a wake runs, single-flight across the process ──────────────────────────────────────────────────────
-
-/** Fill the upload slots from the ledger — what a finished upload's freed slot needs, and nothing more. */
-class TopUp(private val uploads: OwnUploads, private val counts: ForegroundCounts) : Sequence<CycleResult>("top-up") {
-    override suspend fun pass(on: Run) = on.steps {
-        val created = required { uploads.topUp() }
-        isolated("counts") { counts.refresh() }
-        created
-    }
-}
-
-/**
- * This device's own photos: top up first, so the photos already known move before a walk the operating system may cut;
- * then walk and publish, under a full grant; then top up again for what the walk recorded.
- */
-class UploadOwn(private val uploads: OwnUploads, private val counts: ForegroundCounts) :
-    Sequence<CycleResult>("upload-own") {
-    override suspend fun pass(on: Run) = on.steps {
-        val first = required { uploads.topUp() }
-        isolated("counts") { counts.refresh() }
-        val walked = required { uploads.walk() }
-        val again = required { uploads.topUpAfter(walked) }
-        isolated("counts") { counts.refresh() }
-        uploads.outcome(first, walked?.result, again)
-    }
-}
 
 /**
  * What a wake was for, as its end reads it (decision record `changes/timely-background-receiving`, D4–D5).

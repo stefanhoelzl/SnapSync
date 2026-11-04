@@ -1,19 +1,23 @@
 package app.snapsync.data.upload
 
-import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.identity.DeviceIdRead
+import app.snapsync.data.receiving.HandlesRead
+import app.snapsync.data.receiving.ReceivedPhotosRead
+import app.snapsync.data.receiving.ReceivedReadiness
+import app.snapsync.data.receiving.RecognitionRead
 import app.snapsync.data.sharing.Library
 import app.snapsync.data.store.SharedDatabase
-import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.upload.EchoReadiness
+import app.snapsync.domain.receiving.MintsRecognised
+import app.snapsync.domain.receiving.Recognised
 import app.snapsync.domain.upload.GateRead
 import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadHost
 import app.snapsync.domain.upload.UploadPause
+import app.snapsync.ports.DevControls
 import app.snapsync.ports.LibraryGrant
-import kotlinx.coroutines.flow.MutableStateFlow
+import app.snapsync.ports.UploaderPin
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,17 +31,20 @@ import kotlin.test.assertTrue
  */
 class PassGateTest {
 
+    @OptIn(MintsRecognised::class)
     private class Received(
-        var readiness: EchoReadiness = EchoReadiness.Ready,
-        var recognised: Boolean = true,
-    ) : ReceivedPhotos {
+        var readiness: ReceivedReadiness = ReceivedReadiness.Ready,
+        /** What the store answers of recognition — `null` for recognised. */
+        var recognition: RecognitionRead? = null,
+    ) : ReceivedPhotosRead {
         val asked = mutableListOf<String>()
 
-        override suspend fun readiness(): EchoReadiness = readiness.also { asked += "readiness" }
+        override suspend fun readiness(): ReceivedReadiness = readiness.also { asked += "readiness" }
 
-        override suspend fun recognised(event: EventId): Boolean = recognised.also { asked += "recognised" }
+        override suspend fun recognition(event: EventId): RecognitionRead =
+            (recognition ?: RecognitionRead.Recognised(Recognised(event))).also { asked += "recognised" }
 
-        override suspend fun suppressed(): Set<AssetId> = emptySet()
+        override suspend fun handles(): HandlesRead = HandlesRead.Ok(emptySet())
     }
 
     private class Admission(var answer: UploadAdmission = UploadAdmission.ADMIT) : UploaderAdmission {
@@ -90,10 +97,15 @@ class PassGateTest {
     @Test
     fun `an echo store not ready, or photos not yet recognised, keep the pass from running`() = runTest {
         world.joined()
-        received.readiness = EchoReadiness.OldSchema
+        received.readiness = ReceivedReadiness.OldSchema
         assertEquals(UploadGate.Paused(UploadPause.OLD_SCHEMA), gate().read())
-        received.readiness = EchoReadiness.Ready
-        received.recognised = false
+        received.readiness = ReceivedReadiness.Unavailable("locked")
+        assertIs<UploadGate.Unreadable>(gate().read())
+        received.readiness = ReceivedReadiness.Ready
+        received.recognition = RecognitionRead.NotRecognised
+        assertIs<UploadGate.Withheld>(gate().read())
+        // A recognition the store could not read is none: never a "yes" from a store it could not read.
+        received.recognition = RecognitionRead.Unavailable("locked")
         assertIs<UploadGate.Withheld>(gate().read())
     }
 
@@ -141,13 +153,27 @@ class PassGateTest {
     @Test
     fun `each uploader states its own admission`() = runTest {
         val library = Library(grant = LibraryGrant.GRANTED)
-        assertEquals(UploadAdmission.ADMIT, AppUploaderAdmission(library.own).admission())
+        assertEquals(UploadAdmission.ADMIT, AppUploaderAdmission(library.own, NO_PIN).admission())
         library.grant.value = LibraryGrant.DENIED
-        assertEquals(UploadAdmission.WITHHELD, AppUploaderAdmission(library.own).admission())
+        assertEquals(UploadAdmission.WITHHELD, AppUploaderAdmission(library.own, NO_PIN).admission())
+        library.grant.value = LibraryGrant.GRANTED
+        val pinnedOff = AppUploaderAdmission(library.own, switches(UploaderPin(app = false)))
+        assertEquals(UploadAdmission.WITHHELD, pinnedOff.admission(), "the rig switched the app off")
 
-        val grant = MutableStateFlow(LibraryGrant.GRANTED)
-        assertEquals(UploadAdmission.ADMIT, ExtensionUploaderAdmission(GrantRead(grant)).admission())
-        grant.value = LibraryGrant.LIMITED
-        assertEquals(UploadAdmission.WITHHELD, ExtensionUploaderAdmission(GrantRead(grant)).admission())
+        library.grant.value = LibraryGrant.GRANTED
+        assertEquals(UploadAdmission.ADMIT, ExtensionUploaderAdmission(library.reader).admission())
+        library.grant.value = LibraryGrant.LIMITED
+        assertEquals(UploadAdmission.WITHHELD, ExtensionUploaderAdmission(library.reader).admission())
     }
 }
+
+/** The rig's switches under [pin] — none, as a production build reads them, unless a test pins one. */
+private fun switches(pin: UploaderPin?) = UploaderSwitches(
+    object : DevControls {
+        override fun uploaderPin(): UploaderPin? = pin
+
+        override fun createsPlainEvents(): Boolean = false
+    },
+)
+
+private val NO_PIN = switches(pin = null)

@@ -71,6 +71,7 @@ class CycleVerdictsTest {
         assertEquals(ExtensionAnswer.INVOKE_AGAIN, WORK_LEFT.extensionAnswer(0))
         assertEquals(ExtensionAnswer.INVOKE_AGAIN, PAUSED.extensionAnswer(0))
         assertEquals(ExtensionAnswer.REST, SKIPPED.extensionAnswer(3))
+        assertEquals(ExtensionAnswer.COULD_NOT_LOOK, CAUGHT_UP.extensionAnswer(inFlight = null), "a count unread")
     }
 
     @Test
@@ -153,6 +154,13 @@ class CycleVerdictsTest {
         val run = assertIs<UploadGate.Run>(entry(read, UploadHost.CARRIED, held, UploadAdmission.ADMIT))
         assertEquals(7, run.version)
         assertSame(active, run.membership)
+    }
+
+    @Test
+    fun `a build whose upload host is blank carries none`() {
+        assertEquals(UploadHost.NONE, UploadHost.of(""))
+        assertEquals(UploadHost.NONE, UploadHost.of("  "))
+        assertEquals(UploadHost.CARRIED, UploadHost.of("https://edge.example"))
     }
 
     @Test

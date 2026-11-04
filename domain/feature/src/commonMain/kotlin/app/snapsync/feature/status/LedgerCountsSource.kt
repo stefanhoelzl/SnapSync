@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.data.upload.ProgressRead
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.model.runCatchingCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +44,16 @@ data class LedgerCounts(val done: Set<AssetId>, val pending: Set<AssetId>, val r
             done = progress.filterValues { it }.keys,
             pending = progress.filterValues { !it }.keys,
         )
+
+        /**
+         * The upload rows' per-photo [read] — `null` while nothing is joined, which counts nothing. A read that could
+         * not be made throws, so [ReadingLedgerCountsSource] keeps the last good counts.
+         */
+        fun of(read: ProgressRead?): LedgerCounts = when (read) {
+            null -> ZERO
+            is ProgressRead.Read -> of(read.done)
+            is ProgressRead.Unavailable -> error("the upload rows could not be read: ${read.detail}")
+        }
     }
 }
 

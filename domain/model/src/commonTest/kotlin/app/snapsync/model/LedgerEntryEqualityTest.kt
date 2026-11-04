@@ -79,7 +79,7 @@ class LedgerEntryEqualityTest {
         assetId: AssetId = this.assetId,
         state: LedgerState = this.state,
         creationDate: String = this.creationDate,
-        role: ResourceRole? = this.role,
+        role: ResourceRole = this.role,
         contentType: String = this.contentType,
         originalFilename: String = this.originalFilename,
         destinationPath: String? = this.destinationPath,

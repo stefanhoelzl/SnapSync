@@ -1,28 +1,32 @@
 package app.snapsync.engine
 
 import app.snapsync.data.store.SharedDatabase
+import app.snapsync.data.store.StoreWrite
+import app.snapsync.data.upload.OwnUploadRows
+import app.snapsync.data.upload.RowRead
+import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.databases.IosDatabases
-import app.snapsync.domain.upload.LedgerState
-import app.snapsync.model.LedgerEntry
-import app.snapsync.services.ledger.LedgerService
+import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.upload.MintsStoredBytes
+import app.snapsync.domain.upload.StoredBytes
+import app.snapsync.domain.upload.UploadKey
+import app.snapsync.domain.upload.UploadRow
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testEventId
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.withTempDirectory
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
  * The iOS ledger's **placement** — that the native SQLite driver really opens its database where the
  * container says (capability `photo-sharing`).
  *
- * The store's row semantics are the shared `LedgerService`'s, exercised by the storage
- * contract bound beside the mocks and the JVM adapter. What is only true on this target, and only in this factory, is the
- * plumbing: the base path travels through `NativeSqliteDriver`'s `onConfiguration` into
+ * The store's row semantics are the data layer's upload rows', exercised over the real schema on the JVM
+ * (`OwnUploadRowsTest`) and by the storage contract bound beside the mocks. What is only true on this target, and only
+ * in this factory, is the plumbing: the base path travels through `NativeSqliteDriver`'s `onConfiguration` into
  * `extendedConfig.basePath`, a nested copy whose failure mode is not an error but a database opened
  * **somewhere else** — the driver's own default location, inside the process's private sandbox rather
  * than the shared App Group.
@@ -33,25 +37,26 @@ import kotlin.test.assertTrue
  * Both assertions below are aimed at exactly that: the file must exist at the given path, and a store
  * re-opened over the same path must see the first one's rows.
  */
+@OptIn(MintsStoredBytes::class)
 class IosLedgerStoreTest {
 
-    /** The ledger over the shared database in [dir], joined to one event. */
-    private fun ledgerIn(
-        dir: String,
-    ) = LedgerService(SharedDatabase(IosDatabases(dir), legacy = null)) { testEventId("E-joined") }
+    private val event = testEventId("E-joined")
 
-    private fun entry(key: String, state: LedgerState = LedgerState.COMPLETED) = LedgerEntry(
-        key = key,
-        assetId = testAssetId("asset-$key"),
-        state = state,
-        creationDate = "2026-08-08T12:00:00Z",
-    )
+    private fun sharedIn(dir: String) = SharedDatabase(IosDatabases(dir), legacy = null)
+
+    private fun key(name: String) = UploadKey.of(testAssetId("asset-$name"), ResourceRole.PRIMARY, "$name.heic")
+
+    /** [name]'s row written settled into the shared database in [dir]. */
+    private fun write(dir: String, name: String) =
+        assertEquals(StoreWrite.Written, UploadRowsReset(sharedIn(dir)).seed(event, listOf(StoredBytes(key(name)))))
+
+    private fun read(dir: String, name: String): RowRead = OwnUploadRows(sharedIn(dir)).row(event, key(name))
 
     @Test
     fun `the database file lands where the container says`() {
         withTempDirectory { dir ->
             // The driver opens lazily, so the file appears on first use rather than at construction.
-            runBlocking { ledgerIn(dir).recordUnlessSettled(entry("photo-1.heic")) }
+            write(dir, "photo-1")
 
             assertTrue(
                 fileExists("$dir/ledger.db"),
@@ -63,26 +68,18 @@ class IosLedgerStoreTest {
     @Test
     fun `a row written through the store is read back`() {
         withTempDirectory { dir ->
-            val store = ledgerIn(dir)
+            write(dir, "photo-1")
 
-            runBlocking {
-                store.recordUnlessSettled(entry("photo-1.heic"))
-
-                val row = assertNotNull(store.get("photo-1.heic"))
-                assertEquals(LedgerState.COMPLETED, row.state)
-                assertEquals(testAssetId("asset-photo-1.heic"), row.assetId)
-            }
+            val row = assertIs<RowRead.Found>(read(dir, "photo-1")).row
+            assertIs<UploadRow.Completed>(row)
+            assertEquals(testAssetId("asset-photo-1"), row.key.asset)
         }
     }
 
     @Test
     fun `an unrecorded key reads as no row`() {
         withTempDirectory { dir ->
-            val store = ledgerIn(dir)
-
-            runBlocking {
-                assertNull(store.get("never-uploaded.heic"), "null is a fact about the ledger, not about storage")
-            }
+            assertEquals(RowRead.Absent, read(dir, "never-uploaded"), "absence is a fact about the ledger, not storage")
         }
     }
 
@@ -94,16 +91,13 @@ class IosLedgerStoreTest {
     @Test
     fun `a store reopened over the same container sees what was written`() {
         withTempDirectory { dir ->
-            runBlocking {
-                ledgerIn(dir).recordUnlessSettled(entry("photo-1.heic"))
+            write(dir, "photo-1")
 
-                val reopened = ledgerIn(dir)
-                assertNotNull(
-                    reopened.get("photo-1.heic"),
-                    "the ledger is the only memory that a photo was already uploaded; losing it re-uploads " +
-                        "the whole post-cutoff library",
-                )
-            }
+            assertIs<RowRead.Found>(
+                read(dir, "photo-1"),
+                "the ledger is the only memory that a photo was already uploaded; losing it re-uploads " +
+                    "the whole post-cutoff library",
+            )
         }
     }
 
@@ -111,15 +105,14 @@ class IosLedgerStoreTest {
     fun `two containers are two separate ledgers`() {
         withTempDirectory { first ->
             withTempDirectory { second ->
-                runBlocking {
-                    ledgerIn(first).recordUnlessSettled(entry("photo-1.heic"))
+                write(first, "photo-1")
 
-                    assertNull(
-                        ledgerIn(second).get("photo-1.heic"),
-                        "if the base path were ignored both stores would be the SAME file and this would " +
-                            "pass by accident everywhere else",
-                    )
-                }
+                assertEquals(
+                    RowRead.Absent,
+                    read(second, "photo-1"),
+                    "if the base path were ignored both stores would be the SAME file and this would " +
+                        "pass by accident everywhere else",
+                )
             }
         }
     }

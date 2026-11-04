@@ -106,6 +106,28 @@ class CycleEntryGateIntegrationTest {
         }
     }
 
+    // A launch while the phone is locked reads no membership: what it does to the uploaders is deferred to the next
+    // transition that can read one — never a false leave, and never an arm for an event it cannot name.
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "A membership survives updates, restarts, and a locked phone",
+        scenario = "A locked phone never looks like a leave",
+    )
+    fun a_launch_while_locked_leaves_both_uploaders_as_they_are() = behaviour {
+        given {
+            joinedEvent()
+            membershipUnreadable()
+        }
+
+        whenever { host.relaunch() }
+        then {
+            never<WorldEvent.MemberLeft>()
+            never<WorldEvent.ExtensionRegistered>()
+            never<WorldEvent.UploadJobCreated>()
+        }
+    }
+
     // The other half of the gate: the fix must not turn a REAL leave into a skip. A definitively absent
     // membership reads as not joined, and the cycle uploads nothing for it.
     @Test

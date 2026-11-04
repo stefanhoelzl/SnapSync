@@ -177,7 +177,7 @@ private fun AndroidRigLaunch.hooks(
         world.servedServices(
             androidHostServices(world, lifecycle, links),
             hooks.world.acts,
-            reconcileUploads = { core().uploadTransitions.onOverrideChanged() },
+            reconcileUploads = { core().reconcileUploaders() },
         ) + world.servedHostServices(hostServices(hooks, core, host, context), hooks.world.acts)
     },
     publishBoundPort = { bound ->

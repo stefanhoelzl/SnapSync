@@ -12,6 +12,13 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.store.db.MembershipQueries
+import app.snapsync.data.upload.OwnUploadRows
+import app.snapsync.data.upload.RowsRead
+import app.snapsync.data.upload.UploadRowsReset
+import app.snapsync.domain.upload.LedgerState
+import app.snapsync.domain.upload.UploadRow
+import app.snapsync.format.ResourceRoleText
+import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
@@ -20,7 +27,6 @@ import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.model.EventConfig
-import app.snapsync.model.LedgerEntry
 import app.snapsync.ports.Clock
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -37,7 +43,6 @@ import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.use
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testDeviceId
@@ -267,27 +272,43 @@ fun galleryAccess(
 ): GalleryAccessState =
     GalleryAccessState(grant)
 
-/** The event a [TestLedger] is joined to unless a test says otherwise. */
+/** The event a [TestLedger]'s rows belong to unless a test says otherwise. */
 const val LEDGER_EVENT: String = "E-ledger"
 
 /**
- * The real ledger over in-memory SQLite, joined to [joined] (every ledger read and write is scoped to the joined
- * event), and the reads a test needs that the app never makes: every row, and which events hold rows.
+ * The real upload rows over in-memory SQLite — read through [rows], reset through [reset] — and what a test needs that
+ * the app never does: a row of any state written raw, every row an event holds, and which events hold rows.
  */
-class TestLedger(val databases: Databases = inMemoryDatabases(), var joined: String? = LEDGER_EVENT) {
-    val service: LedgerService = LedgerService(testShared(databases)) { joined?.let(::testEventId) }
+class TestLedger(val databases: Databases = inMemoryDatabases()) {
+    val shared: SharedDatabase = testShared(databases)
+    val rows: OwnUploadRows = OwnUploadRows(shared)
+    val reset: UploadRowsReset = UploadRowsReset(shared)
 
-    /** Every row the joined event holds, by key. */
-    suspend fun rows(): Map<String, LedgerEntry> = keys().mapNotNull { key ->
-        service.get(
-            key,
-        )?.let { key to it }
-    }.toMap()
+    /** [key] written raw as [event]'s row in [state], bare unless [captured] dates it. */
+    fun put(event: String, key: String, state: LedgerState, captured: String = "") {
+        val parsed = checkNotNull(UploadKeyText.parse(key)) { key }
+        shared.execute {
+            it.ledgerQueries.insert(
+                testEventId(event).value, key, Stored.Valid(parsed.asset), state, captured,
+                ResourceRoleText.of(parsed.role), "image/heic", "IMG.HEIC", null,
+            )
+        }
+    }
 
-    /** Every event that holds at least one row, joined or not. */
+    /** [event]'s row [key] deleted raw, as a walk withdraws a photo that left the library. */
+    fun delete(event: String, key: String) {
+        shared.execute { it.ledgerQueries.deleteKeys(testEventId(event).value, listOf(key)) }
+    }
+
+    /** Every row [event] holds, by key. */
+    fun rowsOf(event: String = LEDGER_EVENT): Map<String, UploadRow> =
+        when (val read = rows.rows(testEventId(event))) {
+            is RowsRead.Read -> read.rows.associateBy { UploadKeyText.of(it.key) }
+            is RowsRead.Unavailable -> emptyMap()
+        }
+
+    /** Every event that holds at least one row. */
     fun eventsHeld(): Set<String> = column("SELECT DISTINCT eventId FROM ledgerRow").toSet()
-
-    private fun keys(): List<String> = column("SELECT DISTINCT key FROM ledgerRow ORDER BY key")
 
     private fun column(sql: String): List<String> {
         val opened = databases.open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = true)

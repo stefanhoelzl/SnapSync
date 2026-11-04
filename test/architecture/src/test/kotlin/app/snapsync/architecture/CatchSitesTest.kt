@@ -124,17 +124,13 @@ class CatchSitesTest {
             "/app/desktop/src/main/kotlin/app/snapsync/desktop/WorldInspectorController.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/album/AlbumCoordinator.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/diagnostics/CollectDiagnosticDump.kt" to 3,
-            "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/membership/ShareSetLoad.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/status/LedgerCountsSource.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/status/OwnDeviceGalleryStatusSource.kt" to 2,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/status/StatusCountsPoller.kt" to 1,
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/status/StatusRefresh.kt" to 2,
-            "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/upload/CycleGateRead.kt" to 3,
             // Moved from EventCompletion with its read of the manifest record (phase 4.2): a record that does not decode
             // is no settled share. Its own phase (4.4c) answers the decode as a value.
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/upload/ShareSettlement.kt" to 1,
-            "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/upload/StoredUploadSettle.kt" to 1,
-            "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/upload/UploadCycle.kt" to 4,
             "/domain/model/src/commonMain/kotlin/app/snapsync/model/ConfigFile.kt" to 2,
             "/domain/model/src/commonMain/kotlin/app/snapsync/model/Footprint.kt" to 1,
             "/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/StatusContainerHost.kt" to 5,
@@ -143,11 +139,8 @@ class CatchSitesTest {
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to 1,
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/album/AlbumMapService.kt" to 5,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/backend/Listings.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt" to 5,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/manifest/DeviceManifestService.kt" to 6,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/upload/SessionTransfer.kt" to 1,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/upload/UploadStandings.kt" to 2,
             "/domain/wire/src/commonMain/kotlin/app/snapsync/wire/runtime/Wire.kt" to 1,
         )
     }

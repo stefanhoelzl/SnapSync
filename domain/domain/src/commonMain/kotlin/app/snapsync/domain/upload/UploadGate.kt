@@ -35,7 +35,20 @@ enum class UploadAdmission {
 enum class UploadPause { LEGACY_RECORDS, OLD_SCHEMA }
 
 /** Whether the build carries an upload host — one that does not cannot upload at all. */
-enum class UploadHost { CARRIED, NONE }
+enum class UploadHost {
+    CARRIED,
+    NONE,
+
+    ;
+
+    companion object {
+        /** The build's [host] — a blank one is none. */
+        fun of(host: String): UploadHost = when (host.isBlank()) {
+            true -> NONE
+            false -> CARRIED
+        }
+    }
+}
 
 /** What a pass's entry read: the membership (none when not joined) and the manifest version, or what it could not. */
 sealed interface GateRead {
@@ -55,13 +68,16 @@ sealed interface UploadGate {
     /** What the pass answers when it stops here. */
     val pass: UploadPass
 
+    /** The pass stops at the gate: it reads, settles, walks, creates and publishes nothing — and answers [pass]. */
+    sealed interface Stop : UploadGate
+
     /** A required input could not be read: nothing is touched, and the next pass retries. */
-    data class Unreadable(val detail: String) : UploadGate {
+    data class Unreadable(val detail: String) : Stop {
         override val pass get() = UploadPass.CAUGHT_UP
     }
 
     /** Definitively not joined — or a build with no upload host: there is nothing to upload for. */
-    data object NotJoined : UploadGate {
+    data object NotJoined : Stop {
         override val pass get() = UploadPass.SKIPPED
     }
 
@@ -69,12 +85,12 @@ sealed interface UploadGate {
      * This process may not create now — no usable grant, a lost key, an event whose photos are deleted, or received
      * photos not yet recognised. Still owed: recording and acknowledging what the platform presents for [event].
      */
-    class Withheld(val event: EventId) : UploadGate {
+    class Withheld(val event: EventId) : Stop {
         override val pass get() = UploadPass.SKIPPED
     }
 
     /** Admitted, but another process's work comes first: nothing is touched, and the pass asks to be run again. */
-    data class Paused(val reason: UploadPause) : UploadGate {
+    data class Paused(val reason: UploadPause) : Stop {
         override val pass get() = UploadPass.PAUSED
     }
 

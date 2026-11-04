@@ -43,7 +43,7 @@ kotlin {
 
 dependencies {
     testImplementation(kotlin("test"))
-    // ProducerExclusivityTest drives the REAL UploadTransitions and admission functions over fakes
+    // ProducerExclusivityTest drives the REAL ReconcileUploader and ExtensionRegistrar over fakes
     // (`docs/architecture.md`, "The upload transitions stop in-flight work only at a leave") — the one guard here
     // that executes domain code rather than reading source: the invariant is behavioral (no reachable sequence
     // orphans in-flight work), which no text scan can see.
@@ -51,6 +51,7 @@ dependencies {
     testImplementation(project(":domain:domain"))
     testImplementation(project(":domain:format"))
     testImplementation(project(":domain:data"))
+    testImplementation(project(":domain:application"))
     // The generated wire (`api/openapi.yaml`): the limits and routes the client's mirrors are pinned to.
     testImplementation(project(":domain:wire"))
     // The screen's vocabulary: the name cap the event-name gate pins, and the types `AppPorts` binds `Ui` to.

@@ -79,7 +79,7 @@ import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
  *
  * **Upload lifecycle lives elsewhere.** This root constructs the mechanisms this OS can carry (the PhotoKit
  * extension registration on iOS ≥26.1, the in-app URLSession engine everywhere) and the composed, stateless
- * `UploadTransitions` (`app.uploadTransitions`) decide what each membership transition does to them. The
+ * entry points (`OnUploaderChange`, the membership transitions') decide what each transition does to them. The
  * *decision* — which verb fires on join / reconfigure / grant / launch / leave — is not made here, because
  * this module is wiring-only and
  * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier

@@ -49,7 +49,7 @@ internal interface UploadSession {
      * Starts a transfer of [file] to [request], tagged [tag], and answers `true` — or `false`, starting nothing, when
      * [file] cannot be read: a background session raises `NSInvalidArgumentException` ("Cannot read file") for one
      * (measured on the simulator and macOS, 2026-10-12), an Objective-C exception no Kotlin catch stops. The upload
-     * services hold the file in place from its export until the transfer exists (`SessionTransfer`'s staging lock), so
+     * services hold the file in place from its export until the transfer exists (`StagedFiles`' staging lock), so
      * this check meets no concurrent deleter; it turns a broken invariant into a refusal rather than an abort.
      */
     fun upload(request: NSURLRequest, file: String, tag: String): Boolean

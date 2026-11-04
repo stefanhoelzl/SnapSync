@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.data.receiving.ReceivingCounts
+import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.feature.album.AlbumCoordinator
@@ -21,6 +22,7 @@ import kotlinx.coroutines.launch
  */
 internal fun albumGather(
     services: AppServices,
+    rows: OwnUploadRows,
     access: GalleryAccessState,
     coordinator: AlbumCoordinator,
     scope: CoroutineScope,
@@ -28,7 +30,7 @@ internal fun albumGather(
     policyFor: suspend (Membership) -> SelectionPolicy,
 ): AlbumGather = AlbumGather(
     configSource = services.config,
-    ledger = services.ledger,
+    rows = rows,
     policyFor = policyFor,
     downloads = downloads,
     photoAccess = access,

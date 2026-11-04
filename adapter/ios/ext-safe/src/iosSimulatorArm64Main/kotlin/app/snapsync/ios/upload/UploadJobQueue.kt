@@ -44,7 +44,7 @@ enum class SimulatorJobAction { RETRY, ACKNOWLEDGE }
  *
  * A job is identified by its [destination] — the URL it was created (or last re-pointed) with — because that is the
  * only field the real queue reliably answers for every job, and the one the real adapter resolves a job's ledger row
- * by (`TransferRecord.entryForDestination`). A job the OS presents in BOTH sets — a first failure is, measured on an
+ * by (`OwnUploadRows.byDestination`). A job the OS presents in BOTH sets — a first failure is, measured on an
  * SE2 (iOS 26.6) — is stated once per set.
  */
 class FinishedUploadJob(

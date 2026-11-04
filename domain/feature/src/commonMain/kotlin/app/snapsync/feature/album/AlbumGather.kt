@@ -3,13 +3,13 @@ package app.snapsync.feature.album
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.ReceivingCounts
+import app.snapsync.data.upload.OwnUploadRows
+import app.snapsync.data.upload.RowsRead
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.SelectionPolicy
-import app.snapsync.model.admittedAssetIds
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.membership.MembershipProjection
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -34,8 +34,8 @@ const val GATHER_BATCH_SIZE: Int = 500
  * window also admits (listed in this event's manifest, never enqueued again, so never placed at enqueue).
  *
  * Two sets, and only these:
- *  - **own** — the device manifest projection: [LedgerService.manifestRows] admitted by the membership's
- *    **current** policy, exactly what the device tells the event it contributes;
+ *  - **own** — the device manifest projection: the joined event's upload rows ([OwnUploadRows]) admitted by the
+ *    membership's **current** policy, exactly what the device tells the event it contributes;
  *  - **foreign** — the other-device assets of this event's union that this device has imported
  *    ([ReceivingCounts.importedOf]): every plan tags the event's whole foreign union in the store, so
  *    the store says which imports are in THIS event without a union read of the gather's own, and an import made
@@ -59,7 +59,7 @@ const val GATHER_BATCH_SIZE: Int = 500
  */
 class AlbumGather(
     private val configSource: MembershipProjection,
-    private val ledger: LedgerService,
+    private val rows: OwnUploadRows,
     /** The membership's one selection policy — the same derivation every other consumer uses. */
     private val policyFor: suspend (Membership) -> SelectionPolicy,
     private val downloads: ReceivingCounts,
@@ -140,8 +140,13 @@ class AlbumGather(
     }
 
     private suspend fun ownSet(membership: Membership): List<AssetId> {
-        val rows = ledger.manifestRows()
-        val admitted = admittedAssetIds(rows, policyFor(membership))
-        return admitted.sorted()
+        val read = rows.rows(membership.event.id)
+        return when (read) {
+            is RowsRead.Read ->
+                policyFor(membership).admitRecorded(read.rows.map { it.recorded }).map { it.assetId }.sorted()
+            is RowsRead.Unavailable -> emptyList<AssetId>().also {
+                log.w { "gather: the upload rows could not be read — no own photo placed (${read.detail})" }
+            }
+        }
     }
 }

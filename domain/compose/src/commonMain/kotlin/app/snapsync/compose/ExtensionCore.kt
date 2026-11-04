@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.application.upload.SettlePresentedJobs
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.BuildTarget
@@ -20,10 +21,16 @@ import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.DropOnlyCredential
 import app.snapsync.data.trust.SecureCredentialStore
+import app.snapsync.data.upload.ExtensionUploaderAdmission
+import app.snapsync.data.upload.JobAcknowledgement
+import app.snapsync.data.upload.JobOwners
+import app.snapsync.data.upload.OsQueueDrain
+import app.snapsync.data.upload.OsQueueTier
+import app.snapsync.entrypoints.ExtensionPass
+import app.snapsync.entrypoints.ExtensionUploads
 import app.snapsync.entrypoints.OnProcess
 import app.snapsync.entrypoints.OnTerminate
 import app.snapsync.feature.album.AlbumCoordinator
-import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.Databases
 import app.snapsync.ports.ExtensionHandlers
@@ -40,10 +47,8 @@ import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.gallery.GalleryAlbums
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.upload.Uploader
 import kotlinx.coroutines.CoroutineDispatcher
 
 /**
@@ -76,17 +81,13 @@ class ExtensionPorts(
 )
 
 /**
- * The composed upload extension: its process's services and its one cycle, built on first use.
+ * The composed upload extension: its process's services; its upload pass is built on first use.
  */
 class ComposedExtension internal constructor(
     /** What the process set up — its crash reporting started as the composition's first act. */
     val process: ProcessServices,
     internal val services: UploadServices,
-    cycle: Lazy<UploadCycle>,
-) {
-    /** The cycle, assembled by the shared [uploadCycle] on the first invocation. */
-    val cycle: UploadCycle by cycle
-}
+)
 
 /**
  * The upload extension's composition (`docs/architecture.md`, "One shared composition"; "Events arrive through
@@ -132,14 +133,50 @@ fun snapSyncExtension(
     // staleness is bounded to one invocation.
     val attestStore = CachedCredentialStore(SecureCredentialStore(ports.secureStore))
     val services = extensionServices(process, ports, attestStore)
-    val cycle = lazy { uploadCycle(process, services) }
     ports.host.inbound(
         ExtensionHandlers(
-            OnProcess(runtime, attestStore, services.membership, services.keys, cycle, services.ledger),
+            OnProcess(
+                runtime,
+                attestStore,
+                services.membership,
+                services.keys,
+                extensionPass(process, ports, services),
+            ),
             OnTerminate(runtime),
         ),
     )
-    return ComposedExtension(process, services, cycle)
+    return ComposedExtension(process, services)
+}
+
+/**
+ * The extension's one upload pass over the shared layers ([UploadLayers]): its transfer the OS's own queue —
+ * PhotoKit's, which sends the library's bytes — and what that queue presents settled first. Built lazily per piece:
+ * composing it opens nothing.
+ */
+private fun extensionPass(process: ProcessServices, ports: ExtensionPorts, services: UploadServices): ExtensionPass {
+    val layers = UploadLayers(process, services)
+    val tier = OsQueueTier(ports.uploadQueue, layers.requests, layers.sealing, services.mobileData, layers.record)
+    val drain = OsQueueDrain(
+        ports.uploadQueue,
+        JobOwners(layers.rows),
+        JobAcknowledgement(ports.uploadQueue),
+        layers.record,
+    )
+    return ExtensionPass(
+        layers.gate,
+        layers.contribute,
+        SettlePresentedJobs(drain, tier, layers.rows),
+        ExtensionUploads(
+            layers.walk,
+            layers.recordWalk,
+            layers.plan,
+            layers.create(tier),
+            layers.album,
+            layers.publish,
+        ),
+        layers.publish,
+        layers.rows,
+    )
 }
 
 /** The extension's services over its ports — see [snapSyncExtension] for what differs from the app's. */
@@ -148,20 +185,20 @@ private fun extensionServices(
     ports: ExtensionPorts,
     attestStore: CachedCredentialStore,
 ): UploadServices {
-    val log = process.logger("UploadExtension")
     // Read only: the extension never mints an identity.
     val identity = StoredDeviceIdentity(ports.secureStore)
     val albums = GalleryAlbums(ports.gallery)
     val build = ports.process.build
     // No version gate: the extension has no screen to show a refusal on.
     val exchange = BackendExchange(ports.http, BuildTarget(build), VersionIgnored)
-    // The extension never copies the records' legacy homes: it pauses until the app has (see `CycleGateRead`).
+    // The extension never copies the records' legacy homes: it pauses until the app has (see `UploadGateRead`).
     val records = SharedDatabase(ports.databases, legacy = null)
     val membership = MembershipRepository(records)
     val config = MembershipProjection(membership, process.clock)
     val clock = WallClock(process.clock)
     // The app's download store as the extension may read it: read-only, never created or migrated here.
     val received = ReceivedPhotosReader(ports.databases)
+    val backend = extensionBackend(exchange, attestStore, identity)
     return UploadServices(
         records = records,
         membership = membership,
@@ -170,9 +207,6 @@ private fun extensionServices(
         mobileData = MobileDataStore(ports.preferences),
         deviceIdentity = identity,
         host = build.uploadHost,
-        // Scoped to the joined event this process last read; each invocation re-reads the config first.
-        ledger = LedgerService(records) { config.config.value?.eventId },
-        uploader = Uploader.Queue(ports.uploadQueue),
         gallery = ports.gallery,
         // The extension's own photos: walked afresh on every invocation (the walk memo is the app's), and never a
         // selection — it holds none, so under a partial grant its read plan is that nothing can be read.
@@ -186,18 +220,18 @@ private fun extensionServices(
         ),
         // This process's own grant read — the extension withholds its cycle without a full grant: the OS invokes a
         // surviving registration under a partial grant too, and this is what stops it.
-        process = UploaderProcess.Extension(ports.gallery),
+        admission = ExtensionUploaderAdmission(ports.gallery),
         manifestStore = DeviceManifestService(records),
-        manifestPublisher = extensionBackend(exchange, attestStore, identity).manifest,
+        manifestPublisher = backend.manifest,
         received = received,
         // The extension only ever ADDS completed uploads to the event album; the app is its sole creator.
         albumCoordinator = AlbumCoordinator(albums, AlbumMapService(records)),
         // A retry re-reads the shared item: the app may have renewed the token this copy still holds.
         credentials = attestStore,
         exchange = exchange,
+        gateway = backend.gateway,
         // Read only: the extension derives each file's key from the kept one and never writes the slot.
         keys = EventKeyStore(ports.secureStore, EventKeyIds(process.crypto)),
-        log = log,
     )
 }
 

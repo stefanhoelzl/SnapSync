@@ -20,13 +20,7 @@ class GalleryAccessState(source: StateFlow<LibraryGrant>) {
 
     /**
      * Whether the app may read the library at all — a full or a partial grant. Under a partial grant the user's
-     * selection IS the scope, so a usable grant is not necessarily a [full] one.
+     * selection IS the scope, so a usable grant is not necessarily a full one.
      */
     val usable: Boolean get() = grant.value.grantsPhotoAccess
-
-    /**
-     * Whether a library read is the WHOLE library — a full grant, exactly. Only then is a walk authoritative (an asset
-     * it does not return is gone) and the OS-driven extension registrable; under a partial grant neither holds.
-     */
-    val full: Boolean get() = grant.value == GalleryAccess.GRANTED
 }

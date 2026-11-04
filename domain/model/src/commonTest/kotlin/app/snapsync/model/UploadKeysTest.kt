@@ -49,6 +49,12 @@ class UploadKeysTest {
         val key = uploadKey(testAssetId("X-9"), ResourceRole.LIVE, "IMG.MOV")
         assertEquals(testAssetId("X-9"), assetIdFromUploadKey(key))
         assertEquals(ResourceRole.LIVE, roleFromUploadKey(key))
+        assertEquals(ResourceRole.PRIMARY, roleFromUploadKey("X-still.heic"), "an unknown role token reads as primary")
+    }
+
+    @Test
+    fun `an absent device identity is an illegal state, never a silent one`() {
+        assertFailsWith<IllegalStateException> { throw DeviceIdentityAbsent() }
     }
 
     @Test

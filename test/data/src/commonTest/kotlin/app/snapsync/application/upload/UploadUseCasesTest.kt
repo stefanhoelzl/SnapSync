@@ -27,7 +27,13 @@ import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.domain.membership.MintsConfirmedNotJoined
+import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.upload.CreatedJob
+import app.snapsync.domain.upload.DestinationPath
 import app.snapsync.domain.upload.FoundResource
+import app.snapsync.domain.upload.MintsCreatedJob
+import app.snapsync.domain.upload.MintsEndedJob
+import app.snapsync.domain.upload.ReportedLanding
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadPass
@@ -70,7 +76,7 @@ import kotlin.test.assertTrue
  * and created until the platform refuses, the OS queue settled, a session end recorded, in-flight rows settled from the
  * backend's listing, and what a membership transition does to the two uploaders.
  */
-@OptIn(EntryPointCall::class, MintsConfirmedNotJoined::class)
+@OptIn(EntryPointCall::class, MintsConfirmedNotJoined::class, MintsCreatedJob::class, MintsEndedJob::class)
 class UploadUseCasesTest {
 
     private val world = SessionWorld()
@@ -80,7 +86,15 @@ class UploadUseCasesTest {
     private val recent = app.snapsync.data.upload.RecentWalk()
     private val record = RecordWalk(world.walk, recent)
     private val plan = PlanTopUp(world.reads)
-    private val create = CreateJobs(world.tier, resources, world.walk, recent)
+    private val create = CreateJobs(world.reads, world.tier, resources, world.walk, recent)
+
+    /** The photos placed just before their jobs, in order. */
+    private val placed = mutableListOf<AssetId>()
+    private val before = object : BeforeJob {
+        override suspend fun before(asset: AssetId) {
+            placed += asset
+        }
+    }
 
     private fun key(asset: String) = UploadKey.of(AssetId.parse(asset)!!, ResourceRole.PRIMARY, "IMG.JPG")
 
@@ -96,17 +110,17 @@ class UploadUseCasesTest {
     @Test
     fun `a walk records the photos it admits, a top-up creates their jobs from the handles it read`() = runTest {
         world.joined()
-        val walked = assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution()))
+        val walked = walk(world.event, library.contribution())
 
         assertEquals(listOf(key("A1")), walked.diff.fresh.map { it.key })
         assertTrue(record(world.event, walked).added)
         val planned = plan(world.event, library.contribution().policy)
         assertEquals(listOf(key("A1")), planned.rows.map { it.key })
 
-        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned))
+        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned, before))
         assertIs<UploadRow.Requested>(rowOf("A1"))
 
-        val again = assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution()))
+        val again = walk(world.event, library.contribution())
         assertEquals(emptyList(), again.diff.fresh)
         assertEquals(false, record(world.event, again).added)
     }
@@ -114,10 +128,10 @@ class UploadUseCasesTest {
     @Test
     fun `a photo that left the library is withdrawn by the walk that shows it gone`() = runTest {
         world.joined()
-        record(world.event, assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution())))
+        record(world.event, walk(world.event, library.contribution()))
         library.photos.value = emptyList()
 
-        val gone = assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution()))
+        val gone = walk(world.event, library.contribution())
 
         assertEquals(listOf(key("A1")), gone.diff.departed)
         record(world.event, gone)
@@ -128,11 +142,15 @@ class UploadUseCasesTest {
     fun `a walk that cannot read the library or the rows writes nothing`() = runTest {
         world.joined()
         library.grant.value = LibraryGrant.DENIED
-        val unread = assertIs<WalkOutcome.Walked>(walk(world.event, library.contribution()))
+        val unread = walk(world.event, library.contribution())
         assertEquals(emptyList(), unread.diff.fresh + unread.diff.bare)
 
         world.databases.lock()
-        assertIs<WalkOutcome.Unwalked>(walk(world.event, library.contribution()))
+        assertEquals(
+            emptyList(),
+            walk(world.event, library.contribution()).diff.departed,
+            "rows it cannot read: nothing walked",
+        )
         assertTrue(record(world.event, unread).added.not(), "nothing to add, and a failed write logged")
         assertEquals(emptyList(), plan(world.event, library.contribution().policy).rows)
     }
@@ -151,17 +169,43 @@ class UploadUseCasesTest {
         val planned = plan(world.event, library.contribution().policy)
         assertEquals(listOf(key("A1"), key("GONE")), planned.rows.map { it.key })
 
-        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned))
+        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned, before))
         assertIs<UploadRow.Requested>(rowOf("A1"))
         assertNull(rowOf("GONE"), "a photo that resolves to nothing has left the library")
+        assertEquals(listOf(AssetId.parse("A1")!!), placed, "placed just before its job — never a photo that is gone")
 
         world.walk.discover(world.event, listOf(FoundResource(key("A2"), dated(DURING))))
         world.session.answer = CreateOutcome.LIMIT_EXCEEDED
         val full = plan(world.event, library.contribution().policy)
         assertEquals(listOf(key("A2")), full.rows.map { it.key })
         recent.put(mapOf(key("A2") to SessionWorld.From))
-        assertEquals(UploadPass.WORK_LEFT, create(world.event, full))
+        assertEquals(UploadPass.WORK_LEFT, create(world.event, full, before))
         assertIs<UploadRow.Discovered>(rowOf("A2"), "a refused create leaves the row needing a job")
+    }
+
+    @Test
+    fun `a row the other uploader took, or a walk withdrew, since the plan is not created again`() = runTest {
+        world.joined()
+        world.walk.discover(
+            world.event,
+            listOf("A1", "A2", "A3").map { FoundResource(key(it), dated(DURING)) },
+        )
+        val planned = plan(world.event, library.contribution().policy)
+        recent.put(listOf("A1", "A2", "A3").associate { key(it) to SessionWorld.From })
+        // Both uploaders write the one shared ledger: the OS's queue took A1's job while this pass planned.
+        world.transitions.requested(world.event, CreatedJob(key("A1")), DestinationPath("/other"))
+        world.walk.withdraw(world.event, listOf(key("A2")))
+        // A3's job was made and has already landed.
+        world.transitions.requested(world.event, CreatedJob(key("A3")), DestinationPath("/other"))
+        world.transitions.landed(world.event, ReportedLanding(key("A3")))
+
+        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned, before))
+        assertTrue(world.session.made.isEmpty(), "no second job for the same bytes")
+        assertTrue(placed.isEmpty(), "and nothing placed for a job not made")
+
+        world.databases.lock()
+        val unread = create(world.event, planned, before)
+        assertEquals(UploadPass.CAUGHT_UP, unread, "a row that cannot be read is not created")
     }
 
     @Test
@@ -171,7 +215,7 @@ class UploadUseCasesTest {
         val planned = plan(world.event, library.contribution().policy)
         library.grant.value = LibraryGrant.DENIED
 
-        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned))
+        assertEquals(UploadPass.CAUGHT_UP, create(world.event, planned, before))
 
         assertIs<UploadRow.Discovered>(rowOf("A1"))
         assertEquals(emptyList(), world.session.made)
@@ -299,6 +343,19 @@ class UploadUseCasesTest {
         settle(world.event)
         assertIs<UploadRow.Requested>(world.row("A2"))
 
+        // A listing that names other keys, or that this build cannot read, settles nothing.
+        world.transport.answer = { json(200, """[{"assetId":"A9","role":"primary","filename":"IMG.MOV"}]""") }
+        settle(world.event)
+        assertIs<UploadRow.Requested>(world.row("A2"))
+        world.transport.answer = { json(200, """[{"assetId":"bad id!","role":"primary","filename":"IMG.MOV"}]""") }
+        settle(world.event)
+        assertIs<UploadRow.Requested>(world.row("A2"))
+
+        // While nothing is joined, nothing is asked.
+        val asked = world.transport.calls.size
+        settle(null)
+        assertEquals(asked, world.transport.calls.size)
+
         world.databases.lock()
         settle(world.event)
     }
@@ -341,7 +398,11 @@ class UploadUseCasesTest {
             ExtensionRegistrar(registry),
         )
 
-        assertNull(reconcile(UploaderChange.RECONFIGURE), "no membership: nothing to arm for")
+        assertEquals(
+            UploaderArming.UNCHANGED,
+            reconcile(UploaderChange.RECONFIGURE),
+            "no membership: nothing to arm for",
+        )
         assertEquals(UploaderArming.ARM, reconcile(UploaderChange.JOIN))
         assertEquals(listOf(false, true), registry.writes, "a join forces the toggle")
 
@@ -355,7 +416,7 @@ class UploadUseCasesTest {
         grant.value = LibraryGrant.DENIED
         assertEquals(UploaderArming.DISARM, reconcile(UploaderChange.RECONFIGURE))
         world.databases.lock()
-        assertNull(reconcile(UploaderChange.LAUNCH), "an unreadable membership defers")
+        assertEquals(UploaderArming.UNCHANGED, reconcile(UploaderChange.LAUNCH), "an unreadable membership defers")
     }
 
     @Test
@@ -405,17 +466,20 @@ class UploadUseCasesTest {
 
     @Test
     fun `a contribution is derived with the photos this device received suppressed`() = runTest {
-        val received = object : app.snapsync.data.upload.ReceivedPhotos {
-            override suspend fun readiness() = app.snapsync.domain.upload.EchoReadiness.Ready
-
-            override suspend fun recognised(event: app.snapsync.domain.event.EventId) = true
-
-            override suspend fun suppressed(): Set<AssetId> = setOf(AssetId.parse("A1")!!)
-        }
+        library.received.handles = app.snapsync.data.receiving.HandlesRead.Ok(setOf(AssetId.parse("A1")!!))
         world.joined()
-        val contribution = DeriveContribution(library.own, received)(app.snapsync.data.membership.active())
+        val contribution = DeriveContribution(library.own)(app.snapsync.data.membership.active())
 
-        val walked = assertIs<WalkOutcome.Walked>(walk(world.event, contribution))
+        val walked = walk(world.event, contribution)
         assertEquals(emptyList(), walked.diff.fresh, "a received photo is never shared back")
+
+        val receiving = app.snapsync.data.membership.active().let {
+            it.copy(share = app.snapsync.data.membership.share(it.event, direction = Direction.DownloadOnly))
+        }
+        assertEquals(
+            false,
+            DeriveContribution(library.own)(receiving).policy.contributes,
+            "it shares nothing",
+        )
     }
 }

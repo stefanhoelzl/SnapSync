@@ -17,7 +17,6 @@ import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.album.AlbumMapService
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
@@ -65,13 +64,6 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
         SharedDatabase(ports.databases, LegacyRecords(process.files, ports.preferences, log))
     }
 
-    /**
-     * What this process knows about its own uploads: the app **reads** it — the status
-     * counts and the dump — and **resets** it at membership transitions; the app's uploader records through its own
-     * `LedgerWriter` over it. On iOS ≥26.1 the extension writes the same App-Group ledger from its own process. Scoped
-     * to the event [config] says this process is joined to.
-     */
-    val ledger: LedgerService by lazy { LedgerService(sharedDatabase) { config.config.value?.eventId } }
 
     /**
      * The device manifest's skip record, in the shared database — the SAME record the ≥26.1 extension's producer reads.

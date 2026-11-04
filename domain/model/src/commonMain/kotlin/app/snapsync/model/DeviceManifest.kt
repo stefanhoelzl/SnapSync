@@ -9,7 +9,6 @@ package app.snapsync.model
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
-import app.snapsync.domain.sharing.SelectionPolicy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.UseSerializers
 import kotlinx.serialization.json.Json
@@ -105,8 +104,8 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
  * offered mid-upload as a complete one-resource asset — and a recipient reconciling in that window
  * imported it as a still, marked it settled, and never took the video.
  *
- * It applies the *one* admission rather than a date comparison of its own — [admittedAssetIds], shared
- * verbatim with the upload cycle's enqueue, so what this device declares and what its bytes do cannot
+ * It applies the *one* admission rather than a date comparison of its own — the [admitted] set the caller judged with
+ * the policy's row admission, the same the top-up plans by, so what this device declares and what its bytes do cannot
  * disagree. That is the fix for an older bug this projection already carries: it used to take a bare
  * `startDate` and filter `creationDate >= startDate`, so when the capture-date **ceiling** was added it
  * reached the byte filter and never reached here. The same rule now covers the undated row, and states
@@ -119,11 +118,11 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
 suspend fun projectDeviceManifest(
     deviceId: DeviceId,
     rows: Collection<LedgerEntry>,
-    policy: SelectionPolicy,
+    /** The assets the membership's policy admits among [rows] — judged by the caller, never here. */
+    admitted: Set<AssetId>,
 ): DeviceManifest {
     // No row filter of its own: a departed asset's rows are deleted by the walk that shows it gone, so every row here
-    // is one this device still holds. Admission is the policy's.
-    val admitted = admittedAssetIds(rows, policy)
+    // is one this device still holds. Admission is the policy's, which the caller applied.
 
     val assets = rows.groupBy { it.assetId }.filterKeys { it in admitted }.map { (assetId, group) ->
         DeviceManifestAsset(
@@ -131,7 +130,7 @@ suspend fun projectDeviceManifest(
             creationDate = group.first().creationDate,
             resources = group.sortedBy { it.key }.map {
                 ManifestResource(
-                    role = it.role ?: ResourceRole.PRIMARY,
+                    role = it.role,
                     contentType = it.contentType,
                     key = it.key,
                     filename = it.originalFilename,

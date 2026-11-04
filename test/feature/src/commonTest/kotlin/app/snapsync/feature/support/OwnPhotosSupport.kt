@@ -18,7 +18,6 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.mock.PhotoLibraryMock
-import app.snapsync.model.Resource
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.Clock
 import app.snapsync.ports.GalleryAsset
@@ -29,10 +28,6 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.ports.SelectionSnapshot
-import app.snapsync.services.gallery.ContributionKeyedResources
-import app.snapsync.services.gallery.KeyedRead
-import app.snapsync.services.gallery.KeyedResources
-import app.snapsync.services.gallery.resourcesFrom
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
 import kotlin.time.Duration.Companion.days
@@ -83,12 +78,6 @@ fun photo(
 /** The upload key of the photo [id]'s primary resource, as [photo] names it. */
 fun keyOf(id: String, ext: String = "heic"): String = "$id-primary.$ext"
 
-/** Every uploadable resource of [assets], exactly as the cycle reads them — what a ledger row is recorded from. */
-fun resourcesOf(vararg assets: GalleryAssetResources): List<Resource> = resourcesFrom(assets.toList())
-
-/** The one primary resource of [asset]. */
-fun resourceOf(asset: GalleryAssetResources): Resource = resourcesOf(asset).first()
-
 /**
  * The gallery port, observed: every walk's filter and every asset whose resources were read. [unreadable] makes a walk
  * answer that the library could not be read; [widened] makes it ignore the filter — a platform over-returning.
@@ -115,24 +104,8 @@ class ObservedGallery(private val inner: GalleryReader) : GalleryReader by inner
     }
 }
 
-/** The keys a cycle resolved, counted with repeats; [before] runs ahead of each resolve. */
-class ObservedKeys(private val inner: KeyedResources) : KeyedResources {
-    val keys = mutableSetOf<String>()
-    var calls = 0
-    var before: suspend (Set<String>) -> Unit = {}
-
-    override suspend fun resourcesFor(keys: Set<String>): KeyedRead {
-        this.keys += keys
-        calls++
-        before(keys)
-        return inner.resourcesFor(keys)
-    }
-}
-
 /**
- * A member's library under [grant], and the real [OwnPhotos] over it. [gallery] observes the discovery's reads; the
- * key resolve ([keys]) reads through a second, unobserved face of the same library and the same selection, so a
- * resolve is never mistaken for a discovery read.
+ * A member's library under [grant], and the real [OwnPhotos] over it. [gallery] observes the discovery's reads.
  */
 class OwnLibrary(
     grant: LibraryGrant = LibraryGrant.GRANTED,
@@ -145,7 +118,6 @@ class OwnLibrary(
     val selection = SelectionSnapshots()
     private val wallClock = WallClock(clock)
     val photos = ownPhotos(gallery)
-    val keys = ObservedKeys(ContributionKeyedResources(ownPhotos(mock.port())))
 
     private fun ownPhotos(port: GalleryReader) =
         OwnPhotos(port, GalleryWalk(port, wallClock), selection, DenylistedAlbums(port), wallClock, received)

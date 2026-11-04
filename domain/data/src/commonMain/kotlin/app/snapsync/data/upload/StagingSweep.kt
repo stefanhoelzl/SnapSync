@@ -2,6 +2,7 @@ package app.snapsync.data.upload
 
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.StagedFile
+import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.UploadKeyText
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
@@ -30,25 +31,31 @@ class StagingSweep(
      * Delete every staged file and digest no live transfer sends, as [event]'s rows allow — while no staged file is
      * being exported or handed to the session, so a file about to be sent is never taken for unclaimed.
      */
-    suspend fun releaseUnclaimed(event: EventId) =
+    suspend fun releaseUnclaimed(event: EventId?) =
         fromFiles.locked { sweep(event, session.live().mapNotNullTo(HashSet()) { it.tag }) }
 
-    private suspend fun sweep(event: EventId, sending: Set<String>) =
+    private suspend fun sweep(event: EventId?, sending: Set<String>) =
         when (val listed = files.list(FileArea.SHARED, UPLOAD_STAGING_DIR)) {
             is FileResult.Ok -> swept(event, listed.value - claimed(sending))
             is FileFailure ->
                 log.w("the upload staging directory could not be read — nothing released", "read" of listed)
         }
 
-    private suspend fun swept(event: EventId, unclaimed: List<String>) = when (val read = rows.rows(event)) {
-        is RowsRead.Read -> {
-            val byKey = read.rows.associateBy { UploadKeyText.of(it.key) }
-            unclaimed.filter { StagedFile.unclaimed(byKey[staged.keyOf(it)]) == StagedFile.RELEASED }.forEach(
-                staged::delete,
-            )
+    /** With no event joined, no row can need a staged file: every unclaimed one goes. */
+    private suspend fun swept(event: EventId?, unclaimed: List<String>) = when (event) {
+        null -> released(unclaimed, emptyList())
+        is EventId -> when (val read = rows.rows(event)) {
+            is RowsRead.Read -> released(unclaimed, read.rows)
+            is RowsRead.Unavailable ->
+                log.w("the upload rows could not be read — no staged file released", "detail" of read.detail)
         }
-        is RowsRead.Unavailable ->
-            log.w("the upload rows could not be read — no staged file released", "detail" of read.detail)
+    }
+
+    private fun released(unclaimed: List<String>, rows: List<UploadRow>) {
+        val byKey = rows.associateBy { UploadKeyText.of(it.key) }
+        unclaimed.filter { StagedFile.unclaimed(byKey[staged.keyOf(it)]) == StagedFile.RELEASED }.forEach(
+            staged::delete,
+        )
     }
 
     private fun claimed(sending: Set<String>): Set<String> =

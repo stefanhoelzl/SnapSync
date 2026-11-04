@@ -8,13 +8,13 @@ import kotlin.test.assertTrue
  * gate"; law: `photo-sharing`, "Reader and writer capability split").
  *
  * A transport — an implementation of an upload port (`OsUploadQueue`, `TransferSession`), or the target-bound
- * `uploadJobQueue` factory that picks one — holds no ledger at all; the upload services are handed the narrow `TransferRecord`: the one guarded terminal write and the one destination
- * lookup. Every other ledger read and write, including the decision which in-flight rows a transport has lost,
- * is the cycle's.
+ * `uploadJobQueue` factory that picks one — holds no ledger at all; the data layer's upload tiers hold the rows (`JobRecord`: the guarded terminal writes and the one destination
+ * lookup). Every other row read and write, including the decision which in-flight rows a transport has lost,
+ * is the data layer's and its use cases'.
  *
  * **Why a text gate, when a type already narrows it.** Neither the compiler nor the module graph can withhold
- * `LedgerStore` from a transport: it is declared in `:domain:ports`, the module every transport must depend on
- * to implement `BackgroundTransfer`, and `:adapter:ios:ext-safe` additionally depends on `:domain:feature`.
+ * the upload rows from a transport: they are declared in `:domain:data`, which `:adapter:ios:ext-safe` depends on for
+ * its database adapter, so a transport there could name them.
  * Narrowing the constructor makes the boundary visible where a reader looks; only this stops the next edit from
  * widening it back.
  *
@@ -31,9 +31,9 @@ class TransportLedgerGateTest {
 
     /**
      * The ledger, in either width: since the transfer re-cut (11f) a transport is a thin upload port and records
-     * nothing — the upload services hold the narrow `TransferRecord` and write through it.
+     * nothing — the data layer's tiers hold the upload rows (`OwnUploadRows`, `RowTransitions`, `JobRecord`).
      */
-    private val ledgerStore = Regex("""\b(?:LedgerStore|TransferRecord)\b""")
+    private val ledgerStore = Regex("""\b(?:OwnUploadRows|RowTransitions|JobRecord|WalkRecord|UploadRowsReset)\b""")
 
     /** The file's **code**, with KDoc and comments stripped — the same reading `UploadJobSubsystemBindingTest` uses. */
     private fun codeOf(text: String): String = text
@@ -47,7 +47,7 @@ class TransportLedgerGateTest {
         .filter { transportDeclaration.containsMatchIn(codeOf(it.text)) }
 
     @Test
-    fun `no transport adapter references LedgerStore`() {
+    fun `no transport adapter references the upload rows`() {
         val scope = transports()
         assertTrue(
             scope.isNotEmpty(),
@@ -58,7 +58,7 @@ class TransportLedgerGateTest {
         assertTrue(
             offenders.isEmpty(),
             "these transport adapters reference the ledger:\n  ${offenders.joinToString("\n  ")}\n" +
-                "A transport is a thin upload port and records nothing: the upload services hold the TransferRecord " +
+                "A transport is a thin upload port and records nothing: the data layer's tiers hold the upload rows " +
                 "and write through it (phase 11f). See `photo-sharing`, \"Reader and writer capability split\".",
         )
     }
