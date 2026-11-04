@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -33,7 +34,6 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.format.InviteLinkText
-import app.snapsync.model.AlbumContents
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
@@ -146,7 +146,7 @@ class StatusContainerHost(
     private val build: BuildLabel = BuildLabel.UNKNOWN,
     // What the event album holds on this phone, read from the photo library: the composition reads
     // it once and the surfaces' album note follows. Defaulted to the iPhone's.
-    private val albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
+    private val albumContents: AlbumContents = AlbumContents.SharedAndReceived,
 ) : TappedContainerHost() {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,

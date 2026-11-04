@@ -44,7 +44,7 @@ import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.AlbumContents
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
