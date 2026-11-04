@@ -235,6 +235,47 @@ class ShareSetIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "A photo is never lost on the way",
+        scenario = "A photo whose upload a leave stopped is shared after rejoining",
+    )
+    fun a_photo_whose_upload_a_leave_stopped_is_sent_after_an_offline_rejoin() = behaviour {
+        val event = given {
+            extensionUploadsOnly()
+            joinedEvent().also {
+                photos("A")
+                step("A requested", act = { cycle() }, until = {
+                    event<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") }
+                    settled { true }
+                })
+                left() // the leave ends A's upload before its bytes are sent
+                step("the listing failing", act = { backend.failListing(true) }, until = {})
+                gateOpenOn(it)
+            }
+        }
+
+        // The rejoin cannot learn what the event holds, so it keeps what the device remembered of it.
+        whenever { confirmJoin() }
+        then {
+            screen<Layer.Joined> { it.membership.eventId == event }
+            settled { true }
+        }
+
+        // A was on its way when the leave stopped it: the next pass sends it, rather than waiting on an upload nothing runs.
+        whenever {
+            backend.failListing(false)
+            cycle()
+        }
+        then {
+            event<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") }
+            settled { true }
+        }
+        whenever { uploadQueue.completeJob() }
+        then { event<WorldEvent.BytesStored> { it.asset == "A" } }
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     /** The member leaves the joined event, and the backend records it. */

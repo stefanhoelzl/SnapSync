@@ -37,8 +37,23 @@ class UploadRowsReset(private val db: SharedDatabase) {
         },
     )
 
-    /** Purge every row of any event but [event], keeping what this device last knew of [event]. */
-    fun purgeExcept(event: EventId): StoreWrite = written(db.execute { it.ledgerQueries.purgeExcept(event.value) })
+    /**
+     * The join's kept reset: purge every row of any event but [event], and keep what this device last knew of [event]
+     * — except that a row in flight returns to needing a job, its destination cleared, in the same transaction.
+     *
+     * Safe because a join into a new membership follows a leave or switch that stopped every upload of [event]
+     * (`StopUploads`), so nothing is sending such a row, and nothing else would ever send it again. Should an OS job
+     * have survived, the cost is the same photo uploaded twice, which no member sees as a second copy. A `COMPLETED`
+     * row stays as it is.
+     */
+    fun purgeExcept(event: EventId): StoreWrite = written(
+        db.execute { database ->
+            database.ledgerQueries.transaction {
+                database.ledgerQueries.purgeExcept(event.value)
+                database.ledgerQueries.requeueRequested(event.value)
+            }
+        },
+    )
 
     private fun written(written: DbResult<*>): StoreWrite = when (written) {
         is DbResult.Ok -> StoreWrite.Written

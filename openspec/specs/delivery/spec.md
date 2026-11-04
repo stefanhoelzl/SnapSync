@@ -185,6 +185,11 @@ because the service failed while the member's phone was telling it what the memb
   each upload
 - **THEN** the photo reaches the event, and the other members receive it once
 
+#### Scenario: A photo whose upload a leave stopped is shared after rejoining
+- **WHEN** a member leaves an event while one of their photos is still uploading, and later rejoins it while the phone
+  cannot reach the service
+- **THEN** the photo is uploaded once the phone can reach the service again, without the member doing anything
+
 ### Requirement: Download problems delay photos, never corrupt or lose them
 
 A failed or incomplete download SHALL be retried; a download link that expired before it could be used

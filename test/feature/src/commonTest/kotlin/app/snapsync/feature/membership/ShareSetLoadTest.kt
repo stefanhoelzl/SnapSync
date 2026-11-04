@@ -49,13 +49,14 @@ class ShareSetLoadTest {
 
     /**
      * What a device carries into a join: an earlier event's rows — work in flight, work waiting, a stale belief —
-     * and, for a rejoin, one row of the event being joined.
+     * and, for a rejoin, two rows of the event being joined: one stored, one whose upload the leave stopped.
      */
     private fun leftovers() = TestLedger().apply {
         put(earlierEvent, "R-primary.heic", LedgerState.REQUESTED)
         put(earlierEvent, "D-primary.heic", LedgerState.DISCOVERED)
         put(earlierEvent, "S-primary.heic", LedgerState.COMPLETED)
         put(eventId, "J-primary.heic", LedgerState.COMPLETED)
+        put(eventId, "W-primary.heic", LedgerState.REQUESTED) // on its way when the leave stopped every upload
     }
 
     @Test
@@ -165,7 +166,9 @@ class ShareSetLoadTest {
 
     private fun assertKeptOnlyTheJoinedEvent(ledger: TestLedger) {
         assertEquals(setOf(testEventId(eventId).value), ledger.eventsHeld())
-        assertIs<UploadRow.Completed>(ledger.rowsOf(eventId).values.single())
-        assertEquals(setOf("J-primary.heic"), ledger.rowsOf(eventId).keys)
+        val kept = ledger.rowsOf(eventId)
+        assertEquals(setOf("J-primary.heic", "W-primary.heic"), kept.keys)
+        assertIs<UploadRow.Completed>(kept.getValue("J-primary.heic"), "what was stored stays stored")
+        assertIs<UploadRow.Discovered>(kept.getValue("W-primary.heic"), "the stranded upload needs a job again")
     }
 }
