@@ -91,7 +91,11 @@ class SharedDatabase(databases: Databases, legacy: LegacyCopy?) {
 /** The generated database over [driver] with its column adapters wired — the one place that knows each encoding. */
 fun sharedDatabaseOver(driver: SqlDriver): LedgerDatabase = LedgerDatabase(
     driver,
-    eventAlbumAdapter = EventAlbum.Adapter(eventIdAdapter = EventIdColumnAdapter),
+    eventAlbumAdapter = EventAlbum.Adapter(
+        eventIdAdapter = EventIdColumnAdapter,
+        albumLocalIdAdapter = EventAlbumIdColumnAdapter,
+        filledAdapter = AlbumFillColumnAdapter,
+    ),
     eventCheckAdapter = EventCheck.Adapter(eventIdAdapter = EventIdColumnAdapter),
     ledgerRowAdapter = LedgerRow.Adapter(assetIdAdapter = AssetIdColumnAdapter, stateAdapter = EnumColumnAdapter()),
     membershipAdapter = Membership.Adapter(

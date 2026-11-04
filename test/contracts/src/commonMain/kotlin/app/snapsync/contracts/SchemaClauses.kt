@@ -14,8 +14,10 @@ import app.snapsync.data.receiving.db.EventRef
 import app.snapsync.data.receiving.db.Recognised
 import app.snapsync.data.receiving.db.UnionCursor
 import app.snapsync.data.store.AlbumChoiceColumnAdapter
+import app.snapsync.data.store.AlbumFillColumnAdapter
 import app.snapsync.data.store.AssetIdColumnAdapter
 import app.snapsync.data.store.DeviceIdColumnAdapter
+import app.snapsync.data.store.EventAlbumIdColumnAdapter
 import app.snapsync.data.store.EventIdColumnAdapter
 import app.snapsync.data.store.db.EventAlbum
 import app.snapsync.data.store.db.EventCheck
@@ -106,7 +108,11 @@ private val LEDGER = ProductionSchema(
     database = {
         LedgerDatabase(
             it,
-            EventAlbum.Adapter(eventIdAdapter = EventIdText),
+            EventAlbum.Adapter(
+                eventIdAdapter = EventIdText,
+                albumLocalIdAdapter = EventAlbumIdColumnAdapter,
+                filledAdapter = AlbumFillColumnAdapter,
+            ),
             EventCheck.Adapter(eventIdAdapter = EventIdText),
             LedgerRow.Adapter(assetIdAdapter = AssetIdText, stateAdapter = EnumColumnAdapter()),
             Membership.Adapter(

@@ -1,5 +1,7 @@
 import app.snapsync.data.store.Stored;
 import app.snapsync.domain.album.AlbumChoice;
+import app.snapsync.domain.album.AlbumFill;
+import app.snapsync.domain.album.EventAlbumId;
 import app.snapsync.domain.event.DeletesAt;
 import app.snapsync.domain.event.EventEnd;
 import app.snapsync.domain.event.EventId;
@@ -10,15 +12,17 @@ import app.snapsync.domain.sharing.CaptureCutoff;
 import app.snapsync.domain.sharing.Direction;
 import kotlin.Boolean;
 
--- v18 -> v19: the membership's album column is read as the member's album choice (`AlbumChoice`) rather than a flag
+-- v18 -> v19: the event album's columns are read as the domain's values: the membership's album choice (`AlbumChoice`)
+-- rather than a flag, and each event's album as its `EventAlbumId` with its `AlbumFill` mark rather than text and a flag
 -- (`docs/patterns.md`, "Formats live at the boundary").
 --
--- NOTHING a device stores changes: the same columns, SQL types and constraints, the same rows, and the column still
--- holds 1 for an album and 0 for none (`AlbumChoiceColumnAdapter`). Only the Kotlin type SQLDelight binds the column to
--- changes — and that lives in the `CREATE TABLE` of a migration that may never be edited (`MigrationPinTest`), so the
--- table is re-created here as 17.sqm re-created it: staged in an ordinary table, re-created, the row moved back.
+-- NOTHING a device stores changes: the same columns, SQL types and constraints, the same rows. The choice still holds 1
+-- for an album and 0 for none (`AlbumChoiceColumnAdapter`), the mark 1 once filled (`AlbumFillColumnAdapter`), the album
+-- the text the platform wrote (`EventAlbumIdColumnAdapter`). Only the Kotlin type SQLDelight binds each column to
+-- changes — and that lives in the `CREATE TABLE` of a migration that may never be edited (`MigrationPinTest`), so each
+-- table is re-created here as 17.sqm re-created it: staged in an ordinary table, re-created, its rows moved back.
 --
--- ROW-PRESERVING, every column copied as it is. DOWNGRADE: the table an earlier build reads is the same table.
+-- ROW-PRESERVING, every column copied as it is. DOWNGRADE: the tables an earlier build reads are the same tables.
 
 CREATE TABLE membership_v18 AS SELECT * FROM membership;
 
@@ -53,3 +57,17 @@ SELECT id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesA
 FROM membership_v18;
 
 DROP TABLE membership_v18;
+
+CREATE TABLE eventAlbum_v18 AS SELECT * FROM eventAlbum;
+
+DROP TABLE eventAlbum;
+
+CREATE TABLE eventAlbum (
+    eventId      TEXT AS Stored<EventId> NOT NULL PRIMARY KEY,
+    albumLocalId TEXT AS EventAlbumId NOT NULL,
+    filled       INTEGER AS AlbumFill NOT NULL DEFAULT 0
+);
+
+INSERT INTO eventAlbum (eventId, albumLocalId, filled) SELECT eventId, albumLocalId, filled FROM eventAlbum_v18;
+
+DROP TABLE eventAlbum_v18;

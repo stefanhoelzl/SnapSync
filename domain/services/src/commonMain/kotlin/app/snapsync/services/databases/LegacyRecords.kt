@@ -8,6 +8,8 @@ import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.store.db.MembershipQueries
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.album.AlbumFill
+import app.snapsync.domain.album.EventAlbumId
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.ConfigFileDecode
 import app.snapsync.model.EventConfig
@@ -184,7 +186,11 @@ class LegacyRecords(
             // An entry naming no event is dropped: its album is found again by name at the next placement.
             albums.forEach { (key, album) ->
                 val eventId = EventId.parse(key) ?: return@forEach
-                db.eventAlbumQueries.importAlbum(Stored.Valid(eventId), album, key in filledEvents)
+                db.eventAlbumQueries.importAlbum(
+                    Stored.Valid(eventId),
+                    EventAlbumId(album),
+                    if (key in filledEvents) AlbumFill.Filled else AlbumFill.NotYetFilled,
+                )
             }
             db.legacyImportQueries.markImported(LegacySource.ALBUM.key)
         }

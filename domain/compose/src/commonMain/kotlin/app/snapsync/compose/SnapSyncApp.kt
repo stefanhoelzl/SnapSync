@@ -19,6 +19,7 @@ import app.snapsync.data.trust.AttestingCredential
 import app.snapsync.data.upload.OsUploader
 import app.snapsync.data.upload.UploaderSwitches
 import app.snapsync.data.version.AppVersionGate
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
@@ -44,7 +45,6 @@ import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.domain.album.AlbumContents
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
