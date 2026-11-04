@@ -1,16 +1,12 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.store.StoreWrite
+import app.snapsync.data.upload.DeviceListing
+import app.snapsync.data.upload.ListingRead
+import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.upload.LedgerState
-import app.snapsync.model.LedgerEntry
-import app.snapsync.services.backend.DeviceFilesSource
-import app.snapsync.services.backend.DeviceListingShapeException
-import app.snapsync.services.identity.requireDeviceId
-import app.snapsync.services.ledger.LedgerService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Upper bound on the join-time listing. The join surface is waiting on it, and uploads are bounded by an
@@ -27,7 +23,7 @@ private const val LISTING_TIMEOUT_MS = 15_000L
  * Every ledger row belongs to one event and every read is scoped to the joined one (change
  * `event-scoped-local-state`), so rows of an earlier event are inert whatever happened to them; this load purges
  * them as housekeeping. On a confirmed listing the joined event's rows become exactly the device's stored
- * resources IN THAT EVENT, one bare `COMPLETED` row each, in one atomic `resetTo` — so nothing the backend already
+ * resources IN THAT EVENT, one bare `COMPLETED` row each, in one atomic seed — so nothing the backend already
  * holds for this event is uploaded again. Each event holds its own bytes (change `per-event-storage-layout`): a
  * photo stored for another event is uploaded again for this one. On a failed or timed-out listing the other events'
  * rows are purged and the joined event's are left as they are: empty for a first join, and for a rejoin what this
@@ -43,53 +39,37 @@ private const val LISTING_TIMEOUT_MS = 15_000L
  * will not heal, and every future join would pay the full re-upload.
  */
 class ShareSetLoad(
-    private val files: DeviceFilesSource,
-    private val ledger: LedgerService,
-    /** The device identity; a thunk because it resolves against a protected store on first use. */
-    private val identity: DeviceIdentity,
+    private val listing: DeviceListing,
+    private val reset: UploadRowsReset,
     private val log: Logger = Logger.withTag("ShareSetLoad"),
 ) {
-    /** Load the share set of the membership in [eventId], the event being joined. */
     suspend fun load(eventId: EventId) {
-        // `list` answers failures as a `Result`; a throw (the device-id read, say) is folded into the same
-        // arm. Cancellation is not a failure and is rethrown — the caller is being torn down.
-        val listing = try {
-            withTimeoutOrNull(LISTING_TIMEOUT_MS) { files.list(eventId, identity.requireDeviceId()) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-        val stored = when {
-            listing == null -> {
-                log.w { "device listing timed out — this membership keeps only the rows it already had" }
-                null
+        when (val read = withTimeoutOrNull(LISTING_TIMEOUT_MS) { listing.stored(eventId) }) {
+            is ListingRead.Listed -> seeded(eventId, read)
+            is ListingRead.Unavailable -> kept(eventId).also {
+                log.w { "device listing fetch failed — this membership keeps only the rows it already had (${read.detail})" }
             }
-            listing.isFailure -> {
-                val cause = listing.exceptionOrNull()
-                if (cause is DeviceListingShapeException) {
-                    log.e(cause) {
-                        "device listing was not understood — keeping only the rows this event already had; this device " +
-                            "re-uploads what the backend already holds, and every join will until this is fixed"
-                    }
-                } else {
-                    log.w(cause) { "device listing fetch failed — this membership keeps only the rows it already had" }
+            is ListingRead.Unreadable -> kept(eventId).also {
+                log.e {
+                    "device listing was not understood — keeping only the rows this event already had; this device " +
+                        "re-uploads what the backend already holds, and every join will until this is fixed (${read.detail})"
                 }
-                null
             }
-            else -> listing.getOrThrow()
-        }
-        try {
-            if (stored == null) {
-                ledger.purgeExcept(eventId)
-            } else {
-                ledger.resetTo(eventId, stored.map { LedgerEntry(it.key, it.assetId, LedgerState.COMPLETED) })
-                log.i { "loaded the share set — ${stored.size} stored resource(s) seeded COMPLETED" }
+            null -> kept(eventId).also {
+                log.w { "device listing timed out — this membership keeps only the rows it already had" }
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log.e(e) { "could not reset the upload ledger at the join" }
         }
+    }
+
+    private fun seeded(eventId: EventId, read: ListingRead.Listed) {
+        when (val written = reset.seed(eventId, read.stored)) {
+            StoreWrite.Written -> log.i { "loaded the share set — ${read.stored.size} stored resource(s) seeded COMPLETED" }
+            is StoreWrite.Failed -> log.e { "could not reset the upload ledger at the join (${written.detail})" }
+        }
+    }
+
+    private fun kept(eventId: EventId) = when (val written = reset.purgeExcept(eventId)) {
+        StoreWrite.Written -> Unit
+        is StoreWrite.Failed -> log.e { "could not purge the other events' upload rows at the join (${written.detail})" }
     }
 }

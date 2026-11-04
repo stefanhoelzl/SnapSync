@@ -269,6 +269,7 @@ flowchart LR
   domain_services --> domain_wire
   test_architecture --> adapter_generic_app
   test_architecture --> adapter_generic_mock
+  test_architecture --> domain_application
   test_architecture --> domain_data
   test_architecture --> domain_domain
   test_architecture --> domain_feature

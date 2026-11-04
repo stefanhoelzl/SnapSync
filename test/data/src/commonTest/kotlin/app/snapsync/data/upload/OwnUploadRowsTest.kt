@@ -230,6 +230,7 @@ class OwnUploadRowsTest {
         assertIs<RowsRead.Unavailable>(reads.rows(event))
         assertIs<RowsRead.Unavailable>(reads.needingJob(event))
         assertIs<CountRead.Unavailable>(reads.inFlight(event))
+        assertNull(reads.inFlight(event).count)
         assertIs<StoreWrite.Failed>(walk.discover(event, listOf(found("A"))))
         assertIs<StoreWrite.Failed>(walk.backfill(event, listOf(found("A"))))
         assertIs<StoreWrite.Failed>(walk.withdraw(event, listOf(key("A"))))

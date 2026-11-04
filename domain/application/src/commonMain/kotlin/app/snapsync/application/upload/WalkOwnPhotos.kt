@@ -35,7 +35,7 @@ class WalkOwnPhotos(
     suspend operator fun invoke(event: EventId, contribution: Contribution): WalkOutcome =
         when (val read = rows.rows(event)) {
             is RowsRead.Read -> walked(read.rows, contribution, photos.discover(contribution))
-            is RowsRead.Unavailable -> WalkOutcome.Unwalked(read.detail).also {
+            is RowsRead.Unavailable -> WalkOutcome.NOTHING.also {
                 log.w("the upload rows could not be read — nothing walked", "detail" of read.detail)
             }
         }
@@ -43,7 +43,7 @@ class WalkOwnPhotos(
     private suspend fun walked(rows: List<UploadRow>, contribution: Contribution, read: DiscoveryRead): WalkOutcome =
         when (read) {
             is DiscoveryRead.Discovered -> discovered(rows, contribution, read)
-            DiscoveryRead.NotReadable -> WalkOutcome.Walked(
+            DiscoveryRead.NotReadable -> WalkOutcome(
                 WalkDiff.of(rows, emptyList(), emptySet(), emptySet()),
                 emptyMap(),
             )
@@ -67,18 +67,19 @@ class WalkOwnPhotos(
             "read" of toRead.size,
             "resources" of walked.size,
         )
-        return WalkOutcome.Walked(WalkDiff.of(rows, walked.map { it.found }, ids, window), walked.handles())
+        return WalkOutcome(WalkDiff.of(rows, walked.map { it.found }, ids, window), walked.handles())
     }
 
     private fun List<WalkedResource>.handles(): Map<UploadKey, SendFrom> =
         associate { it.found.key to it.from }
 }
 
-/** What a walk came to. */
-sealed interface WalkOutcome {
-    /** What the walk writes, and the handles of the resources it read — a top-up right after sends from them. */
-    class Walked(val diff: WalkDiff, val handles: Map<UploadKey, SendFrom>) : WalkOutcome
-
-    /** The rows could not be read: nothing was walked. */
-    data class Unwalked(val detail: String) : WalkOutcome
+/**
+ * What a walk came to: what it writes ([diff]), and the handles of the resources it read — a top-up right after sends
+ * from them. A walk that could not read the rows walked nothing ([NOTHING]): it writes nothing and adds nothing.
+ */
+class WalkOutcome(val diff: WalkDiff, val handles: Map<UploadKey, SendFrom>) {
+    companion object {
+        val NOTHING = WalkOutcome(WalkDiff.of(emptyList(), emptyList(), emptySet(), emptySet()), emptyMap())
+    }
 }

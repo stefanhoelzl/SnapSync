@@ -109,9 +109,6 @@ class CompositionSeamTest {
      * only through the sibling's own ports.
      */
     private val constructorPins: Map<String, String> = mapOf(
-        "App.admit" to
-            "UploaderProcess.App: the app's admission, bound to AppCore.appUploadAdmission() — grant, selection " +
-            "scope and rig pin, all in-process state. The extension's variant reads the GalleryReader PORT's grant",
         "AlbumGather.policyFor" to
             "the membership's ONE contribution's policy (OwnPhotos), derived in compose/ over the download store — " +
             "a store the gather may not name (feature-blindness)",
@@ -119,9 +116,6 @@ class CompositionSeamTest {
             "emits the minted event on AppCore.mintedEvents, which the host zone collects into this core's join gate " +
             "(StatusContainerHost.onEventCreated) — a re-entry into this same graph so create and a scanned QR take " +
             "one gate, not two. Nothing leaves the process",
-        "CycleGateRead.admission" to
-            "UploaderProcess.admission: the app's from its own core (its read plan and rig pin — in-process " +
-            "state), the extension's from the GalleryReader PORT's grant through extensionAdmission",
         "CollectDiagnosticDump.uploadFacts" to
             "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
         "CollectDiagnosticDump.appFacts" to
@@ -136,19 +130,6 @@ class CompositionSeamTest {
         "StatusCountsPoller.refreshCheapLocalReads" to "this core's own StatusRefresh.refreshCheapLocalReads()",
         "StatusRefresh.refreshDownloadLine" to "the sibling download status source's refresh — feature-blindness",
         "StatusRefresh.contributionFor" to "the membership's ONE contribution (OwnPhotos), derived in compose/",
-        // The app's own uploads, as a finished upload takes them (`OwnUploads`).
-        "OwnUploads.admission" to "this core's own app admission (AppCore.appMayCreate), read fresh at each completion",
-        "ShareSettlement.publishFinal" to
-            "the sibling uploader's walkAndPublish (its discovery and publish are ports) — feature-blindness",
-        "JoinedMembership.contribution" to "the membership's ONE contribution (OwnPhotos), derived when the cycle asks",
-        "UploadCycle.readGate" to "uploadCycle's own entry-gate translation over the services (readGate in UploadCore.kt)",
-        "UploadCycle.engineFor" to
-            "builds the SyncEngine over the gate's config per cycle — core machinery, whose transfer is a port",
-        "UploadCycle.onDiscovery" to
-            "the sibling DeviceManifestProducer (its publish is the ManifestPublisher backend service, over the Backend PORT)",
-        "UploadCycle.placeInAlbum" to
-            "the sibling AlbumCoordinator.place (its PhotoKit touches are the AlbumManager port's)",
-        "UploadTransitions.appEngine" to "the entry points' UploadEngine — this core's own uploads and the uploader behind them",
     )
 
     // ---- scanning ---------------------------------------------------------------------------------
@@ -262,10 +243,12 @@ class CompositionSeamTest {
         // facts (WakeRearm.facts) and the extension's registrability (UploadTransitions.extensionRegistrable) are
         // types now. 19 since receiving moved (4.5): the download arm's direction (DownloadArm.enabled), the controller's
         // import readiness, event album and album callback, the received status source's event and direction, and the
-        // adoption's record went with the controller — receiving's steps are use cases now. Lower it only with a removal
-        // like those, never to pass.
+        // adoption's record went with the controller — receiving's steps are use cases now. 9 since the uploads
+        // moved into the layers (4.4b): the cycle's gate, engine, discovery and album hooks, the admissions, the final
+        // share's publish and the transitions' engine are typed steps now. Lower it only with a removal like those, never
+        // to pass.
         assertTrue(
-            found.size >= 19,
+            found.size >= 9,
             "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
                 "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
         )

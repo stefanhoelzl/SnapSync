@@ -28,8 +28,8 @@ class ReconcileUploader(
     private val registrar: ExtensionRegistrar,
 ) {
     @EntryPointCall
-    suspend operator fun invoke(change: UploaderChange): UploaderArming? = when (change.needsMembership && !joined()) {
-        true -> null
+    suspend operator fun invoke(change: UploaderChange): UploaderArming = when (change.needsMembership && !joined()) {
+        true -> UploaderArming.UNCHANGED
         false -> reconciled(change)
     }
 

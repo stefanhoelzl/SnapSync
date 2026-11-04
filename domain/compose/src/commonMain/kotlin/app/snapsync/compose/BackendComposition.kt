@@ -8,10 +8,7 @@ import app.snapsync.data.trust.AttestingCredential
 import app.snapsync.domain.event.EventId
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.ports.Clock
-import app.snapsync.ports.Crypto
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.upload.Resuming
-import app.snapsync.services.upload.UploadStandings
 
 /**
  * The app's credential: it proves with the platform's integrity service and reaches the backend's open `/attest/…`
@@ -50,15 +47,4 @@ internal fun backendServicesFor(
         services.deviceIdentity,
         zone = { services.process.clock.timeZone().id },
         eventOver = eventOver,
-    )
-
-/**
- * What makes the app's file uploads resume where a failed attempt stopped (`docs/architecture.md`, "Resumable
- * uploads"): where a failed upload stands, asked of the backend through [backend]'s gateway, and the hash its file is
- * declared by. A top-level factory for the reason [attestationFor] is.
- */
-internal fun uploadResumingFor(services: AppServices, backend: BackendServices, crypto: Crypto): Resuming =
-    Resuming(
-        UploadStandings(backend.gateway, services.config::activeEventId, services.deviceIdentity),
-        crypto,
     )

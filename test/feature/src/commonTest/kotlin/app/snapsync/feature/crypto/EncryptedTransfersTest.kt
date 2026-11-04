@@ -4,11 +4,15 @@ import app.snapsync.data.crypto.DownloadOpening
 import app.snapsync.data.crypto.FileCipher
 import app.snapsync.data.crypto.Landing
 import app.snapsync.data.crypto.OpenAnswer
+import app.snapsync.data.crypto.UploadSeal
 import app.snapsync.data.crypto.UploadSealing
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.Landed
 import app.snapsync.data.receiving.StagingArea
 import app.snapsync.data.receiving.TransferTag
+import app.snapsync.data.upload.Exported
+import app.snapsync.data.upload.StagedFiles
+import app.snapsync.data.upload.UploadExport
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
 import app.snapsync.domain.asset.ResourceRole
@@ -20,7 +24,6 @@ import app.snapsync.domain.event.KeyMaterial
 import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.support.RecordingFiles
 import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.TestEventKeys
@@ -30,43 +33,16 @@ import app.snapsync.format.EventKeyText
 import app.snapsync.format.HeadRead
 import app.snapsync.format.Hmac
 import app.snapsync.format.TimestampText
-import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemoryGallery
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.mock.mobileDataAnswering
 import app.snapsync.model.EventConfig
-import app.snapsync.model.LedgerEntry
-import app.snapsync.model.Resource
-import app.snapsync.model.TerminalOutcome
-import app.snapsync.model.UploadCreateOutcome
-import app.snapsync.model.UploadRequest
-import app.snapsync.ports.ChangeOutcome
-import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
-import app.snapsync.ports.OsUploadJob
-import app.snapsync.ports.OsUploadJobHandle
-import app.snapsync.ports.OsUploadQueue
-import app.snapsync.ports.Transfer
-import app.snapsync.ports.TransferHandlers
-import app.snapsync.ports.TransferNetwork
-import app.snapsync.ports.TransferSession
-import app.snapsync.ports.TransferSource
-import app.snapsync.ports.UploadJobState
-import app.snapsync.ports.UploadTarget
 import app.snapsync.ports.WriteOutcome
-import app.snapsync.services.gallery.GalleryResourceRef
-import app.snapsync.services.gallery.KeyedRead
-import app.snapsync.services.gallery.KeyedResources
-import app.snapsync.services.upload.OsQueueTransfer
-import app.snapsync.services.upload.SessionTransfer
-import app.snapsync.services.upload.TransferRecord
-import app.snapsync.services.upload.TransferSetup
-import app.snapsync.services.upload.uploadStagingPath
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
@@ -135,39 +111,6 @@ class EncryptedTransfersTest {
         }
     }
 
-    /** The app's session, sending files, remembering what it was asked to send. */
-    private class FileSession : TransferSession {
-        override val takesResources = false
-        val created = mutableListOf<Pair<TransferSource, UploadTarget>>()
-
-        @CompositionOnly
-        override fun inbound(handlers: TransferHandlers) = Unit
-        override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
-            created += source to target
-            return CreateOutcome.CREATED
-        }
-        override suspend fun live(): List<Transfer> = emptyList()
-        override suspend fun cancel(transfer: Transfer) = Unit
-    }
-
-    /** The OS's job queue, sending the library's own bytes, remembering what it was asked to send and re-point. */
-    private class Queue : OsUploadQueue {
-        val created = mutableListOf<Pair<GalleryResourceHandle, UploadTarget>>()
-        val retried = mutableListOf<UploadTarget>()
-        var offered: List<OsUploadJob> = emptyList()
-        override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome {
-            created += resource to target
-            return CreateOutcome.CREATED
-        }
-        override suspend fun retryOffered(): List<OsUploadJob> = offered
-        override suspend fun terminals(): List<OsUploadJob> = emptyList()
-        override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
-            retried += target
-            return ChangeOutcome.Applied
-        }
-        override suspend fun acknowledge(job: OsUploadJob): ChangeOutcome = ChangeOutcome.Applied
-    }
-
     /** A library whose export writes [photo] where it is told — into the device's in-memory shared area. */
     private fun exporting(files: RecordingFiles): GalleryReader =
         object : GalleryReader by inMemoryGallery(MutableStateFlow(emptyList())) {
@@ -177,46 +120,12 @@ class EncryptedTransfersTest {
             }
         }
 
-    private val noDiscovery = object : KeyedResources {
-        override suspend fun resourcesFor(keys: Set<String>): KeyedRead = KeyedRead.Resolved(emptyList())
-    }
-
-    /** The one row a retry resolves its offered job to — by destination, as the ledger does. */
-    private val record = object : TransferRecord {
-        override suspend fun entryForDestination(destinationPath: String): LedgerEntry? =
-            LedgerEntry(
-                key = KEY,
-                assetId = testAssetId(ASSET),
-                state = LedgerState.REQUESTED,
-                destinationPath = destinationPath,
-            )
-        override suspend fun entryForKey(key: String): LedgerEntry? = null
-        override fun markTerminal(key: String, outcome: TerminalOutcome): Boolean = true
-    }
-
-    private fun setup(device: Device) = TransferSetup(
-        record = record,
-        resources = noDiscovery,
-        gallery = exporting(device.files),
-        files = device.files,
-        network = mobileDataAnswering { TransferNetwork.ANY },
-        sealing = device.sealing,
-    )
-
-    private fun transfer(device: Device, session: TransferSession) = SessionTransfer(session, setup(device))
-
-    private fun transfer(device: Device, queue: OsUploadQueue) = OsQueueTransfer(queue, setup(device))
-
-    private val resource = Resource(KEY, testAssetId(ASSET), "public.heic", emptyMap(), GalleryResourceRef(TestPhoto))
-
-    /** The photo library's handle of the one photo these transfers send. */
+    /** The photo library's handle of the one photo these uploads send. */
     private object TestPhoto : GalleryResourceHandle
-    private val request = UploadRequest(
-        "https://edge.example/api/v2/events/$EVENT/files/devices/$DEVICE_A/$ASSET/primary?filename=IMG.HEIC",
-        mapOf("Content-Type" to "image/heic"),
-        resource,
-        testEventId(EVENT),
-    )
+
+    /** How [device] seals the one photo's primary for the event. */
+    private fun sealOf(device: Device) =
+        device.sealing.sealFor(testEventId(EVENT), testAssetId(ASSET), ResourceRole.PRIMARY)
 
     private fun adFor(device: String) = EncryptedFileFormat.associatedData(
         FileBinding(EventId.parse(EVENT)!!, DeviceId.parse(device)!!, AssetId.parse(ASSET)!!, ResourceRole.PRIMARY),
@@ -226,19 +135,15 @@ class EncryptedTransfersTest {
     fun a_sealed_upload_is_what_another_member_opens_and_the_plaintext_never_waits_on_disk() = runTest {
         val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val sharer = Device(DEVICE_A, minted.linkKey, minted.keyId)
-        val session = FileSession()
+        val staging = StagedFiles(sharer.files)
+        val order = assertIs<UploadSeal.Sealed>(sealOf(sharer)).order
 
-        assertEquals(UploadCreateOutcome.CREATED, transfer(sharer, session).createJob(request, resource))
-        val (source, target) = session.created.single()
-        assertEquals("mem:/shared/${uploadStagingPath(KEY)}", assertIs<TransferSource.File>(source).path)
-        assertTrue(
-            target.headers.keys.none { it.startsWith("x-snapsync-file") },
-            "a file sealed here needs no edge seal",
+        assertEquals(
+            Exported.DONE,
+            UploadExport(exporting(sharer.files), sharer.files, sharer.sealing, staging).sealed(KEY, TestPhoto, order),
         )
-        val sealed = assertIs<FileResult.Ok<ByteArray>>(
-            sharer.files.read(FileArea.SHARED, uploadStagingPath(KEY)),
-        ).value
-        assertEquals(FileResult.Ok(false), sharer.files.exists(FileArea.SHARED, "${uploadStagingPath(KEY)}.plain"))
+        val sealed = assertIs<FileResult.Ok<ByteArray>>(sharer.files.read(FileArea.SHARED, staging.path(KEY))).value
+        assertEquals(FileResult.Ok(false), sharer.files.exists(FileArea.SHARED, "${staging.path(KEY)}.plain"))
 
         // Another member downloads those bytes and stages them opened.
         val receiver = Device(DEVICE_B, minted.linkKey, minted.keyId)
@@ -252,44 +157,27 @@ class EncryptedTransfersTest {
     fun a_platform_that_sends_the_librarys_own_bytes_carries_that_one_files_key_for_the_edge() = runTest {
         val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
-        val queue = Queue()
-        assertEquals(UploadCreateOutcome.CREATED, transfer(device, queue).createJob(request, resource))
-        val (source, target) = queue.created.single()
-        assertEquals<GalleryResourceHandle>(TestPhoto, source)
+        val headers = device.sealing.edgeSeal(assertIs<UploadSeal.Sealed>(sealOf(device)).order).headers()
         val head = assertIs<HeadRead.Read>(
-            EncryptedFileFormat.decodeHead(decodeBase64(target.headers.getValue(EncryptedFileFormat.FILE_HEAD_HEADER))),
+            EncryptedFileFormat.decodeHead(decodeBase64(headers.getValue(EncryptedFileFormat.FILE_HEAD_HEADER))),
         ).head
         val eventKey = EventKeyText.decode(minted.linkKey)!!.bytes()
         assertContentEquals(EncryptedFileFormat.keyIdOf(eventKey, portHmac(crypto)), head.keyId)
         assertContentEquals(
             EncryptedFileFormat.fileKeyOf(eventKey, head.salt, adFor(DEVICE_A), portHmac(crypto)),
-            decodeBase64(target.headers.getValue(EncryptedFileFormat.FILE_KEY_HEADER)),
+            decodeBase64(headers.getValue(EncryptedFileFormat.FILE_KEY_HEADER)),
             "the one file's key, bound to this resource — never the event key",
         )
     }
 
     @Test
-    fun without_the_events_key_nothing_goes_up() = runTest {
+    fun without_the_events_key_nothing_is_sealed() = runTest {
+        // A tier makes nothing for a withheld seal (`SessionTierTest`, `OsQueueTest`): never plaintext to the event.
         val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
         val other = TestEventKeys(crypto, inMemorySecureStore()).mint()
         for (device in listOf(Device(DEVICE_A, null, minted.keyId), Device(DEVICE_A, other.linkKey, minted.keyId))) {
-            val session = FileSession()
-            assertEquals(UploadCreateOutcome.FAILED, transfer(device, session).createJob(request, resource))
-            assertTrue(session.created.isEmpty(), "the session: no transfer")
-            val queue = Queue()
-            assertEquals(UploadCreateOutcome.FAILED, transfer(device, queue).createJob(request, resource))
-            assertTrue(queue.created.isEmpty(), "the queue: no job")
+            assertIs<UploadSeal.Withheld>(sealOf(device))
         }
-    }
-
-    @Test
-    fun a_plain_event_uploads_as_before() = runTest {
-        val device = Device(DEVICE_A, null, null)
-        transfer(device, FileSession()).createJob(request, resource)
-        assertContentEquals(
-            photo,
-            assertIs<FileResult.Ok<ByteArray>>(device.files.read(FileArea.SHARED, uploadStagingPath(KEY))).value,
-        )
     }
 
     @Test
@@ -338,55 +226,6 @@ class EncryptedTransfersTest {
         const val DEVICE_B = "B0000000-0000-4000-8000-00000000000B"
         const val ASSET = "ASSET1"
         const val KEY = "ASSET1-primary.heic"
-    }
-
-    private object OfferedJob : OsUploadJobHandle
-
-    private fun offeredJob() = OsUploadJob(
-        handle = OfferedJob,
-        destinationUrl = "https://edge.example/api/v2/events/$EVENT/files/devices/$DEVICE_A/$ASSET/primary",
-        contentType = "image/heic",
-        state = UploadJobState.FAILED,
-        failure = null,
-        resource = null,
-    )
-
-    @Test
-    fun the_platforms_own_retry_renews_the_edge_seal_and_a_missing_key_withholds_it() = runTest {
-        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
-        val sealed = Queue().apply { offered = listOf(offeredJob()) }
-        val transfer = transfer(Device(DEVICE_A, minted.linkKey, minted.keyId), sealed)
-        transfer.retryJob(transfer.fetchRetryJobs().single(), request)
-        assertTrue(
-            EncryptedFileFormat.FILE_KEY_HEADER in sealed.retried.single().headers,
-            "a retry carries a fresh one-file key",
-        )
-
-        val withheld = Queue().apply { offered = listOf(offeredJob()) }
-        val keyless = transfer(Device(DEVICE_A, null, minted.keyId), withheld)
-        keyless.retryJob(keyless.fetchRetryJobs().single(), request)
-        assertTrue(withheld.retried.isEmpty(), "never a retry that would send plaintext")
-    }
-
-    @Test
-    fun a_seal_that_cannot_be_written_creates_no_job_and_leaves_nothing_staged() = runTest {
-        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
-        val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
-        device.files.denied += FileArea.SHARED to "${uploadStagingPath(KEY)}.part"
-        val session = FileSession()
-        assertEquals(UploadCreateOutcome.FAILED, transfer(device, session).createJob(request, resource))
-        assertTrue(session.created.isEmpty())
-        assertEquals(FileResult.Ok(false), device.files.exists(FileArea.SHARED, "${uploadStagingPath(KEY)}.plain"))
-    }
-
-    @Test
-    fun a_seal_with_nowhere_to_export_the_plaintext_creates_no_job() = runTest {
-        val minted = TestEventKeys(crypto, inMemorySecureStore()).mint()
-        val device = Device(DEVICE_A, minted.linkKey, minted.keyId)
-        device.files.unlocatable += "${uploadStagingPath(KEY)}.plain"
-        val session = FileSession()
-        assertEquals(UploadCreateOutcome.FAILED, transfer(device, session).createJob(request, resource))
-        assertTrue(session.created.isEmpty())
     }
 
     @Test

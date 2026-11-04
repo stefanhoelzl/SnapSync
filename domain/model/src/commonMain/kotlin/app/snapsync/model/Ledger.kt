@@ -29,7 +29,7 @@ class LedgerEntry(
     val assetId: AssetId,
     val state: LedgerState,
     val creationDate: String = "",
-    val role: ResourceRole? = null,
+    val role: ResourceRole = ResourceRole.PRIMARY,
     val contentType: String = "",
     val originalFilename: String = "",
     /**
@@ -49,9 +49,6 @@ class LedgerEntry(
      */
     val destinationPath: String? = null,
 ) {
-    /** Whether this row still needs the manifest-detail backfill. */
-    val needsManifestDetail: Boolean get() = creationDate.isEmpty()
-
     override fun equals(other: Any?): Boolean = other is LedgerEntry &&
         key == other.key && assetId == other.assetId && state == other.state &&
         creationDate == other.creationDate && role == other.role &&
@@ -63,104 +60,3 @@ class LedgerEntry(
     override fun toString(): String =
         "LedgerEntry($key, assetId=$assetId, $state)"
 }
-
-/**
- * Record one resource as a ledger row, carrying the **device manifest's** presentation detail off the resource that
- * caused the transition.
- *
- * The one place that mapping is made, so the manifest cannot disagree with the ledger about what a
- * resource is called or when it was taken. [role] is derived from the upload key rather than stored
- * twice; an unrecognized key yields `null`, which the projection treats as a row it cannot name.
- */
-fun Resource.toLedgerRow(
-    state: LedgerState,
-    destinationPath: String? = null,
-): LedgerEntry = LedgerEntry(
-    key = filename,
-    assetId = assetId,
-    state = state,
-    creationDate = metadata[RESOURCE_META_CREATION_DATE] ?: "",
-    role = roleFromUploadKey(filename),
-    contentType = metadata[RESOURCE_META_MIME] ?: contentType,
-    originalFilename = metadata[RESOURCE_META_ORIGINAL_FILENAME] ?: "",
-    destinationPath = destinationPath,
-)
-
-/**
- * How an upload **terminated**, as the platform reported it, and the state the ledger's guarded terminal write records
- * for each: a success is [LedgerState.COMPLETED]; a failure returns the row to [LedgerState.DISCOVERED], so the
- * ledger's work read offers it again.
- *
- * A type rather than a [LedgerState] because that write is the one record operation reachable outside the
- * single writer's type-level protection: the party the platform tells is a callback holding only the key.
- * Fixing the recordable set in the parameter's type makes claiming a job exists — recording `REQUESTED` —
- * through it a compile error instead of a convention. The cases name what the **platform** reported: `FAILED`
- * is still what happened, although the ledger no longer has a state of that name.
- *
- * Decision records: `changes/retire-uploaded-state` (D6), `changes/shrink-the-ledger-row` (D3).
- */
-enum class TerminalOutcome(val state: LedgerState) {
-    COMPLETED(LedgerState.COMPLETED),
-    FAILED(LedgerState.DISCOVERED),
-}
-
-/**
- * Whether a row in this state is **settled** — nothing further is owed for its key.
- *
- * The single decision behind every state-scoped ledger read. The backlog read, the aggregate counts and
- * the device-manifest projection all take [DONE_STATES] as a bound parameter rather than comparing `state`
- * to a literal, so adding a fourth state cannot land silently on one side of a query: this `when` has no
- * `else` and stops compiling until the new value is classified.
- *
- * That is not hypothetical caution. Three `.sq` predicates used to read `state != 'COMPLETED'` / `state =
- * 'COMPLETED'`, and while the Kotlin readers fail loudly on a new enum value (`SyncEngine`'s `when` has no
- * `else` either), those three would simply have filed a new state on one side of a string comparison with
- * no error anywhere.
- */
-val LedgerState.isDone: Boolean
-    get() = when (this) {
-        LedgerState.COMPLETED -> true
-        LedgerState.DISCOVERED, LedgerState.REQUESTED -> false
-    }
-
-/** The settled states, bound into every state-scoped storage read. See [isDone]. */
-val DONE_STATES: List<LedgerState> = LedgerState.entries.filter { it.isDone }
-
-/**
- * Whether a row in this state **needs an upload job** — nothing is in flight for its key, and its bytes
- * are not on the backend.
- *
- * The second, independent classification alongside [isDone], and the one that makes the ledger the
- * cycle's source of work: a producer asks for these rows rather than asking the library. The two axes do
- * not imply each other — [LedgerState.REQUESTED] is neither done nor in need of a job — so every state is
- * classified on both, and this `when` has no `else` for the same reason [isDone] has none.
- *
- * Only [LedgerState.DISCOVERED] needs one. A failed upload returns its row there, so the never-retried
- * failure and the never-enqueued remainder are one fact found by one read — which is why the separate
- * `FAILED` state could be retired (decision record `changes/shrink-the-ledger-row`).
- */
-val LedgerState.needsJob: Boolean
-    get() = when (this) {
-        LedgerState.DISCOVERED -> true
-        LedgerState.REQUESTED, LedgerState.COMPLETED -> false
-    }
-
-/** The states needing an upload job, bound into the work-source read. See [needsJob]. */
-val NEEDS_JOB_STATES: List<LedgerState> = LedgerState.entries.filter { it.needsJob }
-
-/**
- * The ledger's lifetime truth in one snapshot-consistent read, counted by **photo (assetId), not
- * resource row**: [pending] = photos with any non-`COMPLETED` resource, [completed] = photos whose
- * resources are all `COMPLETED`.
- */
-data class LedgerAggregates(
-    val pending: Int,
-    val completed: Int,
-)
-
-/**
- * One outstanding resource: the [assetId] (photo) a non-`COMPLETED` [key] belongs to. The backlog
- * read returns these so a status projection can group outstanding resources by photo; the backend
- * never interprets them (it just reports the rows whose state is not `COMPLETED`).
- */
-data class PendingResource(val assetId: AssetId, val key: String)

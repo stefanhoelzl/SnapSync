@@ -7,17 +7,24 @@ import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.data.upload.OwnUploadRows
+import app.snapsync.data.upload.RowRead
+import app.snapsync.data.upload.RowTransition
+import app.snapsync.data.upload.RowTransitions
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.domain.upload.LedgerState
+import app.snapsync.domain.upload.DestinationPath
+import app.snapsync.domain.upload.MintsEndedJob
+import app.snapsync.domain.upload.ReportedLanding
+import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.TimestampText
+import app.snapsync.format.UploadKeyText
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.TerminalOutcome
 import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.Databases
 import app.snapsync.ports.FileArea
@@ -44,25 +51,29 @@ import kotlin.test.assertTrue
  * upgrading phone takes. That the migrations also run on each platform's own SQLite is `DatabasesContract`'s
  * `LEDGER_SCHEMA_MIGRATES_FROM_ITS_FIRST_VERSION`.
  */
+@OptIn(MintsEndedJob::class)
 class LedgerMigrationTest {
 
     @Test
     fun `an upgrade from v12 adopts every parked row into the membership the app copies`() = runTest {
         val (databases, driver) = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
-        val ledger = LedgerService(appOpen(databases, membershipFile(JOINED))) { testEventId(JOINED) }
+        val shared = appOpen(databases, membershipFile(JOINED))
+        val rows = OwnUploadRows(shared)
+        val event = testEventId(JOINED)
 
-        assertEquals(LedgerState.COMPLETED, ledger.get("C-photo.jpg")?.state, "adopted, not lost")
+        assertIs<UploadRow.Completed>(found(rows.row(event, key("C-primary.jpg"))), "adopted, not lost")
         assertEquals(listOf(JOINED), driver.eventIds())
         // A job queued before the upgrade still settles: the destination survives both rebuilds.
-        assertEquals("R-photo.jpg", ledger.entryForDestination("/v2/files/R")?.key)
-        assertTrue(ledger.markTerminal("R-photo.jpg", TerminalOutcome.COMPLETED))
+        val queued = found(rows.byDestination(event, DestinationPath("/v2/files/R")))
+        assertEquals(key("R-primary.jpg"), queued.key)
+        assertEquals(RowTransition.Transitioned, RowTransitions(shared).landed(event, ReportedLanding(queued.key)))
     }
 
     @Test
     fun `with no membership to copy the parked rows are no event's and go`() = runTest {
         val (databases, driver) = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
 
-        LedgerService(appOpen(databases, inMemoryFiles())) { null }.manifestVersion()
+        OwnUploadRows(appOpen(databases, inMemoryFiles())).manifestVersion()
 
         assertTrue(driver.eventIds().isEmpty())
     }
@@ -71,11 +82,11 @@ class LedgerMigrationTest {
     fun `a later join never adopts what was parked`() = runTest {
         // The extension opened first and migrated, as it may: nothing is copied, so nothing is adopted or dropped.
         val (databases, driver) = databaseAt(LEDGER_DB_NAME, LedgerDatabase.Schema.at(12, V12_ROWS))
-        LedgerService(SharedDatabase(databases, legacy = null)) { testEventId(LATER) }.manifestVersion()
+        OwnUploadRows(SharedDatabase(databases, legacy = null)).rows(testEventId(LATER))
         assertEquals(listOf(""), driver.eventIds(), "parked, untouched by a process that copies nothing")
 
         // The app's copy finds no membership file — the device had left — so the rows go, never to the later event.
-        LedgerService(appOpen(databases, inMemoryFiles())) { testEventId(LATER) }.manifestVersion()
+        OwnUploadRows(appOpen(databases, inMemoryFiles())).rows(testEventId(LATER))
         assertTrue(driver.eventIds().isEmpty())
     }
 
@@ -85,14 +96,14 @@ class LedgerMigrationTest {
             LEDGER_DB_NAME,
             LedgerDatabase.Schema.at(
                 13,
-                "INSERT INTO ledgerRow (eventId, key, assetId, state) VALUES ('', 'C-photo.jpg', 'C', 'COMPLETED')",
-                "INSERT INTO ledgerRow (eventId, key, assetId, state) VALUES ('$JOINED', 'C-photo.jpg', 'C', 'DISCOVERED')",
+                "INSERT INTO ledgerRow (eventId, key, assetId, state) VALUES ('', 'C-primary.jpg', 'C', 'COMPLETED')",
+                "INSERT INTO ledgerRow (eventId, key, assetId, state) VALUES ('$JOINED', 'C-primary.jpg', 'C', 'DISCOVERED')",
             ),
         )
 
-        val ledger = LedgerService(appOpen(databases, membershipFile(JOINED))) { testEventId(JOINED) }
+        val rows = OwnUploadRows(appOpen(databases, membershipFile(JOINED)))
 
-        assertEquals(LedgerState.DISCOVERED, ledger.get("C-photo.jpg")?.state)
+        assertIs<UploadRow.Discovered>(found(rows.row(testEventId(JOINED), key("C-primary.jpg"))))
         assertEquals(listOf("", JOINED), driver.eventIds(), "the duplicate stays parked until a purge")
     }
 
@@ -127,6 +138,11 @@ class LedgerMigrationTest {
     }
 }
 
+/** The row [read] found. */
+private fun found(read: RowRead): UploadRow = assertIs<RowRead.Found>(read).row
+
+private fun key(text: String) = checkNotNull(UploadKeyText.parse(text)) { text }
+
 /** The event every service in this file is joined to, unless a test says otherwise. */
 private const val JOINED = "e101ed00-0000-4000-8000-00000000000a"
 
@@ -153,7 +169,7 @@ private fun SqlDriver.eventIds(): List<String> = strings("SELECT DISTINCT eventI
 /** One settled row and one in flight, as v12 holds them. */
 private const val V12_ROWS: String =
     "INSERT INTO ledgerRow VALUES " +
-        "('C-photo.jpg', 'C', 'COMPLETED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_C.JPG', '/v2/files/C'), " +
-        "('R-photo.jpg', 'R', 'REQUESTED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_R.JPG', '/v2/files/R')"
+        "('C-primary.jpg', 'C', 'COMPLETED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_C.JPG', '/v2/files/C'), " +
+        "('R-primary.jpg', 'R', 'REQUESTED', '2026-07-10T00:00:00Z', 'primary', 'image/jpeg', 'IMG_R.JPG', '/v2/files/R')"
 
 private const val LATER = "1a7e0000-0000-4000-8000-00000000000b"

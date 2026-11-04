@@ -18,7 +18,7 @@ import platform.Photos.PHPhotosErrorLimitExceeded
 /**
  * The PhotoKit upload-job **vocabulary mappings** — Apple's job states, error domain and limit code into the `OsUploadQueue`
  * port's neutral vocabulary. What a job then MEANS for the ledger (its row, its terminal disposition, its offered
- * retry) moved to the upload services in phase 11f (`services/upload/UploadJobDecisions.kt`); what stays is exactly
+ * retry) is the data layer's (`data/upload/OsQueueDrain.kt`, `JobOwners.kt`); what stays is exactly
  * what an adapter may hold: technology vocabulary, beside the SDK constants it names, so a value moving under us is a
  * red test (`PhotoKitJobMappingTest`) rather than a silent mis-mapping.
  *

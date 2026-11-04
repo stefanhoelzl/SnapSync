@@ -1,5 +1,6 @@
 package app.snapsync.feature.status
 
+import app.snapsync.data.upload.ProgressRead
 import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -9,6 +10,20 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class LedgerCountsSourceTest {
+
+    @Test
+    fun the_upload_rows_progress_counts_by_photo_and_an_unreadable_read_keeps_the_last_counts() = runTest {
+        assertEquals(LedgerCounts.ZERO, LedgerCounts.of(null as ProgressRead?), "nothing joined counts nothing")
+        val read = ProgressRead.Read(mapOf(testAssetId("d") to true, testAssetId("p") to false))
+        assertEquals(LedgerCounts(setOf(testAssetId("d")), setOf(testAssetId("p"))), LedgerCounts.of(read))
+
+        var next: ProgressRead = read
+        val source = ReadingLedgerCountsSource { LedgerCounts.of(next) }
+        source.refresh()
+        next = ProgressRead.Unavailable("locked")
+        source.refresh()
+        assertEquals(setOf(testAssetId("d")), source.counts.value.done, "the last good counts are kept")
+    }
 
     @Test
     fun refresh_publishes_the_read_counts() = runTest {

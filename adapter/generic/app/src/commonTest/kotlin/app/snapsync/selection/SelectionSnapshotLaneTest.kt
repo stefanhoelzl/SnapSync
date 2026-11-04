@@ -1,8 +1,6 @@
 package app.snapsync.selection
 
-import app.snapsync.model.Resource
 import app.snapsync.ports.LibraryGrant
-import app.snapsync.testids.testAssetId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,10 +32,13 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class SelectionSnapshotLaneTest {
 
+    /** What one snapshot holds of a selected photo — the lane carries its snapshots uninterpreted. */
+    private data class Snapped(val id: String)
+
     /** A selection is a list of ids; a change appends one. The baseline can be held open by a test. */
     private class FakePlatform(
         private val initial: List<String>,
-    ) : SelectionPlatform<List<String>, String, List<Resource>> {
+    ) : SelectionPlatform<List<String>, String, List<Snapped>> {
         var onChange: ((String) -> Unit)? = null
         var stops = 0
         var baselineGate: CompletableDeferred<Unit>? = null
@@ -71,7 +72,7 @@ class SelectionSnapshotLaneTest {
         /** Every enumeration, by the selection it read — the expensive call the lane folds. */
         val enumerations = mutableListOf<List<String>>()
 
-        override suspend fun snapshot(of: List<String>): List<Resource> {
+        override suspend fun snapshot(of: List<String>): List<Snapped> {
             enumerations += of
             snapshotGate?.let { gate ->
                 snapshotGate = null
@@ -80,21 +81,12 @@ class SelectionSnapshotLaneTest {
             return render(of)
         }
 
-        private fun render(of: List<String>): List<Resource> =
-            of.map {
-                Resource(
-                    filename = "$it.heic",
-                    assetId = testAssetId(it),
-                    contentType = "image/heic",
-                    metadata = emptyMap(),
-                    data = null,
-                )
-            }
+        private fun render(of: List<String>): List<Snapped> = of.map(::Snapped)
 
         fun change(id: String) = checkNotNull(onChange) { "not observing" }(id)
     }
 
-    private fun List<Resource>.ids() = map { it.assetId.value }
+    private fun List<Snapped>.ids() = map { it.id }
 
     @Test
     fun rapid_changes_from_many_threads_emit_in_the_order_they_were_applied() = runTest {

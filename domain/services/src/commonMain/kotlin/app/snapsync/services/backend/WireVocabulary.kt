@@ -13,12 +13,6 @@ internal fun ResourceRole.onWire(): Role = when (this) {
     ResourceRole.LIVE -> Role.LIVE
 }
 
-/** A described role, as the app names it. */
-internal fun Role.inApp(): ResourceRole = when (this) {
-    Role.PRIMARY -> ResourceRole.PRIMARY
-    Role.LIVE -> ResourceRole.LIVE
-}
-
 /**
  * This snapshot as the backend takes it (`Manifest`), or `null` when it carries no version: every snapshot a
  * publish sends is stamped by its producer, and the backend refuses one without.

@@ -52,7 +52,7 @@ fun AppCore.inbound(host: HostAssembly) {
     )
     ports.uploadSession.inbound(
         TransferHandlers(
-            OnUploadFinished(runtime, uploadTransfer, work.ownUploads, work.topUp),
+            OnUploadFinished(runtime, appUploader.recordFinished, appUploader.admission, work.topUp),
             OnUploadSessionEvents(runtime, uploadDrains, work.wakeWork),
             OnSessionDrained(runtime, uploadDrains),
         ),

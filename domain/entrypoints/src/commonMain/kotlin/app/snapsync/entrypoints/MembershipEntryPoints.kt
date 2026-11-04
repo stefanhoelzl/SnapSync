@@ -24,6 +24,8 @@ import app.snapsync.application.receiving.RecognizeReceivedPhotos
 import app.snapsync.application.receiving.ReportReceivedPosition
 import app.snapsync.application.receiving.StopReason
 import app.snapsync.application.receiving.StopReceiving
+import app.snapsync.application.upload.ReconcileUploader
+import app.snapsync.application.upload.StopUploads
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.KeepOutcome
 import app.snapsync.data.membership.MembershipRead
@@ -45,12 +47,12 @@ import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.upload.ShareSettlement
-import app.snapsync.feature.upload.UploadTransitions
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.query.membership.MembershipQuery
@@ -226,7 +228,8 @@ class Joining(
 
 /** What follows entering a membership: the uploads, the counts, the album, the others' photos and the push. */
 class AfterJoin(
-    private val uploads: UploadTransitions,
+    private val reconcile: ReconcileUploader,
+    private val arm: UploaderArm,
     private val statusRefresh: StatusRefresh,
     private val album: EventAlbum,
     private val receivingOf: ReceivingOf,
@@ -236,7 +239,8 @@ class AfterJoin(
 ) {
     @OptIn(EntryPointCall::class)
     suspend fun run(id: RequestId, joined: Membership.Active, known: UnionPage?, on: Run) = on.steps {
-        isolated("uploads") { uploads.onJoin() }
+        val armed = required { reconcile(UploaderChange.JOIN) }
+        isolated("arm") { arm.apply(armed) }
         isolated("status") { statusRefresh.run() }
         required { album.run("join", joined, on) }
         // The join itself starts receiving the event's history — no opening, no wake.
@@ -253,8 +257,8 @@ class AfterJoin(
 
 /** What a committed leave stops — every step its own, so one that fails leaves the rest done. */
 class Leaving(
-    private val uploads: UploadTransitions,
-    private val stop: StopReceiving,
+    private val stop: StopUploads,
+    private val receiving: StopReceiving,
     private val keys: EventKeyStore,
     private val deliver: DeliverPendingLeaves,
 ) {
@@ -263,8 +267,8 @@ class Leaving(
     @OptIn(EntryPointCall::class)
     suspend fun run(left: LeftMembership, on: Run) = on.steps {
         required { log.i("left", "event" of left.event) }
-        isolated("stop uploads") { uploads.onLeave() }
-        isolated("stop receiving") { stop(StopReason.Left(left)) }
+        isolated("stop uploads") { stop(left) }
+        isolated("stop receiving") { receiving(StopReason.Left(left)) }
         isolated("forget key") { keys.forget(left) }
         detached { deliver() }
     }
@@ -273,7 +277,8 @@ class Leaving(
 /** What a saved settings change re-drives, before the member is told it is saved. */
 class AfterSettings(
     private val statusRefresh: StatusRefresh,
-    private val uploads: UploadTransitions,
+    private val reconcile: ReconcileUploader,
+    private val arm: UploaderArm,
     private val album: EventAlbum,
     private val receivingOf: ReceivingOf,
     private val plan: PlanReceiving,
@@ -285,7 +290,8 @@ class AfterSettings(
     suspend fun run(id: RequestId, saved: Membership.Active, on: Run) = on.steps {
         isolated("status") { statusRefresh.run() }
         // A kick whatever the direction: the cycle's policy decides what uploads; nothing in flight is cancelled.
-        isolated("uploads") { uploads.onReconfigure() }
+        val armed = required { reconcile(UploaderChange.RECONFIGURE) }
+        isolated("arm") { arm.apply(armed) }
         required { album.run("reconfigure", saved, on) }
         when (val receiving = required { receivingOf(saved) }) {
             // Receiving: the event hears it at once, so what a share-only phase told it never lets it finish early.
@@ -330,8 +336,8 @@ class EventAlbum(
 class SweepLeftovers(
     private val membership: MembershipBranch,
     private val keys: EventKeyStore,
-    private val stop: StopReceiving,
-    private val uploads: UploadTransitions,
+    private val receiving: StopReceiving,
+    private val stop: StopUploads,
     private val transition: MembershipTransition,
 ) {
     @OptIn(EntryPointCall::class)
@@ -340,8 +346,8 @@ class SweepLeftovers(
             notJoined { none ->
                 isolated("leftover key") { transition.unlessJoining { keys.forget(none) } }
                 // Unless a join is in progress, whose own downloads these may already be.
-                isolated("leftover downloads") { transition.unlessJoining { stop(StopReason.NotJoined(none)) } }
-                isolated("leftover registration") { uploads.stopLeftovers(none, transition) }
+                isolated("leftover downloads") { transition.unlessJoining { receiving(StopReason.NotJoined(none)) } }
+                isolated("leftover registration") { transition.unlessJoining { stop(none) } }
             }
         }
     }
@@ -441,11 +447,11 @@ class StateRefresh(private val membership: MembershipBranch, private val transfe
 }
 
 /** What a deleted event's membership stops: every upload and download, as a leave stops them. */
-class DeletedTransfers(private val uploads: UploadTransitions, private val stop: StopReceiving) {
+class DeletedTransfers(private val stopUploads: StopUploads, private val stop: StopReceiving) {
     @OptIn(EntryPointCall::class)
     suspend fun stop(deleted: Membership.Deleted, on: Run) = on.steps {
         isolated("stop receiving") { stop(StopReason.Deleted(deleted)) }
-        isolated("stop uploads") { uploads.onLeave() }
+        isolated("stop uploads") { stopUploads(deleted) }
     }
 }
 
@@ -460,6 +466,7 @@ class EndOfWake(
     private val photoCheck: PhotoCheck,
     private val deliver: DeliverPendingLeaves,
     private val settlement: ShareSettlement,
+    private val walkAndPublish: WalkAndPublish,
     private val claim: ClaimStateCheck,
     private val stateRefresh: StateRefresh,
     private val received: ReceivedPositionReport,
@@ -470,7 +477,7 @@ class EndOfWake(
             false -> Unit
         }
         isolated("pending leaves") { deliver() }
-        isolated("final share") { settlement.settle() }
+        required { finalShare(on) }
         membership(membership, Freshness.Cached) {
             active { joined ->
                 when (required { claim(joined, kind.boundsEventRead) }) {
@@ -480,5 +487,13 @@ class EndOfWake(
             }
         }
         isolated("received report") { received.run(on) }
+    }
+
+    /** This device's share published final once its own range has ended — the walk → publish marks it so. */
+    private suspend fun finalShare(on: Run) = on.steps {
+        when (required { settlement.due() }) {
+            true -> run(walkAndPublish)
+            false -> Unit
+        }
     }
 }

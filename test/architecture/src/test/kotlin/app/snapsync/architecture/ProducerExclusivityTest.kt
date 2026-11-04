@@ -1,46 +1,44 @@
 package app.snapsync.architecture
 
+import app.snapsync.application.EntryPointCall
+import app.snapsync.application.upload.ReconcileUploader
+import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
+import app.snapsync.data.upload.ExtensionRegistrar
+import app.snapsync.data.upload.OsUploader
+import app.snapsync.data.upload.UploaderSwitches
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.membership.LeftMembership
+import app.snapsync.domain.membership.MintsLeftMembership
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.domain.sharing.ReadPlan
-import app.snapsync.domain.upload.AppUploaderSwitch
 import app.snapsync.domain.upload.ExtensionSwitch
 import app.snapsync.domain.upload.OsSupport
 import app.snapsync.domain.upload.OsUploaderAdmission
-import app.snapsync.feature.upload.AppUploadEngine
-import app.snapsync.feature.upload.UploadAdmission
-import app.snapsync.feature.upload.UploadTransitions
-import app.snapsync.feature.upload.appAdmission
-import app.snapsync.feature.upload.extensionAdmission
+import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.format.TimestampText
-import app.snapsync.mock.fixedClock
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.mock.osUploaderOver
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
+import app.snapsync.ports.DevControls
+import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
+import app.snapsync.ports.RegistrationAnswer
+import app.snapsync.ports.RegistrationState
 import app.snapsync.ports.UploaderPin
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.use
-import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.gallery.galleryAccess
-import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.upload.ExtensionRegistration
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.time.Instant
 
 /**
  * The upload transitions stop in-flight work only at a leave (`docs/architecture.md`, "The upload
@@ -49,20 +47,19 @@ import kotlin.time.Instant
  * **Re-pointed, not retired.** This guard used to assert that no reachable state admitted two ledger writers.
  * Both uploaders now run by design — an overlap is a duplicate of the same object, never a loss — so that is no
  * longer the risk. The risk now is the one the redesign exists to remove: a transition that **orphans** work — a
- * deregistration that wipes the extension's in-flight OS jobs, or a cancel of the app's transfers — anywhere but at
- * a leave, where the ledger is cleared right after. Nothing repairs an orphaned `REQUESTED` row any more, so an
- * orphan is a photo that silently never uploads. Neither the compiler nor any single unit test sees every
- * transition sequence at once; this guard does.
+ * write of the extension's registration that wipes its in-flight OS jobs — anywhere but at a leave. Nothing repairs an
+ * orphaned `REQUESTED` row any more, so an orphan is a photo that silently never uploads. Neither the compiler nor any
+ * single unit test sees every transition sequence at once; this guard does.
  *
- * It drives the REAL registration fact and the REAL [UploadTransitions], over a fake registration that behaves as
- * the platform was measured to (every write refused under `LIMITED` — 3311; the read untrustworthy without a full
- * grant) and a fake app engine whose OS-held state survives a relaunch. Every script starts from each combination
- * of leftovers a previous process or installation can leave.
- *
- * **"No bare enable" is structural**, so it is not asserted here: [ExtensionRegistration] has no enable verb but
- * the ritual (`register()`), and `OsDrivenRegistrationTest` pins that the ritual disables first. "No duplicate job
- * start in a normal sequence" is a cycle property and lives in `UploadCycleTest`.
+ * It drives the REAL [ReconcileUploader] and [ExtensionRegistrar] — what each membership transition and the launch
+ * run, as their entry points call them (which use case a trigger runs is the entry point's, read in one file and
+ * covered by the integration suite) — over a fake registry port that behaves as the platform was measured to (every
+ * write refused under `LIMITED` — 3311; the read untrustworthy without a full grant). Every script starts from each
+ * leftover registration a previous process or installation can leave. Cancelling the app's own transfers is not
+ * driven: only `StopUploads` does it, and only with the evidence a membership's uploads end (`EndsUploads`, an
+ * opt-in marker pinned in `OptInPinsTest`).
  */
+@OptIn(EntryPointCall::class, MintsLeftMembership::class)
 class ProducerExclusivityTest {
 
     /**
@@ -70,50 +67,43 @@ class ProducerExclusivityTest {
      * one — and, below iOS 26.1 ([supported] false), no record at all: the port answers `Unsupported` and asks the OS
      * nothing, so [calls] (the operating-system calls) stays empty there.
      */
-    private class PlatformRegistration(var grant: LibraryGrant, var registered: Boolean, val supported: Boolean) :
-        ExtensionRegistration {
+    private class PlatformRegistry(var grant: LibraryGrant, var registered: Boolean, override val supported: Boolean) :
+        ExtensionRegistry {
         val calls = mutableListOf<String>()
 
-        override suspend fun register() {
-            if (!supported) return
-            calls += "register"
-            if (grant != LibraryGrant.LIMITED) registered = true
+        override suspend fun setEnabled(enabled: Boolean): RegistrationAnswer {
+            if (!supported) return RegistrationAnswer.Unsupported
+            calls += if (enabled) "enable" else "disable"
+            val takes = grant != LibraryGrant.LIMITED
+            if (takes) registered = enabled
+            return RegistrationAnswer.Answered(ok = takes, domain = null, code = if (takes) null else 3311L)
         }
 
-        override suspend fun deregister() {
-            if (!supported) return
-            calls += "deregister"
-            if (grant != LibraryGrant.LIMITED) registered = false
-        }
-
-        override fun isRegistered(): Boolean? {
-            if (!supported) return null
+        override fun isEnabled(): RegistrationState {
+            if (!supported) return RegistrationState.UNSUPPORTED
             calls += "read"
-            return grant == LibraryGrant.GRANTED && registered
+            return if (grant == LibraryGrant.GRANTED && registered) {
+                RegistrationState.REGISTERED
+            } else {
+                RegistrationState.NOT_REGISTERED
+            }
         }
     }
 
-    /** The app engine's OS-held state. */
-    private class Engine : AppUploadEngine {
-        val calls = mutableListOf<String>()
-
-        override suspend fun arm() { calls += "arm" }
-        override suspend fun disarm() { calls += "disarm" }
-        override suspend fun cancelTransfers() { calls += "cancel" }
-    }
-
-    /** One device: OS fact, grant, membership, the rig switch, and the two uploaders' platform state. */
+    /** One device: OS fact, grant, membership, and the extension's platform registration. */
     private class Device(val osSupported: Boolean, registered: Boolean, database: SharedDatabase) {
         private val grantCell = MutableStateFlow(LibraryGrant.NOT_DETERMINED)
         var grant: LibraryGrant
             get() = grantCell.value
-            set(value) { grantCell.value = value }
+            set(value) {
+                grantCell.value = value
+                registry.grant = value
+            }
         var joined = false
 
         /** The REAL membership, over [database] — which the caller hands over with no membership row. */
         val membership = MembershipRepository(database)
         private val held = database
-        val config = MembershipProjection(membership, CLOCK)
 
         /** [joined] as the membership row a join writes, re-read as every trigger re-reads it. */
         fun join(joined: EventConfig) {
@@ -138,15 +128,15 @@ class ProducerExclusivityTest {
             }
             membership.reload()
         }
-        var pin: UploaderPin? = null
-        val registration = PlatformRegistration(grant, registered, supported = osSupported)
-        val engine = Engine()
-        val transitions = UploadTransitions(
-            configSource = config,
-            photoAccess = GalleryAccessState(grantCell),
-            osUploader = osUploaderOver(osSupported, grantCell, pin = { pin }),
-            registration = registration,
-            appEngine = { engine },
+
+        val registry = PlatformRegistry(grantCell.value, registered, supported = osSupported)
+        private val grantRead = GrantRead(grantCell)
+        val registrar = ExtensionRegistrar(registry)
+        val reconcile = ReconcileUploader(
+            membership,
+            OsUploader(registry, UploaderSwitches(NoPin), grantRead),
+            grantRead,
+            registrar,
         )
     }
 
@@ -157,9 +147,8 @@ class ProducerExclusivityTest {
         data object Leave : Step
         data class Permission(val grant: LibraryGrant) : Step
 
-        /** A relaunch with its UI; the grant may have changed while dead, and the switch dies with the process. */
+        /** A relaunch with its UI; the grant may have changed while dead. */
         data class Launch(val grant: LibraryGrant) : Step
-        data class Override(val pin: UploaderPin?) : Step
     }
 
     private val steps: List<Step> = buildList {
@@ -170,7 +159,6 @@ class ProducerExclusivityTest {
             add(Step.Permission(g))
             add(Step.Launch(g))
         }
-        for (pin in listOf(null, UploaderPin(app = false), UploaderPin(extension = false))) add(Step.Override(pin))
     }
 
     private suspend fun Device.apply(step: Step) {
@@ -178,28 +166,21 @@ class ProducerExclusivityTest {
             Step.Join -> {
                 joined = true
                 join(MEMBERSHIP)
-                transitions.onJoin()
+                reconcile(UploaderChange.JOIN)
             }
-            Step.Reconfigure -> { if (joined) transitions.onReconfigure() }
+            Step.Reconfigure -> reconcile(UploaderChange.RECONFIGURE)
             Step.Leave -> {
                 joined = false
                 membership.leave()
-                transitions.onLeave()
+                registrar.deregister(LeftMembership(MEMBERSHIP.eventId))
             }
             is Step.Permission -> {
                 grant = step.grant
-                registration.grant = grant
-                transitions.onPermissionChanged()
+                reconcile(UploaderChange.GRANT_CHANGED)
             }
             is Step.Launch -> {
                 grant = step.grant
-                registration.grant = grant
-                pin = null
-                transitions.onLaunch()
-            }
-            is Step.Override -> {
-                pin = step.pin
-                transitions.onOverrideChanged()
+                reconcile(UploaderChange.LAUNCH)
             }
         }
     }
@@ -215,34 +196,16 @@ class ProducerExclusivityTest {
         }
     }
 
-    @Test
-    fun `the admission gates answer from the grant and the switch alone`() {
-        for (grant in LibraryGrant.entries) {
-            val permission = grant.galleryAccess()
-            for (pin in listOf(null, UploaderPin(), UploaderPin(app = false), UploaderPin(extension = false))) {
-                val usable = permission == GalleryAccess.GRANTED || permission == GalleryAccess.LIMITED
-                // A partial grant's selection read (if empty): the plan the composition derives from the grant.
-                val plan = ReadPlan.of(grant.photoAccess(), selection = Unit)
-                val app = appAdmission(plan, if (pin?.app == false) AppUploaderSwitch.OFF else AppUploaderSwitch.ON) == UploadAdmission.Admit
-                assertEquals(usable && pin?.app != false, app, "app under $permission / $pin")
-            }
-            val ext = extensionAdmission(permission) == UploadAdmission.Admit
-            assertEquals(permission == GalleryAccess.GRANTED, ext, "extension under $permission")
-        }
-    }
-
     /**
      * Every 3-step script over every reachable event, on both OSes, from every leftover registration — asserting
-     * after every step that work is stopped only by a leave (or the rig's extension switch), and that no compared
-     * transition writes the registration under a grant that refuses or cannot read it. (A re-provision of the
-     * joined event never reaches the transitions: the provision flow runs the membership entry only on a real
-     * entry — `ProvisionTest` pins that.)
+     * after every step that a registration write which wipes in-flight jobs happens only at a leave or a join, and
+     * that no compared transition writes the registration under a grant that refuses or cannot read it.
      */
     @Test
     fun `no transition but a leave orphans in-flight work`() = runTest {
         var scripts = 0
         // One in-memory shared database for every script, its membership row cleared before each: opening and
-        // migrating a fresh one per script was most of this guard's runtime (~16k scripts, 27 s).
+        // migrating a fresh one per script was most of this guard's runtime.
         val database = SharedDatabase(inMemoryDatabases(), LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
         val reset = MembershipRepository(database)
         for (osSupported in listOf(true, false)) for (registered in listOf(false, true)) {
@@ -251,45 +214,40 @@ class ProducerExclusivityTest {
                 val device = Device(osSupported, registered = registered && osSupported, database)
                 val script = listOf(a, b, c)
                 for (step in script) {
-                    device.registration.calls.clear()
-                    device.engine.calls.clear()
+                    val wasConfirmed = device.registry.registered && device.grant == LibraryGrant.GRANTED
+                    device.registry.calls.clear()
                     device.apply(step)
-                    check(device, step, script)
+                    check(device, step, script, wasConfirmed)
                 }
                 scripts++
             }
         }
-        assertTrue(scripts > 5_000, "the guard drove only $scripts scripts — its step alphabet collapsed")
+        assertTrue(scripts > 1_000, "the guard drove only $scripts scripts — its step alphabet collapsed")
     }
 
-    private fun check(device: Device, step: Step, script: List<Step>) {
+    private fun check(device: Device, step: Step, script: List<Step>, wasConfirmed: Boolean) {
         val where = "os=${device.osSupported} after $step in $script"
-        val reg = device.registration.calls
-        val eng = device.engine.calls
-        if (!device.osSupported) assertTrue(reg.isEmpty(), "a registration call below 26.1 — $where")
-        if ("cancel" in eng) assertEquals(Step.Leave, step, "transfers cancelled outside a leave — $where")
-        if ("deregister" in reg) {
-            val switchedOff = step is Step.Override && step.pin?.extension == false
-            assertTrue(step == Step.Leave || switchedOff, "a deregistration outside a leave or the switch — $where")
-        }
+        val writes = device.registry.calls.filter { it != "read" }
+        if (!device.osSupported) assertTrue(device.registry.calls.isEmpty(), "a registration call below 26.1 — $where")
+        if (writes == listOf("disable")) assertTrue(step == Step.Leave, "a deregistration outside a leave — $where")
         val forced = step == Step.Join || step == Step.Leave
-        if (!forced && device.grant != LibraryGrant.GRANTED) {
+        if (!forced) {
             assertTrue(
-                reg.none { it == "register" || it == "deregister" },
+                writes.isEmpty() || device.grant == LibraryGrant.GRANTED,
                 "a compared transition wrote the registration under ${device.grant} — $where",
             )
+            assertTrue(writes.isEmpty() || !wasConfirmed, "a compared transition re-registered a live record — $where")
         }
-        val switchedOff = step is Step.Override && step.pin?.extension == false
-        val couldDeregister = device.joined && device.osSupported && device.grant == LibraryGrant.GRANTED
-        if (switchedOff && couldDeregister) {
-            assertTrue(!device.registration.registered, "switching the extension off left it registered — $where")
+        if (step == Step.Join && registrable(device.osSupported, device.grant, pin = null)) {
+            assertTrue(device.registry.registered, "a join where registrable left the extension unregistered — $where")
         }
-        if (step == Step.Join && registrable(device.osSupported, device.grant, device.pin)) {
-            assertTrue(
-                device.registration.registered,
-                "a join where registrable left the extension unregistered — $where",
-            )
-        }
+    }
+
+    /** The rig's switches as a production build reads them: no pin. */
+    private object NoPin : DevControls {
+        override fun uploaderPin(): UploaderPin? = null
+
+        override fun createsPlainEvents(): Boolean = false
     }
 }
 
@@ -299,8 +257,6 @@ private fun registrable(supported: Boolean, grant: LibraryGrant, pin: UploaderPi
     grant.photoAccess(),
     if (pin?.extension == false) ExtensionSwitch.OFF else ExtensionSwitch.ON,
 ) == OsUploaderAdmission.REGISTRABLE
-
-private val CLOCK = fixedClock(Instant.parse("2026-01-02T00:00:00Z"))
 
 /** The membership a join persists. */
 private val MEMBERSHIP =

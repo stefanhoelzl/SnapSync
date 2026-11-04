@@ -128,4 +128,16 @@ class SessionEndsTest {
         world.sweep.releaseUnclaimed(world.event)
         assertTrue(world.staged.path("orphan") in world.files.held)
     }
+
+    @Test
+    fun `with nothing joined no row needs a staged file - every one no transfer sends goes`() = runTest {
+        val world = SessionWorld()
+        world.joined()
+        world.discovered()
+        world.files.held[world.staged.path(world.tag())] = ByteArray(1)
+
+        world.sweep.releaseUnclaimed(event = null)
+
+        assertFalse(world.staged.path(world.tag()) in world.files.held, "no membership: its row is no one's")
+    }
 }

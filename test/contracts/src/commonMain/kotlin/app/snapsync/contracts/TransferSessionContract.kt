@@ -103,7 +103,7 @@ class Relaunch(
 
 /**
  * What every [TransferSession] owes the upload services (`docs/architecture.md` — this list IS the specification). What
- * an end MEANS for the ledger is the services' (`SessionTransfer`, tested over doubles); what is contracted here is that
+ * an end MEANS for the ledger is the data layer's (`SessionEnds`, tested over doubles); what is contracted here is that
  * the session starts what it is asked and refuses what it cannot, tells each end once, as it happens, under the tag the
  * transfer was made with, stops a live transfer when asked, and hands a relaunch's events over and then drains.
  */

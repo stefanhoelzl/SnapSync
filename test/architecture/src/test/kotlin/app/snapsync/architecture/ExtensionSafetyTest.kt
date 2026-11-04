@@ -96,7 +96,7 @@ class ExtensionSafetyTest {
      * `commonMain` file cannot reference a platform framework at all — the reference does not resolve on
      * the JVM target and the module would not compile — so scanning common source can only produce false
      * positives. It produced them immediately: `platform` is an ordinary parameter name on the
-     * `BackgroundTransfer` seam, so `UploadCycle`'s `platform.retryJob(…)` reads as a framework
+     * old `BackgroundTransfer` seam, so the old upload cycle's `platform.retryJob(…)` read as a framework
      * reference to any pattern that does not know where it is looking.
      */
     private fun scanned(): List<File> = linkedModules()

@@ -192,7 +192,7 @@ class JvmRigHost private constructor(
                     rig.world.servedServices(
                         rig.host,
                         rig.threads.acts,
-                        reconcileUploads = { rig.app.composed.core.uploadTransitions.onOverrideChanged() },
+                        reconcileUploads = { rig.app.composed.core.reconcileUploaders() },
                     ) + rig.world.servedHostServices(jvmHostServices(rig, hooks), rig.threads.acts)
                 },
                 // The running launch's fact: the played OS may carry the upload extension from a relaunch on.

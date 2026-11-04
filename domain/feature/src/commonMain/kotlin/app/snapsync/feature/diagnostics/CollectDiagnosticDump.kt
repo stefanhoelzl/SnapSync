@@ -5,6 +5,8 @@ import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.trust.RefusalFacts
+import app.snapsync.data.upload.ProgressRead
+import app.snapsync.data.upload.UploadProgress
 import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.format.TimestampText
@@ -22,7 +24,6 @@ import app.snapsync.model.ReportContext
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.ledger.LedgerService
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.membership.MembershipProjection
 import kotlinx.coroutines.async
@@ -48,7 +49,7 @@ import kotlin.time.Duration.Companion.seconds
  * `failed (<reason>)` and the report goes on. A fact the platform does not have is left out.
  *
  * **No new port surface.** The ledger section is five integers that shipped code already reads —
- * `LedgerService.aggregates()` plus the download store's three counts. Row lists were considered and
+ * the upload rows' per-photo progress plus the download store's three counts. Row lists were considered and
  * rejected: completed rows are only readable by loading all of them, and the backlog is unbounded
  * exactly on the stuck device worth dumping from (4,000 outstanding rows is ~400 KB, over half the
  * log budget) while carrying neither state nor attempt. The log says *why*; the counts say *how many*.
@@ -56,7 +57,7 @@ import kotlin.time.Duration.Companion.seconds
 class CollectDiagnosticDump(
     private val environment: DiagnosticEnvironment,
     private val logs: LogTailService,
-    private val ledger: LedgerService,
+    private val progress: UploadProgress,
     private val downloads: ReceivingCounts,
     private val config: MembershipProjection,
     private val permission: GalleryAccessState,
@@ -187,7 +188,7 @@ class CollectDiagnosticDump(
      * disagreement reads as a bug at 2am.
      */
     private suspend fun ledgerSection(): Map<String, String> {
-        val aggregates = ledger.aggregates()
+        val photos = ownProgress()
         // Both sides read in one round-trip each, so a dump reports one state of each store rather than a
         // composite of several — the disagreement this section's KDoc warns reads as a bug at 2am.
         val downloadCounts = when (val read = downloads.census()) {
@@ -195,12 +196,21 @@ class CollectDiagnosticDump(
             is DownloadRead.Unavailable -> error("the download store cannot be read: ${read.detail}")
         }
         return mapOf(
-            "photos_pending" to aggregates.pending.toString(),
-            "photos_completed" to aggregates.completed.toString(),
+            "photos_pending" to photos.count { !it }.toString(),
+            "photos_completed" to photos.count { it }.toString(),
             "downloads_imported" to downloadCounts.imported.toString(),
             "downloads_assets" to downloadCounts.stillArriving.toString(),
             "downloads_in_flight" to downloadCounts.inFlight.toString(),
         )
+    }
+
+    /** Per photo of the joined event, whether all its rows are done — none while nothing is joined or readable. */
+    private fun ownProgress(): Collection<Boolean> {
+        val event = config.activeEventId() ?: return emptyList()
+        return when (val read = progress.progress(event)) {
+            is ProgressRead.Read -> read.done.values
+            is ProgressRead.Unavailable -> emptyList()
+        }
     }
 
     /**

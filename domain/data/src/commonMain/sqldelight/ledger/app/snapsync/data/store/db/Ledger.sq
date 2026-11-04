@@ -9,7 +9,7 @@ import app.snapsync.domain.upload.LedgerState;
 -- `ledgerRow` — one row per resource this device has seen for the joined event.
 -- - THE ROW BELONGS TO ONE EVENT (12.sqm; change `event-scoped-local-state`). Each event holds its own bytes, so a
 --   `COMPLETED` row is true for its event only, and the primary key is `(eventId, key)`. Every statement below is
---   scoped to one `:eventId` — `LedgerService` binds the joined one — so a row of any other event is inert: it can
+--   scoped to one `:eventId` — the data layer binds the joined one — so a row of any other event is inert: it can
 --   neither suppress an upload nor count as work. Such rows are removed by the next join's purge (`purgeExcept`),
 --   not by the leave. The empty event is where 12.sqm parked the rows that predate it, until the membership's legacy copy
 --   adopts or drops them (`adoptParked`, `dropParked`).

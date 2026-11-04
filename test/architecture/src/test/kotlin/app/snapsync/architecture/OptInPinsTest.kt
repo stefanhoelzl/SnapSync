@@ -58,10 +58,10 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                9,
+                11,
                 "the wake's prelude, a finished download's staging and record, a completed one's free, the key's " +
-                    "restore, the push token's and credential's registration, the mobile-data change and the wake's " +
-                    "re-arm call their use cases",
+                    "restore, the push token's and credential's registration, the mobile-data change, the wake's " +
+                    "re-arm, a finished upload's record and the foreground's stored-upload settle call their use cases",
             ),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ReceivingEntryPoints.kt" to mapOf(
@@ -81,6 +81,20 @@ class OptInPinsTest {
         ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ReceivingComposition.kt" to mapOf(
             "AppProcessOnly" to Pin(2, "the app's download store: its read-write file, the one writer and migrator"),
+        ),
+        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/UploadEntryPoints.kt" to mapOf(
+            "EntryPointCall" to Pin(
+                7,
+                "the app's upload sequences — the top-up, the walk and publish, the wake's own uploads — and the " +
+                    "uploaders' reconcile call the upload use cases",
+            ),
+        ),
+        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ExtensionEntryPoints.kt" to mapOf(
+            "EntryPointCall" to Pin(
+                6,
+                "the extension's one pass — its gate, the queue's settle, the walk, the top-up — calls the upload " +
+                    "use cases",
+            ),
         ),
         "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to mapOf(
             "KeyMaterial" to Pin(1, "a key's text: its bytes, spelled"),

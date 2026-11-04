@@ -3,10 +3,7 @@ package app.snapsync.feature.membership
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
-import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.domain.upload.LedgerState
-import app.snapsync.feature.support.OwnLibrary
-import app.snapsync.feature.support.captureRange
 import app.snapsync.feature.support.testShared
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.model.DeviceManifest
@@ -31,15 +28,18 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+/** [rows] projected with every asset among them admitted. */
+private suspend fun project(rows: List<LedgerEntry>) =
+    projectDeviceManifest(testDeviceId("dev"), rows, rows.mapTo(mutableSetOf()) { it.assetId })
+
+/** [rows] produced with every asset among them admitted. */
+private suspend fun DeviceManifestProducer.produceAll(event: EventId, rows: List<LedgerEntry>, manifestVersion: Long) =
+    produce(event, rows, rows.mapTo(mutableSetOf()) { it.assetId }, manifestVersion)
+
 /**
- * An admitting policy over `[cutoff, +30 days]` — the projection's date filter — derived where production derives it.
- * Every fixture row is captured on 2026-06-27, inside the range [IN_RANGE] starts.
+ * The device manifest's projection from upload rows and its producer's publish — which assets are admitted is the
+ * caller's to say (`ManifestPublishTest` judges it by the policy).
  */
-private suspend fun policyFrom(cutoff: String): SelectionPolicy = OwnLibrary().contribution(captureRange(cutoff)).policy
-
-/** A range every fixture row's default capture date lies in. */
-private const val IN_RANGE = "2026-06-20T00:00:00Z"
-
 class DeviceManifestProducerTest {
 
     private fun asset(id: String, date: String = "2026-06-27T10:00:00Z") = DeviceManifestAsset(
@@ -88,21 +88,17 @@ class DeviceManifestProducerTest {
     // ── projection ──
 
     @Test
-    fun projection_keeps_every_asset_at_or_after_the_start_date_sorted() = runTest {
-        val m =
-            projectDeviceManifest(
-                testDeviceId("dev"),
-                listOf(row("B"), row("A")),
-                policy = policyFrom(IN_RANGE),
-            )
+    fun projection_keeps_every_admitted_asset_sorted() = runTest {
+        val m = project(listOf(row("B"), row("A")))
         assertEquals(testDeviceId("dev"), m.deviceId)
         assertEquals(listOf(testAssetId("A"), testAssetId("B")), m.assets.map { it.assetId }) // sorted, all kept
     }
 
     @Test
-    fun projection_excludes_assets_before_the_start_date() = runTest {
-        val rows = listOf(row("old", "2025-01-01T00:00:00Z"), row("new", "2026-06-27T10:00:00Z"))
-        val m = projectDeviceManifest(testDeviceId("dev"), rows, policy = policyFrom(IN_RANGE))
+    fun projection_lists_only_the_assets_it_is_told_are_admitted() = runTest {
+        // Which are admitted is the caller's to judge (`ManifestPublish`, by the membership's policy), never here's.
+        val rows = listOf(row("old", "2025-01-01T00:00:00Z"), row("new"))
+        val m = projectDeviceManifest(testDeviceId("dev"), rows, setOf(testAssetId("new")))
         assertEquals(listOf(testAssetId("new")), m.assets.map { it.assetId })
     }
 
@@ -132,7 +128,7 @@ class DeviceManifestProducerTest {
         // The ledger row is what names the resource now, so it must carry everything the union's field
         // vocabulary needs — otherwise the manifest would have to re-read PhotoKit to describe bytes it
         // has already uploaded.
-        val m = projectDeviceManifest(testDeviceId("dev"), listOf(row("A")), policyFrom(IN_RANGE))
+        val m = project(listOf(row("A")))
         val r = m.assets.single().resources.single()
         assertEquals(ResourceRole.PRIMARY, r.role)
         assertEquals("image/jpeg", r.contentType)
@@ -146,7 +142,7 @@ class DeviceManifestProducerTest {
         // it, not because its bytes have landed. The backend keeps the asset out of the union until every
         // declared role has a resource, which is what lets it tell "not yet" from "never".
         val rows = LedgerState.entries.map { row("A${it.name}", state = it) }
-        val m = projectDeviceManifest(testDeviceId("dev"), rows, policyFrom(IN_RANGE))
+        val m = project(rows)
         assertEquals(
             LedgerState.entries.map { testAssetId("A${it.name}") }.sorted(),
             m.assets.map { it.assetId }.sorted(),
@@ -158,14 +154,13 @@ class DeviceManifestProducerTest {
         // Why a failed resource stays declared: the engine retries forever, and a failure returns the row to
         // DISCOVERED — "still owed". Excluding it would make the declared role set
         // oscillate as a resource fails and retries — and each flip is a manifest write and a member wake.
-        val policy = policyFrom(IN_RANGE)
         val discovered = listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE))
         val failed = listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE))
         val retried = listOf(row("A"), row("A", state = LedgerState.REQUESTED, role = ResourceRole.LIVE))
 
-        val json = projectDeviceManifest(testDeviceId("dev"), discovered, policy).encodeToJson()
-        assertEquals(json, projectDeviceManifest(testDeviceId("dev"), failed, policy).encodeToJson())
-        assertEquals(json, projectDeviceManifest(testDeviceId("dev"), retried, policy).encodeToJson())
+        val json = project(discovered).encodeToJson()
+        assertEquals(json, project(failed).encodeToJson())
+        assertEquals(json, project(retried).encodeToJson())
     }
 
     @Test
@@ -173,27 +168,12 @@ class DeviceManifestProducerTest {
         // The defect this closes: with a COMPLETED-only projection the asset was declared with `primary`
         // alone, so the union served it as a complete one-resource asset and a recipient imported the
         // Live Photo as a plain still — permanently, since a recipient plans per asset.
-        val m = projectDeviceManifest(
-            testDeviceId("dev"),
-            listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE)),
-            policyFrom(IN_RANGE),
-        )
+        val m = project(listOf(row("A"), row("A", state = LedgerState.DISCOVERED, role = ResourceRole.LIVE)))
         assertEquals(1, m.assets.size)
         assertEquals(
             listOf(ResourceRole.LIVE, ResourceRole.PRIMARY),
             m.assets.single().resources.map { it.role }.sortedBy { it.name },
         )
-    }
-
-    @Test
-    fun a_bare_row_is_not_listed() = runTest {
-        // A row the join-time load seeded from a stored-file listing has no capture date until the next
-        // full enumeration backfills it. It is excluded by the POLICY, not by a predicate in the
-        // projection or its storage read: an empty capture date sorts before every real cutoff
-        // (`SelectionRule.CaptureAfter`), so the one admission decides this like every other.
-        val bare = LedgerEntry("Z-primary.jpg", testAssetId("Z"), LedgerState.COMPLETED)
-        val m = projectDeviceManifest(testDeviceId("dev"), listOf(row("A"), bare), policyFrom(IN_RANGE))
-        assertEquals(listOf(testAssetId("A")), m.assets.map { it.assetId })
     }
 
     @Test
@@ -204,7 +184,7 @@ class DeviceManifestProducerTest {
             store,
             up,
             testDeviceId("dev"),
-        ).produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
+        ).produceAll(testEventId("E"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals(testEventId("E"), up.puts.single().first)
         assertTrue(store.lastUploaded!!.manifest.endsWith(up.puts.single().third)) // the record holds the json
@@ -217,15 +197,13 @@ class DeviceManifestProducerTest {
         val store = manifestRecord()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
-        producer.produce(
+        producer.produceAll(
             testEventId("EVENT-A"),
-            policyFrom(IN_RANGE),
             listOf(row("A")),
             manifestVersion = 1L,
         )
-        producer.produce(
+        producer.produceAll(
             testEventId("EVENT-B"),
-            policyFrom(IN_RANGE),
             listOf(row("A")),
             manifestVersion = 1L,
         ) // same content, new event
@@ -238,10 +216,9 @@ class DeviceManifestProducerTest {
         val store = manifestRecord()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
-        producer.produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
-        producer.produce(
+        producer.produceAll(testEventId("E"), listOf(row("A")), manifestVersion = 1L)
+        producer.produceAll(
             testEventId("E"),
-            policyFrom(IN_RANGE),
             listOf(row("A")),
             manifestVersion = 1L,
         ) // identical
@@ -263,16 +240,16 @@ class DeviceManifestProducerTest {
         val store = manifestRecord()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
-        producer.produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
+        producer.produceAll(testEventId("E"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
 
         // the re-join writes no manifest: the producer's record is untouched
         assertEquals(1, up.puts.size)
 
-        producer.produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
+        producer.produceAll(testEventId("E"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size, "an unchanged projection under the same version is correctly skipped")
 
-        producer.produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 7L)
+        producer.produceAll(testEventId("E"), listOf(row("A")), manifestVersion = 7L)
         assertEquals(2, up.puts.size, "the join's ledger load advanced the version, so the unchanged set republishes")
         assertEquals(up.puts[0].third.substringBefore("\"version\""), up.puts[1].third.substringBefore("\"version\""))
     }
@@ -281,7 +258,7 @@ class DeviceManifestProducerTest {
     fun the_publish_carries_the_manifest_version() = runTest {
         val up = FakeUploader()
         DeviceManifestProducer(manifestRecord(), up, testDeviceId("dev"))
-            .produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 42L)
+            .produceAll(testEventId("E"), listOf(row("A")), manifestVersion = 42L)
         assertEquals(42L, deviceManifestFromJson(up.puts.single().third).version)
     }
 
@@ -295,15 +272,13 @@ class DeviceManifestProducerTest {
         val store = manifestRecord()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, testDeviceId("dev"))
-        producer.produce(
+        producer.produceAll(
             testEventId("E"),
-            policyFrom(IN_RANGE),
             listOf(row("A"), row("B")),
             manifestVersion = 5L,
         )
-        producer.produce(
+        producer.produceAll(
             testEventId("E"),
-            policyFrom(IN_RANGE),
             listOf(row("A"), row("B")),
             manifestVersion = 6L,
         )
@@ -318,7 +293,7 @@ class DeviceManifestProducerTest {
             store,
             up,
             testDeviceId("dev"),
-        ).produce(testEventId("E"), policyFrom(IN_RANGE), listOf(row("A")), manifestVersion = 1L)
+        ).produceAll(testEventId("E"), listOf(row("A")), manifestVersion = 1L)
         assertEquals(1, up.puts.size)
         assertEquals(null, store.lastUploaded) // not recorded → retried next cycle
         assertFalse(up.puts.isEmpty())

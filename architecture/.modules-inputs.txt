@@ -261,6 +261,7 @@ edge :domain:services :domain:ports
 edge :domain:services :domain:wire
 edge :test:architecture :adapter:generic:app
 edge :test:architecture :adapter:generic:mock
+edge :test:architecture :domain:application
 edge :test:architecture :domain:data
 edge :test:architecture :domain:domain
 edge :test:architecture :domain:feature

@@ -37,7 +37,7 @@ interface LogWriter {
  * [Trigger] of the work that wrote it — read from the coroutine context, which is why the calls are `suspend`.
  *
  * ```
- * private val log = Log("UploadCycle")
+ * private val log = Log("TopUp")
  * log.i("top-up created jobs", "created" of n, "truncated" of truncated)
  * ```
  *

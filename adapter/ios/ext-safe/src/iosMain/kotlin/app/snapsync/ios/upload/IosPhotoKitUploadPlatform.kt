@@ -15,7 +15,7 @@ import platform.Foundation.NSURL
 /**
  * The PhotoKit (iOS ≥26.1) [OsUploadQueue]: the OS-owned upload-job queue the upload extension runs — fetch a set,
  * create, retry, acknowledge. Thin: it presents jobs as facts and performs what it is asked; which ledger row a job
- * belongs to, what a terminal job means and which offered retry is a key's are the upload services' (`OsQueueTransfer`).
+ * belongs to, what a terminal job means and which offered retry is a key's are the data layer's (`OsQueueTier`).
  * A `PHAssetResourceUploadJob` has no public initializer and only ever arrives from a fetch, so every OS effect goes
  * through the [UploadJobApi] seam: the upload extension's contract run records every call and iOS's answer on a device,
  * and every CI build replays that recording against this class. What a replay cannot cover is [SystemUploadJobApi]'s

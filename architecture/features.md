@@ -27,8 +27,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceManifestProducer.kt`, `ShareSetLoad.kt`
-- top-level types: `DeviceManifestProducer (class)`, `ShareSetLoad (class)`
+- files: `DeviceManifestProducer.kt`, `ManifestPublish.kt`, `ShareSetLoad.kt`
+- top-level types: `DeviceManifestProducer (class)`, `ManifestPublish (class)`, `ShareSetLoad (class)`
 
 ## `feature/status`
 
@@ -37,6 +37,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 ## `feature/upload`
 
-- files: `CycleAnswer.kt`, `CycleGateRead.kt`, `LedgerWriter.kt`, `OwnUploads.kt`, `ShareSettlement.kt`, `StoredUploadSettle.kt`, `SyncEngine.kt`, `UploadConfig.kt`, `UploadCycle.kt`, `UploadTransitions.kt`, `WakeFacts.kt`
-- top-level types: `AppUploadEngine (interface)`, `CycleGate (interface)`, `CycleGateRead (class)`, `JoinedMembership (class)`, `LedgerWriter (class)`, `OwnUploads (class)`, `ShareSettlement (class)`, `StoredUploadSettle (class)`, `SyncEngine (class)`, `UploadAdmission (class)`, `UploadConfig (class)`, `UploadCycle (class)`, `UploadTransitions (class)`, `WalkOutcome (class)`
+- files: `ShareSettlement.kt`
+- top-level types: `ShareSettlement (class)`
 

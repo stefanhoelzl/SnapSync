@@ -39,11 +39,21 @@ class DeviceListing(private val gateway: BackendGateway, private val identity: D
 
     private suspend fun listed(event: EventId, device: DeviceId): ListingRead =
         when (val reply = gateway.send(Routes.DeviceFiles.request(event.value, device.value))) {
-            is DeviceFilesReply.Listed -> ListingRead.Listed(reply.items.mapNotNull(::stored))
+            is DeviceFilesReply.Listed -> listedOf(reply.items.map(::stored))
+            // An answer that does not decode at all — a captive portal's page — is no answer, and heals.
             is AppTooOld, is Invalid, is Maintenance, is Malformed, NotThisDevice, is ServerError, Unauthorized,
             is Unreachable,
             -> ListingRead.Unavailable("$reply")
         }
+
+    /**
+     * A listing that decodes but names an asset this build cannot read will not heal, unlike the network: its own
+     * case, so it is told louder — and none of it is seeded, rather than a part.
+     */
+    private fun listedOf(items: List<StoredBytes?>): ListingRead = when (items.all { it != null }) {
+        true -> ListingRead.Listed(items.filterNotNull())
+        false -> ListingRead.Unreadable("${items.count { it == null }} listed resource(s) name no readable asset")
+    }
 
     @OptIn(MintsStoredBytes::class)
     private fun stored(item: StoredResource): StoredBytes? =
@@ -59,5 +69,9 @@ class DeviceListing(private val gateway: BackendGateway, private val identity: D
 sealed interface ListingRead {
     class Listed(val stored: List<StoredBytes>) : ListingRead
 
+    /** It could not be asked now, or was refused. [detail] is diagnostics only. */
     data class Unavailable(val detail: String) : ListingRead
+
+    /** It answered something this build cannot read — which will not heal by itself. */
+    data class Unreadable(val detail: String) : ListingRead
 }

@@ -23,6 +23,7 @@ import app.snapsync.entrypoints.OnMobileDataChanged
 import app.snapsync.entrypoints.OnPhotoGrantUsable
 import app.snapsync.entrypoints.OnRenameRequested
 import app.snapsync.entrypoints.OnSettingsChanged
+import app.snapsync.entrypoints.OnUploaderChange
 import app.snapsync.entrypoints.PhotoCheck
 import app.snapsync.entrypoints.PlanJoined
 import app.snapsync.entrypoints.Prelude
@@ -32,11 +33,11 @@ import app.snapsync.entrypoints.SelectionRecognition
 import app.snapsync.entrypoints.StateRefresh
 import app.snapsync.entrypoints.SweepLeftovers
 import app.snapsync.entrypoints.TopUp
-import app.snapsync.entrypoints.UploadEngine
 import app.snapsync.entrypoints.UploadOwn
+import app.snapsync.entrypoints.UploaderArm
 import app.snapsync.entrypoints.WakeWork
+import app.snapsync.entrypoints.WalkAndPublish
 import app.snapsync.feature.status.ForegroundCounts
-import app.snapsync.feature.upload.OwnUploads
 import app.snapsync.feature.upload.ShareSettlement
 
 /**
@@ -46,12 +47,31 @@ import app.snapsync.feature.upload.ShareSettlement
  * event ports.
  */
 internal class AppWork(private val core: AppCore) {
-    /** The app's own uploads as the wake's sequences run them. */
-    internal val ownUploads: OwnUploads by lazy {
-        OwnUploads(
-            core.appUploader.cycle,
-            core.galleryAccess,
-            core.appUploadAdmission,
+    private val uploads get() = core.appUploader
+
+    /** The top-up: the one sequence that creates the app's upload jobs. */
+    internal val topUp: TopUp by lazy {
+        val layers = uploads.layers
+        TopUp(layers.gate, layers.contribute, layers.plan, layers.create(uploads.tier), layers.album, foregroundCounts)
+    }
+
+    /** The walk → publish: a wake's under a full grant, a selection change's, and the end of a wake's final share. */
+    internal val walkAndPublish: WalkAndPublish by lazy {
+        val layers = uploads.layers
+        WalkAndPublish(layers.gate, layers.contribute, layers.walk, layers.recordWalk, layers.album, layers.publish)
+    }
+
+    private val uploadOwn: UploadOwn by lazy { UploadOwn(topUp, walkAndPublish, core.grant) }
+
+    /** What a membership transition arms the app's uploader with. */
+    private val uploaderArm: UploaderArm by lazy { UploaderArm(core.runtime, wakeWork, wake.arming) }
+
+    /** The app launched with its UI, or the grant really changed. */
+    internal val uploaderChange: OnUploaderChange by lazy {
+        OnUploaderChange(
+            core.runtime,
+            uploads.reconcile,
+            uploaderArm,
         )
     }
 
@@ -84,8 +104,8 @@ internal class AppWork(private val core: AppCore) {
             foregroundCounts,
         )
     }
-    internal val topUp: TopUp by lazy { TopUp(ownUploads, foregroundCounts) }
-    private val uploadOwn: UploadOwn by lazy { UploadOwn(ownUploads, foregroundCounts) }
+
+    private val stopUploads by lazy { uploads.stop(wake.arming) }
 
     /** The event album a join or a settings change makes and gathers into. */
     private val eventAlbum: EventAlbum by lazy {
@@ -116,7 +136,7 @@ internal class AppWork(private val core: AppCore) {
     internal val planJoined: PlanJoined by lazy { PlanJoined(membership.branch, receiving.receivingOf, receiving.plan) }
 
     private val stateRefresh: StateRefresh by lazy {
-        StateRefresh(membership.branch, DeletedTransfers(core.uploadTransitions, receiving.stop))
+        StateRefresh(membership.branch, DeletedTransfers(stopUploads, receiving.stop))
     }
 
     private val endOfWake: EndOfWake by lazy {
@@ -124,13 +144,10 @@ internal class AppWork(private val core: AppCore) {
             membership.branch,
             PhotoCheck(membership.branch, receiving.receivingOf, receiving.planIfDue, receiving.plan),
             membership.deliver,
-            ShareSettlement(
-                core.services.config,
-                core.services.manifestStore,
-                // The uploader's own discovery → publish, which marks the manifest settled once the range has ended.
-                // Under a partial grant it reads the selection snapshot, never the library.
-                publishFinal = { core.appUploader.cycle.walkAndPublish() },
-            ),
+            ShareSettlement(core.services.config, core.services.manifestStore),
+            // The uploader's own walk → publish, which marks the manifest settled once the range has ended. Under a
+            // partial grant it reads the selection snapshot, never the library.
+            walkAndPublish,
             membership.claimState,
             stateRefresh,
             ReceivedPositionReport(membership.branch, receiving.receivingOf, receiving.holds, receiving.report),
@@ -153,8 +170,8 @@ internal class AppWork(private val core: AppCore) {
         ForegroundWork(
             prelude,
             core.services.config,
-            core.uploadTransfer,
-            storedUploadSettleFor(core.services, core.backend.deviceFiles),
+            uploads.sweep,
+            uploads.settleStored,
             core.statusRefresh,
             ForegroundReceiving(planJoined, receiving.sweepUnclaimed, receiving.releaseImported),
             stateRefresh,
@@ -162,19 +179,9 @@ internal class AppWork(private val core: AppCore) {
                 membership.branch,
                 core.services.eventKeyStore,
                 receiving.stop,
-                core.uploadTransitions,
+                stopUploads,
                 core.services.transition,
             ),
-        )
-    }
-
-    /** The uploads' arm — what a membership transition starts its uploads with. */
-    internal val uploadEngine: UploadEngine by lazy {
-        UploadEngine(
-            core.runtime,
-            wakeWork,
-            wake.arming,
-            core.uploadTransfer,
         )
     }
 
@@ -216,7 +223,8 @@ internal class AppWork(private val core: AppCore) {
                     receiving.recognize,
                     membership.enter,
                     AfterJoin(
-                        core.uploadTransitions,
+                        uploads.reconcile,
+                        uploaderArm,
                         core.statusRefresh,
                         eventAlbum,
                         receiving.receivingOf,
@@ -237,7 +245,7 @@ internal class AppWork(private val core: AppCore) {
         OnLeaveConfirmed(
             core.runtime,
             membership.leave,
-            Leaving(core.uploadTransitions, receiving.stop, core.services.eventKeyStore, membership.deliver),
+            Leaving(stopUploads, receiving.stop, core.services.eventKeyStore, membership.deliver),
         )
     }
 
@@ -259,7 +267,8 @@ internal class AppWork(private val core: AppCore) {
             membership.reconfigure,
             AfterSettings(
                 core.statusRefresh,
-                core.uploadTransitions,
+                uploads.reconcile,
+                uploaderArm,
                 eventAlbum,
                 receiving.receivingOf,
                 receiving.plan,

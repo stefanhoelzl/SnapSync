@@ -47,6 +47,12 @@ class SingleFlightTest {
         }
 
     @Test
+    fun `a waiter reads a cut pass as what it stands for, and a completed one as its result`() {
+        assertEquals(1, Pass.Completed(1).orIfCut(0))
+        assertEquals(0, Pass.Cut.orIfCut(0))
+    }
+
+    @Test
     fun `a join during a run makes exactly one more pass - however many join`() = runTest {
         val world = World(this)
         val gated = Gated()

@@ -66,8 +66,12 @@ class ShareSettlementTest {
         val settlement = ShareSettlement(
             config = configService(membership, clock = fixedClock(Instant.parse(now))),
             manifestRecord = record,
-            publishFinal = { publishes++ },
         )
+
+        /** The end of a wake: the final publish, when it is due. */
+        fun settle() {
+            if (settlement.due()) publishes++
+        }
     }
 
     private fun world(
@@ -79,21 +83,21 @@ class ShareSettlementTest {
     @Test
     fun `before the member's range has ended nothing is published`() = runTest {
         val w = world(now = "2026-07-12T00:00:00Z")
-        w.settlement.settle()
+        w.settle()
         assertEquals(0, w.publishes)
     }
 
     @Test
     fun `after the end an unsettled share is published final once more`() = runTest {
         val w = world()
-        w.settlement.settle()
+        w.settle()
         assertEquals(1, w.publishes)
     }
 
     @Test
     fun `a share published final already is not published again`() = runTest {
         val w = world(recorded = manifest(final = true))
-        w.settlement.settle()
+        w.settle()
         assertEquals(0, w.publishes)
     }
 
@@ -101,7 +105,7 @@ class ShareSettlementTest {
     fun `a range that ends before the event settles at the member's own end`() = runTest {
         val early = joined.copy(maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-10T20:00:00Z")))
         val w = world(now = "2026-07-11T00:00:00Z", membership = early)
-        w.settlement.settle()
+        w.settle()
         assertEquals(1, w.publishes, "settled before the event's end")
     }
 
@@ -109,37 +113,37 @@ class ShareSettlementTest {
     fun `a range that ends after the event is not settled at the event's end`() = runTest {
         val late = joined.copy(maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-15T12:00:00Z")))
         val w = world(membership = late)
-        w.settlement.settle()
+        w.settle()
         assertEquals(0, w.publishes, "not before the member's own end")
     }
 
     @Test
     fun `a record of another event's manifest is no settled share here`() = runTest {
         val w = world(recorded = manifest(final = true).copy(eventId = testEventId("OTHER")))
-        w.settlement.settle()
+        w.settle()
         assertEquals(1, w.publishes)
     }
 
     @Test
     fun `an unreadable manifest record settles the share once more`() = runTest {
         val w = world(recorded = UploadedManifest(testEventId("E"), 1, "not json"))
-        w.settlement.settle()
+        w.settle()
         assertEquals(1, w.publishes)
     }
 
     @Test
     fun `a device that never recorded a published manifest settles its share once more`() = runTest {
         val w = world(recorded = null)
-        w.settlement.settle()
+        w.settle()
         assertEquals(1, w.publishes)
     }
 
     @Test
     fun `no membership and a deleted event settle nothing`() = runTest {
         val none = world(membership = null)
-        none.settlement.settle()
+        none.settle()
         val deleted = world(membership = joined.copy(deleted = true))
-        deleted.settlement.settle()
+        deleted.settle()
         assertEquals(0, none.publishes + deleted.publishes)
     }
 }
