@@ -1,11 +1,11 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.EventWindow
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.model.AlbumContents
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
@@ -182,8 +182,8 @@ internal fun outsideReach(range: ResolvedRange): OutsideReach? {
 
 internal val AlbumContents.shown: AlbumHolds
     get() = when (this) {
-        AlbumContents.SHARED_AND_RECEIVED -> AlbumHolds.SHARED_AND_RECEIVED
-        AlbumContents.RECEIVED -> AlbumHolds.RECEIVED
+        AlbumContents.SharedAndReceived -> AlbumHolds.SHARED_AND_RECEIVED
+        AlbumContents.Received -> AlbumHolds.RECEIVED
     }
 
 internal val DeviceRefusal.cause: RefusalCause

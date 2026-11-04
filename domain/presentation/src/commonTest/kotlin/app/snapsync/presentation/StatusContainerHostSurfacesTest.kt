@@ -1,6 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -14,7 +15,6 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.AlbumContents
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
@@ -124,7 +124,7 @@ class StatusContainerHostSurfacesTest {
         joinDetails: JoinDetailsQuery = unanswered,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-        albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
+        albumContents: AlbumContents = AlbumContents.SharedAndReceived,
     ): StatusContainerHost {
         val commands = TestCommands(
             reconfigure = { choice ->
@@ -214,7 +214,7 @@ class StatusContainerHostSurfacesTest {
         joinDetails: JoinDetailsQuery = unanswered,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-        albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
+        albumContents: AlbumContents = AlbumContents.SharedAndReceived,
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
@@ -731,7 +731,7 @@ class StatusContainerHostSurfacesTest {
         return onHost(
             spy,
             config = MutableStateFlow(CONFIG.copy(saveToAlbum = false)),
-            albumContents = AlbumContents.RECEIVED,
+            albumContents = AlbumContents.Received,
         ) { host ->
             host.surfaces.onOpenReconfigure()
             val form = host.reconfigureForm()

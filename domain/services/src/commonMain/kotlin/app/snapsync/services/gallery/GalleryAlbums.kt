@@ -1,8 +1,8 @@
 package app.snapsync.services.gallery
 
 import app.snapsync.data.gallery.platformId
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.asset.AssetId
-import app.snapsync.model.AlbumContents
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryAlbumKind
@@ -66,6 +66,6 @@ class GalleryAlbums(
  * would have to move the member's own photos out of the camera folder, so it holds only the received ones.
  */
 fun LibraryAlbumKind.contents(): AlbumContents = when (this) {
-    LibraryAlbumKind.COLLECTION -> AlbumContents.SHARED_AND_RECEIVED
-    LibraryAlbumKind.FOLDER -> AlbumContents.RECEIVED
+    LibraryAlbumKind.COLLECTION -> AlbumContents.SharedAndReceived
+    LibraryAlbumKind.FOLDER -> AlbumContents.Received
 }

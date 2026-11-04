@@ -1,10 +1,10 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
-import app.snapsync.model.AlbumContents
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount
 import kotlinx.datetime.LocalDate
@@ -36,7 +36,7 @@ data class RangeForm(
     val shareOn: Boolean = true,
     val receiveOn: Boolean = true,
     val saveToAlbum: Boolean = true,
-    val albumContents: AlbumContents = AlbumContents.SHARED_AND_RECEIVED,
+    val albumContents: AlbumContents = AlbumContents.SharedAndReceived,
     val preset: RangeChoice = RangeChoice.EVENT_START,
     /** The picked start behind [RangeChoice.CUSTOM]; `null` resolves to the window's start. */
     val customFrom: LocalDateTime? = null,

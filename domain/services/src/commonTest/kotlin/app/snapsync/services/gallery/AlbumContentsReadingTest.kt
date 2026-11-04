@@ -1,6 +1,6 @@
 package app.snapsync.services.gallery
 
-import app.snapsync.model.AlbumContents
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.ports.LibraryAlbumKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,7 +11,7 @@ class AlbumContentsReadingTest {
     @Test
     fun `a collection album holds shared and received photos, a folder album received ones only`() {
         assertEquals(
-            listOf(AlbumContents.SHARED_AND_RECEIVED, AlbumContents.RECEIVED),
+            listOf(AlbumContents.SharedAndReceived, AlbumContents.Received),
             listOf(LibraryAlbumKind.COLLECTION, LibraryAlbumKind.FOLDER).map { it.contents() },
         )
     }
@@ -21,6 +21,6 @@ class AlbumContentsReadingTest {
         val folders = object : app.snapsync.ports.GalleryReader by GrantOnlyReader({ error("not used") }) {
             override val albumKind = LibraryAlbumKind.FOLDER
         }
-        assertEquals(AlbumContents.RECEIVED, GalleryAlbums(folders).contents)
+        assertEquals(AlbumContents.Received, GalleryAlbums(folders).contents)
     }
 }

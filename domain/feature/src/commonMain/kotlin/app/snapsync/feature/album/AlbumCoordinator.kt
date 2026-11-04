@@ -1,8 +1,9 @@
 package app.snapsync.feature.album
 
+import app.snapsync.domain.album.AlbumContents
+import app.snapsync.domain.album.OwnPhotoHome
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
-import app.snapsync.model.AlbumContents
 import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.album.AlbumLookup
@@ -23,9 +24,9 @@ import co.touchlab.kermit.Logger
  *
  * **The phone's [AlbumContents] decides what the album may hold** (`changes/archive/2026-09-30-android-event-album`
  * D4, D5):
- *  - where it does not [AlbumContents.placesOwnPhotos], the member's own photos are never placed ([place] is a
+ *  - where it does not place own photos ([AlbumContents.ownPhotos]), the member's own photos are never placed ([place] is a
  *    no-op): filing one would move it out of the camera folder, and it is not the app's file to move;
- *  - where the album is [AlbumContents.absentWhileEmpty], "does not resolve" cannot mean "deleted" by itself — the
+ *  - where the album is a [AlbumContents.Received] folder, "does not resolve" cannot mean "deleted" by itself — the
  *    album map's `filled` mark tells an album the member emptied (deleted, emptied or renamed) from one not filled
  *    yet. A deleted one answers no album at import ([albumIdFor]), so photos land in the camera folder.
  *
@@ -80,7 +81,7 @@ class AlbumCoordinator(
             AlbumLookup.Unreadable -> return null.also { log.w { "ensureAlbum: no album made for event=$eventId" } }
         }
         stored?.let { existing ->
-            if (contents.absentWhileEmpty && !store.filled(eventId)) {
+            if ((contents == AlbumContents.Received) && !store.filled(eventId)) {
                 log.i { "ensureAlbum: reused album=$existing for event=$eventId (not filled yet)" }
                 return existing
             }
@@ -109,24 +110,24 @@ class AlbumCoordinator(
      * ([saveToAlbum] off) or no album was ever created — the same opt-in rule [ensureAlbum] gates on. The
      * download importer reads it once per import, before the import's own change block (design D5/D9: the
      * import-time add borrows the lookup, it does not route through [place]).
-     * Where the album is [AlbumContents.absentWhileEmpty], a filled album the member emptied answers `null` too: the
+     * Where the album is a [AlbumContents.Received] folder, a filled album the member emptied answers `null` too: the
      * photo then lands in the camera folder instead of bringing the folder back.
      */
     suspend fun albumIdFor(eventId: EventId, saveToAlbum: Boolean): String? {
         if (!saveToAlbum) return null
         val stored = store.get(eventId) ?: return null
-        if (!contents.absentWhileEmpty || !store.filled(eventId) || manager.exists(stored)) return stored
+        if (contents != AlbumContents.Received || !store.filled(eventId) || manager.exists(stored)) return stored
         log.i { "albumIdFor: album for event=$eventId was emptied by the member — importing into the camera folder" }
         return null
     }
 
     /**
      * An import into [album] settled as imported: the event's album has now held a photo, so where it is
-     * [AlbumContents.absentWhileEmpty] emptying it later reads as a deletion. A no-op where it is not, or when [album]
+     * a [AlbumContents.Received] folder emptying it later reads as a deletion. A no-op where it is not, or when [album]
      * is no longer the event's (a recreation raced the import).
      */
     fun onImportedInto(eventId: EventId, album: String) {
-        if (contents.absentWhileEmpty && store.get(eventId) == album) store.markFilled(eventId)
+        if ((contents == AlbumContents.Received) && store.get(eventId) == album) store.markFilled(eventId)
     }
 
     /** [albumIdFor] the [joined] membership — what an import files into; `null` while not joined. */
@@ -138,7 +139,7 @@ class AlbumCoordinator(
     }
 
     /** Whether the member's own photos go into the album on this phone. */
-    val placesOwnPhotos: Boolean get() = contents.placesOwnPhotos
+    val placesOwnPhotos: Boolean get() = contents.ownPhotos == OwnPhotoHome.IntoAlbum
 
     /**
      * Add [assetIds] (the gallery's asset ids) to [eventId]'s album, best-effort — a no-op where the album does not
@@ -155,11 +156,11 @@ class AlbumCoordinator(
     /**
      * File [assetIds] — photos this device RECEIVED for [eventId] — into its album, best-effort: the gather's foreign
      * half. Where the album holds received photos only, this MOVES them out of the camera folder, and an
-     * [AlbumContents.absentWhileEmpty] album is marked filled once a move landed; otherwise it is [place].
+     * a [AlbumContents.Received] folder album is marked filled once a move landed; otherwise it is [place].
      */
     suspend fun placeReceived(eventId: EventId, assetIds: List<AssetId>) {
         if (assetIds.isEmpty()) return
-        if (file(eventId, assetIds) && contents.absentWhileEmpty) store.markFilled(eventId)
+        if (file(eventId, assetIds) && (contents == AlbumContents.Received)) store.markFilled(eventId)
     }
 
     /** Whether the add reached the library; a skipped or failed one is logged, never thrown. */
