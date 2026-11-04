@@ -335,8 +335,9 @@ Where bindings live: beside their implementations.
 - The storage services' suites — their rules, their migrations (each entered at its version through the
   `Databases` port, so the service's own open runs the chain) and their answers to every port failure:
   `:adapter:generic:mock` `commonTest` (`services/`), over the storage mocks, which `DatabasesMockContractBindingTest`
-  and `StorageMockContractBindingsTest` hold to the platform adapters' clauses. `LedgerWriter`, a feature over the
-  ledger, is `:test:feature`'s (`LedgerWriterTest`).
+  and `StorageMockContractBindingsTest` hold to the platform adapters' clauses. The upload rows — their reads, the
+  walk's record and the guarded transitions — are the data layer's, over the real `ledger.db` schema in `:test:data`
+  (`OwnUploadRowsTest`, `RowsResetAndProgressTest`), and the use cases over them `UploadUseCasesTest`'s.
 - Keychain and App-Group stores: `:adapter:ios:ext-safe` tests.
 - Simulator-app PhotoKit and URLSession: `:adapter:ios:app-only` `src/rig`.
 
@@ -1364,7 +1365,7 @@ the app — then a gate, then review.
 state, or call counts on a mock whose real system records nothing
 a person could read. If the only possible assertion is internal, the test belongs elsewhere, as a unit test
 in its zone or a contract clause — which sequence a trigger runs is its entry point's (`entrypoints/`, read in one file), what a ledger row holds is
-`UploadCycleTest`'s, the extension's per-invocation credential re-read is `ExtensionEntryTest`'s (`:adapter:generic:mock`,
+`OwnUploadRowsTest`'s and `UploadUseCasesTest`'s (`:test:data`), the extension's per-invocation credential re-read is `ExtensionEntryTest`'s (`:adapter:generic:mock`,
 over the composition). A seam with no presentation effect is fully covered by its outside outcomes: a
 selection-policy exclusion is proved by missing bytes and a missing manifest entry.
 
@@ -1460,7 +1461,7 @@ screen (it is held to `ReadModelImportsTest` like the other consumers). It offer
   makes the backend send, whose receiver is the download reconcile. **Heartbeat** fires the scheduled wake.
 - gallery and backend columns, the upload queue (Complete / Fail with what the OS says of it), downloads
   (Stage), failure levers, and Create event with a past or future start.
-- an engine console that streams Kermit output, each invoke's `CycleResult`, and what the share sheet was handed (it
+- an engine console that streams Kermit output, each invoke's `ProcessingAnswer`, and what the share sheet was handed (it
   is copied to the clipboard).
 - a Light/Dark phone toggle.
 

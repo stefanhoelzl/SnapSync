@@ -204,6 +204,42 @@ class OwnUploadRowsTest {
         }
         assertNull(assertIs<UploadRow.Requested>(only("A")).destination)
         assertTrue(only("A").detail.bare)
+        assertEquals(RowRead.Absent, reads.byDestination(event, to), "a row with no destination is never matched")
+    }
+
+    @Test
+    fun `the manifest version moves with what the manifest declares, never with an upload's progress`() {
+        fun version() = assertIs<VersionRead.Read>(reads.manifestVersion()).version
+        val bare = RowDetail(CaptureDate.Undated, "image/heic", "IMG_0001.HEIC")
+        walk.discover(event, listOf(found("A", with = bare)))
+        val discovered = version()
+
+        walk.discover(event, listOf(found("A", with = bare)))
+        assertEquals(discovered, version(), "a walk that finds nothing new")
+        moves.requested(event, CreatedJob(key("A")), to)
+        moves.returned(event, ReportedFailure(key("A")))
+        moves.requested(event, CreatedJob(key("A")), to)
+        moves.landed(event, ReportedLanding(key("A")))
+        assertEquals(discovered, version(), "an upload's progress declares nothing new")
+
+        walk.backfill(event, listOf(found("A")))
+        val filled = version()
+        assertTrue(filled > discovered, "a bare row dated is a new declaration")
+        walk.withdraw(event, listOf(key("ZZ")))
+        assertEquals(filled, version(), "a withdrawal that matched nothing")
+        walk.withdraw(event, listOf(key("A")))
+        assertTrue(version() > filled, "a withdrawn row")
+    }
+
+    @Test
+    fun `a row is found by the destination its own request carried, across a route change`() {
+        walk.discover(event, listOf(found("A"), found("B")))
+        val old = DestinationPath("/files/devices/D/A/primary")
+        moves.requested(event, CreatedJob(key("A")), old)
+        moves.requested(event, CreatedJob(key("B")), to)
+
+        assertEquals(key("A"), assertIs<RowRead.Found>(reads.byDestination(event, old)).row.key)
+        assertEquals(key("B"), assertIs<RowRead.Found>(reads.byDestination(event, to)).row.key)
     }
 
     @Test

@@ -140,8 +140,8 @@ after=…`, the evidence for re-measuring. A completion is answered exactly once
 **Atomic pairs.** Cancellation stops work at its next suspension, so two steps that must happen together are one
 `withContext(NonCancellable)` unit, short and with nothing slow inside. Today: a top-up's job creation and its
 ledger row `REQUESTED` — a job the platform created is recorded before the pass can end, or the next top-up would
-create it again (both uploaders create through the one cycle, so the app session's transfer and its row are the same
-pair); the top-up checks cancellation **between** creations. A manifest publish and its record are a pair too: a
+create it again (each tier makes the pair one step — `SessionCreate` for the app's session, `OsQueueTier` for the
+OS's queue); `CreateJobs` checks cancellation **between** creations. A manifest publish and its record are a pair too: a
 snapshot the backend took is recorded before the pass ends. A walk is cancelled outright and records nothing; an
 import runs on, `outliving` its pass, and its own settlement (`OnImportSettled`) records what it did.
 
@@ -176,7 +176,7 @@ on a device, keeps nothing either: its events reach only its own log (`ext-debug
 
 ## 4. Sequences and single flight
 
-Work several triggers may ask for at once is a `Sequence` (`ImportReceived`, `TopUp`, `UploadOwn`), run single-flight
+Work several triggers may ask for at once is a `Sequence` (`ImportReceived`, `TopUp`, `WalkAndPublish`, `UploadOwn`), run single-flight
 by its key across the process:
 
 - At most one pass runs per key. A request while one runs **joins**: exactly one more pass runs once the running
@@ -222,15 +222,15 @@ there keeps cancellation.
 New code writes the **structured log**, `Log` (`:domain:inbound`):
 
 ```kotlin
-private val log = Log("UploadCycle")
-log.i("top-up created jobs", "created" of n, "truncated" of truncated)
+private val log = Log("PlanTopUp")
+log.i("top-up planned", "needing" of needing.size, "admitted" of plan.rows.size)
 ```
 
 - An **event** is a short fixed phrase; the values ride as **fields** (`"name" of value`), rendered by the writer,
   never interpolated into the event.
 - A line carries the `Trigger` of the work that wrote it, read from the coroutine context — which is why the calls
   suspend. Non-suspend code writes through `log.unlabelled`.
-- The text sinks render `[OnSilentPush] [Info/UploadCycle] top-up created jobs created=3 truncated=false`; the crash
+- The text sinks render `[OnSilentPush] [Info/PlanTopUp] top-up planned needing=5 admitted=3`; the crash
   channel keeps the trigger as its `entry_point` tag.
 
 The old zones' Kermit lines keep their prefix through a **bridge**: the runtime's lane writes each task's trigger
@@ -278,7 +278,9 @@ backend's routes say and how a store keeps a value. Today it holds trust (`docs/
 the credential stores, the device identity, the attestation handshake, the version gate — and the membership: the
 `ledger.db` store, the membership row's repository, the leaves owed, the check times, the event's read and rename, the
 enrolment and the leave told to the backend; and the selection: `OwnPhotos`, where a member's contribution is derived,
-read under the grant's plan and admitted — the one place every consumer of their photos asks. Its edges are the domain,
+read under the grant's plan and admitted — the one place every consumer of their photos asks; and the upload
+(`data/upload`): the upload rows and their guarded transitions, a pass's gate reads, the request, and the two
+transfer tiers behind `UploadTier` (`SessionTier`, `OsQueueTier`). Its edges are the domain,
 the format, the ports, the generated wire and the inbound log — never an old zone, never `application`.
 
 - **Data translates and never decides.** Its only branch is an exhaustive `when` over a fact or a domain verdict,
@@ -358,7 +360,10 @@ free. Each concept's evidence arrives with its phase; the membership's are `Enro
 device), `ConfirmedNotJoined` (the store answered with no membership), `LeftMembership` (the leave's transaction landed)
 and `ConfirmedDeletion` (the event's photos are deleted, by the server's word or the membership's own deadline); the
 selection's are `AdmittedAsset` (the policy admitted a read's photo, minted by `SelectionPolicy.admit`) and `AdmittedRow`
-(it admitted a ledger row's asset, by `admitRecorded`); receiving's are `ReceivingMembership` (an active membership that receives and holds its key, by `ReceivingVerdict`), `Recognised` (the membership's received photos were recognised against a union read, minted by the store's recognition read once a pass recorded it, `ReceivedPhotosRead.recognition`) — which every import requires — and the typestate's `StagedDownload` and `ImportedAsset`, minted by the store that recorded each transition (`ImportQueue`, `ImportedReleases`).
+(it admitted a ledger row's asset, by `admitRecorded`); the upload's are `CreatedJob` (the platform accepted a job:
+its row may be recorded requested), `ReportedLanding` and `ReportedFailure` (the platform reported its end),
+`StoredBytes` (the backend's listing holds its bytes) and `FullGrant` (the grant's read found full access — what
+registering the extension requires); receiving's are `ReceivingMembership` (an active membership that receives and holds its key, by `ReceivingVerdict`), `Recognised` (the membership's received photos were recognised against a union read, minted by the store's recognition read once a pass recorded it, `ReceivedPhotosRead.recognition`) — which every import requires — and the typestate's `StagedDownload` and `ImportedAsset`, minted by the store that recorded each transition (`ImportQueue`, `ImportedReleases`).
 
 ---
 
@@ -370,7 +375,9 @@ compiler holds it — `invoke` carries an `EntryPointCall` opt-in only an entry 
 first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the membership's are
 `application.membership`'s (`EnrollDevice`, `EnterMembership`, `LeaveEvent`, `RefreshMembership`, `ReconfigureEvent`,
 `RenameEvent`, `DeliverPendingLeaves`, `ClaimStateCheck`), and the small concepts' (`RegisterPush`, `SetMobileData`,
-`RearmHeartbeat`), and receiving's (`application.receiving`: `PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and their kin). A use case answers an `XOutcome`, and logs what it decided through the structured log;
+`RearmHeartbeat`), the upload's, `application.upload`'s (`DeriveContribution`, `WalkOwnPhotos`, `RecordWalk`,
+`PlanTopUp`, `CreateJobs`, `SettlePresentedJobs`, `RecordFinishedUpload`, `SettleStoredUploads`,
+`ReconcileUploader`, `StopUploads`), and receiving's (`application.receiving`: `PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and their kin). A use case answers an `XOutcome`, and logs what it decided through the structured log;
 `:domain:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
 
 ---

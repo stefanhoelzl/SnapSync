@@ -30,8 +30,8 @@ class UploadKeysTest {
 
     @Test
     fun missing_extension_falls_back_to_bin() {
-        assertEquals("bin", fileExtension("noextension"))
-        assertEquals("dng", fileExtension("Photo.DNG"))
+        assertEquals("A-primary.bin", uploadKey(testAssetId("A"), ResourceRole.PRIMARY, "noextension"))
+        assertEquals("A-primary.dng", uploadKey(testAssetId("A"), ResourceRole.PRIMARY, "Photo.DNG"))
     }
 
     @Test
