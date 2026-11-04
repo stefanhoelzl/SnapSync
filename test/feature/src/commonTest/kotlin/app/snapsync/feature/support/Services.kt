@@ -15,11 +15,11 @@ import app.snapsync.data.store.db.MembershipQueries
 import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.RowsRead
 import app.snapsync.data.upload.UploadRowsReset
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.UploadKeyText
-import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock

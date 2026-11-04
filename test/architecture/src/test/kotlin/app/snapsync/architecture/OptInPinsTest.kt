@@ -87,9 +87,10 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/UploadEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                7,
+                8,
                 "the app's upload sequences — the top-up, the walk and publish, the wake's own uploads — and the " +
-                    "uploaders' reconcile call the upload use cases",
+                    "uploaders' reconcile call the upload use cases, and the placement before a job places own " +
+                    "photos",
             ),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ExtensionEntryPoints.kt" to mapOf(

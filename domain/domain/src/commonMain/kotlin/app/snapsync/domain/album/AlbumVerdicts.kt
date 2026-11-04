@@ -81,21 +81,17 @@ sealed interface OwnPlacementVerdict {
     data object Skip : OwnPlacementVerdict
 
     companion object {
-        fun of(
-            choice: AlbumChoice,
-            contents: AlbumContents,
-            entry: AlbumEntry,
-            assets: List<AssetId>,
-        ): OwnPlacementVerdict = when (choice) {
-            AlbumChoice.LibraryOnly -> Skip
-            AlbumChoice.SaveToAlbum -> when (contents.ownPhotos) {
-                OwnPhotoHome.StayInCameraFolder -> Skip
-                OwnPhotoHome.IntoAlbum -> into(entry, assets)
-            }
+        /**
+         * Where the member's own photos go, before any album is looked up: into the album only when one is chosen on a
+         * phone whose albums take them — so a placement for anyone else reads nothing.
+         */
+        fun home(choice: AlbumChoice, contents: AlbumContents): OwnPhotoHome = when (choice) {
+            AlbumChoice.LibraryOnly -> OwnPhotoHome.StayInCameraFolder
+            AlbumChoice.SaveToAlbum -> contents.ownPhotos
         }
 
         /** Never an album made here: the app makes it before sync needs it, so with none yet nothing is placed. */
-        private fun into(entry: AlbumEntry, assets: List<AssetId>): OwnPlacementVerdict = when (entry) {
+        fun of(entry: AlbumEntry, assets: List<AssetId>): OwnPlacementVerdict = when (entry) {
             is AlbumEntry.Mapped -> if (assets.isEmpty()) Skip else Place(entry.album, assets)
             AlbumEntry.None, AlbumEntry.Unreadable -> Skip
         }

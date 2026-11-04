@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.application.album.PlaceOwnPhotos
 import app.snapsync.application.upload.CreateJobs
 import app.snapsync.application.upload.DeriveContribution
 import app.snapsync.application.upload.PlanTopUp
@@ -31,7 +32,6 @@ import app.snapsync.data.upload.UploaderAdmission
 import app.snapsync.data.upload.WalkRecord
 import app.snapsync.domain.upload.UploadHost
 import app.snapsync.entrypoints.AlbumPlacement
-import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.feature.membership.ManifestPublish
 import app.snapsync.ports.GalleryReader
@@ -59,7 +59,8 @@ internal class UploadServices(
     val manifestPublisher: ManifestPublisher,
     /** What this process reads of the photos it received — echo suppression and recognition: required, no default. */
     val received: ReceivedPhotosRead,
-    val albumCoordinator: AlbumCoordinator,
+    /** Placing own photos in the event album — the one album operation both processes hold; neither makes one here. */
+    val placeOwn: PlaceOwnPhotos,
     val credentials: CachedCredentialStore,
     /** This process's credential — the app's attests a missing token, the extension's cannot. */
     val credential: Credential,
@@ -108,7 +109,7 @@ internal class UploadLayers(process: ProcessServices, private val services: Uplo
     val walk: WalkOwnPhotos by lazy { WalkOwnPhotos(services.photos, rows, resources) }
     val recordWalk: RecordWalk by lazy { RecordWalk(walkRecord, recent) }
     val plan: PlanTopUp by lazy { PlanTopUp(rows) }
-    val album: AlbumPlacement by lazy { AlbumPlacement(services.albumCoordinator) }
+    val album: AlbumPlacement by lazy { AlbumPlacement(services.placeOwn) }
 
     /**
      * The device manifest's publish — phase 4.4c's step. Its producer resolves the device id on first in-pass use —

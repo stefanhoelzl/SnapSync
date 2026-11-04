@@ -3,6 +3,7 @@ package app.snapsync.compose
 import app.snapsync.application.album.AlbumForImport
 import app.snapsync.application.album.EnsureEventAlbum
 import app.snapsync.application.album.MarkAlbumFilled
+import app.snapsync.application.album.PlaceOwnPhotos
 import app.snapsync.data.album.AlbumCreation
 import app.snapsync.data.album.AlbumFiling
 import app.snapsync.data.album.AlbumMap
@@ -21,6 +22,9 @@ internal class AlbumLayers(private val core: AppCore) {
     /** Making sure the joined membership's album exists — a join's, a Save's. */
     @OptIn(AppProcessOnly::class)
     val ensure: EnsureEventAlbum by lazy { EnsureEventAlbum(map, filing, AlbumCreation(core.ports.gallery)) }
+
+    /** The member's own photos placed as their uploads are first queued; the extension builds its own. */
+    val placeOwn: PlaceOwnPhotos by lazy { PlaceOwnPhotos(map, filing) }
 
     /** The album an import pass files into. */
     val forImport: AlbumForImport by lazy { AlbumForImport(map, filing) }

@@ -12,6 +12,7 @@ import app.snapsync.domain.album.AlbumEntry
 import app.snapsync.domain.album.EventAlbumId
 import app.snapsync.domain.album.FillMarkVerdict
 import app.snapsync.domain.album.ImportAlbumVerdict
+import app.snapsync.domain.album.OwnPhotoHome
 import app.snapsync.domain.album.OwnPlacementVerdict
 import app.snapsync.domain.album.ReceivedPlacementVerdict
 import app.snapsync.domain.asset.AssetId
@@ -30,13 +31,17 @@ class PlaceOwnPhotos(private val map: AlbumMap, private val filing: AlbumFiling)
     private val log = Log("PlaceOwnPhotos")
 
     @EntryPointCall
-    suspend operator fun invoke(membership: Membership.Active, assets: List<AssetId>): PlaceOutcome {
-        val entry = map.entry(membership.event.id)
-        return when (val verdict = OwnPlacementVerdict.of(membership.share.album, filing.contents, entry, assets)) {
+    suspend operator fun invoke(membership: Membership.Active, assets: List<AssetId>): PlaceOutcome =
+        when (OwnPlacementVerdict.home(membership.share.album, filing.contents)) {
+            OwnPhotoHome.IntoAlbum -> into(membership.event.id, assets)
+            OwnPhotoHome.StayInCameraFolder -> PlaceOutcome.Skipped
+        }
+
+    private suspend fun into(event: EventId, assets: List<AssetId>): PlaceOutcome =
+        when (val verdict = OwnPlacementVerdict.of(map.entry(event), assets)) {
             is OwnPlacementVerdict.Place -> placed(filing.add(verdict.album, verdict.assets), verdict.album, assets)
             OwnPlacementVerdict.Skip -> PlaceOutcome.Skipped
         }
-    }
 
     private suspend fun placed(add: AlbumAdd, album: EventAlbumId, assets: List<AssetId>) = PlaceOutcome.of(add).also {
         log.i("own photos placed", "album" of album.value, "count" of assets.size, "added" of add)
