@@ -93,20 +93,20 @@ class ExtensionPass(
 
     @OptIn(EntryPointCall::class)
     private suspend fun uploaded(run: UploadGate.Run, contribution: Contribution, on: Run): UploadPass = on.steps {
-        val settled = required { settle(run.membership.event.id, Presented.RUN) }
+        val settled = required { settle(run.membership.event.id, Presented.Judged(contribution.policy)) }
         UploadPass.of(settled, required { uploads.run(run, contribution, on) })
     }
 
     @OptIn(EntryPointCall::class)
     private suspend fun declined(run: UploadGate.Run, contribution: Contribution, on: Run): UploadPass = on.steps {
-        required { settle(run.membership.event.id, Presented.DECLINED) }
+        required { settle(run.membership.event.id, Presented.Judged(contribution.policy)) }
         isolated("publish") { publish.publish(run.membership.event.id, contribution.policy, run.version) }
         UploadPass.SKIPPED
     }
 
     @OptIn(EntryPointCall::class)
     private suspend fun withheld(event: EventId): ExtensionAnswer {
-        settle(event, Presented.WITHHELD)
+        settle(event, Presented.Withheld)
         return UploadPass.SKIPPED.extensionAnswer(inFlight = 0)
     }
 }

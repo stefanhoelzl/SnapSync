@@ -10,6 +10,7 @@ import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.sharing.BEFORE
 import app.snapsync.data.sharing.DURING
 import app.snapsync.data.sharing.Library
+import app.snapsync.data.sharing.range
 import app.snapsync.data.upload.DeviceListing
 import app.snapsync.data.upload.ExtensionRegistrar
 import app.snapsync.data.upload.FinishedAnswer
@@ -107,6 +108,16 @@ class UploadUseCasesTest {
             ).rows.firstOrNull { it.key == key(asset) }
 
     private fun dated(at: String) = RowDetail(CaptureDate.Dated(TimestampText.parse(at)), "image/jpeg", "IMG.JPG")
+
+    /** [asset]'s row as a walk records a photo inside the range, read back needing a job. */
+    private fun shared(asset: String): UploadRow.Discovered {
+        world.walk.discover(world.event, listOf(FoundResource(world.key(asset), dated(DURING))))
+        return world.row(asset) as UploadRow.Discovered
+    }
+
+    private suspend fun sharing() = library.contribution().policy
+
+    private suspend fun sharingNothing() = library.contribution(direction = Direction.DownloadOnly).policy
 
     @Test
     fun `a walk records the photos it admits, a top-up creates their jobs from the handles it read`() = runTest {
@@ -285,8 +296,8 @@ class UploadUseCasesTest {
                 OsQueueTier(queue, world.requests, world.sealing, mobileDataAnswering { world.network }, world.record)
             val drain = OsQueueDrain(queue, JobOwners(world.reads), JobAcknowledgement(queue), world.record)
             val settle = SettlePresentedJobs(drain, tier, world.reads)
-            tier.create(world.event, world.discovered("A1"), SessionWorld.From)
-            tier.create(world.event, world.discovered("A2"), SessionWorld.From)
+            tier.create(world.event, shared("A1"), SessionWorld.From)
+            tier.create(world.event, shared("A2"), SessionWorld.From)
             val url = { i: Int -> queue.created[i].second.url }
             fun job(i: Int, held: Boolean = true) =
                 OsUploadJob(
@@ -300,20 +311,88 @@ class UploadUseCasesTest {
 
             queue.offered = listOf(job(0))
             queue.terminals = listOf(job(1))
-            assertEquals(UploadPass.CAUGHT_UP, settle(world.event, Presented.RUN))
+            assertEquals(UploadPass.CAUGHT_UP, settle(world.event, Presented.Judged(sharing())))
             assertEquals(1, queue.retried.size)
             assertEquals(3, queue.created.size, "the held failure is re-created at once")
 
             queue.terminals = listOf(job(2, held = false))
-            assertEquals(UploadPass.CAUGHT_UP, settle(world.event, Presented.DECLINED))
+            assertEquals(UploadPass.CAUGHT_UP, settle(world.event, Presented.Judged(sharingNothing())))
             assertEquals(3, queue.created.size, "a retry-spent job waits for the top-up")
 
             queue.terminals = listOf(job(1))
             queue.answer = CreateOutcome.LIMIT_EXCEEDED
-            tier.create(world.event, world.discovered("A3"), SessionWorld.From)
-            assertEquals(UploadPass.CAUGHT_UP, settle(world.event, Presented.WITHHELD))
+            tier.create(world.event, shared("A3"), SessionWorld.From)
+            assertEquals(UploadPass.CAUGHT_UP, settle(world.event, Presented.Withheld))
             assertEquals(1, queue.retried.size, "a withheld pass re-points nothing")
         }
+
+    @Test
+    fun `a retry or failure of a photo no longer shared is let go, and uploaded once it is shared again`() = runTest {
+        world.joined()
+        val queue = RecordingQueue()
+        val tier =
+            OsQueueTier(queue, world.requests, world.sealing, mobileDataAnswering { world.network }, world.record)
+        val drain = OsQueueDrain(queue, JobOwners(world.reads), JobAcknowledgement(queue), world.record)
+        val settle = SettlePresentedJobs(drain, tier, world.reads)
+        fun before(asset: String): UploadRow.Discovered {
+            world.walk.discover(world.event, listOf(FoundResource(world.key(asset), dated(BEFORE))))
+            return world.row(asset) as UploadRow.Discovered
+        }
+        tier.create(world.event, shared("IN"), SessionWorld.From)
+        tier.create(world.event, before("OUT"), SessionWorld.From)
+        tier.create(world.event, before("GONE"), SessionWorld.From)
+        fun job(i: Int) = OsUploadJob(
+            RecordingQueue.JobHandle,
+            queue.created[i].second.url,
+            null,
+            UploadJobState.FAILED,
+            null,
+            SessionWorld.Handle,
+        )
+        val offeredOut = job(1)
+        queue.offered = listOf(job(0), offeredOut)
+        queue.terminals = listOf(job(2))
+
+        assertEquals(UploadPass.CAUGHT_UP, settle(world.event, Presented.Judged(sharing())))
+
+        assertEquals(1, queue.retried.size, "only the photo still shared is re-pointed")
+        assertTrue(offeredOut in queue.acknowledged, "the refused retry is let go")
+        assertEquals(3, queue.created.size, "the refused failure is not re-created")
+        assertIs<UploadRow.Discovered>(world.row("OUT"))
+        assertIs<UploadRow.Discovered>(world.row("GONE"))
+
+        val wider = library.contribution(range = range(from = "2026-07-11T00:00:00Z")).policy
+        val replanned = plan(world.event, wider).rows.mapTo(mutableSetOf()) { it.key }
+        assertEquals(setOf(world.key("GONE"), world.key("OUT")), replanned, "shared again: the top-up creates them")
+    }
+
+    @Test
+    fun `a membership that shares nothing re-points and re-creates nothing, and answers every job`() = runTest {
+        world.joined()
+        val queue = RecordingQueue()
+        val tier =
+            OsQueueTier(queue, world.requests, world.sealing, mobileDataAnswering { world.network }, world.record)
+        val drain = OsQueueDrain(queue, JobOwners(world.reads), JobAcknowledgement(queue), world.record)
+        tier.create(world.event, shared("A1"), SessionWorld.From)
+        tier.create(world.event, shared("A2"), SessionWorld.From)
+        fun job(i: Int) = OsUploadJob(
+            RecordingQueue.JobHandle,
+            queue.created[i].second.url,
+            null,
+            UploadJobState.FAILED,
+            null,
+            SessionWorld.Handle,
+        )
+        queue.offered = listOf(job(0))
+        queue.terminals = listOf(job(1))
+
+        val settled = SettlePresentedJobs(drain, tier, world.reads)(world.event, Presented.Judged(sharingNothing()))
+
+        assertEquals(UploadPass.CAUGHT_UP, settled)
+        assertEquals(emptyList(), queue.retried)
+        assertEquals(2, queue.created.size)
+        assertTrue(queue.acknowledged.containsAll(queue.offered + queue.terminals), "every presented job answered")
+    }
 
     @Test
     fun `a held failure whose row moved on, or cannot be read, is not re-created`() = runTest {
@@ -322,7 +401,7 @@ class UploadUseCasesTest {
         val tier =
             OsQueueTier(queue, world.requests, world.sealing, mobileDataAnswering { world.network }, world.record)
         val drain = OsQueueDrain(queue, JobOwners(world.reads), JobAcknowledgement(queue), world.record)
-        tier.create(world.event, world.discovered("A1"), SessionWorld.From)
+        tier.create(world.event, shared("A1"), SessionWorld.From)
         val failed = {
             OsUploadJob(
                 RecordingQueue.JobHandle,
@@ -338,13 +417,19 @@ class UploadUseCasesTest {
 
         queue.terminals = listOf(failed())
         listOf(elsewhere, locked).forEach { rows ->
-            assertEquals(UploadPass.CAUGHT_UP, SettlePresentedJobs(drain, tier, rows)(world.event, Presented.RUN))
+            assertEquals(
+                UploadPass.CAUGHT_UP,
+                SettlePresentedJobs(drain, tier, rows)(world.event, Presented.Judged(sharing())),
+            )
         }
         assertEquals(1, queue.created.size, "a row another process withdrew, or one that cannot be read")
 
         tier.create(world.event, world.row("A1") as UploadRow.Discovered, SessionWorld.From)
         world.record.ended(world.event, world.key("A1"), app.snapsync.domain.upload.TransferEnd.LANDED)
-        assertEquals(UploadPass.CAUGHT_UP, SettlePresentedJobs(drain, tier, world.reads)(world.event, Presented.RUN))
+        assertEquals(
+            UploadPass.CAUGHT_UP,
+            SettlePresentedJobs(drain, tier, world.reads)(world.event, Presented.Judged(sharing())),
+        )
         assertEquals(2, queue.created.size, "a row a landing settled first is not re-created")
     }
 
@@ -355,13 +440,16 @@ class UploadUseCasesTest {
         val tier =
             OsQueueTier(queue, world.requests, world.sealing, mobileDataAnswering { world.network }, world.record)
         val drain = OsQueueDrain(queue, JobOwners(world.reads), JobAcknowledgement(queue), world.record)
-        tier.create(world.event, world.discovered("A1"), SessionWorld.From)
+        tier.create(world.event, shared("A1"), SessionWorld.From)
         queue.terminals = listOf(
             OsUploadJob(RecordingQueue.JobHandle, queue.created[0].second.url, null, UploadJobState.FAILED, null, SessionWorld.Handle),
         )
         queue.answer = CreateOutcome.LIMIT_EXCEEDED
 
-        assertEquals(UploadPass.WORK_LEFT, SettlePresentedJobs(drain, tier, world.reads)(world.event, Presented.RUN))
+        assertEquals(
+            UploadPass.WORK_LEFT,
+            SettlePresentedJobs(drain, tier, world.reads)(world.event, Presented.Judged(sharing())),
+        )
     }
 
     @Test

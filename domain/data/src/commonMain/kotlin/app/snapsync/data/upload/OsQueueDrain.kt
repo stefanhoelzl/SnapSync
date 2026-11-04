@@ -32,8 +32,14 @@ class OsQueueDrain(
      */
     suspend fun drain(event: EventId): List<ReturnedJob> = queue.terminals().mapNotNull { drained(event, it) }
 
-    /** Acknowledge [offered] without re-pointing it: the queue lets the job go. */
-    suspend fun answer(offered: OfferedRetry) = answers.acknowledge(offered.job)
+    /**
+     * Decline [offered] for [event]: its row returned to needing a job — as a failure the queue ended — and the job
+     * acknowledged without a re-point, so the queue lets it go (change `refused-retries-are-not-recreated`).
+     */
+    suspend fun decline(event: EventId, offered: OfferedRetry) {
+        record.ended(event, offered.row.key, TransferEnd.FAILED)
+        answers.acknowledge(offered.job)
+    }
 
     private suspend fun offered(event: EventId, job: OsUploadJob): OfferedRetry? =
         when (val owner = owners.of(event, job)) {
