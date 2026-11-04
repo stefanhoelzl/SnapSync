@@ -8,6 +8,7 @@ import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MintsConfirmedNotJoined
 import app.snapsync.domain.membership.MintsLeftMembership
+import app.snapsync.domain.upload.ExtensionSwitch
 import app.snapsync.domain.upload.FullGrant
 import app.snapsync.domain.upload.MintsFullGrant
 import app.snapsync.ports.ExtensionRegistry
@@ -53,6 +54,14 @@ class ExtensionRegistrarTest {
         registrar.register(FullGrant())
 
         assertEquals(listOf(false, true), registry.writes)
+    }
+
+    @Test
+    fun `the rig's switch turned off deregisters the extension at once, and on touches nothing`() = runTest {
+        registrar.followSwitch(ExtensionSwitch.ON)
+        assertEquals(emptyList(), registry.writes)
+        registrar.followSwitch(ExtensionSwitch.OFF)
+        assertEquals(listOf(false), registry.writes)
     }
 
     @Test
