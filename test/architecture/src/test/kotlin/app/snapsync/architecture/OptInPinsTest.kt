@@ -79,6 +79,9 @@ class OptInPinsTest {
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/receiving/ImportedReleases.kt" to mapOf(
             "MintsImportedAsset" to Pin(1, "the one mint of an imported photo (`importedAsset`), every import's"),
         ),
+        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AlbumComposition.kt" to mapOf(
+            "AppProcessOnly" to Pin(1, "the app's album ensure, the one creator — the extension only places"),
+        ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ReceivingComposition.kt" to mapOf(
             "AppProcessOnly" to Pin(2, "the app's download store: its read-write file, the one writer and migrator"),
         ),

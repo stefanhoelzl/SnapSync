@@ -4,7 +4,6 @@ import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.album.OwnPhotoHome
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
-import app.snapsync.model.EventConfig
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.album.AlbumLookup
 import app.snapsync.services.album.AlbumMapService
@@ -20,7 +19,7 @@ import co.touchlab.kermit.Logger
  * Ownership: **the app is the sole creator** — only the app calls [ensureAlbum] (on the photo-permission
  * grant). Both the app and the extension call [place] (when an own photo's upload is first enqueued), which only ever
  * *adds* to an already-created album. The download path does its add atomically inside the importer's own
- * commit (design D5/D9) and only borrows [albumIdFor]; it does not route through [place].
+ * commit (design D5/D9) and reads its album through `AlbumForImport`; it does not route through [place].
  *
  * **The phone's [AlbumContents] decides what the album may hold** (`changes/archive/2026-09-30-android-event-album`
  * D4, D5):
@@ -28,7 +27,7 @@ import co.touchlab.kermit.Logger
  *    no-op): filing one would move it out of the camera folder, and it is not the app's file to move;
  *  - where the album is a [AlbumContents.Received] folder, "does not resolve" cannot mean "deleted" by itself — the
  *    album map's `filled` mark tells an album the member emptied (deleted, emptied or renamed) from one not filled
- *    yet. A deleted one answers no album at import ([albumIdFor]), so photos land in the camera folder.
+ *    yet. A deleted one answers no album at import (`AlbumForImport`), so photos land in the camera folder.
  *
  * On every phone a deleted album is recreated only on an opt-in ([ensureAlbum]'s `optIn`), never on a launch's
  * grant replay.
@@ -103,39 +102,6 @@ class AlbumCoordinator(
         store.put(eventId, created)
         log.i { "ensureAlbum: created album=$created named='$name' for event=$eventId" }
         return created
-    }
-
-    /**
-     * The album `localIdentifier` the current membership's imports go to, or `null` when it opted out
-     * ([saveToAlbum] off) or no album was ever created — the same opt-in rule [ensureAlbum] gates on. The
-     * download importer reads it once per import, before the import's own change block (design D5/D9: the
-     * import-time add borrows the lookup, it does not route through [place]).
-     * Where the album is a [AlbumContents.Received] folder, a filled album the member emptied answers `null` too: the
-     * photo then lands in the camera folder instead of bringing the folder back.
-     */
-    suspend fun albumIdFor(eventId: EventId, saveToAlbum: Boolean): String? {
-        if (!saveToAlbum) return null
-        val stored = store.get(eventId) ?: return null
-        if (contents != AlbumContents.Received || !store.filled(eventId) || manager.exists(stored)) return stored
-        log.i { "albumIdFor: album for event=$eventId was emptied by the member — importing into the camera folder" }
-        return null
-    }
-
-    /**
-     * An import into [album] settled as imported: the event's album has now held a photo, so where it is
-     * a [AlbumContents.Received] folder emptying it later reads as a deletion. A no-op where it is not, or when [album]
-     * is no longer the event's (a recreation raced the import).
-     */
-    fun onImportedInto(eventId: EventId, album: String) {
-        if ((contents == AlbumContents.Received) && store.get(eventId) == album) store.markFilled(eventId)
-    }
-
-    /** [albumIdFor] the [joined] membership — what an import files into; `null` while not joined. */
-    suspend fun albumIdFor(joined: EventConfig?): String? = joined?.let { albumIdFor(it.eventId, it.saveToAlbum) }
-
-    /** [onImportedInto] for the [joined] membership — nothing while not joined. */
-    fun onImportedInto(joined: EventConfig?, album: String) {
-        joined?.let { onImportedInto(it.eventId, album) }
     }
 
     /** Whether the member's own photos go into the album on this phone. */

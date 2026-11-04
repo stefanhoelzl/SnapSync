@@ -3,6 +3,7 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.album.EnsureEventAlbum
 import app.snapsync.application.membership.Admitted
 import app.snapsync.application.membership.ClaimStateCheck
 import app.snapsync.application.membership.DeliverPendingLeaves
@@ -28,9 +29,9 @@ import app.snapsync.application.upload.ReconcileUploader
 import app.snapsync.application.upload.StopUploads
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.KeepOutcome
+import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.domain.album.AlbumAsk
-import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.ConfirmedNotJoined
@@ -50,7 +51,6 @@ import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.upload.UploaderChange
-import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.status.StatusRefresh
@@ -64,7 +64,6 @@ import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Steps
-import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.membership.MembershipTransition
 
 // ── The membership: what a member's requests do, and how every trigger reads the membership ─────────────────────────
@@ -315,20 +314,12 @@ class AfterSettings(
  * brings back an album they deleted.
  */
 class EventAlbum(
-    private val albums: AlbumCoordinator,
+    private val ensure: EnsureEventAlbum,
     private val gather: AlbumGather,
-    private val access: GalleryAccessState,
+    private val grant: GrantRead,
 ) {
     suspend fun run(trigger: String, membership: Membership.Active, ask: AlbumAsk, on: Run) = on.steps {
-        isolated("album") {
-            albums.ensureAlbum(
-                membership.event.id,
-                membership.event.name.text,
-                membership.share.album == AlbumChoice.SaveToAlbum,
-                access.usable,
-                optIn = ask == AlbumAsk.OptIn,
-            )
-        }
+        isolated("album") { ensure(membership, grant.access(), ask) }
         isolated("album gather") { gather.start(trigger, membership.event.id) }
     }
 }
