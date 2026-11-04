@@ -71,7 +71,6 @@ class RowsResetAndProgressTest {
         assertEquals(StoreWrite.Written, reset.purgeExcept(event))
         assertEquals(listOf(key("KEEP")), rowsOf(event).map { it.key })
         assertTrue(rowsOf(other).isEmpty())
-
     }
 
     @Test

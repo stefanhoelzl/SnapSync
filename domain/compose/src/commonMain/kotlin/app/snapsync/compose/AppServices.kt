@@ -64,7 +64,6 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
         SharedDatabase(ports.databases, LegacyRecords(process.files, ports.preferences, log))
     }
 
-
     /**
      * The device manifest's skip record, in the shared database — the SAME record the ≥26.1 extension's producer reads.
      * A join writes no manifest; its share-set load advances the manifest version, so the producer republishes under

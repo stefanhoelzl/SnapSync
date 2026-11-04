@@ -472,7 +472,6 @@ class AppCore internal constructor(
     internal val uploadDrains: SessionDrains = SessionDrains()
     internal val downloadDrains: SessionDrains = SessionDrains()
 
-
     /**
      * What [membership] contributes now — the ONE derivation ([OwnPhotos.contribution]), for this composition's own
      * readers: the status total and the album gather. The upload cycle reaches the same one through its entry gate.
