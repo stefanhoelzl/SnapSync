@@ -228,6 +228,8 @@ private fun extensionServices(
         albumCoordinator = AlbumCoordinator(albums, AlbumMapService(records)),
         // A retry re-reads the shared item: the app may have renewed the token this copy still holds.
         credentials = attestStore,
+        // It cannot attest: a token the backend refused stays missing until the app renews it.
+        credential = DropOnlyCredential(attestStore),
         exchange = exchange,
         gateway = backend.gateway,
         // Read only: the extension derives each file's key from the kept one and never writes the slot.

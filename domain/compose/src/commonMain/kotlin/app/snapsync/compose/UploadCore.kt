@@ -7,6 +7,7 @@ import app.snapsync.application.upload.RecordWalk
 import app.snapsync.application.upload.WalkOwnPhotos
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.backend.Credential
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
 import app.snapsync.data.crypto.UploadSealing
@@ -60,6 +61,8 @@ internal class UploadServices(
     val received: ReceivedPhotosRead,
     val albumCoordinator: AlbumCoordinator,
     val credentials: CachedCredentialStore,
+    /** This process's credential — the app's attests a missing token, the extension's cannot. */
+    val credential: Credential,
     val exchange: BackendExchange,
     val gateway: BackendGateway,
     val keys: EventKeyStore,
@@ -79,7 +82,7 @@ internal class UploadLayers(process: ProcessServices, private val services: Uplo
     val resources: OwnPhotoResources by lazy { OwnPhotoResources(services.photos) }
 
     val requests: UploadRequests by lazy {
-        UploadRequests(services.exchange, services.credentials, services.deviceIdentity)
+        UploadRequests(services.exchange, services.credentials, services.credential, services.deviceIdentity)
     }
 
     val sealing: UploadSealing by lazy {

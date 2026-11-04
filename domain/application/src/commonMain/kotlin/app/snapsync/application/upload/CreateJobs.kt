@@ -64,7 +64,7 @@ class CreateJobs(
         suspend fun all(planned: List<UploadRow.Discovered>): UploadPass {
             for (row in planned) {
                 currentCoroutineContext().ensureActive()
-                if (created(row) == CreateAnswer.Full) return UploadPass.WORK_LEFT
+                created(row).endedPass()?.let { return it }
             }
             return UploadPass.CAUGHT_UP
         }
@@ -109,6 +109,17 @@ class CreateJobs(
 
     private suspend fun logged(row: UploadRow.Discovered, answer: CreateAnswer) = when (answer) {
         CreateAnswer.Full -> log.w("job limit reached — deferring the rest", "key" of row.key)
+        is CreateAnswer.Unverified -> log.w("no proof is held — nothing is sent until verified", "key" of row.key)
         else -> log.i("job create answered", "key" of row.key, "answer" of answer)
     }
+}
+
+/**
+ * Whether [this] create ends the pass, and as what: the platform took no more — work remains — or this phone holds no
+ * proof, so every later row would wait for the same reason (change `withhold-unverified-uploads`).
+ */
+internal fun CreateAnswer?.endedPass(): UploadPass? = when (this) {
+    CreateAnswer.Full -> UploadPass.WORK_LEFT
+    is CreateAnswer.Unverified -> UploadPass.UNVERIFIED
+    else -> null
 }

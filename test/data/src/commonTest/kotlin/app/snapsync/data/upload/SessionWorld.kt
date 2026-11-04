@@ -86,7 +86,13 @@ internal class SessionWorld(takesResources: Boolean = false) {
     val standings = UploadStandings(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), identity)
     val create = SessionCreate(session, mobileDataAnswering { network }, record)
     val fromFiles = FileUploads(staged, digests, export, standings, create)
-    val requests = UploadRequests(app.snapsync.data.FakeClient().exchange(), Held(token = token(30)).store, identity)
+    val held = Held(token = token(30))
+    val requests = UploadRequests(
+        app.snapsync.data.FakeClient().exchange(),
+        held.store,
+        app.snapsync.data.trust.DropOnlyCredential(held.store),
+        identity,
+    )
     val tier = SessionTier(session, requests, sealing, create, fromFiles)
     val ends = SessionEnds(session, staged, record)
     val sweep = StagingSweep(files, staged, reads, session, fromFiles)
@@ -103,6 +109,11 @@ internal class SessionWorld(takesResources: Boolean = false) {
         val key = ids.mint()
         joined(Encryption.Encrypted(key.id))
         keys.keep(KeyToKeep.Key(key), event)
+    }
+
+    /** The phone's proof refused and dropped, as the upload extension drops one it cannot replace. */
+    fun unverified() {
+        held.store.clearTokenIf(app.snapsync.data.bearer(token(30)))
     }
 
     fun key(asset: String = "A1"): UploadKey = UploadKey.of(AssetId.parse(asset)!!, ResourceRole.PRIMARY, "IMG.MOV")

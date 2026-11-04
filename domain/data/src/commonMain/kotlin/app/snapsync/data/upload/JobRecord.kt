@@ -54,6 +54,12 @@ sealed interface CreateAnswer {
     /** Nothing can be addressed to this device now — its id is not held here, or cannot be read. */
     data class Unaddressed(val detail: String) : CreateAnswer
 
+    /**
+     * This phone holds no proof it is genuine, and could obtain none: nothing is sent, the row waits, and no later row
+     * of the pass is tried — each would wait for the same reason. [detail] is diagnostics only.
+     */
+    data class Unverified(val detail: String) : CreateAnswer
+
     /** Where a failed attempt's bytes stand could not be learned: no transfer now, the next pass asks. */
     data object NotNow : CreateAnswer
 }
