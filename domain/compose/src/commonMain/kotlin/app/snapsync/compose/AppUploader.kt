@@ -103,6 +103,9 @@ internal class AppUploader(private val core: AppCore) {
 
     fun stop(arming: app.snapsync.data.wake.WakeArming): StopUploads = StopUploads(registrar, arming, ends)
 
+    /** The extension as the rig's switch now has it — deregistered at once when switched off (a rig build only). */
+    suspend fun followSwitch() = registrar.followSwitch(core.uploaderSwitches.extension())
+
     /** The join's reset of the upload rows, and the rig's reset of them. */
     val reset: UploadRowsReset by lazy { UploadRowsReset(app.sharedDatabase) }
 

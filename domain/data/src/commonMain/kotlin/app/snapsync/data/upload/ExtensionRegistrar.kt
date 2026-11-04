@@ -1,6 +1,7 @@
 package app.snapsync.data.upload
 
 import app.snapsync.domain.membership.EndsUploads
+import app.snapsync.domain.upload.ExtensionSwitch
 import app.snapsync.domain.upload.FullGrant
 import app.snapsync.domain.upload.RegistrationReply
 import app.snapsync.domain.upload.RegistrationVerdict
@@ -37,6 +38,15 @@ class ExtensionRegistrar(private val registry: ExtensionRegistry) {
 
     /** Deregister the extension — the disable alone — once [ending] says this membership's uploads end. */
     suspend fun deregister(@Suppress("UNUSED_PARAMETER") ending: EndsUploads) = write(RegistrationWrite.DISABLE)
+
+    /**
+     * Follow the rig's [switch] (a rig build only — on every shipped build it is on): switched off, the extension is
+     * deregistered at once, since it cannot read the app's memory and so cannot see the switch itself.
+     */
+    suspend fun followSwitch(switch: ExtensionSwitch) = when (switch) {
+        ExtensionSwitch.OFF -> write(RegistrationWrite.DISABLE)
+        ExtensionSwitch.ON -> Unit
+    }
 
     private suspend fun write(write: RegistrationWrite) {
         val answer = registry.setEnabled(enabled(write))

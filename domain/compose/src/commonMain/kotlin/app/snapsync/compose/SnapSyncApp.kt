@@ -518,8 +518,14 @@ class AppCore internal constructor(
     /** What the entry points run (`AppWork`): built once, on first touch, and handed to the ports. */
     internal val work: AppWork by lazy { AppWork(this) }
 
-    /** The uploaders reconciled by comparison, as at a launch — the rig's, after its uploader pin moved. */
-    fun reconcileUploaders() = work.uploaderChange.deliver(UploaderChange.LAUNCH)
+    /**
+     * The uploaders after the rig's pin moved: the extension switched off is deregistered at once, then both are
+     * reconciled by comparison, as at a launch.
+     */
+    suspend fun reconcileUploaders() {
+        appUploader.followSwitch()
+        work.uploaderChange.deliver(UploaderChange.LAUNCH)
+    }
 
     /** The user-tap command bundle — see [userCommandsFor]. */
     val userCommands: UserCommands by lazy { userCommandsFor() }
