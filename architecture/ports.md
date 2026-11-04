@@ -190,6 +190,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Port` | `:domain:ports` | `:test:architecture` None | yes |
 | `PrefRead` | `:domain:ports` | `:domain:ports` Absent, Unavailable, Value | no |
 | `Preferences` | `:domain:ports` | `:adapter:android` AndroidPreferences; `:adapter:generic:mock` InMemoryPreferences; `:adapter:ios:ext-safe` IosPreferences; `:test:contracts` PreferencesProxy | yes |
+| `Presented` | `:domain:application` | `:domain:application` Judged, Withheld | no |
 | `PreviewRead` | `:domain:data` | `:domain:data` Counted, NotReadable | no |
 | `ProcessInfo` | `:domain:ports` | `:adapter:android` AndroidProcessInfo; `:adapter:generic:mock` InMemoryProcessInfo, Reading; `:adapter:ios:app-only` IosProcessInfo; `:test:contracts` ProcessInfoProxy | yes |
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` Face, HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics; `:test:contracts` ProcessMetricsProxy | no |

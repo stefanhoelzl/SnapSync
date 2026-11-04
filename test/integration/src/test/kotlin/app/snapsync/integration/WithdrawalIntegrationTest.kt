@@ -220,6 +220,51 @@ class WithdrawalIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Deleting or no longer sharing a photo withdraws it",
+        scenario = "A photo no longer shared is not sent again after its upload failed",
+    )
+    fun a_photo_narrowed_out_after_its_upload_failed_is_not_sent_again_until_shared_again() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            step("EARLY taken", act = { library.add("EARLY", date = EARLY) }, until = { settled { true } })
+            step("EARLY's job made", act = { cycle() }, until = {
+                event<WorldEvent.UploadJobCreated> { it.job == primaryJob("EARLY") }
+                settled { true }
+            })
+            // Its upload fails: iOS offers its one free retry at the next invocation.
+            step("EARLY's upload failed", act = { uploadQueue.failJob(primaryJob("EARLY"), "network") }, until = {
+                settled { true }
+            })
+            step("narrowed past EARLY", act = {
+                reconfigure(Choices(cutoff = NARROWED))
+                awaitSharesFrom(Instant.parse(NARROWED).toLocalDateTime(zone))
+            }, until = { settled { true } })
+        }
+
+        // The next invocation is offered the retry: the photo is no longer shared, so it does not leave the phone.
+        whenever {
+            cycle()
+            uploadQueue.completeJob()
+        }
+        then {
+            never<WorldEvent.UploadJobCreated> { it.job == primaryJob("EARLY") }
+            never<WorldEvent.BytesStored> { it.asset == "EARLY" }
+        }
+
+        // Shared again: it is uploaded.
+        whenever {
+            reconfigure(Choices(range = RangeChoice.EVENT_START))
+            awaitSharesFrom(LocalDateTime.parse(Defaults.WINDOW_START))
+            cycle()
+            uploadQueue.completeJob()
+        }
+        then { event<WorldEvent.BytesStored> { it.asset == "EARLY" } }
+    }
+
     // ---- helpers --------------------------------------------------------------------------------------------------
 
     /** The backend records [id] withdrawn: no longer declared, and no longer offered to the event's members. */

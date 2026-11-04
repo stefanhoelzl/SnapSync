@@ -231,13 +231,16 @@ class OsQueueTest {
     }
 
     @Test
-    fun `an offered retry answered without a re-point is acknowledged, a refusal logged`() = runTest {
-        world.joined()
-        queue.offered = listOf(job(requested()))
-        queue.change = ChangeOutcome.Refused(null, "busy")
+    fun `a declined retry is let go - acknowledged without a re-point, its row needing a job, a refusal logged`() =
+        runTest {
+            world.joined()
+            queue.offered = listOf(job(requested()))
+            queue.change = ChangeOutcome.Refused(null, "busy")
 
-        drain.answer(drain.offered(world.event).single())
+            drain.decline(world.event, drain.offered(world.event).single())
 
-        assertEquals(queue.offered, queue.acknowledged)
-    }
+            assertEquals(queue.offered, queue.acknowledged)
+            assertEquals(emptyList(), queue.retried)
+            assertIs<UploadRow.Discovered>(world.row())
+        }
 }

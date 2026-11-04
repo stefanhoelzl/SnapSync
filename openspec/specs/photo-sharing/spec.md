@@ -312,7 +312,8 @@ selection, moves it out of DCIM on Android under full access, or stops sharing i
 to a messaging-app album under full access, or turning sharing off (capability `manage-membership`). The withdrawal
 SHALL take effect the next time the device looks at the library, also for a photo that was still uploading. Members who already
 received it SHALL keep their copy, and a withdrawal SHALL wake no other member. Losing photo access, or the app being
-unable to read the library for a moment, SHALL NOT withdraw anything.
+unable to read the library for a moment, SHALL NOT withdraw anything. A photo the member no longer shares SHALL NOT
+be uploaded again after a failed attempt: it waits on the phone, and is uploaded only if the member shares it again.
 
 #### Scenario: A deleted photo is withdrawn
 - **WHEN** a member deletes a photo that other members could receive
@@ -346,6 +347,11 @@ unable to read the library for a moment, SHALL NOT withdraw anything.
 #### Scenario: A deletion after the event's end is still withdrawn
 - **WHEN** a member deletes a shared photo a week after the event's range ended, before the event's photos were deleted
 - **THEN** members who have not yet received it never do, and members who already have it keep it
+
+#### Scenario: A photo no longer shared is not sent again after its upload failed
+- **WHEN** a photo's upload fails, and before it is retried the member narrows their range so the photo falls outside
+  it, or switches to receiving only
+- **THEN** the photo does not leave the phone again, and it is uploaded once the member shares it again
 
 ### Requirement: Restoring or re-including a photo shares it again
 
