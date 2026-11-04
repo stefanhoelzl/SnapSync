@@ -11,6 +11,7 @@ import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.album.AlbumFill
 import app.snapsync.domain.album.EventAlbumId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.PublishedDeclaration
 import app.snapsync.model.ConfigFileDecode
 import app.snapsync.model.EventConfig
 import app.snapsync.model.decodeConfigFile
@@ -25,6 +26,7 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.SetSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
@@ -145,15 +147,25 @@ class LegacyRecords(
         }
     }
 
-    /** `"<eventId> <manifest json>"`; one that does not parse is dropped, which costs one republish. */
+    /**
+     * `"<eventId> <manifest json>"`; one that does not parse is dropped, which costs one republish. The builds that
+     * kept it in a file never declared a share settled.
+     */
     private fun copyManifest(db: LedgerDatabase, text: String) {
         val manifest = text.substringAfter(' ', "")
-        val version = runCatchingCancellable {
-            json.parseToJsonElement(manifest).jsonObject.getValue("version").jsonPrimitive.long
+        val (version, assets) = runCatchingCancellable {
+            val record = json.parseToJsonElement(manifest).jsonObject
+            record.getValue("version").jsonPrimitive.long to record.getValue("assets").jsonArray.size.toLong()
         }.getOrElse { return log.w { "the legacy manifest record does not parse — dropped" } }
         val eventId = EventId.parse(text.substringBefore(' '))
             ?: return log.w { "the legacy manifest record names no event — dropped" }
-        db.uploadedManifestQueries.recordUploaded(Stored.Valid(eventId), version, manifest)
+        db.uploadedManifestQueries.recordUploaded(
+            Stored.Valid(eventId),
+            version,
+            manifest,
+            PublishedDeclaration.SHARING,
+            assets,
+        )
     }
 
     /**

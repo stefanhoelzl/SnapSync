@@ -7,6 +7,8 @@ import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.PendingLeaves
 import app.snapsync.data.membership.PendingLeavesRead
+import app.snapsync.data.sharing.ManifestRecord
+import app.snapsync.data.sharing.RecordRead
 import app.snapsync.data.store.LegacySource
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.SharedRecordsReadiness
@@ -18,6 +20,8 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.membership.CheckedAt
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.ManifestVersion
+import app.snapsync.domain.sharing.PublishedDeclaration
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.DatabasesMock
@@ -25,12 +29,11 @@ import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.UploadedManifest
 import app.snapsync.model.encodeConfigFile
+import app.snapsync.ports.DbResult
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
-import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
@@ -38,7 +41,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
@@ -196,7 +198,11 @@ class LegacyRecordsTest {
         val json = """{"deviceId":"D","assets":[],"version":7}"""
         shared[MANIFEST_FILE] = "${testEventId("E").value} $json".encodeToByteArray()
 
-        assertEquals(UploadedManifest(testEventId("E"), 7, json), DeviceManifestService(app()).loadLastUploaded())
+        val held = assertIs<RecordRead.Held>(ManifestRecord(app()).read(testEventId("E")))
+        assertEquals(ManifestVersion(7), held.version)
+        assertEquals(json, held.body)
+        assertEquals(PublishedDeclaration.SHARING, held.declaration, "the builds that kept the file never settled")
+        assertEquals(0, held.assets)
         assertFalse(MANIFEST_FILE in shared)
     }
 
@@ -206,7 +212,11 @@ class LegacyRecordsTest {
         shared[LEAVES_FILE] = "E1\n${testEventId("F").value} received\n".encodeToByteArray()
         values[ALBUM_MAP] = """{"E1":"album-1","${testEventId("E2").value}":"album-2"}"""
 
-        assertNull(DeviceManifestService(app()).loadLastUploaded(), "the manifest record named no event")
+        assertEquals(
+            RecordRead.None,
+            ManifestRecord(app()).read(testEventId("E")),
+            "the manifest record named no event",
+        )
         assertEquals(
             PendingLeavesRead.Ok(setOf(testEventId("F"))),
             PendingLeaves(app()).outstanding(),
@@ -224,7 +234,7 @@ class LegacyRecordsTest {
     fun `a manifest record that does not parse is dropped - one republish`() {
         shared[MANIFEST_FILE] = "${testEventId("E").value} not-json".encodeToByteArray()
 
-        assertNull(DeviceManifestService(app()).loadLastUploaded())
+        assertEquals(RecordRead.None, ManifestRecord(app()).read(testEventId("E")))
         assertEquals(SharedRecordsReadiness.Ready, app().readiness())
     }
 
@@ -232,7 +242,7 @@ class LegacyRecordsTest {
     fun `a manifest record with no version is dropped`() {
         shared[MANIFEST_FILE] = "${testEventId("E").value} {\"deviceId\":\"D\"}".encodeToByteArray()
 
-        assertNull(DeviceManifestService(app()).loadLastUploaded())
+        assertEquals(RecordRead.None, ManifestRecord(app()).read(testEventId("E")))
     }
 
     @Test
@@ -292,7 +302,9 @@ class LegacyRecordsTest {
 
         assertEquals(SharedRecordsReadiness.LegacyPending, db.readiness())
         assertEquals(mapOf(ALBUM_MAP to """{"${testEventId("E1").value}":"album-1"}"""), values, "left in place")
-        val imported = db.use { it.legacyImportQueries.selectImported().executeAsList() }
+        val imported = assertIs<DbResult.Ok<List<String>>>(
+            db.execute { it.legacyImportQueries.selectImported().executeAsList() },
+        ).value
         assertFalse(LegacySource.CHECKS.key in imported, "the check times wait too")
     }
 

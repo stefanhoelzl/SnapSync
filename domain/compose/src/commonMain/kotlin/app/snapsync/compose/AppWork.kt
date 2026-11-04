@@ -30,6 +30,7 @@ import app.snapsync.entrypoints.Prelude
 import app.snapsync.entrypoints.ReceivedPositionReport
 import app.snapsync.entrypoints.Recognition
 import app.snapsync.entrypoints.SelectionRecognition
+import app.snapsync.entrypoints.SettleShare
 import app.snapsync.entrypoints.StateRefresh
 import app.snapsync.entrypoints.SweepLeftovers
 import app.snapsync.entrypoints.TopUp
@@ -38,7 +39,6 @@ import app.snapsync.entrypoints.UploaderArm
 import app.snapsync.entrypoints.WakeWork
 import app.snapsync.entrypoints.WalkAndPublish
 import app.snapsync.feature.status.ForegroundCounts
-import app.snapsync.feature.upload.ShareSettlement
 
 /**
  * What the app's entry points run (`domain/entrypoints`, `docs/patterns.md`): the work a wake and the foreground share,
@@ -55,7 +55,7 @@ internal class AppWork(private val core: AppCore) {
         TopUp(layers.gate, layers.contribute, layers.plan, layers.create(uploads.tier), layers.album, foregroundCounts)
     }
 
-    /** The walk → publish: a wake's under a full grant, a selection change's, and the end of a wake's final share. */
+    /** The walk → publish: a wake's under a full grant, a selection change's, and the end of a wake's settle. */
     internal val walkAndPublish: WalkAndPublish by lazy {
         val layers = uploads.layers
         WalkAndPublish(layers.gate, layers.contribute, layers.walk, layers.recordWalk, layers.album, layers.publish)
@@ -145,10 +145,9 @@ internal class AppWork(private val core: AppCore) {
             membership.branch,
             PhotoCheck(membership.branch, receiving.receivingOf, receiving.planIfDue, receiving.plan),
             membership.deliver,
-            ShareSettlement(core.services.config, core.services.manifestStore),
-            // The uploader's own walk → publish, which marks the manifest settled once the range has ended. Under a
+            // The uploader's own walk → publish, owed once the range has ended: its look settles the share. Under a
             // partial grant it reads the selection snapshot, never the library.
-            walkAndPublish,
+            SettleShare(membership.branch, uploads.layers.settleNeed, walkAndPublish),
             membership.claimState,
             stateRefresh,
             ReceivedPositionReport(membership.branch, receiving.receivingOf, receiving.holds, receiving.report),

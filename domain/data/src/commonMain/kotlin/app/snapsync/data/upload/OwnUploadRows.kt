@@ -2,6 +2,7 @@ package app.snapsync.data.upload
 
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.upload.DestinationPath
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadKey
@@ -51,7 +52,7 @@ class OwnUploadRows(private val db: SharedDatabase) {
      */
     fun manifestVersion(): VersionRead =
         when (val read = db.execute { it.ledgerQueries.selectManifestVersion().executeAsOne() }) {
-            is DbResult.Ok -> VersionRead.Read(read.value)
+            is DbResult.Ok -> VersionRead.Read(ManifestVersion(read.value))
             is DbResult.Failed -> VersionRead.Unavailable(read.detail)
         }
 
@@ -95,7 +96,7 @@ sealed interface RowRead {
 
 /** The manifest version a read found, or that it could not read. */
 sealed interface VersionRead {
-    data class Read(val version: Long) : VersionRead
+    data class Read(val version: ManifestVersion) : VersionRead
 
     data class Unavailable(val detail: String) : VersionRead
 }

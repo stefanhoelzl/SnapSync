@@ -87,7 +87,7 @@ internal class ReceivingLayers(private val core: AppCore) {
         )
     }
 
-    private val union: EventUnion by lazy { EventUnion(core.backend.gateway, core.services.manifestStore) }
+    private val union: EventUnion by lazy { EventUnion(core.backend.gateway, core.services.manifestRecord) }
     private val marked: MarkedPhotos by lazy { MarkedPhotos(core.ports.gallery, core.selection) }
     private val passes = RecognitionPasses()
 

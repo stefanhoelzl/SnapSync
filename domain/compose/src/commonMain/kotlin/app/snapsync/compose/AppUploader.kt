@@ -35,15 +35,14 @@ internal class AppUploader(private val core: AppCore) {
         UploadServices(
             records = app.sharedDatabase,
             membership = app.membership,
-            config = app.config,
             mobileData = app.mobileData,
             deviceIdentity = app.deviceIdentity,
             host = ports.process.build.uploadHost,
             gallery = ports.gallery,
             photos = core.ownPhotos,
             admission = admission,
-            manifestStore = app.manifestStore,
-            manifestPublisher = core.backend.manifest,
+            manifestRecord = app.manifestRecord,
+            clock = app.wallClock,
             // Echo suppression and recognition: the app's received photos, over its read-write store.
             received = core.receiving.received,
             placeOwn = core.album.placeOwn,

@@ -224,6 +224,20 @@ class MembershipRepositoryTest {
     }
 
     @Test
+    fun `an entry advances the manifest version — a first join and a rejoin of the same event alike`() {
+        val first = manifestVersion()
+        repository.enter(enrolled())
+        assertEquals(first + 1, manifestVersion(), "a first join")
+
+        repository.leave()
+        repository.enter(enrolled())
+        assertEquals(first + 2, manifestVersion(), "a rejoin: the backend forgot the share's version")
+
+        repository.enter(enrolled())
+        assertEquals(first + 2, manifestVersion(), "an entry while joined enters nothing, and advances nothing")
+    }
+
+    @Test
     fun `a reconfigure replaces the share and advances the manifest version together`() {
         repository.enter(enrolled())
         val before = manifestVersion()

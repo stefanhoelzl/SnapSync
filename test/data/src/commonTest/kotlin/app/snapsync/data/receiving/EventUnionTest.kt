@@ -7,9 +7,12 @@ import app.snapsync.data.backend.ScriptedTransport
 import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.text
-import app.snapsync.domain.event.EventId
+import app.snapsync.data.membership.sharedOver
+import app.snapsync.data.sharing.ManifestRecord
+import app.snapsync.data.sharing.declared
 import app.snapsync.domain.receiving.UnionReadPlan
 import app.snapsync.domain.receiving.UnionTrigger
+import app.snapsync.mock.DatabasesMock
 import app.snapsync.ports.HttpResult
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -24,15 +27,11 @@ import kotlin.test.assertNull
  * cannot go on from — or no page — is no read.
  */
 class EventUnionTest {
-    private var own: Int? = 0
+    private val databases = DatabasesMock()
+    private val record = ManifestRecord(sharedOver(databases))
     private var answer: HttpResult = page("[]", cursor = "0")
     private val transport = ScriptedTransport { answer }
-    private val union = EventUnion(
-        BackendGateway(exchangeOver(transport), ScriptedCredential("T1")),
-        object : OwnDeclarations {
-            override fun publishedCount(eventId: EventId): Int? = own
-        },
-    )
+    private val union = EventUnion(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), record)
 
     private fun page(body: String, cursor: String = "7", declared: String? = null): HttpResult =
         json(
@@ -49,7 +48,7 @@ class EventUnionTest {
     fun `a whole read serves every photo with the address this build builds, and the others' declared total`() =
         runTest {
             answer = page("[${asset()}]", cursor = "7", declared = "5")
-            own = 2
+            record.declared(EVENT, assets = 2)
 
             val read = assertIs<UnionRead.Ok>(union.read(EVENT, UnionReadPlan.Whole, UnionTrigger.FOREGROUND)).page
 
@@ -72,7 +71,7 @@ class EventUnionTest {
     @Test
     fun `a delta reads from its position, and an unknown total or own count awaits nothing`() = runTest {
         answer = page("[]", cursor = "9")
-        own = null
+        databases.lock() // the record cannot be read: no own count
 
         val read = assertIs<UnionRead.Ok>(union.read(EVENT, UnionReadPlan.Since(4), UnionTrigger.PUSH)).page
 

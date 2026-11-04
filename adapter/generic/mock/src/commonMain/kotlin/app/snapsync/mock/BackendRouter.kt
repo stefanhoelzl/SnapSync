@@ -8,9 +8,6 @@ import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.DeviceFile
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.ManifestResource
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
@@ -620,16 +617,16 @@ private fun <T> json(
 internal fun ResourceRole.onWire(): Role = Role.fromValue(ResourceRoleText.of(this)) ?: error("no described role for $this")
 
 /** A published manifest, as the backend keeps it — under the device the path names. */
-private fun Manifest.inApp(deviceId: String): DeviceManifest? = runCatchingCancellable {
-    DeviceManifest(
+private fun Manifest.inApp(deviceId: String): MockManifest? = runCatchingCancellable {
+    MockManifest(
         deviceId = deviceIdOf(deviceId),
         assets = assets.map { asset ->
-            DeviceManifestAsset(
+            MockManifestAsset(
                 AssetId.parse(asset.assetId)!!,
                 asset.creationDate,
                 asset.resources.map { r ->
                     val role = ResourceRoleText.parse(r.role.value)!!
-                    ManifestResource(role, r.contentType, r.key, r.filename)
+                    MockManifestResource(role, r.contentType, r.key, r.filename)
                 },
             )
         },

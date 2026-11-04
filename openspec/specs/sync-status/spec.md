@@ -460,8 +460,9 @@ After the end of the event's date range, the joined screen's dates SHALL say the
 merged into the status line's text — and SHALL say so within a minute of the end passing while the app is
 open. While the status line reads "Up to date" or "Waiting for photos…", the screen SHALL also say, with the
 photo counts, how many of the members still in the event it is waiting for to finish sharing, without the event's total (capability
-`event-lifetime`); once every member still in the event is done and this member is up to date, it SHALL
-instead say that everyone has shared their photos. A guest joining late, or a member sharing more photos,
+`event-lifetime`); once every member still in the event has finished sharing — settled what they share, and
+every photo they share has reached the event — and this member is up to date, it SHALL instead say that everyone
+has shared their photos, whether or not the others have received everything yet. A guest joining late, or a member sharing more photos,
 SHALL turn that back into the waiting line. Ending SHALL change nothing else: arrows, status, counts and
 syncing continue exactly as before (the end bounds only which photos may be shared — capability
 `event-lifetime`).
@@ -487,7 +488,7 @@ syncing continue exactly as before (the end bounds only which photos may be shar
 
 #### Scenario: Everyone has shared
 - **WHEN** the range has ended, this member is up to date, and every member still in the event has finished
-  sharing and has everything
+  sharing, though one of them has not yet received every photo
 - **THEN** the screen says everyone has shared their photos
 
 #### Scenario: A late guest turns it back

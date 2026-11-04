@@ -18,16 +18,8 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
-import app.snapsync.domain.time.Timestamp
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.UseSerializers
-
-/**
- * Whether this membership's OWN capture range has ended at [now] — strictly after its [EventConfig.maxPhotoDate] —
- * which is when its share may be settled. For most members it is the event's end; earlier for a range that ends before
- * it, later for one that ends after it.
- */
-fun EventConfig.shareHasEnded(now: Timestamp): Boolean = now > maxPhotoDate.at
 
 /**
  * The **persisted, joined-event state** : the joined `eventId`, the

@@ -2,6 +2,7 @@ package app.snapsync.data.receiving
 
 import app.snapsync.data.Parsed
 import app.snapsync.data.backend.BackendGateway
+import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.receiving.OthersDeclared
@@ -18,15 +19,6 @@ import app.snapsync.wire.api.Routes
 import app.snapsync.wire.api.ServerIssue
 
 /**
- * How many photos this device last declared to an event (change `count-declared-photos`): `0` for none, `null` when it
- * cannot be read. Implemented by the device manifest's store, the old zones' until its phase moves it (MIGRATING,
- * `PENDING_CLEANUPS.md`).
- */
-interface OwnDeclarations {
-    fun publishedCount(eventId: EventId): Int?
-}
-
-/**
  * The event's union over the backend: every contributing device's COMPLETE photos, each tagged with its source and
  * carrying a download address this build builds itself — the route `downloadResource` on its own backend, which
  * redirects to the bytes (decision record `changes/incremental-union`, D1). Read from a position it answers only what
@@ -35,7 +27,7 @@ interface OwnDeclarations {
  * The page's declared total is netted here, at the read, of what this device had declared ([own]): the two numbers
  * must describe one backend state — subtracted later, a publish in between showed the member's own photos as awaited.
  */
-class EventUnion(private val gateway: BackendGateway, private val own: OwnDeclarations) {
+class EventUnion(private val gateway: BackendGateway, private val own: ManifestRecord) {
 
     /** [event]'s union, read as [plan] says — [UnionReadPlan.AlreadyRead] reads nothing and is no read. */
     suspend fun read(event: EventId, plan: UnionReadPlan, trigger: UnionTrigger): UnionRead = when (plan) {
@@ -74,7 +66,7 @@ class EventUnion(private val gateway: BackendGateway, private val own: OwnDeclar
             ?: unreadable(event)
 
     private fun othersDeclared(event: EventId, reply: EventFilesReply.Page): Long? =
-        OthersDeclared.of(reply.snapSyncDeclared?.toLongOrNull(), own.publishedCount(event))
+        OthersDeclared.of(reply.snapSyncDeclared?.toLongOrNull(), own.read(event).declared)
 
     private fun unreadable(event: EventId) = UnionRead.Unavailable(
         "the union of $event names what this build cannot read",

@@ -10,6 +10,7 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.receiving.MintsRecognised
 import app.snapsync.domain.receiving.Recognised
+import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.upload.GateRead
 import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.domain.upload.UploadGate
@@ -71,7 +72,7 @@ class PassGateTest {
         val run = assertIs<UploadGate.Run>(gate().read())
 
         assertEquals(world.event, run.membership.event.id)
-        assertEquals(0, run.version)
+        assertEquals(ManifestVersion(1), run.version, "the join advanced it")
         assertEquals(listOf("readiness", "recognised"), received.asked)
     }
 

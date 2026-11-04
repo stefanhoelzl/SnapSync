@@ -102,7 +102,7 @@ class ReportsAndRefusalsIntegrationTest {
     )
     fun a_report_reads_the_shown_counts_and_the_conditions_slowing_the_device() = behaviour {
         given {
-            step("only the app uploads", act = { devControls.pin(app = true, extension = false) }, until = {})
+            appUploadsOnly()
             joinedEvent()
             step("ten photos, three of them shared", act = {
                 (0 until 10).forEach { takePhoto("P$it") }

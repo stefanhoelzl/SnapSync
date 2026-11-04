@@ -32,11 +32,11 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.DownloadSessionMock
 import app.snapsync.mock.LibraryAssets
+import app.snapsync.mock.MockManifest
+import app.snapsync.mock.MockManifestAsset
+import app.snapsync.mock.MockManifestResource
 import app.snapsync.mock.StorePage
 import app.snapsync.mock.id
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.ManifestResource
 import app.snapsync.model.Store
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
@@ -424,13 +424,13 @@ class WorldInspectorController(
         backend.deposit(deviceId, asset, ResourceRole.PRIMARY, FOREIGN_FILENAME, eventId)
         backend.seedMember(
             eventId,
-            DeviceManifest(
+            MockManifest(
                 requireNotNull(DeviceId.parse(deviceId)) { "not a device id: '$deviceId'" },
                 listOf(
-                    DeviceManifestAsset(
+                    MockManifestAsset(
                         asset,
                         LibraryAssets.DEFAULT_DATE,
-                        listOf(ManifestResource(ResourceRole.PRIMARY, "image/heic", key, FOREIGN_FILENAME)),
+                        listOf(MockManifestResource(ResourceRole.PRIMARY, "image/heic", key, FOREIGN_FILENAME)),
                     ),
                 ),
             ),

@@ -19,3 +19,7 @@ suspend fun Given.uploaded(vararg ids: String) = step("${ids.joinToString()} upl
     ids.forEach { id -> event<WorldEvent.BytesStored> { it.asset == id } }
     settled { true }
 })
+
+/** Only the app uploads: the extension is switched off — a behaviour about the app's own wakes drives them alone. */
+suspend fun Given.appUploadsOnly() =
+    step("only the app uploads", act = { devControls.pin(app = true, extension = false) }, until = {})

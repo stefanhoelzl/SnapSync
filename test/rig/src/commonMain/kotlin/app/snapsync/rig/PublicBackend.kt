@@ -6,8 +6,8 @@ import app.snapsync.levers.EventRecord
 import app.snapsync.levers.PhotoKind
 import app.snapsync.levers.PublicBackendLevers
 import app.snapsync.levers.UnionEntry
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.mock.MockManifest
+import app.snapsync.mock.MockManifestAsset
 
 /**
  * [PublicBackendLevers] over [reach] — the backend's public surface, as another member or the operator's seeding reaches
@@ -75,7 +75,7 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
      */
     private suspend fun addForeignDevice(
         who: DeviceId,
-        assets: List<DeviceManifestAsset>,
+        assets: List<MockManifestAsset>,
         event: String?,
         bytes: ByteArray?,
         final: Boolean,
@@ -98,7 +98,7 @@ internal class PublicBackend(private val world: MockWorld, private val reach: Ba
                 }
             }
         }
-        reach.publish(eventId, DeviceManifest(deviceId = who, assets = assets, final = final))
+        reach.publish(eventId, MockManifest(deviceId = who, assets = assets, final = final))
         return eventId
     }
 

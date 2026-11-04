@@ -1,6 +1,5 @@
 package app.snapsync.model
 
-import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -9,8 +8,6 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.format.TimestampText
-import app.snapsync.testids.testAssetId
-import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -61,19 +58,6 @@ class PersistedFormatFieldContractTest {
             MemberCounts.serializer(),
             MemberCounts(active = 2, settled = 1, waiting = 1),
             optional = setOf("waiting"),
-        )
-    }
-
-    @Test
-    fun `a manifest requires its device and its assets each asset and resource every field`() {
-        val resource = ManifestResource(ResourceRole.PRIMARY, "image/jpeg", "events/e/devices/d/a", "IMG_0001.JPG")
-        val asset = DeviceManifestAsset(testAssetId("asset-1"), "2026-07-06T14:00:00Z", listOf(resource))
-        assertFieldContract(ManifestResource.serializer(), resource)
-        assertFieldContract(DeviceManifestAsset.serializer(), asset)
-        assertFieldContract(
-            DeviceManifest.serializer(),
-            DeviceManifest(testDeviceId("device-1"), listOf(asset), version = 4, final = true),
-            optional = setOf("version", "final"),
         )
     }
 

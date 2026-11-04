@@ -96,8 +96,7 @@
 //       is the device's word that it holds every photo of the others). GATED on the event row (404/502),
 //       idempotent, and NON-DESTRUCTIVE — the assets are RETAINED, so the union keeps serving what the
 //       device shared. No reap here and no leave-time GC. When this was the last member still present the
-//       event becomes EMPTY and the nightly sweep reclaims it on its next run; after the end, the leave of
-//       the last member still `sharing` closes the event.
+//       event becomes EMPTY and the nightly sweep reclaims it on its next run.
 //   GET /api/v2/events/:eventId/files
 //     → the event-wide UNION, as ONE query joining the event's assets to their resources across EVERY
 //       membership, present or gone (a member who left keeps contributing what it already shared). An asset

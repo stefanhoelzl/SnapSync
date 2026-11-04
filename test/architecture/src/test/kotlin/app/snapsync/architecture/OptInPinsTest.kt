@@ -91,10 +91,10 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/UploadEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                8,
-                "the app's upload sequences — the top-up, the walk and publish, the wake's own uploads — and the " +
-                    "uploaders' reconcile call the upload use cases, and the placement before a job places own " +
-                    "photos",
+                10,
+                "the app's upload sequences — the top-up, the walk and publish (its declining branch too), the wake's " +
+                    "own uploads, the end of a wake's settle — and the uploaders' reconcile call the upload and " +
+                    "sharing use cases, and the placement before a job places own photos",
             ),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ExtensionEntryPoints.kt" to mapOf(
@@ -150,6 +150,9 @@ class OptInPinsTest {
         "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/SelectionPolicy.kt" to mapOf(
             "MintsAdmittedAsset" to Pin(1, "the one admission of a read's candidates"),
             "MintsAdmittedRow" to Pin(1, "the one admission of ledger rows"),
+        ),
+        "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/Settling.kt" to mapOf(
+            "MintsSettledShare" to Pin(1, "the one verdict that settles a share, on a look since the range ended"),
         ),
         "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt" to mapOf(
             "CompositionOnly" to Pin(1, "the host's registration"),

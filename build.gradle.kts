@@ -114,7 +114,9 @@ coverage {
         // → 67/37 in phase 4.4b (uploads), landed after 4.5: the upload engine's model — its resources, requests,
         // outcomes and the cycle's results, which the suite covered — left for the domain and the data layer, and the
         // dead leftovers with it. Measured 67.02 / 37.41 %.
-        integration(instructions = 67, branches = 37)
+        // → 64/37 in phase 4.4c (manifest): the device manifest and the ledger row it read, which the suite covered,
+        // left for the domain and the data layer. No test was lost. Measured 64.49 / 37.40 %.
+        integration(instructions = 64, branches = 37)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -165,7 +167,9 @@ coverage {
         // → 90/74 in phase 4.4b (uploads), landed after 4.5: the upload cycle, its gate and its writer — which the
         // suite covered — moved to the data and application layers and the entry points; what stays is the same
         // code measured without them. Measured 90.07 / 74.89 %.
-        integration(instructions = 90, branches = 74)
+        // → 89/70 in phase 4.4c (manifest): the publish, its producer and the end of a wake's settle, which the suite
+        // covered, moved to the layers and the entry points. No test was lost. Measured 89.82 / 70.49 %.
+        integration(instructions = 89, branches = 70)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.

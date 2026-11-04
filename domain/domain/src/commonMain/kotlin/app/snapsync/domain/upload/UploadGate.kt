@@ -1,8 +1,10 @@
 package app.snapsync.domain.upload
 
+import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.sharing.PhotoAccess
 import app.snapsync.domain.sharing.ReadPlan
 
@@ -53,7 +55,7 @@ enum class UploadHost {
 /** What a pass's entry read: the membership (none when not joined) and the manifest version, or what it could not. */
 sealed interface GateRead {
     /** Read first, before the membership: every change the pass's projection misses carries a higher [version]. */
-    class Read(val membership: Membership?, val version: Long) : GateRead
+    class Read(val membership: Membership?, val version: ManifestVersion, val device: DeviceId) : GateRead
 
     /** A required read failed — "I could not look", never "not joined". [detail] names which, for a device's log. */
     data class Unreadable(val detail: String) : GateRead
@@ -94,8 +96,8 @@ sealed interface UploadGate {
         override val pass get() = UploadPass.PAUSED
     }
 
-    /** The pass may run for [membership], publishing with the [version] its entry read first. */
-    class Run(val membership: Membership.Active, val version: Long) : UploadGate {
+    /** The pass may run for [membership], publishing as [device] with the [version] its entry read first. */
+    class Run(val membership: Membership.Active, val version: ManifestVersion, val device: DeviceId) : UploadGate {
         override val pass get() = UploadPass.CAUGHT_UP
     }
 
@@ -128,26 +130,26 @@ sealed interface UploadGate {
 
         private fun hosted(read: GateRead.Read, host: UploadHost, presence: KeyPresence, admission: UploadAdmission) =
             when (host) {
-                UploadHost.CARRIED -> joined(read.membership, read.version, presence, admission)
+                UploadHost.CARRIED -> joined(read, presence, admission)
                 UploadHost.NONE -> NotJoined
             }
 
-        private fun joined(membership: Membership?, version: Long, presence: KeyPresence, admission: UploadAdmission) =
-            when (membership) {
+        private fun joined(read: GateRead.Read, presence: KeyPresence, admission: UploadAdmission) =
+            when (val membership = read.membership) {
                 null -> NotJoined
                 is Membership.Deleted -> Withheld(membership.event.id)
-                is Membership.Active -> admitted(membership, version, presence, admission)
+                is Membership.Active -> admitted(membership, read, presence, admission)
             }
 
         private fun admitted(
             active: Membership.Active,
-            version: Long,
+            read: GateRead.Read,
             presence: KeyPresence,
             admission: UploadAdmission,
         ) =
             when (presence is KeyPresence.Lost || admission == UploadAdmission.WITHHELD) {
                 true -> Withheld(active.event.id)
-                false -> Run(active, version)
+                false -> Run(active, read.version, read.device)
             }
     }
 }

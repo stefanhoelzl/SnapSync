@@ -9,6 +9,7 @@ import app.snapsync.data.sharing.Library
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.mock.LibraryAssets
@@ -83,12 +84,12 @@ class WalkAndListingTest {
     fun `a row is read by its key, and the manifest version advances with the rows`() {
         world.joined()
         assertEquals(RowRead.Absent, world.reads.row(world.event, world.key()))
-        assertEquals(VersionRead.Read(0), world.reads.manifestVersion())
+        assertEquals(VersionRead.Read(ManifestVersion(1)), world.reads.manifestVersion(), "the join advanced it")
 
         world.discovered()
 
         assertIs<UploadRow.Discovered>(assertIs<RowRead.Found>(world.reads.row(world.event, world.key())).row)
-        assertEquals(VersionRead.Read(1), world.reads.manifestVersion())
+        assertEquals(VersionRead.Read(ManifestVersion(2)), world.reads.manifestVersion())
         world.databases.lock()
         assertIs<RowRead.Unavailable>(world.reads.row(world.event, world.key()))
         assertIs<VersionRead.Unavailable>(world.reads.manifestVersion())

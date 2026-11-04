@@ -1,0 +1,24 @@
+import app.snapsync.data.store.Stored;
+import app.snapsync.domain.event.EventId;
+import app.snapsync.domain.sharing.PublishedDeclaration;
+
+-- v19 -> v20: the device manifest's record keeps, beside the body it compares, the two facts the core reads of it as
+-- columns of their own — what the publish declared of the share (`declaration`: whether it said settled) and how many
+-- photos it declared (`assets`) — so nothing decodes the stored body to learn them (change
+-- `settling-needs-a-real-look`, D7).
+--
+-- NOT row-preserving, deliberately: the one row is dropped. It is a skip record — "none" only costs one republish,
+-- which writes it again with its facts — and its facts cannot be read out of the body without decoding it here.
+-- DOWNGRADE: an earlier build reads the same three columns it wrote, and its write names only those, which the new
+-- columns' defaults complete.
+
+DROP TABLE uploadedManifest;
+
+CREATE TABLE uploadedManifest (
+    id          INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    eventId     TEXT AS Stored<EventId> NOT NULL,
+    version     INTEGER NOT NULL,
+    manifest    TEXT    NOT NULL,
+    declaration TEXT AS PublishedDeclaration NOT NULL DEFAULT 'SHARING',
+    assets      INTEGER NOT NULL DEFAULT 0
+);

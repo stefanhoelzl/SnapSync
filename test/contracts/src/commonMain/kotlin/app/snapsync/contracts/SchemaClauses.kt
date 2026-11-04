@@ -127,7 +127,7 @@ private val LEDGER = ProductionSchema(
                 openUntilAdapter = dateText(::OpenUntil, OpenUntil::at),
             ),
             PendingLeave.Adapter(eventIdAdapter = EventIdText),
-            UploadedManifest.Adapter(eventIdAdapter = EventIdText),
+            UploadedManifest.Adapter(eventIdAdapter = EventIdText, declarationAdapter = EnumColumnAdapter()),
         )
     },
     queries = { it.ledgerQueries },

@@ -10,6 +10,7 @@ import app.snapsync.data.membership.PendingLeaves
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.push.PushRegistrationRecord
 import app.snapsync.data.push.PushTokens
+import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.time.WallClock
 import app.snapsync.data.trust.CachedCredentialStore
@@ -17,7 +18,6 @@ import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.logs.LogTailService
-import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.MembershipTransition
 import co.touchlab.kermit.Logger
@@ -43,7 +43,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
     val membership: MembershipRepository by lazy { MembershipRepository(sharedDatabase) }
 
     /** The membership as the old zones read it — MIGRATING ([MembershipProjection]). */
-    val config: MembershipProjection by lazy { MembershipProjection(membership, process.clock) }
+    val config: MembershipProjection by lazy { MembershipProjection(membership) }
 
     /** The device's wall clock, as the layers read time. */
     val wallClock: WallClock by lazy { WallClock(process.clock) }
@@ -68,7 +68,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * A join writes no manifest; its share-set load advances the manifest version, so the producer republishes under
      * the newer one.
      */
-    val manifestStore: DeviceManifestService by lazy { DeviceManifestService(sharedDatabase) }
+    val manifestRecord: ManifestRecord by lazy { ManifestRecord(sharedDatabase) }
 
     /**
      * The attestation token and key id, in the shared store the extension reads — held in memory between re-reads by

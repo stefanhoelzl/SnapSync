@@ -153,7 +153,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Located` | `:domain:data` | `:domain:data` At, Unreachable | no |
 | `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:contracts` LogSinkProxy; `:test:rig` RecordedLog | yes |
 | `LogWriter` | `:domain:inbound` | `:adapter:generic:mock` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:model` CapturingLogWriter; `:domain:scheduling` RecordingLog; `:domain:services` CapturingLogWriter, CrashLines, CrashLogWriter, SinkLines, SinkLogWriter; `:test:feature` CapturingLogWriter | yes |
-| `ManifestPublisher` | `:domain:services` | `:domain:services` BackendManifestPublisher; `:test:feature` FakeUploader | yes |
 | `MarkResult` | `:domain:data` | `:domain:data` Failed, Marked, Superseded | no |
 | `MarkedRead` | `:domain:data` | `:domain:data` Found, NotReadable | no |
 | `MarkerWrite` | `:domain:data` | `:domain:data` Applied, Failed, NoRow, Unknown | no |
@@ -185,7 +184,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Opened` | `:domain:data` | `:domain:data` Damaged, Unreadable, Whole | no |
 | `OsUploadJobHandle` | `:domain:ports` | `:adapter:generic:mock` Job; `:adapter:ios:ext-safe` PhotoKitJob, Presented; `:test:data` JobHandle | yes |
 | `OsUploadQueue` | `:domain:ports` | `:adapter:generic:mock` Face; `:adapter:ios:ext-safe` IosPhotoKitUploadPlatform, PlayedOs, SimulatorUploadJobQueue; `:test:contracts` OsUploadQueueProxy; `:test:data` RecordingQueue | yes |
-| `OwnDeclarations` | `:domain:data` | `:domain:services` DeviceManifestService | no |
 | `OwnPlacementVerdict` | `:domain:domain` | `:domain:domain` Place, Skip | no |
 | `Parsed` | `:domain:data` | `:domain:data` Ok, Refused | no |
 | `Pass` | `:domain:scheduling` | `:domain:scheduling` Completed, Cut | no |
@@ -204,6 +202,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` Face, HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics; `:test:contracts` ProcessMetricsProxy | no |
 | `ProgressRead` | `:domain:data` | `:domain:data` Read, Unavailable | no |
 | `ProveResult` | `:domain:ports` | `:domain:ports` Ok | no |
+| `PublishOutcome` | `:domain:application` | `:domain:application` EventOver, KeptSettled, NotPublished, Published, Unchanged | no |
+| `PublishReply` | `:domain:data` | `:domain:data` Published, Refused, Unreachable | no |
 | `PushNotifications` | `:domain:ports` | `:adapter:android` AndroidPushNotifications; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosPushNotifications; `:test:contracts` PushNotificationsProxy; `:test:data` Service | yes |
 | `PushPublishReply` | `:domain:data` | `:domain:data` Accepted, NoIdentity, Refused | no |
 | `PushRegistrationOutcome` | `:domain:application` | `:domain:application` Deferred, NoToken, NotRegistered, Registered, Unchanged | no |
@@ -221,6 +221,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RecognitionRead` | `:domain:data` | `:domain:data` NotRecognised, Recognised, Unavailable | no |
 | `ReconfigureOutcome` | `:domain:application` | `:domain:application` Saved | no |
 | `RecordOutcome` | `:domain:application` | `:domain:application` Recorded | no |
+| `RecordRead` | `:domain:data` | `:domain:data` Held, None, Unavailable | no |
 | `RecordedRule` | `:domain:domain` | `:domain:domain` DenyAll, InRange, NotEcho, NotInDenylistedAlbum | no |
 | `RefreshOutcome` | `:domain:application` | `:domain:application` Current, Deleted, Fresh, Inconclusive, NotObtained, Obtained, Superseded | no |
 | `RefreshOutcome` | `:domain:application` | `:domain:application` Current, Deleted, Fresh, Inconclusive, NotObtained, Obtained, Superseded | no |
@@ -261,6 +262,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SegmentStep` | `:domain:data` | `:domain:data` Sealing, Unsealing | no |
 | `SelectionRule` | `:domain:domain` | `:domain:domain` ImageFloor, NoScreenRecordings, NoScreenshots, VideoFloor | no |
 | `SelectionState` | `:domain:data` | `:domain:data` Read, Unread | no |
+| `SettlingLook` | `:domain:domain` | `:domain:domain` CouldNotLook, Looked, NothingToLook | no |
+| `ShareDeclaration` | `:domain:domain` | `:domain:domain` Settled, Sharing | no |
+| `SharePhase` | `:domain:domain` | `:domain:domain` Ended, Sharing | no |
 | `SharedRecordsReadiness` | `:domain:data` | `:domain:data` LegacyPending, Ready, Unavailable | no |
 | `Slot` | `:domain:data` | `:domain:data` Kept, Unread | no |
 | `StageOutcome` | `:domain:application` | `:domain:application` Landed | no |

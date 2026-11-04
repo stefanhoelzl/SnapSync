@@ -7,6 +7,7 @@ import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
+import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.upload.ExtensionRegistrar
 import app.snapsync.data.upload.OsUploader
 import app.snapsync.data.upload.UploaderSwitches
@@ -26,6 +27,7 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
+import app.snapsync.ports.DbResult
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
@@ -33,11 +35,11 @@ import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import app.snapsync.ports.UploaderPin
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.use
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -268,3 +270,7 @@ private val MEMBERSHIP =
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
+
+/** [statements]' answer on this shared database, set up to succeed. */
+private fun <T> SharedDatabase.use(statements: (LedgerDatabase) -> T): T =
+    assertIs<DbResult.Ok<T>>(execute(statements)).value

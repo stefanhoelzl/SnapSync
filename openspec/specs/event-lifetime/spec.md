@@ -52,7 +52,11 @@ A member's device SHALL settle which of its photos it shares to an event only af
 range has ended — for most members the event's end; earlier for a range that ends before it, later for one that
 ends after it (capability `photo-sharing`) — and only once it has looked at the photo library since then, so
 that every photo the member took within their range is part of what they share — including photos only in iCloud or taken
-while the phone was offline. Settling SHALL NOT wait for the photos to finish uploading, and SHALL NOT stop
+while the phone was offline. Only a look that read everything the member shares from — the library, or under
+limited access the selection — and began after their range ended SHALL settle it: a look that could not be made, or
+that began before the end, SHALL leave the share unsettled until a later look succeeds. A member who shares nothing
+has nothing to look at, and their device SHALL settle once their range has ended. A member who leaves and joins the
+event again SHALL settle again, whatever their device said before the leave. Settling SHALL NOT wait for the photos to finish uploading, and SHALL NOT stop
 the member sharing: until the event's photos are deleted, a member's device that finds more photos to share
 SHALL still share them.
 
@@ -87,6 +91,22 @@ left SHALL count as done with whatever of theirs had reached the event.
   that evening once their photos have reached the event and then stays off, and the event ends on Sunday with
   every other member done
 - **THEN** the event is finished without waiting for that phone
+
+#### Scenario: A look that fails after the end settles nothing
+- **WHEN** a member's range has ended and their phone cannot read their photo library, while every other member
+  is done
+- **THEN** the event is not finished, and once the phone reads the library it shares the in-range photos it finds
+  and then settles
+
+#### Scenario: A member who shares nothing settles at the end
+- **WHEN** a member who only receives has a range that ends, and every photo of the others is in their library
+- **THEN** that member is done without their phone looking at the library
+
+#### Scenario: Rejoining after the end settles again
+- **WHEN** a member whose range has ended and whose phone had settled leaves the event, then joins it again while
+  the service cannot tell the phone which of its photos it already holds
+- **THEN** the member's phone settles again, and the event can finish without
+  waiting for its latest deletion date
 
 ### Requirement: An event's photos are deleted once it is finished, and after 30 days at the latest
 

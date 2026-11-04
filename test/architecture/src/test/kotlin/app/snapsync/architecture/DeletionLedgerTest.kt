@@ -432,6 +432,36 @@ class DeletionLedgerTest {
     }
 
     /**
+     * The device manifest before its layers (phase 4.4c): a feature step and a producer that stamped "settled" from a
+     * range check alone (`ManifestPublish`, `DeviceManifestProducer`), the end of a wake's own check of it
+     * (`ShareSettlement`), a services store of the record that caught every failure (`DeviceManifestService`), a
+     * `fun interface` publisher answering a Boolean nobody read and a callback into the old zones' membership
+     * (`ManifestPublisher`, `BackendManifestPublisher`, `eventOver`), the throwing device-id read
+     * (`requireDeviceId`, `SecureStoreUnavailable`, `DeviceIdentityAbsent`) and the old zones' manifest and ledger row
+     * (`model`'s `DeviceManifest`, `UploadedManifest`, `LedgerEntry`). Settling is the domain's evidence
+     * (`SettledShare`), the record and the gateway data's (`ManifestRecord`, `ManifestPublication`), the publish one use
+     * case (`PublishManifest`).
+     */
+    @Test
+    fun `the manifest's retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """(class|interface|object) (Manifest""" + "Publish|DeviceManifest" + "Producer|Share" +
+                "Settlement|DeviceManifest" + "Service|Manifest" + "Publisher|BackendManifest" + "Publisher|Secure" +
+                "StoreUnavailable|DeviceIdentity" + "Absent|Uploaded" + "Manifest|Ledger" + "Entry|Own" +
+                "Declarations)\\b"
+            declared(files, pre).forEach { add("the manifest's pre-layer types in $it (the layers' — 4.4c)") }
+            declared(files, """fun DeviceIdentity\.require""" + "DeviceId\\b").forEach {
+                add("the throwing device-id read in $it (the gate carries the id it read — 4.4c)")
+            }
+            declared(files, """\bevent""" + "Over\\s*[:=]").forEach {
+                add("a publish callback into the membership in $it (the publish marks it itself — 4.4c)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
      * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop

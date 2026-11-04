@@ -53,11 +53,6 @@ class UploadKeysTest {
     }
 
     @Test
-    fun `an absent device identity is an illegal state, never a silent one`() {
-        assertFailsWith<IllegalStateException> { throw DeviceIdentityAbsent() }
-    }
-
-    @Test
     fun `a key that names no canonical asset is refused`() {
         assertFailsWith<IllegalArgumentException> { assetIdFromUploadKey("a b-primary.heic") }
     }

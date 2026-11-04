@@ -128,7 +128,6 @@ class CatchSitesTest {
             "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/status/StatusRefresh.kt" to 2,
             // Moved from EventCompletion with its read of the manifest record (phase 4.2): a record that does not decode
             // is no settled share. Its own phase (4.4c) answers the decode as a value.
-            "/domain/feature/src/commonMain/kotlin/app/snapsync/feature/upload/ShareSettlement.kt" to 1,
             "/domain/model/src/commonMain/kotlin/app/snapsync/model/ConfigFile.kt" to 2,
             "/domain/model/src/commonMain/kotlin/app/snapsync/model/Footprint.kt" to 1,
             "/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/StatusContainerHost.kt" to 5,
@@ -137,7 +136,6 @@ class CatchSitesTest {
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to 1,
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to 2,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt" to 5,
-            "/domain/services/src/commonMain/kotlin/app/snapsync/services/manifest/DeviceManifestService.kt" to 6,
             "/domain/wire/src/commonMain/kotlin/app/snapsync/wire/runtime/Wire.kt" to 1,
         )
     }

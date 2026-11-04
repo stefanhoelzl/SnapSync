@@ -11,6 +11,7 @@ import app.snapsync.data.upload.SendFrom
 import app.snapsync.data.upload.WalkedResource
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.sharing.SettlingLook
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.domain.upload.WalkDiff
@@ -46,6 +47,7 @@ class WalkOwnPhotos(
             DiscoveryRead.NotReadable -> WalkOutcome(
                 WalkDiff.of(rows, emptyList(), emptySet(), emptySet()),
                 emptyMap(),
+                SettlingLook.CouldNotLook,
             )
         }
 
@@ -67,7 +69,11 @@ class WalkOwnPhotos(
             "read" of toRead.size,
             "resources" of walked.size,
         )
-        return WalkOutcome(WalkDiff.of(rows, walked.map { it.found }, ids, window), walked.handles())
+        return WalkOutcome(
+            WalkDiff.of(rows, walked.map { it.found }, ids, window),
+            walked.handles(),
+            SettlingLook.Looked(read.discovery),
+        )
     }
 
     private fun List<WalkedResource>.handles(): Map<UploadKey, SendFrom> =
@@ -78,8 +84,17 @@ class WalkOwnPhotos(
  * What a walk came to: what it writes ([diff]), and the handles of the resources it read — a top-up right after sends
  * from them. A walk that could not read the rows walked nothing ([NOTHING]): it writes nothing and adds nothing.
  */
-class WalkOutcome(val diff: WalkDiff, val handles: Map<UploadKey, SendFrom>) {
+class WalkOutcome(
+    val diff: WalkDiff,
+    val handles: Map<UploadKey, SendFrom>,
+    /** What the walk was as a look at the member's photos — what a publish after it may settle on. */
+    val look: SettlingLook,
+) {
     companion object {
-        val NOTHING = WalkOutcome(WalkDiff.of(emptyList(), emptyList(), emptySet(), emptySet()), emptyMap())
+        val NOTHING = WalkOutcome(
+            WalkDiff.of(emptyList(), emptyList(), emptySet(), emptySet()),
+            emptyMap(),
+            SettlingLook.CouldNotLook,
+        )
     }
 }

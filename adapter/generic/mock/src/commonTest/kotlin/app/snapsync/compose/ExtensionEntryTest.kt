@@ -5,6 +5,7 @@ import app.snapsync.data.receiving.DownloadDatabaseFile
 import app.snapsync.data.receiving.ReceivedPhotos
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
+import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.album.AlbumChoice
@@ -31,17 +32,17 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
+import app.snapsync.ports.DbResult
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.use
-import app.snapsync.services.manifest.DeviceManifestService
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Routes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.time.Instant
 
 /**
@@ -69,9 +70,9 @@ class ExtensionEntryTest {
             "the first invocation sends the token the app stored",
         )
 
-        // The app renews into the shared item, and a new manifest is due (the app's enrolment invalidates the record).
+        // The app renews into the shared item, and a new manifest is due (a change advanced the manifest version).
         attest.setToken(TokenText.parse("token-after"))
-        DeviceManifestService(appDatabase).clearLastUploaded()
+        appDatabase.use { it.ledgerQueries.bumpManifestVersion() }
         host.process(Dispatchers.Default)
         assertEquals(
             listOf<String?>("token-before", "token-after"),
@@ -164,3 +165,7 @@ class ExtensionEntryTest {
         host = host.port(),
     )
 }
+
+/** [statements]' answer on this shared database, set up to succeed. */
+private fun <T> SharedDatabase.use(statements: (LedgerDatabase) -> T): T =
+    assertIs<DbResult.Ok<T>>(execute(statements)).value

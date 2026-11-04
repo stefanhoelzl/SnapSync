@@ -17,9 +17,17 @@ internal fun LedgerDatabase.membershipRead(): MembershipRead =
         false -> MembershipRead.Unavailable("the membership is still in its legacy file")
     }
 
-/** Enter [active]'s membership, while none is held — or only one this build refuses, which it replaces. */
+/**
+ * Enter [active]'s membership, while none is held — or only one this build refuses, which it replaces — and advance
+ * the manifest version with it: the backend's join forgets the share's version and whether it was settled, so a
+ * rejoin must publish again even when what it declares is what the device last published (change
+ * `settling-needs-a-real-look`, D6).
+ */
 internal fun LedgerDatabase.enter(active: Membership.Active): EnterResult = when (heldAgainst(active.event.id)) {
-    Held.None -> EnterResult.Entered(active).also { membershipQueries.save(active) }
+    Held.None -> EnterResult.Entered(active).also {
+        membershipQueries.save(active)
+        ledgerQueries.bumpManifestVersion()
+    }
     Held.Same -> EnterResult.AlreadyJoined
     Held.Other -> EnterResult.JoinedElsewhere
 }

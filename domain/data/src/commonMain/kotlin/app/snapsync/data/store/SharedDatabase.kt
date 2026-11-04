@@ -110,5 +110,8 @@ fun sharedDatabaseOver(driver: SqlDriver): LedgerDatabase = LedgerDatabase(
         openUntilAdapter = OpenUntilColumnAdapter,
     ),
     pendingLeaveAdapter = PendingLeave.Adapter(eventIdAdapter = EventIdColumnAdapter),
-    uploadedManifestAdapter = UploadedManifest.Adapter(eventIdAdapter = EventIdColumnAdapter),
+    uploadedManifestAdapter = UploadedManifest.Adapter(
+        eventIdAdapter = EventIdColumnAdapter,
+        declarationAdapter = EnumColumnAdapter(),
+    ),
 )
