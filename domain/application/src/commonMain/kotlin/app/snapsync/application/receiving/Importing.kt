@@ -8,6 +8,8 @@ import app.snapsync.data.receiving.ImportedReleases
 import app.snapsync.data.receiving.LibraryImport
 import app.snapsync.data.receiving.LibraryPresence
 import app.snapsync.data.receiving.ReceivingCleanup
+import app.snapsync.domain.album.EventAlbumId
+import app.snapsync.domain.album.ImportAlbumVerdict
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.receiving.AssetPresence
 import app.snapsync.domain.receiving.AssetRef
@@ -20,17 +22,21 @@ import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 
 /**
- * One pass of the import drain: the event album its imports file into ([album], `null` for none — read once, before
- * the pass, so the platform's change block does no lookup of its own), the photos it has attempted, and whether one
- * of them landed in the album. Attempted-in-this-pass is what keeps a failed import that leaves its row importable
- * from being offered again in the same pass, forever.
+ * One pass of the import drain: the event album its imports file into ([album] — read once, before the pass, so the
+ * platform's change block does no lookup of its own), the photos it has attempted, and whether one of them landed in
+ * the album. Attempted-in-this-pass is what keeps a failed import that leaves its row importable from being offered
+ * again in the same pass, forever.
  */
-class ImportPass(val album: String?) {
+class ImportPass(val album: ImportAlbumVerdict) {
     internal val attempted = mutableSetOf<AssetRef>()
     private var intoAlbum = false
 
     /** The album a photo of this pass was imported into, if one was — how a folder album learns it has held a photo. */
-    val landedIn: String? get() = album?.takeIf { intoAlbum }
+    val landedIn: EventAlbumId?
+        get() = when (album) {
+            is ImportAlbumVerdict.Into -> album.album.takeIf { intoAlbum }
+            ImportAlbumVerdict.CameraFolder -> null
+        }
 
     internal fun imported() {
         intoAlbum = true

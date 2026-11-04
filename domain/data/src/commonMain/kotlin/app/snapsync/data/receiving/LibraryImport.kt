@@ -2,6 +2,7 @@ package app.snapsync.data.receiving
 
 import app.snapsync.data.Parsed
 import app.snapsync.data.gallery.assetId
+import app.snapsync.domain.album.ImportAlbumVerdict
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
@@ -34,15 +35,23 @@ import app.snapsync.ports.ResourceKind
 class LibraryImport(private val gallery: GalleryImport, private val staging: StagingArea) {
 
     /**
-     * Import [download], filed into [album] in the same transaction (`null`: none). A download with no resource the
-     * library takes creates nothing and is refused for good — consumed, since no later pass could import it. A shared
-     * area that cannot be reached submits nothing, and a later pass imports it again.
+     * Import [download], filed into [album] in the same transaction ([ImportAlbumVerdict.CameraFolder]: none). A
+     * download with no resource the library takes creates nothing and is refused for good — consumed, since no later
+     * pass could import it. A shared area that cannot be reached submits nothing, and a later pass imports it again.
      */
-    suspend fun import(download: StagedDownload, album: String?): ImportReport = files(download).let { files ->
+    suspend fun import(
+        download: StagedDownload,
+        album: ImportAlbumVerdict,
+    ): ImportReport = files(download).let { files ->
         when (files) {
-            is Files.Gathered -> requested(download, files.files, album?.let(::PlatformAlbumId))
+            is Files.Gathered -> requested(download, files.files, platformAlbum(album))
             is Files.Unreachable -> ImportReport.Failed("the shared area is unreachable: ${files.detail}", false, null)
         }
+    }
+
+    private fun platformAlbum(album: ImportAlbumVerdict): PlatformAlbumId? = when (album) {
+        is ImportAlbumVerdict.Into -> PlatformAlbumId(album.album.value)
+        ImportAlbumVerdict.CameraFolder -> null
     }
 
     private suspend fun requested(

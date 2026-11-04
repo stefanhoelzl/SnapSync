@@ -1,6 +1,8 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.album.AlbumForImport
+import app.snapsync.application.album.MarkAlbumFilled
 import app.snapsync.application.receiving.HoldsEverything
 import app.snapsync.application.receiving.ImportNextStaged
 import app.snapsync.application.receiving.ImportPass
@@ -18,12 +20,10 @@ import app.snapsync.application.receiving.SettleInterruptedImports
 import app.snapsync.application.receiving.SweepUnclaimedStaging
 import app.snapsync.application.receiving.WithholdRecognition
 import app.snapsync.data.sharing.SelectionState
-import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.UnionTrigger
-import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.scheduling.Concurrent
@@ -114,7 +114,8 @@ class ImportReceived(
     private val membership: MembershipBranch,
     private val recognition: Recognition,
     private val ready: ImportReady,
-    private val albums: AlbumCoordinator,
+    private val albumForImport: AlbumForImport,
+    private val markFilled: MarkAlbumFilled,
     private val importNext: ImportNextStaged,
     private val counts: ForegroundCounts,
 ) : Sequence<Unit>("import-received", yieldsToJoin = true) {
@@ -136,10 +137,10 @@ class ImportReceived(
     private suspend fun drained(joined: Membership.Active, readiness: ImportReadiness.Ready, on: Run) = on.steps {
         // The album is read once, before the drain, so the platform's change block does no lookup of its own.
         val pass =
-            required { ImportPass(albums.albumIdFor(joined.event.id, joined.share.album == AlbumChoice.SaveToAlbum)) }
+            required { ImportPass(albumForImport(joined)) }
         drain { importNext(readiness.recognised, pass) }
         // How a folder album learns it has held a photo — what later tells an emptied one from a fresh one.
-        pass.landedIn?.let { album -> isolated("album filled") { albums.onImportedInto(joined.event.id, album) } }
+        pass.landedIn?.let { album -> isolated("album filled") { markFilled(joined.event.id, album) } }
     }
 }
 

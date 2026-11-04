@@ -392,6 +392,9 @@ class AppCore internal constructor(
     /** Receiving: its store, the staging, the transfers, the library's import, and its use cases. */
     internal val receiving: ReceivingLayers by lazy { ReceivingLayers(this) }
 
+    /** The event album's layers: its map, the library's album calls and the use cases over them. */
+    internal val album: AlbumLayers by lazy { AlbumLayers(this) }
+
     /** The joined screen's download progress, for readers outside the core (the status host). */
     val downloadProgress: StateFlow<DownloadProgress> get() = receiving.progress.progress
 

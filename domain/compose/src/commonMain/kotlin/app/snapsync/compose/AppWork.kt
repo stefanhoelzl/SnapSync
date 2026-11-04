@@ -99,7 +99,8 @@ internal class AppWork(private val core: AppCore) {
             membership.branch,
             recognitionBeforeImporting,
             receiving.importReady,
-            core.albumCoordinator,
+            core.album.forImport,
+            core.album.markFilled,
             receiving.importNext,
             foregroundCounts,
         )
@@ -110,9 +111,9 @@ internal class AppWork(private val core: AppCore) {
     /** The event album a join or a settings change makes and gathers into. */
     private val eventAlbum: EventAlbum by lazy {
         EventAlbum(
-            core.albumCoordinator,
+            core.album.ensure,
             core.albumGather,
-            core.galleryAccess,
+            core.grant,
         )
     }
 

@@ -188,16 +188,6 @@ class AlbumCoordinatorTest {
     }
 
     @Test
-    fun `albumIdFor returns the stored album only for an opted-in membership`() = runTest {
-        val manager = FakeAlbumManager()
-        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
-        val coordinator = AlbumCoordinator(GalleryAlbums(manager), store)
-        assertEquals("album-X", coordinator.albumIdFor(testEventId(event.value), saveToAlbum = true))
-        assertNull(coordinator.albumIdFor(testEventId(event.value), saveToAlbum = false)) // opt-out: no import-time add
-        assertNull(coordinator.albumIdFor(testEventId("other"), saveToAlbum = true)) // no album ever created
-    }
-
-    @Test
     fun `place adds to the stored album`() = runTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
         val store = albumMap().apply { put(testEventId(event.value), "album-X") }
@@ -253,18 +243,8 @@ class AlbumCoordinatorTest {
         val coordinator = AlbumCoordinator(GalleryAlbums(manager), store)
 
         coordinator.placeReceived(testEventId(event.value), listOf(testAssetId("R_L0_1")))
-        coordinator.onImportedInto(event, "album-X")
 
         assertEquals(listOf("album-X" to listOf(testAssetId("R_L0_1"))), manager.added)
         assertFalse(store.filled(testEventId(event.value)))
-    }
-
-    @Test
-    fun `the joined membership's imports file into its album and none file while unjoined`() = runTest {
-        val store = albumMap().apply { put(testEventId(event.value), "album-X") }
-        val coordinator = AlbumCoordinator(GalleryAlbums(FakeAlbumManager()), store)
-        assertEquals("album-X", coordinator.albumIdFor(joined))
-        assertNull(coordinator.albumIdFor(joined.copy(saveToAlbum = false)), "the opt-in rule still holds")
-        assertNull(coordinator.albumIdFor(null))
     }
 }

@@ -4,6 +4,8 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.ImportCorrelation
 import app.snapsync.data.receiving.ImportMarkerWrites
+import app.snapsync.domain.album.EventAlbumId
+import app.snapsync.domain.album.ImportAlbumVerdict
 import app.snapsync.domain.receiving.TransferFacts
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.wake.StagedImports
@@ -47,7 +49,7 @@ class ImportingTest {
         }
     }
 
-    private suspend fun drained(pass: ImportPass = ImportPass(album = null)): Int {
+    private suspend fun drained(pass: ImportPass = ImportPass(album = ImportAlbumVerdict.CameraFolder)): Int {
         var steps = 0
         while (importNext(recognised(membership), pass)) steps++
         return steps
@@ -56,13 +58,13 @@ class ImportingTest {
     @Test
     fun `each staged photo is imported into the album and its bytes freed, one at a time`() = runTest {
         staged("A", "B")
-        val pass = ImportPass(album = "album-1")
+        val pass = ImportPass(album = ImportAlbumVerdict.Into(EventAlbumId("album-1")))
 
         assertEquals(2, drained(pass))
 
         assertEquals(2, r.importer.requests.size)
         assertEquals("album-1", r.importer.requests.first().album?.value)
-        assertEquals("album-1", pass.landedIn, "the album held a photo of this pass")
+        assertEquals(EventAlbumId("album-1"), pass.landedIn, "the album held a photo of this pass")
         assertEquals(emptySet(), r.shared.keys, "the staged bytes are freed")
         assertEquals(StagedImports.NONE, r.counts.stagedImports())
     }
@@ -70,10 +72,11 @@ class ImportingTest {
     @Test
     fun `a pass with no album lands in none`() = runTest {
         staged("A")
-        val pass = ImportPass(album = null)
+        val pass = ImportPass(album = ImportAlbumVerdict.CameraFolder)
         drained(pass)
         assertNull(pass.landedIn)
-        assertNull(ImportPass(album = "album-1").landedIn, "nothing imported, nothing landed")
+        val untried = ImportPass(album = ImportAlbumVerdict.Into(EventAlbumId("album-1")))
+        assertNull(untried.landedIn, "nothing imported, nothing landed")
     }
 
     @Test
@@ -138,7 +141,7 @@ class ImportingTest {
     fun `an unreadable store imports nothing and ends the drain`() = runTest {
         staged("A")
         r.unreadable()
-        assertFalse(importNext(recognised(membership), ImportPass(album = null)))
+        assertFalse(importNext(recognised(membership), ImportPass(album = ImportAlbumVerdict.CameraFolder)))
         assertEquals(emptyList(), r.importer.requests)
     }
 

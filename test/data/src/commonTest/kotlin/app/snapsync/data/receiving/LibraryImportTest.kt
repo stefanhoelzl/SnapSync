@@ -1,5 +1,7 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.domain.album.EventAlbumId
+import app.snapsync.domain.album.ImportAlbumVerdict
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.receiving.ImportReport
 import app.snapsync.domain.receiving.MintsStagedDownload
@@ -52,7 +54,7 @@ class LibraryImportTest {
                 staged("a-unknown.bin", role = "thumbnail"),
                 staged("a-doc.pdf", type = "application/pdf"),
             ),
-            album = "album-1",
+            album = ImportAlbumVerdict.Into(EventAlbumId("album-1")),
         )
 
         assertEquals(testAssetId("LOCAL-A"), assertIs<ImportReport.Imported>(report).created)
@@ -74,7 +76,7 @@ class LibraryImportTest {
 
         val report = import.import(
             download(staged("a-primary.mov", type = "video/mp4"), captured = CaptureDate.Undated),
-            null,
+            ImportAlbumVerdict.CameraFolder,
         )
 
         val failed = assertIs<ImportReport.Failed>(report)
@@ -89,13 +91,14 @@ class LibraryImportTest {
     @Test
     fun `a photo with nothing the library takes is refused for good, and an unreachable area submits nothing`() =
         runTest {
-            val none =
-                assertIs<ImportReport.Failed>(import.import(download(staged("a-x.bin", role = "thumbnail")), null))
+            val camera = ImportAlbumVerdict.CameraFolder
+            val thumbnail = download(staged("a-x.bin", role = "thumbnail"))
+            val none = assertIs<ImportReport.Failed>(import.import(thumbnail, camera))
             assertEquals(true, none.consumedResources, "no later pass could import it")
 
             files.locate = FileResult.AreaUnavailable
             val unreachable = assertIs<ImportReport.Failed>(
-                import.import(download(staged("a-primary.heic"), staged("a-live.mov", role = "live")), null),
+                import.import(download(staged("a-primary.heic"), staged("a-live.mov", role = "live")), camera),
             )
             assertEquals(false, unreachable.consumedResources, "a later pass imports it again")
             assertEquals(emptyList(), library.requests)
