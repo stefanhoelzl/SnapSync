@@ -18,6 +18,7 @@ import app.snapsync.application.receiving.SettleInterruptedImports
 import app.snapsync.application.receiving.SweepUnclaimedStaging
 import app.snapsync.application.receiving.WithholdRecognition
 import app.snapsync.data.sharing.SelectionState
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.ReceivingVerdict
@@ -134,7 +135,8 @@ class ImportReceived(
     @OptIn(EntryPointCall::class)
     private suspend fun drained(joined: Membership.Active, readiness: ImportReadiness.Ready, on: Run) = on.steps {
         // The album is read once, before the drain, so the platform's change block does no lookup of its own.
-        val pass = required { ImportPass(albums.albumIdFor(joined.event.id, joined.share.saveToAlbum)) }
+        val pass =
+            required { ImportPass(albums.albumIdFor(joined.event.id, joined.share.album == AlbumChoice.SaveToAlbum)) }
         drain { importNext(readiness.recognised, pass) }
         // How a folder album learns it has held a photo — what later tells an emptied one from a fresh one.
         pass.landedIn?.let { album -> isolated("album filled") { albums.onImportedInto(joined.event.id, album) } }

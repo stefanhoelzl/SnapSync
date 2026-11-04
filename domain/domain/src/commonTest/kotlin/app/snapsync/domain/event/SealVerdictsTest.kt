@@ -1,5 +1,6 @@
 package app.snapsync.domain.event
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.Share
@@ -36,7 +37,7 @@ class SealVerdictsTest {
             ),
         ).range,
         Direction.Both,
-        saveToAlbum = false,
+        album = AlbumChoice.LibraryOnly,
     )
     private val encrypted = Membership.Active(anEvent().copy(encryption = Encryption.Encrypted(id)), share)
     private val plain = Membership.Active(anEvent(), share)

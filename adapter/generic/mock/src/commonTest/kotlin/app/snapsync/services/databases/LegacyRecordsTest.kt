@@ -121,6 +121,19 @@ class LegacyRecordsTest {
     }
 
     @Test
+    fun `a membership's album choice is copied, on or off`() {
+        for (saveToAlbum in listOf(true, false)) {
+            shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED.copy(saveToAlbum = saveToAlbum)).encodeToByteArray()
+            val db =
+                SharedDatabase(
+                    DatabasesMock().port(),
+                    LegacyRecords(inMemoryFiles(shared = shared), inMemoryPreferences()),
+                )
+            assertEquals(saveToAlbum, joinedIn(db)?.saveToAlbum, "saveToAlbum=$saveToAlbum")
+        }
+    }
+
+    @Test
     fun `an unreadable membership file stays pending and reads as unreadable until it can be copied`() {
         shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
         denied += FileArea.SHARED to CONFIG_FILE_NAME

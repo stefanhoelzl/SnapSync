@@ -1,5 +1,6 @@
 package app.snapsync.domain.membership
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.anEvent
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.request.RequestId
@@ -23,14 +24,20 @@ class ChoicesTest {
             CaptureCutoff(event.range.start.at),
             CaptureCeiling(event.range.end.at),
             Direction.Both,
-            saveToAlbum = true,
+            album = AlbumChoice.SaveToAlbum,
         )
         assertEquals(join, join.copy())
         assertNotEquals(join, join.copy(direction = Direction.UploadOnly))
 
-        val share = ShareChoice(event.id, join.from, join.until, Direction.DownloadOnly, saveToAlbum = false)
+        val share = ShareChoice(
+            event.id,
+            join.from,
+            join.until,
+            Direction.DownloadOnly,
+            album = AlbumChoice.LibraryOnly,
+        )
         assertEquals(share, share.copy())
-        assertNotEquals(share, share.copy(saveToAlbum = true))
+        assertNotEquals(share, share.copy(album = AlbumChoice.SaveToAlbum))
     }
 
     @Test

@@ -7,6 +7,7 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.store.db.MembershipQueries
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.EventId
 import app.snapsync.model.ConfigFileDecode
 import app.snapsync.model.EventConfig
@@ -239,7 +240,7 @@ private fun MembershipQueries.saveMembership(config: EventConfig) = saveMembersh
     maxPhotoDate = config.maxPhotoDate,
     deletesAt = config.deletesAt,
     direction = config.direction,
-    saveToAlbum = config.saveToAlbum,
+    saveToAlbum = if (config.saveToAlbum) AlbumChoice.SaveToAlbum else AlbumChoice.LibraryOnly,
     membersActive = config.members?.active?.toLong(),
     membersSettled = config.members?.settled?.toLong(),
     membersWaiting = config.members?.waiting?.toLong(),

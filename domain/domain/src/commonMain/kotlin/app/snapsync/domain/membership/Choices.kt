@@ -1,5 +1,6 @@
 package app.snapsync.domain.membership
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.invite.InviteLink
@@ -18,7 +19,7 @@ data class JoinChoice(
     val from: CaptureCutoff,
     val until: CaptureCeiling,
     val direction: Direction,
-    val saveToAlbum: Boolean,
+    val album: AlbumChoice,
 )
 
 /** What a member chose in [event]'s settings — carried raw, like a [JoinChoice]'s. */
@@ -27,5 +28,5 @@ data class ShareChoice(
     val from: CaptureCutoff,
     val until: CaptureCeiling,
     val direction: Direction,
-    val saveToAlbum: Boolean,
+    val album: AlbumChoice,
 )

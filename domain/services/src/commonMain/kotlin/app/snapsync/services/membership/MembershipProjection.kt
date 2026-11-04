@@ -2,6 +2,7 @@ package app.snapsync.services.membership
 
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.DeletionVerdict
 import app.snapsync.domain.membership.Membership
@@ -76,7 +77,7 @@ fun Membership.asConfig(): EventConfig = EventConfig(
     maxPhotoDate = share.range.until,
     deletesAt = event.deletesAt,
     direction = share.direction,
-    saveToAlbum = share.saveToAlbum,
+    saveToAlbum = share.album == AlbumChoice.SaveToAlbum,
     members = event.members?.let { MemberCounts(it.active, it.settled, it.waiting) },
     openUntil = event.openUntil,
     deleted = this is Membership.Deleted,

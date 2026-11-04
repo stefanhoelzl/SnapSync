@@ -2,6 +2,7 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -1432,7 +1433,7 @@ class StatusContainerHostTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val configFake = FakeConfig(SAMPLE_CONFIG)
         var joinedDirection: Direction? = null
-        var joinedAlbum: Boolean? = null
+        var joinedAlbum: AlbumChoice? = null
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
@@ -1441,7 +1442,7 @@ class StatusContainerHostTest {
             loadJoinDetails = { found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
                 joinedDirection = join.direction
-                joinedAlbum = join.saveToAlbum
+                joinedAlbum = join.album
                 configFake.save(
                     EventConfig(
                         join.event.id,
@@ -1472,7 +1473,7 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(Direction.DownloadOnly, joinedDirection)
-        assertEquals(true, joinedAlbum)
+        assertEquals(AlbumChoice.SaveToAlbum, joinedAlbum)
     }
 
     /**

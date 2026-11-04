@@ -1,6 +1,7 @@
 package app.snapsync.data.store
 
 import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -97,7 +98,7 @@ class SharedDatabaseTest {
                 maxPhotoDate = CaptureCeiling(TimestampText.parse(UNTIL)),
                 deletesAt = DeletesAt(TimestampText.parse(UNTIL)),
                 direction = Direction.UploadOnly,
-                saveToAlbum = true,
+                saveToAlbum = AlbumChoice.SaveToAlbum,
                 membersActive = 2,
                 membersSettled = 1,
                 membersWaiting = 1,

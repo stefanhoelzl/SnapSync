@@ -102,6 +102,7 @@ fun sharedDatabaseOver(driver: SqlDriver): LedgerDatabase = LedgerDatabase(
         maxPhotoDateAdapter = CaptureCeilingColumnAdapter,
         deletesAtAdapter = DeletesAtColumnAdapter,
         directionAdapter = EnumColumnAdapter(),
+        saveToAlbumAdapter = AlbumChoiceColumnAdapter,
         openUntilAdapter = OpenUntilColumnAdapter,
     ),
     pendingLeaveAdapter = PendingLeave.Adapter(eventIdAdapter = EventIdColumnAdapter),

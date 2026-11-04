@@ -5,6 +5,7 @@ import app.snapsync.data.store.LegacyCopy
 import app.snapsync.data.store.LegacySource
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
@@ -75,7 +76,7 @@ internal fun share(
         ),
     ).range,
     direction,
-    saveToAlbum = false,
+    album = AlbumChoice.LibraryOnly,
 )
 
 internal fun active(id: String = EVENT): Membership.Active = event(id).let { Membership.Active(it, share(it)) }

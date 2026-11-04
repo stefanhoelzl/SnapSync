@@ -3,6 +3,7 @@ package app.snapsync.data.membership
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
 import app.snapsync.data.store.use
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.EventEnd
@@ -80,7 +81,7 @@ class MembershipRepositoryTest {
                 maxPhotoDate = CaptureCeiling(TimestampText.parse(until)),
                 deletesAt = DeletesAt(TimestampText.parse("2026-08-21T18:00:00Z")),
                 direction = Direction.Both,
-                saveToAlbum = false,
+                saveToAlbum = AlbumChoice.LibraryOnly,
                 membersActive = 3,
                 membersSettled = 1,
                 membersWaiting = null,

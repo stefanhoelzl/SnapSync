@@ -14,6 +14,7 @@ import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.data.membership.event
 import app.snapsync.data.store.Stored
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.KeptKey
@@ -66,7 +67,7 @@ class JoinAndLeaveTest {
         from = CaptureCutoff(TimestampText.parse(from)),
         until = CaptureCeiling(TimestampText.parse(until)),
         direction = Direction.Both,
-        saveToAlbum = false,
+        album = AlbumChoice.LibraryOnly,
     )
 
     @Test
@@ -123,7 +124,7 @@ class JoinAndLeaveTest {
                 minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-14T18:00:00Z")),
                 maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-09-01T00:00:00Z")),
                 direction = Direction.Both,
-                saveToAlbum = false,
+                saveToAlbum = AlbumChoice.LibraryOnly,
                 eventId = Stored.Valid(testEventId(EVENT)),
             )
         }

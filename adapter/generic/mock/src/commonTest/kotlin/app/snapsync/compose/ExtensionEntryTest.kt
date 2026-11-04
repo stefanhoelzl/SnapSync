@@ -7,6 +7,7 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.data.trust.TokenText
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -121,7 +122,7 @@ class ExtensionEntryTest {
                 maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-21T18:00:00Z")),
                 deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
                 direction = Direction.Both,
-                saveToAlbum = false,
+                saveToAlbum = AlbumChoice.LibraryOnly,
                 membersActive = null,
                 membersSettled = null,
                 membersWaiting = null,

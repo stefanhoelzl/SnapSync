@@ -5,6 +5,7 @@ import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.RowsRead
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.Membership
@@ -124,7 +125,9 @@ class AlbumGather(
         when {
             membership == null ->
                 log.i { "gather: event=$eventId is no longer joined — skipping" }
-            !membership.share.saveToAlbum -> log.i { "gather: event=$eventId opted out of the album — skipping" }
+            membership.share.album == AlbumChoice.LibraryOnly -> log.i {
+                "gather: event=$eventId opted out of the album — skipping"
+            }
             !photoAccess.usable -> log.i { "gather: photo access not usable — skipping event=$eventId" }
             else -> {
                 val own = if (coordinator.placesOwnPhotos) ownSet(membership) else emptyList()

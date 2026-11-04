@@ -1,6 +1,7 @@
 package app.snapsync.data.store
 
 import app.cash.sqldelight.ColumnAdapter
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.DeletesAt
@@ -110,4 +111,20 @@ object DeletesAtColumnAdapter : TimestampColumnAdapter<DeletesAt>() {
     override fun wrap(at: Timestamp) = DeletesAt(at)
 
     override fun unwrap(value: DeletesAt) = value.at
+}
+
+/**
+ * The membership's album column: 1 for an album, 0 for none — the bytes every build has written there, read as the
+ * member's choice. Any other value reads as no album, as SQLDelight's own flag read it.
+ */
+object AlbumChoiceColumnAdapter : ColumnAdapter<AlbumChoice, Long> {
+    override fun decode(databaseValue: Long): AlbumChoice = when (databaseValue == 1L) {
+        true -> AlbumChoice.SaveToAlbum
+        false -> AlbumChoice.LibraryOnly
+    }
+
+    override fun encode(value: AlbumChoice): Long = when (value) {
+        AlbumChoice.SaveToAlbum -> 1L
+        AlbumChoice.LibraryOnly -> 0L
+    }
 }

@@ -1,5 +1,6 @@
 package app.snapsync.domain.receiving
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.event.Encryption
@@ -54,7 +55,7 @@ internal fun active(direction: Direction = Direction.Both, key: EventKeyId? = nu
             ),
         ).range,
         direction,
-        saveToAlbum = false,
+        album = AlbumChoice.LibraryOnly,
     ),
 )
 

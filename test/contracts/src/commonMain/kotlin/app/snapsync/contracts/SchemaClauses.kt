@@ -13,6 +13,7 @@ import app.snapsync.data.receiving.db.DownloadResource
 import app.snapsync.data.receiving.db.EventRef
 import app.snapsync.data.receiving.db.Recognised
 import app.snapsync.data.receiving.db.UnionCursor
+import app.snapsync.data.store.AlbumChoiceColumnAdapter
 import app.snapsync.data.store.AssetIdColumnAdapter
 import app.snapsync.data.store.DeviceIdColumnAdapter
 import app.snapsync.data.store.EventIdColumnAdapter
@@ -116,6 +117,7 @@ private val LEDGER = ProductionSchema(
                 maxPhotoDateAdapter = dateText(::CaptureCeiling, CaptureCeiling::at),
                 deletesAtAdapter = dateText(::DeletesAt, DeletesAt::at),
                 directionAdapter = EnumColumnAdapter(),
+                saveToAlbumAdapter = AlbumChoiceColumnAdapter,
                 openUntilAdapter = dateText(::OpenUntil, OpenUntil::at),
             ),
             PendingLeave.Adapter(eventIdAdapter = EventIdText),
