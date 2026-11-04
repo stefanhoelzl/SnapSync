@@ -88,6 +88,17 @@ class SessionTierTest {
     }
 
     @Test
+    fun `a phone that holds no proof sends nothing, and its row waits`() = runTest {
+        val world = SessionWorld()
+        world.joined()
+        world.unverified()
+
+        assertIs<CreateAnswer.Unverified>(world.tier.create(world.event, world.discovered(), SessionWorld.From))
+        assertEquals(emptyList(), world.session.made)
+        assertIs<UploadRow.Discovered>(world.row())
+    }
+
+    @Test
     fun `nothing is made where this device cannot be addressed`() = runTest {
         val world = SessionWorld()
         world.joined()

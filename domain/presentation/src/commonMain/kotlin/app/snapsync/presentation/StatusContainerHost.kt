@@ -1542,11 +1542,11 @@ private fun joinedHealth(
         // photo cannot be captured in the future) — so a snapshot line would say nothing true that this
         // does not say better. Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
         config.startsAt.at > nowCutoff -> SyncHealth.NotStarted
-        // Uploads are gated on an attestation token, and we could not get one. Ranked BELOW permission and
-        // BELOW NotStarted for the same reason: with no library access — or before the event begins —
-        // nothing of this member's can upload anyway, so an unusable token is not yet their problem, and
-        // two attention lines would only compete. Ranked ABOVE the sync progress, because "Syncing" would
-        // be a lie: nothing can upload at all.
+        // Uploads are gated on an attestation token (change `withhold-unverified-uploads`), and we could not get one.
+        // Ranked BELOW permission and BELOW NotStarted for the same reason: with no library access — or before the
+        // event begins — nothing of this member's can upload anyway, so an unusable token is not yet their problem,
+        // and two attention lines would only compete. Ranked ABOVE the sync progress, because "Syncing" would be a
+        // lie: nothing can upload at all.
         // A definite refusal names its cause on the same rung; no verdict names none.
         // No proof, because SnapSync failed when asked for one: its condition is told, never that this device
         // cannot be verified — a refusal, or a proof this phone could not give, keeps the line above.

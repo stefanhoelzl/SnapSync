@@ -36,6 +36,7 @@ class OsQueueTier(
             }
             RequestBuilt.NoIdentity -> CreateAnswer.Unaddressed("no device id is held here")
             is RequestBuilt.IdentityUnreadable -> CreateAnswer.Unaddressed(built.detail)
+            is RequestBuilt.Unverified -> CreateAnswer.Unverified(built.detail)
         }
 
     /**
@@ -51,6 +52,7 @@ class OsQueueTier(
             }
             RequestBuilt.NoIdentity -> RetryAnswer.Unaddressed("no device id is held here")
             is RequestBuilt.IdentityUnreadable -> RetryAnswer.Unaddressed(built.detail)
+            is RequestBuilt.Unverified -> RetryAnswer.Unverified(built.detail)
         }
 
     /** Where [key]'s upload into [event] goes, with the headers its event's seal adds — or that it may not go now. */
@@ -103,4 +105,10 @@ sealed interface RetryAnswer {
 
     /** Nothing can be addressed to this device now. */
     data class Unaddressed(val detail: String) : RetryAnswer
+
+    /**
+     * This phone holds no proof it is genuine: the offered retry is not re-pointed — the queue keeps it, and offers it
+     * again once the phone is verified. [detail] is diagnostics only.
+     */
+    data class Unverified(val detail: String) : RetryAnswer
 }

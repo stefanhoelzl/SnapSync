@@ -28,6 +28,7 @@ class SessionTier(
             is RequestBuilt.Built -> sealed(SessionUpload(event, row.key, from.handle, built.request))
             RequestBuilt.NoIdentity -> CreateAnswer.Unaddressed("no device id is held here")
             is RequestBuilt.IdentityUnreadable -> CreateAnswer.Unaddressed(built.detail)
+            is RequestBuilt.Unverified -> CreateAnswer.Unverified(built.detail)
         }
 
     private suspend fun sealed(upload: SessionUpload): CreateAnswer =

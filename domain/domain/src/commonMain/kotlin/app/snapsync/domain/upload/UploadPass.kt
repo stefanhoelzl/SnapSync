@@ -13,6 +13,13 @@ enum class UploadPass {
     /** Admitted, but waiting for another process's work (the app's copy of the shared records, or of its store). */
     PAUSED,
 
+    /**
+     * This phone holds no proof it is genuine, and this process could obtain none: nothing more is sent until it is
+     * verified (change `withhold-unverified-uploads`). The app, which renews its proof at its next wake, has work left;
+     * the upload extension, which cannot, rests — asking to be invoked again would only repeat the refusal.
+     */
+    UNVERIFIED,
+
     /** The membership contributes nothing now — none joined, sharing off, or this process may not create. */
     SKIPPED,
 
@@ -20,7 +27,7 @@ enum class UploadPass {
 
     /** What the heartbeat reads of this pass: a paused one's work remains too. */
     fun left(): UploadsLeft = when (this) {
-        WORK_LEFT, PAUSED -> UploadsLeft.WORK_LEFT
+        WORK_LEFT, PAUSED, UNVERIFIED -> UploadsLeft.WORK_LEFT
         CAUGHT_UP -> UploadsLeft.CAUGHT_UP
         SKIPPED -> UploadsLeft.NOT_CONTRIBUTING
     }
@@ -39,22 +46,28 @@ enum class UploadPass {
 
     private fun answered(inFlight: Int): ExtensionAnswer = when (this) {
         WORK_LEFT, PAUSED -> ExtensionAnswer.INVOKE_AGAIN
-        SKIPPED -> ExtensionAnswer.REST
+        SKIPPED, UNVERIFIED -> ExtensionAnswer.REST
         CAUGHT_UP -> ExtensionAnswer.of(inFlight)
     }
 
     companion object {
         /**
          * What a wake's uploads came to over its steps, in order (a step not taken is `null`): the latest
-         * [SKIPPED] wins — the freshest gate answer says the membership contributes nothing; then work left, a paused
-         * step's included; then caught up — and a wake that ran no step is caught up.
+         * [SKIPPED] wins — the freshest gate answer says the membership contributes nothing; then [UNVERIFIED] — a step
+         * that could send nothing says the next is no better off; then work left, a paused step's included; then caught
+         * up — and a wake that ran no step is caught up.
          */
         fun of(vararg steps: UploadPass?): UploadPass {
             val ran = steps.filterNotNull()
             return when (ran.lastOrNull()) {
                 SKIPPED -> SKIPPED
-                else -> remaining(ran)
+                else -> unverified(ran)
             }
+        }
+
+        private fun unverified(ran: List<UploadPass>): UploadPass = when (UNVERIFIED in ran) {
+            true -> UNVERIFIED
+            false -> remaining(ran)
         }
 
         private fun remaining(ran: List<UploadPass>): UploadPass = when (ran.any { it == WORK_LEFT || it == PAUSED }) {

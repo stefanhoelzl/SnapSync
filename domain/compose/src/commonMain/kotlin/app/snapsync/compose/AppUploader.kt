@@ -49,6 +49,7 @@ internal class AppUploader(private val core: AppCore) {
             albumCoordinator = core.albumCoordinator,
             // The token the app's credential keeps, the same copy every request it authenticates reads.
             credentials = app.credentials,
+            credential = core.attestation,
             exchange = core.exchange,
             gateway = core.backend.gateway,
             keys = app.eventKeyStore,

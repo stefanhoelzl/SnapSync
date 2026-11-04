@@ -1,7 +1,6 @@
 package app.snapsync.application.upload
 
 import app.snapsync.application.EntryPointCall
-import app.snapsync.data.upload.CreateAnswer
 import app.snapsync.data.upload.OsQueueDrain
 import app.snapsync.data.upload.OsQueueTier
 import app.snapsync.data.upload.OwnUploadRows
@@ -54,7 +53,7 @@ class SettlePresentedJobs(
 
     private suspend fun recreated(event: EventId, returned: List<ReturnedJob>): UploadPass {
         for ((row, from) in returned.mapNotNull { recreatable(event, it) }) {
-            if (tier.create(event, row, from) == CreateAnswer.Full) return UploadPass.WORK_LEFT
+            tier.create(event, row, from).endedPass()?.let { return it }
         }
         return UploadPass.CAUGHT_UP
     }

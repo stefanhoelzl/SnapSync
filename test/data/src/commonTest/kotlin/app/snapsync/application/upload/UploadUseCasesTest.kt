@@ -223,6 +223,22 @@ class UploadUseCasesTest {
     }
 
     @Test
+    fun `a phone that holds no proof ends the top-up unverified - nothing sent, no later row tried`() = runTest {
+        world.joined()
+        world.walk.discover(world.event, listOf("A1", "A2").map { FoundResource(key(it), dated(DURING)) })
+        recent.put(mapOf(key("A1") to SessionWorld.From, key("A2") to SessionWorld.From))
+        world.unverified()
+
+        assertEquals(
+            UploadPass.UNVERIFIED,
+            create(world.event, plan(world.event, library.contribution().policy), before),
+        )
+
+        assertEquals(emptyList(), world.session.made)
+        listOf("A1", "A2").forEach { assertIs<UploadRow.Discovered>(rowOf(it), it) }
+    }
+
+    @Test
     fun `a row the other uploader took, or a walk withdrew, since the plan is not created again`() = runTest {
         world.joined()
         world.walk.discover(

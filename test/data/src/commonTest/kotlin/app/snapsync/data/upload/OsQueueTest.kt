@@ -132,6 +132,22 @@ class OsQueueTest {
     }
 
     @Test
+    fun `a phone that holds no proof makes no job, and leaves an offered retry as it is`() = runTest {
+        world.joined()
+        queue.offered = listOf(job(requested("A1")))
+        val offered = drain.offered(world.event).single()
+        world.unverified()
+
+        assertIs<CreateAnswer.Unverified>(tier.create(world.event, world.discovered("A2"), SessionWorld.From))
+        assertEquals(1, queue.created.size, "no job for a photo the phone cannot prove it may send")
+        assertIs<UploadRow.Discovered>(world.row("A2"))
+
+        assertIs<RetryAnswer.Unverified>(tier.retry(world.event, offered))
+        assertEquals(emptyList(), queue.retried, "the queue keeps the job, and offers it again once verified")
+        assertIs<UploadRow.Requested>(world.row("A1"))
+    }
+
+    @Test
     fun `an offered retry of an encrypted event whose key is gone is left as it is`() = runTest {
         world.joinedEncrypted()
         queue.offered = listOf(job(requested()))

@@ -19,6 +19,7 @@ import app.snapsync.domain.sharing.ReadPlan
 import app.snapsync.domain.upload.UploadPass.CAUGHT_UP
 import app.snapsync.domain.upload.UploadPass.PAUSED
 import app.snapsync.domain.upload.UploadPass.SKIPPED
+import app.snapsync.domain.upload.UploadPass.UNVERIFIED
 import app.snapsync.domain.upload.UploadPass.WORK_LEFT
 import app.snapsync.domain.wake.UploadsLeft
 import kotlin.test.Test
@@ -58,12 +59,20 @@ class CycleVerdictsTest {
         assertEquals(WORK_LEFT, UploadPass.of(CAUGHT_UP, PAUSED, null))
         assertEquals(CAUGHT_UP, UploadPass.of(CAUGHT_UP, null))
         assertEquals(CAUGHT_UP, UploadPass.of())
+        assertEquals(UNVERIFIED, UploadPass.of(UNVERIFIED, WORK_LEFT), "a step that could send nothing")
+        assertEquals(SKIPPED, UploadPass.of(UNVERIFIED, SKIPPED))
     }
 
     @Test
     fun `the heartbeat and the extension read a pass`() {
         assertEquals(
-            listOf(UploadsLeft.CAUGHT_UP, UploadsLeft.WORK_LEFT, UploadsLeft.WORK_LEFT, UploadsLeft.NOT_CONTRIBUTING),
+            listOf(
+                UploadsLeft.CAUGHT_UP,
+                UploadsLeft.WORK_LEFT,
+                UploadsLeft.WORK_LEFT,
+                UploadsLeft.WORK_LEFT,
+                UploadsLeft.NOT_CONTRIBUTING,
+            ),
             UploadPass.entries.map(UploadPass::left),
         )
         assertEquals(ExtensionAnswer.REST, CAUGHT_UP.extensionAnswer(inFlight = 0))
@@ -71,6 +80,7 @@ class CycleVerdictsTest {
         assertEquals(ExtensionAnswer.INVOKE_AGAIN, WORK_LEFT.extensionAnswer(0))
         assertEquals(ExtensionAnswer.INVOKE_AGAIN, PAUSED.extensionAnswer(0))
         assertEquals(ExtensionAnswer.REST, SKIPPED.extensionAnswer(3))
+        assertEquals(ExtensionAnswer.REST, UNVERIFIED.extensionAnswer(3), "it cannot obtain a proof: it rests")
         assertEquals(ExtensionAnswer.COULD_NOT_LOOK, CAUGHT_UP.extensionAnswer(inFlight = null), "a count unread")
     }
 

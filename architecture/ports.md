@@ -36,10 +36,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ConfigFileDecode` | `:domain:model` | `:domain:model` Foreign, Unusable, Valid | no |
 | `CountRead` | `:domain:data` | `:domain:data` Counted, Unavailable | no |
 | `CrashReporter` | `:domain:ports` | `:adapter:generic:mock` InMemoryCrashReporter, Recording; `:adapter:generic:sentry` SentryCrashReporter, SettledStart; `:test:contracts` CrashReporterProxy | yes |
-| `CreateAnswer` | `:domain:data` | `:domain:data` Created, Failed, Full, NotNow, Unaddressed, Withheld | no |
+| `CreateAnswer` | `:domain:data` | `:domain:data` Created, Failed, Full, NotNow, Unaddressed, Unverified, Withheld | no |
 | `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient, Unverified | no |
 | `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
-| `Credential` | `:domain:data` | `:domain:data` AttestingCredential, DropOnlyCredential; `:domain:services` ScriptedCredential; `:test:contracts` HeldCredential; `:test:data` ScriptedCredential | yes |
+| `Credential` | `:domain:data` | `:domain:data` AttestingCredential, DropOnlyCredential; `:domain:services` ScriptedCredential; `:test:contracts` HeldCredential; `:test:data` Gated, ScriptedCredential | yes |
 | `CredentialStore` | `:domain:data` | `:domain:data` CachedCredentialStore, SecureCredentialStore; `:test:data` ScriptedStore | yes |
 | `CredentialVerdict` | `:domain:domain` | `:domain:domain` Answered, Rejected | no |
 | `Crypto` | `:domain:ports` | `:adapter:android` AndroidCrypto; `:adapter:generic:app` JcaCrypto; `:adapter:generic:mock` FakeCrypto; `:adapter:ios:ext-safe` IosCrypto; `:test:contracts` CryptoProxy | yes |
@@ -228,13 +228,13 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RenewalAnswerVerdict` | `:domain:domain` | `:domain:domain` Accept, AttestAfresh, KeepHeld | no |
 | `RenewalVerdict` | `:domain:domain` | `:domain:domain` Due, Fresh | no |
 | `ReportDue` | `:domain:domain` | `:domain:domain` Report, Unchanged | no |
-| `RequestBuilt` | `:domain:data` | `:domain:data` Built, IdentityUnreadable, NoIdentity | no |
+| `RequestBuilt` | `:domain:data` | `:domain:data` Built, IdentityUnreadable, NoIdentity, Unverified | no |
 | `RequestStatus` | `:domain:query` | `:domain:query` Done, Idle, InFlight | no |
 | `RequestStatusSink` | `:domain:query` | `:domain:query` RequestStatuses | no |
 | `RestoreOutcome` | `:domain:application` | `:domain:application` NothingChanged, Refused, Restored | no |
 | `RestoreVerdict` | `:domain:domain` | `:domain:domain` NotLost, NotTheEventsKey, Restore | no |
 | `ResumePoint` | `:domain:domain` | `:domain:domain` Deferred, From, Landed | no |
-| `RetryAnswer` | `:domain:data` | `:domain:data` Refused, Repointed, Unaddressed, Withheld | no |
+| `RetryAnswer` | `:domain:data` | `:domain:data` Refused, Repointed, Unaddressed, Unverified, Withheld | no |
 | `RetryVerdict` | `:domain:domain` | `:domain:domain` Retry, Stands | no |
 | `RowRead` | `:domain:data` | `:domain:data` Absent, Found, Unavailable | no |
 | `RowTransition` | `:domain:data` | `:domain:data` Gone, Superseded, Transitioned, Unavailable | no |

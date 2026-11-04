@@ -103,6 +103,47 @@ class TrustIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "privacy-security",
+        requirement = "A verification problem never loses a photo",
+        scenario = "A phone whose proof was refused sends no photo until it is verified again",
+    )
+    fun a_phone_whose_proof_was_refused_sends_no_photo_until_it_is_verified_again() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            photos("P1")
+            // The service refuses the background uploader's proof: iOS's uploader drops it, and cannot obtain another.
+            step("the background uploader's proof refused", act = {
+                backend.refuseNextCredential()
+                cycle()
+            }, until = {
+                event<WorldEvent.UploadJobCreated> { it.job == primaryJob("P1") }
+                settled { true }
+            })
+        }
+
+        // The member takes another photo before opening the app: it does not leave the phone.
+        whenever {
+            takePhoto("P2")
+            cycle()
+        }
+        then {
+            never<WorldEvent.UploadJobCreated> { it.job == primaryJob("P2") }
+            never<WorldEvent.BytesStored> { it.asset == "P2" }
+        }
+
+        // The member opens the app: it is verified again, and the photo that waited is shared.
+        whenever {
+            os.foreground()
+            cycle()
+            uploadQueue.completeJob()
+            uploadQueue.completeJob()
+        }
+        then { event<WorldEvent.BytesStored> { it.asset == "P2" } }
+    }
+
+    @Test
+    @Verifies(
         spec = "app-update-required",
         requirement = "Nothing is shared or received while the app is outdated",
         scenario = "Photos wait for the update",
