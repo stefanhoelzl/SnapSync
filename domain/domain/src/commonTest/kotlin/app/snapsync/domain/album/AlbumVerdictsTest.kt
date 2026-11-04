@@ -76,18 +76,15 @@ class AlbumVerdictsTest {
     // ---- importing into it -----------------------------------------------------------------------------------------
 
     @Test
-    fun `an import files into the album only when it is chosen and there`() {
+    fun `an import files into the chosen album only while it is there`() {
         assertEquals(
             ImportAlbumVerdict.Into(album),
-            ImportAlbumVerdict.of(AlbumChoice.SaveToAlbum, album, AlbumStanding.Present),
+            ImportAlbumVerdict.of(album, AlbumStanding.Present),
         )
         assertEquals(
             ImportAlbumVerdict.CameraFolder,
-            ImportAlbumVerdict.of(AlbumChoice.SaveToAlbum, album, AlbumStanding.Deleted),
+            ImportAlbumVerdict.of(album, AlbumStanding.Deleted),
         )
-        AlbumStanding.entries.forEach {
-            assertEquals(ImportAlbumVerdict.CameraFolder, ImportAlbumVerdict.of(AlbumChoice.LibraryOnly, album, it))
-        }
     }
 
     // ---- placing ---------------------------------------------------------------------------------------------------
