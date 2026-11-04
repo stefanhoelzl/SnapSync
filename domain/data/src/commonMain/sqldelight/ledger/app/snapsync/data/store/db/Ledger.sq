@@ -132,6 +132,14 @@ purgeExcept:
 DELETE FROM ledgerRow
 WHERE eventId != :eventId;
 
+-- The join's kept reset (`UploadRowsReset.purgeExcept`): one event's in-flight rows return to needing a job, their
+-- destination cleared. A join into a new membership follows a leave or switch that stopped every upload of the event,
+-- so no job is sending them. The manifest version does not move: neither column is one the update trigger compares.
+requeueRequested:
+UPDATE ledgerRow
+SET state = 'DISCOVERED', destinationPath = NULL
+WHERE eventId = :eventId AND state = 'REQUESTED';
+
 -- The rows 12.sqm parked under the empty event belong to the event joined when it ran — the membership the app copies
 -- from its legacy file (`LegacyRecords`), in that copy's transaction and never at a later join, which would hand them to
 -- a different event. `OR IGNORE`: a parked key the joined event already holds keeps the joined event's row, and the

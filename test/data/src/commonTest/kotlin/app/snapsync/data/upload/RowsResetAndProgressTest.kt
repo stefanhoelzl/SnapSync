@@ -17,6 +17,7 @@ import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.StoredBytes
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
+import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.testids.testEventId
 import kotlin.test.Test
@@ -71,6 +72,44 @@ class RowsResetAndProgressTest {
         assertEquals(listOf(key("KEEP")), rowsOf(event).map { it.key })
         assertTrue(rowsOf(other).isEmpty())
 
+    }
+
+    @Test
+    fun `a purge returns the kept event's in-flight rows to needing a job, keeps its completed ones, moves no version`() {
+        walk.discover(other, listOf(FoundResource(key("OLD"), RowDetail(CaptureDate.Undated, "image/heic", "x"))))
+        walk.discover(
+            event,
+            listOf(
+                FoundResource(key("SENDING"), RowDetail(CaptureDate.Undated, "image/heic", "x")),
+                FoundResource(key("DONE"), RowDetail(CaptureDate.Undated, "image/heic", "x")),
+            ),
+        )
+        moves.requested(event, CreatedJob(key("SENDING")), DestinationPath("/sending"))
+        moves.requested(event, CreatedJob(key("DONE")), DestinationPath("/done"))
+        moves.landed(event, ReportedLanding(key("DONE")))
+        val before = assertIs<VersionRead.Read>(reads.manifestVersion()).version
+
+        assertEquals(StoreWrite.Written, reset.purgeExcept(event))
+
+        val rows = rowsOf(event).associateBy { it.key }
+        assertIs<UploadRow.Discovered>(rows.getValue(key("SENDING")), "the stranded upload needs a job again")
+        assertIs<UploadRow.Completed>(rows.getValue(key("DONE")), "what was stored stays stored")
+        assertTrue(rowsOf(other).isEmpty(), "another event's rows are purged")
+        assertEquals(before + 1, assertIs<VersionRead.Read>(reads.manifestVersion()).version, "only the purge's delete")
+    }
+
+    @Test
+    fun `a purge whose write fails leaves the store as it was`() {
+        walk.discover(other, listOf(FoundResource(key("OLD"), RowDetail(CaptureDate.Undated, "image/heic", "x"))))
+        walk.discover(event, listOf(FoundResource(key("SENDING"), RowDetail(CaptureDate.Undated, "image/heic", "x"))))
+        moves.requested(event, CreatedJob(key("SENDING")), DestinationPath("/sending"))
+        device.fail("ledger.db", "ledgerRow", WriteKind.UPDATE)
+
+        assertIs<StoreWrite.Failed>(reset.purgeExcept(event))
+
+        assertEquals(listOf(key("OLD")), rowsOf(other).map { it.key }, "the purge rolled back with the requeue")
+        val kept = assertIs<UploadRow.Requested>(rowsOf(event).single())
+        assertEquals(DestinationPath("/sending"), kept.destination)
     }
 
     @Test

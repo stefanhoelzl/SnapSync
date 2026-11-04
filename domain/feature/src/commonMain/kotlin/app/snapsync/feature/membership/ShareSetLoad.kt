@@ -26,8 +26,11 @@ private const val LISTING_TIMEOUT_MS = 15_000L
  * resources IN THAT EVENT, one bare `COMPLETED` row each, in one atomic seed — so nothing the backend already
  * holds for this event is uploaded again. Each event holds its own bytes (change `per-event-storage-layout`): a
  * photo stored for another event is uploaded again for this one. On a failed or timed-out listing the other events'
- * rows are purged and the joined event's are left as they are: empty for a first join, and for a rejoin what this
- * device last knew of the event, whose bytes the backend still holds while the event lives.
+ * rows are purged and the joined event's are kept: empty for a first join, and for a rejoin what this device last knew
+ * of the event, whose bytes the backend still holds while the event lives — except that a row in flight returns to
+ * needing a job (`UploadRowsReset.purgeExcept`). The leave or switch before this join stopped every upload of the
+ * event, so nothing else would ever send it; should an OS job have survived, the photo is uploaded twice, never seen
+ * as a second copy.
  *
  * **Why a failure blocks nothing.** There is no flag, no gate and no "load owed" bit. The only cost of a
  * failed load is that the walk records the window's photos as new work and uploads them again — idempotent
