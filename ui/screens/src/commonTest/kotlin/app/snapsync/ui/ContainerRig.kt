@@ -168,7 +168,7 @@ internal class ContainerRig(
             }
 
             override fun commitJoin(choice: JoinChoice): RequestId {
-                record("commitJoin:${choice.event.id}:${choice.direction}:${choice.saveToAlbum}")
+                record("commitJoin:${choice.event.id}:${choice.direction}:${choice.album}")
                 return answered(statuses.join, JoinCommit.Failed())
             }
 

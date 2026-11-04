@@ -28,7 +28,7 @@ class ReconfigureEvent(private val membership: MembershipRepository) {
         val range = CaptureRange.of(choice.from, choice.until, active.event.range.start, active.event.range.end)
     ) {
         is CaptureRangeVerdict.Ok -> saved(
-            membership.reconfigure(active, Share(range.range, choice.direction, choice.saveToAlbum)),
+            membership.reconfigure(active, Share(range.range, choice.direction, choice.album)),
         )
         CaptureRangeVerdict.Inverted, CaptureRangeVerdict.TooLong, CaptureRangeVerdict.OutsideEvent ->
             ReconfigureOutcome.Refused

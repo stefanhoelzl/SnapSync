@@ -1,0 +1,55 @@
+import app.snapsync.data.store.Stored;
+import app.snapsync.domain.album.AlbumChoice;
+import app.snapsync.domain.event.DeletesAt;
+import app.snapsync.domain.event.EventEnd;
+import app.snapsync.domain.event.EventId;
+import app.snapsync.domain.event.EventStart;
+import app.snapsync.domain.event.OpenUntil;
+import app.snapsync.domain.sharing.CaptureCeiling;
+import app.snapsync.domain.sharing.CaptureCutoff;
+import app.snapsync.domain.sharing.Direction;
+import kotlin.Boolean;
+
+-- v18 -> v19: the membership's album column is read as the member's album choice (`AlbumChoice`) rather than a flag
+-- (`docs/patterns.md`, "Formats live at the boundary").
+--
+-- NOTHING a device stores changes: the same columns, SQL types and constraints, the same rows, and the column still
+-- holds 1 for an album and 0 for none (`AlbumChoiceColumnAdapter`). Only the Kotlin type SQLDelight binds the column to
+-- changes — and that lives in the `CREATE TABLE` of a migration that may never be edited (`MigrationPinTest`), so the
+-- table is re-created here as 17.sqm re-created it: staged in an ordinary table, re-created, the row moved back.
+--
+-- ROW-PRESERVING, every column copied as it is. DOWNGRADE: the table an earlier build reads is the same table.
+
+CREATE TABLE membership_v18 AS SELECT * FROM membership;
+
+DROP TABLE membership;
+
+CREATE TABLE membership (
+    id             INTEGER NOT NULL PRIMARY KEY CHECK (id = 0),
+    eventId        TEXT AS Stored<EventId> NOT NULL,
+    name           TEXT    NOT NULL,
+    minPhotoDate   TEXT AS CaptureCutoff NOT NULL,
+    startsAt       TEXT AS EventStart NOT NULL,
+    endsAt         TEXT AS EventEnd NOT NULL,
+    maxPhotoDate   TEXT AS CaptureCeiling NOT NULL,
+    deletesAt      TEXT AS DeletesAt NOT NULL,
+    direction      TEXT AS Direction NOT NULL,
+    saveToAlbum    INTEGER AS AlbumChoice NOT NULL,
+    membersActive  INTEGER,
+    membersSettled INTEGER,
+    keyId          TEXT,
+    openUntil      TEXT AS OpenUntil,
+    membersWaiting INTEGER,
+    deleted        INTEGER AS Boolean NOT NULL DEFAULT 0,
+    CHECK ((membersActive IS NULL) = (membersSettled IS NULL))
+);
+
+INSERT INTO membership (
+    id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum,
+    membersActive, membersSettled, keyId, openUntil, membersWaiting, deleted
+)
+SELECT id, eventId, name, minPhotoDate, startsAt, endsAt, maxPhotoDate, deletesAt, direction, saveToAlbum,
+    membersActive, membersSettled, keyId, openUntil, membersWaiting, deleted
+FROM membership_v18;
+
+DROP TABLE membership_v18;

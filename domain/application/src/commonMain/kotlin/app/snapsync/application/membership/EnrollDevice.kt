@@ -39,7 +39,7 @@ class EnrollDevice(
     suspend fun admit(choice: JoinChoice): AdmitOutcome = when (
         val range = CaptureRange.of(choice.from, choice.until, choice.event.range.start, choice.event.range.end)
     ) {
-        is CaptureRangeVerdict.Ok -> keyed(choice, Share(range.range, choice.direction, choice.saveToAlbum))
+        is CaptureRangeVerdict.Ok -> keyed(choice, Share(range.range, choice.direction, choice.album))
         // Refused, never clamped: no screen can produce one, so it is a bug, and moving it would join a range nobody
         // chose.
         CaptureRangeVerdict.Inverted, CaptureRangeVerdict.TooLong, CaptureRangeVerdict.OutsideEvent ->

@@ -72,7 +72,7 @@ internal fun LedgerDatabase.reconfigure(next: Membership.Active): UpdateResult {
         minPhotoDate = next.share.range.from,
         maxPhotoDate = next.share.range.until,
         direction = next.share.direction,
-        saveToAlbum = next.share.saveToAlbum,
+        saveToAlbum = next.share.album,
         eventId = Stored.Valid(next.event.id),
     )
     return when (changed()) {

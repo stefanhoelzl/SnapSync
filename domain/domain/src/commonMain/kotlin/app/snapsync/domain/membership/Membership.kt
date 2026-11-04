@@ -1,5 +1,6 @@
 package app.snapsync.domain.membership
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
@@ -27,7 +28,7 @@ sealed interface Membership {
 
 /**
  * What this member chose for the event: the capture dates they share ([range] — checked against the event when it was
- * chosen), whether they share and receive ([direction]), and whether received photos go into an album. Only a settings
- * change replaces it.
+ * chosen), whether they share and receive ([direction]), and whether the event's photos go into an album ([album]).
+ * Only a settings change replaces it.
  */
-data class Share(val range: CaptureRange, val direction: Direction, val saveToAlbum: Boolean)
+data class Share(val range: CaptureRange, val direction: Direction, val album: AlbumChoice)

@@ -10,6 +10,7 @@ import app.snapsync.data.store.Stored
 import app.snapsync.data.upload.ExtensionRegistrar
 import app.snapsync.data.upload.OsUploader
 import app.snapsync.data.upload.UploaderSwitches
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.membership.LeftMembership
@@ -116,7 +117,7 @@ class ProducerExclusivityTest {
                     maxPhotoDate = joined.maxPhotoDate,
                     deletesAt = joined.deletesAt,
                     direction = joined.direction,
-                    saveToAlbum = joined.saveToAlbum,
+                    saveToAlbum = if (joined.saveToAlbum) AlbumChoice.SaveToAlbum else AlbumChoice.LibraryOnly,
                     membersActive = null,
                     membersSettled = null,
                     membersWaiting = null,

@@ -16,6 +16,7 @@ import app.snapsync.data.membership.PendingLeavesRead
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.data.membership.name
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.ShareChoice
@@ -120,7 +121,7 @@ class MembershipChangesTest {
             CaptureCutoff(TimestampText.parse(from)),
             CaptureCeiling(TimestampText.parse("2026-07-21T18:00:00Z")),
             direction,
-            saveToAlbum = true,
+            album = AlbumChoice.SaveToAlbum,
         )
 
     @Test

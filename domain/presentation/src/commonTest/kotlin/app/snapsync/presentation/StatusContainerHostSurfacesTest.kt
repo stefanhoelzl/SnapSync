@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -81,7 +82,7 @@ private data class Reconfigure(
     val direction: Direction,
     val from: CaptureCutoff,
     val until: CaptureCeiling,
-    val saveToAlbum: Boolean,
+    val album: AlbumChoice,
 )
 
 private class Spy {
@@ -128,7 +129,7 @@ class StatusContainerHostSurfacesTest {
         val commands = TestCommands(
             reconfigure = { choice ->
                 spy.reconfigures += Reconfigure(
-                    choice.event.value, choice.direction, choice.from, choice.until, choice.saveToAlbum,
+                    choice.event.value, choice.direction, choice.from, choice.until, choice.album,
                 )
                 // A save that lands rewrites the membership, as the use-case does (its clamp is not under test here).
                 if (spy.reconfigureOutcome == SettingsResult.Saved && spy.configFollows) {
@@ -136,7 +137,7 @@ class StatusContainerHostSurfacesTest {
                         direction = choice.direction,
                         minPhotoDate = choice.from,
                         maxPhotoDate = choice.until,
-                        saveToAlbum = choice.saveToAlbum,
+                        saveToAlbum = choice.album == AlbumChoice.SaveToAlbum,
                     )
                 }
                 spy.reconfigureOutcome
@@ -530,7 +531,16 @@ class StatusContainerHostSurfacesTest {
             host.form.onSaveToAlbum(true)
             awaitReconfigures(spy, 1)
             val sent = spy.reconfigures.single()
-            assertEquals(Reconfigure(EVENT_ID, Direction.Both, CONFIG.minPhotoDate, CONFIG.maxPhotoDate, true), sent)
+            assertEquals(
+                Reconfigure(
+                    EVENT_ID,
+                    Direction.Both,
+                    CONFIG.minPhotoDate,
+                    CONFIG.maxPhotoDate,
+                    AlbumChoice.SaveToAlbum,
+                ),
+                sent,
+            )
             val open = host.stateWhere(
                 "the album shown on, settings still open",
             ) { it.settings()?.range?.saveToAlbum == true }
@@ -729,7 +739,7 @@ class StatusContainerHostSurfacesTest {
             assertEquals(false, form.saveToAlbum, "the stored choice is shown as it was saved")
             host.form.onSaveToAlbum(true)
             awaitReconfigures(spy, 1)
-            assertEquals(true, spy.reconfigures.single().saveToAlbum)
+            assertEquals(AlbumChoice.SaveToAlbum, spy.reconfigures.single().album)
             val after = host.stateWhere("the album on") { it.settings()?.range?.saveToAlbum == true }
             assertEquals(
                 AlbumHolds.RECEIVED,

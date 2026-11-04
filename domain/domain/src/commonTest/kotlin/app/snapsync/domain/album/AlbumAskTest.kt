@@ -17,7 +17,7 @@ class AlbumAskTest {
 
     private val event = anEvent()
 
-    private fun membership(saveToAlbum: Boolean, direction: Direction = Direction.Both) = Membership.Active(
+    private fun membership(album: AlbumChoice, direction: Direction = Direction.Both) = Membership.Active(
         event,
         Share(
             assertIs<CaptureRangeVerdict.Ok>(
@@ -29,25 +29,34 @@ class AlbumAskTest {
                 ),
             ).range,
             direction,
-            saveToAlbum = saveToAlbum,
+            album = album,
         ),
     )
 
     @Test
     fun `a save that turned the album on is an opt-in`() {
-        assertEquals(AlbumAsk.OptIn, AlbumAsk.ofSave(membership(saveToAlbum = false), membership(saveToAlbum = true)))
+        assertEquals(
+            AlbumAsk.OptIn,
+            AlbumAsk.ofSave(membership(AlbumChoice.LibraryOnly), membership(AlbumChoice.SaveToAlbum)),
+        )
     }
 
     @Test
     fun `a save that left the album on is no opt-in`() {
-        val before = membership(saveToAlbum = true)
-        val after = membership(saveToAlbum = true, direction = Direction.UploadOnly)
+        val before = membership(AlbumChoice.SaveToAlbum)
+        val after = membership(AlbumChoice.SaveToAlbum, direction = Direction.UploadOnly)
         assertEquals(AlbumAsk.Replay, AlbumAsk.ofSave(before, after))
     }
 
     @Test
     fun `a save that turned the album off or left it off is no opt-in`() {
-        assertEquals(AlbumAsk.Replay, AlbumAsk.ofSave(membership(saveToAlbum = true), membership(saveToAlbum = false)))
-        assertEquals(AlbumAsk.Replay, AlbumAsk.ofSave(membership(saveToAlbum = false), membership(saveToAlbum = false)))
+        assertEquals(
+            AlbumAsk.Replay,
+            AlbumAsk.ofSave(membership(AlbumChoice.SaveToAlbum), membership(AlbumChoice.LibraryOnly)),
+        )
+        assertEquals(
+            AlbumAsk.Replay,
+            AlbumAsk.ofSave(membership(AlbumChoice.LibraryOnly), membership(AlbumChoice.LibraryOnly)),
+        )
     }
 }

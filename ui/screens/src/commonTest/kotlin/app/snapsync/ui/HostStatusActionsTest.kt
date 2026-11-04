@@ -378,7 +378,7 @@ class HostStatusActionsTest {
 
         onNodeWithText(str(Res.string.join_button)).performClick()
         waitUntil(timeoutMillis = 5_000) { rig.fired.any { it.startsWith("commitJoin:") } }
-        assertEquals(listOf("commitJoin:$OTHER_ID:DownloadOnly:false"), rig.fired)
+        assertEquals(listOf("commitJoin:$OTHER_ID:DownloadOnly:LibraryOnly"), rig.fired)
     }
 
     @Test

@@ -1,5 +1,6 @@
 package app.snapsync.domain.membership
 
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.anEvent
@@ -28,7 +29,7 @@ class MembershipTest {
             ),
         ).range,
         Direction.Both,
-        saveToAlbum = false,
+        album = AlbumChoice.LibraryOnly,
     )
 
     @Test

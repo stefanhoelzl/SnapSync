@@ -19,6 +19,7 @@ import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.UploadKeyText
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fixedClock
@@ -240,7 +241,7 @@ internal fun MembershipQueries.saveRow(config: EventConfig) = saveMembership(
     maxPhotoDate = config.maxPhotoDate,
     deletesAt = config.deletesAt,
     direction = config.direction,
-    saveToAlbum = config.saveToAlbum,
+    saveToAlbum = if (config.saveToAlbum) AlbumChoice.SaveToAlbum else AlbumChoice.LibraryOnly,
     membersActive = config.members?.active?.toLong(),
     membersSettled = config.members?.settled?.toLong(),
     membersWaiting = config.members?.waiting?.toLong(),

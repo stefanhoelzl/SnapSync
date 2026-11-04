@@ -17,6 +17,10 @@ enum class AlbumAsk {
     companion object {
         /** What a settings Save from [before] to [after] asks: an opt-in only when it turned the album on. */
         fun ofSave(before: Membership.Active, after: Membership.Active): AlbumAsk =
-            if (after.share.saveToAlbum && !before.share.saveToAlbum) OptIn else Replay
+            if (after.share.album == AlbumChoice.SaveToAlbum && before.share.album == AlbumChoice.LibraryOnly) {
+                OptIn
+            } else {
+                Replay
+            }
     }
 }

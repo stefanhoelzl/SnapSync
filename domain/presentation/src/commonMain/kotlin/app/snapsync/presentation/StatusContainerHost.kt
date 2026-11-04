@@ -889,7 +889,13 @@ class StatusContainerHost(
         private suspend fun applySetting(config: EventConfig, before: SettingChange, next: SettingChange) {
             local.update { it.copy(pendingWithdrawal = Owned(null, null)) }
             val id = commands.reconfigure(
-                ShareChoice(config.eventId, next.from, next.until, next.direction, next.saveToAlbum),
+                ShareChoice(
+                    config.eventId,
+                    next.from,
+                    next.until,
+                    next.direction,
+                    AlbumSwitch.choice(next.saveToAlbum),
+                ),
             )
             val outcome = requests.settings.answerTo(id)
             if (outcome == SettingsResult.NotCurrent) {
@@ -1283,7 +1289,7 @@ class StatusContainerHost(
             range.chosenFrom,
             range.chosenUntil,
             range.direction,
-            form.saveToAlbum,
+            AlbumSwitch.choice(form.saveToAlbum),
         )
         pending.value = p.copy(phase = JoinProgress.Detailed(event, JoinPhase.Detailed.Step.Committing), service = null)
         beginMembership()

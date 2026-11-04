@@ -30,6 +30,7 @@ import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.KeepOutcome
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.domain.album.AlbumAsk
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.ConfirmedNotJoined
@@ -323,7 +324,7 @@ class EventAlbum(
             albums.ensureAlbum(
                 membership.event.id,
                 membership.event.name.text,
-                membership.share.saveToAlbum,
+                membership.share.album == AlbumChoice.SaveToAlbum,
                 access.usable,
                 optIn = ask == AlbumAsk.OptIn,
             )
