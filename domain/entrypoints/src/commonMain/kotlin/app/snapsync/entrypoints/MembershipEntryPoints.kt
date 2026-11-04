@@ -51,7 +51,6 @@ import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.upload.UploaderChange
-import app.snapsync.feature.album.AlbumGather
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.upload.ShareSettlement
@@ -243,7 +242,7 @@ class AfterJoin(
         val armed = required { reconcile(UploaderChange.JOIN) }
         isolated("arm") { arm.apply(armed) }
         isolated("status") { statusRefresh.run() }
-        required { album.run("join", joined, AlbumAsk.OptIn, on) }
+        required { album.run(joined, AlbumAsk.OptIn, on) }
         // The join itself starts receiving the event's history — no opening, no wake.
         when (val receiving = required { receivingOf(joined) }) {
             is ReceivingVerdict.Receives -> isolated(
@@ -293,7 +292,7 @@ class AfterSettings(
         // A kick whatever the direction: the cycle's policy decides what uploads; nothing in flight is cancelled.
         val armed = required { reconcile(UploaderChange.RECONFIGURE) }
         isolated("arm") { arm.apply(armed) }
-        required { album.run("reconfigure", saved, AlbumAsk.ofSave(before, saved), on) }
+        required { album.run(saved, AlbumAsk.ofSave(before, saved), on) }
         when (val receiving = required { receivingOf(saved) }) {
             // Receiving: the event hears it at once, so what a share-only phase told it never lets it finish early.
             is ReceivingVerdict.Receives -> {
@@ -310,17 +309,17 @@ class AfterSettings(
 /**
  * The event album a membership saves into, after a join or a settings change: made when the member wants one and the
  * grant allows it, and the photos already held gathered into it — each its own step, so one that fails leaves the other
- * done. [trigger] names what asked, for the gather's lines; [ask] whether it was the member's opt-in, the only ask that
+ * done. [ask] says whether it was the member's opt-in, the only ask that
  * brings back an album they deleted.
  */
 class EventAlbum(
     private val ensure: EnsureEventAlbum,
-    private val gather: AlbumGather,
+    private val gathering: AlbumGathering,
     private val grant: GrantRead,
 ) {
-    suspend fun run(trigger: String, membership: Membership.Active, ask: AlbumAsk, on: Run) = on.steps {
+    suspend fun run(membership: Membership.Active, ask: AlbumAsk, on: Run) = on.steps {
         isolated("album") { ensure(membership, grant.access(), ask) }
-        isolated("album gather") { gather.start(trigger, membership.event.id) }
+        isolated("album gather") { gathering.requested() }
     }
 }
 

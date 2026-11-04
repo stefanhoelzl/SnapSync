@@ -87,7 +87,7 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
   tap hands to an entry point of its own — a join, a leave, a settings change, a rename, a switch — is that entry
   point's delivery, with its own `done`; the tap's ends with the hand-off.
 - State whose change starts work is **followed**, not polled: `Observation.follow(flow, entryPoint)` hands each
-  emission to an entry point as a delivery, and the next waits for that run (`OnSelectionChanged`,
+  emission to an entry point as a delivery, and the next waits for that run (`OnSelectionChanged`, `OnPhotoAccessChanged`,
   `OnNetworkReturned`).
 - **What the membership reads decides which steps run, through one builder**:
   `membership(branch, Cached | Refreshed) { active { … } deleted { … } notJoined { … } }` reads the membership — as
@@ -209,7 +209,7 @@ passing on an `InvalidProgramState`, which ends the process (§15):
 
 `SingleFlight` turns a pass's end into a value for its waiters — answer, failure or cancellation (a cut) — and is
 the fourth `catch` in the layer. `CatchSitesTest` licenses exactly these files, and holds every other catch-all in
-production — the old zones' `runCatchingCancellable`, `bestEffort`, `contained` and broad or typed
+production — the old zones' `runCatchingCancellable`, `contained` and broad or typed
 `catch` clauses (an adapter's typed catch excepted: turning a platform throw into a value is its job) — to a baseline,
 counted per file, that may only shrink. Phase 4 empties it as it moves the old zones under entry points and
 sequences, and deletes the helpers with their last use. `CatchGateTest` holds the other half: every site still
@@ -377,7 +377,7 @@ first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the
 `RenameEvent`, `DeliverPendingLeaves`, `ClaimStateCheck`), and the small concepts' (`RegisterPush`, `SetMobileData`,
 `RearmHeartbeat`), the upload's, `application.upload`'s (`DeriveContribution`, `WalkOwnPhotos`, `RecordWalk`,
 `PlanTopUp`, `CreateJobs`, `SettlePresentedJobs`, `RecordFinishedUpload`, `SettleStoredUploads`,
-`ReconcileUploader`, `StopUploads`), and receiving's (`application.receiving`: `PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and their kin). A use case answers an `XOutcome`, and logs what it decided through the structured log;
+`ReconcileUploader`, `StopUploads`), and receiving's (`application.receiving`: `PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and their kin), and the album's (`application.album`: `EnsureEventAlbum`, `PlaceOwnPhotos`, `PlaceReceivedPhotos`, `AlbumForImport`, `MarkAlbumFilled`, `OwnAlbumPhotos`, `ReceivedAlbumPhotos`). A use case answers an `XOutcome`, and logs what it decided through the structured log;
 `:domain:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
 
 ---
@@ -485,6 +485,7 @@ return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encod
 | Data and a use case stay small | the `data` and `application` tiers (`config/detekt/data.yml`, `application.yml`) — claims |
 | Only the app process mints an identity or attests | `@AppProcessOnly` on `MintingDeviceIdentity` and `AttestingCredential` + `OptInPinsTest` |
 | The walk memo stays in the app process | `@AppProcessOnly` + `OptInPinsTest` |
+| Only the app makes or gathers an event album; the extension only places own photos | `@AppProcessOnly` on `AlbumCreation`, `EnsureEventAlbum`, `PlaceReceivedPhotos`, `AlbumGatherPass` and `OnPhotoAccessChanged`, one opt-in site (`AlbumComposition.kt`) + `OptInPinsTest` |
 | A format is written once, at the boundary | `TimestampText`, the `AsString` serializers, the column adapters — review; a missing serializer or adapter is a compile error |
 | A handler bundle is built and registered only by a composition | `ListenDoorTest` |
 | No OS completion handler is stored in a field | `OsHandlerContainmentTest` |

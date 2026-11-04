@@ -960,6 +960,28 @@ class AlbumIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "event-album", requirement = "Album problems never affect sharing or receiving")
+    fun a_gather_that_cannot_read_what_was_received_places_nothing_and_stops_nothing() = behaviour {
+        given {
+            joinedEvent(Choices(saveToAlbum = false))
+            receivedFrom(DEV_F, "FQ", into = { settled { it.state.albums.orEmpty().isEmpty() } })
+        }
+
+        // The album is turned on while the store that records what was received cannot be read: the album is made,
+        // the gather places nothing it cannot read, and the Save still lands.
+        whenever {
+            databases.unreadable("downloads.db", on = true)
+            reconfigure(Choices(saveToAlbum = true))
+        }
+        then {
+            screen<Layer.Joined> { it.membership.savesToAlbum }
+            event<WorldEvent.LibraryAlbumCreated>()
+            never<WorldEvent.LibraryJoinedAlbum>()
+            settled { true }
+        }
+    }
+
+    @Test
     @Verifies(spec = "event-album", requirement = "Turning the album on gathers what is already there")
     fun access_that_becomes_usable_while_the_app_runs_gathers_the_photos_already_received() = behaviour {
         given {

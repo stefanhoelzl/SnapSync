@@ -112,7 +112,7 @@ internal class AppWork(private val core: AppCore) {
     private val eventAlbum: EventAlbum by lazy {
         EventAlbum(
             core.album.ensure,
-            core.albumGather,
+            core.album.gathering,
             core.grant,
         )
     }

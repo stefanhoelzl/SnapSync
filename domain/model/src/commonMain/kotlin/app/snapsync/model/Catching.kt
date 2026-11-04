@@ -44,22 +44,9 @@ inline fun <T, R> T.runCatchingCancellable(block: T.() -> R): Result<R> =
     }
 
 /**
- * Run [block] as a **best-effort** step: a failure is logged at `Warn` with [name] and swallowed, so the caller
- * carries on; cancellation is rethrown, never logged as a failure (law "Catch sites keep cancellation", capability
- * `docs/architecture.md`). Returns whether the step completed.
- *
- * For a step whose failure must STOP the sequence, do not use this: a required step lets its failure propagate
- * (law "A multi-step use case declares which steps are required").
- */
-inline fun Logger.bestEffort(name: String, block: () -> Unit): Boolean =
-    runCatchingCancellable(block)
-        .onFailure { w(it) { "best-effort step failed: $name" } }
-        .isSuccess
-
-/**
  * Run [block] as a **contained** step: a failure is logged at `Warn` as [failure] and swallowed, cancellation is
- * rethrown. The shape every wake's "its own work failed; its tail still runs" takes. Not `inline`, unlike
- * [bestEffort]: a composition calls it, and the failure arm then lives here, where it is tested, rather than being
+ * rethrown. The shape every wake's "its own work failed; its tail still runs" takes. Not `inline`: a composition
+ * calls it, and the failure arm then lives here, where it is tested, rather than being
  * copied into a caller that holds no branch.
  */
 suspend fun Logger.contained(failure: String, block: suspend () -> Unit) {

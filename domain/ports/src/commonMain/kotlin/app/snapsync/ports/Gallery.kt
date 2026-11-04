@@ -75,7 +75,7 @@ interface GalleryReader : Port {
 
     /**
      * Create an album titled [title] and return its id, or `null` when the platform refused — whatever the
-     * cause. Only the app creates albums (`AlbumCoordinator`). A [LibraryAlbumKind.FOLDER] album is a folder of its
+     * cause. Only the app creates albums (`AlbumCreation`). A [LibraryAlbumKind.FOLDER] album is a folder of its
      * own: two albums of one title are two folders, and one does not [albumsById]-resolve until it holds a photo.
      */
     suspend fun createAlbum(title: String): PlatformAlbumId?

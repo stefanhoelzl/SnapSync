@@ -10,6 +10,9 @@ import app.snapsync.data.membership.active
 import app.snapsync.data.membership.sharedOver
 import app.snapsync.data.receiving.ANNA
 import app.snapsync.data.receiving.Store
+import app.snapsync.data.sharing.Library
+import app.snapsync.data.upload.OwnUploadRows
+import app.snapsync.data.upload.WalkRecord
 import app.snapsync.domain.album.AlbumAsk
 import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.album.AlbumEntry
@@ -17,8 +20,14 @@ import app.snapsync.domain.album.AlbumFill
 import app.snapsync.domain.album.EventAlbumId
 import app.snapsync.domain.album.ImportAlbumVerdict
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.asset.CaptureDate
+import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.PhotoAccess
+import app.snapsync.domain.upload.FoundResource
+import app.snapsync.domain.upload.RowDetail
+import app.snapsync.domain.upload.UploadKey
+import app.snapsync.format.TimestampText
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
@@ -152,6 +161,49 @@ class AlbumUseCasesTest {
     }
 
     @Test
+    fun `own photos wait for the album the app has not made yet`() = runTest {
+        val library = AlbumLibrary()
+        assertEquals(PlaceOutcome.Skipped, PlaceOwnPhotos(map, AlbumFiling(library))(saving, assets))
+        assertEquals(emptyList(), library.added)
+    }
+
+    // ---- what a gather places of the member's own ------------------------------------------------------------------
+
+    private fun found(asset: String, at: String) = FoundResource(
+        UploadKey.of(AssetId.parse(asset)!!, ResourceRole.PRIMARY, "IMG.HEIC"),
+        RowDetail(CaptureDate.Dated(TimestampText.parse(at)), "image/heic", "IMG.HEIC"),
+    )
+
+    private fun ownAlbumPhotos(library: AlbumLibrary = AlbumLibrary()) =
+        OwnAlbumPhotos(OwnUploadRows(sharedOver(device)), Library().own, AlbumFiling(library))
+
+    @Test
+    fun `a gather places the own rows the one policy admits now, in order`() = runTest {
+        WalkRecord(sharedOver(device)).discover(
+            event,
+            listOf(
+                found("B", "2026-07-15T10:00:00Z"),
+                found("A", "2026-07-16T10:00:00Z"),
+                found("BEFORE", "2026-07-01T10:00:00Z"), // before the shared range: not admitted
+            ),
+        )
+        assertEquals(
+            AlbumPhotosRead.Read(listOf(AssetId.parse("A")!!, AssetId.parse("B")!!)),
+            ownAlbumPhotos()(saving),
+        )
+    }
+
+    @Test
+    fun `a gather places no own photo where they stay put, and says so when the rows cannot be read`() = runTest {
+        WalkRecord(sharedOver(device)).discover(event, listOf(found("A", "2026-07-16T10:00:00Z")))
+        assertEquals(AlbumPhotosRead.Read(emptyList()), ownAlbumPhotos()(libraryOnly))
+        assertEquals(AlbumPhotosRead.Read(emptyList()), ownAlbumPhotos(AlbumLibrary(LibraryAlbumKind.FOLDER))(saving))
+
+        device.lock()
+        assertIs<AlbumPhotosRead.Unavailable>(ownAlbumPhotos()(saving))
+    }
+
+    @Test
     fun `own photos stay in the camera folder on a folder phone, the album chosen and there`() = runTest {
         map.remember(event, album)
         val folder = AlbumLibrary(LibraryAlbumKind.FOLDER)
@@ -245,11 +297,11 @@ class AlbumUseCasesTest {
             "INSERT INTO eventRef VALUES ('${RECEIVED_EVENT.value}', '${ANNA.value}', 'Y')",
         )
         assertEquals(
-            ReceivedAlbumRead.Read(listOf(testAssetId("LOCAL-A"), testAssetId("LOCAL-B"))),
+            AlbumPhotosRead.Read(listOf(testAssetId("LOCAL-A"), testAssetId("LOCAL-B"))),
             ReceivedAlbumPhotos(store.counts)(RECEIVED_EVENT),
         )
 
         store.databases.lock()
-        assertIs<ReceivedAlbumRead.Unavailable>(ReceivedAlbumPhotos(store.counts)(RECEIVED_EVENT))
+        assertIs<AlbumPhotosRead.Unavailable>(ReceivedAlbumPhotos(store.counts)(RECEIVED_EVENT))
     }
 }

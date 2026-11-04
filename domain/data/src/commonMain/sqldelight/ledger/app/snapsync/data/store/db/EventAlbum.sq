@@ -6,16 +6,10 @@
 selectEntry:
 SELECT albumLocalId, filled FROM eventAlbum WHERE eventId = :eventId;
 
-selectAlbum:
-SELECT albumLocalId FROM eventAlbum WHERE eventId = :eventId;
-
 -- A new album has held nothing yet, so remembering one resets `filled`.
 rememberAlbum:
 INSERT INTO eventAlbum (eventId, albumLocalId, filled) VALUES (:eventId, :albumLocalId, 0)
 ON CONFLICT (eventId) DO UPDATE SET albumLocalId = excluded.albumLocalId, filled = 0;
-
-selectFilled:
-SELECT filled FROM eventAlbum WHERE eventId = :eventId;
 
 markFilled:
 UPDATE eventAlbum SET filled = 1 WHERE eventId = :eventId;

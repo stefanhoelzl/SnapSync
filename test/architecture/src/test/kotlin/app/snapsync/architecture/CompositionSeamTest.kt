@@ -109,9 +109,6 @@ class CompositionSeamTest {
      * only through the sibling's own ports.
      */
     private val constructorPins: Map<String, String> = mapOf(
-        "AlbumGather.policyFor" to
-            "the membership's ONE contribution's policy (OwnPhotos), derived in compose/ over the download store — " +
-            "a store the gather may not name (feature-blindness)",
         "CreateEvent.onMinted" to
             "emits the minted event on AppCore.mintedEvents, which the host zone collects into this core's join gate " +
             "(StatusContainerHost.onEventCreated) — a re-entry into this same graph so create and a scanned QR take " +
@@ -245,10 +242,10 @@ class CompositionSeamTest {
         // import readiness, event album and album callback, the received status source's event and direction, and the
         // adoption's record went with the controller — receiving's steps are use cases now. 9 since the uploads
         // moved into the layers (4.4b): the cycle's gate, engine, discovery and album hooks, the admissions, the final
-        // share's publish and the transitions' engine are typed steps now. Lower it only with a removal like those, never
-        // to pass.
+        // share's publish and the transitions' engine are typed steps now — and 4.7 the gather's policy lambda, which reads
+        // the selection through `OwnAlbumPhotos` now. Lower it only with a removal like those, never to pass.
         assertTrue(
-            found.size >= 9,
+            found.size >= 8,
             "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
                 "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
         )

@@ -5,7 +5,10 @@ import app.snapsync.data.album.AlbumFiling
 import app.snapsync.data.album.AlbumMap
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.ReceivingCounts
+import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.store.StoreWrite
+import app.snapsync.data.upload.OwnUploadRows
+import app.snapsync.data.upload.RowsRead
 import app.snapsync.domain.album.AlbumAdd
 import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.album.AlbumEntry
@@ -132,18 +135,45 @@ class MarkAlbumFilled(private val map: AlbumMap, private val filing: AlbumFiling
     }
 }
 
-/** What this device received for an event, for a gather to file: receiving's own record of its imports. */
-class ReceivedAlbumPhotos(private val counts: ReceivingCounts) {
+/**
+ * The member's own photos a gather places: none where they never go into an album (no album chosen, or a folder
+ * phone), else the event's upload rows the membership's ONE selection policy admits now — exactly what the device
+ * tells the event it contributes, judged no other way.
+ */
+class OwnAlbumPhotos(
+    private val rows: OwnUploadRows,
+    private val photos: OwnPhotos,
+    private val filing: AlbumFiling,
+) {
     @EntryPointCall
-    operator fun invoke(event: EventId): ReceivedAlbumRead = when (val read = counts.importedOf(event)) {
-        is DownloadRead.Ok -> ReceivedAlbumRead.Read(read.value.sorted())
-        is DownloadRead.Unavailable -> ReceivedAlbumRead.Unavailable(read.detail)
+    suspend operator fun invoke(membership: Membership.Active): AlbumPhotosRead =
+        when (OwnPlacementVerdict.home(membership.share.album, filing.contents)) {
+            OwnPhotoHome.IntoAlbum -> admitted(membership, rows.rows(membership.event.id))
+            OwnPhotoHome.StayInCameraFolder -> AlbumPhotosRead.Read(emptyList())
+        }
+
+    private suspend fun admitted(membership: Membership.Active, read: RowsRead): AlbumPhotosRead = when (read) {
+        is RowsRead.Read -> AlbumPhotosRead.Read(
+            photos.contribution(membership).policy.admitRecorded(read.rows.map { it.recorded })
+                .map { it.assetId }
+                .sorted(),
+        )
+        is RowsRead.Unavailable -> AlbumPhotosRead.Unavailable(read.detail)
     }
 }
 
-/** The photos received for an event, or that the store could not say. */
-sealed interface ReceivedAlbumRead {
-    data class Read(val assets: List<AssetId>) : ReceivedAlbumRead
+/** What this device received for an event, for a gather to file: receiving's own record of its imports. */
+class ReceivedAlbumPhotos(private val counts: ReceivingCounts) {
+    @EntryPointCall
+    operator fun invoke(event: EventId): AlbumPhotosRead = when (val read = counts.importedOf(event)) {
+        is DownloadRead.Ok -> AlbumPhotosRead.Read(read.value.sorted())
+        is DownloadRead.Unavailable -> AlbumPhotosRead.Unavailable(read.detail)
+    }
+}
 
-    data class Unavailable(val detail: String) : ReceivedAlbumRead
+/** Photos a gather places, in order — or that the store could not say which. */
+sealed interface AlbumPhotosRead {
+    data class Read(val assets: List<AssetId>) : AlbumPhotosRead
+
+    data class Unavailable(val detail: String) : AlbumPhotosRead
 }
