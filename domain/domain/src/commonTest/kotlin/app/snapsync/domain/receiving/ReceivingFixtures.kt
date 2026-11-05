@@ -39,7 +39,15 @@ internal fun photo(
     UnionPhoto(
         ref(asset, device),
         captured?.let { CaptureDate.Dated(ts(it)) } ?: CaptureDate.Undated,
-        listOf(UnionResource("$asset-primary.heic", "https://e/$asset", "primary", "image/heic", "IMG.HEIC")),
+        listOf(
+            UnionResource(
+                "$asset-primary.heic",
+                "https://e/$asset",
+                "primary",
+                "image/heic",
+                checkNotNull(SenderFilename.parse("IMG.HEIC")),
+            ),
+        ),
     )
 
 /** An active membership of [anEvent] with [direction], encrypted under [key] when one is named. */

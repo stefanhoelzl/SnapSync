@@ -55,7 +55,7 @@ arrives, and the member is shown as up to date without it (capability `sync-stat
 - **WHEN** another member shares a file this phone's photo library cannot open, together with an ordinary photo
 - **THEN** the ordinary photo appears in the library, the unreadable one does not, and the member is shown as up to date
 
-### Requirement: Received photos keep full fidelity
+### Requirement: Received photos arrive in full fidelity
 
 A received photo SHALL be saved as the sender's original: full resolution and original format, its
 original capture date (so it sorts where it was taken), and the filename it had on the sender's device with
@@ -110,10 +110,6 @@ received before a phone could keep them moving SHALL stay as they were saved.
 - **WHEN** a photo the sender knew as "IMG_4471.HEIC" is received
 - **THEN** it carries a filename of the form "IMG_4471.snapsync-….HEIC" in the receiver's library, never an
   internal name
-
-#### Scenario: A photo without a sender filename is still marked
-- **WHEN** a photo whose sender filename is unknown is received
-- **THEN** it carries a SnapSync-marked filename in the receiver's library
 
 ### Requirement: A deleted received photo never comes back
 

@@ -11,7 +11,8 @@ class LifecycleTest {
     @Test
     @OptIn(MintsStagedDownload::class, MintsImportedAsset::class)
     fun each_state_carries_what_the_next_step_needs() {
-        val resource = StagedResource("k", "primary", "image/heic", "IMG.HEIC", StagedPath("download-staging/x"))
+        val name = checkNotNull(SenderFilename.parse("IMG.HEIC"))
+        val resource = StagedResource("k", "primary", "image/heic", name, StagedPath("download-staging/x"))
         val staged = StagedDownload(ref("A"), CaptureDate.Undated, listOf(resource))
         assertEquals(ref("A"), staged.ref)
         assertEquals(CaptureDate.Undated, staged.captured)

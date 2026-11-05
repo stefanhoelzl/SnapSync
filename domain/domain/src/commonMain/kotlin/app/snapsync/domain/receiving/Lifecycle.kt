@@ -39,7 +39,7 @@ class StagedResource(
     val resourceKey: String,
     val role: String,
     val contentType: String,
-    val originalFilename: String,
+    val originalFilename: SenderFilename,
     val stagedPath: StagedPath,
 )
 

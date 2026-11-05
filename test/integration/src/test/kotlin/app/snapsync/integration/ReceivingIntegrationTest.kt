@@ -118,7 +118,7 @@ class ReceivingIntegrationTest {
     @Test
     @Verifies(
         spec = "receiving-photos",
-        requirement = "Received photos keep full fidelity",
+        requirement = "Received photos arrive in full fidelity",
         scenario = "A received photo sorts by capture time",
     )
     fun a_photo_taken_yesterday_is_saved_at_its_capture_time_not_today() = behaviour {

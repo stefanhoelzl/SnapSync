@@ -6,6 +6,7 @@ import app.snapsync.domain.receiving.AssetPresence
 import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.domain.receiving.ReceivedPhotoName
 import app.snapsync.domain.receiving.RecognitionWindow
+import app.snapsync.domain.receiving.SenderFilename
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.ports.GalleryAsset
 import app.snapsync.ports.GalleryRead
@@ -36,7 +37,9 @@ class MarkedPhotosTest {
         created,
         resources = listOf(
             LibraryAssets.Resource(ResourceKind.PAIRED_VIDEO, "video/quicktime", "IMG.MOV"),
-            LibraryAssets.primaryResource(ReceivedPhotoName.mark("IMG_1.HEIC", "x-primary.heic", ref)),
+            LibraryAssets.primaryResource(
+                ReceivedPhotoName.mark(checkNotNull(SenderFilename.parse("IMG_1.HEIC")), ref),
+            ),
         ),
     )
 

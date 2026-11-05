@@ -40,9 +40,9 @@ class EventUnionTest {
             mapOf("SnapSync-Cursor" to cursor) + (declared?.let { mapOf("SnapSync-Declared" to it) } ?: emptyMap()),
         )
 
-    private fun asset(device: String = ANNA.value, asset: String = "A") =
+    private fun asset(device: String = ANNA.value, asset: String = "A", filename: String = "IMG_1.MOV") =
         """{"deviceId":"$device","assetId":"$asset","creationDate":"$DURING","resources":[""" +
-            """{"role":"live","contentType":"video/quicktime","key":"$asset-live.mov","filename":"IMG_1.MOV"}]}"""
+            """{"role":"live","contentType":"video/quicktime","key":"$asset-live.mov","filename":"$filename"}]}"""
 
     @Test
     fun `a whole read serves every photo with the address this build builds, and the others' declared total`() =
@@ -61,7 +61,7 @@ class EventUnionTest {
             assertEquals("A-live.mov", resource.key)
             assertEquals("live", resource.role)
             assertEquals("video/quicktime", resource.contentType)
-            assertEquals("IMG_1.MOV", resource.originalFilename)
+            assertEquals("IMG_1.MOV", resource.originalFilename.value)
             assertEquals(true, resource.url.startsWith(BASE), resource.url)
             val request = transport.requests.single()
             assertEquals("foreground", request.headers["SnapSync-Trigger"])
@@ -102,6 +102,19 @@ class EventUnionTest {
             answer = unreadable
             assertIs<UnionRead.Unavailable>(union.read(EVENT, UnionReadPlan.Whole, UnionTrigger.WAKE), "$unreadable")
         }
+    }
+
+    @Test
+    fun `a page with a resource that names no sender filename is no read`() = runTest {
+        // Every upload names its file, so the union never serves one without (change
+        // `a-received-photo-always-has-a-sender-filename`): a photo with no name to arrive under is a page this build
+        // cannot read, as a photo whose id is no id is.
+        answer = page("[${asset(asset = "A")},${asset(asset = "B", filename = "")}]")
+        assertIs<UnionRead.Unavailable>(union.read(EVENT, UnionReadPlan.Whole, UnionTrigger.WAKE))
+
+        answer = page("[${asset(asset = "A")},${asset(asset = "B")}]")
+        val read = assertIs<UnionRead.Ok>(union.read(EVENT, UnionReadPlan.Whole, UnionTrigger.WAKE))
+        assertEquals(2, read.page.photos.size)
     }
 
     @Test

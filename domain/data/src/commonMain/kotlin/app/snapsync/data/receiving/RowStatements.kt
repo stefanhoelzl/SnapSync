@@ -2,10 +2,12 @@ package app.snapsync.data.receiving
 
 import app.snapsync.data.receiving.db.DownloadStoreQueries
 import app.snapsync.data.receiving.db.SelectPendingResources
+import app.snapsync.data.receiving.db.SelectResourcesForAsset
 import app.snapsync.data.store.Stored
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.receiving.AssetRef
+import app.snapsync.domain.receiving.SenderFilename
 import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.domain.receiving.StagedResource
 import app.snapsync.domain.receiving.StagingFolder
@@ -36,23 +38,46 @@ internal fun settledAmong(
 internal fun waiting(q: DownloadStoreQueries): Boolean =
     q.selectPendingResources().executeAsList().isNotEmpty() || q.selectImportableAssets().executeAsList().isNotEmpty()
 
-/** The staged resources of [ref], to hand to one library import. */
-internal fun stagedResources(q: DownloadStoreQueries, ref: AssetRef): List<StagedResource> =
-    q.selectResourcesForAsset(valid(ref.sourceDeviceId), valid(ref.sourceAssetId)).executeAsList().mapNotNull { row ->
-        row.stagedPath?.let {
-            StagedResource(
-                row.resourceKey,
-                row.role,
-                row.contentType,
-                row.originalFilename,
-                StagedPath(it),
-            )
-        }
-    }
+/**
+ * The staged resources of [ref], to hand to one library import — [StagedRows.Unnamed] when one of them names no sender
+ * filename. Only a row an earlier build planned from a union that served an empty name could (change
+ * `a-received-photo-always-has-a-sender-filename`), and such a photo has no name to arrive under.
+ */
+internal fun stagedRows(q: DownloadStoreQueries, ref: AssetRef): StagedRows {
+    val staged = q.selectResourcesForAsset(valid(ref.sourceDeviceId), valid(ref.sourceAssetId)).executeAsList()
+        .mapNotNull { row -> row.stagedPath?.let { row to StagedPath(it) } }
+    return StagedRows.of(staged, staged.mapNotNull { (row, _) -> SenderFilename.parse(row.originalFilename) })
+}
 
 /** The staged paths [ref]'s resource rows record. */
-internal fun stagedPaths(q: DownloadStoreQueries, ref: AssetRef): List<StagedPath> =
-    stagedResources(q, ref).map { it.stagedPath }
+internal fun stagedPaths(q: DownloadStoreQueries, ref: AssetRef): List<StagedPath> = stagedRows(q, ref).paths
+
+/** A photo's staged resource rows, as one import takes them. */
+internal sealed interface StagedRows {
+    /** Every staged path the rows record. */
+    val paths: List<StagedPath>
+
+    /** Every row names its sender filename. */
+    class Named(val resources: List<StagedResource>) : StagedRows {
+        override val paths: List<StagedPath> get() = resources.map { it.stagedPath }
+    }
+
+    /** A row names no sender filename: the photo cannot be imported. */
+    class Unnamed(override val paths: List<StagedPath>) : StagedRows
+
+    companion object {
+        /** The [staged] rows with the sender filenames [names] parsed from them: named, unless one named nothing. */
+        fun of(staged: List<Pair<SelectResourcesForAsset, StagedPath>>, names: List<SenderFilename>): StagedRows =
+            when (names.size == staged.size) {
+                true -> Named(
+                    staged.zip(names) { (row, path), name ->
+                        StagedResource(row.resourceKey, row.role, row.contentType, name, path)
+                    },
+                )
+                false -> Unnamed(staged.map { it.second })
+            }
+    }
+}
 
 /** Drop [ref]'s resource rows — its bytes released. */
 internal fun dropResources(q: DownloadStoreQueries, ref: AssetRef) {

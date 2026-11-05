@@ -61,7 +61,7 @@ class ReceivingPlans(private val store: DownloadStore) {
         val (device, asset) = valid(photo.ref.sourceDeviceId) to valid(photo.ref.sourceAssetId)
         q.upsertAsset(device, asset, DownloadState.PENDING, TimestampText.captureText(photo.captured))
         photo.resources.forEach { r ->
-            q.upsertResource(device, asset, r.key, r.url, r.role, r.contentType, r.originalFilename, event.value)
+            q.upsertResource(device, asset, r.key, r.url, r.role, r.contentType, r.originalFilename.value, event.value)
         }
     }
 

@@ -82,22 +82,22 @@ class Journeys {
     )
     @Verifies(
         spec = "receiving-photos",
-        requirement = "Received photos keep full fidelity",
+        requirement = "Received photos arrive in full fidelity",
         scenario = "A Live Photo stays live",
     )
     @Verifies(
         spec = "receiving-photos",
-        requirement = "Received photos keep full fidelity",
+        requirement = "Received photos arrive in full fidelity",
         scenario = "An Android motion photo reaches iPhone as a Live Photo",
     )
     @Verifies(
         spec = "receiving-photos",
-        requirement = "Received photos keep full fidelity",
+        requirement = "Received photos arrive in full fidelity",
         scenario = "A Live Photo reaches Android as a motion photo",
     )
     @Verifies(
         spec = "receiving-photos",
-        requirement = "Received photos keep full fidelity",
+        requirement = "Received photos arrive in full fidelity",
         scenario = "A motion photo stays moving between Android phones",
     )
     @Verifies(

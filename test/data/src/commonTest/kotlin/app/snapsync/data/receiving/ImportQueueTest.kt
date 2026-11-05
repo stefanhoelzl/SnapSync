@@ -1,6 +1,7 @@
 package app.snapsync.data.receiving
 
 import app.snapsync.domain.receiving.StagedPath
+import app.snapsync.domain.receiving.StagingFolder
 import app.snapsync.domain.receiving.TransferSlots
 import app.snapsync.levers.WriteKind
 import app.snapsync.testids.testAssetId
@@ -60,6 +61,29 @@ class ImportQueueTest {
         device.databases.lock()
         assertIs<DownloadRead.Unavailable>(device.queue.claimNext(emptySet()))
     }
+
+    @Test
+    fun `a staged photo an older build planned with no sender filename settles unimportable and frees its bytes`() =
+        runTest {
+            // Only a union that served an empty name could have planned such a row, and none does any more (change
+            // `a-received-photo-always-has-a-sender-filename`): with no name to arrive under, it is never imported.
+            val a = photo(ref("A"))
+            val b = photo(ref("B"))
+            device.planned(page(a, b))
+            device.stagedAll(a)
+            device.stagedAll(b)
+            val stagedA = TransferTag(a.ref, a.resources[0].key, StagingFolder.of(EVENT.value)).stagedAt
+            device.sql("UPDATE downloadResource SET originalFilename = '' WHERE sourceAssetId = 'A'")
+
+            assertEquals(b.ref, device.queue.claimNext(emptySet()).ok()!!.ref, "the next photo is still claimed")
+            assertEquals("UNIMPORTABLE", device.state(a.ref))
+            assertEquals(false, device.files.has(stagedA.value), "its staged bytes are released")
+            assertEquals(
+                emptyList(),
+                device.strings("SELECT resourceKey FROM downloadResource WHERE sourceAssetId = 'A'"),
+            )
+            assertNull(device.queue.claimNext(emptySet()).ok(), "it is never claimed later")
+        }
 
     @Test
     fun `an import settles its row onto the created asset and releases the claim`() = runTest {
