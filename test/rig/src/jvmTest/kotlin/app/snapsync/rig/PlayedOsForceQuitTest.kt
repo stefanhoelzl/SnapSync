@@ -35,9 +35,16 @@ class PlayedOsForceQuitTest {
         .single { it.service == PlayedOsLevers }
 
     @Test
-    fun a_host_without_the_process_refuses_only_the_force_quit() = runTest {
-        assertEquals(mapOf("played-os.forceQuit" to FORCE_QUIT_NEEDS_THE_PROCESS), playedOs().refused)
+    fun a_host_without_the_process_refuses_only_what_ends_it() = runTest {
+        assertEquals(
+            mapOf(
+                "played-os.forceQuit" to FORCE_QUIT_NEEDS_THE_PROCESS,
+                "played-os.revokingAccessEndsTheProcess" to REVOKE_NEEDS_THE_PROCESS,
+            ),
+            playedOs().refused,
+        )
         assertFailsWith<LeverRefused> { os.forceQuit() }
+        assertFailsWith<LeverRefused> { os.revokingAccessEndsTheProcess(true) }
     }
 
     @Test

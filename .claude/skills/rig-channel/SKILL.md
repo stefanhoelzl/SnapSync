@@ -778,8 +778,9 @@ Nothing lands until you land it:
   omitted — so its bytes cross to the backend's byte route), `failJob(job, error)` (`network`, `http:503`, …); read
   `queue()` (live jobs, every created one, the cap).
 - `upload-session` (`UploadSessionLevers`) — the app uploader's background session: `complete(key?)` (lands a
-  transfer — every live one when omitted — each end reported to the app); read `session()` (live keys, every created
-  one, hand-backs).
+  transfer — every live one when omitted — each end reported to the app; a transfer sends its file as it was when it
+  was created); `inProcess(on)` (Android's: a process that ends takes its live transfers, and the next process hears
+  each one failed); read `session()` (live keys, every created one, hand-backs).
 - `download-session` (`DownloadSessionLevers`) — the background download session: `finish(description?, status?,
   expected?, received?, base64Bytes?)` (every in-flight transfer when omitted, nothing while this launch has not
   brought the session up; no status/length is a healthy `200`; `base64Bytes` is what each brought — a real motion
@@ -909,7 +910,8 @@ The operating system as the app meets it (`docs/testing.md`, "Typed services") �
   already expired), the read `completions()` (`handed`, `released`, `releasedAgain`, `held`), and `forceQuit()` (the
   member force-quits the app: the process dies, the session's transfers are cancelled and reported at the next
   opening, and every app-launching delivery is refused until `os foreground`; the extension is still invoked. Only a
-  host that owns the app's process honours it — the JVM host's).
+  host that owns the app's process honours it — the JVM host's), and `revokingAccessEndsTheProcess(on)` (Android's:
+  `library permission --grant DENIED` from a usable grant then ends the process; the same host only).
 - `extension-host` (`ExtensionHostLevers`) — `process()` (the OS invokes the extension's `process()`: answers
   `completed|processing|failed`) and `terminate()`. The JVM host and the iOS app host serve it; Android refuses it. The
   simulator's scripted job sets are `upload-jobs process`'s, see `ios-simulator`.
@@ -917,7 +919,8 @@ The operating system as the app meets it (`docs/testing.md`, "Typed services") �
   the install referrer only a store delivers, once per installation), `push` (`kind(kind)` — `apns|fcm`, read as the
   app composes, so it takes effect at a relaunch; `refuseTokens(reason?)` — none: tokens again; the read `push()`:
   registrations, kind, refusal), `wake` (the read `wakes()`: heartbeats accepted, and every request pending with its
-  cadence and delay), `background-time` (the read `holds()`, each by the name the app began it under, verbatim;
+  cadence and delay; `carriesLibraryWake(on)`, Android's library-change wake, read at launch — where carried and
+  requested, each `library add` wakes the app on the JVM host), `background-time` (the read `holds()`, each by the name the app began it under, verbatim;
   `expireAll()`), `extension-registry` (the read `registered()`, `null` where the platform has no extension; and
   `carried(on)`, whether the OS carries the extension at all, iOS 26.1 and later, read at launch so it takes effect at the
   next relaunch).

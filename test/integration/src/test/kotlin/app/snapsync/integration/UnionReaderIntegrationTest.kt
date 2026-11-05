@@ -18,8 +18,8 @@ class UnionReaderIntegrationTest {
         requirement = "The service records who reads an event's photo list",
         scenario = "A member's app is woken for a new photo",
     )
-    // The app's part: the read a push wakes says it was woken for a new photo.
     fun a_read_woken_by_a_new_photo_tells_the_service_so() = behaviour {
+        // The app's part: the read a push wakes says it was woken for a new photo.
         val event = given {
             joinedEvent().also {
                 pushToken(TOKEN)

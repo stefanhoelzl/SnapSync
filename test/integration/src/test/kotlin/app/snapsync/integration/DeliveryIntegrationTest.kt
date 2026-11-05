@@ -169,8 +169,9 @@ class DeliveryIntegrationTest {
         requirement = "Losing photo access stops new uploads but lets in-flight ones finish",
         scenario = "Revoking access mid-upload on Android",
     )
-    // The app's part: nothing starts while access is off, and the upload the revoke cut off is retried once it returns.
     fun an_upload_a_revoke_cut_off_on_android_is_uploaded_once_access_returns() = behaviour {
+        // The app's part: nothing starts while access is off, and the upload the revoke cut off is retried once it
+        // returns.
         given {
             androidProcess()
             appUploadsOnly()
@@ -212,8 +213,8 @@ class DeliveryIntegrationTest {
         requirement = "Photos travel without the app being opened",
         scenario = "A new photo wakes the app on Android",
     )
-    // The app's part: it asks for the library-change wake, and the wake uploads the new photo with the app closed.
     fun a_photo_taken_days_after_the_last_opening_wakes_the_app_and_uploads_on_android() = behaviour {
+        // The app's part: it asks for the library-change wake, and the wake uploads the new photo with the app closed.
         given {
             androidLibraryWake()
             appUploadsOnly()
@@ -237,6 +238,7 @@ class DeliveryIntegrationTest {
     }
 
     @Test
+    @Verifies(spec = "delivery", requirement = "Photos travel without the app being opened")
     fun without_the_library_change_wake_a_new_photo_waits_for_another_wake() = behaviour {
         given {
             appUploadsOnly()

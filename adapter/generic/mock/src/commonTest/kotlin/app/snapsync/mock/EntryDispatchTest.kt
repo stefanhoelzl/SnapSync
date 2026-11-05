@@ -142,7 +142,7 @@ class EntryDispatchTest {
 
     @Test
     fun `a transfer's end and a hand-back reach the upload session's handlers in the platform's order`() = runTest {
-        val session = UploadSessionMock(network = { _, _, _ -> 201 }, held = { false })
+        val session = UploadSessionMock(network = { _, _, _ -> 201 }, held = { false }, read = { null })
         val handed = mutableListOf<Completion>()
         val upload = session.port()
         upload.inbound(

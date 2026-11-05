@@ -839,6 +839,15 @@ backend mock's operator has answers `409` with the reason.
   background is refused with the reason. The extension is still invoked, and the app's pending wakes are kept.
   `os.foreground` or an opened link is the opening, and it builds the screen. Only a host that owns the app's process
   honours it, which is the JVM host's (`WorldEvent.ForceQuit`).
+- What follows from a change, the played OS does as the change lands, never on a lever of its own (the LEVER RULE). A
+  photo added to the library (`library.add`) runs the library-change wake where the OS carries it
+  (`wake.carriesLibraryWake`, Android's content-URI trigger, read at launch) and the app's request for it stands. A
+  grant revoked from a usable one (`library.permission(DENIED)`) ends the app's process where the platform does so
+  (`played-os.revokingAccessEndsTheProcess`, Android's), and the app starts again over what it left. Where the upload
+  session lives in the process (`upload-session.inProcess`, Android's), a process that ends takes its live transfers
+  with it, and the next process hears each one ended, failed, as it listens. A download's signed link opens for a week
+  from its transfer's start, on the mocked clock, as the backend signs it: a transfer performed after that is refused
+  `403`, and the next read plans the photo again.
 - What the OS recorded of the app is each system's own read: `played-os.completions` (the completion handlers handed
   over, released, released a second time, still held), `wake.wakes` (the heartbeat requests accepted and every request
   pending now, with its cadence and delay), `background-time.holds` (by the name each was begun under, verbatim — the
@@ -1004,8 +1013,9 @@ The operating system as the app meets it followed (phase 3d):
   delivers on. A delivery the OS hands a completion handler answers once delivered — its release is the world's
   `CompletionReleased` — or, with `awaitRelease` `true` for a host with no event stream, once released, with how long
   the app held it.
-- `played-os` (`PlayedOsLevers`) — the expiry, the completion record and the force-quit, implemented by `PlayedOs`; it
-  needs the background-time holds mocked, and its `forceQuit` a host that owns the app's process.
+- `played-os` (`PlayedOsLevers`) — the expiry, the completion record, the force-quit and whether a revoke ends the
+  process, implemented by `PlayedOs`; it needs the background-time holds mocked, and its `forceQuit` and
+  `revokingAccessEndsTheProcess` a host that owns the app's process.
 - `extension-host` (`ExtensionHostLevers`) — the OS invoking the upload extension's `process()`, and ending it. A host
   implements it itself: the JVM host on the OS thread it owns, the iOS app host over the real extension root; Android,
   which has no extension, refuses it.
@@ -1293,11 +1303,14 @@ until it answers.
 The host's event stream (the `world` service over kRPC, `WorldLevers`) carries, in order: each act a caller made
 (`Acted`), what the app's runtime tells of each entry point's work — `Delivered`, `Answered`, `Done` (`docs/patterns.md`,
 "Entry events") — each state the app showed (`UiChanged`), what the outside systems recorded (the backend's
-`BackendReceived`, `BackendHeld`, `DeviceRegistered` and `PushSent`, and `UnionChanged` — a photo that became, or
+`BackendReceived` — each request with its address, headers and body as the service received it, an OS transfer's
+upload included — `BackendHeld`, `DeviceRegistered` and `PushSent`, and `UnionChanged` — a photo that became, or
 stopped being, what the event offers its members — and what it STORED — one event per stored change, each naming
 exactly what changed: `EventCreated`, `MemberJoined`, `MemberLeft`, `ManifestPublished` (every applied publish, with
 its version, the asset ids it `added` and `withdrew`, and whether it is `final`; a republish of the same set tells
-both empty), `BytesStored`, `ReceivedReported`, `EventRenamed` and `EventDeleted`; the transfers' `UploadJobCreated`,
+both empty), `BytesStored` (with the object stored, as anyone with access to the storage reads it: an app session's
+upload sends its staged file as it was when the transfer was created), `ReceivedReported`, `EventRenamed` and
+`EventDeleted`; the transfers' `UploadJobCreated`,
 `SessionTransferCreated` and `DownloadStarted`, and each one's end with its outcome — delivered, failed or cancelled —
 told as the transfer leaves the operating system's hold and before the app hears of it: `UploadJobEnded` when the app
 acknowledges the job (a failed job it retries has not ended), `SessionTransferEnded` when a transfer lands or the app
@@ -1445,8 +1458,8 @@ tests.
 **No UI state is forged.** The forge — a harness and an iOS binary that fed the status screen canned inputs — was
 deleted in 12: it could show a frame the app never reached. Every state is reached here through the mocks' levers,
 including the screens the app shows only while it waits. The mocks answer at once, so those exist for a moment no
-reviewer can catch; the inspector's **Hold** switches keep the backend's event-details load, create, join or leave —
-or the library's enumeration — unanswered until released (the same levers are the typed `backend.hold` and
+reviewer can catch; the inspector's **Hold** switches keep the backend's event-details load, create, join, leave or
+manifest publish — or the library's enumeration — unanswered until released (the same levers are the typed `backend.hold` and
 `library.holdEnumeration` over the rig, `HeldScreenIntegrationTest`).
 
 **World.** The app is the one the JVM root composes (section 5) over a fresh set of mocks. The phone pane

@@ -70,7 +70,7 @@ open class MockDevice(
         { rule -> rule == TransferNetwork.UNRESTRICTED_ONLY && onRestrictedNetwork() }
     val uploadQueue =
         UploadQueueMock(uploadNetwork, acceptsAnyHandle = acceptsAnyUploadHandle, restricted = onRestrictedNetwork)
-    val uploadSession = UploadSessionMock(uploadNetwork, held = holdsUnrestrictedOnly)
+    val uploadSession = UploadSessionMock(uploadNetwork, held = holdsUnrestrictedOnly, read = disk::located)
 
     /** The keys of the encrypted events this device created — what plays the other members' uploads. */
     val eventKeys = EventKeyLedger()

@@ -27,6 +27,8 @@ import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.PushRegistration
 import kotlin.concurrent.Volatile
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
@@ -98,7 +100,11 @@ class BackendMock internal constructor(internal val state: BackendState) {
      * — or the event-less `<base>/files/devices/<device>/…` an earlier build's job still carries. Answers the HTTP status
      * the backend would, or stores the object and answers `201`. What a device's upload network delivers to.
      */
-    val byteRoute: UploadNetwork = UploadNetwork { url, headers, _ -> state.locked { state.receive(url, headers) } }
+    val byteRoute: UploadNetwork = UploadNetwork { url, headers, bytes ->
+        // A request the service received, like any other: its headers as they arrived; its body is what it stores.
+        state.watcher.told(WorldEvent.BackendReceived(Routes.UploadResource.ID, headers, url = url))
+        state.locked { state.receive(url, headers, bytes) }
+    }
 
     /**
      * Every push the backend has handed the push service, in order — what the played operating system delivers from
@@ -658,10 +664,20 @@ internal class BackendState(
         return (complete + pending).toLong()
     }
 
-    fun deposit(eventId: String, deviceId: String, file: DeviceFile) {
+    /** [file] stored for [deviceId] in [eventId] — [bytes] the object stored, or `null` for an operator's deposit. */
+    @OptIn(ExperimentalEncodingApi::class)
+    fun deposit(eventId: String, deviceId: String, file: DeviceFile, bytes: ByteArray? = null) {
         val was = servable(eventId, deviceId)
         storedFiles.getOrPut(eventId to deviceId) { mutableSetOf() } += file
-        watcher.told(WorldEvent.BytesStored(eventId, deviceId, file.assetId.value, ResourceRoleText.of(file.role)))
+        watcher.told(
+            WorldEvent.BytesStored(
+                eventId,
+                deviceId,
+                file.assetId.value,
+                ResourceRoleText.of(file.role),
+                bytes?.let(Base64::encode),
+            ),
+        )
         // After the write, as the real byte route does: when this byte completed an asset, the event logs the gain and
         // wakes its other members.
         val now = servable(eventId, deviceId)
@@ -674,7 +690,8 @@ internal class BackendState(
         memberships.entries.firstOrNull { (key, m) -> key.second == deviceId && !m.departed && events[key.first]?.completed == false }
             ?.key?.first
 
-    fun receive(url: String, headers: Map<String, String>): Int {
+    /** An upload of [bytes] to [url] with [headers], as the byte route takes it: the status it answers. */
+    fun receive(url: String, headers: Map<String, String>, bytes: ByteArray? = null): Int {
         val version = headers.entries.firstOrNull { it.key.equals(Limits.VERSION_HEADER, ignoreCase = true) }?.value
         if (minimumRefusing(version) != null) return UPGRADE_REQUIRED
         val route = url.substringAfter("/files/devices/", missingDelimiterValue = "")
@@ -698,7 +715,7 @@ internal class BackendState(
             null -> presentEventOf(deviceId) ?: return CONFLICT
             else -> named.takeIf { isPresent(it, deviceId) } ?: return FORBIDDEN
         }
-        deposit(eventId, deviceId, DeviceFile(AssetId.parse(segments[1])!!, role, filename))
+        deposit(eventId, deviceId, DeviceFile(AssetId.parse(segments[1])!!, role, filename), bytes)
         val key = "$eventId/$deviceId/${segments[1]}/${ResourceRoleText.of(role)}"
         val shaHeader = Routes.UploadResource.HEADER_X_SNAPSYNC_SHA256
         val sha256 = headers.entries.firstOrNull { it.key.equals(shaHeader, ignoreCase = true) }?.value

@@ -266,8 +266,8 @@ class StatusLineIntegrationTest {
         requirement = "The status stays current while the app is open",
         scenario = "A stuck earlier upload does not blank the status",
     )
-    // The app's part: opening the app reads the counts without waiting on an upload pass that has not ended.
     fun an_earlier_visits_unfinished_upload_pass_does_not_hold_the_status_on_the_neutral_line() = behaviour {
+        // The app's part: opening the app reads the counts without waiting on an upload pass that has not ended.
         given {
             joinedEvent()
             photos("P1", "P2")
