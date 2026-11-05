@@ -109,6 +109,27 @@ class OwnPhotosTest {
     }
 
     @Test
+    fun `a photo received after the policy was derived is judged by what was received by then`() = runTest {
+        val library = library()
+        val contribution = library.contribution()
+
+        library.received.handles = HandlesRead.Ok(ids("B").toSet())
+
+        val read = assertIs<DiscoveryRead.Discovered>(library.own.discover(contribution))
+        assertEquals(ids("A"), read.admittedIds(), "B landed as an import since the policy was derived")
+    }
+
+    @Test
+    fun `a record of what was received that cannot be read after the read admits nothing`() = runTest {
+        val library = library()
+        val contribution = library.contribution()
+
+        library.received.handles = HandlesRead.Unavailable("locked")
+
+        assertSame(DiscoveryRead.NotReadable, library.own.discover(contribution))
+    }
+
+    @Test
     fun `an unreadable walk is no discovery`() = runTest {
         val library = library()
         library.assetsReadable = false
