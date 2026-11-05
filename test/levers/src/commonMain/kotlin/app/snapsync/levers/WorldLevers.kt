@@ -150,8 +150,9 @@ sealed interface WorldEvent {
     sealed interface Backend : WorldEvent
 
     /**
-     * A request reached the backend: the device API's [operation] (its OpenAPI `operationId`), with its [headers] and
-     * [body] as they arrived — what the real service holds of it, and nothing the app kept to itself.
+     * A request reached the backend: the device API's [operation] (its OpenAPI `operationId`), with its [url], [headers]
+     * and [body] as they arrived — what the real service holds of it, and nothing the app kept to itself. An upload's
+     * body is what the service stores, told as [BytesStored].
      */
     @Serializable
     @SerialName("backend-received")
@@ -159,9 +160,11 @@ sealed interface WorldEvent {
         val operation: String,
         val headers: Map<String, String> = emptyMap(),
         val body: String? = null,
+        val url: String? = null,
     ) : Backend {
         /** The header [name], matched as HTTP matches names: regardless of case. */
-        fun header(name: String): String? = headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+        fun header(name: String): String? =
+            headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
     }
 
     /** A request is parked on an operator's hold of [call], and stays parked until it is released. */
@@ -339,10 +342,20 @@ sealed interface WorldEvent {
         val final: Boolean,
     ) : Backend
 
-    /** The bytes of [asset]'s [role] (its wire name: `original`, `paired-video`, …) from [device] landed in [event]. */
+    /**
+     * The bytes of [asset]'s [role] (its wire name: `original`, `paired-video`, …) from [device] landed in [event]:
+     * [bytes] is the object stored, base64 — what anyone with access to the storage reads — or `null` where it was
+     * stored with no bytes of its own (an operator's deposit).
+     */
     @Serializable
     @SerialName("backend-bytes-stored")
-    data class BytesStored(val event: String, val device: String, val asset: String, val role: String) : Backend
+    data class BytesStored(
+        val event: String,
+        val device: String,
+        val asset: String,
+        val role: String,
+        val bytes: String? = null,
+    ) : Backend
 
     /** [device] reported holding every photo of [event]'s other members up to the union's [position]. */
     @Serializable

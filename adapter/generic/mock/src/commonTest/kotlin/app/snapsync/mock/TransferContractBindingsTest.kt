@@ -196,7 +196,7 @@ class TransferContractBindingsTest {
             var restricted = state == TransferSessionState.RESTRICTED_NETWORK
             val held: (TransferNetwork) -> Boolean = { rule -> restricted && rule == TransferNetwork.UNRESTRICTED_ONLY }
             val resources = state == TransferSessionState.TAKES_RESOURCES_AND_FILES
-            val mock = UploadSessionMock(answeringNetwork(received), held, sendsResources = resources)
+            val mock = UploadSessionMock(answeringNetwork(received), held, sendsResources = resources, read = { null })
             // The binding plays the network around the mock's own face, so what the clause sees is the mock's answer.
             val networked = NetworkedSession(mock, mock.port().recorded(log))
             val ended = mutableListOf<Ended>()
@@ -346,6 +346,8 @@ class TransferContractBindingsTest {
             val mock = DownloadSessionMock(
                 held = held,
                 stored = { _, _ -> null },
+                now = { null },
+                linkExpiry = { null },
                 refusesUnfetchable = state == DownloadState.REFUSES_UNFETCHABLE,
                 refusesMalformed = state == DownloadState.REFUSES_MALFORMED,
             )

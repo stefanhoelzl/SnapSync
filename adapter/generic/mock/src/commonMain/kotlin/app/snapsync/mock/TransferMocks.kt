@@ -280,6 +280,9 @@ class UploadQueueOperator internal constructor(private val mock: UploadQueueMock
  * backend's byte route receives it, and its answer is reported to the process that registered last. A transfer whose
  * request keeps it off the device's current network ([held]) is not performed: it stays live
  * until the network allows it.
+ *
+ * A transfer sends its file's bytes as they were when it was created, from its first byte on — the session takes its
+ * own copy of the file, as `URLSession` does — read through [read]; a file it cannot read sends filler.
  */
 class UploadSessionMock(
     internal val network: UploadNetwork,
@@ -287,9 +290,19 @@ class UploadSessionMock(
     internal val held: (TransferNetwork) -> Boolean,
     /** Whether the session also sends a library resource, as Android's in-process session does; a file otherwise. */
     private val sendsResources: Boolean = false,
+    /** The bytes at a platform path the app hands a transfer — the device's own disk — or `null` where it holds none. */
+    private val read: (path: String) -> ByteArray?,
 ) {
-    /** One live transfer — [from] is the first byte of its file it sends (a resumed upload sends the rest). */
-    internal class Live(val tag: String, val target: UploadTarget, val from: Long = 0) : TransferHandle
+    /**
+     * One live transfer — [from] is the first byte of its file it sends (a resumed upload sends the rest), and [bytes]
+     * what it sends: the file's rest as it was created, or `null` for filler.
+     */
+    internal class Live(
+        val tag: String,
+        val target: UploadTarget,
+        val from: Long = 0,
+        val bytes: ByteArray? = null,
+    ) : TransferHandle
 
     // The app creates transfers from its thread while the operator lands them from another; never held across the
     // network or a call into the app's handlers.
@@ -351,7 +364,11 @@ class UploadSessionMock(
             val accepted = locked {
                 (live.size < LIVE_CAP).also { room ->
                     if (room) {
-                        live += Live(tag, target, (source as? TransferSource.File)?.from ?: 0)
+                        val file = source as? TransferSource.File
+                        val bytes = file?.let { read(it.path) }?.let { all ->
+                            all.copyOfRange(file.from.coerceIn(0L, all.size.toLong()).toInt(), all.size)
+                        }
+                        live += Live(tag, target, file?.from ?: 0, bytes)
                         created += tag
                     }
                 }
@@ -412,7 +429,7 @@ class UploadSessionMock(
      */
     fun startedEarlier(tag: String, rewritten: (UploadTarget) -> UploadTarget): Boolean = locked {
         val i = live.indexOfFirst { it.tag == tag }
-        if (i >= 0) live[i] = Live(tag, rewritten(live[i].target), live[i].from)
+        if (i >= 0) live[i] = Live(tag, rewritten(live[i].target), live[i].from, live[i].bytes)
         i >= 0
     }
 
@@ -455,7 +472,8 @@ class UploadSessionOperator internal constructor(private val mock: UploadSession
     private suspend fun land(key: String) {
         val transfer = mock.locked { mock.live.firstOrNull { it.tag == key } } ?: return
         if (mock.held(transfer.target.network)) return
-        val bytes = TRANSFERRED_BYTES.copyOfRange(transfer.from.toInt().coerceIn(0, FILE_SIZE), FILE_SIZE)
+        val bytes = transfer.bytes
+            ?: TRANSFERRED_BYTES.copyOfRange(transfer.from.toInt().coerceIn(0, FILE_SIZE), FILE_SIZE)
         val status = mock.network.put(transfer.target.url, transfer.target.headers, bytes)
         mock.locked { mock.live.remove(transfer) }
         val failure = when {
@@ -518,12 +536,12 @@ class DownloadSessionMock(
      */
     private val stored: (description: String, bytes: ByteArray) -> ByteArray?,
     /** The device's clock, which a transfer's signed link is judged against. */
-    private val now: () -> Instant? = { null },
+    private val now: () -> Instant?,
     /**
      * Until when the link a transfer started now is redirected to opens — the backend's signature
      * ([BackendMock.downloadLinkExpiry]), or `null` for a link that never expires.
      */
-    private val linkExpiry: () -> Instant? = { null },
+    private val linkExpiry: () -> Instant?,
 ) {
 
     /**

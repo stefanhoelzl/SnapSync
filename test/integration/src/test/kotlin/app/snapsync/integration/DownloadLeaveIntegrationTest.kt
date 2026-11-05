@@ -57,9 +57,9 @@ class DownloadLeaveIntegrationTest {
         requirement = "Download problems delay photos, never corrupt or lose them",
         scenario = "A download delayed past a week",
     )
-    // The app's part: the opening after the link expired downloads the photo again from its stable address. The link's
-    // lifetime, and signing it afresh for each request, are the api's.
     fun a_download_whose_link_expired_while_offline_is_renewed_on_the_next_opening() = behaviour {
+        // The app's part: the opening after the link expired downloads the photo again from its stable address. The
+        // link's lifetime, and signing it afresh for each request, are the api's.
         given {
             joinedEvent()
             fellowMember(DEV_F, "FQ")

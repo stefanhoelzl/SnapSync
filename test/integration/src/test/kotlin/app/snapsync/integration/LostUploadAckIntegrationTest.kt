@@ -77,8 +77,8 @@ class LostUploadAckIntegrationTest {
         requirement = "A finished upload is recognised no later than the next opening",
         scenario = "A completion iOS never reported",
     )
-    // The app's part: the opening asks the service what it holds, settles those uploads and sends none again.
     fun uploads_whose_completion_ios_withheld_under_limited_access_are_settled_on_opening() = behaviour {
+        // The app's part: the opening asks the service what it holds, settles those uploads and sends none again.
         val all = listOf("A", "B")
         given {
             extensionUploadsOnly()
