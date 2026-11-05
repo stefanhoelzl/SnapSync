@@ -51,18 +51,17 @@ class JvmAdapters(
 
 /**
  * What a process finds on the device. Two processes live in one JVM here, as on the phone: the app's faces, and the
- * upload extension's where they differ ([extensionFiles] reaches only the shared area; [extensionCrashReporter] is a
- * channel nobody observes).
+ * upload extension's where they differ ([extension]).
  */
 class JvmDevice(
     /** The process's primitives — the JDK's own, recording the keys it draws ([EventKeyLedger]). */
     val crypto: Crypto,
     val clock: Clock,
     val crashReporter: CrashReporter,
-    val extensionCrashReporter: CrashReporter,
     val files: Files,
-    val extensionFiles: Files,
     val databases: Databases,
+    /** The upload extension's own faces, where they differ from the app's. */
+    val extension: JvmExtensionDevice,
     val preferences: Preferences,
     val secureStore: SecureStore,
     val integrity: DeviceIntegrity,
@@ -78,6 +77,13 @@ class JvmDevice(
      */
     val logSinks: List<LogSink>,
 )
+
+/**
+ * The upload extension's faces of the device, where they differ from the app's: its [files] reach only the shared
+ * area; its [crashReporter] is a channel nobody observes; its [databases] are its own process's view of the same
+ * databases, so a commit one process makes reaches the other as another process's — as the phone's Darwin notice does.
+ */
+class JvmExtensionDevice(val crashReporter: CrashReporter, val files: Files, val databases: Databases)
 
 /** The operating system's entries into the app and its upload extension — the event ports. */
 class JvmEntries(

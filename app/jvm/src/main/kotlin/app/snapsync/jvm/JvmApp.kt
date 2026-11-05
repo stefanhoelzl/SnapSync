@@ -112,13 +112,16 @@ class JvmApp<D>(
             dateFormatting = lazyOf(JvmDateFormatting()),
         )
 
-        /** The extension's own process: its files reach only the shared area; its crash channel is one nobody observes. */
+        /**
+         * The extension's own process: its files reach only the shared area; its crash channel is one nobody observes;
+         * its databases are its own process's, so what it commits reaches the app as another process's commit.
+         */
         private val extensionDevice = ExtensionDevicePorts(
             clock = lazyOf(ports.device.clock),
             crypto = lazyOf(ports.device.crypto),
-            crashReporter = lazyOf(ports.device.extensionCrashReporter),
-            files = lazyOf(ports.device.extensionFiles),
-            databases = lazyOf(ports.device.databases),
+            crashReporter = lazyOf(ports.device.extension.crashReporter),
+            files = lazyOf(ports.device.extension.files),
+            databases = lazyOf(ports.device.extension.databases),
             preferences = lazyOf(ports.device.preferences),
             secureStore = lazyOf(ports.device.secureStore),
             platformDeviceId = lazyOf(NoPlatformDeviceId()),
