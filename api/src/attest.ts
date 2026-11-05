@@ -1,4 +1,4 @@
-// Device attestation (capability `privacy-security`): App Attest verification, the stateless
+// Device attestation: App Attest verification, the stateless
 // challenge, and the device bearer token.
 //
 // The shape of this module is dictated by three things measured on a real device, not assumed:
@@ -199,8 +199,7 @@ export async function verifyToken(
 // ── Attestation ───────────────────────────────────────────────────────────────────────────────────
 
 /**
- * Why an attestation was refused, as the app is told it (capability `privacy-security`, "A refused phone is told
- * why"): a CLOSED set, coarser than the checks on purpose — the precise check stays in the log. Shared by both
+ * Why an attestation was refused, as the app is told it, so it can say why: a CLOSED set, coarser than the checks on purpose — the precise check stays in the log. Shared by both
  * platforms' verifiers; Apple has no `device-modified` signal.
  */
 export type RefusalReason = "device-modified" | "device-unverifiable" | "app-not-genuine";

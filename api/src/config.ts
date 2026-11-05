@@ -78,7 +78,7 @@ export type Config = {
    */
   fcmServiceAccountKey: string;
   /**
-   * Signs and verifies the device bearer token (capability `privacy-security`). A SECRET: read from the
+   * Signs and verifies the device bearer token. A SECRET: read from the
    * environment, never in source.
    */
   attestTokenKey: string;
@@ -115,7 +115,7 @@ export type Config = {
    */
   attestAppId: string;
   /**
-   * The event link's domain — the host this script serves the AASA for (capability `invite-link`). The
+   * The event link's domain — the host this script serves the AASA for. The
    * SAME resolved value the app's `LINK_ORIGIN`, the `applinks:` entitlement and the compile-time upload
    * host are generated from, so agreement is constructed rather than asserted.
    */
@@ -140,7 +140,7 @@ export type Config = {
    */
   maintenance: boolean;
   /**
-   * The oldest app marketing version `/api/v2` will serve (capability `app-update-required`). Requests below
+   * The oldest app marketing version `/api/v2` will serve. Requests below
    * it are refused `426` with this value in the body, so a client can name the version to install.
    *
    * IN SOURCE, and deliberately not in the generated deployment or the store: raising it disables every
@@ -152,7 +152,7 @@ export type Config = {
 };
 
 /**
- * The oldest app marketing version `/api/v2` serves (capability `app-update-required`).
+ * The oldest app marketing version `/api/v2` serves.
  *
  * `0.4` is the first version whose client speaks v2 — the byte destination, the split join, the manifest
  * sub-resource and the identity-terms listing all move together, so a build below it cannot be served
@@ -370,7 +370,7 @@ export function readConfig(env: Record<string, string | undefined>): Config {
 }
 
 /**
- * Build a Config for the nightly sweep (capability `event-lifetime`), which runs OUTSIDE the Edge
+ * Build a Config for the nightly sweep, which runs OUTSIDE the Edge
  * Script and holds exactly ONE secret — the storage `AccessKey`, to read and delete storage.
  *
  * The sweep makes NO request to the Edge Script, so it needs no credential authorizing one: it no longer
@@ -401,7 +401,7 @@ export function readSweepConfig(env: Record<string, string | undefined>): Config
 
 /**
  * Build a Config for storage-ONLY tooling that runs outside the Edge Script and needs only the storage
- * `AccessKey` — currently the `site/` mirror-deploy (capability `web-site`, `site/scripts/deploy.ts`).
+ * `AccessKey` — currently the `site/` mirror-deploy (`site/scripts/deploy.ts`).
  * It reuses the SAME resolved deployment the edge and the sweep use, so the deploy can never target a
  * different zone than the api proxy reads. Every credential the storage helpers do not touch is blank.
  */

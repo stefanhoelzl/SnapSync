@@ -14,7 +14,7 @@ export function validateUUID(value: string): boolean {
 
 /**
  * Add a whole number of seconds to a canonical-cutoff-shaped instant, returning the canonical shape
- * (capability `event-lifetime`: `endsAt` is stored in the SAME shape as `startsAt` so comparisons stay
+ * (`endsAt` is stored in the SAME shape as `startsAt` so comparisons stay
  * plain string/epoch comparisons and no consumer ever normalizes). The input is expected to be
  * already-validated (`openapi.yaml`, `Timestamp`); whole seconds in, whole seconds out, so the `.000Z`
  * strip is exact, never a truncation.
@@ -34,8 +34,8 @@ export function canonicalFromMs(ms: number): string {
 }
 
 /**
- * The `knownZone` check (`openapi.yaml`, `Zone`): whether this runtime can format dates in the IANA zone `name`
- * (capability `event-site`). The description checks the zone's SHAPE — which is what keeps a bare offset such as
+ * The `knownZone` check (`openapi.yaml`, `Zone`): whether this runtime can format dates in the IANA zone `name`.
+ * The description checks the zone's SHAPE — which is what keeps a bare offset such as
  * `+02:00`, which `Intl` also accepts, out: a fixed offset is wrong across a daylight-saving change inside the
  * window. An unusable zone is DROPPED, never refused: a phone whose zone name this runtime does not know must
  * still be able to create its event — a wrong weekday on the page is a smaller failure than no event at all.

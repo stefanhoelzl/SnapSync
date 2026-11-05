@@ -1,6 +1,5 @@
-// Hono app for the backend: the whole device API, composed here (capabilities `docs/architecture.md` for the route
-// shapes, `database` for what each one reads and writes, `privacy-security` for the gate, plus
-// `event-lifetime`, `manage-membership`, `delivery`, `receiving-photos`, `web-site`, `join-event` and `invite-link`, over the
+// Hono app for the backend: the whole device API, composed here (`docs/architecture.md` for the route
+// shapes, `db.ts` for what each one reads and writes, and the gate below, over the
 // shared `docs/deployment.md`).
 //
 // THIS FILE holds the three gates (maintenance, version, token) and the composition; the routes live in
@@ -25,7 +24,7 @@
 // every route but `/attest/*` needs a token, and a token needs an attestation, so no device can reach any
 // other device-scoped write first. It is why the push registration UPDATEs and never inserts.
 //
-// ── THE GATE (capability `privacy-security`) ────────────────────────────────────────────────────
+// ── THE GATE ────────────────────────────────────────────────────
 //
 // EVERY ROUTE REQUIRES A DEVICE TOKEN — obtainable only by completing App Attest or an Android key
 // attestation, so the API is callable by a genuine, unmodified SnapSync on a genuine Apple device or a
@@ -72,18 +71,17 @@
 //
 //   POST /api/v2/events
 //     → mints an event: INSERTs the `events` row, stamping the `capacity` placeholder and the `lifetimeSeconds` DURATION
-//       and validating the creator's `endsAt` against the configured window maximum (capability
-//       `event-lifetime`); returns {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
+//       and validating the creator's `endsAt` against the configured window maximum; returns {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
 //   GET /api/v2/events/:eventId
 //     → the event row with the DERIVED `deletesAt`; 404 when absent. Never deletes on touch, even past
 //       the deadline. UNGATED (GET/HEAD only).
 //   PATCH /api/v2/events/:eventId
-//     → renames (capability `manage-membership`): the ONLY write to an existing event row, and it sets `name`
+//     → renames: the ONLY write to an existing event row, and it sets `name`
 //       ALONE — every other column is write-once, which is why the statement is spelled out in `db.ts`
 //       rather than composed. No ownership check (there is no owner); the token gate is the whole
 //       authorization.
 //   PUT /api/v2/devices/:deviceId
-//     → the push registration (capability `delivery`): UPDATEs the device's push columns and
+//     → the push registration: UPDATEs the device's push columns and
 //       NEVER inserts. 401 when it affects no row — the token verified, but we hold no attestation for
 //       this device. The shipped client recovers unaided: the 401 drops its token, it attests (which
 //       creates the row), and re-sends the registration when the new credential arrives. A 201 here would
@@ -92,7 +90,7 @@
 //     → `routes/v2.ts`: enrolment (any device, while the event is open), the ordered manifest publish, the byte uploads and the
 //       per-device listings — each explained where it is defined, and tabled in `docs/architecture.md`.
 //   DELETE /api/v2/events/:eventId/devices/:deviceId
-//     → LEAVE (capability `manage-membership`): the membership becomes `done` or `left` (`?received=true`
+//     → LEAVE: the membership becomes `done` or `left` (`?received=true`
 //       is the device's word that it holds every photo of the others). GATED on the event row (404/502),
 //       idempotent, and NON-DESTRUCTIVE — the assets are RETAINED, so the union keeps serving what the
 //       device shared. No reap here and no leave-time GC. When this was the last member still present the
@@ -110,7 +108,7 @@
 //       the store's foreign-key posture, reported SEPARATELY so a misprovisioned store is distinguishable
 //       from one that is merely still starting.
 //
-// ── EVENT LIFECYCLE (capability `event-lifetime`) ───────────────────────────────────────────────────
+// ── EVENT LIFECYCLE ───────────────────────────────────────────────────
 //
 // Every event-scoped route resolves its event through ONE gate (`gateEvent`), and the lifecycle is
 // BINARY — the event exists, or the sweep has deleted it. `endsAt` is NOT a lifecycle input: it bounds
@@ -118,12 +116,12 @@
 // NEVER CLOSED BY TIME — a guest who scans days late still holds in-window captures that belong in the
 // event).
 //
-// The nightly sweep (capability `event-lifetime`, run out-of-edge from GitHub Actions) is the ONLY
+// The nightly sweep (run out-of-edge from GitHub Actions) is the ONLY
 // deleter. It reclaims an event past its derived delete-by (`max(createdAt, startsAt) + lifetimeSeconds`
 // — the guarantee) or EMPTY (ever joined, no member still present — opportunistic, since a leave whose
 // DELETE never landed keeps a membership present). No route reaps on touch, even past the deadline: that
 // is what makes a 404 a REAL deletion, and therefore safe as one of the two witnesses the client's
-// self-leave requires (capability `manage-membership`).
+// self-leave requires.
 //
 // The token check ALWAYS runs before the existence gate, so an unauthenticated caller cannot tell an
 // existing event from a missing one — except on the two routes the closed list deliberately opens, where
@@ -259,7 +257,7 @@ export function createApp(
     service: "s3",
   });
 
-  // The silent-wake sender (capability `delivery`): each token through the push service its kind names —
+  // The silent-wake sender: each token through the push service its kind names —
   // APNs for an iPhone, FCM for an Android phone — each memoizing its own credential across sends. Every wake goes
   // through it: the notify fan-out and the close.
   const pushSender = createPushSender(config, fetchImpl);
@@ -321,7 +319,7 @@ export function createApp(
     // window refuses it too — by its prefix, for the same reason as `/api/*`.
     app.use("/web/*", refuse);
   }
-  // ── THE VERSION GATE (capability `app-update-required`) ─────────────────────────────────────────────
+  // ── THE VERSION GATE ─────────────────────────────────────────────
   //
   // Registered BEFORE the token gate, and that ordering is deliberate — it inverts `docs/architecture.md`'
   // "on a gated route the token check comes first" for three reasons:
@@ -357,7 +355,7 @@ export function createApp(
     return c.json({ error: "app too old", minAppVersion: config.minAppVersion }, 426);
   });
 
-  // ── THE GATE (capability `privacy-security`) ──────────────────────────────────────────────────
+  // ── THE GATE ──────────────────────────────────────────────────
   //
   // Every route requires a device token, obtainable ONLY by completing App Attest — so the API is
   // callable by a genuine, unmodified SnapSync on a genuine Apple device, and by nothing else. What this
@@ -392,16 +390,15 @@ export function createApp(
     // other.
     const { path } = splitVersion(new URL(c.req.url).pathname);
     // Ungated (closed list): OPTIONS, the `/attest/*` token issuers, the public marketing page at
-    // EXACTLY `/` (capability `web-site`), and the event link's two public routes (capability
-    // `invite-link`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
+    // EXACTLY `/`, and the event link's two public routes — the AASA, which Apple's CDN and the device fetch with no Authorization header and
     // cannot be made to send one, and `/join`, whose entire audience is people who have no app and so no
     // attestation. These three (`/`, `/join`, the AASA) are exact-path and GET/HEAD-only — never a prefix,
     // never a mutating method — and read no storage, so serving them unauthenticated grows neither the bill
     // nor the storage this gate protects. They are served at the ROOT only, never under `/api/vN`; the
     // normalization above is what lets `/attest/*` (a device route, so it arrives prefixed) AND the two
     // event READS added below — also device routes — be matched here on the normalized `path`.
-    // `/` and the site's fingerprinted assets under `/_astro/*` are the browser-facing site (capability
-    // `web-site`), proxied by the api from the PUBLIC storage `site/` prefix. Unlike the other public GETs
+    // `/` and the site's fingerprinted assets under `/_astro/*` are the browser-facing site,
+    // proxied by the api from the PUBLIC storage `site/` prefix. Unlike the other public GETs
     // they DO read storage — but only the public `site/` prefix, never the bill-/photo-protected user data
     // this gate guards, so serving them unauthenticated is safe. GET/HEAD only.
     // `/health` is the third reason a path is ungated, and a different one from the two above: it is
@@ -410,10 +407,10 @@ export function createApp(
     // the backend — no storage read, no crypto, one constant string. Serving it unauthenticated
     // discloses only the commit of a PUBLIC repository, and costs strictly less than `/join` or the two
     // public event reads below, which are already ungated and uncacheable and do touch storage.
-    // `/join/<eventId>` is the event's own page (capability `event-site`): the same audience as `/join`, and it
+    // `/join/<eventId>` is the event's own page: the same audience as `/join`, and it
     // reads only what the two public event reads below already serve to anyone holding the identifier. One
     // segment exactly, so it is never a prefix into anything else.
-    // `/web/events/<id>/photos` is the event page's own read (capability `event-site`, `routes/web.ts`): a
+    // `/web/events/<id>/photos` is the event page's own read (`routes/web.ts`): a
     // browser surface at the root, authorized by event-id possession because a browser cannot attest
     // (decision record `changes/separate-event-page-from-device-api`, D1). Exact shape, GET/HEAD only, never
     // a prefix — any other method on it, and any deeper path, stays gated.
@@ -433,8 +430,8 @@ export function createApp(
     // photos, and the presigned bytes it fronts were always ungated); it does NOT open any WRITE. The match
     // is GET/HEAD-only and shape-anchored to exactly these two paths, so every mutating `/events/<id>/…`
     // method (device manifest, leave, notify), `POST /events`, and — landing on the SAME path shape as
-    // the read below, which makes it the closest call here — `PATCH /events/<id>` (the rename, capability
-    // `manage-membership`) all stay gated. The method check is the ONLY thing separating the rename from the
+    // the read below, which makes it the closest call here — `PATCH /events/<id>` (the rename)
+    // all stay gated. The method check is the ONLY thing separating the rename from the
     // ungated read; `attest.test.ts` pins both directions. Decision record:
     // `changes/web-event-download`. This is an accepted, eyes-open widening: a leaked eventId becomes a
     // perpetual read grant (no per-event opt-in, no rate limit).
@@ -452,7 +449,7 @@ export function createApp(
     // A valid device token is the ONLY credential this backend accepts. There is no admin key, master
     // key, or route-scoped bypass: the former notify-only ADMIN_NOTIFY_KEY existed solely so the
     // out-of-edge sweep could announce an expiring event before deleting it, and that announcement is
-    // gone (capability `event-lifetime`) — so the credential is retired rather than left standing as
+    // gone — so the credential is retired rather than left standing as
     // an authorization path with no caller.
     const tokenDeviceId = token ? await verifyToken(config, token, now()) : null;
     if (!tokenDeviceId) {

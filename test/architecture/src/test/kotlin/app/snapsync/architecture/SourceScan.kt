@@ -44,10 +44,16 @@ internal object SourceScan {
      */
     fun kotlinFiles(): List<Source> = files(setOf("kt"))
 
+    /**
+     * Directories no guard reads: other tasks' outputs (`build`, Astro's `.astro`, `dist`), VCS and Gradle state, and
+     * installed npm packages (`node_modules`, present once `site/` ran `npm ci`).
+     */
+    private val SKIPPED_DIRS = setOf("build", ".git", ".gradle", "node_modules", ".astro", "dist")
+
     /** As [kotlinFiles], over every file with one of [extensions] — `kts` for the build scripts. */
     fun files(extensions: Set<String>): List<Source> {
         val files = repoRoot.walkTopDown()
-            .onEnter { it.name != "build" && it.name != ".git" && it.name != ".gradle" }
+            .onEnter { it.name !in SKIPPED_DIRS }
             .filter { it.isFile && it.extension in extensions }
             .map(::Source)
             .toList()

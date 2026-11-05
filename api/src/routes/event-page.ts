@@ -1,4 +1,4 @@
-// The EVENT PAGE's server half (capabilities `event-site`, `privacy-security`): what `/join/<eventId>` fills
+// The EVENT PAGE's server half: what `/join/<eventId>` fills
 // into the one built page, so a link preview and a browser running no script both see the event.
 //
 // PURE: an event row, its member counts and the clock in; strings out. The route (`site.ts`) does the reads
@@ -139,7 +139,7 @@ function ymd(instant: string, zone: string): string {
 }
 
 /**
- * The event's dates as its host chose them, in the host's own calendar (capability `event-site`): "Sat 4 Oct
+ * The event's dates as its host chose them, in the host's own calendar: "Sat 4 Oct
  * 2026" for a one-day event, "Sat 4 Oct – Sun 5 Oct 2026" within one year, both years otherwise.
  */
 export function dateRange(event: Pick<EventRow, "startsAt" | "endsAt" | "zone">): string {

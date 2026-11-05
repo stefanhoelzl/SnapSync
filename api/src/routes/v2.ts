@@ -109,7 +109,7 @@ export function v2Handlers(
    * comparison admitted it — the first statement's count.
    *
    * The device's `final` is stored as declared: a device settles once its member's OWN capture range has ended
-   * (capability `event-lifetime`; decision record `changes/flexible-share-range`, D4), which may be before the event's
+   * (decision record `changes/flexible-share-range`, D4), which may be before the event's
    * end or after it, and the range never reaches the server. An early settle finishes nothing — an event is finished
    * only after its open-until date (`finishedEvent`), and the `closedAt` builds that predate open-until dates wait for
    * is derived only after it too — and a later non-final publish turns the membership back to `sharing`. Builds
@@ -219,10 +219,10 @@ export function v2Handlers(
       );
     }
     // AFTER the commit, and best-effort: this asset is now servable, so the event's other members are
-    // woken to come and fetch it (capability `delivery`). The manifest publish cannot
+    // woken to come and fetch it. The manifest publish cannot
     // announce this — a declaration and its later completion project identical manifest fields, so the
     // publish does not change when the bytes land. A byte that completed nothing wakes nobody.
-    // The clock's landing anchor (capability `event-lifetime`): an event is completed 3 days after its
+    // The clock's landing anchor: an event is completed 3 days after its
     // last arrival at the latest. Best-effort like the wake — the bytes are stored and recorded, and a
     // lost stamp only lets the clock run from an earlier arrival or the range end.
     try {
@@ -431,7 +431,7 @@ export function v2Handlers(
       // A manifest from a NON-MEMBER is refused rather than silently joining — the inverse of v1, where
       // publishing was enrolling.
       // A completed event has no members left; its devices are told so, and show the event as over while the member
-      // stays in it — the app never leaves an event on its own (capability `event-lifetime`).
+      // stays in it — the app never leaves an event on its own.
       if (event.completedAt) closedRefusal();
       const member = await tryUpstream(
         `v2 manifest: membership read failed for ${eventId}/${deviceId}`,
@@ -484,7 +484,7 @@ export function v2Handlers(
       // union and find the very state the notification announced to be missing. Best-effort — the response
       // is the transaction's outcome and is never changed by a push that failed, the same split the byte
       // route already draws for its database write. Only a publish that WON wakes anyone: a refused one
-      // changed nothing the union serves. There is no close wake any more (capability `delivery`): events no
+      // changed nothing the union serves. There is no close wake any more: events no
       // longer close, and a member that finished sharing wakes nobody.
       if (won && addsFetchable) {
         recordNotify(c.var.log, await notifyMembers(deps, eventId, deviceId));

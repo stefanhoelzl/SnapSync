@@ -1,5 +1,5 @@
-// What the event page knows before fetching a photo, and what it does when a photo's link has lapsed (capabilities
-// `event-site`, `privacy-security`; decision record `changes/separate-event-page-from-device-api`, D3 + D5). Pure, so
+// What the event page knows before fetching a photo, and what it does when a photo's link has lapsed (decision
+// record `changes/separate-event-page-from-device-api`, D3 + D5). Pure, so
 // it is unit-tested (`site/scripts/photo-links.test.ts`) apart from the page that fetches and zips.
 
 import type { ZipEntry } from "./zip-names.ts";

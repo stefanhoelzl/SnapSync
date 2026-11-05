@@ -1,4 +1,4 @@
-// The token ISSUERS (capability `privacy-security`): the stateless challenge, the mint and the renewal — the
+// The token ISSUERS: the stateless challenge, the mint and the renewal — the
 // only device-API routes the token gate admits without a token, because they are what issue it.
 
 import { RevocationUnavailable } from "../android-attest.ts";
@@ -23,7 +23,7 @@ import {
   upstream502,
 } from "./support.ts";
 
-// The token ISSUERS (capability `privacy-security`). A stale challenge is `409 stale challenge`, never `401`:
+// The token ISSUERS. A stale challenge is `409 stale challenge`, never `401`:
 // `401` means "your credential is rejected" and a stale challenge rejects no credential — it is what let a
 // client read a renewal's expired challenge as a revoked token. Decision record: harden-seam-bug-classes.
 //
@@ -69,8 +69,8 @@ export function attestHandlers(
         // The detail is diagnostics only: the app logs and reports it, and never tells the user.
         const named = detail ? `${reason} (${detail})` : reason;
         c.var.log.field("rejected", `${proof.format} (${named}): ${e}`);
-        // The refusal names the REASON, so the app can tell its user why (capability `privacy-security`, "A refused
-        // phone is told why"). Every shipped client reads any `401` body it does not know as a refusal, so the suffix
+        // The refusal names the REASON, so the app can tell its user why.
+        // Every shipped client reads any `401` body it does not know as a refusal, so the suffix
         // changes nothing for them. The precise check stays in the `rejected=` field above.
         return c.text(`attestation rejected: ${named}`, 401);
       }

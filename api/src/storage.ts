@@ -1,7 +1,7 @@
 // Storage primitives and on-wire shapes for the one bunny Storage zone (`docs/deployment.md`).
 //
 // Extracted from app.ts so BOTH the Edge Script (app.ts) AND the out-of-edge nightly sweep
-// (capability `event-lifetime`, which runs from GitHub Actions and cannot use the 50-subrequest-capped
+// (which runs from GitHub Actions and cannot use the 50-subrequest-capped
 // edge) import the SAME key builders and storage calls — the byte-store layout can then never drift
 // between the two. Everything here is parameterized by `(fetch, config)`; nothing imports Hono.
 
@@ -52,8 +52,7 @@ export function eventDir(eventId: string): string {
 
 // A single entry from bunny's native Storage "List Files" response. We read only these fields;
 // everything else (Guid, ServerId, …) is ignored. `LastChanged` is the object's server-set
-// last-modified time — the upload-time floor the asset sweep compares against (capability
-// `event-lifetime`); it is a wall-clock string minted by the storage zone, comparable across
+// last-modified time — the upload-time floor the asset sweep compares against; it is a wall-clock string minted by the storage zone, comparable across
 // sibling objects without any client clock.
 export type BunnyEntry = {
   ObjectName: string;

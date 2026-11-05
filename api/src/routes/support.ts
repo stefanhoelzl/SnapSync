@@ -41,8 +41,7 @@ export type RouteDeps = {
   pushSender: PushSender;
 };
 
-// The device the verified token was minted for, set by the token gate (capability `privacy-security`,
-// "Only a genuine SnapSync app can change an event"). Typed here, once, so every route reads the same key.
+// The device the verified token was minted for, set by the token gate. Typed here, once, so every route reads the same key.
 declare module "hono" {
   interface ContextVariableMap {
     tokenDeviceId: string;
@@ -51,8 +50,8 @@ declare module "hono" {
 
 /**
  * Whether this request's token was minted for `deviceId` — the binding every route naming a device in its
- * path applies after validating the id and before touching any store (capability `privacy-security`: "A
- * genuine app SHALL act only for its own device").
+ * path applies after validating the id and before touching any store: a genuine app acts
+ * only for its own device.
  *
  * WHY IT EXISTS. The token proves a genuine app instance; on its own it said nothing about WHICH device the
  * caller is. Device ids are not secret — every member's id is in the event union, which is ungated — so
@@ -155,8 +154,8 @@ export const PRESIGN_EXPIRY_SECONDS = 604800;
 // 1 hour — the EVENT PAGE's links (`/web/events/<id>/photos`, decision record
 // `changes/separate-event-page-from-device-api` D3). The 7 days above are forced by iOS background sessions,
 // which resume from the redirect target; a browser uses its links within minutes, so a short life costs it
-// nothing and bounds how long a withdrawn photo stays reachable through a page loaded before the withdrawal
-// (capability `privacy-security`). A zip that outlasts it re-reads the list.
+// nothing and bounds how long a withdrawn photo stays reachable through a page loaded before the withdrawal.
+// A zip that outlasts it re-reads the list.
 export const WEB_PRESIGN_EXPIRY_SECONDS = 3600;
 
 // The listing routes' cache header. All three directives are deliberate: the Edge Script is fronted by a
@@ -261,14 +260,14 @@ export function downloadPath(
   return `/events/${seg(eventId)}/files/devices/${seg(deviceId)}/${seg(assetId)}/${seg(role)}`;
 }
 
-// ── THE EVENT-LIMITS GATE (capability `event-lifetime`) ───────────────────────────────────────────
+// ── THE EVENT-LIMITS GATE ───────────────────────────────────────────
 //
 // Every event-scoped route resolves its event through `gateEvent` below: one row read. The lifecycle
 // is BINARY — an event exists, or the sweep has deleted it. `endsAt` is NOT
 // consulted: it bounds only which captures may be UPLOADED, and closes nothing. In particular JOINING
 // IS NEVER CLOSED BY TIME, because a guest who scans days late still holds in-window captures that
-// belong in the event. There is no on-touch reap: deleting is the nightly sweep's alone
-// (capability `event-lifetime`), including for an event already past its derived delete-by.
+// belong in the event. There is no on-touch reap: deleting is the nightly sweep's alone,
+// including for an event already past its derived delete-by.
 
 /**
  * Resolve an event for a route: ONE row read (`docs/architecture.md`). An event exists exactly when its
@@ -279,7 +278,7 @@ export function downloadPath(
  * Returns the row; refused `404 event not found` when absent, and on a store failure `502` (recorded as
  * `<route>: event read failed for <id>`), so the route never mistakes a transient fault for absence. That
  * distinction is load-bearing beyond this file: a `404` here is a SEALED deletion, and
- * `event-lifetime`'s two-witness teardown acts on it.
+ * the sweep's two-witness teardown acts on it.
  */
 export async function gateEvent(db: Db, eventId: string, route: string): Promise<EventRow> {
   const event = await tryUpstream(
@@ -290,7 +289,7 @@ export async function gateEvent(db: Db, eventId: string, route: string): Promise
 }
 
 /**
- * The WIRE shape of an event (capabilities `docs/architecture.md`, `event-lifetime`): the row's public
+ * The WIRE shape of an event (`docs/architecture.md`): the row's public
  * fields with the stamped `lifetimeSeconds` replaced by the DERIVED `deletesAt`, in the canonical
  * cutoff shape.
  *
@@ -302,7 +301,7 @@ export async function gateEvent(db: Db, eventId: string, route: string): Promise
  * `closedAt` is the stored stamp unless the caller derived one ([closedForOldBuilds]).
  */
 export function publicEvent(event: EventRow, closedAt: string | null = event.closedAt ?? null) {
-  // `zone` stays off the wire too: only the event page reads it (capability `event-site`), and no app needs it.
+  // `zone` stays off the wire too: only the event page reads it, and no app needs it.
   // `keyId` is on the wire only for an ENCRYPTED event, so a plain event's body is byte-identical to what
   // every installed build has always parsed.
   const { lifetimeSeconds: _stamped, lastLandedAt: _landed, zone: _zone, keyId, ...wire } = event;
@@ -318,14 +317,14 @@ export function publicEvent(event: EventRow, closedAt: string | null = event.clo
   };
 }
 
-/** Refuse a write to a closed (or completed) event (capability `event-lifetime`). */
+/** Refuse a write to a closed (or completed) event. */
 export function closedRefusal(): never {
   refuse(410, { error: "closed" });
 }
 
 /**
  * Refuse an enrollment that did not admit the device; return when it did. The zero-row outcome has TWO
- * causes and they are told apart rather than collapsed (capability `database`): closed is a `410` the user
+ * causes and they are told apart rather than collapsed: closed is a `410` the user
  * can act on, absent is a `404` that means something else entirely. A failed enrollment stays the `502` it
  * already is.
  */
@@ -344,8 +343,8 @@ export function declaredAppVersion(url: string, header: string | undefined): str
 }
 
 /**
- * Keep the app version a request declared (`declared`, from {@link declaredAppVersion}) on `deviceId`'s row
- * (capability `app-update-required`). Answers the failure to record, or `undefined`.
+ * Keep the app version a request declared (`declared`, from {@link declaredAppVersion}) on `deviceId`'s row.
+ * Answers the failure to record, or `undefined`.
  *
  * Best-effort: the record of a version never costs the request it rode in on. Called by the join, the
  * manifest publish and a union read that carries a verified token — never by every gated route, because

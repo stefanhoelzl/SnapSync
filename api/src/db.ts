@@ -91,7 +91,7 @@ export type EventRow = {
   capacity: number;
   lifetimeSeconds: number;
   /**
-   * When the event CLOSED (capability `event-lifetime`): no join, no rename, no change to a member's
+   * When the event CLOSED: no join, no rename, no change to a member's
    * asset set from then on. Final — nothing clears it. Absent/null on a row that never closed, and on
    * every row a caller builds before inserting (the columns are written only by the transitions below).
    */
@@ -101,7 +101,7 @@ export type EventRow = {
   /** The last time a byte landing completed an asset of this event — the clock's second anchor. */
   lastLandedAt?: string | null;
   /**
-   * The host's IANA time zone (`Europe/Berlin`; migration 0009, capability `event-site`): the zone the event
+   * The host's IANA time zone (`Europe/Berlin`; migration 0009): the zone the event
    * page reads `startsAt`/`endsAt` in, so they show as the host chose them. Null for an event created by a
    * client that sent none, which the page renders in UTC. Write-once, like every column but `name`.
    */
@@ -155,7 +155,7 @@ export async function insertEvent(db: Db, e: EventRow): Promise<void> {
 
 /**
  * Read one event, or `null` when it does not exist. An event EXISTS exactly when this row does — the
- * whole existence gate, and the reason a `404` is a SEALED absence that `event-lifetime`'s two-witness
+ * whole existence gate, and the reason a `404` is a SEALED absence that the sweep's two-witness
  * teardown can act on. A transport failure THROWS, so a transient fault is never mistaken for absence.
  */
 export async function readEvent(db: Db, eventId: string): Promise<EventRow | null> {
@@ -165,7 +165,7 @@ export async function readEvent(db: Db, eventId: string): Promise<EventRow | nul
 
 /**
  * Rename. The ONLY write to an existing event, and it writes `name` ALONE — every other column is
- * write-once (capability `event-lifetime`). Under an object store violating that meant rewriting a whole
+ * write-once. Under an object store violating that meant rewriting a whole
  * document; here it is one careless `SET` away, which is why the statement is spelled out in one place
  * rather than composed.
  */
@@ -180,7 +180,7 @@ export async function renameEvent(db: Db, eventId: string, name: string): Promis
 // ── Memberships and the enrollment ────────────────────────────────────────────────────────────────
 
 /**
- * Where a member stands (capabilities `event-lifetime`, `manage-membership`; migration 0008). `sharing` and
+ * Where a member stands (migration 0008). `sharing` and
  * `settled` are PRESENT — still in the event; `done` and `left` are GONE, and are told apart for observability
  * only: everything the backend decides treats them alike.
  */
@@ -225,7 +225,7 @@ const ENROLL = `
 
 /**
  * What an enrollment attempt resolved to — the three answers a route must tell apart. `closed` is a completed
- * event (its row carries `closed_at`), or one closed before events stopped closing (capability `event-lifetime`).
+ * event (its row carries `closed_at`), or one closed before events stopped closing.
  */
 export type EnrollOutcome = "enrolled" | "closed" | "no-such-event";
 
@@ -245,7 +245,7 @@ export async function enroll(
 }
 
 /**
- * The statements a leave applies, in order — to be run as ONE atomic unit (capability `manage-membership`).
+ * The statements a leave applies, in order — to be run as ONE atomic unit.
  *
  * The membership becomes `done` when it left having everything — it had `settled`, every role it declared has
  * landed, and the device says it [received] every photo of the others — and `left` otherwise. The backend judges
@@ -289,7 +289,7 @@ export async function membershipState(
 // ── The manifest publish ──────────────────────────────────────────────────────────────────────────
 
 /**
- * One resource of one asset, as the device manifest names it (wire format: `photo-sharing`).
+ * One resource of one asset, as the device manifest names it (the wire format, `openapi.yaml`).
  *
  * `key` is the client's object name (`<assetId>-<role>.<ext>`); `filename` is the human capture name. Neither
  * is where the bytes are: that is the `resources` row's `path`, which the backend chooses.
@@ -337,7 +337,7 @@ export function publishStatements(
   assets: ManifestAssetEntry[],
   opts: {
     version: number;
-    /** The device declares its asset set settled (capability `photo-sharing`) → `settled`, else `sharing`. */
+    /** The device declares its asset set settled → `settled`, else `sharing`. */
     final?: boolean;
     /**
      * The union-log rows this publish causes ([publishUnionChanges]), written inside the batch under the
@@ -436,7 +436,7 @@ export async function stampLanded(db: Db, eventIds: readonly string[], at: strin
   );
 }
 
-// ── Done and finished (capability `event-lifetime`; decision record `changes/back-dated-events`, D3) ────────
+// ── Done and finished (decision record `changes/back-dated-events`, D3) ────────
 //
 // COMPUTED ON EVERY READ, NEVER STAMPED. Each fact below is a SQL predicate over the membership alias `m` (or the
 // event alias `e`), and the one place it is spelled: the sweep, the event read's counts and the compatibility
@@ -479,7 +479,7 @@ function finishedEvent(e: string): string {
 }
 
 /**
- * An event's present membership counts (capability `sync-status`): `active` — everyone still in it; `final` — of
+ * An event's present membership counts: `active` — everyone still in it; `final` — of
  * those, the `settled` (the wire name predates the states, and builds that predate `waiting` read it); `waiting` —
  * of those, the ones still sharing: not settled, or with a declared photo that has not landed.
  */
@@ -759,7 +759,7 @@ export function onlyIfLanded(statement: Statement): Statement {
 
 /**
  * Whether the event's union would GAIN this asset if `role`'s bytes were recorded right now — the byte
- * route's wake list (capability `delivery`), as the event's id or nothing. A byte belongs to ONE
+ * route's wake list, as the event's id or nothing. A byte belongs to ONE
  * event (change `per-event-storage-layout`), so it can complete at most that one.
  *
  * ASK BEFORE WRITING, not after. "Is this asset complete?" answered after the insert cannot tell a
@@ -798,7 +798,7 @@ export async function eventsCompletedBy(db: Db, r: {
 }
 
 /**
- * How this publish changes what the event's union SERVES (capability `receiving-photos`; decision record
+ * How this publish changes what the event's union SERVES (decision record
  * `changes/incremental-union`, D4): the assets it makes servable (`gained` — the manifest route's wake list
  * and its union-log rows) and the servable assets it stops declaring or leaves incomplete (`removed` — log
  * rows only, never served).
@@ -806,14 +806,14 @@ export async function eventsCompletedBy(db: Db, r: {
  * The manifest publish is no longer the moment the union grows: under a manifest that declares INTENT, its
  * content changes when discovery changes, and the assets it names are usually incomplete. The one case
  * where a publish alone makes something fetchable is a **widening** — a membership re-admits assets whose
- * bytes it uploaded under an earlier, broader range (capability `manage-membership`), so no byte
+ * bytes it uploaded under an earlier, broader range, so no byte
  * moves and only the declaration changed.
  *
  * Asked BEFORE the replace, for the same reason as [eventsCompletedBy]: afterwards, "complete" cannot be
  * told from "was already complete and still is".
  *
  * An asset that was already served and merely gained a resource is deliberately NOT a gain: recipients
- * plan per asset and would refetch nothing (capability `receiving-photos`), so the union gained no asset.
+ * plan per asset and would refetch nothing, so the union gained no asset.
  *
  * COST: two reads proportional to the device's declared and stored sets. That is the same order as the
  * publish it precedes — `publishStatements` already emits one statement per declared asset — so it adds
@@ -1034,7 +1034,7 @@ export async function unionPosition(db: Db, eventId: string): Promise<number> {
 }
 
 /**
- * The event's DECLARED total (capability `sync-status`): every asset the whole union serves — complete, in a
+ * The event's DECLARED total: every asset the whole union serves — complete, in a
  * membership of either state, exactly as `unionRows` + `completeAssets` keep it — plus every asset a member still
  * in the event declares that is not complete yet. What a member's "received" total counts, before subtracting its
  * own declaration: a photo still uploading is on its way, while one declared by a member who has left never lands
@@ -1057,7 +1057,7 @@ export async function declaredTotal(db: Db, eventId: string): Promise<number> {
   return Number(rows[0].n);
 }
 
-/** One read of the union, as the union log records it (capability `privacy-security`). */
+/** One read of the union, as the union log records it. */
 export type UnionFetch = {
   eventId: string;
   /** The device whose token verified; `null` for every other reader, of whom nothing else is kept. */
@@ -1071,7 +1071,7 @@ export type UnionFetch = {
   at: string;
 };
 
-/** Record one union read (capability `privacy-security`). The caller treats a failure as best-effort. */
+/** Record one union read. The caller treats a failure as best-effort. */
 export async function logUnionFetch(db: Db, f: UnionFetch): Promise<void> {
   await db.execute(
     `INSERT INTO union_log (event_id, kind, device_id, trigger, cursor_from, cursor_to, served, at)
@@ -1197,7 +1197,7 @@ export async function touchTokenExpiry(
 // ── Devices: the app version ──────────────────────────────────────────────────────────────────────
 
 /**
- * Keep the version the device last declared (capability `app-update-required`). The `IS NOT` clause makes
+ * Keep the version the device last declared. The `IS NOT` clause makes
  * an unchanged version a read, not a write, so the routes that call this on every visit rewrite the row
  * only when the device upgraded (or rolled back). A device with no row is left alone: only the mint
  * creates one.
@@ -1228,7 +1228,7 @@ export async function deviceVersions(db: Db): Promise<DeviceVersion[]> {
 
 // ── Devices: the push-registration group ──────────────────────────────────────────────────────────
 
-/** A device's registered push token, as the notify fan-out needs it (capability `delivery`). */
+/** A device's registered push token, as the notify fan-out needs it. */
 export type DevicePushToken = { kind: string; token: string; env: string };
 
 /**
@@ -1276,7 +1276,7 @@ export async function readDeviceRecord(
   return { kind, token, env };
 }
 
-// ── The nightly sweep's queries (capability `event-lifetime`) ───────────────────────────────────
+// ── The nightly sweep's queries ───────────────────────────────────
 //
 // The sweep runs its EVENT phase first and deletes stale rows; every query below then reads the store
 // as it stands, so "the surviving events" needs no id list threaded through — it is simply what is left.
@@ -1330,7 +1330,7 @@ export async function deleteEvent(db: Db, eventId: string): Promise<void> {
 }
 
 /**
- * COMPLETE one event (capability `event-lifetime`): close it if it had not closed, stamp it completed,
+ * COMPLETE one event: close it if it had not closed, stamp it completed,
  * and delete every membership — the cascade takes their assets and resources, and the byte phase then
  * deletes the event's folder exactly as for a deleted event. The ROW stays, name and range included, until the deadline drops
  * it, so a device still joined is told "completed" rather than a "not found" it would disbelieve.
@@ -1343,8 +1343,7 @@ export async function completeEvent(tx: Db, eventId: string, at: string): Promis
     [at, at, eventId],
   );
   await tx.execute(`DELETE FROM memberships WHERE event_id = ?`, [eventId]);
-  // The union log goes with the photos (capability `privacy-security`, "The service records who reads an
-  // event's photo list"): the row outlives them, the record of who read them must not.
+  // The union log goes with the photos: the row outlives them, the record of who read them must not.
   await tx.execute(`DELETE FROM union_log WHERE event_id = ?`, [eventId]);
 }
 
@@ -1519,7 +1518,7 @@ export async function isMember(db: Db, eventId: string, deviceId: string): Promi
  * At most [limit] of them, picked at RANDOM on every call (decision record `changes/remove-event-device-cap`,
  * D1): each push is an Edge subrequest, so the fan-out's cost is bounded here rather than by the event's size.
  * A member left out of one wake is as well off as one whose wake was lost — the next wake picks again, and
- * its own uploads, the heartbeat and the foreground all read the union regardless (capability `delivery`).
+ * its own uploads, the heartbeat and the foreground all read the union regardless.
  */
 export async function pushTokensForEvent(
   db: Db,
