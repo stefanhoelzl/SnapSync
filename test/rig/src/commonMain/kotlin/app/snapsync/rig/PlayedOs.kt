@@ -124,6 +124,22 @@ class PlayedOs(
         watcher.told(WorldEvent.ForceQuit)
     }
 
+    /** Set by [revokingAccessEndsTheProcess]: a revoked photo grant ends the app's process, as on Android. */
+    @Volatile private var revokeEndsProcess = false
+
+    override suspend fun revokingAccessEndsTheProcess(on: Boolean) {
+        if (on && process == null) throw LeverRefused(REVOKE_NEEDS_THE_PROCESS)
+        revokeEndsProcess = on
+    }
+
+    /** The app's photo access was revoked: on a platform where that ends the process, it ends, and starts again. */
+    suspend fun accessRevoked() {
+        if (revokeEndsProcess) checkNotNull(process).die()
+    }
+
+    /** Whether the operating system launches the app for its own reasons now — not while it is force-quit. */
+    val launches: Boolean get() = !quit
+
     /** Refuses [what] while the app is force-quit: the operating system does not launch it for that. */
     fun launching(what: String) {
         if (quit) {
@@ -189,3 +205,7 @@ interface AppProcess {
 /** Why a host that does not own the app's process refuses a force-quit. */
 const val FORCE_QUIT_NEEDS_THE_PROCESS: String =
     "this host does not own the app's process, so it cannot end it as a force-quit does — the JVM host's"
+
+/** Why a host that does not own the app's process refuses to end it on a revoke. */
+const val REVOKE_NEEDS_THE_PROCESS: String =
+    "this host does not own the app's process, so it cannot end it as a revoke on Android does — the JVM host's"

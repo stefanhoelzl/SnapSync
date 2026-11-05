@@ -99,6 +99,14 @@ interface PlayedOsLevers {
      */
     suspend fun forceQuit()
 
+    /**
+     * Whether revoking the app's photo access ends its process, as Android does (an access change made in Settings stops
+     * the app). A durable fact of the platform. Where it is so, the library's grant becoming denied
+     * ([LibraryLevers.permission]) ends the process — a consequence of the revoke, never a lever of its own — and the
+     * app starts again over what its process left. Honoured only by a host that owns the app's process.
+     */
+    suspend fun revokingAccessEndsTheProcess(on: Boolean)
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<PlayedOsLevers>(
         PlayedOsLevers::class,
@@ -213,6 +221,14 @@ data class PushView(val registrations: Int, val kind: String, val refusal: Strin
 interface WakeLevers {
     /** The wake requests as the operating system holds them now, and how many heartbeats it accepted. */
     suspend fun wakes(): WakeView
+
+    /**
+     * Whether this operating system carries the library-change wake — Android's content-URI trigger, which runs the app
+     * once a photo is added to the library. A durable fact of the device, read as the app composes: the app sees it from
+     * its next launch on (`host.relaunch`). Where it is carried and the app asked for it, each photo added to the library
+     * wakes the app — a consequence of the add, so there is no lever to fire it.
+     */
+    suspend fun carriesLibraryWake(on: Boolean)
 
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<WakeLevers>(

@@ -73,6 +73,14 @@ interface UploadSessionLevers {
     /** The session as the operating system holds it now. */
     suspend fun session(): UploadSessionView
 
+    /**
+     * Whether the session lives in the app's own process, as Android's does — there is no transfer daemon to finish an
+     * upload for a process that is gone. A durable fact of the platform. Where it is so, a process that ends takes its
+     * live transfers with it, and the next process hears each one ended, failed, as it starts listening — the Android
+     * adapter's journal of the transfers it started.
+     */
+    suspend fun inProcess(on: Boolean)
+
     @OptIn(ExperimentalRpcApi::class)
     companion object : LeverService<UploadSessionLevers>(
         UploadSessionLevers::class,

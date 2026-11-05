@@ -32,8 +32,11 @@ import kotlin.concurrent.Volatile
  * the handlers are those of the process that registered last.
  */
 class WakeMock(
-    /** The wakes this platform has; iOS has only the heartbeat. */
-    internal val supported: Set<WakeId> = setOf(WakeId.Heartbeat),
+    /**
+     * The wakes this platform has; iOS has only the heartbeat. A durable fact of the device, read as a process composes
+     * ([WakeOperator.carriesLibraryWake] changes it for the next launch).
+     */
+    @Volatile internal var supported: Set<WakeId> = setOf(WakeId.Heartbeat),
     /** Why the operating system refuses this process's requests, or `null` where it takes them. */
     internal val refusal: String? = null,
 ) {
@@ -85,12 +88,23 @@ class WakeMock(
         return current.onWake.handle(id, completion)
     }
 
+    /**
+     * Whether a photo added to the library now triggers a wake: the app asked for the library-change wake, and the
+     * operating system holds that request. Android's content-URI trigger fires on the change itself, so the wake is a
+     * consequence of the library growing, never an operator's call of its own.
+     */
+    val watchesLibrary: Boolean get() = WakeId.LibraryChanged in pending.value
+
     val operator: WakeOperator = WakeOperator(this)
 }
 
 class WakeOperator internal constructor(private val mock: WakeMock) : WakeLevers {
     override suspend fun wakes(): WakeView =
         WakeView(mock.scheduled, mock.pending.value.map { (id, trigger) -> pendingWake(id, trigger) })
+
+    override suspend fun carriesLibraryWake(on: Boolean) {
+        mock.supported = if (on) mock.supported + WakeId.LibraryChanged else mock.supported - WakeId.LibraryChanged
+    }
 }
 
 /** A wake request as the operating system holds it, on the wire. */

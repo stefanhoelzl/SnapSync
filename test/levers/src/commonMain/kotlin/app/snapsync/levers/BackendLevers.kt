@@ -101,7 +101,10 @@ interface BackendLevers {
     )
 }
 
-/** The backend calls an operator can hold unanswered — each one a screen the app shows only while it waits. */
+/**
+ * The backend calls an operator can hold unanswered — a service slow to answer them: each one a screen the app shows
+ * only while it waits, or work it does not finish until it is answered.
+ */
 @Serializable
 enum class BackendCall(val key: String) {
     /** The event's details, which the join gate loads. */
@@ -119,6 +122,10 @@ enum class BackendCall(val key: String) {
     /** A device leaving an event. */
     @SerialName("leave")
     LEAVE("leave"),
+
+    /** A device's manifest publish — what an upload pass waits on before it ends. */
+    @SerialName("publish")
+    PUBLISH("publish"),
     ;
 
     companion object {

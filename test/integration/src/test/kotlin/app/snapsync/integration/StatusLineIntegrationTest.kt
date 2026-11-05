@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.Behaviour
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.BackendCall
 import app.snapsync.levers.BackendFault
 import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.NetworkState
@@ -257,6 +258,37 @@ class StatusLineIntegrationTest {
 
         whenever { library.holdEnumeration(false) }
         then { settled { true } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The status stays current while the app is open",
+        scenario = "A stuck earlier upload does not blank the status",
+    )
+    // The app's part: opening the app reads the counts without waiting on an upload pass that has not ended.
+    fun an_earlier_visits_unfinished_upload_pass_does_not_hold_the_status_on_the_neutral_line() = behaviour {
+        given {
+            joinedEvent()
+            photos("P1", "P2")
+            // The service is slow to take the manifest: the earlier visit's upload pass waits on it, unfinished.
+            step("the earlier visit's pass stuck", act = {
+                backend.hold(BackendCall.PUBLISH)
+                os.foreground()
+            }, until = { event<WorldEvent.BackendHeld> { it.call == BackendCall.PUBLISH } })
+            step("the earlier visit ends", act = { os.background() }, until = { settled { true } })
+        }
+
+        whenever { os.foreground() }
+        then {
+            // Real progress: the photos waiting to be shared are counted, while the earlier pass still waits.
+            screen<Layer.Joined> { it.health is SyncHealth.Syncing }
+            never<WorldEvent.ManifestPublished>()
+            settled { true }
+        }
+
+        whenever { backend.release(BackendCall.PUBLISH) }
+        then { event<WorldEvent.ManifestPublished>() }
     }
 
     // ---- the arrows -----------------------------------------------------------------------------

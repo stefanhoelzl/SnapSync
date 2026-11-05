@@ -28,6 +28,8 @@ import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.PushRegistration
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
 /**
@@ -104,7 +106,16 @@ class BackendMock internal constructor(internal val state: BackendState) {
      */
     fun pushesHandedOver(): List<SentPush> = state.locked { state.pushes.toList() }
 
+    /**
+     * Until when the download link this backend signs now opens — what a photo's stable download address redirects a
+     * transfer to, signed afresh for each request ([DOWNLOAD_LINK_LIFETIME] on, as the api signs it).
+     */
+    fun downloadLinkExpiry(): Instant = state.now() + DOWNLOAD_LINK_LIFETIME
+
     companion object {
+        /** How long a signed download link opens — the api's `PRESIGN_EXPIRY_SECONDS` (`api/src/routes/support.ts`). */
+        val DOWNLOAD_LINK_LIFETIME: Duration = 7.days
+
         /**
          * What an event's `capacity` says on the wire: the real api's placeholder, which limits nothing (decision record
          * `changes/remove-event-device-cap`, D4). An event admits any number of devices.

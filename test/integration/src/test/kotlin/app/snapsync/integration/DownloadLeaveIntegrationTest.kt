@@ -3,6 +3,7 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.TransferEnd
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -46,6 +47,42 @@ class DownloadLeaveIntegrationTest {
             settled { true }
         }
         // …and the retry imports — the bytes were re-fetched.
+        whenever { downloadSession.finish() }
+        then { event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Download problems delay photos, never corrupt or lose them",
+        scenario = "A download delayed past a week",
+    )
+    // The app's part: the opening after the link expired downloads the photo again from its stable address. The link's
+    // lifetime, and signing it afresh for each request, are the api's.
+    fun a_download_whose_link_expired_while_offline_is_renewed_on_the_next_opening() = behaviour {
+        given {
+            joinedEvent()
+            fellowMember(DEV_F, "FQ")
+            itsDownloadStarted()
+            step("offline past the link's week", act = {
+                os.background()
+                advanceTo(EIGHT_DAYS_LATER)
+            }, until = { settled { true } })
+        }
+
+        // Back online: the session performs the transfer, and the storage refuses the expired link.
+        whenever { downloadSession.finish() }
+        then {
+            event<WorldEvent.DownloadEnded> { it.outcome.how == TransferEnd.How.FAILED }
+            never<WorldEvent.LibraryAssetCreated>()
+            settled { true }
+        }
+
+        whenever { os.foreground() }
+        then {
+            event<WorldEvent.DownloadStarted>()
+            settled { true }
+        }
         whenever { downloadSession.finish() }
         then { event<WorldEvent.LibraryAssetCreated> { it.asset == RECEIVED } }
     }
@@ -129,5 +166,8 @@ class DownloadLeaveIntegrationTest {
 
         /** What an error answer's body brings: a few bytes of text, not the photo. */
         const val ERROR_BODY_BYTES = 137L
+
+        /** Eight days after the behaviour's start: past a signed link's week, the event still running. */
+        const val EIGHT_DAYS_LATER = "2026-06-09T12:00:00Z"
     }
 }

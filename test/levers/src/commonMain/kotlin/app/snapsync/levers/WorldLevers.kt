@@ -149,10 +149,20 @@ sealed interface WorldEvent {
     @Serializable
     sealed interface Backend : WorldEvent
 
-    /** A request reached the backend: the device API's [operation] (its OpenAPI `operationId`). */
+    /**
+     * A request reached the backend: the device API's [operation] (its OpenAPI `operationId`), with its [headers] and
+     * [body] as they arrived — what the real service holds of it, and nothing the app kept to itself.
+     */
     @Serializable
     @SerialName("backend-received")
-    data class BackendReceived(val operation: String) : Backend
+    data class BackendReceived(
+        val operation: String,
+        val headers: Map<String, String> = emptyMap(),
+        val body: String? = null,
+    ) : Backend {
+        /** The header [name], matched as HTTP matches names: regardless of case. */
+        fun header(name: String): String? = headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+    }
 
     /** A request is parked on an operator's hold of [call], and stays parked until it is released. */
     @Serializable
