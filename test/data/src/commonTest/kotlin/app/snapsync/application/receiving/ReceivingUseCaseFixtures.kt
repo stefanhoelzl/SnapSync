@@ -40,6 +40,7 @@ import app.snapsync.domain.receiving.MintsRecognised
 import app.snapsync.domain.receiving.ReceivedPhotoName
 import app.snapsync.domain.receiving.ReceivingMembership
 import app.snapsync.domain.receiving.Recognised
+import app.snapsync.domain.receiving.SenderFilename
 import app.snapsync.format.AssetIdText
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
@@ -224,7 +225,9 @@ internal class Receiver {
             id,
             created,
             resources = listOf(
-                LibraryAssets.primaryResource(filename = ReceivedPhotoName.mark(of.filename, of.key, of.ref)),
+                LibraryAssets.primaryResource(
+                    filename = ReceivedPhotoName.mark(checkNotNull(SenderFilename.parse(of.filename)), of.ref),
+                ),
             ),
         )
 }

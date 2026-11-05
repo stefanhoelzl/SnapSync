@@ -6,12 +6,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 class ReceivedPhotoNameTest {
 
     private val ref = AssetRef(testDeviceId("11111111-2222-3333-4444-555555555555"), testAssetId("A"))
-    private val key = "03C741F2-4FFA-4792-B2E3-076266091091_L0_001-primary.heic"
+
+    private fun mark(name: String, of: AssetRef = ref): String =
+        ReceivedPhotoName.mark(checkNotNull(SenderFilename.parse(name)), of)
 
     @Test
     fun the_token_is_pinned() {
@@ -34,56 +35,29 @@ class ReceivedPhotoNameTest {
 
     @Test
     fun the_senders_name_is_kept_and_marked() {
-        assertEquals("IMG_4471.snapsync-fim54ck2vz.HEIC", ReceivedPhotoName.mark("IMG_4471.HEIC", key, ref))
-    }
-
-    @Test
-    fun an_unenriched_row_is_named_by_its_mark_and_the_keys_extension() {
-        // `""` is the manifest's "never enriched" sentinel. No internal key reaches the library any more.
-        assertEquals("snapsync-fim54ck2vz.heic", ReceivedPhotoName.mark("", key, ref))
+        assertEquals("IMG_4471.snapsync-fim54ck2vz.HEIC", mark("IMG_4471.HEIC"))
     }
 
     @Test
     fun a_name_that_already_carries_a_mark_is_marked_once() {
-        val marked = ReceivedPhotoName.mark("IMG_4471.snapsync-aaaaaaaaaa.HEIC", key, ref)
-        assertEquals("IMG_4471.snapsync-fim54ck2vz.HEIC", marked)
-        assertEquals("snapsync-fim54ck2vz.HEIC", ReceivedPhotoName.mark("snapsync-aaaaaaaaaa.HEIC", key, ref))
+        assertEquals("IMG_4471.snapsync-fim54ck2vz.HEIC", mark("IMG_4471.snapsync-aaaaaaaaaa.HEIC"))
+        assertEquals("snapsync-fim54ck2vz.HEIC", mark("snapsync-aaaaaaaaaa.HEIC"))
     }
 
     @Test
     fun a_name_without_an_extension_is_marked_at_its_end() {
-        assertEquals("IMG_4471.snapsync-fim54ck2vz", ReceivedPhotoName.mark("IMG_4471", key, ref))
+        assertEquals("IMG_4471.snapsync-fim54ck2vz", mark("IMG_4471"))
     }
 
     @Test
     fun a_name_ending_in_a_dot_has_no_extension_to_keep() {
-        assertEquals("IMG_4471.snapsync-fim54ck2vz", ReceivedPhotoName.mark("IMG_4471.", key, ref))
-    }
-
-    @Test
-    fun the_role_token_never_reaches_the_library() {
-        for (role in listOf("primary", "live")) {
-            val roleKey = "${ref.sourceAssetId}-$role.heic"
-            assertTrue(
-                roleKey.contains("-$role"),
-                "the key under test must carry the role token",
-            )
-            assertTrue("-$role" !in ReceivedPhotoName.mark("IMG_4471.HEIC", roleKey, ref))
-        }
+        assertEquals("IMG_4471.snapsync-fim54ck2vz", mark("IMG_4471."))
     }
 
     @Test
     fun both_resources_of_a_live_photo_carry_one_token() {
-        val still = ReceivedPhotoName.mark(
-            "IMG_4471.HEIC",
-            "${ref.sourceAssetId}-primary.heic",
-            ref,
-        )
-        val paired = ReceivedPhotoName.mark(
-            "IMG_4471.MOV",
-            "${ref.sourceAssetId}-live.mov",
-            ref,
-        )
+        val still = mark("IMG_4471.HEIC")
+        val paired = mark("IMG_4471.MOV")
         assertEquals("IMG_4471.snapsync-fim54ck2vz.HEIC", still)
         assertEquals("IMG_4471.snapsync-fim54ck2vz.MOV", paired)
         assertEquals(ReceivedPhotoName.tokenOf(still), ReceivedPhotoName.tokenOf(paired))
@@ -91,8 +65,14 @@ class ReceivedPhotoNameTest {
 
     @Test
     fun a_marked_name_reads_back_its_token() {
-        assertEquals("fim54ck2vz", ReceivedPhotoName.tokenOf(ReceivedPhotoName.mark("IMG_4471.HEIC", key, ref)))
-        assertEquals("fim54ck2vz", ReceivedPhotoName.tokenOf(ReceivedPhotoName.mark("", key, ref)))
+        assertEquals("fim54ck2vz", ReceivedPhotoName.tokenOf(mark("IMG_4471.HEIC")))
+    }
+
+    @Test
+    fun the_bare_mark_earlier_builds_wrote_still_reads_back_its_token() {
+        // Earlier builds named a photo whose sender filename was unknown `snapsync-<token>.<ext>`. No build writes
+        // that form any more, but libraries keep such photos for good, so it is read for good.
+        assertEquals("fim54ck2vz", ReceivedPhotoName.tokenOf("snapsync-fim54ck2vz.heic"))
     }
 
     @Test

@@ -7,7 +7,12 @@ import app.snapsync.domain.receiving.ImportedAsset
 import app.snapsync.domain.receiving.MintsStagedDownload
 import app.snapsync.domain.receiving.StagedDownload
 import app.snapsync.domain.receiving.StagedPath
+import app.snapsync.domain.receiving.StagedResource
 import app.snapsync.format.TimestampText
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
+
+private val log = Log("ImportQueue")
 
 /**
  * What arrives and goes into the library: a resource staged, a transfer ended, the next fully staged photo claimed, and
@@ -39,13 +44,25 @@ class ImportQueue(private val store: DownloadStore) {
      * The next photo whose every resource is staged and whose import is not claimed — neither in [skip] (attempted in
      * this pass) nor running here — CLAIMED, and everything its import needs read, all under the lock: the library call
      * is then the only thing outside it. `null` when nothing is left.
+     *
+     * A photo whose stored resource names no sender filename is never claimed: it settles unimportable, its staged
+     * bytes are released, and the next photo is taken (change `a-received-photo-always-has-a-sender-filename`).
      */
-    suspend fun claimNext(skip: Set<AssetRef>): DownloadRead<StagedDownload?> = store.locked {
-        store.read { q ->
-            importable(q).firstOrNull { (ref, _) -> ref !in skip && ref !in store.claims }?.let {
-                claimed(q, it)
-            }
-        }
+    suspend fun claimNext(skip: Set<AssetRef>): DownloadRead<StagedDownload?> = store.locked { nextClaimed(skip) }
+
+    private suspend fun nextClaimed(skip: Set<AssetRef>): DownloadRead<StagedDownload?> =
+        store.read { q -> nextImport(q, store.claims, skip) }.then { next -> answered(next, skip) }
+
+    private suspend fun answered(next: NextImport?, skip: Set<AssetRef>): DownloadRead<StagedDownload?> = when (next) {
+        null -> DownloadRead.Ok(null)
+        is NextImport.Claimed -> DownloadRead.Ok(next.download)
+        is NextImport.Unnamed -> refused(next, skip)
+    }
+
+    private suspend fun refused(next: NextImport.Unnamed, skip: Set<AssetRef>): DownloadRead<StagedDownload?> {
+        store.staging.release(next.paths)
+        log.w("a staged photo names no sender filename; it is never imported", "asset" of next.ref.sourceAssetId)
+        return nextClaimed(skip + next.ref)
     }
 
     /**
@@ -84,11 +101,32 @@ class ImportQueue(private val store: DownloadStore) {
             StageRecord.NoRow -> store.staging.release(listOf(at))
         }
     }
+}
 
-    @OptIn(MintsStagedDownload::class)
-    private fun claimed(q: DownloadStoreQueries, next: Pair<AssetRef, String>): StagedDownload =
-        StagedDownload(next.first, TimestampText.captureDate(next.second), stagedResources(q, next.first))
-            .also(store.claims::claim)
+/** The next importable photo neither in [skip] nor in [claims]: claimed, or settled unimportable for naming nothing. */
+private fun nextImport(q: DownloadStoreQueries, claims: ImportClaims, skip: Set<AssetRef>): NextImport? =
+    importable(q).firstOrNull { (ref, _) -> ref !in skip && ref !in claims }?.let { taken(q, claims, it) }
+
+private fun taken(q: DownloadStoreQueries, claims: ImportClaims, next: Pair<AssetRef, String>): NextImport =
+    when (val rows = stagedRows(q, next.first)) {
+        is StagedRows.Named -> NextImport.Claimed(claimed(claims, next, rows.resources))
+        is StagedRows.Unnamed -> NextImport.Unnamed(next.first, rows.paths)
+            .also { q.transactionWithResult { settledUnimportable(q, next.first) } }
+    }
+
+@OptIn(MintsStagedDownload::class)
+private fun claimed(
+    claims: ImportClaims,
+    next: Pair<AssetRef, String>,
+    resources: List<StagedResource>,
+): StagedDownload = StagedDownload(next.first, TimestampText.captureDate(next.second), resources).also(claims::claim)
+
+/** What [ImportQueue.claimNext] found next: a claimed photo, or one whose stored resource names no sender filename. */
+private sealed interface NextImport {
+    class Claimed(val download: StagedDownload) : NextImport
+
+    /** Settled unimportable under the lock; its staged [paths] are still to release. */
+    class Unnamed(val ref: AssetRef, val paths: List<StagedPath>) : NextImport
 }
 
 /** Whether a staging found its row. */

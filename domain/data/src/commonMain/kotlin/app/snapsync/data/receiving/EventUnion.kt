@@ -6,6 +6,7 @@ import app.snapsync.data.sharing.ManifestRecord
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.receiving.OthersDeclared
+import app.snapsync.domain.receiving.SenderFilename
 import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionPhoto
 import app.snapsync.domain.receiving.UnionReadPlan
@@ -51,7 +52,10 @@ class EventUnion(private val gateway: BackendGateway, private val own: ManifestR
         }
     }
 
-    /** A page with a photo whose id is no id, or a position that is no number, is a page the app cannot go on from. */
+    /**
+     * A page with a photo whose id is no id or whose resource names no sender filename, or a position that is no
+     * number, is a page the app cannot go on from.
+     */
     private fun paged(event: EventId, reply: EventFilesReply.Page): UnionRead =
         when (val position = positionOf(reply.snapSyncCursor)) {
             is Parsed.Ok -> positioned(event, reply, position.value)
@@ -75,28 +79,38 @@ class EventUnion(private val gateway: BackendGateway, private val own: ManifestR
     private fun photos(event: EventId, items: List<app.snapsync.wire.models.UnionAsset>): List<UnionPhoto>? =
         items.map { photo(event, it) }.takeIf { all -> all.none { it.isEmpty() } }?.flatten()
 
-    /** The photo [dto] describes, as a list of one — or of none when its ids are no ids. */
+    /**
+     * The photo [dto] describes, as a list of one — or of none when its ids are no ids, or a resource names no sender
+     * filename (every upload names one, so the union never serves a resource without: change
+     * `a-received-photo-always-has-a-sender-filename`).
+     */
     private fun photo(event: EventId, dto: app.snapsync.wire.models.UnionAsset): List<UnionPhoto> =
-        refOf(dto.deviceId, dto.assetId).map { ref ->
-            UnionPhoto(
-                ref,
-                TimestampText.captureDate(dto.creationDate),
-                dto.resources.map { resource(event, dto, ref.sourceAssetId, it) },
-            )
+        refOf(dto.deviceId, dto.assetId).flatMap { ref ->
+            resources(event, dto, ref.sourceAssetId)
+                ?.let { listOf(UnionPhoto(ref, TimestampText.captureDate(dto.creationDate), it)) }
+                .orEmpty()
         }
 
-    private fun resource(
+    /** Every resource of [dto], or `null` when one names no sender filename. */
+    private fun resources(
         event: EventId,
         dto: app.snapsync.wire.models.UnionAsset,
         asset: AssetId,
-        it: app.snapsync.wire.models.UnionResource,
-    ): UnionResource = UnionResource(
-        it.key,
-        gateway.open.url(Routes.DownloadResource.path(event.value, dto.deviceId, asset.value, it.role.value)),
-        it.role.value,
-        it.contentType,
-        it.filename,
-    )
+    ): List<UnionResource>? = dto.resources.mapNotNull { SenderFilename.parse(it.filename) }
+        .takeIf { it.size == dto.resources.size }
+        ?.let { names ->
+            dto.resources.zip(names) { r, name ->
+                UnionResource(
+                    r.key,
+                    gateway.open.url(
+                        Routes.DownloadResource.path(event.value, dto.deviceId, asset.value, r.role.value),
+                    ),
+                    r.role.value,
+                    r.contentType,
+                    name,
+                )
+            }
+        }
 }
 
 /** One read of an event's union, or that it could not be made. */

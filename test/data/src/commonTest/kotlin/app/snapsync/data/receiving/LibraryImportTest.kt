@@ -6,6 +6,7 @@ import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.receiving.ImportReport
 import app.snapsync.domain.receiving.MintsStagedDownload
 import app.snapsync.domain.receiving.ReceivedPhotoName
+import app.snapsync.domain.receiving.SenderFilename
 import app.snapsync.domain.receiving.StagedDownload
 import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.domain.receiving.StagedResource
@@ -41,7 +42,13 @@ class LibraryImportTest {
         StagedDownload(a, captured, resources.toList())
 
     private fun staged(key: String, role: String = "primary", type: String = "image/heic", name: String = "IMG_1.HEIC") =
-        StagedResource(key, role, type, name, StagedPath("download-staging/e/${a.sourceDeviceId.value}/$key"))
+        StagedResource(
+            key,
+            role,
+            type,
+            checkNotNull(SenderFilename.parse(name)),
+            StagedPath("download-staging/e/${a.sourceDeviceId.value}/$key"),
+        )
 
     @Test
     fun `the import names each file with the mark and gives each the kind its role and type say`() = runTest {

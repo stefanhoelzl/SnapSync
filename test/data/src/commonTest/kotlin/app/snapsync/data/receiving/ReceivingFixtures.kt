@@ -6,6 +6,7 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.receiving.db.DownloadDatabase
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.receiving.AssetRef
+import app.snapsync.domain.receiving.SenderFilename
 import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionPhoto
 import app.snapsync.domain.receiving.UnionResource
@@ -56,7 +57,7 @@ internal fun resource(
     contentType: String = "image/heic",
     filename: String = "IMG_1.HEIC",
     url: String = "https://backend.test/bytes/$key",
-) = UnionResource(key, url, role, contentType, filename)
+) = UnionResource(key, url, role, contentType, checkNotNull(SenderFilename.parse(filename)))
 
 /** A union photo of [ref], its one still keyed after the asset. */
 internal fun photo(

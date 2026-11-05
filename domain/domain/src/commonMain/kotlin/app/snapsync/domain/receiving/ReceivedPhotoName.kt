@@ -42,7 +42,12 @@ object ReceivedPhotoName {
     private const val FNV_OFFSET: ULong = 0xcbf29ce484222325uL
     private const val FNV_PRIME: ULong = 0x100000001b3uL
 
-    /** A mark anywhere in a name: at its start (the no-sender-name form) or after a dot. */
+    /**
+     * A mark anywhere in a name: after a dot, or at its start. The start-of-name form is the one earlier builds gave a
+     * photo whose sender filename was unknown (`snapsync-<token>.<ext>`). No build writes it any more (change
+     * `a-received-photo-always-has-a-sender-filename`), but members' libraries hold such photos and never lose them,
+     * so recognising them is permanent: this is a stored format, not a compatibility shim with an end.
+     */
     private val markPattern = Regex("(?:^|\\.)$MARK([a-z2-7]{$TOKEN_LENGTH})(?![a-z2-7])", RegexOption.IGNORE_CASE)
 
     /**
@@ -64,18 +69,16 @@ object ReceivedPhotoName {
     }
 
     /**
-     * The marked name for a resource of [ref]: the sender's [originalFilename] with any mark it already carries
-     * removed and this ref's mark added before its extension. [originalFilename] is `""` when the uploader's
-     * manifest row was never enriched (one the join-time load seeded from a stored-file listing); the name is then
-     * `snapsync-<token>.<ext>`, the extension taken from the storage [resourceKey]. Never empty.
+     * The marked name for a resource of [ref]: the sender's [original] name with any mark it already carries removed
+     * and this ref's mark added before its extension. A name that is nothing but a mark keeps only this ref's.
      */
-    fun mark(originalFilename: String, resourceKey: String, ref: AssetRef): String {
-        val source = originalFilename.ifEmpty { resourceKey }
-        val bare = stemOf(originalFilename, source).replace(markPattern, "")
+    fun mark(original: SenderFilename, ref: AssetRef): String {
+        val name = original.value
+        val bare = stemOf(name).replace(markPattern, "")
         val mark = MARK + token(ref)
         return when (bare.isEmpty()) {
-            true -> "$mark${extensionOf(source)}"
-            false -> "$bare.$mark${extensionOf(source)}"
+            true -> "$mark${extensionOf(name)}"
+            false -> "$bare.$mark${extensionOf(name)}"
         }
     }
 
@@ -83,13 +86,12 @@ object ReceivedPhotoName {
     fun tokenOf(filename: String): String? =
         markPattern.findAll(filename).lastOrNull()?.let { it.groupValues[1].lowercase() }
 
-    /** The sender's name without its extension — none when the sender named nothing ([original] empty). */
-    private fun stemOf(original: String, source: String): String {
-        val dot = source.lastIndexOf('.')
-        return when {
-            original.isEmpty() -> ""
-            dot > 0 -> source.substring(0, dot)
-            else -> source
+    /** The sender's [name] without its extension. */
+    private fun stemOf(name: String): String {
+        val dot = name.lastIndexOf('.')
+        return when (dot > 0) {
+            true -> name.substring(0, dot)
+            false -> name
         }
     }
 

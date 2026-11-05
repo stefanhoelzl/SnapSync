@@ -227,11 +227,7 @@ private fun StagedResource.media(): ReceivedMedia = when (val named = roleOf(rol
 private fun roleOf(text: String): Parsed<ResourceRole> =
     ResourceRoleText.parse(text)?.let { Parsed.Ok(it) } ?: Parsed.Refused("no build names the role $text")
 
-private fun StagedResource.marked(ref: AssetRef): String = ReceivedPhotoName.mark(
-    originalFilename,
-    resourceKey,
-    ref,
-)
+private fun StagedResource.marked(ref: AssetRef): String = ReceivedPhotoName.mark(originalFilename, ref)
 
 private fun CaptureDate.at() = when (this) {
     is CaptureDate.Dated -> at.at

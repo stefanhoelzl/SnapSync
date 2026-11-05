@@ -170,6 +170,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `NetworkStatusQuery` | `:domain:query` | `:domain:presentation` AlwaysOnline, FakeNetwork; `:domain:query` NetworkStatusLookup | yes |
 | `NewAlbum` | `:domain:data` | `:domain:data` Created, NotCreated | no |
 | `NewEventKey` | `:domain:data` | `:domain:data` Encrypted, Plain | no |
+| `NextImport` | `:domain:data` | `:domain:data` Claimed, Unnamed | no |
 | `NotEnrolled` | `:domain:application` | `:domain:application` AlreadyJoined, EventOver, Failed, InvalidRange, JoinedElsewhere, Unverified, WrongLink | no |
 | `NotEntered` | `:domain:application` | `:domain:application` AlreadyJoined, Failed | no |
 | `NotLeft` | `:domain:application` | `:domain:application` Failed, NotJoined | no |
@@ -270,6 +271,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `StageOutcome` | `:domain:application` | `:domain:application` Landed | no |
 | `StageRecord` | `:domain:data` | `:domain:data` NoRow, Recorded | no |
 | `StagedEvidence` | `:domain:domain` | `:domain:domain` AllPresent, Consumed, NoneRecorded | no |
+| `StagedRows` | `:domain:data` | `:domain:data` Named, Unnamed | no |
 | `StagingFolder` | `:domain:domain` | `:domain:domain` Event, Legacy | no |
 | `Stop` | `:domain:domain` | `:domain:domain` NotJoined, Paused, Unreadable, Withheld | no |
 | `StopReason` | `:domain:application` | `:domain:application` Deleted, Left, NotJoined, SharesOnly | no |

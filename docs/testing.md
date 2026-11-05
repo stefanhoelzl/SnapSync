@@ -1393,7 +1393,7 @@ never reaches past the protocol.
 A few end-to-end runs with **everything real**: the rig build on **one** simulator or emulator, `api/` served
 locally, and the real photo library — the same journeys on iOS and Android. They cover creating and joining an event, the app's own photos reaching the
 backend and the union, the app receiving another member's photos into its library, and photos that **move**
-(capability `receiving-photos`, "Received photos keep full fidelity"; `delivery`, "Only the original is uploaded,
+(capability `receiving-photos`, "Received photos arrive in full fidelity"; `delivery`, "Only the original is uploaded,
 complete"): another member's iPhone Live Photo and real Android motion photos each arrive moving, in the phone's own
 form, and the app's own Live Photo or motion photo is shared whole. That other member is
 played by the journey itself (`Member`), over the backend's **public HTTP surface only**, with real camera bytes,

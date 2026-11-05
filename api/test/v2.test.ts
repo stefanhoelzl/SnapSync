@@ -283,10 +283,14 @@ Deno.test("byte PUT → a role outside the closed vocabulary → 400, no upstrea
   db.close();
 });
 
-Deno.test("byte PUT → a missing or empty filename → 400", async () => {
-  const db = await store();
+// Every stored resource names its file: the receiving app marks a photo with the sender's name and has no
+// name for one without (change `a-received-photo-always-has-a-sender-filename`). Both byte routes refuse.
+Deno.test("byte PUT → a missing or empty filename → 400 on both routes, and no resource row", async () => {
+  const db = await memberStore();
   for (
     const path of [
+      `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary`,
+      `/api/v2/events/${E}/files/devices/${D}/ASSET1/primary?filename=`,
       `/api/v2/files/devices/${D}/ASSET1/primary`,
       `/api/v2/files/devices/${D}/ASSET1/primary?filename=`,
     ]
@@ -294,7 +298,9 @@ Deno.test("byte PUT → a missing or empty filename → 400", async () => {
     const res = await v2({ config: CONFIG, db, fetch: recorder().fetchImpl })
       .request(path, { method: "PUT", body: "b" });
     assertEquals(res.status, 400, path);
+    assertEquals(await res.text(), "missing filename", path);
   }
+  assertEquals(await rows(db, `SELECT filename FROM resources`), []);
   db.close();
 });
 

@@ -16,7 +16,7 @@ class UnionResource(
     val url: String,
     val role: String,
     val contentType: String,
-    val originalFilename: String,
+    val originalFilename: SenderFilename,
 )
 
 /** One complete photo the event's union serves: whose it is, when it was captured, and its resources. */

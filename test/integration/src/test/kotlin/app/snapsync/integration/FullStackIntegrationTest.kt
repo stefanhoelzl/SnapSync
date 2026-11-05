@@ -258,7 +258,7 @@ class FullStackIntegrationTest {
     @Test
     @Verifies(
         spec = "receiving-photos",
-        requirement = "Received photos keep full fidelity",
+        requirement = "Received photos arrive in full fidelity",
         scenario = "The sender's filename is kept",
     )
     fun an_imported_foreign_photo_carries_the_capturing_devices_filename() = behaviour {
