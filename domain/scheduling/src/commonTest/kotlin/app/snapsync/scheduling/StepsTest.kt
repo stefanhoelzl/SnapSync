@@ -21,6 +21,7 @@ import kotlinx.coroutines.yield
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -50,6 +51,77 @@ class StepsTest {
             listOf("first", "b"),
             world.log.lines.filter { it.event == "step failed" }.map { it.fields[0].value },
         )
+    }
+
+    /** A sequence answering from [body], for a child of a concurrent step to run. */
+    private class Answering<R>(key: String, val body: suspend () -> R) : Sequence<R>(key) {
+        override suspend fun pass(on: Run): R = body()
+    }
+
+    @Test
+    fun `a concurrent child hands its sequence's pass on while its sibling still runs`() = runTest {
+        val world = World(this)
+        val sibling = CompletableDeferred<Unit>()
+        var answered: Pass<Int> = Pass.Cut
+        var read: Pass<Int>? = null
+        OnSteps(world) {
+            concurrently {
+                child("held") { run(Answering("held") { sibling.await() }) }
+                child("answers") {
+                    answered = run(Answering("answers") { 7 })
+                    read = answered
+                }
+            }
+        }.handle(Unit, CountingCompletion())
+        runCurrent()
+        assertEquals(7, assertIs<Pass.Completed<Int>>(read).result, "it does not wait for its sibling")
+        sibling.complete(Unit)
+        settle()
+    }
+
+    @Test
+    fun `a failing sequence as a concurrent child stops neither its sibling nor the run - and answers nothing`() =
+        runTest {
+            val world = World(this)
+            var failed: Pass<Int> = Pass.Cut
+            var answered: Pass<Int> = Pass.Cut
+            val done = mutableListOf<String>()
+            OnSteps(world) {
+                concurrently {
+                    child("fails") { failed = run(Answering<Int>("fails") { error("the pass failed") }) }
+                    child("answers") { answered = run(Answering("answers") { 7 }) }
+                }
+                done += required { "after" }
+            }.handle(Unit, CountingCompletion())
+            settle()
+            assertEquals(Pass.Cut, failed, "the assignment never happened")
+            assertEquals(7, assertIs<Pass.Completed<Int>>(answered).result)
+            assertEquals(listOf("after"), done)
+            assertEquals(
+                listOf("fails"),
+                world.log.lines.filter { it.event == "step failed" }.map { it.fields[0].value },
+            )
+        }
+
+    @Test
+    fun `expiry cuts a concurrent step - the pass that ended keeps its result for what is ensured`() = runTest {
+        val world = World(this)
+        var answered: Pass<Int> = Pass.Cut
+        var held: Pass<Int> = Pass.Cut
+        var ensured: List<Pass<Int>> = emptyList()
+        OnSteps(world) {
+            ensure("reads both") { ensured = listOf(answered, held) }
+            concurrently {
+                child("answers") { answered = run(Answering("answers") { 7 }) }
+                child("held") { held = run(Answering<Int>("held") { awaitCancellation() }) }
+            }
+            error("the step was cut: nothing after it runs")
+        }.handle(Unit, CountingCompletion())
+        runCurrent()
+        world.backgroundTime.holds.last().expiry.expire()
+        settle()
+        assertEquals(7, assertIs<Pass.Completed<Int>>(ensured[0]).result)
+        assertEquals(Pass.Cut, ensured[1])
     }
 
     @Test

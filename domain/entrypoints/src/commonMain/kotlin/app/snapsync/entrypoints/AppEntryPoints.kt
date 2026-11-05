@@ -490,8 +490,9 @@ class ForegroundWork(
 }
 
 /**
- * What a wake hands on after its own work: the imports, this device's uploads, then the end of the wake — and, however
- * those ended, the re-arm the next wake depends on.
+ * What a wake hands on after its own work: the imports and this device's uploads at the same time, then the end of the
+ * wake once both have ended — and, however those ended, the re-arm the next wake depends on. Neither stops the other:
+ * an import can stall in the library, and uploads never wait behind it.
  */
 class WakeWork(
     private val prelude: Prelude,
@@ -507,8 +508,10 @@ class WakeWork(
         var uploads: Pass<UploadPass> = Pass.Cut
         ensure("re-arm") { rearm(leftOf(uploads), downloads.stagedImports()) }
         ensure("footprint") { footprints.record("after the ${kind.name.lowercase()} wake") }
-        run(importReceived)
-        uploads = run(uploadOwn)
+        concurrently {
+            child("import received") { run(importReceived) }
+            child("upload own") { uploads = run(uploadOwn) }
+        }
         isolated("end of wake") { end.run(kind, on) }
     }
 

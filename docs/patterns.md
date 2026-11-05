@@ -191,6 +191,9 @@ by its key across the process:
   a cancelled pass leaves, the next pass picks up.
 - A pass that ends without a result answers `Pass.Cut`. A reader treats a cut as "work may remain" (the re-arm
   reads it as `PROCESSING`).
+- Sequences that run at the same time are `concurrently` children, each a `run`. A result something `ensure`d needs
+  (the re-arm's upload pass) is assigned by its child, over a value that starts as `Pass.Cut`: a cut step returns
+  nothing, and a child that ended before the cut has still answered.
 
 ---
 

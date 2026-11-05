@@ -2,8 +2,8 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Acts
-import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Expectations
+import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
@@ -186,6 +186,36 @@ class EchoDuringImportIntegrationTest {
             os.foreground()
         }
         then { onlyTheOwnPhotoLeftTheApp() }
+    }
+
+    /**
+     * A wake's two pieces of work run together: its own import, stalled in the library, holds nothing back. The refused
+     * import leaves the photo staged and no pass running, so it is the wake's own pass that imports it, and parks.
+     */
+    @Test
+    @Verifies(spec = "receiving-photos", requirement = "Received photos are never shared back")
+    fun a_wakes_own_import_stalling_does_not_hold_its_uploads_back() = behaviour {
+        given {
+            appUploadsOnly()
+            joinedEvent()
+            downloadStarted(DEV_F, ASSET)
+            step(
+                "its bytes staged, its first import refused",
+                act = {
+                    library.failNextImport()
+                    downloadSession.finish()
+                },
+                until = { settled { true } },
+            )
+        }
+        whenever {
+            library.suspendNextImport()
+            ownPhotoThenWake()
+        }
+        then {
+            event<WorldEvent.LibraryImportParked>()
+            onlyTheOwnPhotoLeftTheApp()
+        }
     }
 
     private companion object {

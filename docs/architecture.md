@@ -1201,7 +1201,9 @@ process can never move a photo twice. The concept lives in the layers:
   `ImportMarkerWrites`), the union read (`EventUnion`, which nets the declared total by this device's own,
   `ManifestRecord`) and the reported position (`ReceivedReporting`). What was received is read by `ReceivedPhotos` —
   and by the upload extension through `ReceivedPhotosReader`, which opens the store read-only and can write nothing.
-  `OwnPhotos` reads it itself (`ReceivedPhotosRead.handles`): no caller passes the echo-suppression set in.
+  `OwnPhotos` reads it itself (`ReceivedPhotosRead.handles`): no caller passes the echo-suppression set in. A read of
+  the member's photos is admitted by what was received **after** that read (`OwnPhotos.discover`): an import stores its
+  handle before its photo can be seen, in any process, so only that order covers an import landing during the read.
 - **application** runs each operation (`application/receiving/`): `PlanReceiving` (and `PlanIfDue`, the hourly
   bound), `StageDownload` (inline, on the delivering thread), `RecordStaged`, `FreeTransfer`, `ImportNextStaged`,
   `ReleaseImported`, `SweepUnclaimedStaging`, `SettleInterruptedImports`, `RecognizeReceivedPhotos` (single-flight;
@@ -1690,10 +1692,11 @@ attestation refresh), then only the work its event is about, and then the **wake
 | upload completion (`OnUploadFinished`; admission `Admit` only) | the terminal write | `TopUp` only, detached | never |
 | download staged in a running process (`OnDownloadStaged`) | record the staging | `ImportReceived` only, detached | never |
 
-**The wake's work** (`WakeWork.full`) runs two single-flight sequences (`Sequence`, `docs/patterns.md`), then the end
-of the wake: `ImportReceived` (import staged downloads — it **yields to a join**, so an import stalled on a
-photo-library transaction never holds a new request back; the stalled import runs on, claimed, `outliving` its pass),
-then `UploadOwn` (`TopUp` — create jobs for the known `DISCOVERED` rows the policy admits now, until the platform
+**The wake's work** (`WakeWork.full`) runs two single-flight sequences (`Sequence`, `docs/patterns.md`) **at the same
+time**, then the end of the wake once both have ended; neither's failure stops the other, and an import stalled in the
+library holds no upload back: `ImportReceived` (import staged downloads — it **yields to a join**, so an import stalled
+on a photo-library transaction never holds a new request back; the stalled import runs on, claimed, `outliving` its
+pass), and `UploadOwn` (`TopUp` — create jobs for the known `DISCOVERED` rows the policy admits now, until the platform
 refuses — then `WalkAndPublish`, the walk → manifest publish, full grant only, then a top-up again when the walk
 recorded rows). Under a partial grant the walk
 is a selection change's own work, and the top-up resolves from the in-memory selection snapshot (withheld while it is
