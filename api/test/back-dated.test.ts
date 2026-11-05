@@ -44,6 +44,7 @@ async function create(db: Awaited<ReturnType<typeof store>>, body: Record<string
 
 // ── POST /events: the open-until date ───────────────────────────────────────────────────────────────
 
+// @Verifies(spec = "event-lifetime", requirement = "An event stays open until the date its host chose", scenario = "No choice keeps the end")
 Deno.test("create → a build that sends no openUntil gets an event open until its end", async () => {
   const db = await store();
   const res = await create(db, { startsAt: STARTS_AT, endsAt: ENDS_AT });
@@ -99,6 +100,7 @@ Deno.test("create → an open-until date before the end, or past the window afte
   db.close();
 });
 
+// @Verifies(spec = "event-lifetime", requirement = "An event stays open until the date its host chose", scenario = "A chosen day is bounded")
 Deno.test("create → an event ahead of now may stay open at most the window after its end", async () => {
   const db = await store();
   const future = { startsAt: STARTS_AT, endsAt: ENDS_AT };

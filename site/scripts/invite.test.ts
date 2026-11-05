@@ -12,6 +12,10 @@ Deno.test("a valid invite decodes to its event and its payload", () => {
   assertEquals(decodeInvite(`#v=3&d=${D}`), { eventId: EVENT, d: D });
 });
 
+// @Verifies(spec = "event-site", requirement = "An invalid or expired link says so", scenario = "A truncated link")
+// The fragment form's part: a cut-off invite decodes to none, which the page shows as invalid.
+// @Verifies(spec = "privacy-security", requirement = "The event's identity goes only to SnapSync's own service", scenario = "An invalid invite is never handed over")
+// The page's part: an invalid link decodes to no invite, so there is none to hand over.
 Deno.test("anything else is no invite", () => {
   for (const hash of [
     "",
@@ -26,6 +30,8 @@ Deno.test("anything else is no invite", () => {
   }
 });
 
+// @Verifies(spec = "privacy-security", requirement = "The event's identity goes only to SnapSync's own service", scenario = "Following the event page's Google Play button")
+// The page's part: Google Play's link carries the invite and nothing else. What Play does with it is the store's.
 Deno.test("the Play link carries exactly v and d, encoded as one query value", () => {
   const invite = decodeInvite(`#v=3&d=${D}&extra=secret`)!;
   const href = playHrefFor(PLAY, invite);
@@ -35,6 +41,8 @@ Deno.test("the Play link carries exactly v and d, encoded as one query value", (
   assertEquals(url.searchParams.get("referrer"), `v=3&d=${D}`); // what Play hands the app, decoded once
 });
 
+// @Verifies(spec = "invite-link", requirement = "The invite handed to Google Play carries its key", scenario = "Following the button from an encrypted event's page")
+// @Verifies(spec = "invite-link", requirement = "The invite handed to Google Play carries its key", scenario = "A page without the key hands over no key")
 Deno.test("an encrypted event's Play link carries its key after v and d", () => {
   const K = "A".repeat(42) + "E";
   const href = playHrefFor(PLAY, inviteFor(EVENT), K);
@@ -54,6 +62,8 @@ Deno.test("a path-form page names its event; any other path names none", () => {
   }
 });
 
+// @Verifies(spec = "event-site", requirement = "An invite link without the app opens the event's page", scenario = "Both forms open the same page")
+// The page's part: both forms read as the one invite of the one event.
 Deno.test(
   "a path-form page builds the same invite, and so the same Play referrer, as the fragment form",
   () => {

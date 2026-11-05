@@ -223,6 +223,7 @@ const GATED: [string, RequestInit][] = [
   [`/api/v2/devices/${D}`, { method: "PUT", body: "{}" }],
 ];
 
+// @Verifies(spec = "privacy-security", requirement = "Only a genuine SnapSync app can change an event", scenario = "A script tries to add a photo")
 Deno.test("gate: EVERY route refuses an unauthenticated request, and touches no storage", async () => {
   for (const [path, init] of GATED) {
     const { calls, app: a } = app();
@@ -334,6 +335,7 @@ Deno.test("gate: /health opens no mutating method", async () => {
   }
 });
 
+// @Verifies(spec = "privacy-security", requirement = "Only a genuine SnapSync app can change an event", scenario = "A browser holding the link")
 Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… stays gated", async () => {
   const { app: a } = app();
   assertEquals((await a.request("/api/v2/events", { method: "POST", body: "{}" })).status, 401);
@@ -799,6 +801,7 @@ async function snapshot(db: Db) {
   };
 }
 
+// @Verifies(spec = "privacy-security", requirement = "Only a genuine SnapSync app can change an event", scenario = "One member's app tries to withdraw another member's photos")
 Deno.test("binding: EVERY route naming a device refuses another device's token 403, writing nothing", async () => {
   const intruder = { authorization: `Bearer ${await mintToken(CONFIG, INTRUDER, NOW)}` };
   for (const [path, init] of DEVICE_ROUTES) {

@@ -8,12 +8,19 @@ const PKG = "app.snapsync";
 const LISTING = "https://play.google.com/store/apps/details?id=app.snapsync";
 const GROUP = "https://groups.google.com/g/snapsync-beta";
 
+// @Verifies(spec = "event-site", requirement = "The page always offers the download and the app", scenario = "No Google Play offer before publication")
+// @Verifies(spec = "web-site", requirement = "A public landing page describes SnapSync", scenario = "No Google Play offer otherwise")
 Deno.test("neither key: no Google Play", () => {
   assertEquals(playOfferFor({ androidPackageName: PKG, playStoreUrl: "", playTestGroupUrl: "" }), {
     kind: "none",
   });
 });
 
+// @Verifies(spec = "event-site", requirement = "The page always offers the download and the app", scenario = "Both stores are offered once SnapSync is on Google Play")
+// The page's part: the offer it renders. Both pages render this one offer.
+// @Verifies(spec = "web-site", requirement = "A public landing page describes SnapSync", scenario = "Both stores are offered once SnapSync is on Google Play")
+// @Verifies(spec = "privacy-security", requirement = "The event's identity goes only to SnapSync's own service", scenario = "The landing page carries no invite")
+// The landing page's badge is the listing itself, with no referrer.
 Deno.test("a public listing: the badge alone", () => {
   assertEquals(
     playOfferFor({ androidPackageName: PKG, playStoreUrl: LISTING, playTestGroupUrl: "" }),
@@ -24,6 +31,8 @@ Deno.test("a public listing: the badge alone", () => {
   );
 });
 
+// @Verifies(spec = "event-site", requirement = "The page always offers the download and the app", scenario = "The tester steps are offered during the closed test")
+// @Verifies(spec = "web-site", requirement = "A public landing page describes SnapSync", scenario = "The tester steps are offered during the closed test")
 Deno.test(
   "a closed test: the steps, with the opt-in page and the listing derived from the package",
   () => {

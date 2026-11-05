@@ -32,6 +32,17 @@ class VerifiesGateTest {
     }
 
     @Test
+    fun `the Deno claim scan is not vacuous`() {
+        val reached = claims.map { it.sourceSet }.toSet()
+        val missing = setOf("api/test", "site/scripts") - reached
+        assertTrue(
+            missing.isEmpty(),
+            "no `// @Verifies(…)` found in $missing — the Deno tests moved, or their claims are written in a shape " +
+                "this gate cannot see. A gate that reads nothing fails open.",
+        )
+    }
+
+    @Test
     fun `every claim names a requirement that exists`() {
         val broken = claims.mapNotNull { claim ->
             problemOf(claim)?.let { "  ${claim.path}:${claim.line} (${claim.target})\n$it" }

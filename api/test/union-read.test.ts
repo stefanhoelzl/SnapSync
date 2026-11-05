@@ -9,6 +9,7 @@
 import { assert, assertEquals } from "@std/assert";
 import type { Db } from "../src/db.ts";
 import { eventBytePath } from "../src/storage.ts";
+import { completeEvent } from "../src/db.ts";
 import {
   as,
   assertPresigned,
@@ -105,6 +106,7 @@ type Asset = { assetId: string; resources: Record<string, unknown>[] };
 
 // ── The download redirect (D1–D2) ─────────────────────────────────────────────────────────────────
 
+// @Verifies(spec = "privacy-security", requirement = "A link to a single photo lasts only as long as the photo is shared", scenario = "A copied photo link while the photo is shared")
 Deno.test("redirect → 302 to a 7-day presign of the stored path, uncached, with no token and no version", async () => {
   const { db } = await eventWith(["A"]);
   const res = await bare(db).request(redirectPath(2, "A"));
@@ -114,6 +116,7 @@ Deno.test("redirect → 302 to a 7-day presign of the stored path, uncached, wit
   db.close();
 });
 
+// @Verifies(spec = "privacy-security", requirement = "A link to a single photo lasts only as long as the photo is shared", scenario = "A copied photo link after the photo is withdrawn")
 Deno.test("redirect → 404 once the asset is withdrawn, for an unknown event, role or device", async () => {
   const { db, publish } = await eventWith(["A", "B"]);
   assertEquals((await bare(db).request(redirectPath(2, "B"))).status, 302);
@@ -127,6 +130,20 @@ Deno.test("redirect → 404 once the asset is withdrawn, for an unknown event, r
   assertEquals((await bare(db).request(redirectPath(2, "A", "primary", D2))).status, 404);
   const other = `/api/v2/events/7a3f9c21-0000-4000-8000-0000000000ff/files/devices/${D}/A/primary`;
   assertEquals((await bare(db).request(other)).status, 404, "unknown event");
+  db.close();
+});
+
+// @Verifies(spec = "privacy-security", requirement = "A link to a single photo lasts only as long as the photo is shared", scenario = "A copied photo link after the event's photos are deleted")
+Deno.test("redirect → 404 once the sweep has completed the event, its row kept", async () => {
+  const { db } = await eventWith(["A"]);
+  assertEquals((await bare(db).request(redirectPath(2, "A"))).status, 302);
+  await completeEvent(db, E, new Date(NOW).toISOString());
+  assertEquals(
+    (await rows(db, `SELECT id FROM events WHERE id = ?`, [E])).length,
+    1,
+    "the row is kept",
+  );
+  assertEquals((await bare(db).request(redirectPath(2, "A"))).status, 404);
   db.close();
 });
 

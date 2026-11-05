@@ -23,8 +23,11 @@ class AcceptedUnclaimedTest {
             val spec = specs[entry.spec] ?: return@mapNotNull "  ${entry.spec}: no openspec/specs/${entry.spec}/spec.md"
             val requirement = spec.requirement(entry.requirement)
                 ?: return@mapNotNull "  ${entry.spec}: no requirement \"${entry.requirement}\""
-            if (entry.scenario in requirement.scenarios) null
-            else "  ${entry.spec} / \"${entry.requirement}\": no scenario \"${entry.scenario}\""
+            if (entry.scenario in requirement.scenarios) {
+                null
+            } else {
+                "  ${entry.spec} / \"${entry.requirement}\": no scenario \"${entry.scenario}\""
+            }
         }
         if (broken.isNotEmpty()) {
             fail(

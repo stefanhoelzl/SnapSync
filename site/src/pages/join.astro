@@ -190,7 +190,7 @@ import PlayOffer from "../components/PlayOffer.astro";
 <script>
   import { zipSync } from "fflate";
   import { decodeInvite, eventIdFromPath, inviteFor, playHrefFor } from "../lib/invite";
-  import { zipEntries, type ZipEntry } from "../lib/zip-names";
+  import { zipEntries, zipFileName, type ZipEntry } from "../lib/zip-names";
   import { encryptionOf, lapsed, relinked } from "../lib/photo-links";
   import {
     decryptFile,
@@ -338,7 +338,7 @@ import PlayOffer from "../components/PlayOffer.astro";
           const url = URL.createObjectURL(new Blob([zip as BlobPart], { type: "application/zip" }));
           const a = document.createElement("a");
           a.href = url;
-          a.download = (name || "snapsync").replace(/[^\w.-]+/g, "-") + ".zip";
+          a.download = zipFileName(name);
           document.body.appendChild(a);
           a.click();
           a.remove();

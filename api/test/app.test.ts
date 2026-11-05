@@ -419,3 +419,14 @@ Deno.test("sweepVerdict → deadline drops; finished, emptiness or the clock com
   assertEquals(sweepVerdict(ROW, joined, ENDS + 30 * DAY + 1), "drop");
   assertEquals(sweepVerdict({ ...ROW, createdAt: "x", openUntil: "y" }, joined, ENDS), "drop");
 });
+
+// @Verifies(spec = "event-lifetime", requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest", scenario = "The latest day")
+Deno.test("sweepVerdict → photos and joins right up to the deadline do not keep the event past it", () => {
+  // Busy to the last: a landing and a join an hour before the deadline, members still sharing.
+  const deadline = ENDS + 30 * DAY;
+  const late = new Date(deadline - 60 * 60 * 1000).toISOString();
+  const busy = { ...ROW, lastLandedAt: late };
+  const counts = { total: 5, active: 4, finished: false, lastJoinedAt: late };
+  assertEquals(sweepVerdict(busy, counts, deadline - 1), "keep");
+  assertEquals(sweepVerdict(busy, counts, deadline + 1), "drop");
+});

@@ -614,3 +614,114 @@ Deno.test("GET /events/:id → a sent token is checked: a valid one is served, a
   assertEquals((await read({})).status, 200, "a build that sends none is still served");
   db.close();
 });
+
+// ── What a change cannot do, and what the member count says ────────────────────────────────────────
+
+const LATER = "2026-08-20T18:00:00Z"; // inside the window after the end, so only the rule refuses it
+
+/** GET the event's public fields. */
+async function details(app: ReturnType<typeof v2>): Promise<Record<string, unknown>> {
+  return await (await app.request(`/api/v2/events/${E}`)).json() as Record<string, unknown>;
+}
+
+/** PATCH the event with [change]; whatever it answers, the range and the deadline must not move. */
+async function assertChangeMovesNothing(change: Record<string, unknown>) {
+  const db = await storeWithEvent();
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const before = await details(app);
+  const res = await app.request(`/api/v2/events/${E}`, {
+    method: "PATCH",
+    body: JSON.stringify(change),
+  });
+  assert(res.status < 500, `${res.status}`);
+  await res.body?.cancel();
+  const after = await details(app);
+  for (const field of ["startsAt", "endsAt", "openUntil", "deletesAt"]) {
+    assertEquals(after[field], before[field], field);
+  }
+  db.close();
+}
+
+// @Verifies(spec = "event-lifetime", requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest", scenario = "A rename does not extend the lifetime")
+Deno.test("PATCH /events/:id → a rename leaves the open-until date and the delete-by date where they were", async () => {
+  await assertChangeMovesNothing({ name: "Renamed" });
+});
+
+// @Verifies(spec = "event-lifetime", requirement = "Only the name changes after creation, until the photos are deleted", scenario = "Widening the range is impossible")
+Deno.test("PATCH /events/:id → a change that tries to move the range moves nothing", async () => {
+  await assertChangeMovesNothing({ startsAt: "2026-06-01T00:00:00Z", endsAt: LATER });
+  await assertChangeMovesNothing({
+    name: "Renamed",
+    startsAt: "2026-06-01T00:00:00Z",
+    endsAt: LATER,
+  });
+});
+
+// @Verifies(spec = "event-lifetime", requirement = "Only the name changes after creation, until the photos are deleted", scenario = "The open-until date cannot be extended")
+Deno.test("PATCH /events/:id → a change that tries to move the open-until date later moves nothing", async () => {
+  await assertChangeMovesNothing({ openUntil: LATER });
+  await assertChangeMovesNothing({ name: "Renamed", openUntil: LATER });
+});
+
+// @Verifies(spec = "join-event", requirement = "The join screen shows how many members the event has", scenario = "Members are shown before joining")
+// The api's part: the count it serves. The join screen shows it as it comes.
+Deno.test("GET /events/:id → four devices joined and one left: three members", async () => {
+  const db = await storeWithEvent();
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const devices = [
+    D,
+    D2,
+    "33333333-0000-4000-8000-000000000004",
+    "44444444-0000-4000-8000-000000000005",
+  ];
+  for (const d of devices) {
+    await enrolDevice(db, d);
+    const res = await app.request(`/api/v2/events/${E}/devices/${d}`, {
+      method: "PUT",
+      headers: await as(d),
+    });
+    assertEquals(res.status, 200, d);
+  }
+  const left = await app.request(`/api/v2/events/${E}/devices/${D2}`, {
+    method: "DELETE",
+    headers: await as(D2),
+  });
+  assertEquals(left.status, 200);
+  assertEquals((await details(app)).members, { active: 3, final: 0, waiting: 3 });
+  db.close();
+});
+
+// @Verifies(spec = "join-event", requirement = "The join screen shows how many members the event has", scenario = "The host's own join screen")
+// The api's part: a just-created event counts no member. The join screen shows it as it comes.
+Deno.test("POST /events → the new event counts no member until someone joins", async () => {
+  const db = await store();
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const created = await app.request("/api/v2/events", {
+    method: "POST",
+    body: JSON.stringify({ name: "Party", startsAt: STARTS_AT }),
+  });
+  assertEquals(created.status, 201);
+  const { eventId } = await created.json() as { eventId: string };
+  const read = await (await app.request(`/api/v2/events/${eventId}`)).json() as Record<
+    string,
+    unknown
+  >;
+  assertEquals((read.members as { active: number }).active, 0);
+  db.close();
+});
+
+// @Verifies(spec = "invite-link", requirement = "The invite link is the key to an event", scenario = "Without the link there is no way in")
+// The api's part: no route lists or finds events without an id, and a guessed id finds nothing. The storage zone
+// refusing listings is bunny's configuration.
+Deno.test("no route lists events, and an id nobody was given finds no event", async () => {
+  const db = await storeWithEvent();
+  const app = v2({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  for (const path of ["/api/v2/events", "/web/events", "/web/events/", "/join/"]) {
+    const text = await (await app.request(path)).text();
+    assert(!text.includes(E) && !text.includes("Party"), `${path} names an event`);
+  }
+  const guessed = "7a3f9c21-0000-4000-8000-0000000000ff";
+  assertEquals((await app.request(`/api/v2/events/${guessed}`)).status, 404);
+  assertEquals((await app.request(`/web/events/${guessed}/photos`)).status, 404);
+  db.close();
+});

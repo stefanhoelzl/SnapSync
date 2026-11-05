@@ -48,6 +48,9 @@ function reporting(build: (app: Hono) => void) {
   return { app, lines };
 }
 
+// @Verifies(spec = "privacy-security", requirement = "A web visitor leaves no trace in the event", scenario = "The service fails while serving a visitor")
+// The report carries the request without the visitor's address (withoutAddress below).
+// @Verifies(spec = "privacy-security", requirement = "The service reports its own failures to the operator", scenario = "The service fails while a member's app uploads a photo")
 Deno.test("report → a throw reaches the tracker with its tags and the request; the line carries only its id", async () => {
   sent.length = 0;
   const { app, lines } = reporting((a) =>
@@ -124,6 +127,7 @@ Deno.test("report → concurrent requests each carry only their own outbound cal
   }
 });
 
+// @Verifies(spec = "privacy-security", requirement = "The service reports its own failures to the operator", scenario = "The requester's address is never sent")
 Deno.test("withoutAddress → strips every address-bearing header and the user's address", () => {
   const event = withoutAddress<Sentry.Event>({
     user: { id: "u", ip_address: "203.0.113.7" },

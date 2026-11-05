@@ -49,6 +49,8 @@ Deno.test("a live video is matched by its role, not by its photo", () => {
   );
 });
 
+// @Verifies(spec = "privacy-security", requirement = "A link to a single photo lasts only as long as the photo is shared", scenario = "A photo withdrawn while the event page is open")
+// The page's part: a withdrawn file fails the download.
 Deno.test("a file withdrawn meanwhile fails the download rather than vanishing from it", () => {
   const entries = [entry("A", "primary", "old/A"), entry("B", "primary", "old/B")];
   assertEquals(relinked(entries, 0, [entry("A", "primary", "new/A")]), null);

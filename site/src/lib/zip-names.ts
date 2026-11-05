@@ -74,3 +74,8 @@ export function zipEntries(union: UnionAsset[]): { entries: ZipEntry[]; photos: 
 function taken(used: Set<string>, stem: string, ext: string, liveExt: string | null): boolean {
   return used.has(stem + ext) || (liveExt !== null && used.has(stem + liveExt));
 }
+
+/** The zip's own file name: the event's name, made safe for a file system, or "snapsync" when it has none. */
+export function zipFileName(eventName: string | null | undefined): string {
+  return (eventName || "snapsync").replace(/[^\w.-]+/g, "-") + ".zip";
+}
