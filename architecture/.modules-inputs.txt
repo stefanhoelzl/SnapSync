@@ -46,6 +46,7 @@ module :test:levers
 module :test:no-grant
 module :test:partial-grant
 module :test:rig
+module :test:verifies
 module :tools:detekt-rules
 module :tools:diagrams
 module :ui:components
@@ -272,6 +273,7 @@ edge :test:architecture :domain:services
 edge :test:architecture :domain:wire
 edge :test:architecture :test:contracts
 edge :test:architecture :test:levers
+edge :test:architecture :test:verifies
 edge :test:architecture :ui:state
 edge :test:cli :test:client
 edge :test:cli :test:levers
@@ -295,6 +297,7 @@ edge :test:control :domain:presentation
 edge :test:control :test:client
 edge :test:control :test:levers
 edge :test:control :test:rig
+edge :test:control :test:verifies
 edge :test:control :ui:state
 edge :test:data :adapter:generic:mock
 edge :test:data :domain:application
@@ -378,6 +381,7 @@ edge :test:rig :test:launch-adapters
 edge :test:rig :test:levers
 edge :test:rig :ui:state
 edge :ui:components :adapter:generic:app
+edge :ui:components :test:verifies
 edge :ui:components :ui:state
 edge :ui:screens :adapter:generic:app
 edge :ui:screens :domain:domain
@@ -386,5 +390,6 @@ edge :ui:screens :domain:format
 edge :ui:screens :domain:model
 edge :ui:screens :domain:presentation
 edge :ui:screens :domain:query
+edge :ui:screens :test:verifies
 edge :ui:screens :ui:components
 edge :ui:screens :ui:state

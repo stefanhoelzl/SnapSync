@@ -39,6 +39,7 @@ flowchart LR
     test_contracts[":test:contracts"]
     test_edge[":test:edge"]
     test_levers[":test:levers"]
+    test_verifies[":test:verifies"]
   end
   subgraph ui
     ui_components[":ui:components"]
@@ -193,6 +194,7 @@ flowchart LR
   domain_services --> domain_ports
   domain_services --> domain_wire
   ui_components --> adapter_generic_app
+  ui_components --> test_verifies
   ui_components --> ui_state
   ui_screens --> adapter_generic_app
   ui_screens --> domain_domain
@@ -201,6 +203,7 @@ flowchart LR
   ui_screens --> domain_model
   ui_screens --> domain_presentation
   ui_screens --> domain_query
+  ui_screens --> test_verifies
   ui_screens --> ui_components
   ui_screens --> ui_state
 ```

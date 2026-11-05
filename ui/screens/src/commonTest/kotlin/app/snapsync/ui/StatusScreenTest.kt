@@ -42,6 +42,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import app.snapsync.control.Verifies
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.cannot_verify_detail
 import app.snapsync.ui.components.resources.cannot_verify_title
@@ -476,6 +477,11 @@ class StatusScreenTest {
      * property itself, not a proxy for it. The control below is what makes it mean anything.
      */
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Controls are accessible and honour reduced motion",
+        scenario = "Reduce motion",
+    )
     fun `reduce motion leaves the pulsing arrow un-animated`() = runComposeUiTest {
         mainClock.autoAdvance = false
         setContent {
@@ -512,6 +518,11 @@ class StatusScreenTest {
 
     /** Reduce motion changes no meaning: the label still distinguishes in-flight from merely pending. */
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Controls are accessible and honour reduced motion",
+        scenario = "Reduce motion",
+    )
     fun `reduce motion keeps the ongoing-vs-pending distinction`() = runComposeUiTest {
         setContent {
             CompositionLocalProvider(

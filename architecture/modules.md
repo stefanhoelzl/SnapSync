@@ -54,6 +54,7 @@ flowchart LR
   test_no_grant[":test:no-grant"]
   test_partial_grant[":test:partial-grant"]
   test_rig[":test:rig"]
+  test_verifies[":test:verifies"]
   tools_detekt_rules[":tools:detekt-rules"]
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
@@ -280,6 +281,7 @@ flowchart LR
   test_architecture --> domain_wire
   test_architecture --> test_contracts
   test_architecture --> test_levers
+  test_architecture --> test_verifies
   test_architecture --> ui_state
   test_cli --> test_client
   test_cli --> test_levers
@@ -303,6 +305,7 @@ flowchart LR
   test_control --> test_client
   test_control --> test_levers
   test_control --> test_rig
+  test_control --> test_verifies
   test_control --> ui_state
   test_data --> adapter_generic_mock
   test_data --> domain_application
@@ -386,6 +389,7 @@ flowchart LR
   test_rig --> test_levers
   test_rig --> ui_state
   ui_components --> adapter_generic_app
+  ui_components --> test_verifies
   ui_components --> ui_state
   ui_screens --> adapter_generic_app
   ui_screens --> domain_domain
@@ -394,6 +398,7 @@ flowchart LR
   ui_screens --> domain_model
   ui_screens --> domain_presentation
   ui_screens --> domain_query
+  ui_screens --> test_verifies
   ui_screens --> ui_components
   ui_screens --> ui_state
 ```

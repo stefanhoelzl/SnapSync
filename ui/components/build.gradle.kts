@@ -49,6 +49,8 @@ kotlin {
             implementation(project(":adapter:generic:app"))
             implementation(libs.compose.ui.test.junit4)
             implementation(compose.desktop.currentOs)
+            // `@Verifies`: a requirement only a drawn component shows is claimed by the test that draws it.
+            implementation(project(":test:verifies"))
         }
     }
 }

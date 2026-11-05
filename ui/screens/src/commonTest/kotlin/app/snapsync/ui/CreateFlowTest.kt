@@ -14,13 +14,16 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -28,6 +31,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import app.snapsync.control.Verifies
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -47,6 +51,7 @@ import app.snapsync.ui.components.resources.calendar_next_month
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.network_offline
 import app.snapsync.ui.components.resources.range_end_pick_time
+import app.snapsync.ui.components.resources.range_ends
 import app.snapsync.ui.components.resources.status_in_sync
 import app.snapsync.ui.components.resources.status_sync_pending
 import app.snapsync.ui.components.resources.wheel_end_hour
@@ -277,7 +282,16 @@ class CreateFlowTest {
         onNodeWithText(str(ComponentRes.string.range_end_pick_time, "9 Jul 2026")).assertExists()
     }
 
+    // The next missing step leads to where it is done. These prove where each tap leads — the field focused, the
+    // keyboard asked for, the wheels scrolled into view, a set end no longer a button. The Until wheels' brief outline
+    // is drawn as an alpha with no semantics, so no test here sees it; its timing is the picker's own.
+
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The next missing step leads to where it is done",
+        scenario = "Tapping the missing-step line for the name starts typing it",
+    )
     fun `tapping the missing name puts the cursor in the name field`() = createTest { _ ->
         onNodeWithText(str(Res.string.create_step_name)).assertHasClickAction().performClick()
         waitForIdle()
@@ -285,6 +299,11 @@ class CreateFlowTest {
     }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The next missing step leads to where it is done",
+        scenario = "Tapping the missing-step line for the name starts typing it",
+    )
     fun `tapping the missing name also raises the keyboard`() {
         val keyboard = CountingKeyboard()
         createTest(keyboard = keyboard) { _ ->
@@ -303,6 +322,11 @@ class CreateFlowTest {
         }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The next missing step leads to where it is done",
+        scenario = "Tapping the missing-step line for the end time shows where to set it",
+    )
     fun `tapping the missing end time brings the end wheels into view without setting a time`() =
         // A phone-sized viewport, so the wheels start below the fold as they do on a Samsung A-series.
         createTest(phoneSized = true) { rig ->
@@ -317,6 +341,37 @@ class CreateFlowTest {
             onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).assertExists()
             onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
         }
+
+    @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The next missing step leads to where it is done",
+        scenario = "Tapping the unset end time shows where to set it",
+    )
+    fun `tapping the range's unset end brings the end wheels into view without setting a time`() =
+        createTest(phoneSized = true) { rig ->
+            typeName(rig, "My Party")
+            onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true)
+                .assertIsNotDisplayed()
+
+            onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).performClick()
+            waitForIdle()
+            onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true)
+                .assertIsDisplayed()
+            onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).assertExists()
+        }
+
+    @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The next missing step leads to where it is done",
+        scenario = "A set end time is not a tap target",
+    )
+    fun `once the end time is set the range's end is not a button`() = createTest { rig ->
+        onAllNodes(hasText(str(ComponentRes.string.range_ends)) and hasClickAction()).assertCountEquals(1)
+        completeForm(rig, "My Party")
+        onAllNodes(hasText(str(ComponentRes.string.range_ends)) and hasClickAction()).assertCountEquals(0)
+    }
 
     @Test
     fun `once the end time is set the line above Create is not a button`() = createTest { rig ->

@@ -30,6 +30,8 @@ dependencies {
     // The client (`RigClient`, `:test:client`) and the typed services it calls instead of a string verb.
     api(project(":test:client"))
     api(project(":test:levers"))
+    // `@Verifies`, which every test driving the protocol carries: its own module so a Compose test can carry it too.
+    api(project(":test:verifies"))
     // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
     api(project(":domain:model"))
     // A person's choices name the domain's values (`Choices.direction`).

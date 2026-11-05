@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import app.snapsync.control.Verifies
 import org.junit.Rule
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,7 +48,14 @@ class AppTextPromptSheetTest {
         assertEquals(1, dismissed)
     }
 
+    // "Text entry sheets stay usable while typing": these prove the confirm and dismissal rules. Whether the keyboard
+    // covers the actions is the device's layout, which no JVM scene has a keyboard to show.
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Text entry sheets stay usable while typing",
+        scenario = "A running sheet cannot be dismissed",
+    )
     fun `while busy neither Cancel nor a swipe down closes the sheet or moves it off the screen`() {
         setSheet(busy = true)
         rule.onNodeWithText(CANCEL).performClick()
@@ -58,6 +66,11 @@ class AppTextPromptSheetTest {
     }
 
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Text entry sheets stay usable while typing",
+        scenario = "A running sheet cannot be dismissed",
+    )
     fun `while busy a tap outside the sheet leaves it open and on the screen`() {
         setSheet(busy = true)
         tapOutside()
@@ -84,6 +97,17 @@ class AppTextPromptSheetTest {
     @Test
     fun `while busy Save is unavailable even with a text worth sending`() {
         setSheet(busy = true, submitUnchanged = true)
+        rule.onNodeWithText("Save").assertIsNotEnabled()
+    }
+
+    @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Text entry sheets stay usable while typing",
+        scenario = "Unchanged text cannot be submitted",
+    )
+    fun `a text left as it opened cannot be saved`() {
+        setSheet(busy = false)
         rule.onNodeWithText("Save").assertIsNotEnabled()
     }
 
