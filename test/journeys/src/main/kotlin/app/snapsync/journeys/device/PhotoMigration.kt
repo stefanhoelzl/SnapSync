@@ -1,6 +1,7 @@
 package app.snapsync.journeys.device
 
 import java.io.File
+import java.time.Instant
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -29,6 +30,12 @@ import kotlin.time.TimeSource
  *
  * A device CI restored already settled upgrades no library — its system library is current — yet may still submit a
  * task; with no upgraded library to name the system one, every submitted task is awaited.
+ *
+ * Fed THIS boot's lines only ([pastLogArguments]): a settled device's stored log still holds its settle boot's, and on
+ * a loaded runner it can hold that boot's stat line and submission WITHOUT the completion its settle saw live (run
+ * 40903027270: the settle's stream saw `… complete` at 15:52:36, the stored log ends at 15:52:10). Read back, they
+ * name a pending migration this boot never runs, and every run within the hour waited out its bound and failed (that
+ * run, and 40907393492 attempt 1 on the cache it saved).
  */
 class PhotoMigrations {
     /** The ids of libraries whose schema was upgraded, in order — the system library's, alone. */
@@ -97,12 +104,18 @@ class PhotoMigrations {
 
 /**
  * Waits for simulator [udid]'s photo library to settle its background migration, on `assetsd`'s own events: it follows
- * `log stream` (attached first) and reads `log show` (the past), so no event falls between the two and nothing is
- * polled. Every line read goes to [log]. FAILS rather than guesses — two upgraded libraries it cannot tell apart, a
- * stream that ends, or no completion within [bound] (a broken platform, not a slow one: the longest measured migration
- * took 184 s).
+ * `log stream` (attached first) and reads `log show` (the past since [bootedAt], a host time taken just before this
+ * boot's `simctl boot`), so no event falls between the two and nothing is polled. Every line read goes to [log]. FAILS
+ * rather than guesses — two upgraded libraries it cannot tell apart, a stream that ends, or no completion within
+ * [bound] (a broken platform, not a slow one: the longest measured migration took 184 s).
  */
-fun awaitPhotoMigration(shell: Shell, udid: String, log: File, bound: Duration): PhotoMigrations.Verdict {
+fun awaitPhotoMigration(
+    shell: Shell,
+    udid: String,
+    log: File,
+    bound: Duration,
+    bootedAt: Instant,
+): PhotoMigrations.Verdict {
     val started = TimeSource.Monotonic.markNow()
     val logCommand = listOf("xcrun", "simctl", "spawn", udid, "log")
     val stream = ProcessBuilder(
@@ -133,10 +146,7 @@ fun awaitPhotoMigration(shell: Shell, udid: String, log: File, bound: Duration):
             )
             is Line.Read -> log.appendText("${header.text}\n")
         }
-        val past = shell.ok(
-            logCommand + listOf("show", "--style", "compact", "--last", "1h", "--predicate", PhotoMigrations.PREDICATE),
-            bound,
-        )
+        val past = shell.ok(logCommand + pastLogArguments(bootedAt), bound)
         past.lines().filter { it.isNotBlank() }.forEach(::take)
         var verdict = state.verdict()
         while (verdict.state == PhotoMigrations.State.WAITING) {
@@ -151,6 +161,24 @@ fun awaitPhotoMigration(shell: Shell, udid: String, log: File, bound: Duration):
         stream.destroyForcibly()
     }
 }
+
+/**
+ * `log show`'s arguments for the past of the boot that began after [bootedAt]: `--start @<epoch>`, never a fixed
+ * `--last`, which reaches into the boot before (see [PhotoMigrations]). Not `--last boot` either: inside a simulator it
+ * returned the previous boot's lines after a reboot (measured on macos-26, 2026-11-05), while `--start @<epoch>` taken
+ * before `simctl boot` returned none of them. The simulator runs on the host's clock, and an epoch has no time zone.
+ * Truncated to the second, so the window opens at most a second early — before the boot, so nothing of it is missed.
+ */
+internal fun pastLogArguments(bootedAt: Instant): List<String> =
+    listOf(
+        "show",
+        "--style",
+        "compact",
+        "--start",
+        "@${bootedAt.epochSecond}",
+        "--predicate",
+        PhotoMigrations.PREDICATE,
+    )
 
 private sealed interface Line {
     data class Read(val text: String) : Line

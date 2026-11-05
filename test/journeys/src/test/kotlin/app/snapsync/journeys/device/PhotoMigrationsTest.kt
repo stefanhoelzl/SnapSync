@@ -1,8 +1,10 @@
 package app.snapsync.journeys.device
 
 import app.snapsync.journeys.device.PhotoMigrations.State
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 /** `assetsd`'s own log lines, verbatim from run 37004211450 (`log … --style compact`), trimmed only where they ran on. */
 class PhotoMigrationsTest {
@@ -59,6 +61,18 @@ class PhotoMigrationsTest {
     fun a_repeated_stat_line_is_one_library() {
         // The upgrade logs its stat line once per schema stage: five times in the measured run.
         assertEquals(State.WAITING, after(STAT, STAT, STAT, SUBMIT_SYSTEM))
+    }
+
+    @Test
+    fun the_past_is_read_from_this_boot_on_never_a_fixed_window() {
+        // A settled device's stored log holds its settle boot's stat line and submission without the completion its
+        // settle saw live (run 40903027270): read back, they are a migration this boot never runs, awaited to failure.
+        assertEquals(State.WAITING, after(STAT, SUBMIT_SYSTEM))
+        val args = pastLogArguments(Instant.parse("2026-10-29T16:24:31.750Z"))
+        val start = args.indexOf("--start")
+        assertEquals(listOf("--start", "@1793291071"), args.subList(start, start + 2))
+        assertFalse("--last" in args, "a fixed window reaches into the boot before: $args")
+        assertEquals(PhotoMigrations.PREDICATE, args[args.indexOf("--predicate") + 1])
     }
 
     private fun after(vararg lines: String): State = PhotoMigrations().apply { lines.forEach(::feed) }.verdict().state
