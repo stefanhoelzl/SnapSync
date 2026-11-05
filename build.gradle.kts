@@ -125,8 +125,9 @@ coverage {
         // → 90 with the update test (`AppUpdateIntegrationTest`), and 91 since; → 92 in phase 31, once the polling
         // tests waited on outcome events instead. → 90 in phase 4.3 (encryption), when the Files port's answers moved
         // in from model: the ways a file operation fails — a denied or failed one's facts — are the adapters' and their
-        // contracts' (`FilesContract`) to reach, never a member's day.
-        integration(instructions = 90, branches = 85) // no branches: any branch target is met
+        // contracts' (`FilesContract`) to reach, never a member's day. → 91 in phase 38 (missing levers and world
+        // events). Measured 91.38 %, two runs.
+        integration(instructions = 91, branches = 85) // no branches: any branch target is met
     }
     ":domain:services" {
         // Beside the JVM adapters runs the encrypted file format's cipher, held to Tink's reference implementation.
@@ -142,7 +143,8 @@ coverage {
         // Branches → 65 in phase 19 (claim: event-album).
         // Instructions → 85 in phase 4.5 (receiving): the download store, its jobs, the staging and the importer the
         // suite covered moved to the data layer. Measured 85.15 %.
-        integration(instructions = 85, branches = 65)
+        // → 90/71 in phase 38 (missing levers and world events). Measured 90.89 / 71.22 %, two runs.
+        integration(instructions = 90, branches = 71)
     }
     ":domain:wire" {
         skipped(
@@ -196,7 +198,8 @@ coverage {
         // download opening moved in: a seal withheld for a device that cannot name itself, an opening counted and
         // reported, a membership that cannot be read are their unit suites' (`UploadSealingTest`,
         // `DownloadOpeningTest`).
-        integration(instructions = 84, branches = 62)
+        // → 86/64 in phase 38 (missing levers and world events). Measured 86.51 / 64.88 %, two runs.
+        integration(instructions = 86, branches = 64)
     }
     ":domain:application" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -210,7 +213,8 @@ coverage {
         // → 86/65 in phase 4.4b (uploads): the upload use cases arrived, and their rare answers — a row another
         // uploader took or a walk withdrew since the plan, a listing this build cannot read — are their unit suite's
         // (`UploadUseCasesTest`, zero gate), not the integration surface's.
-        integration(instructions = 86, branches = 65)
+        // → 88/75 in phase 38 (missing levers and world events). Measured 88.14 / 75.00 %, two runs.
+        integration(instructions = 88, branches = 75)
     }
     ":domain:query" {
         unit(alsoCoveredBy = listOf(":test:data"))
@@ -230,7 +234,8 @@ coverage {
         // → 84/66 in phase 4.4a (selection), when the asset id's encoding moved in from services (`AssetIdText`): the
         // characters a platform id may hold beyond letters, digits, `-` and `/` — and their decoding — are the unit
         // suite's (`AssetIdTextTest`); no integration world's photo carries one. Measured 84.36 / 66.23 %.
-        integration(instructions = 84, branches = 66)
+        // → 85 in phase 38 (missing levers and world events). Measured 85.16 / 66.87 %, two runs.
+        integration(instructions = 85, branches = 66)
     }
     ":domain:domain" {
         unit()
@@ -241,14 +246,16 @@ coverage {
         // another event, a restore while nothing is joined — are their unit suite's (`EventKeyTest`). → 86/71 with the
         // seal's and the opening's verdicts: a device that cannot name itself, a locked phone, a download fetched for
         // an event a switch left behind and the fourth failure in a row are their unit suite's (`SealVerdictsTest`).
-        integration(instructions = 89, branches = 75)
+        // → 92/77 in phase 38 (missing levers and world events). Measured 92.31 / 77.35 %, two runs.
+        integration(instructions = 92, branches = 77)
     }
     // Measured once the polling tests were gone (3g-b): steady at 99/100 over five runs — the goal.
     // Branches back at the goal in phase 4.5 (receiving): the suite now reaches both of `Log.emit`'s branches (a line
     // written under a trigger and one written outside). Measured 100.00 %.
+    // Instructions → 99 in phase 38 (missing levers and world events). Measured 99.25 %, two runs.
     ":domain:inbound" {
         unit()
-        integration(instructions = 95)
+        integration(instructions = 99)
     }
     // Measured once the polling tests were gone and a behaviour ended quiet (3g-b), steady at 95.7/77.4 over five runs;
     // before that, a teardown cut whatever pass a test left running, and `SingleFlight`'s withdrawals moved between
