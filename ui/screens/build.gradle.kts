@@ -53,6 +53,8 @@ kotlin {
             implementation(project(":domain:domain"))
             implementation(project(":domain:format"))
             implementation(libs.orbit.core)
+            // `@Verifies`: a requirement only a drawn screen shows is claimed here, by the test that draws it.
+            implementation(project(":test:verifies"))
         }
         jvmTest.dependencies {
             // The JVM's real date formatting (`JvmDateFormatting`), the one the screen tests render through: a date

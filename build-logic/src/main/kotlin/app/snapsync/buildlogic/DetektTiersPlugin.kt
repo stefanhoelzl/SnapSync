@@ -262,6 +262,7 @@ class DetektTiersPlugin : Plugin<Project> {
             ":test:edge" to "harness",
             ":test:client" to "harness",
             ":test:control" to "harness",
+            ":test:verifies" to "harness",
             ":test:cli" to "harness",
             ":test:journeys" to "harness",
             ":test:levers" to "harness",

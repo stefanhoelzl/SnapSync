@@ -56,6 +56,9 @@ dependencies {
     testImplementation(project(":domain:wire"))
     // The screen's vocabulary: the name cap the event-name gate pins, and the types `AppPorts` binds `Ui` to.
     testImplementation(project(":ui:state"))
+    // `@Verifies`: a requirement held by the platform shells' declarations (the orientation lock, the launch window's
+    // colour) is claimed by the guard that reads them.
+    testImplementation(project(":test:verifies"))
     testImplementation(project(":domain:feature"))
     // The transitions read the membership and the grant through their services, built over the ports' mocks.
     testImplementation(project(":domain:ports"))

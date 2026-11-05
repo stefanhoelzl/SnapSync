@@ -21,6 +21,7 @@ import androidx.compose.ui.test.onParent
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
+import app.snapsync.control.Verifies
 import app.snapsync.ui.components.resources.Res
 import app.snapsync.ui.components.resources.range_end_pick_time
 import app.snapsync.ui.components.resources.wheel_end_hour
@@ -156,6 +157,11 @@ class AppEventRangePickerTest {
     }
 
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Controls are accessible and honour reduced motion",
+        scenario = "A dimmed choice",
+    )
     fun `days past the last pickable one are disabled`() {
         setPicker(FRESH)
         rule.onNodeWithContentDescription("Friday, 20 March 2026").assertIsEnabled() // exactly the limit

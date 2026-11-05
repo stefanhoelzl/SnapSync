@@ -27,6 +27,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import app.snapsync.control.Verifies
 import org.junit.Rule
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -44,6 +45,7 @@ class AppToggleSectionTest {
     val rule = createComposeRule()
 
     @Test
+    @Verifies(spec = "app-experience", requirement = "Controls are accessible and honour reduced motion")
     fun `the header is a single switch node reflecting the checked state`() {
         var checked by mutableStateOf(true)
         rule.setContent {
