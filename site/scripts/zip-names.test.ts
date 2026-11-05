@@ -1,7 +1,7 @@
 // The /join island's zip naming (src/lib/zip-names.ts), capability `event-site`. Deno:
 // `deno test --allow-read scripts/zip-names.test.ts` (npm run check:unit).
 import { assertEquals } from "jsr:@std/assert@^1";
-import { type UnionAsset, zipEntries } from "../src/lib/zip-names.ts";
+import { type UnionAsset, zipEntries, zipFileName } from "../src/lib/zip-names.ts";
 
 const photo = (name: string): UnionAsset => ({
   resources: [{ role: "primary", url: "u/" + name, filename: name }],
@@ -17,6 +17,7 @@ const names = (union: UnionAsset[]) => zipEntries(union).entries.map((e) => e.na
 const fetched = (entries: { url: string; name: string }[]) =>
   entries.map(({ url, name }) => ({ url, name }));
 
+// @Verifies(spec = "event-site", requirement = "The zip holds every photo the members have shared", scenario = "A Live Photo")
 Deno.test("a Live Photo is its still and its video under one stem", () => {
   const { entries, photos } = zipEntries([live("IMG_4471.HEIC", "IMG_4471.MOV")]);
   assertEquals(fetched(entries), [
@@ -30,6 +31,7 @@ Deno.test("the video takes the still's stem even when its own name differs", () 
   assertEquals(names([live("IMG_1.HEIC", "FullSizeRender.mov")]), ["IMG_1.HEIC", "IMG_1.mov"]);
 });
 
+// @Verifies(spec = "event-site", requirement = "The zip holds every photo the members have shared", scenario = "Two Live Photos with the same name")
 Deno.test("two same-named Live Photos are renamed as pairs", () => {
   assertEquals(names([live("IMG_1.HEIC", "IMG_1.MOV"), live("IMG_1.HEIC", "IMG_1.MOV")]), [
     "IMG_1.HEIC",
@@ -48,6 +50,7 @@ Deno.test("a pair never takes a stem one of its halves would collide on", () => 
   ]);
 });
 
+// @Verifies(spec = "event-site", requirement = "The zip holds every photo the members have shared", scenario = "Two photos with the same name")
 Deno.test("plain photos keep the old collision rule", () => {
   assertEquals(names([photo("a.jpg"), photo("a.jpg"), photo("a.jpg"), photo("noext")]), [
     "a.jpg",
@@ -93,5 +96,24 @@ Deno.test(
       { deviceId: "D1", assetId: "A1", role: "primary" },
       { deviceId: "D1", assetId: "A1", role: "live" },
     ]);
+  },
+);
+
+// @Verifies(spec = "event-site", requirement = "The zip holds every photo the members have shared", scenario = "A full download")
+Deno.test(
+  "forty plain photos are forty files under their own names, in a zip named after the event",
+  () => {
+    const originals = Array.from(
+      { length: 40 },
+      (_, i) => `IMG_${1000 + i}.${i % 2 ? "MOV" : "HEIC"}`,
+    );
+    const { entries, photos } = zipEntries(originals.map(photo));
+    assertEquals(photos, 40);
+    assertEquals(
+      entries.map((e) => e.name),
+      originals,
+    );
+    assertEquals(zipFileName("Anna's 40th"), "Anna-s-40th.zip");
+    assertEquals(zipFileName(""), "snapsync.zip");
   },
 );

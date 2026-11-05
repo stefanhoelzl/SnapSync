@@ -48,6 +48,8 @@ Deno.test("event-link: the AASA is served as JSON with no redirect", async () =>
   assert((await res.text()).length > 0);
 });
 
+// @Verifies(spec = "web-site", requirement = "A public landing page describes SnapSync", scenario = "The site opens in the browser even with the app installed")
+// The api's part: the app claims only the /join links, never /.
 Deno.test("event-link: the AASA declares the app and the two /join forms only", async () => {
   const body = await (await app().request(AASA)).json();
   const details = body.applinks.details;
@@ -126,6 +128,7 @@ Deno.test("event-link: GET /join serves the no-app download page", async () => {
   // The download control and the App Store link are part of the page BUILT by site/ and checked there.
 });
 
+// @Verifies(spec = "privacy-security", requirement = "The event's identity goes only to SnapSync's own service", scenario = "Opening a link where no app is installed")
 Deno.test("event-link: /join is identical for every fragment link and reads no event data", async () => {
   // A fragment invite's payload is never transmitted, so `/join` cannot tell one invite from another: it
   // serves the same generic page, whose island moves the browser to the event's own page `/join/<eventId>`

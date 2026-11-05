@@ -85,6 +85,8 @@ type Photo = {
   resources: { role: string; filename: string; url: string }[];
 };
 
+// @Verifies(spec = "privacy-security", requirement = "A link to a single photo lasts only as long as the photo is shared", scenario = "A photo link copied from the event page lapses")
+// The api's part: the page's links are signed for an hour. Storage refuses them after.
 Deno.test("web photos → the page's own shape: each complete photo with its resources' names and 1-hour links", async () => {
   const db = await storeWithEvent();
   await share(db, D, { A: ["primary", "live"] }, [["A", "primary"], ["A", "live"]]);
@@ -118,6 +120,8 @@ Deno.test("web photos → an incomplete photo is left out; a departed member's p
   db.close();
 });
 
+// @Verifies(spec = "privacy-security", requirement = "A link to a single photo lasts only as long as the photo is shared", scenario = "A photo withdrawn while the event page is open")
+// The api's part: the photo leaves the list; a page holding its link fails the download (photo-links.test.ts).
 Deno.test("web photos → a withdrawn photo is no longer listed", async () => {
   const db = await storeWithEvent();
   await share(db, D, { A: ["primary"], B: ["primary"] }, [["A", "primary"], ["B", "primary"]]);
@@ -139,6 +143,7 @@ Deno.test("web photos → no credential needed, and a bogus one is ignored rathe
   db.close();
 });
 
+// @Verifies(spec = "privacy-security", requirement = "A web visitor leaves no trace in the event", scenario = "What a visit leaves behind")
 Deno.test("web photos → each read leaves one anonymous record: no device, no trigger", async () => {
   const db = await storeWithEvent();
   await share(db, D, { A: ["primary"] }, [["A", "primary"]]);
@@ -205,5 +210,33 @@ Deno.test("web photos → refused during a maintenance window, like the device A
     buildSha: "x",
   });
   assertEquals((await app.request(PHOTOS)).status, 503);
+  db.close();
+});
+
+// @Verifies(spec = "event-site", requirement = "An empty or unreachable event is explained", scenario = "No photos yet")
+// The api's part: an event nobody has shared to answers an empty list, not the invalid view's 404. The page's
+// script words it and offers no download.
+Deno.test("web photos → an event no one has shared to yet answers an empty list", async () => {
+  const db = await storeWithEvent();
+  const res = await browser(db).request(PHOTOS);
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), []);
+  db.close();
+});
+
+// @Verifies(spec = "privacy-security", requirement = "A web visitor leaves no trace in the event", scenario = "Many visitors download")
+Deno.test("web photos → twenty downloads change no membership and no device place", async () => {
+  const db = await storeWithEvent();
+  await share(db, D, { A: ["primary"] }, [["A", "primary"]]);
+  const memberships = `SELECT device_id, state FROM memberships ORDER BY device_id`;
+  const before = await rows(db, memberships);
+  const devices = (await rows(db, `SELECT count(*) AS n FROM devices`))[0].n;
+  for (let i = 0; i < 20; i++) assertEquals((await browser(db).request(PHOTOS)).status, 200);
+  assertEquals(await rows(db, memberships), before);
+  assertEquals((await rows(db, `SELECT count(*) AS n FROM devices`))[0].n, devices);
+  const event = await (await browser(db).request(`/api/v2/events/${E}`, { headers: H })).json() as {
+    members: unknown;
+  };
+  assertEquals(event.members, { active: 1, final: 0, waiting: 1 });
   db.close();
 });

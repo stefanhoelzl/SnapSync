@@ -121,6 +121,7 @@ Deno.test("version gate → a too-old version is refused 426", async () => {
   db.close();
 });
 
+// @Verifies(spec = "app-update-required", requirement = "A newer app is never mistaken for an older one", scenario = "Two-digit minor version")
 Deno.test("version gate → 0.10 is NEWER than 0.9, though string order disagrees", async () => {
   const db = await store();
   const res = await createApp({
@@ -892,6 +893,8 @@ Deno.test("union → a byte completes the asset only in the event it was uploade
   db.close();
 });
 
+// @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it", scenario = "A declared but unfinished photo wakes nobody")
+// The api's part: whom it wakes.
 Deno.test("fan-out → a byte that leaves the asset incomplete wakes nobody", async () => {
   const db = await storeWithEvent();
   const { app, pushed } = await withRecipient(db);

@@ -58,6 +58,16 @@ Deno.test("landing: GET / proxies site/index.html as no-cache HTML", async () =>
   assert(s.keys.includes("site/index.html"), "the proxy read site/index.html");
 });
 
+// @Verifies(spec = "privacy-security", requirement = "The web pages track no one", scenario = "A visitor loads the landing page")
+// The api's part: serving the page sets no cookie. That the page itself runs nothing and loads nothing from
+// another site is the built page's (site/scripts/pages.test.ts).
+Deno.test("landing: GET / sets no cookie", async () => {
+  const res = await app(fakeStorage().fetch).request("/");
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Set-Cookie"), null);
+  await res.body?.cancel();
+});
+
 Deno.test("landing: /_astro/* proxies the fingerprinted asset with an immutable cache", async () => {
   const s = fakeStorage();
   const res = await app(s.fetch).request("/_astro/app.abc123.webp");

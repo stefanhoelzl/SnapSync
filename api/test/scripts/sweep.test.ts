@@ -271,6 +271,7 @@ Deno.test("event phase → a COMPLETED event is left alone until its deadline dr
   d.close();
 });
 
+// @Verifies(spec = "event-lifetime", requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest", scenario = "A member who never comes back")
 Deno.test("event phase → the CLOCK completes an ended event with a silent member 3 days after its end", async () => {
   const d = await db();
   const DUE = "cccccccc-0000-4000-8000-000000000003";
@@ -288,6 +289,7 @@ Deno.test("event phase → the CLOCK completes an ended event with a silent memb
   d.close();
 });
 
+// @Verifies(spec = "event-lifetime", requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest", scenario = "Photos still arriving push deletion back")
 Deno.test("event phase → a late LANDING moves the clock: 3 days after the last arrival, not the end", async () => {
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";
@@ -349,6 +351,7 @@ Deno.test("event phase → ONE active member keeps a within-deadline event alive
   d.close();
 });
 
+// @Verifies(spec = "event-lifetime", requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest", scenario = "Created but never joined")
 Deno.test("event phase → a MINTED-BUT-NEVER-JOINED event is not empty and survives", async () => {
   // Every fresh event is in this state: `POST /events` always produces a zero-device event, because the
   // creator confirms through the same join gate a scanned QR uses. Reaping it would delete a mint before
@@ -361,6 +364,7 @@ Deno.test("event phase → a MINTED-BUT-NEVER-JOINED event is not empty and surv
   d.close();
 });
 
+// @Verifies(spec = "event-lifetime", requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest", scenario = "An event created ahead of its start")
 Deno.test("event phase → the deadline anchors at max(createdAt, openUntil), both directions", async () => {
   const d = await db();
   // Open until long before its creation (no create admits it; a row that says so) → anchored at createdAt
@@ -396,6 +400,7 @@ async function done(d: Db, eventId: string, deviceId: string) {
   );
 }
 
+// @Verifies(spec = "event-lifetime", requirement = "An event stays open until the date its host chose", scenario = "The host alone does not finish it")
 Deno.test("event phase → a FINISHED event is completed at once; not before its open-until date", async () => {
   const d = await db();
   const FINISHED = "cccccccc-0000-4000-8000-000000000003";
@@ -436,6 +441,7 @@ Deno.test("event phase → a member who has not received everything keeps a fini
   d.close();
 });
 
+// @Verifies(spec = "event-lifetime", requirement = "An event's photos are deleted once it is finished, and after 30 days at the latest", scenario = "A late guest keeps the event alive")
 Deno.test("event phase → a late JOIN moves the clock: 3 days after the last join", async () => {
   const d = await db();
   const E = "cccccccc-0000-4000-8000-000000000003";

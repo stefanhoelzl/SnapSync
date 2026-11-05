@@ -31,7 +31,7 @@ class NoSpecCitationTest {
 
     private val production =
         SourceScan.files(setOf("kt", "kts")).filter { Traceability.testSourceSet(it.path) == null } +
-        SourceScan.files(WEB_EXTENSIONS).filter { isWebProduction(it.path) }
+            SourceScan.files(WEB_EXTENSIONS).filter { isWebProduction(it.path) }
 
     /** The api's and the site's own code: everything under `api/` and `site/` that is not a Deno test file. */
     private fun isWebProduction(path: String) =

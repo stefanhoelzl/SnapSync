@@ -1505,6 +1505,16 @@ deno task schema:check   # the generated schema.sql is fresh
 - Migration safety (migrate, don't drop; refuse when narrowing; name columns in row copies) is gated by
   `migrations.test.ts`. The rules themselves are in `docs/deployment.md`.
 - Every task resolves a deployment first (`deno task config`), and there is no default.
+- **A test claims the scenarios the api or a page decides**, with the annotation as a one-line comment directly
+  above its `Deno.test` — more comment lines may follow, such as the one saying which part of a split scenario it
+  proves. `VerifiesGateTest` reads these as it reads the Kotlin claims (`docs/architecture.md`, "Tests verify
+  requirements"). The site's tests (`site/scripts/*.test.ts`) run in CI's `site-build` job through `npm run
+  check:unit`, which runs every test file in `scripts/`.
+
+  ```ts
+  // @Verifies(spec = "event-site", requirement = "The zip holds every photo the members have shared", scenario = "Two photos with the same name")
+  Deno.test("two photos with the same name get distinct entries", () => { … });
+  ```
 
 **The Kotlin side also tests the backend.** The `Backend` contract's Live binding in `build` runs the
 real `api/` through `:test:edge` (`serve.ts --ephemeral`: loopback only, fresh filesystem store). The

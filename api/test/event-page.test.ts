@@ -52,6 +52,7 @@ Deno.test("a name is escaped wherever it is filled, so it cannot open a tag or a
   assertEquals(f.OG_TITLE, "&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
 });
 
+// @Verifies(spec = "event-site", requirement = "An invite link without the app opens the event's page", scenario = "The dates are the host's")
 Deno.test("the dates are the host's: a Berlin event starts on Sunday, not on Saturday as in UTC", () => {
   assertEquals(dateRange(BERLIN), "Sun 4 Oct – Mon 5 Oct 2026");
 });
@@ -77,6 +78,7 @@ Deno.test("the phase follows the clock: upcoming, running, ended", () => {
   assertEquals(phaseOf(BERLIN, ms("2026-10-05T18:00:00Z")), "ended");
 });
 
+// @Verifies(spec = "event-site", requirement = "An invite link without the app opens the event's page", scenario = "An event that has not started")
 Deno.test("an upcoming event says when it starts", () => {
   const f = eventFilling(
     ORIGIN,
@@ -107,6 +109,7 @@ Deno.test("a running event names itself, its dates and its members", () => {
   assertStringIncludes(f.FACTS, "6 members sharing");
 });
 
+// @Verifies(spec = "event-site", requirement = "An invite link without the app opens the event's page", scenario = "An ended event still settling")
 Deno.test("an ended event still settling counts who is done and says until when the photos stay", () => {
   const f = eventFilling(
     ORIGIN,
@@ -144,6 +147,8 @@ Deno.test("the invalid and the pending page name no event", () => {
   assertEquals(pendingFilling(ORIGIN).VIEW, "pending");
 });
 
+// @Verifies(spec = "event-site", requirement = "An encrypted event's photos open only with the whole invite", scenario = "An invite without its key")
+// The api's part: the page names the event with no key at all; the key id tells the page to ask for the whole invite.
 Deno.test("an encrypted event's page carries its key id; a plain event's and the generic pages carry none", () => {
   const at = ms("2026-10-04T12:00:00Z");
   const members = { active: 1, final: 0 };

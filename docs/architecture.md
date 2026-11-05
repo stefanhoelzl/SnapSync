@@ -344,13 +344,20 @@ These pin one feature's structural rule that no type can state:
 The specs (`openspec/specs/`) say what a user observes; the code is laid out by its own laws, not by the specs'
 cut. They are linked in one direction only: a test that verifies a requirement says so with
 `@Verifies(spec = "…", requirement = "…"[, scenario = "…"])` (`:test:control`), keyed on the spec's directory
-and the requirement's title. `./gradlew :test:architecture:verifiesReport` lists which requirements a test
-claims and which none does (`build/reports/verifies.md`, non-gating, never committed).
+and the requirement's title. The Deno suites (`api/test`, `site/scripts/*.test.ts`) write the same annotation as a
+one-line comment directly above a `Deno.test`, `// @Verifies(spec = "…", requirement = "…", scenario = "…")`, and claim
+what the api or a web page decides. A suite claims a scenario only where its own code decides the outcome; a scenario
+split between the api and the app carries one claim per deciding place, each saying in a line which part it proves.
+Scenarios left unclaimed on purpose (a platform's or a store's outcome, an accepted "may" gap, a release obligation)
+are listed with a reason in `AcceptedUnclaimed` (`:test:architecture`) — never in `openspec/`, and never work still to
+do. `./gradlew :test:architecture:verifiesReport` lists which requirements and scenarios a test claims and which none
+does, leaving the list out (`build/reports/verifies.md`, non-gating, never committed).
 
 | law | enforced by |
 |---|---|
-| Every `@Verifies` names a spec, requirement and scenario that exist, so a renamed requirement fails the build and names the tests that claimed it | `VerifiesGateTest` (text: every test source set, the journeys included) |
-| Production code cites no spec: no capability named in backticks, in a comment or a string, in any `.kt`/`.kts` outside a test source set | `NoSpecCitationTest` (text, heuristic: a paraphrase is not caught) |
+| Every `@Verifies` names a spec, requirement and scenario that exist, so a renamed requirement fails the build and names the tests that claimed it | `VerifiesGateTest` (text: every test source set, the journeys included, and the Deno test files) |
+| Every `AcceptedUnclaimed` entry names a scenario that exists and no test claims, and gives a reason | `AcceptedUnclaimedTest` |
+| Production code cites no spec: no capability named in backticks, in a comment or a string, in any `.kt`/`.kts` outside a test source set, or any `.ts`/`.astro`/`.mjs` of `api/` and `site/` outside a Deno test file | `NoSpecCitationTest` (text, heuristic: a paraphrase is not caught) |
 
 ### Disciplines with no gate
 

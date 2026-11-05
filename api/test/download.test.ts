@@ -50,6 +50,10 @@ function fakeStorage(html = JOIN_HTML): { fetch: FetchLike; keys: string[] } {
 const DB = await emptyStore();
 const app = (f: FetchLike) => createApp({ config: CONFIG, db: DB, fetch: f });
 
+// @Verifies(spec = "privacy-security", requirement = "The event's identity goes only to SnapSync's own service", scenario = "Downloading passes no address on")
+// The page may talk to its own origin and storage only, and sends no referrer.
+// @Verifies(spec = "privacy-security", requirement = "The web pages track no one", scenario = "A visitor downloads an event")
+// The page may fetch from its own origin and storage only, so no other site sees the download.
 Deno.test("download: GET /join serves the built site/join/index.html as never-cached HTML", async () => {
   const s = fakeStorage();
   const res = await app(s.fetch).request("/join");
@@ -129,6 +133,14 @@ async function storeWith(
 const eventApp = (db: Db, f: FetchLike = fakeStorage(TEMPLATE).fetch, now = NOW) =>
   createApp({ config: CONFIG, db, fetch: f, now: () => now });
 
+// @Verifies(spec = "event-site", requirement = "An invite link without the app opens the event's page", scenario = "A guest on Android opens the invite")
+// The api's part: the name, the dates and the members it renders. The photo count is the page's script's.
+// @Verifies(spec = "event-site", requirement = "An invite link without the app opens the event's page", scenario = "A browser without scripts")
+// Rendered by the api, so it needs no script.
+// @Verifies(spec = "event-site", requirement = "A shared invite previews its event", scenario = "Sharing an invite in a chat")
+// The api's part: the preview's title and description it renders.
+// @Verifies(spec = "invite-link", requirement = "The invite link is the key to an event", scenario = "A forwarded link grants access")
+// The api's part: the link alone shows the event; its photos need no credential either (web-photos.test.ts).
 Deno.test("event page: a live event is rendered into the page, escaped, never cached, no referrer", async () => {
   const db = await storeWith({ members: [["d1", "sharing"], ["d2", "sharing"]] });
   const res = await eventApp(db).request(`/join/${EVENT}`);
@@ -147,6 +159,23 @@ Deno.test("event page: a live event is rendered into the page, escaped, never ca
   db.close();
 });
 
+// @Verifies(spec = "event-site", requirement = "An invite link without the app opens the event's page", scenario = "A guest on a computer opens the invite")
+Deno.test("event page: a desktop browser and an Android phone get the same page", async () => {
+  const db = await storeWith({ members: [["d1", "sharing"]] });
+  const page = async (userAgent: string) =>
+    await (await eventApp(db).request(`/join/${EVENT}`, { headers: { "User-Agent": userAgent } }))
+      .text();
+  const android = await page(
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/130 Mobile",
+  );
+  const desktop = await page(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130",
+  );
+  assert(android.includes("Anna"), "the event page, not another view");
+  assertEquals(desktop, android);
+  db.close();
+});
+
 Deno.test("event page: a closed event still has its photos, so it renders as ended, not invalid", async () => {
   const db = await storeWith({ closedAt: "2026-10-06T00:00:00Z", members: [["d1", "settled"]] });
   const res = await eventApp(db, undefined, Date.parse("2026-10-06T12:00:00Z")).request(
@@ -159,6 +188,11 @@ Deno.test("event page: a closed event still has its photos, so it renders as end
   db.close();
 });
 
+// @Verifies(spec = "event-site", requirement = "A shared invite previews its event", scenario = "An expired invite's preview")
+// @Verifies(spec = "event-site", requirement = "An invalid or expired link says so", scenario = "A truncated link")
+// The path form's part: a malformed id renders the invalid view.
+// @Verifies(spec = "event-site", requirement = "An invalid or expired link says so", scenario = "An event that has been deleted")
+// @Verifies(spec = "event-site", requirement = "An invalid or expired link says so", scenario = "A finished event")
 Deno.test("event page: unknown, malformed and completed links render the invalid view and name no event", async () => {
   const empty = await emptyStore();
   const completed = await storeWith({ completedAt: "2026-10-07T00:00:00Z" });

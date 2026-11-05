@@ -128,6 +128,9 @@ Deno.test("final → a non-boolean final is 400 and writes nothing", async () =>
   db.close();
 });
 
+// @Verifies(spec = "delivery", requirement = "Only new photos are announced by a silent wake, and never only by it", scenario = "Everyone being done wakes nobody")
+// The api's part: whom it wakes. That the member stays in the event on the phone is the app's.
+// @Verifies(spec = "privacy-security", requirement = "The notification token is used only to announce new photos", scenario = "Everyone has finished sharing")
 Deno.test("settle → the publish that settles the last member closes nothing and wakes nobody", async () => {
   const db = await storeWithEvent(ENDED);
   const { app, pushed, lines } = await twoMembers(db);
@@ -202,6 +205,8 @@ Deno.test("derived closedAt → a member that left is not waited for", async () 
   db.close();
 });
 
+// @Verifies(spec = "invite-link", requirement = "Whoever holds the invite can join and see everything", scenario = "An invite opened after the end still admits")
+// The api's part: the join is admitted after the end. Which photos it then shares is the app's.
 Deno.test("ended → join, rejoin, rename and a changed asset set all still succeed after everyone settled", async () => {
   const db = await storeWithEvent(ENDED);
   const { app } = await twoMembers(db);

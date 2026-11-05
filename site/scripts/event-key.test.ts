@@ -11,6 +11,8 @@ const K = btoa(String.fromCharCode(...KEY))
   .replace(/\//g, "_")
   .replace(/=+$/, "");
 
+// @Verifies(spec = "event-site", requirement = "An encrypted event's photos open only with the whole invite", scenario = "An invite without its key")
+// The page's part: a cut-off key opens nothing.
 Deno.test("the invite's k is the event key, and nothing else is", () => {
   assertEquals(keyFromFragment("#k=" + K), KEY);
   assertEquals(keyFromFragment("#autoJoin=true&k=" + K), KEY);
@@ -26,6 +28,8 @@ Deno.test("the invite's k is handed on exactly as the link spells it", () => {
   assertEquals(keyTextFromFragment(""), null);
 });
 
+// @Verifies(spec = "event-site", requirement = "An encrypted event's photos open only with the whole invite", scenario = "The whole invite downloads the photos")
+// The page's part: the whole invite's key opens the event's files.
 Deno.test("a key opens only the event whose key id it is", async () => {
   assert(await opens(KEY, KEY_ID));
   assert(!(await opens(new Uint8Array(32), KEY_ID)));
