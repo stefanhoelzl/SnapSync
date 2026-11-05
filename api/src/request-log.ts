@@ -9,8 +9,8 @@
 // together. The cost is stated in the decision record: a request that hangs, or that the platform kills at
 // its time limit, leaves no record.
 //
-// The record never carries the caller's address or User-Agent (capability `privacy-security`, "A web
-// visitor leaves no trace in the event"). The URL is kept whole, query included — the operator's log, read
+// The record never carries the caller's address or User-Agent: a web visitor leaves no
+// trace. The URL is kept whole, query included — the operator's log, read
 // by the operator only.
 
 import type { Context, ErrorHandler, MiddlewareHandler } from "hono";
@@ -40,7 +40,7 @@ export const ERROR_TAGS = [
   "upload-cleanup",
   /** The byte route could not ask which events this upload completed; it wakes nobody. */
   "completion-lookup",
-  /** The byte route could not stamp the events' landing time (capability `event-lifetime`). */
+  /** The byte route could not stamp the events' landing time. */
   "landing-stamp",
   /** A wake could not read the union position it announces; it was sent without one. */
   "union-position",

@@ -1,4 +1,4 @@
-// A resource's OBJECT NAME and the role vocabulary (capability `photo-sharing`).
+// A resource's OBJECT NAME and the role vocabulary.
 
 /**
  * Compose a resource's OBJECT NAME: `<assetId>-<role>.<ext>`, the extension taken from the capture filename

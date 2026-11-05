@@ -1,4 +1,4 @@
-// Android device attestation (capability `privacy-security`): Android Keystore KEY ATTESTATION, the
+// Android device attestation: Android Keystore KEY ATTESTATION, the
 // counterpart of App Attest in `attest.ts`, in the same flow shape — attest ONCE, persist the attested
 // public key, renew with a cheap local signature check. No Google API is called: the chain is verified
 // against pinned roots, and the revocation list is a PUBLIC, unauthenticated fetch, cached.

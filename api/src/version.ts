@@ -1,5 +1,5 @@
 // The API version prefix, and the minimum app version a versioned request must declare
-// (capabilities `docs/deployment.md`, `app-update-required`).
+// (`docs/deployment.md`).
 //
 // Both middlewares need to know which version a request is for, and Hono does NOT strip a mount's prefix
 // from its path accessors — so the resolution lives here, once. It used to be a regex literal inside the
@@ -7,7 +7,7 @@
 // because nothing fails when two copies disagree about what counts as a version prefix — a request simply
 // gets gated by one and not the other.
 
-/** The header every v2 request declares the app's marketing version in (capability `app-update-required`). */
+/** The header every v2 request declares the app's marketing version in. */
 export const APP_VERSION_HEADER = "x-snapsync-app-version";
 
 /** The API version a request is addressed to, or `null` when its path carries no served version's prefix. */
@@ -42,7 +42,7 @@ export function splitVersion(pathname: string): { version: ApiVersion | null; pa
 /**
  * Compare two `X.Y` marketing versions numerically, part by part. Returns a negative number when `a` is
  * older than `b`, zero when equal, positive when newer. A version that does not parse sorts as OLDEST, so
- * an unreadable declaration is refused exactly like a too-old one (capability `app-update-required`).
+ * an unreadable declaration is refused exactly like a too-old one.
  *
  * NOT a string comparison, and the difference is not academic: `"0.10" < "0.9"` lexicographically, so a
  * string compare admits builds the gate exists to refuse and refuses builds it exists to admit — silently,

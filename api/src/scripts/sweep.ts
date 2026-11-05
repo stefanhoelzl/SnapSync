@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-console -- a command-line tool, never part of the edge script; its console is its interface.
-// The nightly cleanup sweep (capability `event-lifetime`). Runs OUT of the Edge Script — Bunny has no
+// The nightly cleanup sweep. Runs OUT of the Edge Script — Bunny has no
 // scheduler and caps a request at 50 subrequests / 30 s CPU, so a whole-storage sweep cannot run there.
 // This is a Deno program a scheduled GitHub Actions job runs on an Ubuntu runner: it talks to the
 // relational store and to Bunny storage DIRECTLY (thousands of calls, no cap) and imports the Edge
@@ -86,7 +86,7 @@ export type Tally = { count: number; bytes: number };
  * many objects.
  *
  * Beside the tiers, `versions` counts the KEPT devices by app version and platform — what raising
- * `minAppVersion` would lock out (capability `app-update-required`).
+ * `minAppVersion` would lock out.
  *
  * The devices tier counts DEVICE ROWS. It used to note "a device counted once regardless of how many of
  * its global config/attestation records exist"; a device now has exactly one record, so there is nothing
@@ -199,7 +199,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
           log(`[dry-run] would complete event ${event.eventId} (${active}/${total} active)`);
         } else {
           // No notification, for the same reason as a delete below: a device still joined learns the
-          // event completed from its own next read, and shows it as over (capability `event-lifetime`).
+          // event completed from its own next read, and shows it as over.
           await completeEvent(tx, event.eventId, canonicalFromMs(now()));
           log(`completed event ${event.eventId} (${active}/${total} active)`);
         }
@@ -215,7 +215,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
       // payload, which is the OPPOSITE of what a deletion means, and it would have to be dispatched
       // milliseconds before the deletes it announces — so the device wakes to an already-deleted event
       // and burns a scarce wake syncing against a corpse. Members discover the deletion on their own next
-      // foreground details fetch (capability `event-lifetime`), the only context where acting on it is safe.
+      // foreground details fetch, the only context where acting on it is safe.
       await deleteEvent(tx, event.eventId);
       summary.events.deleted++;
       log(`deleted stale event ${event.eventId}`);
@@ -330,8 +330,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
 }
 
 /**
- * One row of the version table: how many kept devices last declared `version` (capability
- * `app-update-required`), per platform. `version` is `null` for a device that never declared one since
+ * One row of the version table: how many kept devices last declared `version`, per platform. `version` is `null` for a device that never declared one since
  * the column existed — a v1-only build, or one not seen since.
  */
 export type VersionRow = { version: string | null; ios: number; android: number };

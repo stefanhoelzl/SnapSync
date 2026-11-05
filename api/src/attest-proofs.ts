@@ -1,5 +1,5 @@
-// The attestation proofs `/attest/token` and `/attest/renew` accept, and which verifier each goes to
-// (capability `privacy-security`). One place, so the two routes cannot disagree about what a proof is.
+// The attestation proofs `/attest/token` and `/attest/renew` accept, and which verifier each goes to.
+// One place, so the two routes cannot disagree about what a proof is.
 //
 // WHAT TELLS THE PLATFORMS APART, and why it is two different things:
 //

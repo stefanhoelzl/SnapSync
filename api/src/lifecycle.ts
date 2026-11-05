@@ -1,5 +1,5 @@
-// Event lifecycle — pure functions over event rows (capability `event-lifetime`). Extracted from app.ts so
-// the Edge Script AND the out-of-edge nightly sweep (capability `event-lifetime`) decide an event's
+// Event lifecycle — pure functions over event rows. Extracted from app.ts so
+// the Edge Script AND the out-of-edge nightly sweep decide an event's
 // fate by the SAME rules. Depends only on the row shape in db.ts — never on Hono, never on storage.
 //
 // Its fate is decided by its DEADLINE (`deleteByMs`, the guarantee: 30 days after its open-until date), by whether
@@ -27,7 +27,7 @@ import type { EventRow } from "./db.ts";
 export type LifecycleFields = Pick<EventRow, "createdAt" | "openUntil" | "lifetimeSeconds">;
 
 /**
- * When an event's data is deleted at the latest (capability `event-lifetime`), in epoch ms — DERIVED on every
+ * When an event's data is deleted at the latest, in epoch ms — DERIVED on every
  * read, never stored. `NaN` when neither anchor date can be parsed.
  *
  * `anchor = max(createdAt, openUntil)`, plus the event's own stamped `lifetimeSeconds`. The open-until date is the
@@ -69,7 +69,7 @@ export type MembershipCounts = {
 
 /**
  * How long after the latest of its open-until date, its last join and its last landing an event that someone joined
- * is completed regardless of who is still in it (capability `event-lifetime`).
+ * is completed regardless of who is still in it.
  */
 export const COMPLETION_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -93,7 +93,7 @@ export function clockMs(
 }
 
 /**
- * What the nightly sweep does with an event (capability `event-lifetime`):
+ * What the nightly sweep does with an event:
  *
  *   DROP      now is past the derived delete-by — the GUARANTEE: the row goes, and with it anything left
  *   COMPLETE  the event's photos go: its memberships, assets and so bytes; the ROW stays until DROP so a device

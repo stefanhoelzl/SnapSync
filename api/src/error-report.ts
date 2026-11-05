@@ -1,5 +1,4 @@
-// The backend's failure reports (capability `privacy-security`, "The service reports its own failures to the
-// operator"; decision record `changes/api-request-log`, D4): an exception no route caught is reported to the
+// The backend's failure reports (decision record `changes/api-request-log`, D4): an exception no route caught is reported to the
 // operator's error tracker — the Bugsink instance the apps report to, through the Sentry protocol — with its
 // stack, the request as it arrived (URL and headers), the outbound calls the request made, and the tags that
 // tie it to the request's log line. The line itself carries only the report's id (`bugsink=`).

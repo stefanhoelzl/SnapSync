@@ -1,10 +1,10 @@
-// The ROOT routes (capabilities `web-site`, `event-site`, `invite-link`): the site proxied from the storage
+// The ROOT routes: the site proxied from the storage
 // `site/` prefix, the two link-association documents, and the deploy's boot probe. Never under `/api/vN`,
 // and never gated by the maintenance window.
 
-// The browser-facing pages (capabilities `web-site` at `/` and `event-site` at `/join`) are
+// The browser-facing pages (the landing page at `/` and the event page at `/join`) are
 // no longer embedded here — they are built by the `site/` Astro module and served by proxying the storage
-// `site/` prefix (capability `web-site`, see `serveSiteObject` + the `/`, `/join`, and `/_astro/*` routes
+// `site/` prefix (see `serveSiteObject` + the `/`, `/join`, and `/_astro/*` routes
 // below). The `shots` pipeline that inlined the landing screenshots is gone with them.
 
 import { Hono } from "hono";
@@ -22,7 +22,7 @@ import { eventFilling, fill, type Filling, invalidFilling, pendingFilling } from
 // the AASA and (until Phase 2) the `/join` page.
 const PUBLIC_CACHE = "public, max-age=300";
 
-// Cache policy for the proxied `site/` objects (capability `web-site`). HTML entry points are the
+// Cache policy for the proxied `site/` objects. HTML entry points are the
 // always-fresh shell — `no-cache` so a deploy is picked up immediately; the pull zone still revalidates
 // cheaply. Fingerprinted assets are addressed by content hash, so they are immutable for a year — the hash
 // is the version, and a changed asset gets a new URL.
@@ -47,7 +47,7 @@ function siteContentType(sitePath: string): string {
 }
 
 /**
- * Serve a built page/asset by streaming it from the storage `site/` prefix (capability `web-site`). The api
+ * Serve a built page/asset by streaming it from the storage `site/` prefix. The api
  * owns this routing in source (no pull-zone edge rules, no account key); the pull zone caches the response
  * by the `Cache-Control` we set here, so only cold misses reach the script. `sitePath` is the storage key
  * under `site/` (e.g. `index.html`, `_astro/app.<hash>.js`). `HEAD` returns the headers with no body. A
@@ -95,7 +95,7 @@ async function serveSiteObject(
 }
 
 /**
- * Serve the event page (capabilities `event-site`, `privacy-security`): the ONE built `site/join/index.html`,
+ * Serve the event page: the ONE built `site/join/index.html`,
  * read as a template and filled per request (`event-page.ts` decides every word). A missing template is a
  * `404`, any other upstream failure a `502` — the same faithful outcome as {@link serveSiteObject}.
  *
@@ -147,7 +147,7 @@ async function serveEventPage(
 }
 
 /**
- * What the event page may load and talk to (capability `privacy-security`; the encrypted file format,
+ * What the event page may load and talk to (the encrypted file format,
  * `docs/architecture.md`): an encrypted event's page holds the event key, read from its own address's `#k=`, so no
  * script but the site's own runs there and nothing it fetches may leave this origin — except the photo bytes the
  * download route redirects to, at the storage host. Inline STYLES stay allowed: the page sets custom properties in
@@ -172,7 +172,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
   const app = new Hono();
   const origin = `https://${config.linkDomain}`;
 
-  // The public marketing/landing page (capability `web-site`, built by `web-site`): served by
+  // The public marketing/landing page (built by `site/`): served by
   // proxying `site/index.html` from storage. The HTML entry point is `no-cache` — the always-fresh shell —
   // so a deploy is picked up immediately; it references immutable, content-hashed `/_astro/*` assets. The
   // token gate (`app.ts`) admits `/` (GET/HEAD).
@@ -182,7 +182,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     (c) => serveSiteObject(fetchImpl, config, "index.html", c.req.method, SITE_HTML_CACHE),
   );
 
-  // The landing page's fingerprinted assets (capability `web-site`): served by proxying `site/_astro/*`
+  // The landing page's fingerprinted assets: served by proxying `site/_astro/*`
   // from storage with a year-long immutable cache — the content hash in the name is the version, so the
   // pull zone serves repeat hits from the edge and only cold misses reach the script. The wildcard segment
   // after `/_astro/` is the storage key tail. The token gate (`app.ts`) admits `/_astro/*` (GET/HEAD).
@@ -191,7 +191,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     return serveSiteObject(fetchImpl, config, tail, c.req.method, SITE_ASSET_CACHE);
   });
 
-  // The Apple App Site Association document (capability `invite-link`): what makes the event link a
+  // The Apple App Site Association document: what makes the event link a
   // Universal Link instead of a web page. Apple's CDN and the device fetch it unauthenticated, so the
   // token gate (`app.ts`) admits it; it MUST be served as application/json with NO redirect.
   //
@@ -222,7 +222,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     return c.req.method === "HEAD" ? c.body(null) : c.body(aasa);
   });
 
-  // The Android counterpart (capability `invite-link`): Digital Asset Links, which Android's verifier fetches to
+  // The Android counterpart: Digital Asset Links, which Android's verifier fetches to
   // let the app claim `https://<domain>/join` (the intent filter narrows the path; this file names the app). It
   // names the package and the signing certificates the attestation policy accepts — ONE list
   // (`androidSigningCertDigests`), so the app a link opens is the app that may attest. Empty under trust `any`
@@ -246,7 +246,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     return c.req.method === "HEAD" ? c.body(null) : c.body(assetlinks);
   });
 
-  // The page a FRAGMENT invite reaches (capabilities `invite-link`, `event-site`, built by `web-site`): the path a
+  // The page a FRAGMENT invite reaches (built by `site/`): the path a
   // browser requests when an invite of the fragment form is opened on a device with no app to claim it. The
   // fragment never reaches the server, so this handler sees `/join` and nothing more: it fills the built page
   // generically (`pendingFilling`) and the page's island reads the fragment and moves the browser to the event's
@@ -257,7 +257,7 @@ export function siteRoutes({ fetchImpl, config, db, now }: RouteDeps, buildSha: 
     (c) => serveEventPage(fetchImpl, config, c.req.method, 200, pendingFilling(origin)),
   );
 
-  // The EVENT'S OWN PAGE (capabilities `event-site`, `privacy-security`): an invite of the path form, opened where
+  // The EVENT'S OWN PAGE: an invite of the path form, opened where
   // no app claims it — or a fragment invite, which the constant page above moves here. Here the server DOES read the
   // event: its name, dates, phase and member counts are rendered into the page, so a link preview and a browser
   // running no script both see the event (`event-page.ts`).

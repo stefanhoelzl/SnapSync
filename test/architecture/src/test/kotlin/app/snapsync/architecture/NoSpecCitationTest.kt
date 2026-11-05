@@ -14,7 +14,9 @@ import kotlin.test.fail
  * citations from creeping back into production code. The explanation a citation sat in stays.
  *
  * Scope is derived: every `.kt` and `.kts` outside a test source set ([Traceability.testSourceSet]) — every
- * `*Main`, `main`, `rig`, `prod`, the hooks, the test-support modules' main code and every build script.
+ * `*Main`, `main`, `rig`, `prod`, the hooks, the test-support modules' main code and every build script — and every
+ * `.ts`, `.astro` and `.mjs` of `api/` and `site/` outside a Deno test file ([Traceability.denoTestSet]): the api, the
+ * pages, and the site's build checks and deploy.
  *
  * HEURISTIC, and it says so: it matches a capability's name in backticks — every current spec directory plus the
  * retired names below — and the `capability \`…\`` shape for any name. A citation in other words ("see the
@@ -27,8 +29,13 @@ class NoSpecCitationTest {
         """`(${names.joinToString("|") { Regex.escape(it) }})`|\bcapabilit(y|ies)\s+`""",
     )
 
-    private val production = SourceScan.files(setOf("kt", "kts"))
-        .filter { Traceability.testSourceSet(it.path) == null }
+    private val production =
+        SourceScan.files(setOf("kt", "kts")).filter { Traceability.testSourceSet(it.path) == null } +
+        SourceScan.files(WEB_EXTENSIONS).filter { isWebProduction(it.path) }
+
+    /** The api's and the site's own code: everything under `api/` and `site/` that is not a Deno test file. */
+    private fun isWebProduction(path: String) =
+        (path.startsWith("/api/") || path.startsWith("/site/")) && Traceability.denoTestSet(path) == null
 
     @Test
     fun `the scan reaches every production tree`() {
@@ -36,7 +43,7 @@ class NoSpecCitationTest {
         val missing = TREES - reached
         assertTrue(
             missing.isEmpty(),
-            "no production .kt/.kts scanned under $missing — the layout moved, and a citation there would pass unseen",
+            "no production source scanned under $missing — the layout moved, and a citation there would pass unseen",
         )
     }
 
@@ -60,7 +67,10 @@ class NoSpecCitationTest {
          * Top-level trees that hold production Kotlin. Pinned so a moved tree fails here instead of dropping out
          * of scope. A new tree joins the scan anyway; it is only missing from this check.
          */
-        val TREES = setOf("domain", "adapter", "ui", "app", "test", "tools", "build-logic")
+        val TREES = setOf("domain", "adapter", "ui", "app", "test", "tools", "build-logic", "api", "site")
+
+        /** The api's and the site's source: TypeScript, the Astro pages and the Astro config. */
+        val WEB_EXTENSIONS = setOf("ts", "tsx", "astro", "mjs")
 
         /**
          * Capability names retired by earlier spec re-cuts (`changes/archive/2026-07-21-align-specs-with-mission`

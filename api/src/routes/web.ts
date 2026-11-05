@@ -1,4 +1,4 @@
-// The EVENT PAGE's read (capabilities `event-site`, `privacy-security`; decision record
+// The EVENT PAGE's read (decision record
 // `changes/separate-event-page-from-device-api`): the one route a browser calls, at the ROOT, outside every
 // `/api/vN` mount, so no device-API version can break the page and no device-API gate carries an exception
 // for it.
@@ -13,7 +13,7 @@
 //
 // INLINE 1-HOUR LINKS (D3): each `url` is a presigned storage GET living `WEB_PRESIGN_EXPIRY_SECONDS`. The
 // page uses its links within minutes, so the short life costs it nothing and bounds how long a photo withdrawn
-// after the page loaded stays reachable (capability `privacy-security`). A zip that outlasts it re-reads.
+// after the page loaded stays reachable. A zip that outlasts it re-reads.
 
 import { Hono } from "hono";
 import { completeAssets, logUnionFetch, unionPosition, unionRows } from "../db.ts";
@@ -66,7 +66,7 @@ export function webRoutes(deps: RouteDeps): Hono {
         });
       }
 
-      // Best-effort, and ANONYMOUS (capability `privacy-security`, "What a visit leaves behind"): that a
+      // Best-effort, and ANONYMOUS: that a
       // browser read the list, and when — no device, no trigger, nothing about the visitor.
       try {
         await logUnionFetch(db, {

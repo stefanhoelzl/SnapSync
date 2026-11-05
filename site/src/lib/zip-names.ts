@@ -1,4 +1,4 @@
-// The zip's file names (capability `event-site`, "The zip holds every photo the members have shared"). Pure, so it is
+// The zip's file names: every shared photo gets one, and no two collide. Pure, so it is
 // unit-tested (`site/scripts/zip-names.test.ts`) apart from the page that fetches and zips.
 //
 // Every photo is saved under its original name, and a name already taken gets "-2", "-3", … before its extension.
