@@ -1,6 +1,7 @@
 package app.snapsync.journeys.device
 
 import java.io.File
+import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -48,12 +49,13 @@ const val PHOTOS = "com.apple.mobileslideshow"
  */
 fun settle(simulators: SimulatorDriver, shell: Shell, udid: String, log: File, say: (String) -> Unit) {
     say("booting $udid")
+    val bootedAt = Instant.now()
     simulators.boot(udid)
     say("booted; still loaded after the daemon stop: ${simulators.stopDaemons(udid, STOPPED_DAEMONS)}")
     simulators.launch(udid, PHOTOS)
     // The system library's background migration, which `dasd` runs when it chooses — minutes later, 3-449 s measured.
     // Awaited here, so the cached library is already migrated; never fatal, a run awaits it again.
-    say("photo library: ${awaitPhotoMigration(shell, udid, log, 15.minutes)}")
+    say("photo library: ${awaitPhotoMigration(shell, udid, log, 15.minutes, bootedAt)}")
     // Settled: the 1-minute load under 4 for three samples in a row, 10 s apart — at most 10 min, after which it is
     // saved as it is (a later boot finishes what is left).
     var calm = 0

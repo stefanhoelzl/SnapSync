@@ -86,6 +86,8 @@ class IosRun(
         evidence.stage("backend: answering")
 
         evidence.stage("simulator: booting")
+        // The migration gate reads the log from here on: a settled device's stored log still holds its settle boot's.
+        val bootedAt = Instant.now()
         simulators.boot(device)
         evidence.stage("simulator: booted")
         // On CI the cached device already holds them disabled, and this is a no-op.
@@ -114,7 +116,7 @@ class IosRun(
         // ...and its BACKGROUND migration, which `dasd` may start after that first write returned and which then holds
         // every write for minutes (96–184 s measured): a clause writing meanwhile fails past its bound (runs 36868431564,
         // 37004211450).
-        val migration = awaitPhotoMigration(shell, device, evidence.file("photo-migration.log"), MIGRATION)
+        val migration = awaitPhotoMigration(shell, device, evidence.file("photo-migration.log"), MIGRATION, bootedAt)
         check(migration.state == PhotoMigrations.State.SETTLED) {
             "the photo library's background migration did not settle: ${migration.why}"
         }
