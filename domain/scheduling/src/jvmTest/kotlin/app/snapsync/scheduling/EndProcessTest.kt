@@ -9,6 +9,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertSame
 
 /**
@@ -68,6 +69,23 @@ class EndProcessTest {
     fun `work nobody awaits ends the process through the scope's handler`() {
         onThisThread { runBlocking { runtime.detached("OnTest") { throw fatal } } }
         assertSame(fatal, lastResort.first(), "the handler's own last resort, before anything it wraps")
+    }
+
+    @Test
+    fun `a concurrent step's child ends the process rather than being contained`() {
+        var wentOn = false
+        onThisThread {
+            runBlocking {
+                runtime.detached("OnTest") { on ->
+                    on.steps {
+                        concurrently { child("broken") { throw fatal } }
+                        wentOn = true
+                    }
+                }
+            }
+        }
+        assertIs<InvalidProgramState>(lastResort.first())
+        assertEquals(false, wentOn, "nothing after the step runs")
     }
 
     private object Unlabelled : ThreadLabel {
