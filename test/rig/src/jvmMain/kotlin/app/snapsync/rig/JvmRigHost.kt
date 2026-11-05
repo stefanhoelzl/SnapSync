@@ -264,9 +264,11 @@ internal class JvmRig(
      * lane, and the extension's invocations, on the operating system's own thread.
      */
     val host: HostServices by lazy {
+        val driver = MockEntryDriver(mocks, os)
         HostServices(
-            entries = PlayedEntries(MockEntryDriver(mocks, os), lane, os::atRelease),
+            entries = PlayedEntries(driver, lane, os::atRelease),
             extensionHost = JvmExtensionHost(this),
+            libraryChanged = { withContext(lane) { driver.libraryChanged() } },
         )
     }
 

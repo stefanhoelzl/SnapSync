@@ -30,6 +30,7 @@ import app.snapsync.levers.ScreenLevers
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.UploadQueueLevers
 import app.snapsync.levers.UploadSessionLevers
+import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
 import app.snapsync.rig.JvmRigHost
@@ -260,6 +261,9 @@ class Acts internal constructor(
 
     /** The push service: what it is, and whether it issues tokens. */
     val push: PushLevers = client.levers(PushLevers)
+
+    /** The operating system's scheduled wakes: what the app asked for, and which wakes this system carries. */
+    val wake: WakeLevers = client.levers(WakeLevers)
 
     /** The links only an installation's store delivers. */
     val links: LinksLevers = client.levers(LinksLevers)

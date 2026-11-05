@@ -5,6 +5,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
+import app.snapsync.levers.TransferEnd
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -159,6 +160,97 @@ class DeliveryIntegrationTest {
             times(SESSION_CAP) { event<WorldEvent.BytesStored>() }
             never<WorldEvent.SessionTransferCreated>()
             settled { it.state.inFlight?.sessionTransfers.orEmpty().isEmpty() }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Losing photo access stops new uploads but lets in-flight ones finish",
+        scenario = "Revoking access mid-upload on Android",
+    )
+    // The app's part: nothing starts while access is off, and the upload the revoke cut off is retried once it returns.
+    fun an_upload_a_revoke_cut_off_on_android_is_uploaded_once_access_returns() = behaviour {
+        given {
+            androidProcess()
+            appUploadsOnly()
+            joinedEvent()
+            photos("A")
+            step("A uploading", act = { os.foreground() }, until = {
+                event<WorldEvent.SessionTransferCreated>()
+                settled { true }
+            })
+        }
+
+        // Revoked in Settings: the process ends with A's upload, and the app, opened while access is off, starts none.
+        whenever {
+            library.permission(PhotoGrant.DENIED)
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.SessionTransferEnded> { it.outcome.how == TransferEnd.How.FAILED }
+            never<WorldEvent.SessionTransferCreated>()
+            settled { it.state.inFlight?.sessionTransfers.orEmpty().isEmpty() }
+        }
+
+        whenever {
+            library.permission(PhotoGrant.GRANTED)
+            os.foreground()
+        }
+        then {
+            event<WorldEvent.SessionTransferCreated>()
+            settled { true }
+        }
+
+        whenever { uploadSession.complete() }
+        then { event<WorldEvent.BytesStored> { it.asset == "A" } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Photos travel without the app being opened",
+        scenario = "A new photo wakes the app on Android",
+    )
+    // The app's part: it asks for the library-change wake, and the wake uploads the new photo with the app closed.
+    fun a_photo_taken_days_after_the_last_opening_wakes_the_app_and_uploads_on_android() = behaviour {
+        given {
+            androidLibraryWake()
+            appUploadsOnly()
+            joinedEvent()
+            step("the app closed for days", act = {
+                os.background()
+                host.relaunch(scene = false)
+                advanceTo(DAYS_LATER)
+            }, until = { settled { true } })
+        }
+
+        whenever { library.add("NEW", date = TAKEN_DAYS_LATER) }
+        then {
+            event<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.UiChanged>()
+            settled { true }
+        }
+
+        whenever { uploadSession.complete() }
+        then { event<WorldEvent.BytesStored> { it.asset == "NEW" } }
+    }
+
+    @Test
+    fun without_the_library_change_wake_a_new_photo_waits_for_another_wake() = behaviour {
+        given {
+            appUploadsOnly()
+            joinedEvent()
+            step("the app closed", act = {
+                os.background()
+                host.relaunch(scene = false)
+            }, until = { settled { true } })
+        }
+
+        whenever { library.add("NEW", date = Defaults.PHOTO_DATE) }
+        then {
+            never<WorldEvent.SessionTransferCreated>()
+            settled { true }
         }
     }
 
@@ -450,6 +542,10 @@ class DeliveryIntegrationTest {
         const val SESSION_CAP = 4
         const val TOKEN = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"
         const val EVENT_FILES = "eventFiles"
+
+        /** Three days after the behaviour's start, the event still running — and a photo taken then. */
+        const val DAYS_LATER = "2026-06-04T12:00:00Z"
+        const val TAKEN_DAYS_LATER = "2026-06-04T11:00:00Z"
         val READY = JoinPhase.Detailed.Step.Ready
     }
 }

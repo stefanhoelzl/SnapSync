@@ -45,6 +45,7 @@ import app.snapsync.ports.UploadTarget
 import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.time.Instant
 
 // The operating system's background transfers (`docs/testing.md`, "Mocks"): what it holds for the app survives the
 // app's process — the upload jobs, the download session's transfers — and the operator plays the network by finishing
@@ -300,6 +301,12 @@ class UploadSessionMock(
 
     @Volatile internal var handbacks = 0
 
+    /**
+     * Whether the session lives in the app's process, as Android's does ([UploadSessionLevers.inProcess]): no transfer
+     * outlives the process that started it.
+     */
+    @Volatile internal var inProcess = false
+
     /** The drain reports the session has made — the count a relaunch is told it arrived after. */
     @Volatile internal var drains = 0
     internal val live = mutableListOf<Live>()
@@ -321,9 +328,20 @@ class UploadSessionMock(
     internal inner class Face : TransferSession {
         override val takesResources: Boolean = sendsResources
 
+        /**
+         * The process listens. In a session that lives in the process ([inProcess]), a transfer still live was the
+         * previous process's, and ended with it: each is reported failed now, as the Android adapter reports its
+         * journal's orphans.
+         */
         @CompositionOnly
         override fun inbound(handlers: TransferHandlers) {
             this@UploadSessionMock.handlers.set(handlers)
+            if (!inProcess) return
+            val orphans = locked { live.map { it.tag }.also { live.clear() } }
+            orphans.forEach { tag ->
+                watcher.told(WorldEvent.SessionTransferEnded(tag, TransferEnd.failed(ENDED_WITH_THE_PROCESS)))
+                handlers.onFinished.deliver(FinishedTransfer(tag, TransferFailure(ENDED_WITH_THE_PROCESS)))
+            }
         }
 
         override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
@@ -413,11 +431,18 @@ class UploadSessionMock(
     internal companion object {
         /** The live transfers a session holds before `create` answers `LIMIT_EXCEEDED` — the iOS adapter's cap. */
         const val LIVE_CAP = 4
+
+        /** The failure an in-process transfer ends with when its process does — the Android adapter's. */
+        const val ENDED_WITH_THE_PROCESS = "cancelled"
     }
 }
 
 class UploadSessionOperator internal constructor(private val mock: UploadSessionMock) : UploadSessionLevers {
     override suspend fun session(): UploadSessionView = mock.view()
+
+    override suspend fun inProcess(on: Boolean) {
+        mock.inProcess = on
+    }
 
     /**
      * The OS performs the live transfer tagged [key] — every live one when `null` — over the network, and reports its
@@ -492,10 +517,26 @@ class DownloadSessionMock(
      * `null` for the bytes unchanged. The device's world answers it ([EventKeyLedger]), never the app.
      */
     private val stored: (description: String, bytes: ByteArray) -> ByteArray?,
+    /** The device's clock, which a transfer's signed link is judged against. */
+    private val now: () -> Instant? = { null },
+    /**
+     * Until when the link a transfer started now is redirected to opens — the backend's signature
+     * ([BackendMock.downloadLinkExpiry]), or `null` for a link that never expires.
+     */
+    private val linkExpiry: () -> Instant? = { null },
 ) {
 
-    /** A transfer the session holds, until it finishes or is cancelled; [network] is the rule it was started under. */
-    class Started(val url: String, val description: String, val network: TransferNetwork = TransferNetwork.ANY) {
+    /**
+     * A transfer the session holds, until it finishes or is cancelled; [network] is the rule it was started under.
+     * [linkExpires] is when the signed link the session followed its URL's redirect to stops opening: the session keeps
+     * the redirect's target for the transfer, so a transfer performed after it fails.
+     */
+    class Started(
+        val url: String,
+        val description: String,
+        val network: TransferNetwork = TransferNetwork.ANY,
+        val linkExpires: Instant? = null,
+    ) {
         @Volatile var cancelled: Boolean = false
 
         @Volatile var finished: Boolean = false
@@ -541,7 +582,7 @@ class DownloadSessionMock(
             if (url.isBlank()) return StartResult.NotStarted
             if (refusesUnfetchable && !url.startsWith("http://") && !url.startsWith("https://")) return StartResult.NotStarted
             if (refusesMalformed && '[' in url && ']' !in url) return StartResult.NotStarted
-            locked { started += Started(url, tag, network) }
+            locked { started += Started(url, tag, network, linkExpiry()) }
             watcher.told(WorldEvent.DownloadStarted(tag))
             return StartResult.Started
         }
@@ -569,6 +610,13 @@ class DownloadSessionMock(
     }
 
     internal fun registered(): DownloadHandlers = handlers.require("a download session event")
+
+    /** Whether the link [description]'s transfer follows has stopped opening, on the device's clock now. */
+    internal fun linkExpired(description: String): Boolean {
+        val at = now() ?: return false
+        return locked { started.lastOrNull { it.description == description && !it.cancelled } }
+            ?.linkExpires?.let { at > it } == true
+    }
 
     /** The session as the operating system holds it now — what the operator reads, and the played OS's record. */
     fun view(): DownloadSessionView = locked {
@@ -650,13 +698,15 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
      * A finish for [description], as the real delegate delivers one: the facts and a temporary file, then the
      * completion. A rejected [outcome] leaves the resource un-staged. The file holds [bytes] when given and a minimal
      * JPEG otherwise. A transfer the device's network holds ([DownloadSessionMock.held]) does not finish: the OS would
-     * not run it.
+     * not run it. A transfer whose signed link has stopped opening ([DownloadSessionMock.linkExpired]) is refused by the
+     * storage, whatever the network would have brought: `403`.
      */
     internal fun finish(
         description: String,
-        outcome: TransferOutcome = DownloadSessionMock.HEALTHY,
+        delivered: TransferOutcome = DownloadSessionMock.HEALTHY,
         bytes: ByteArray? = null,
     ) {
+        val outcome = if (mock.linkExpired(description)) EXPIRED_LINK else delivered
         val runs = mock.locked {
             val held = mock.started.any { it.description == description && !it.cancelled && !it.finished && mock.held(it.network) }
             if (!held) mock.started.filter { it.description == description }.forEach { it.finished = true }
@@ -679,6 +729,11 @@ class DownloadSessionOperator internal constructor(private val mock: DownloadSes
 
     internal fun drain() {
         mock.registered().onEventsDrained.deliver(SessionDrain(++mock.drains))
+    }
+
+    private companion object {
+        /** What the storage answers a transfer whose signed link has expired: `403`, and nothing of the photo. */
+        val EXPIRED_LINK = TransferOutcome(statusCode = 403, expectedBytes = -1L, receivedBytes = 0L)
     }
 }
 

@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -67,6 +68,50 @@ class LostUploadAckIntegrationTest {
             never<WorldEvent.UploadJobCreated>()
             never<WorldEvent.BytesStored>()
             never<WorldEvent.ManifestPublished> { "A" in it.withdrawn }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "A finished upload is recognised no later than the next opening",
+        scenario = "A completion iOS never reported",
+    )
+    // The app's part: the opening asks the service what it holds, settles those uploads and sends none again.
+    fun uploads_whose_completion_ios_withheld_under_limited_access_are_settled_on_opening() = behaviour {
+        val all = listOf("A", "B")
+        given {
+            extensionUploadsOnly()
+            photoAccess(PhotoGrant.GRANTED)
+            joinedEvent()
+            photos(*all.toTypedArray())
+            step("both jobs in flight", act = { cycle() }, until = {
+                settled { it.state.inFlight?.jobs?.toSet() == all.map(::primaryJob).toSet() }
+            })
+            // iOS finishes both jobs, and access narrows to limited before the extension is invoked again: under a
+            // partial grant iOS presents the extension nothing (measured on the SE2, decision record
+            // `changes/own-work-per-wake`), so the completion never reaches the app.
+            step("both landed, unreported", act = { uploadQueue.completeJob() }, until = {
+                all.forEach { id -> event<WorldEvent.BytesStored> { it.asset == id } }
+                settled { true }
+            })
+            step("access narrowed to both photos", act = {
+                library.permission(PhotoGrant.LIMITED)
+                devControls.pin(app = true, extension = true)
+                library.changeSelection(all)
+            }, until = { settled { true } })
+        }
+
+        whenever {
+            os.foreground()
+            advance(STATUS_POLL)
+        }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.InSync }
+            never<WorldEvent.UploadJobEnded>()
+            never<WorldEvent.UploadJobCreated>()
+            never<WorldEvent.SessionTransferCreated>()
+            never<WorldEvent.BytesStored>()
         }
     }
 

@@ -80,6 +80,9 @@ open class MockDevice(
         temporaryFiles ?: TemporaryFiles.on(disk.port()),
         held = holdsUnrestrictedOnly,
         stored = eventKeys::sealed,
+        // A photo's stable address redirects to a link the backend signs afresh, opening for a week.
+        now = { clock.now },
+        linkExpiry = backend::downloadLinkExpiry,
     )
     val lifecycle = LifecycleMock()
     val links = LinksMock()

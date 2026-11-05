@@ -21,11 +21,13 @@ import app.snapsync.levers.LeverNeed
 import app.snapsync.levers.LeverRefused
 import app.snapsync.levers.LeverService
 import app.snapsync.levers.LibraryLevers
+import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.LifecycleLevers
 import app.snapsync.levers.LinksLevers
 import app.snapsync.levers.NetworkLevers
 import app.snapsync.levers.OlderInstallLevers
 import app.snapsync.levers.OsLevers
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.PlayedOsLevers
 import app.snapsync.levers.PreferencesLevers
 import app.snapsync.levers.ProcessInfoLevers
@@ -44,6 +46,7 @@ import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.StorePage
 import app.snapsync.model.Store
+import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
@@ -107,12 +110,15 @@ private val CHANNEL_SERVICES: Set<LeverService<*>> = setOf(RigLevers, WorldLever
 /**
  * The services a host implements itself rather than over the mocks: the operating system's deliveries to the app
  * ([entries], over the host's own entry driver, real or mocked per system) and its invocations of the upload extension
- * ([extensionHost]) — each `null` where the host has none, refused then with the reason given.
+ * ([extensionHost]) — each `null` where the host has none, refused then with the reason given. [libraryChanged] is
+ * what the operating system does when a photo is added to the mocked library — on a host that plays its wakes, the
+ * library-change wake ([MockEntryDriver.libraryChanged]); nothing where it plays none.
  */
 class HostServices(
     val entries: OsLevers?,
     val extensionHost: ExtensionHostLevers?,
     val noExtensionHost: String = "this host has no upload extension to invoke",
+    val libraryChanged: suspend () -> Unit = {},
 )
 
 /**
@@ -235,7 +241,12 @@ private fun MockWorld.implementationOf(
         UploadQueueLevers -> device.uploadQueue.operator
         UploadSessionLevers -> device.uploadSession.operator
         DownloadSessionLevers -> device.downloads.operator
-        LibraryLevers -> device.library.operator.also { check(isMocked(MockedSystem.LIBRARY)) }
+        LibraryLevers -> PlayedLibrary(
+            device.library.operator,
+            current = { device.library.grant.value },
+            changed = host.libraryChanged,
+            revoked = os::accessRevoked,
+        ).also { check(isMocked(MockedSystem.LIBRARY)) }
         NetworkLevers -> device.connectivity.operator
         DeviceConditionsLevers -> device.deviceConditions.operator
         ClockLevers -> device.clock.operator
@@ -292,6 +303,30 @@ private fun needOf(need: LeverNeed): Need = when (need) {
     LeverNeed.HOST -> error("a host's own service is classified by the host, method by method (servedHostServices)")
 }
 
+/**
+ * The photo library, and what the operating system does as it changes: a photo added runs the library-change wake
+ * where it stands ([HostServices.libraryChanged]); access revoked ends the process where the platform does so
+ * ([PlayedOs.accessRevoked]). Each a consequence of the change, never a lever of its own.
+ */
+private class PlayedLibrary(
+    private val library: LibraryLevers,
+    private val current: () -> LibraryGrant,
+    private val changed: suspend () -> Unit,
+    private val revoked: suspend () -> Unit,
+) : LibraryLevers by library {
+    override suspend fun add(id: String, kind: LibraryPhotoKind?, date: String?) {
+        library.add(id, kind, date)
+        changed()
+    }
+
+    /** A usable grant taken away is a revoke; a first answer of "deny" is not. */
+    override suspend fun permission(grant: PhotoGrant) {
+        val had = current()
+        library.permission(grant)
+        if (grant == PhotoGrant.DENIED && (had == LibraryGrant.GRANTED || had == LibraryGrant.LIMITED)) revoked()
+    }
+}
+
 /** The build's development controls, a pin reconciled with the app's uploads as it lands. */
 private class ReconcilingControls(
     private val controls: DevControlsLevers,
@@ -314,9 +349,13 @@ private class ReconcilingControls(
  */
 private fun MockWorld.methodRefusalsOf(service: LeverService<*>): Map<String, String> = when (service) {
     BuildLevers -> mapOf(BuildLevers::store.name to STORE_IS_BAKED).takeIf { store == null }.orEmpty()
-    // A force-quit ends the app's process, which only a host that owns it can do.
-    PlayedOsLevers ->
-        if (os.process == null) PlayedOsLevers.refusing("forceQuit", why = FORCE_QUIT_NEEDS_THE_PROCESS) else emptyMap()
+    // A force-quit, or a revoke that stops the app, ends the app's process, which only a host that owns it can do.
+    PlayedOsLevers -> if (os.process == null) {
+        PlayedOsLevers.refusing("forceQuit", why = FORCE_QUIT_NEEDS_THE_PROCESS) +
+            PlayedOsLevers.refusing("revokingAccessEndsTheProcess", why = REVOKE_NEEDS_THE_PROCESS)
+    } else {
+        emptyMap()
+    }
     else -> emptyMap()
 }
 

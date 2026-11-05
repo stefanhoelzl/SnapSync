@@ -69,6 +69,16 @@ class MockEntryDriver(private val device: MockDevice, private val os: PlayedOs) 
         if (heartbeat) os.grant(done) { device.wakes.fire(WakeId.Heartbeat, it) } else done()
     }
 
+    /**
+     * A photo was added to the library. Where the operating system carries the library-change wake and holds the app's
+     * request for it, it runs the app for the change, as Android's content-URI trigger does — here at once, within the
+     * most the request lets it lag. A consequence of the add (`docs/testing.md`, "Mocks"), never a delivery of its own.
+     */
+    fun libraryChanged() {
+        if (!device.wakes.watchesLibrary || !os.launches) return
+        os.grant({}) { device.wakes.fire(WakeId.LibraryChanged, it) }
+    }
+
     override fun backgroundTransfers(identifier: String, done: () -> Unit) {
         os.launching("background-session events")
         if (identifier == UPLOAD_TRANSFER_CHANNEL) {

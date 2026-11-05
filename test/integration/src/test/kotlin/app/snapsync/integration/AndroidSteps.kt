@@ -18,3 +18,30 @@ suspend fun Given.androidLibrary() = step(
     },
     until = { settled { true } },
 )
+
+/**
+ * The operating system is an Android phone's, which carries the library-change wake (WorkManager's content-URI trigger),
+ * and the app started over it: what the system carries is read as the app composes, so the app relaunches.
+ */
+suspend fun Given.androidLibraryWake() = step(
+    "an Android phone's library-change wake",
+    act = {
+        wake.carriesLibraryWake(true)
+        host.relaunch()
+    },
+    until = { settled { true } },
+)
+
+/**
+ * The phone is Android in how its process holds uploads: the app's uploads run in its own process, which dies with it,
+ * and revoking photo access in Settings ends that process. Both are read by the app as it starts, so it relaunches.
+ */
+suspend fun Given.androidProcess() = step(
+    "an Android phone's process",
+    act = {
+        uploadSession.inProcess(true)
+        playedOs.revokingAccessEndsTheProcess(true)
+        host.relaunch()
+    },
+    until = { settled { true } },
+)
