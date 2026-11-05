@@ -31,7 +31,9 @@ import app.snapsync.ports.GalleryReader
  * partial grant its plan is that nothing can be read.
  *
  * Echo suppression is read here too, from [received] — the photos this device received through SnapSync, which are
- * never the member's own: a record of them that cannot be read lets nothing be read, so nothing is admitted.
+ * never the member's own: a record of them that cannot be read lets nothing be read, so nothing is admitted. A read is
+ * admitted by what was received **as of after it**: an import stores its handle before its photo can be seen, so only
+ * a record read after the photos covers every one of them — an import that lands while they are read included.
  */
 class OwnPhotos(
     private val gallery: GalleryReader,
@@ -58,7 +60,7 @@ class OwnPhotos(
     ): Contribution = when (val handles = received.handles()) {
         is HandlesRead.Ok -> contribution(direction, range, handles.ids)
         is HandlesRead.Unavailable -> Contribution(
-            SelectionPolicy.of(SelectionInputs(direction, range, emptySet(), emptySet())),
+            SelectionInputs(direction, range, emptySet(), emptySet()),
             ReadPlan.NotReadable,
         )
     }
@@ -69,7 +71,7 @@ class OwnPhotos(
             true -> albums.members(range.from)
             false -> emptySet()
         }
-        return Contribution(SelectionPolicy.of(SelectionInputs(direction, range, handles, denied)), plan)
+        return Contribution(SelectionInputs(direction, range, handles, denied), plan)
     }
 
     /** The read [contribution] is applied to, made: its candidates before admission, and the way to their resources. */
@@ -79,10 +81,14 @@ class OwnPhotos(
         ReadPlan.NotReadable -> unreadable
     }
 
-    /** One read of the member's photos, admitted by [contribution]'s policy. */
+    /** One read of the member's photos, admitted by [contribution]'s policy as of what was received after the read. */
     suspend fun discover(contribution: Contribution): DiscoveryRead {
         val read = read(contribution)
-        return when (val verdict = contribution.policy.admit(read.candidates)) {
+        val verdict = when (val handles = received.handles()) {
+            is HandlesRead.Ok -> contribution.policyWith(handles.ids).admit(read.candidates)
+            is HandlesRead.Unavailable -> AdmissionVerdict.NotReadable
+        }
+        return when (verdict) {
             is AdmissionVerdict.Discovered -> DiscoveryRead.Discovered(verdict.discovery, read.resources)
             AdmissionVerdict.NotReadable -> DiscoveryRead.NotReadable
         }
@@ -129,10 +135,17 @@ class Candidates internal constructor(val candidates: CandidateSet, val resource
 
 /** What a membership contributes now: its [policy], paired with the read it is applied to. */
 class Contribution internal constructor(
-    val policy: SelectionPolicy,
+    private val inputs: SelectionInputs,
     /** The read the grant allowed when the policy was derived — a selection's carries the selection it reads. */
     internal val plan: ReadPlan<SelectionState.Read>,
-)
+) {
+    val policy: SelectionPolicy = SelectionPolicy.of(inputs)
+
+    /** The same policy, knowing [received] as what this device has received by now. */
+    internal fun policyWith(received: Set<AssetId>): SelectionPolicy = SelectionPolicy.of(
+        SelectionInputs(inputs.direction, inputs.range, received, inputs.inDeniedAlbums),
+    )
+}
 
 /** [OwnPhotos.discover]'s answer. */
 sealed interface DiscoveryRead {
