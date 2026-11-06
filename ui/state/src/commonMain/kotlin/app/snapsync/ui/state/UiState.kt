@@ -368,10 +368,11 @@ sealed interface JoinedSurface {
  * the same way (a 404 blocks). Its confirm runs the **leave alone** — it commits no join and chooses
  * nothing; the join follows on the regular [Layer.JoiningEvent] surface, which the reduction reaches by
  * itself once the leave clears the config. So this state covers only the phases before that hand-off:
- * `Loading`, `Ready`, `NotFound`, `LoadFailed`.
+ * `Loading`, `Ready`, `NotFound`, `LoadFailed`. [service] is how SnapSync's service failed a details load it could
+ * not answer, told in the dialog's own words; `null` for any other answer.
  */
 @Serializable
-data class PendingSwitch(val eventId: String, val phase: JoinPhase)
+data class PendingSwitch(val eventId: String, val phase: JoinPhase, val service: ServiceNotice? = null)
 
 /**
  * The phase of a join/switch confirmation surface, as the screen shows it. The details

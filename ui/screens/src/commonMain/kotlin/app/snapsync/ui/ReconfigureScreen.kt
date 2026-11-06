@@ -15,7 +15,6 @@ import app.snapsync.ui.resources.album_existing
 import app.snapsync.ui.resources.album_folder_receive_existing
 import app.snapsync.ui.resources.album_none
 import app.snapsync.ui.resources.cancel
-import app.snapsync.ui.resources.load_failed_body
 import app.snapsync.ui.resources.load_failed_title
 import app.snapsync.ui.resources.ok
 import app.snapsync.ui.resources.retry
@@ -32,6 +31,7 @@ import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.PendingSwitch
+import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.UiState
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -142,7 +142,7 @@ internal fun SwitchDialog(
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
 ) {
-    val prompt = switchPrompt(switch.phase) ?: return
+    val prompt = switchPrompt(switch.phase, switch.service) ?: return
     val copy = DialogCopy(
         title = stringResource(prompt.title),
         body = prompt.switchingTo
@@ -180,7 +180,7 @@ internal class SwitchPrompt(
 )
 
 /** The switch dialog's prompt at [phase], or `null` where it shows none. */
-internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
+internal fun switchPrompt(phase: JoinPhase, service: ServiceNotice?): SwitchPrompt? = when (phase) {
     // Only the Ready step opens a confirmation here. CommitFailed cannot occur: this dialog's confirm runs only the
     // leave, so no commit can fail while the previous event is still configured. Committing is transient — no dialog
     // while a commit runs. The names carry the whole weight of the decision, so they are the whole body; the title is
@@ -198,7 +198,8 @@ internal fun switchPrompt(phase: JoinPhase): SwitchPrompt? = when (phase) {
     JoinPhase.NotFound, JoinPhase.Closed, JoinPhase.WrongLink ->
         wallCopy(phase).let { SwitchPrompt(it.title, it.body, Res.string.ok, SwitchAct.DISMISS) }
     JoinPhase.LoadFailed ->
-        SwitchPrompt(Res.string.load_failed_title, Res.string.load_failed_body, Res.string.retry, SwitchAct.RETRY)
+        // A load the service failed says how, as the join screen's does.
+        SwitchPrompt(Res.string.load_failed_title, loadFailedBody(service), Res.string.retry, SwitchAct.RETRY)
     // Transient — no dialog while the details load.
     JoinPhase.Loading -> null
 }
