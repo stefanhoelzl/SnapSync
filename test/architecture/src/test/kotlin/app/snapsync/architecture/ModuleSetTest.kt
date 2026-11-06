@@ -184,9 +184,8 @@ class ModuleSetTest {
                 ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:data", ":domain:application",
                 ":domain:format", ":domain:query",
             ),
-            // The UI-state reduction: of the zones, only the vocabulary and the features (and of the features,
-            // only their `readmodel` packages — a line inside one module, held by `ReadModelImportsTest`), and the
-            // screen's vocabulary it reduces into. `:ui:state` references nothing project-internal, so the edge
+            // The UI-state reduction: of the zones, only the vocabulary and the features, and the screen's vocabulary it
+            // reduces into. `:ui:state` references nothing project-internal, so the edge
             // hands the core no platform.
             // And the inbound kinds its command door fires (`UserCommand`), which name no platform either.
             "presentation" to setOf(

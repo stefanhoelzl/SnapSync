@@ -8,10 +8,9 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
-import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -21,7 +20,6 @@ import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -306,9 +304,7 @@ class RangeIntentsTest {
     ).let { commands ->
         StatusContainerHost(
             StatusSources(
-                object : SyncStatusSource {
-                    override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
-                },
+                MutableStateFlow(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(null),
                 creation = commands.requests.creation.status,

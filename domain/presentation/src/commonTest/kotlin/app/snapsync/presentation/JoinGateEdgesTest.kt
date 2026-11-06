@@ -19,11 +19,11 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SyncStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
@@ -132,7 +132,7 @@ class JoinGateEdgesTest {
         }
         return StatusContainerHost(
             StatusSources(
-                FixedSync(SyncStatus.Loading),
+                FixedSync(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
                 world.config,
                 requests = commands.requests.flows,
@@ -204,7 +204,7 @@ class JoinGateEdgesTest {
         val keys = mutableListOf<EventKey?>()
         val host = StatusContainerHost(
             StatusSources(
-                FixedSync(SyncStatus.Loading),
+                FixedSync(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
                 world.config,
                 pending = world.pending,

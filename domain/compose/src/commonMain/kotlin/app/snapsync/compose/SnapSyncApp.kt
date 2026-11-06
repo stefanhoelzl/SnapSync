@@ -30,13 +30,13 @@ import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnCredentialChanged
 import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
-import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.EventConfig
@@ -358,8 +358,8 @@ class AppCore internal constructor(
     /** The photo-library grant, as the screen follows it. */
     val photoGrant: PhotoGrantQuery by lazy { PhotoGrantQuery(PhotoGrants(ports.gallery.grant)) }
 
-    /** The sharing progress, in the shape the status host still reads until it reads the query itself. */
-    val syncStatusSource: SyncStatusSource get() = status.syncStatus
+    /** How far the member's photos are shared, as the status host follows it. */
+    val sharingProgress: StateFlow<SharingProgressRead> get() = status.sharing.state
 
     /** Receiving: its store, the staging, the transfers, the library's import, and its use cases. */
     internal val receiving: ReceivingLayers by lazy { ReceivingLayers(this) }

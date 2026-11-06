@@ -9,12 +9,11 @@ import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
-import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
@@ -51,10 +50,9 @@ private val CONFIG = EventConfig(
     deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
-private class IdleSync : SyncStatusSource {
-    override val status: StateFlow<SyncStatus> =
-        MutableStateFlow(SyncStatus.Ready(SyncProgress(0, 0, 0, 0, active = false, estimatedRemaining = null)))
-}
+private fun IdleSync(): StateFlow<SharingProgressRead> = MutableStateFlow(
+    SharingProgressRead.Read(SharingProgress(shared = 0, total = 0, handedOver = 0)),
+)
 
 /**
  * **Non-idempotent commands are in flight before they first suspend** (capability `sync-status`; decision

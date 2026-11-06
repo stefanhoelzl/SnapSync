@@ -5,18 +5,16 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Store
-import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
 import org.orbitmvi.orbit.test.testWithInternalState
@@ -176,9 +174,7 @@ private fun gateHost(
 ) = TestCommands(openLink = openLink).let { commands ->
     StatusContainerHost(
         StatusSources(
-            sync = object : SyncStatusSource {
-                override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
-            },
+            sync = MutableStateFlow(SharingProgressRead.NotYetRead),
             permission = MutableStateFlow(PhotoGrant.FULL),
             config = MutableStateFlow(config),
             build = BuildStanding(refusal = refusal, store = store),

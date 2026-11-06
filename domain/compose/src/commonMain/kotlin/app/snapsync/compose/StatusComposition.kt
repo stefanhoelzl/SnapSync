@@ -3,16 +3,7 @@ package app.snapsync.compose
 import app.snapsync.application.sharing.CountOwnPhotos
 import app.snapsync.data.sharing.AdmittedPhotos
 import app.snapsync.data.store.ChangedElsewhere
-import app.snapsync.domain.sharing.SharingProgressRead
-import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
-import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.query.sharing.SharingProgressQuery
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
 
 /**
  * The joined screen's status over [core] (`docs/patterns.md`): the member's admitted photos and the use case that
@@ -43,30 +34,5 @@ internal class StatusLayers(private val core: AppCore) {
     /** The app's stores, as the `Databases` port names them when the upload extension committed to one. */
     val changedElsewhere: ChangedElsewhere by lazy {
         ChangedElsewhere(core.services.sharedDatabase, core.receiving.file)
-    }
-
-    /**
-     * [sharing] in the shape the status host reads until it reads the query itself — a bridge this phase's vocabulary
-     * step deletes.
-     */
-    val syncStatus: SyncStatusSource by lazy {
-        object : SyncStatusSource {
-            override val status: StateFlow<SyncStatus> =
-                combine(sharing.state, core.galleryAccess.grant) { read, grant ->
-                    when (read) {
-                        SharingProgressRead.NotYetRead -> SyncStatus.Loading
-                        is SharingProgressRead.Read -> SyncStatus.Ready(
-                            SyncProgress(
-                                pending = read.progress.handedOver,
-                                completed = read.progress.shared,
-                                total = read.progress.total,
-                                failed = 0,
-                                active = grant.grantsPhotoAccess,
-                                estimatedRemaining = null,
-                            ),
-                        )
-                    }
-                }.stateIn(core.scope, SharingStarted.WhileSubscribed(), SyncStatus.Loading)
-        }
     }
 }

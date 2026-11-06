@@ -210,7 +210,7 @@ private fun doorOf(commands: CoreCommands): UserCommands = UserCommands(
  * explicitly, so no host built from them can observe fewer than another.
  */
 private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = StatusSources(
-    sync = core.syncStatusSource,
+    sync = core.sharingProgress,
     permission = core.photoGrant.state,
     config = core.membership,
     creation = core.creationStatus.status,

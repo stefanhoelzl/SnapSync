@@ -41,6 +41,8 @@ import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
@@ -49,8 +51,6 @@ import app.snapsync.model.BuildLabel
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReportDestination
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeEdit
 import app.snapsync.presentation.range.after
@@ -305,7 +305,7 @@ class StatusContainerHost(
                 Membership(
                     config.value,
                     permission.value,
-                    syncSource.status.value,
+                    syncSource.value,
                     downloadSource.value,
                     attested.value,
                     network.access.value,
@@ -358,7 +358,7 @@ class StatusContainerHost(
                 // it runs ONLY while an event has not ended (see above) — every other re-emission is a real
                 // source change or a presentation-owned cell's.
                 combineFlat(
-                    config, permission, syncSource.status, downloadSource, trust, network.access, mobileData,
+                    config, permission, syncSource, downloadSource, trust, network.access, mobileData,
                     pending, creationStatus, renameFlow, versionRefusal,
                     local, nowTick,
                 ) { config, permission, sync, download, trust, access, mobileData, pending, creation, rename, refusal, local, now ->
@@ -1518,7 +1518,7 @@ private fun reduceFrom(
     // The counts line rides ONLY on the two health rungs that read the numbers; every rung above them
     // means the numbers are unknown (not read yet), zero (no access collapses the gallery total) or beside
     // the point (not started, unverified) — and the one status line is what the member should read.
-    val counts = (snapshot as? SyncStatus.Ready)
+    val counts = (snapshot as? SharingProgressRead.Read)
         ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
         ?.let { syncCounts(it.progress, download, config.direction) }
     return joinedLayer(
@@ -1545,7 +1545,7 @@ private fun joinedHealth(
     // and what decides whether a membership that neither shares nor receives may say so.
     val settled = when (snapshot) {
         // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
-        SyncStatus.Loading -> SyncHealth.Loading
+        SharingProgressRead.NotYetRead -> SyncHealth.Loading
         // The download arm has its OWN read-ness, and it must gate the health too. `syncHealth` below
         // hides an arrow when its counts are complete, and shows "Up to date" only when BOTH arrows are
         // hidden — so an un-read DownloadProgress, whose `downloaded` and `total` are both a placeholder
@@ -1557,7 +1557,7 @@ private fun joinedHealth(
         // Photos kept off mobile data wait while the phone is on a network the choice avoids: from the device's
         // CURRENT choice, so after turning mobile data back on the few transfers still holding the old rule read as
         // pending, not waiting (decision record `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
-        is SyncStatus.Ready -> if (!download.read) {
+        is SharingProgressRead.Read -> if (!download.read) {
             SyncHealth.Loading
         } else {
             syncHealth(
@@ -1689,9 +1689,9 @@ private fun joinedLayer(
 // surface that would have shown them an upload they never asked for was the surface that hid it. If the counts are
 // right, the arrow is already right; if they are wrong, an arrow the member never asked for is the only signal anyone
 // gets. The display must not assert a contract the system is not keeping.
-private fun syncHealth(progress: SyncProgress, download: DownloadProgress, heldForWifi: Boolean): SyncHealth {
+private fun syncHealth(progress: SharingProgress, download: DownloadProgress, heldForWifi: Boolean): SyncHealth {
     // A held transfer is handed to the platform and so counts as in flight, but it is not RUNNING: no arrow pulses.
-    val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0 && !heldForWifi)
+    val upload = arrowOf(shown = progress.shared < progress.total, pulsing = progress.handedOver > 0 && !heldForWifi)
     // The others' declared photos still uploading on their phones count as left to receive (change
     // `count-declared-photos`): they raise the arrow, never its pulse — nothing of theirs runs here.
     val downloadArrow = arrowOf(
@@ -1725,12 +1725,12 @@ private class JoinedFacts(
 // cannot disagree. A direction reads `Off` only when the member switched it off AND it has no work: the
 // reason is the one above `syncHealth` — a display that hides work in a switched-off direction conceals
 // exactly the mismatch the member most needs to see.
-private fun syncCounts(progress: SyncProgress, download: DownloadProgress, direction: Direction): SyncCounts =
+private fun syncCounts(progress: SharingProgress, download: DownloadProgress, direction: Direction): SyncCounts =
     SyncCounts(
         shared = if (!direction.includesUpload && progress.total == 0) {
             DirectionCount.Off
         } else {
-            DirectionCount.Progress(done = progress.synced, total = progress.total)
+            DirectionCount.Progress(done = progress.shared, total = progress.total)
         },
         received = if (!direction.includesDownload && download.total + download.awaited == 0) {
             DirectionCount.Off
@@ -1985,7 +1985,7 @@ private val RETRYABLE_STEPS =
 private data class Membership(
     val config: EventConfig?,
     val permission: PhotoGrant,
-    val sync: SyncStatus,
+    val sync: SharingProgressRead,
     val download: DownloadProgress,
     val attested: Boolean,
     /** What the member is told about the network — it reaches every layer, not only the joined one. */
