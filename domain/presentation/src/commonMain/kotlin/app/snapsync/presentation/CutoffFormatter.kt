@@ -34,6 +34,9 @@ class CutoffFormatter(
     /** The current instant as a local wall-clock value — seeds the "Now" preset and the create screen. */
     fun nowLocal(): LocalDateTime = now().toLocalDateTime(zone)
 
+    /** The zone the member picks dates in, as its id. */
+    fun zoneId(): String = zone.id
+
     /**
      * Now, cut to the minute: a form states a start to the minute, so seconds the host cannot see would make the
      * created start differ from the shown one.

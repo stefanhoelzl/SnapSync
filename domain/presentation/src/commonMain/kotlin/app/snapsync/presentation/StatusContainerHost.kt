@@ -1,6 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.album.AlbumContents
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -42,8 +43,6 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.format.InviteLinkText
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.DiagnosticKeys
@@ -512,14 +511,23 @@ class StatusContainerHost(
      */
     fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: OpenUntil? = null) =
         guardedIntent(Guarded.Create) {
+            val id = ids.next()
+            local.update { it.copy(createRequest = id) }
             commands.create.fire(
                 CreateRequest(
+                    id,
                     name,
                     EventStart(cutoffFormatter.toCutoff(startsAt)),
                     EventEnd(cutoffFormatter.toCutoff(endsAt)),
                     openUntil,
+                    cutoffFormatter.zoneId(),
                 ),
             )
+            // The guard is held until the create is answered: one at a time, or a second tap mints a second event.
+            // A create that minted nothing is told on the form, from the status; only a minted event opens the gate.
+            val created = creationStatus.answerTo(id)
+            local.update { it.copy(createRequest = null) }
+            if (created is CreateResult.Created) eventCreated(created.eventId, created.key)
         }
 
     /** The create form's own taps: its name as typed, and Create. */
@@ -1206,7 +1214,7 @@ class StatusContainerHost(
      * capture-date cutoff, and confirms like any joiner. The `POST /events` already minted the event, so
      * the gate holds a real `eventId` and performs a real details load; provision happens on confirm.
      */
-    fun onEventCreated(eventId: EventId, key: EventKey? = null) = intent { startPending(eventId, key) }
+    private suspend fun eventCreated(eventId: EventId, key: EventKey?) = startPending(eventId, key)
 
     // The gate's async work runs INLINE within the orbit intent (not on a side scope) so each pending
     // transition reduces through the container's own pipeline deterministically. A modal join is fine
@@ -1427,20 +1435,27 @@ private fun unjoinedLayer(
     // scan hint. Create stays available.
     val refused = refusal?.message
     val layer = when (val creation = create.status) {
-        CreationStatus.InFlight -> Layer.CreatingEvent
-        is CreationStatus.Failed ->
-            Layer.CreateEvent(
-                form = create.form,
-                error = transient ?: creation.reason.message(refused, creation.fault ?: attestFault.takeIf { refused == null }),
-                network = network,
-            )
-        CreationStatus.Idle -> Layer.CreateEvent(form = create.form, error = transient ?: refused, network = network)
+        is RequestStatus.InFlight -> Layer.CreatingEvent
+        is RequestStatus.Done -> Layer.CreateEvent(
+            form = create.form,
+            error = transient ?: creation.value.message(refused, attestFault.takeIf { refused == null }) ?: refused,
+            network = network,
+        )
+        RequestStatus.Idle -> Layer.CreateEvent(form = create.form, error = transient ?: refused, network = network)
     }
     return Reduced(layer)
 }
 
+/**
+ * The create request as the screen shows it: [mine] fired and not yet answered is in flight whether or not its run has
+ * begun — a run that answers within a frame would otherwise never show the preparing screen. The screen lets go of it
+ * once answered, and the status says the rest.
+ */
+private fun creatingOf(status: RequestStatus<CreateResult>, mine: RequestId?): RequestStatus<CreateResult> =
+    if (mine == null) status else RequestStatus.InFlight(mine)
+
 /** The create surface's two inputs: the create request's status, and the form as it stands. */
-private class Creation(val status: CreationStatus, val form: CreateForm)
+private class Creation(val status: RequestStatus<CreateResult>, val form: CreateForm)
 
 /** A participation surface's choices, and the calendar open over them, if any. */
 private class Choices(val form: RangeForm, val picking: Picking?)
@@ -1471,7 +1486,7 @@ private fun reduceFrom(
         askingToStopSharing = local.pendingWithdrawal.forMembership(config?.eventId, null) != null,
     )
     if (config == null) {
-        val create = Creation(creation, display.create(local.create))
+        val create = Creation(creatingOf(creation, local.createRequest), display.create(local.create))
         return unjoinedLayer(
             pending,
             create,
@@ -1776,11 +1791,13 @@ private fun RenameFailureReason.message(fault: ServiceFault?): ScreenMessage = w
  * A failed create in words. [refused] is the attestation's refusal, if it gave one: a create refused for this phone's
  * credential says why, and without a verdict — the attempt to verify got no answer — it is the unreachable server.
  */
-private fun CreationFailureReason.message(refused: ScreenMessage?, fault: ServiceFault?): ScreenMessage = when (this) {
-    CreationFailureReason.INVALID_NAME -> ScreenMessage.CREATE_NAME_REFUSED
-    CreationFailureReason.INVALID_WINDOW -> ScreenMessage.CREATE_DATES_REFUSED
-    CreationFailureReason.UNVERIFIED -> refused ?: fault?.message ?: ScreenMessage.CREATE_FAILED
-    CreationFailureReason.SERVER -> fault?.message ?: ScreenMessage.CREATE_FAILED
+/** What the create screen says of a create that did not mint: [refused] is the phone's refusal, when it has one. */
+private fun CreateResult.message(refused: ScreenMessage?, attestFault: ServiceFault?): ScreenMessage? = when (this) {
+    is CreateResult.Created -> null
+    CreateResult.InvalidName -> ScreenMessage.CREATE_NAME_REFUSED
+    CreateResult.InvalidWindow -> ScreenMessage.CREATE_DATES_REFUSED
+    CreateResult.Unverified -> refused ?: attestFault?.message ?: ScreenMessage.CREATE_FAILED
+    is CreateResult.Failed -> fault.message
 }
 
 /** Whether the joined layer shows its settings, and whether the last change to them failed to save. */
@@ -1976,7 +1993,7 @@ private data class Membership(
 /** The observed outcomes of what the member started: the join gate, a create, a rename — and a refused build. */
 private data class Interaction(
     val pending: PendingJoin?,
-    val creation: CreationStatus,
+    val creation: RequestStatus<CreateResult>,
     val rename: RequestStatus<RenameResult>,
     val versionRefusal: VersionRefusal?,
 )
@@ -2024,6 +2041,8 @@ private data class Local(
     val renameOwner: EventId? = null,
     /** The member's latest rename request, until its answer is consumed — the only answer the screen reads. */
     val renameRequest: RequestId? = null,
+    /** The member's latest create, until it is answered — preparing, however fast its run answers it. */
+    val createRequest: RequestId? = null,
     /** Whether this device holds the joined event's key — copied from [EventKeyView.presence]. */
     val keyPresence: KeyPresence = KeyPresence.NotNeeded,
     /**

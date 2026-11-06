@@ -1,10 +1,12 @@
 package app.snapsync.compose
 
+import app.snapsync.application.event.CreateEvent
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.Observers
 import app.snapsync.data.crypto.NewEventKeys
+import app.snapsync.data.event.EventCreation
 import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.photoAccess
@@ -20,6 +22,7 @@ import app.snapsync.data.upload.OsUploader
 import app.snapsync.data.upload.UploaderSwitches
 import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.album.AlbumContents
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
@@ -28,9 +31,6 @@ import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnCredentialChanged
 import app.snapsync.entrypoints.OnSelectionChanged
-import app.snapsync.feature.creation.CreateEvent
-import app.snapsync.feature.creation.readmodel.CreationStatus
-import app.snapsync.feature.creation.readmodel.MintedEvent
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.feature.membership.ShareSetLoad
@@ -38,7 +38,6 @@ import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.selectionPhotos
@@ -86,9 +85,6 @@ import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.launch
@@ -393,25 +389,14 @@ class AppCore internal constructor(
     /** The member's requests of the membership, each answered on its own status. */
     val membershipStatuses: MembershipStatuses = MembershipStatuses()
 
-    // Every event this device mints, emitted once the backend answered: the host zone collects it into its join gate —
-    // the SAME gate a scanned QR takes — from its composition on, before any tap can
-    // create one, and nothing else does.
-    private val minted = MutableSharedFlow<MintedEvent>()
+    /** The member's creates, each answered on this status with the minted event's id and key. */
+    val creationStatus: RequestStatuses<CreateResult> = RequestStatuses()
 
-    /** Every event this device mints, for the host zone's join gate. */
-    val mintedEvents: SharedFlow<MintedEvent> get() = minted
-
-    /** The create-event status the use-case drives and the container reads (same instance). */
-    val creationStatus = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
-
-    // The create-event use-case: mint via the backend, then route the minted event into the SAME
-    // join gate a scanned QR takes.
-    val eventCreator: EventCreator by lazy {
+    /** Create an event: minted with its key, for the creator to join through the gate a scanned invite takes. */
+    internal val createEvent: CreateEvent by lazy {
         CreateEvent(
-            client = backend.creation,
-            status = creationStatus,
-            onMinted = { eventId, key -> minted.emit(MintedEvent(eventId, key)) },
-            keys = NewEventKeys(services.eventKeyIds, ports.devControls),
+            EventCreation(backend.gateway),
+            NewEventKeys(services.eventKeyIds, ports.devControls),
         )
     }
 

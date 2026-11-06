@@ -3,6 +3,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -18,16 +19,14 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.EventCreator
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
@@ -54,8 +53,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -248,11 +247,11 @@ private class SpyRequester {
     }
 }
 
-private class SpyCreator : EventCreator {
+private class SpyCreator {
     val created = mutableListOf<String>()
     val starts = mutableListOf<String>()
     val ends = mutableListOf<String>()
-    override suspend fun create(request: CreateRequest) {
+    fun create(request: CreateRequest) {
         created += request.name
         starts += TimestampText.format(request.startsAt.at)
         ends += TimestampText.format(request.endsAt.at)
@@ -392,18 +391,21 @@ class StatusContainerHostTest {
 
     // The create layer is the top rung: config absent, reduced from the creation status.
     private fun createHost(
-        creation: CreationStatus,
+        creation: RequestStatus<CreateResult>,
         permission: FakePermissionSource = FakePermissionSource(GalleryAccess.GRANTED),
-        creator: EventCreator = SpyCreator(),
+        creator: SpyCreator = SpyCreator(),
         scope: CoroutineScope,
         foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
+        // Whether a create is answered, as the live door's work answers it, or runs on.
+        answers: Boolean = true,
     ): StatusContainerHost {
         val config = FakeConfig(null)
+        val created = MutableStateFlow(creation)
         return TestCommands(
-            create = { n, st, en, ou ->
-                scope.launch {
-                    creator.create(CreateRequest(n, st, en, ou))
-                }
+            create = { request ->
+                creator.create(request)
+                if (answers) created.value = RequestStatus.Done(request.id, CreateResult.Failed(ServiceFault.UNREACHABLE))
+                null
             },
         ).let { commands ->
             StatusContainerHost(
@@ -411,7 +413,7 @@ class StatusContainerHostTest {
                     FakeSyncStatusSource(),
                     permission.permission,
                     config.config,
-                    creation = MutableStateFlow(creation),
+                    creation = created,
                     foreground = foreground,
                     requests = commands.requests.flows,
                     network = AlwaysOnline,
@@ -707,32 +709,49 @@ class StatusContainerHostTest {
 
     @Test
     fun `config absent with idle creation shows the create input`() = runTest {
-        val host = createHost(CreationStatus.Idle, scope = backgroundScope)
+        val host = createHost(Creating.Idle, scope = backgroundScope)
         assertEquals(shownAs(createLayerAt(fixedCutoffFormatter(), error = null)), host.screen.value)
     }
 
     @Test
     fun `config absent with in-flight creation shows the creating state`() = runTest {
-        val host = createHost(CreationStatus.InFlight, scope = backgroundScope)
+        val host = createHost(Creating.InFlight, scope = backgroundScope)
         assertEquals(shownAs(Layer.CreatingEvent), host.screen.value)
     }
 
     @Test
     fun `config absent with a refused create shows the input naming what was refused — name or dates`() = runTest {
         for ((reason, copy) in listOf(
-            CreationFailureReason.INVALID_NAME to ScreenMessage.CREATE_NAME_REFUSED,
-            CreationFailureReason.INVALID_WINDOW to ScreenMessage.CREATE_DATES_REFUSED,
+            CreateResult.InvalidName to ScreenMessage.CREATE_NAME_REFUSED,
+            CreateResult.InvalidWindow to ScreenMessage.CREATE_DATES_REFUSED,
         )) {
-            val host = createHost(CreationStatus.Failed(reason), scope = backgroundScope)
+            val host = createHost(Creating.answered(reason), scope = backgroundScope)
             assertEquals(shownAs(createLayerAt(fixedCutoffFormatter(), error = copy)), host.screen.value)
         }
     }
 
     @Test
-    fun `config absent with a server failure shows the input with the server error`() = runTest {
-        val host = createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope)
+    fun `a create still running shows the preparing screen, whether or not its run has begun`() = runTest {
+        val host = createHost(Creating.Idle, scope = backgroundScope, answers = false)
+        host.onCreateEvent("My Party", LocalDateTime(2026, 7, 14, 18, 0), LocalDateTime(2026, 7, 18, 18, 0))
+        withContext(Dispatchers.Default) {
+            withTimeout(5.seconds) { host.screen.first { it.layer == Layer.CreatingEvent } }
+        }
+    }
+
+    @Test
+    fun `a create answered with its event shows the form with nothing refused`() = runTest {
+        // The minted event opens the join gate, which the form gives way to; the form itself has no error to show.
+        val created = Creating.answered(CreateResult.Created(testEventId(EVENT_ID), key = null))
+        val host = createHost(created, scope = backgroundScope)
+        assertEquals(shownAs(createLayerAt(fixedCutoffFormatter())), host.screen.value)
+    }
+
+    @Test
+    fun `config absent with a server failure shows the input with how the service failed`() = runTest {
+        val host = createHost(Creating.answered(CreateResult.Failed(ServiceFault.UNREACHABLE)), scope = backgroundScope)
         assertEquals(
-            shownAs(createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.CREATE_FAILED)),
+            shownAs(createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.SERVICE_UNREACHABLE)),
             host.screen.value,
         )
     }
@@ -740,7 +759,7 @@ class StatusContainerHostTest {
     @Test
     fun `create layer ignores permission`() = runTest {
         val host = createHost(
-            CreationStatus.Idle,
+            Creating.Idle,
             permission = FakePermissionSource(GalleryAccess.DENIED),
             scope = backgroundScope,
         )
@@ -751,7 +770,7 @@ class StatusContainerHostTest {
     @Test
     fun `onCreateEvent delegates to the creator`() = runTest {
         val creator = SpyCreator()
-        val host = createHost(CreationStatus.Idle, creator = creator, scope = backgroundScope)
+        val host = createHost(Creating.Idle, creator = creator, scope = backgroundScope)
         host.testWithInternalState(this) {
             containerHost.onCreateEvent(
                 "My Party",
@@ -767,17 +786,15 @@ class StatusContainerHostTest {
         assertEquals(listOf("2026-07-18T18:00:00Z"), creator.ends)
     }
 
-    // NB (migration step 9): the two tests below used to assemble the REAL `CreateEvent` use-case over
-    // a stubbed `EventCreation` port. The armed presentation gate scans ALL of `domain/presentation/src`
-    // (tests included), so this file may no longer name `ports/`; the mint itself is pinned in
-    // `CreateEventTest` (feature/creation) and the full create→gate→join stack in
-    // `:test:integration`'s `create_event_lifts_the_setup_gate`. What stays here is presentation's own
-    // half: the minted id routes into the gate, and a failed status shows the error and opens no gate.
+    // The mint itself is pinned in `CreateEventTest` (application/event) and the full create→gate→join stack in
+    // `:test:integration`'s `create_event_lifts_the_setup_gate`. What stays here is presentation's own half: a create
+    // answered with its minted id routes into the gate, and a failed status shows the error and opens no gate.
 
     @Test
     fun `a minted event routes into the join gate then confirming joins with the cutoff`() = runTest {
         val config = FakeConfig(null)
         val host = TestCommands(
+            create = { CreateResult.Created(testEventId(EVENT_ID), key = null) },
             commitJoin = { join ->
                 config.save(
                     EventConfig(
@@ -800,6 +817,7 @@ class StatusContainerHostTest {
                     FakePermissionSource(GalleryAccess.GRANTED).permission,
                     config.config,
                     requests = commands.requests.flows,
+                    creation = commands.requests.creation.status,
                     network = AlwaysOnline,
                     mobileData = AlwaysAllowed,
                 ),
@@ -821,8 +839,8 @@ class StatusContainerHostTest {
         }
         host.testWithInternalState(this) {
             runOnCreate()
-            // The create use-case's `onMinted` hook fires exactly this (non-auto-confirmed).
-            containerHost.onEventCreated(testEventId(EVENT_ID))
+            // A create answered with its minted id routes into the gate (non-auto-confirmed).
+            containerHost.onCreateEvent("My Party", LocalDateTime(2026, 7, 6, 0, 0), LocalDateTime(2026, 7, 18, 18, 0))
             // minted → routed into the gate → loaded, offering Join with the event's start as the default.
             assertJoining(
                 awaitShown(),
@@ -853,7 +871,7 @@ class StatusContainerHostTest {
     @Test
     fun `a failed create surfaces the inline error and opens no gate`() = runTest {
         val config = FakeConfig(null)
-        val creationStatus = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
+        val creationStatus = MutableStateFlow<RequestStatus<CreateResult>>(Creating.Idle)
         val host = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(),
@@ -873,10 +891,10 @@ class StatusContainerHostTest {
         )
         host.testWithInternalState(this) {
             runOnCreate()
-            // The use-case reports a transient failure through the status source and never fires
-            // `onMinted` (CreateEventTest pins that) — the inline error shows and no gate opens.
-            creationStatus.value = CreationStatus.Failed(CreationFailureReason.SERVER)
-            expectShown(shownAs(createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.CREATE_FAILED)))
+            // A create the service failed is answered on the status with how it failed — the inline error says so, and
+            // no gate opens: only a create answered with its minted event opens one.
+            creationStatus.value = Creating.answered(CreateResult.Failed(ServiceFault.UNREACHABLE))
+            expectShown(shownAs(createLayerAt(fixedCutoffFormatter(), error = ScreenMessage.SERVICE_UNREACHABLE)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -2563,19 +2581,21 @@ class StatusContainerHostRefusalTest {
 
     // The create layer, as in [StatusContainerHostTest]: config absent, reduced from the creation status.
     private fun createHost(
-        creation: CreationStatus,
+        creation: RequestStatus<CreateResult>,
         permission: FakePermissionSource = FakePermissionSource(GalleryAccess.GRANTED),
-        creator: EventCreator = SpyCreator(),
+        creator: SpyCreator = SpyCreator(),
         scope: CoroutineScope,
         foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
         refusal: MutableStateFlow<DeviceRefusal?> = MutableStateFlow(null),
     ): StatusContainerHost {
         val config = FakeConfig(null)
+        val created = MutableStateFlow(creation)
         return TestCommands(
-            create = { n, st, en, ou ->
-                scope.launch {
-                    creator.create(CreateRequest(n, st, en, ou))
-                }
+            create = { request ->
+                creator.create(request)
+                // Answered on the status the screen reads, as the live door's work answers it.
+                created.value = RequestStatus.Done(request.id, CreateResult.Failed(ServiceFault.UNREACHABLE))
+                null
             },
         ).let { commands ->
             StatusContainerHost(
@@ -2583,7 +2603,7 @@ class StatusContainerHostRefusalTest {
                     FakeSyncStatusSource(),
                     permission.permission,
                     config.config,
-                    creation = MutableStateFlow(creation),
+                    creation = created,
                     foreground = foreground,
                     verification = DeviceVerification(refusal = refusal),
                     requests = commands.requests.flows,
@@ -2606,7 +2626,7 @@ class StatusContainerHostRefusalTest {
     @Test
     fun `a refused phone is told why on the front screen before it taps anything in place of the scan hint`() = runTest {
         for (reason in DeviceRefusal.entries) {
-            val host = createHost(CreationStatus.Idle, scope = backgroundScope, refusal = MutableStateFlow(reason))
+            val host = createHost(Creating.Idle, scope = backgroundScope, refusal = MutableStateFlow(reason))
             val told = createLayerAt(fixedCutoffFormatter(), error = reason.message)
             assertEquals(shownAs(told), host.screen.value)
         }
@@ -2615,7 +2635,7 @@ class StatusContainerHostRefusalTest {
     @Test
     fun `a refusal the service stops making leaves the scan hint`() = runTest {
         val refusal = MutableStateFlow<DeviceRefusal?>(DeviceRefusal.DEVICE_UNVERIFIABLE)
-        createHost(CreationStatus.Idle, scope = backgroundScope, refusal = refusal).testWithInternalState(this) {
+        createHost(Creating.Idle, scope = backgroundScope, refusal = refusal).testWithInternalState(this) {
             runOnCreate()
             refusal.value = null
             expectShown(shownAs(createLayerAt(fixedCutoffFormatter(), error = null)))
@@ -2625,7 +2645,7 @@ class StatusContainerHostRefusalTest {
 
     @Test
     fun `a create refused for this phone says why - and without a verdict that the server could not be reached`() = runTest {
-        val unverified = CreationStatus.Failed(CreationFailureReason.UNVERIFIED)
+        val unverified = Creating.answered(CreateResult.Unverified)
         val told =
             createHost(unverified, scope = backgroundScope, refusal = MutableStateFlow(DeviceRefusal.APP_NOT_GENUINE))
         assertEquals(

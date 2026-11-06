@@ -43,5 +43,4 @@ internal fun backendServicesFor(
     BackendServices(
         BackendGateway(exchange, attestation),
         services.deviceIdentity,
-        zone = { services.process.clock.timeZone().id },
     )

@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.membership.JoinCommit
@@ -10,7 +11,6 @@ import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
@@ -50,7 +50,7 @@ class StatusSources(
      * The create-status read-model. Inert by default (always `Idle`) so a host that never creates
      * constructs unchanged; the iOS shell injects the instance the create use-case drives.
      */
-    val creation: StateFlow<CreationStatus> = MutableStateFlow(CreationStatus.Idle),
+    val creation: StateFlow<RequestStatus<CreateResult>> = MutableStateFlow(RequestStatus.Idle),
     /**
      * The member's requests of the membership, each answered on its own status under the request's id. Inert by
      * default (idle) so a host that never asks constructs unchanged.

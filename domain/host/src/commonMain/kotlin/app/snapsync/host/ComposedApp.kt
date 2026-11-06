@@ -144,7 +144,6 @@ fun snapSyncHost(
     }
     // A minted event routes into the host's join gate, so create and a scanned QR take one gate: collected from
     // composition on, so the host is assembled by the time the first one — a tap's — is minted.
-    scope.launch { core.mintedEvents.collect { composed.host.onEventCreated(it.eventId, it.key) } }
     // Every event port's ONE delivery each, now that the graph they deliver into is built. The foreground asks for the
     // status host first — a person reached the app — and so does a live screen; nothing else builds it, so a cold
     // background start installs no permission-grant subscription.
@@ -214,7 +213,7 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     sync = core.syncStatusSource,
     permission = core.photoPermission,
     config = core.membership,
-    creation = core.creationStatus,
+    creation = core.creationStatus.status,
     requests = requestFlowsOf(core.membershipStatuses, core.reportStatus),
     download = core.downloadProgress,
     verification = DeviceVerification(core.attested, core.refusal, core.attestationFault, core.serviceFault),

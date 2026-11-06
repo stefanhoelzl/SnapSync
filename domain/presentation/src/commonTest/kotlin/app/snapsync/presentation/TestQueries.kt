@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
@@ -129,6 +130,9 @@ internal class TestRequests {
 
     /** A bug report's answers. */
     val reports = RequestStatuses<ReportOutcome>()
+
+    /** A create's answers. */
+    val creation = RequestStatuses<CreateResult>()
     val flows = RequestStatusFlows(
         join = statuses.join.status,
         settings = statuses.settings.status,
@@ -162,8 +166,7 @@ internal class TestRequests {
  */
 internal class TestCommands(
     private val leave: () -> Unit = {},
-    private val create: (name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) -> Unit =
-        { _, _, _, _ -> },
+    private val create: suspend (CreateRequest) -> CreateResult? = { null },
     private val commitJoin: suspend (JoinChoice) -> JoinCommit? = { _ -> JoinCommit.Failed() },
     private val share: (url: String, title: String) -> Unit = { _, _ -> },
     private val requestAccess: () -> Unit = {},
@@ -190,7 +193,9 @@ internal class TestCommands(
     /** The door a host is built over. */
     val door: UserCommands = UserCommands(
         leave = command { _: Unit -> leave() },
-        create = command { r: CreateRequest -> create(r.name, r.startsAt, r.endsAt, r.openUntil) },
+        create = command { r: CreateRequest ->
+            requests.answer(r.id, requests.creation, CreateResult.Failed(ServiceFault.UNREACHABLE)) { create(r) }
+        },
         join = command { r: JoinRequest ->
             requests.answer(r.id, requests.statuses.join, JoinCommit.Failed()) { commitJoin(r.choice) }
         },
@@ -252,4 +257,12 @@ internal object AlwaysAllowed : MobileDataQuery {
 internal object AlwaysOnline : NetworkStatusQuery {
     override val access: StateFlow<NetworkAccess> = MutableStateFlow(NetworkAccess.Online(restricted = false))
     override val returned: Flow<Unit> = emptyFlow()
+}
+
+/** The create screen's request status, as a test sets it: one request's, running or answered. */
+internal object Creating {
+    val Idle: RequestStatus<CreateResult> = RequestStatus.Idle
+    val InFlight: RequestStatus<CreateResult> = RequestStatus.InFlight(RequestId(1))
+
+    fun answered(result: CreateResult): RequestStatus<CreateResult> = RequestStatus.Done(RequestId(1), result)
 }

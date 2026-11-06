@@ -1,6 +1,7 @@
 package app.snapsync.domain.request
 
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.anEvent
@@ -11,6 +12,7 @@ import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -61,8 +63,19 @@ class RequestsTest {
     }
 
     @Test
+    fun `a create's answer is the minted event with its key, or what refused it`() {
+        val created = CreateResult.Created(event.id, key)
+        assertEquals(event.id to key, created.eventId to created.key)
+        assertEquals(ServiceFault.UPDATING, CreateResult.Failed(ServiceFault.UPDATING).fault)
+        assertEquals(
+            setOf("InvalidName", "InvalidWindow", "Unverified"),
+            setOf(CreateResult.InvalidName, CreateResult.InvalidWindow, CreateResult.Unverified).map { "$it" }.toSet(),
+        )
+    }
+
+    @Test
     fun `a create request carries the event's name, range and open-until`() {
-        val request = CreateRequest("Party", event.range.start, event.range.end, openUntil = null)
+        val request = CreateRequest(id, "Party", event.range.start, event.range.end, openUntil = null, zone = "UTC")
         assertEquals("Party", request.name)
         assertEquals(event.range.start to event.range.end, request.startsAt to request.endsAt)
         assertNull(request.openUntil)

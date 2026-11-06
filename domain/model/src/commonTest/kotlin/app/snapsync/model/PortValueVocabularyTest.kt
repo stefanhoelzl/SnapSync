@@ -1,6 +1,5 @@
 package app.snapsync.model
 
-import app.snapsync.testids.testEventId
 import kotlin.test.Test
 
 /**
@@ -9,31 +8,6 @@ import kotlin.test.Test
  * case and a test asserts the answer by equality.
  */
 class PortValueVocabularyTest {
-
-    @Test
-    fun `a create outcome is one of five distinct answers the created one compared by its event`() {
-        assertEveryCaseDistinct(
-            listOf(
-                CreateOutcome.Created(testEventId("event"), "Picnic"),
-                CreateOutcome.InvalidName,
-                CreateOutcome.InvalidWindow,
-                CreateOutcome.Unverified,
-                CreateOutcome.Transient(),
-            ),
-        ) {
-            when (it) {
-                is CreateOutcome.Created -> "Created"
-                CreateOutcome.InvalidName -> "InvalidName"
-                CreateOutcome.InvalidWindow -> "InvalidWindow"
-                CreateOutcome.Unverified -> "Unverified"
-                is CreateOutcome.Transient -> "Transient"
-            }
-        }
-        assertValueEquality(
-            { CreateOutcome.Created(testEventId("event"), "Picnic") },
-            CreateOutcome.Created(testEventId("event")),
-        )
-    }
 
     @Test
     fun `a handoff to the platform was accepted or refused with a reason`() {

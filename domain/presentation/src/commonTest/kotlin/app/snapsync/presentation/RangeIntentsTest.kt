@@ -1,11 +1,12 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
-import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
@@ -296,7 +297,13 @@ class RangeIntentsTest {
         scope: CoroutineScope,
         created: (String, EventStart, EventEnd, OpenUntil?) -> Unit =
             { _, _, _, _ -> },
-    ) = TestCommands(create = created).let { commands ->
+    ) = TestCommands(
+        create = { r ->
+            created(r.name, r.startsAt, r.endsAt, r.openUntil)
+            // Answered, so the form returns: these tests read what was sent, and the form it was sent from.
+            CreateResult.Failed(ServiceFault.UNREACHABLE)
+        },
+    ).let { commands ->
         StatusContainerHost(
             StatusSources(
                 object : SyncStatusSource {
@@ -304,7 +311,7 @@ class RangeIntentsTest {
                 },
                 MutableStateFlow(GalleryAccess.GRANTED),
                 MutableStateFlow(null),
-                creation = MutableStateFlow(CreationStatus.Idle),
+                creation = commands.requests.creation.status,
                 requests = commands.requests.flows,
                 network = AlwaysOnline,
                 mobileData = AlwaysAllowed,

@@ -18,11 +18,8 @@ import app.snapsync.data.push.PushEndpointPublisher
 class BackendServices(
     val gateway: BackendGateway,
     private val identity: DeviceIdentity,
-    /** The device's zone, read at a create (the app's clock); the extension never creates, so it passes none. */
-    private val zone: () -> String?,
 ) {
     val directory: EventDirectory by lazy { EventDirectory(gateway) }
-    val creation: EventCreation by lazy { BackendEventCreation(gateway, zone) }
     val rename: EventRename by lazy { EventRename(gateway) }
     val join: EventJoin by lazy { EventJoin(gateway) }
     val leave: LeaveNotifier by lazy { LeaveNotifier(gateway, identity) }

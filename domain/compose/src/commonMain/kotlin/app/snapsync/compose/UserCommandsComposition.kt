@@ -52,7 +52,7 @@ internal fun AppCore.commandsFor(reports: RequestStatuses<ReportOutcome>): CoreC
     val asks = PhotoAccessAsks(ports.gallery)
     return CoreCommands(
         leave = work.leaveConfirmed,
-        create = OnCreateTapped(runtime, eventCreator),
+        create = OnCreateTapped(runtime, createEvent, creationStatus),
         join = work.joinConfirmed,
         share = OnShareTapped(runtime, surfaces),
         requestAccess = OnRequestAccessTapped(runtime, asks),

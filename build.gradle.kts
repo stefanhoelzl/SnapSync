@@ -176,7 +176,9 @@ coverage {
         // covered, moved to the layers and the entry points. No test was lost. Measured 89.82 / 70.49 %.
         // → 88/65 in phase 4.9 (status): the poller, the refresh and the status sources, which the suite covered, moved
         // to the change feed's queries and the total's use case. No test was lost. Measured 88.84 / 65.06 %.
-        integration(instructions = 88, branches = 65)
+        // → 87/58 with the command door (4.9): the create use case, which the suite covered with every answer, moved
+        // to the application layer. No test was lost. Measured 87.70 / 58.20 %.
+        integration(instructions = 87, branches = 58)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.

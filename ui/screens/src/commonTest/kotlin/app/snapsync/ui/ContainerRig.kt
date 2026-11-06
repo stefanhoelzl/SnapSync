@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.foreground.ForegroundReturn
@@ -40,10 +41,10 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.request.SwitchRequest
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.TimestampText
 import app.snapsync.inbound.Background
@@ -62,6 +63,7 @@ import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.UserCommand
 import app.snapsync.presentation.UserCommands
 import app.snapsync.presentation.onIntent
+import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
@@ -107,7 +109,7 @@ internal class ContainerRig(
     network: NetworkAccess = NetworkAccess.Online(restricted = false),
     deviceRefusal: DeviceRefusal? = null,
     val clock: TestClock = TestClock(),
-    val creation: MutableStateFlow<CreationStatus> = MutableStateFlow(CreationStatus.Idle),
+    val creation: MutableStateFlow<RequestStatus<CreateResult>> = MutableStateFlow(RequestStatus.Idle),
     val foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
 ) {
     val config = MutableStateFlow(config)
@@ -179,6 +181,8 @@ internal class ContainerRig(
             create = command { r: CreateRequest ->
                 record("create:${r.name}${r.openUntil?.let { ":open-until:${TimestampText.format(it.at)}" }.orEmpty()}")
                 createdCell.update { it + Triple(r.name, r.startsAt, r.endsAt) }
+                // Answered at once, as a core whose service failed would: the form returns with what was sent from it.
+                creation.value = RequestStatus.Done(r.id, CreateResult.Failed(ServiceFault.UNREACHABLE))
             },
             join = command { r: JoinRequest ->
                 record("commitJoin:${r.choice.event.id}:${r.choice.direction}:${r.choice.album}")

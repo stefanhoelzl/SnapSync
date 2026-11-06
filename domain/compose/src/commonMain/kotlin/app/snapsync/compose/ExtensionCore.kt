@@ -247,9 +247,7 @@ internal fun extensionBackend(
     attestStore: CachedCredentialStore,
     identity: DeviceIdentity,
 ): BackendServices =
-    // The extension never creates an event, so it has no zone to send.
     BackendServices(
         BackendGateway(exchange, DropOnlyCredential(attestStore)),
         identity,
-        zone = { null },
     )

@@ -109,10 +109,6 @@ class CompositionSeamTest {
      * only through the sibling's own ports.
      */
     private val constructorPins: Map<String, String> = mapOf(
-        "CreateEvent.onMinted" to
-            "emits the minted event on AppCore.mintedEvents, which the host zone collects into this core's join gate " +
-            "(StatusContainerHost.onEventCreated) — a re-entry into this same graph so create and a scanned QR take " +
-            "one gate, not two. Nothing leaves the process",
         "CollectDiagnosticDump.uploadFacts" to
             "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
         "CollectDiagnosticDump.appFacts" to
@@ -239,9 +235,10 @@ class CompositionSeamTest {
         // share's publish and the transitions' engine are typed steps now — and 4.7 the gather's policy lambda, which reads
         // the selection through `OwnAlbumPhotos` now. 4 since the status moved (4.9): the ledger counts' read, the poll's
         // group and the refresh's download line and contribution went with the poller and the refresh — the screen's
-        // counts follow the stores' change feed. Lower it only with a removal like those, never to pass.
+        // counts follow the stores' change feed. 3 with the command door (4.9): a create is answered on its status, so
+        // the minted event's hook (CreateEvent.onMinted) went. Lower it only with a removal like those, never to pass.
         assertTrue(
-            found.size >= 4,
+            found.size >= 3,
             "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
                 "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
         )
