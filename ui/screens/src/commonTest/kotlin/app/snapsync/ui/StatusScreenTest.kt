@@ -146,6 +146,7 @@ import app.snapsync.ui.resources.update_detail
 import app.snapsync.ui.resources.update_detail_version
 import app.snapsync.ui.resources.update_eyebrow
 import app.snapsync.ui.resources.waiting_members
+import app.snapsync.ui.state.AccessFix
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
@@ -229,6 +230,10 @@ private fun reconfiguring(
         ),
     ),
 )
+
+/** [state]'s joined layer, telling [fix] as what gives the app its access. */
+private fun withAccessFix(state: UiState, fix: AccessFix): UiState =
+    state.copy(layer = (state.layer as Layer.Joined).copy(accessFix = fix))
 
 private fun joined(
     health: SyncHealth,
@@ -1512,7 +1517,7 @@ class StatusScreenTest {
             var settings = 0
             setContent {
                 TestStatusScreen(
-                    joined(SyncHealth.NeedsAccess(canAsk = true)),
+                    withAccessFix(joined(SyncHealth.NeedsAccess(canAsk = true)), AccessFix.ASK),
                     actions = testActions(
                         access = testAccessActions(onRequestPermission = { asked++ }, onOpenSettings = { settings++ }),
                     ),
@@ -1531,11 +1536,19 @@ class StatusScreenTest {
         }
 
     @Test
+    fun `missing access is explained beneath whatever line the status shows`() = runComposeUiTest {
+        // A lost key outranks missing access on the status line; the explanation still says nothing is shared.
+        setContent { TestStatusScreen(withAccessFix(joined(SyncHealth.KeyLost), AccessFix.SETTINGS)) }
+        onNodeWithText(str(Res.string.explain_share_blocked_title)).assertExists()
+        onNodeWithText(str(Res.string.explain_receive_blocked_title)).assertExists()
+    }
+
+    @Test
     fun `a refused grant's link goes to the phone's Settings`() = runComposeUiTest {
         var settings = 0
         setContent {
             TestStatusScreen(
-                joined(SyncHealth.NeedsAccess(canAsk = false)),
+                withAccessFix(joined(SyncHealth.NeedsAccess(canAsk = false)), AccessFix.SETTINGS),
                 actions = testActions(access = testAccessActions(onOpenSettings = { settings++ })),
             )
         }

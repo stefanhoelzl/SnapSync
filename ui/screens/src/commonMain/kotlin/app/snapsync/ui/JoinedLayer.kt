@@ -42,6 +42,7 @@ import app.snapsync.ui.resources.timing_ended
 import app.snapsync.ui.resources.timing_ends_in
 import app.snapsync.ui.resources.timing_starts_in
 import app.snapsync.ui.resources.waiting_members
+import app.snapsync.ui.state.AccessFix
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.Layer
@@ -140,7 +141,13 @@ private fun OverBlock(state: Layer.Joined) {
  * function for the status line and the explanation's link, so the two can never do different things.
  */
 internal fun accessAction(health: SyncHealth.NeedsAccess, access: AccessActions): () -> Unit =
-    if (health.canAsk) access.onRequestPermission else access.onOpenSettings
+    accessAction(if (health.canAsk) AccessFix.ASK else AccessFix.SETTINGS, access)
+
+/** What [fix] taps: the system's question, or the phone's Settings. */
+internal fun accessAction(fix: AccessFix, access: AccessActions): () -> Unit = when (fix) {
+    AccessFix.ASK -> access.onRequestPermission
+    AccessFix.SETTINGS -> access.onOpenSettings
+}
 
 private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
     is SyncHealth.NeedsAccess -> AppSyncStatus.NeedsAccess(if (canAsk) AccessPrompt.ALLOW else AccessPrompt.SETTINGS)
