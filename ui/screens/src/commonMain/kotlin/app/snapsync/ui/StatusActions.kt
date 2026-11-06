@@ -46,12 +46,8 @@ class StatusActions(
 
     /** What the create form asks for. */
     val create: CreateActions,
-    /**
-     * Open this build's store page — the update-required screen's one button.
-     * Top-level rather than in a group: it belongs to no escalation and shares its question
-     * with nothing.
-     */
-    val onOpenStore: () -> Unit,
+    /** What the screens standing in for the whole app ask for, each its one button. */
+    val wholeScreen: WholeScreenActions,
     /**
      * The member's edits to the capture-range form, bound to the container's intents. Both decision
      * surfaces ask for the same seven, so they are one bundle rather than two identical sets.
@@ -59,6 +55,17 @@ class StatusActions(
     val participation: ParticipationActions,
     /** The app menu, the report it leads to, and the word on a sent report. */
     val menu: MenuActions,
+)
+
+/**
+ * What the screens that stand in for the whole app ask for — each a single button, belonging to no escalation and
+ * sharing its question with nothing else.
+ */
+class WholeScreenActions(
+    /** Open this build's store page — the update-required screen's button. */
+    val onOpenStore: () -> Unit,
+    /** Try again to read whether this device is in an event — the unreadable-membership screen's button. */
+    val onRetryMembershipRead: () -> Unit,
 )
 
 /**

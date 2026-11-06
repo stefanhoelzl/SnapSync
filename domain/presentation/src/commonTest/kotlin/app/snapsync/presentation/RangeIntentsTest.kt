@@ -8,6 +8,7 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
@@ -303,7 +304,7 @@ class RangeIntentsTest {
             testQueries(
                 MutableStateFlow(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
-                MutableStateFlow(null),
+                MutableStateFlow(MembershipShown.None),
                 creation = commands.requests.creation.status,
                 requests = commands.requests.flows,
                 network = AlwaysOnline,

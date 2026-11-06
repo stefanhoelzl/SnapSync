@@ -5,6 +5,7 @@ import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
@@ -39,6 +40,7 @@ class UserCommands(
     val sendDiagnostics: UserCommand<ReportRequest>,
     val setMobileData: UserCommand<MobileDataRequest>,
     val restoreKey: UserCommand<KeyRestoreRequest>,
+    val retryMembershipRead: UserCommand<MembershipReadRequest>,
     // The screen opened the invite the app was opened with: it no longer waits.
     val inviteOpened: UserCommand<InviteLinkVerdict>,
 )

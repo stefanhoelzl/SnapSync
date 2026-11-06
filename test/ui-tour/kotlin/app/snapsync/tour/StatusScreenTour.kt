@@ -28,6 +28,7 @@ import androidx.compose.ui.test.performTouchInput
 import app.snapsync.contracts.UiUnderTest
 import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.album.AlbumContents
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
@@ -66,6 +67,7 @@ import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
@@ -101,11 +103,11 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.UserCommand
 import app.snapsync.presentation.UserCommands
 import app.snapsync.presentation.onIntent
-import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.encryption.InviteRead
 import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
@@ -295,9 +297,17 @@ abstract class StatusScreenTour {
         permission: PhotoGrant = PhotoGrant.FULL,
         refusal: VersionRefusal? = null,
         deviceRefusal: DeviceRefusal? = null,
+        /** Whether the device is in an event cannot be read, as before the first unlock: the unreadable screen. */
+        unreadable: Boolean = false,
         private val details: suspend (EventId) -> JoinDetails = { OTHER_EVENT },
     ) {
-        val config = MutableStateFlow(config)
+        val config = MutableStateFlow(
+            when {
+                unreadable -> MembershipShown.Unreadable
+                config != null -> MembershipShown.Held(config)
+                else -> MembershipShown.None
+            },
+        )
 
         /** The invite the app was opened with, waiting for the screen until the screen tells it opened. */
         val invites = MutableStateFlow<InviteLinkVerdict?>(null)
@@ -307,6 +317,12 @@ abstract class StatusScreenTour {
         private val statuses = MembershipStatuses()
 
         private val reports = RequestStatuses<ReportOutcome>()
+
+        /**
+         * Every create answered at once, as unminted: the form comes back with what was entered, and the tour goes on
+         * touching it. A create no one answers holds the screen on "creating" — the guard waits for its answer.
+         */
+        private val creations = RequestStatuses<CreateResult>()
 
         private fun <T> answered(id: RequestId, on: RequestStatuses<T>, answer: T?) {
             on.begun(id)
@@ -330,11 +346,11 @@ abstract class StatusScreenTour {
                     presence = MutableStateFlow(KeyPresence.NotNeeded),
                     invite = object : InviteRead {
                         override fun invite(): String? =
-                            this@Rig.config.value?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
+                            this@Rig.config.value.held?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
                     },
                 ),
                 invites = invites,
-                creation = MutableStateFlow(RequestStatus.Idle),
+                creation = creations.status,
                 versionRefusal = MutableStateFlow(refusal),
                 verification = DeviceVerification(
                     attested = MutableStateFlow(true),
@@ -359,6 +375,7 @@ abstract class StatusScreenTour {
                     settings = statuses.settings.status,
                     switch = statuses.switch.status,
                     rename = statuses.rename.status,
+                    membershipRead = statuses.read.status,
                     report = reports.status,
                 ),
             ),
@@ -366,8 +383,10 @@ abstract class StatusScreenTour {
             cutoffFormatter = CUTOFF,
             commands = UserCommands(
                 inviteOpened = command { _: InviteLinkVerdict -> invites.value = null },
-                leave = command { _: Unit -> this@Rig.config.value = null },
-                create = command { _: CreateRequest -> },
+                leave = command { _: Unit -> this@Rig.config.value = MembershipShown.None },
+                create = command { r: CreateRequest ->
+                    answered(r.id, creations, CreateResult.Failed(ServiceFault.UNREACHABLE))
+                },
                 join = command { r: JoinRequest -> answered(r.id, statuses.join, JoinCommit.Failed()) },
                 platform = PlatformCommands(
                     share = command { _: ShareRequest -> },
@@ -386,6 +405,7 @@ abstract class StatusScreenTour {
                 restoreKey = command { r: KeyRestoreRequest ->
                     answered(r.id, statuses.restore, RestoreAnswer.NothingChanged)
                 },
+                retryMembershipRead = command { r: MembershipReadRequest -> answered(r.id, statuses.read, Unit) },
             ),
             shareableCount = object : ScreenLookup<CaptureRange, Int?>("test", Dispatchers.Unconfined) {
                 override suspend fun read(arg: CaptureRange): Int? = null
@@ -441,6 +461,7 @@ abstract class StatusScreenTour {
         val parts = listOf<Pair<String, ComposeUiTest.() -> Unit>>(
             "update required" to { updateRequired() },
             "refused device" to { refusedDevice() },
+            "unreadable membership" to { unreadableMembership() },
             "create layer" to { createLayer() },
             "join gate" to { joinGate() },
             "joined" to { joined() },
@@ -468,6 +489,11 @@ abstract class StatusScreenTour {
         awaitShown { it.overlays.reportingBug }
         onNodeWithText(str(Res.string.cancel)).performClick()
         awaitShown { !it.overlays.reportingBug }
+    }
+
+    private fun ComposeUiTest.unreadableMembership() {
+        use(Rig(unreadable = true)) { it.layer is Layer.MembershipUnreadable }
+        onNodeWithText(str(Res.string.retry)).performClick()
     }
 
     private fun ComposeUiTest.createLayer() {

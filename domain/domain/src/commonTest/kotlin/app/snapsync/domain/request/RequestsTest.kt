@@ -47,6 +47,7 @@ class RequestsTest {
         assertEquals(id to key, KeyRestoreRequest(id, key).let { it.id to it.key })
         val wifi = MobileDataRequest(id, MobileDataChoice.WIFI_ONLY)
         assertEquals(id to MobileDataChoice.WIFI_ONLY, wifi.id to wifi.choice)
+        assertEquals(id, MembershipReadRequest(id).id)
     }
 
     @Test

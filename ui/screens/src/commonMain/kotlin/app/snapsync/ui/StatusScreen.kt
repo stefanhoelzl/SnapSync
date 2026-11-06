@@ -480,7 +480,8 @@ private fun JoinedFooter(actions: StatusActions, deleted: Boolean, invitable: Bo
 private fun ColumnScope.CurrentLayer(state: UiState, actions: StatusActions) {
     when (val layer = state.layer) {
         is Layer.UpdateRequired ->
-            UpdateRequiredScreen(layer, actions.onOpenStore)
+            UpdateRequiredScreen(layer, actions.wholeScreen.onOpenStore)
+        is Layer.MembershipUnreadable -> MembershipUnreadableScreen(layer, actions.wholeScreen.onRetryMembershipRead)
         // The draft is the app's: a failed create's round trip through the in-flight screen brings it back
         // (a failed create says so and changes nothing).
         is Layer.CreateEvent ->

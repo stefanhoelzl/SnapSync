@@ -13,7 +13,6 @@ import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
-import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -25,6 +24,7 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AccessFix
@@ -227,7 +227,7 @@ internal class FakePermissionSource(
 
 internal class FakeConfig(initial: TestMembership? = SAMPLE_CONFIG) {
     private val flow = MutableStateFlow(initial)
-    val config: StateFlow<Membership?> = flow.held()
+    val config: StateFlow<MembershipShown> = flow.held()
     val keys: EventKeyView = flow.plainKeys()
     fun save(config: TestMembership) {
         flow.value = config
@@ -903,7 +903,7 @@ class StatusContainerHostTest {
         }
         assertEquals(
             CaptureCutoff(timestamp("2026-07-06T00:00:00Z")),
-            config.config.value?.share?.range?.from,
+            config.config.value.held?.share?.range?.from,
         )
     }
 
@@ -1069,8 +1069,8 @@ class StatusContainerHostTest {
         assertEquals(joinedLoading, container.stateFlow.value.ui)
     }
 
-    @Test
     // A known problem shows before the app has looked: missing access needs no count, so it is never held behind one.
+    @Test
     fun `permission outranks a loading snapshot when config is present`() = runTest {
         val source = FakeSharingProgress(SharingProgressRead.NotYetRead)
         val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
@@ -1463,7 +1463,7 @@ class StatusContainerHostTest {
         }
         // The leave ran; no join was committed by the confirm — that is the member's next act.
         assertEquals(listOf("leave"), order)
-        assertEquals(null, configFake.config.value)
+        assertEquals(null, configFake.config.value.held)
     }
 
     /**
@@ -1578,7 +1578,7 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(0, commits)
-        assertEquals(null, configFake.config.value)
+        assertEquals(null, configFake.config.value.held)
     }
 
     @Test
@@ -1653,7 +1653,7 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(Direction.DownloadOnly, committedDirection)
-        assertEquals(Direction.DownloadOnly, configFake.config.value?.share?.direction)
+        assertEquals(Direction.DownloadOnly, configFake.config.value.held?.share?.direction)
     }
 
     @Test
@@ -2128,7 +2128,7 @@ class StatusContainerHostTest {
         }
         assertEquals(0, requester.requests)
         assertEquals(0, commits, "cancelling must not commit a join")
-        assertEquals(null, configFake.config.value, "cancelling must not save a config")
+        assertEquals(null, configFake.config.value.held, "cancelling must not save a config")
     }
 
     @Test

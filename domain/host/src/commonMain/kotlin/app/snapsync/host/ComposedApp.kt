@@ -175,6 +175,7 @@ private fun requestFlowsOf(statuses: MembershipStatuses, reports: RequestStatuse
         statuses.settings.status,
         statuses.switch.status,
         statuses.rename.status,
+        statuses.read.status,
         reports.status,
     )
 
@@ -196,6 +197,7 @@ private fun doorOf(commands: CoreCommands): UserCommands = UserCommands(
     sendDiagnostics = UserCommand(commands.sendDiagnostics),
     setMobileData = UserCommand(commands.setMobileData),
     restoreKey = UserCommand(commands.restoreKey),
+    retryMembershipRead = UserCommand(commands.retryMembershipRead),
     inviteOpened = UserCommand(commands.inviteOpened),
 )
 

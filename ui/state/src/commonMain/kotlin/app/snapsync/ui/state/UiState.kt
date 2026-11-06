@@ -183,6 +183,14 @@ sealed interface Layer {
     data object CreatingEvent : Layer
 
     /**
+     * The app cannot read whether this device is in an event, and has read nothing since it started: neither the joined
+     * screen, which would need the event, nor the create screen, which would tell the member they had left. The
+     * member is told so, and can [retrying] try again — the membership read again, then what opening the app runs.
+     */
+    @Serializable
+    data class MembershipUnreadable(val retrying: Boolean) : Layer
+
+    /**
      * An interactive join confirmation is in progress for [eventId], shown as a full-screen "Join event" surface.
      * Entered whenever a join is pending and **no event is configured** — which covers a first join and, equally, a
      * **switch after its leave**: the switch's confirmation ([Joined.pendingSwitch]) runs only the leave, and the same

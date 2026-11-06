@@ -78,6 +78,8 @@
     <string name="update_detail_version">SnapSync %1$s oder neuer wird benötigt, um weiter Fotos zu teilen.</string>
     <string name="update_detail">Eine neuere Version von SnapSync wird benötigt, um weiter Fotos zu teilen.</string>
     <string name="store_open">%1$s öffnen</string>
+    <string name="unreadable_headline">Dein Event kann gerade nicht gelesen werden</string>
+    <string name="unreadable_detail">Du hast es nicht verlassen. Versuch es gleich noch einmal.</string>
 
     <string name="join_access_notice">Als Nächstes wirst du nach Zugriff auf deine Fotos gefragt</string>
     <string name="join_access_info">Was der Beitritt mit deinen Fotos macht</string>

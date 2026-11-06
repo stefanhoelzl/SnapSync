@@ -33,6 +33,8 @@ dependencies {
     implementation(project(":domain:services"))
     // The inspector's "forget the event key" lever addresses the key's slot, which the data layer names.
     implementation(project(":domain:data"))
+    // The inspector's policy badge reads the membership as the screen's query shows it.
+    implementation(project(":domain:query"))
     // The mirror: the control channel's typed client, whose wire `UiState` it re-composes.
     implementation(project(":test:control"))
     // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).

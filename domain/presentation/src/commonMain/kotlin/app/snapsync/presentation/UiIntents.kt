@@ -70,6 +70,7 @@ fun StatusContainerHost.onIntent(intent: UiIntent) {
         UiIntent.ConfirmJoin -> onConfirmJoin()
         UiIntent.ConfirmSwitch -> onConfirmSwitch()
         UiIntent.RetryJoin -> onRetryJoin()
+        UiIntent.RetryMembershipRead -> retry.onRetry()
         UiIntent.CancelJoin -> onCancelJoin()
         UiIntent.CancelSwitch -> onCancelSwitch()
         is UiIntent.SendDiagnostics -> onSendDiagnostics(intent.note, intent.screen)

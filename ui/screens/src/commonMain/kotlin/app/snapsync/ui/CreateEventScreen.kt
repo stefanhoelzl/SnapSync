@@ -53,7 +53,10 @@ import app.snapsync.ui.resources.keep_open_body
 import app.snapsync.ui.resources.keep_open_choice
 import app.snapsync.ui.resources.keep_open_title
 import app.snapsync.ui.resources.message_report_this
+import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.store_open
+import app.snapsync.ui.resources.unreadable_detail
+import app.snapsync.ui.resources.unreadable_headline
 import app.snapsync.ui.resources.update_detail
 import app.snapsync.ui.resources.update_detail_version
 import app.snapsync.ui.resources.update_eyebrow
@@ -316,6 +319,31 @@ internal fun UpdateRequiredScreen(layer: Layer.UpdateRequired, onOpenStore: () -
             Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
                 PrimaryButton(label = stringResource(Res.string.store_open, store), onClick = onOpenStore)
             }
+        }
+    }
+}
+
+/**
+ * Whether this device is in an event cannot be read, and has not been since the app started: it says so — and that the
+ * member has not left — and offers to try again, which shows that it is working while it does. The app menu stays in
+ * the chrome above it, and with it the report.
+ */
+@Composable
+internal fun MembershipUnreadableScreen(layer: Layer.MembershipUnreadable, onRetry: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            StatusHero(
+                if (layer.retrying) StatusIndicator.Loading else StatusIndicator.Error,
+                stringResource(Res.string.unreadable_headline),
+                stringResource(Res.string.unreadable_detail),
+            )
+        }
+        Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+            PrimaryButton(label = stringResource(Res.string.retry), onClick = onRetry.takeUnless { layer.retrying })
         }
     }
 }

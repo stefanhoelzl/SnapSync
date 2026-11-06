@@ -31,6 +31,13 @@ class ShownCountsTest {
     }
 
     @Test
+    fun `receiving switched off keeping what arrived is carried as off with the count kept`() {
+        val state = joinedState(counts = SyncCounts(DirectionCount.Progress(3, 3), DirectionCount.Kept(40)))
+
+        assertEquals("off, 40 kept", shownCounts(state)[DiagnosticKeys.SHOWN_RECEIVED])
+    }
+
+    @Test
     fun `no counts line showing carries no counts`() {
         assertEquals(emptyMap(), shownCounts(joinedState(counts = null)))
     }

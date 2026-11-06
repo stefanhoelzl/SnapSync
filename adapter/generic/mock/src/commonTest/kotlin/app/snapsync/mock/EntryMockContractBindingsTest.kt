@@ -224,7 +224,8 @@ class EntryMockContractBindingsTest {
             UiIntent.RenameStatusConsumed, UiIntent.ConfirmStopSharing, UiIntent.KeepSharing,
             UiIntent.ShareOn(SwitchTo.ON), UiIntent.ReceiveOn(SwitchTo.ON), UiIntent.SaveToAlbum(SwitchTo.ON),
             UiIntent.RangePreset(RangeChoice.entries.first()),
-            UiIntent.RetryLoad, UiIntent.ConfirmJoin, UiIntent.ConfirmSwitch, UiIntent.RetryJoin, UiIntent.CancelJoin,
+            UiIntent.RetryLoad, UiIntent.ConfirmJoin, UiIntent.ConfirmSwitch, UiIntent.RetryJoin, UiIntent.RetryMembershipRead,
+            UiIntent.CancelJoin,
             UiIntent.CancelSwitch, UiIntent.SendDiagnostics("note", "screen"), UiIntent.KeepOpenFor(1),
             UiIntent.KeepOpenDismiss,
         )

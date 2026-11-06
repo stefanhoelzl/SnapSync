@@ -8,6 +8,7 @@ import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.query.RequestStatus
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
 import app.snapsync.ui.state.ReportNotice
@@ -70,7 +71,7 @@ class NoticeTimersTest {
             testQueries(
                 FixedSync(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
-                MutableStateFlow(null),
+                MutableStateFlow(MembershipShown.None),
                 creation = MutableStateFlow(creation),
                 requests = commands.requests.flows,
                 network = AlwaysOnline,

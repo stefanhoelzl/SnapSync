@@ -6,7 +6,6 @@ import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinChoice
-import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
@@ -18,6 +17,7 @@ import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Overlays
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +29,7 @@ import kotlinx.coroutines.flow.update
 
 /** What the join gate reads of the world: the membership, the grant, the key's presence and the phone's standing. */
 internal class GateReads(
-    val membership: StateFlow<Membership?>,
+    val membership: StateFlow<MembershipShown>,
     val permission: StateFlow<PhotoGrant>,
     val keyPresence: StateFlow<KeyPresence>,
     val refusal: StateFlow<DeviceRefusal?>,
@@ -102,7 +102,7 @@ internal class JoinGate(
         }
     }
 
-    private fun joinedId(): EventId? = reads.membership.value?.let { it.event.id }
+    private fun joinedId(): EventId? = reads.membership.value.held?.let { it.event.id }
 
     /**
      * A delivery of a link this gate is already acting on, or has already acted on — **recorded, then ignored**.
@@ -159,7 +159,7 @@ internal class JoinGate(
      * subscription (decision record `simplify-join-screen`, D3). A retry never re-requests: by then iOS has an answer.
      */
     fun onConfirmJoin(): Job = runner.intent {
-        if (asksAccessOnJoin(reads.membership.value, reads.permission.value)) {
+        if (asksAccessOnJoin(reads.membership.value.held, reads.permission.value)) {
             commands.platform.requestAccess.fire(Unit)
         }
         commit()
@@ -193,7 +193,7 @@ internal class JoinGate(
         local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
         commands.leave.fire(Unit)
         combine(reads.membership, pending) { joined, open ->
-            joined?.let { it.event.id } != left || open?.eventId != p.eventId
+            joined.held?.let { it.event.id } != left || open?.eventId != p.eventId
         }.first { it }
     }
 
@@ -295,7 +295,7 @@ internal class JoinGate(
         val id = cells.ids.next()
         commands.join.fire(JoinRequest(id, choice))
         val commit = requests.join.answerTo(id)
-        val joined = reads.membership.value
+        val joined = reads.membership.value.held
         pending.update { it.settled(p, detailed, commit, joined, reads.refusal.value, reads.attestFault.value) }
     }
 

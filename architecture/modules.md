@@ -156,6 +156,7 @@ flowchart LR
   app_desktop --> domain_model
   app_desktop --> domain_ports
   app_desktop --> domain_presentation
+  app_desktop --> domain_query
   app_desktop --> domain_services
   app_desktop --> test_control
   app_desktop --> ui_components

@@ -206,8 +206,8 @@ private fun CountsLine(counts: SyncCounts?, members: Int?, note: SharingNote?) {
 }
 
 /**
- * `12/15 shared` while work remains, `15 shared` once complete, what an off direction says, or that it is off and what it
- * brought stays.
+ * `12/15 shared` while work remains, `15 shared` once complete, what an off direction says, or that it is off and
+ * what it brought stays.
  */
 internal fun DirectionCount.label(
     done: StringResource,

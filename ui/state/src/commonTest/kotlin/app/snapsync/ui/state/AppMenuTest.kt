@@ -32,6 +32,8 @@ class AppMenuTest {
         fun phase(step: JoinPhase.Detailed.Step) = JoinPhase.Detailed("Anna's Birthday", step)
         val offered = listOf(
             Layer.UpdateRequired(),
+            Layer.MembershipUnreadable(retrying = false),
+            Layer.MembershipUnreadable(retrying = true),
             Layer.CreateEvent(FRESH_CREATE_FORM),
             Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(JoinPhase.Loading)),
             Layer.JoiningEvent(eventId = "E", stage = JoinStage.Unloaded(JoinPhase.LoadFailed)),

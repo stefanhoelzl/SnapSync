@@ -6,6 +6,7 @@ import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
@@ -46,6 +47,7 @@ class CoreCommands internal constructor(
     val sendDiagnostics: Background<ReportRequest>,
     val setMobileData: Background<MobileDataRequest>,
     val restoreKey: Background<KeyRestoreRequest>,
+    val retryMembershipRead: Background<MembershipReadRequest>,
     val inviteOpened: Background<InviteLinkVerdict>,
 )
 
@@ -68,6 +70,7 @@ internal fun AppCore.commandsFor(reports: RequestStatuses<ReportOutcome>): CoreC
         sendDiagnostics = OnSendDiagnosticsTapped(runtime, collectDiagnosticDump, process.crash, reports),
         setMobileData = work.mobileDataChanged,
         restoreKey = work.keyRestoreRequested,
+        retryMembershipRead = work.membershipReadRetried,
         inviteOpened = OnInviteOpened(runtime, openedInvites),
     )
 }

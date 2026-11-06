@@ -5,6 +5,7 @@ import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.request.SettingsRequest
+import app.snapsync.query.membership.MembershipShown
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.StateFlow
@@ -17,7 +18,7 @@ import kotlinx.coroutines.launch
  */
 internal class SettingsChanges(
     private val cells: ScreenCells,
-    private val membership: StateFlow<Membership?>,
+    private val membership: StateFlow<MembershipShown>,
     private val commands: UserCommands,
     private val requests: RequestStatusFlows,
     private val cutoffFormatter: CutoffFormatter,
@@ -50,7 +51,7 @@ internal class SettingsChanges(
      * member's hand.
      */
     internal fun open() = enqueue {
-        val joined = membership.value ?: return@enqueue
+        val joined = membership.value.held ?: return@enqueue
         val form = reconfigureForm(joined.event.range, SettingChange.of(joined), cutoffFormatter::toLocal)
             .copy(albumContents = albumContents)
         local.update {
@@ -151,7 +152,7 @@ internal class SettingsChanges(
 
     /** "Stop sharing" on the withdrawal question: the held change applies. */
     fun onConfirmStopSharing() = enqueue {
-        val joined = membership.value ?: return@enqueue
+        val joined = membership.value.held ?: return@enqueue
         val held = local.value.pendingWithdrawal.forMembership(joined.event.id, null) ?: return@enqueue
         applySetting(joined, settingsInEffect(joined), held)
     }
@@ -163,7 +164,7 @@ internal class SettingsChanges(
      * The membership whose settings are open over the joined screen — where a form edit applies rather than drafts — or
      * `null` when none are.
      */
-    internal fun openMembership(): Membership? = membership.value?.takeIf {
+    internal fun openMembership(): Membership? = membership.value.held?.takeIf {
         local.value.settings.forMembership(it.event.id, SettingsSurface.Closed) != SettingsSurface.Closed
     }
 }

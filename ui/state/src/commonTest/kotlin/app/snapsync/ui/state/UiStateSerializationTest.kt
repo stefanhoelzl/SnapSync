@@ -63,6 +63,12 @@ class UiStateSerializationTest {
     }
 
     @Test
+    fun the_unreadable_membership_layer_round_trips() {
+        roundTrip(UiState(Layer.MembershipUnreadable(retrying = false)))
+        roundTrip(UiState(Layer.MembershipUnreadable(retrying = true)))
+    }
+
+    @Test
     fun the_create_layers_round_trip() {
         roundTrip(UiState(Layer.CreateEvent(FRESH_CREATE_FORM)))
         roundTrip(UiState(Layer.CreateEvent(FRESH_CREATE_FORM, error = ScreenMessage.CREATE_FAILED)))
@@ -165,7 +171,7 @@ class UiStateSerializationTest {
                     health = SyncHealth.InSync,
                     today = today,
                     timing = EventTiming.Upcoming(TimeLeft.Hours(5)),
-                    counts = SyncCounts(DirectionCount.Off, DirectionCount.Progress(40, 52)),
+                    counts = SyncCounts(DirectionCount.Off, DirectionCount.Kept(40)),
                 ),
                 Overlays(confirmingLeave = true, renaming = true, reportingBug = true),
             ),

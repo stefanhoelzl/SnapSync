@@ -163,6 +163,9 @@ class StatusContainerHost(
     internal val settings: SettingsChanges =
         SettingsChanges(cells, membership, commands, requests, cutoffFormatter, albumContents, scope)
 
+    /** Trying again to read the membership ([MembershipRetry]). */
+    internal val retry: MembershipRetry = MembershipRetry(cells, commands, requests)
+
     /** The member's edits to the participation form ([FormEdits]). */
     internal val form: FormEdits = FormEdits(cells, membership, settings, ranges)
 
@@ -234,7 +237,7 @@ class StatusContainerHost(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val nowTick: Flow<Timestamp> =
-        combine(membership.map { held -> held?.let { it.event } }, inFront) { event, front -> event to front }
+        combine(membership.map { it.held?.event }, inFront) { event, front -> event to front }
             .distinctUntilChanged()
             .flatMapLatest { (event, front) -> clockOf(event, front) }
 

@@ -7,7 +7,6 @@ import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
-import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.service.ServiceFault
@@ -25,6 +24,7 @@ import app.snapsync.query.RequestStatus
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.encryption.InviteRead
 import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.query.receiving.DownloadProgress
@@ -43,7 +43,7 @@ import kotlinx.coroutines.flow.update
 internal fun testQueries(
     sync: StateFlow<SharingProgressRead>,
     permission: StateFlow<PhotoGrant>,
-    membership: StateFlow<Membership?>,
+    membership: StateFlow<MembershipShown>,
     creation: StateFlow<RequestStatus<CreateResult>> = MutableStateFlow(RequestStatus.Idle),
     invites: StateFlow<InviteLinkVerdict?> = MutableStateFlow(null),
     requests: RequestStatusFlows = TestCommands().requests.flows,

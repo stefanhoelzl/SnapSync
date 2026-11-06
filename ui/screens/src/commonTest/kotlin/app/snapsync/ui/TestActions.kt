@@ -25,10 +25,21 @@ internal fun testActions(
     surfaces: SurfaceActions = testSurfaceActions(),
     create: CreateActions = testCreateActions(),
     onOpenStore: () -> Unit = {},
+    onRetryMembershipRead: () -> Unit = {},
     participation: ParticipationActions = testParticipationActions(),
     onSendDiagnostics: (note: String, screen: String) -> Unit = { _, _ -> },
     menu: MenuActions = testMenuActions(onSendDiagnostics = onSendDiagnostics),
-) = StatusActions(join, joined, access, switch, surfaces, create, onOpenStore, participation, menu)
+) = StatusActions(
+    join,
+    joined,
+    access,
+    switch,
+    surfaces,
+    create,
+    WholeScreenActions(onOpenStore, onRetryMembershipRead),
+    participation,
+    menu,
+)
 
 internal fun testCreateActions(
     onName: (String) -> Unit = {},

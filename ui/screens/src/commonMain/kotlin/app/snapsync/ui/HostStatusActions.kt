@@ -31,6 +31,11 @@ private fun rangeGestures(dispatch: (UiIntent) -> Unit) = RangeGestures(
     onUntilMinuteDrag = { dispatch(UiIntent.RangeUntilMinuteDrag) },
 )
 
+private fun wholeScreenActions(dispatch: (UiIntent) -> Unit) = WholeScreenActions(
+    onOpenStore = { dispatch(UiIntent.OpenAppStore) },
+    onRetryMembershipRead = { dispatch(UiIntent.RetryMembershipRead) },
+)
+
 private fun statusActions(dispatch: (UiIntent) -> Unit, range: RangeGestures) = StatusActions(
     join = JoinGateActions(
         onConfirmJoin = { dispatch(UiIntent.ConfirmJoin) },
@@ -71,7 +76,7 @@ private fun statusActions(dispatch: (UiIntent) -> Unit, range: RangeGestures) = 
     ),
     // The store page is the build's, opened by the container; a state that names
     // no store makes the intent inert.
-    onOpenStore = { dispatch(UiIntent.OpenAppStore) },
+    wholeScreen = wholeScreenActions(dispatch),
     participation = ParticipationActions(
         choices = RangeChoiceActions(
             onPreset = { dispatch(UiIntent.RangePreset(it)) },

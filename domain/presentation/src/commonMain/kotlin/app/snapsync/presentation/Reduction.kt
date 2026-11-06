@@ -4,6 +4,8 @@ import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.query.membership.MembershipShown
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.PendingSwitch
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
@@ -21,6 +23,10 @@ internal fun reduceFrom(
     nowCutoff: Timestamp,
     display: Display,
 ): Reduced {
+    // Whether this device is in an event is not known: no screen drawn from either answer would be true.
+    if (observed.membership == MembershipShown.Unreadable) {
+        return Reduced(Layer.MembershipUnreadable(local.retryingRead))
+    }
     val joined = observed.joined
     val network = observed.network.notice
     val (pending, creation, renameStatus) = interaction

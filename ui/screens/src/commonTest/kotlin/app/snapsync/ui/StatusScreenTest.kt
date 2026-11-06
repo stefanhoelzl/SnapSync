@@ -128,6 +128,7 @@ import app.snapsync.ui.resources.qr_sheet_title
 import app.snapsync.ui.resources.receive_toggle
 import app.snapsync.ui.resources.rename_body
 import app.snapsync.ui.resources.rename_event
+import app.snapsync.ui.resources.retry
 import app.snapsync.ui.resources.save
 import app.snapsync.ui.resources.settings_save_failed
 import app.snapsync.ui.resources.share_invite
@@ -142,6 +143,8 @@ import app.snapsync.ui.resources.store_open
 import app.snapsync.ui.resources.timing_ended
 import app.snapsync.ui.resources.timing_ends_in
 import app.snapsync.ui.resources.timing_starts_in
+import app.snapsync.ui.resources.unreadable_detail
+import app.snapsync.ui.resources.unreadable_headline
 import app.snapsync.ui.resources.update_detail
 import app.snapsync.ui.resources.update_detail_version
 import app.snapsync.ui.resources.update_eyebrow
@@ -301,6 +304,22 @@ class StatusScreenTest {
     }
 
     // ---- the not-started clock line ----
+
+    // ---- an unreadable membership ----
+
+    @Test
+    fun `an unreadable membership says so, offers to try again and shows it is working`() = runComposeUiTest {
+        var tried = 0
+        val state = mutableStateOf(UiState(Layer.MembershipUnreadable(retrying = false)))
+        setContent { TestStatusScreen(state.value, actions = testActions(onRetryMembershipRead = { tried++ })) }
+        onNodeWithText(str(Res.string.unreadable_headline)).assertExists()
+        onNodeWithText(str(Res.string.unreadable_detail)).assertExists()
+        onNodeWithText(str(Res.string.retry)).performClick()
+        assertEquals(1, tried)
+
+        state.value = UiState(Layer.MembershipUnreadable(retrying = true))
+        onNodeWithText(str(Res.string.retry)).assertIsNotEnabled()
+    }
 
     // ---- the update-required screen (capability `app-update-required`) ----
 

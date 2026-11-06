@@ -8,6 +8,7 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import kotlinx.coroutines.CoroutineScope
@@ -174,7 +175,7 @@ private fun gateHost(
         testQueries(
             sync = MutableStateFlow(SharingProgressRead.NotYetRead),
             permission = MutableStateFlow(PhotoGrant.FULL),
-            membership = MutableStateFlow(config?.held()),
+            membership = MutableStateFlow(config?.held()?.let { MembershipShown.Held(it) } ?: MembershipShown.None),
             versionRefusal = refusal,
             requests = commands.requests.flows,
             network = AlwaysOnline,

@@ -485,10 +485,21 @@ class StatusContainerHostSurfacesTest {
     fun `the invite's QR code opens on request and dismisses touching nothing else`() = onHost { host ->
         host.onIntent(UiIntent.QrOpen)
         val shown = host.stateWhere("the QR shown") { it.overlays.shownQr != null }
-        assertEquals(Overlays(shownQr = shown.joined()?.inviteUrl), shown.overlays, "the whole invite, and nothing else")
+        assertEquals(
+            Overlays(shownQr = shown.joined()?.inviteUrl),
+            shown.overlays,
+            "the whole invite, and nothing else",
+        )
 
         host.onIntent(UiIntent.QrDismiss)
         assertEquals(Overlays(), host.stateWhere("the QR dismissed") { it.overlays.shownQr == null }.overlays)
+    }
+
+    @Test
+    fun `with no event joined the QR code opens on nothing`() = onHost(config = MutableStateFlow(null)) { host ->
+        host.onIntent(UiIntent.QrOpen)
+        host.onIntent(UiIntent.MenuOpen) // after the QR's intent, so the state it reaches has seen it
+        assertEquals(null, host.stateWhere("the menu open") { it.overlays.menuOpen }.overlays.shownQr)
     }
 
     @Test
