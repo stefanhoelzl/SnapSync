@@ -14,14 +14,14 @@ import app.snapsync.entrypoints.ImportReceived
 import app.snapsync.entrypoints.Joining
 import app.snapsync.entrypoints.Leaving
 import app.snapsync.entrypoints.OnDownloadStaged
-import app.snapsync.entrypoints.OnInheritedImports
+import app.snapsync.entrypoints.OnGrantChanged
 import app.snapsync.entrypoints.OnInviteForOtherEvent
 import app.snapsync.entrypoints.OnJoinConfirmed
 import app.snapsync.entrypoints.OnKeyRestoreRequested
 import app.snapsync.entrypoints.OnLeaveConfirmed
 import app.snapsync.entrypoints.OnMobileDataChanged
-import app.snapsync.entrypoints.OnPhotoGrantUsable
 import app.snapsync.entrypoints.OnRenameRequested
+import app.snapsync.entrypoints.OnSelectionAnswerable
 import app.snapsync.entrypoints.OnSettingsChanged
 import app.snapsync.entrypoints.OnUploaderChange
 import app.snapsync.entrypoints.PhotoCheck
@@ -165,7 +165,7 @@ internal class AppWork(private val core: AppCore) {
     internal val foregroundWork: ForegroundWork by lazy {
         ForegroundWork(
             prelude,
-            core.services.config,
+            membership.query,
             uploads.sweep,
             uploads.settleStored,
             core.status.count,
@@ -184,9 +184,9 @@ internal class AppWork(private val core: AppCore) {
     /** A staging recorded in a running process asks for the import, and nothing else. */
     internal val downloadStaged: OnDownloadStaged by lazy { OnDownloadStaged(core.runtime, importReceived) }
 
-    /** The photo grant became usable: the received photos an earlier install left are recognised. */
-    internal val photoGrantUsable: OnPhotoGrantUsable by lazy {
-        OnPhotoGrantUsable(core.runtime, recognitionBeforeImporting, core.status.count)
+    /** The photo grant changed after the launch: the uploads follow it, and the received photos are recognised. */
+    internal val grantChanged: OnGrantChanged by lazy {
+        OnGrantChanged(core.runtime, uploaderChange, recognitionBeforeImporting, core.status.count)
     }
 
     /** A selection about to be published withholds the recognition its unrecognised marked photos need. */
@@ -195,8 +195,8 @@ internal class AppWork(private val core: AppCore) {
     }
 
     /** The process's one recovery of what a dead process's imports left, once the grant can be read. */
-    internal val inheritedImports: OnInheritedImports by lazy {
-        OnInheritedImports(core.runtime, receiving.settleInterrupted, importReceived)
+    internal val selectionAnswerable: OnSelectionAnswerable by lazy {
+        OnSelectionAnswerable(core.runtime, receiving.settleInterrupted, importReceived)
     }
 
     /** A reopened invite of the joined event offered its key back. */

@@ -25,7 +25,10 @@ import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.UnionTrigger
+import app.snapsync.domain.upload.UploaderChange
+import app.snapsync.model.GalleryAccess
 import app.snapsync.query.membership.MembershipQuery
+import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Concurrent
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
@@ -225,21 +228,22 @@ class SelectionRecognition(private val membership: MembershipQuery, private val 
 }
 
 /**
- * The photo grant became usable: the received photos an earlier install left are recognised now — and then the total
- * of what the member shares is counted, which waited on that recognition: without it, a grant given while the app is
- * open would leave the status line on its neutral line until the next opening.
+ * The photo grant changed after the launch: the uploads follow it — their own run, which this one does not wait on —
+ * and the received photos an earlier install left are recognised now, and then the total of what the member shares is
+ * counted, which waited on that recognition: without it, a grant given while the app is open would leave the status
+ * line on its neutral line until the next opening.
  */
-class OnPhotoGrantUsable(
-    private val runtime: Runtime,
+class OnGrantChanged(
+    runtime: Runtime,
+    private val uploaders: OnUploaderChange,
     private val recognition: Recognition,
     private val count: CountOwnPhotos,
-) {
+) : BackgroundEntryPoint<GalleryAccess>(runtime) {
     @OptIn(EntryPointCall::class)
-    suspend fun requested() = runtime.detached("OnPhotoGrantUsable") { on ->
-        on.steps {
-            run(recognition)
-            isolated("total") { count() }
-        }
+    override suspend fun run(arg: GalleryAccess, on: Run) = on.steps {
+        isolated("uploads") { uploaders.deliver(UploaderChange.GRANT_CHANGED) }
+        run(recognition)
+        isolated("total") { count() }
     }
 }
 
@@ -248,13 +252,13 @@ class OnPhotoGrantUsable(
  * ([SettleInterruptedImports]), then drain — a cleared marker returns its row to importable work, and a clear nothing
  * imports moves the stall to some later trigger.
  */
-class OnInheritedImports(
-    private val runtime: Runtime,
+class OnSelectionAnswerable(
+    runtime: Runtime,
     private val settle: SettleInterruptedImports,
     private val importReceived: ImportReceived,
-) {
+) : BackgroundEntryPoint<Unit>(runtime) {
     @OptIn(EntryPointCall::class)
-    suspend fun requested() = runtime.detached("OnInheritedImports") { on ->
+    override suspend fun run(arg: Unit, on: Run) {
         on.steps {
             isolated("settle") { settle() }
             run(importReceived)

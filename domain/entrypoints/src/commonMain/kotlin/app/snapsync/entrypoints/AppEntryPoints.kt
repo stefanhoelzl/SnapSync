@@ -59,6 +59,7 @@ import app.snapsync.ports.PushToken
 import app.snapsync.ports.SessionDrain
 import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.WakeId
+import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.push.PushTailLookup
@@ -75,7 +76,6 @@ import app.snapsync.scheduling.orIfCut
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.links.LinkReading
-import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.transfer.SessionDrains
 
 // ── What happens on each trigger of the app process ─────────────────────────────────────────────────────────────────
@@ -477,7 +477,7 @@ class ForegroundNetwork(
 /** The foreground's own work — and a returned network's, which is the same. */
 class ForegroundWork(
     private val prelude: Prelude,
-    private val config: MembershipProjection,
+    private val membership: MembershipQuery,
     private val staging: StagingSweep,
     private val settle: SettleStoredUploads,
     private val count: CountOwnPhotos,
@@ -489,8 +489,8 @@ class ForegroundWork(
     suspend fun run(on: Run) = on.steps {
         required { prelude.run(on) }
         concurrently {
-            child("staging") { staging.releaseUnclaimed(config.activeEventId()) }
-            child("settle") { settle(config.activeEventId()) }
+            child("staging") { staging.releaseUnclaimed(membership.active()?.let { it.event.id }) }
+            child("settle") { settle(membership.active()?.let { it.event.id }) }
             child("total") { count() }
             receiving.children(this, on)
             child("membership") { stateRefresh.run(on) }

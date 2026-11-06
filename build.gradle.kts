@@ -275,9 +275,12 @@ coverage {
     // delivery or unawaited work that threw — were reached by the old download zone's throws; the layers that replaced
     // it throw nothing and a port answers a fault as a value, so no member's day reaches them any more: they are the
     // unit suites' (`StepsTest`, `EntryEventsTest`). Measured 93.24 / 76.63 %.
+    // → 92/74 in phase 4.9 (status and presentation): the grant and selection followers became entry points, so no
+    // member's day starts unawaited work outside a run any more (`Runtime.detached`'s own-run path), and the runtime
+    // path a tap's intents took went with the tap tracking: both are the unit suites' now. Measured 92.88 / 74.76 %.
     ":domain:scheduling" {
         unit()
-        integration(instructions = 93, branches = 76)
+        integration(instructions = 92, branches = 74)
     }
     // The process's composition registers its metric reports' entry point; the mocks' suite drives it.
     ":domain:entrypoints" {

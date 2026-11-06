@@ -88,8 +88,6 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.dropWhile
-import kotlinx.coroutines.launch
 
 /**
  * **The app process's ports** — everything the app-graph composition consumes, and nothing but ports ([Port]; spec
@@ -462,32 +460,27 @@ class AppCore internal constructor(
      */
     @OptIn(CompositionOnly::class)
     fun installPermissionSubscriptions() {
-        // The launch reconcile, then real changes only: the value the launch reconciled against is no change, and a
-        // change that lands during the launch reconcile is still delivered (the prefix dropped is exactly that value).
-        scope.launch {
-            val atLaunch = galleryAccess.grant.value
-            work.uploaderChange.deliver(UploaderChange.LAUNCH)
-            galleryAccess.grant.dropWhile { it == atLaunch }.collect { onGrantChanged() }
-        }
+        // The launch reconcile, then real changes only: the value the launch reconciles against is no change, and a
+        // change that lands during the launch reconcile is still delivered (captured before the reconcile starts).
+        val changes = galleryAccess.changesSinceLaunch()
+        work.uploaderChange.deliver(UploaderChange.LAUNCH)
+        observation.follow(changes, work.grantChanged)
         // The event album follows the grant: ensured whenever access is usable, gathered into once it became usable.
         observation.follow(album.accessChanges.changes, album.onAccessChanged)
-        scope.launch {
-            // THE ONE ADJUDICATION CALL SITE. Once per process, here, and
-            // nowhere else — not in `reconcile`, not in `importReady`, not in `onResourceStaged`. Only a
-            // process that DIED can leave a row no running import will settle, so a running process asking
-            // again about rows it opened itself buys nothing and costs a synchronous XPC round-trip each
-            // time: 1,149 discarded verdicts in one measured burst.
-            //
-            // Ordered INSIDE this method, after the subscriptions above, rather than left to the shell to
-            // sequence: the requirement is that the presence source can answer when the sweep asks, and a
-            // convention the shell has to honour is not a guarantee.
-            //
-            // With one sweep per process and no re-arm, a sweep that ran before a partial grant's selection was read
-            // would defer every inherited row to the next launch — and on a URLSession-driven relaunch that never
-            // foregrounds, potentially every launch. So it waits until the presence source can answer.
-            selection.awaitAnswerable(ports.gallery.access().photoAccess())
-            work.inheritedImports.requested()
-        }
+        // THE ONE ADJUDICATION CALL SITE. Once per process, here, and
+        // nowhere else — not in `reconcile`, not in `importReady`, not in `onResourceStaged`. Only a
+        // process that DIED can leave a row no running import will settle, so a running process asking
+        // again about rows it opened itself buys nothing and costs a synchronous XPC round-trip each
+        // time: 1,149 discarded verdicts in one measured burst.
+        //
+        // Ordered INSIDE this method, after the subscriptions above, rather than left to the shell to
+        // sequence: the requirement is that the presence source can answer when the sweep asks, and a
+        // convention the shell has to honour is not a guarantee.
+        //
+        // With one sweep per process and no re-arm, a sweep that ran before a partial grant's selection was read
+        // would defer every inherited row to the next launch — and on a URLSession-driven relaunch that never
+        // foregrounds, potentially every launch. So it waits until the presence source can answer.
+        observation.follow(selection.answerableOnce(ports.gallery.access().photoAccess()), work.selectionAnswerable)
     }
 
     /**
