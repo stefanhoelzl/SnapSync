@@ -7,7 +7,6 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
-import app.snapsync.format.TimestampText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeChoice
@@ -250,7 +249,7 @@ class RangeResolutionTest {
 
     // ── nowWithinWindow ─────────────────────────────────────────────────────────────────────────
 
-    private fun d(iso: String) = TimestampText.parse(iso)
+    private fun d(iso: String) = timestamp(iso)
 
     @Test
     fun `now inside the window offers the now preset`() {
@@ -285,11 +284,11 @@ class RangeResolutionTest {
     private fun membership(from: String, until: String) = TestMembership(
         eventId = testEventId("11111111-1111-4111-8111-111111111111"),
         name = "Anna's Birthday",
-        minPhotoDate = CaptureCutoff(TimestampText.parse(from)),
-        startsAt = EventStart(TimestampText.parse("2026-07-06T14:00:00Z")),
-        endsAt = EventEnd(TimestampText.parse("2026-07-13T14:00:00Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse(until)),
-        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+        minPhotoDate = CaptureCutoff(timestamp(from)),
+        startsAt = EventStart(timestamp("2026-07-06T14:00:00Z")),
+        endsAt = EventEnd(timestamp("2026-07-13T14:00:00Z")),
+        maxPhotoDate = CaptureCeiling(timestamp(until)),
+        deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
     )
 
     /** The settings surface's seed for [joined]: its event's window and the settings it holds. */
@@ -297,7 +296,7 @@ class RangeResolutionTest {
         joined.held().let { reconfigureForm(it.event.range, SettingChange.of(it), ::local) }
 
     /** The wall clock is the instant's own digits — the zone is not what is under test. */
-    private fun local(at: Timestamp): LocalDateTime = LocalDateTime.parse(TimestampText.format(at).removeSuffix("Z"))
+    private fun local(at: Timestamp): LocalDateTime = LocalDateTime.parse(at.text().removeSuffix("Z"))
 
     @Test
     fun `a membership spanning the whole window pre-fills the whole event`() {

@@ -5,7 +5,6 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.format.TimestampText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
@@ -41,10 +40,10 @@ class ShownCountsTest {
             membership = TestMembership(
                 eventId = testEventId("5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e"),
                 name = "Anna's Birthday",
-                minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
-                maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z")),
-                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
-                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+                minPhotoDate = CaptureCutoff(timestamp("2026-07-06T14:32:11Z")),
+                maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T14:32:11Z")),
+                endsAt = EventEnd(timestamp("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
             ).shown(),
             inviteUrl = "https://snapsync.stho.net/e/x",
             health = SyncHealth.InSync,

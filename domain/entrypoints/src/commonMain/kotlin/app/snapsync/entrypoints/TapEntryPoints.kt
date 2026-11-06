@@ -59,7 +59,7 @@ class OnOpenLinkTapped(runtime: Runtime, private val surfaces: SystemSurfaces) :
     runtime,
 ) {
     override suspend fun run(arg: AppLinkRequest, on: Run) = on.steps {
-        required { surfaces.open(arg.url) }
+        required { surfaces.open(arg) }
     }
 }
 

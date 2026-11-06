@@ -21,8 +21,6 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.time.Timestamp
-import app.snapsync.format.InviteLinkText
-import app.snapsync.format.TimestampText
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -67,11 +65,11 @@ private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 private val CONFIG = TestMembership(
     eventId = testEventId(EVENT_ID),
     name = "Anna's Birthday",
-    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
-    startsAt = EventStart(TimestampText.parse("2026-07-06T14:32:11Z")),
-    endsAt = EventEnd(TimestampText.parse("2026-07-13T14:32:11Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z")),
-    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+    minPhotoDate = CaptureCutoff(timestamp("2026-07-06T14:32:11Z")),
+    startsAt = EventStart(timestamp("2026-07-06T14:32:11Z")),
+    endsAt = EventEnd(timestamp("2026-07-13T14:32:11Z")),
+    maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T14:32:11Z")),
+    deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
 )
 
 private fun FakeSync(): StateFlow<SharingProgressRead> = MutableStateFlow(
@@ -169,6 +167,7 @@ class StatusContainerHostSurfacesTest {
             FakeSync(),
             MutableStateFlow(PhotoGrant.FULL),
             config.held(),
+            eventKey = config.plainKeys(),
             requests = commands.requests.flows,
             network = AlwaysOnline,
             mobileData = AlwaysAllowed,
@@ -262,7 +261,7 @@ class StatusContainerHostSurfacesTest {
                 CONFIG.name,
                 CONFIG.startsAt,
                 CONFIG.endsAt,
-                DeletesAt(TimestampText.parse("2026-08-05T14:32:11Z")),
+                DeletesAt(timestamp("2026-08-05T14:32:11Z")),
             )
         }
         return onHost(config = config, joinDetails = details, onCommitJoin = { config.value = CONFIG }) { host ->
@@ -270,7 +269,7 @@ class StatusContainerHostSurfacesTest {
             host.stateWhere("the settings surface") { it.onSettings() }
 
             config.value = null
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
+            host.onInvite(invited(testEventId(EVENT_ID), null))
             host.stateWhere("the join surface, ready") {
                 ((it.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready
             }
@@ -346,7 +345,7 @@ class StatusContainerHostSurfacesTest {
                 CONFIG.name,
                 CONFIG.startsAt,
                 if (id == long) EventEnd(Timestamp.of(CONFIG.startsAt.at.at + 66.days)) else CONFIG.endsAt,
-                DeletesAt(TimestampText.parse("2099-08-05T14:32:11Z")),
+                DeletesAt(timestamp("2099-08-05T14:32:11Z")),
             )
         }
         val shareCount = { state: UiState ->
@@ -360,9 +359,9 @@ class StatusContainerHostSurfacesTest {
                 4
             },
         ) { host ->
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
+            host.onInvite(invited(testEventId(EVENT_ID), null))
             host.stateWhere("the counted event") { shareCount(it) == ShareCount.Ready(4) }
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(long), null))))
+            host.onInvite(invited(testEventId(long), null))
             host.stateWhere("no count for the long event") {
                 (it.layer as? Layer.JoiningEvent)?.eventId == long && shareCount(it) == ShareCount.Unavailable
             }
@@ -671,7 +670,7 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `widening applies at once and narrowing asks`() {
         // Sharing from the 8th of a 6th–13th event: the whole event widens; a later start narrows.
-        val narrowed = CONFIG.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-08T00:00:00Z")))
+        val narrowed = CONFIG.copy(minPhotoDate = CaptureCutoff(timestamp("2026-07-08T00:00:00Z")))
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(narrowed)) { host ->
             host.surfaces.onOpenReconfigure()
@@ -689,8 +688,8 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `a range narrower at one end and wider at the other asks`() {
         val middle = CONFIG.copy(
-            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-08T00:00:00Z")),
-            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-11T00:00:00Z")),
+            minPhotoDate = CaptureCutoff(timestamp("2026-07-08T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(timestamp("2026-07-11T00:00:00Z")),
         )
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
@@ -787,8 +786,8 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `a custom range with one bound keeps the other one in effect`() {
         val middle = CONFIG.copy(
-            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-08T09:00:00Z")),
-            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-12T21:00:00Z")),
+            minPhotoDate = CaptureCutoff(timestamp("2026-07-08T09:00:00Z")),
+            maxPhotoDate = CaptureCeiling(timestamp("2026-07-12T21:00:00Z")),
         )
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
@@ -804,7 +803,7 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `a preset after a custom range widens back to the whole event`() {
-        val middle = CONFIG.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-08T09:00:00Z")))
+        val middle = CONFIG.copy(minPhotoDate = CaptureCutoff(timestamp("2026-07-08T09:00:00Z")))
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
             host.surfaces.onOpenReconfigure()

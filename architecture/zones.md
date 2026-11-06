@@ -176,14 +176,12 @@ flowchart LR
   domain_ports --> domain_inbound
   domain_ports --> domain_model
   domain_presentation --> domain_domain
-  domain_presentation --> domain_feature
-  domain_presentation --> domain_format
   domain_presentation --> domain_inbound
-  domain_presentation --> domain_model
   domain_presentation --> domain_query
   domain_presentation --> ui_state
   domain_query --> domain_data
   domain_query --> domain_domain
+  domain_query --> domain_format
   domain_query --> domain_inbound
   domain_scheduling --> domain_domain
   domain_scheduling --> domain_inbound

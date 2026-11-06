@@ -10,6 +10,7 @@ import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.report.ReportContext
+import app.snapsync.domain.version.Store
 
 // What a member asks for with a tap, each request answered on its own status under its [RequestId]: the screen mints
 // the id, fires the request, and acts only on the answer to it.
@@ -48,8 +49,17 @@ class CreateRequest(
 /** The platform's share sheet asked for, carrying [text], titled [title] where the platform shows a title. */
 class ShareRequest(val text: String, val title: String)
 
-/** A page outside the app the member asked to open: the store's, or the help page. */
-class AppLinkRequest(val url: String)
+/** A page outside the app the member asked to open: this build's store page, or a page of the app's own site. */
+sealed interface AppLinkRequest {
+    /** The store page [store] names. */
+    class StorePage(val store: Store) : AppLinkRequest
+
+    /** The app's own site's [page]. */
+    class SitePage(val page: OwnPage) : AppLinkRequest
+}
+
+/** The pages of the app's own site a member opens from the app: its front page, and its privacy policy. */
+enum class OwnPage { WEBSITE, PRIVACY_POLICY }
 
 /** A bug report the member confirmed, [note] in their words, from [context]: [id] is answered on the report status. */
 class ReportRequest(val id: RequestId, val note: String, val context: ReportContext)

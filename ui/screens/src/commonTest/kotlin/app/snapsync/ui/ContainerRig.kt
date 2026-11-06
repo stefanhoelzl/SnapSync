@@ -63,6 +63,7 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
+import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
@@ -70,6 +71,7 @@ import app.snapsync.inbound.InboundImplementation
 import app.snapsync.presentation.BuildStanding
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.EventKeyView
 import app.snapsync.presentation.PlatformCommands
 import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
@@ -81,6 +83,7 @@ import app.snapsync.presentation.onIntent
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
+import app.snapsync.query.encryption.InviteRead
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
@@ -164,6 +167,13 @@ internal class ContainerRig(
             sync = MutableStateFlow(SharingProgressRead.NotYetRead),
             permission = this.permission,
             membership = this.config,
+            // The invite as the query reads it for a plain event: the joined one's, none while none is joined.
+            eventKey = EventKeyView(
+                invite = object : InviteRead {
+                    override fun invite(): String? =
+                        this@ContainerRig.config.value?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
+                },
+            ),
             creation = creation,
             build = BuildStanding(refusal = MutableStateFlow(refusal), store = Store("App Store", RIG_STORE_URL)),
             verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
@@ -206,7 +216,7 @@ internal class ContainerRig(
                 share = command { r: ShareRequest -> record("share:${r.text}") },
                 requestAccess = command { _: Unit -> record("requestAccess") },
                 openSettings = command { _: Unit -> record("openSettings") },
-                openLink = command { r: AppLinkRequest -> record("openLink:${r.url}") },
+                openLink = command { r: AppLinkRequest -> record("openLink:${r.opened()}") },
                 choosePhotos = command { _: Unit -> record("choosePhotos") },
             ),
             reconfigure = command { r: SettingsRequest ->
@@ -354,4 +364,10 @@ internal fun joinedTo(id: String, name: String, from: String, until: String): Me
     )
     val range = CaptureRange.of(CaptureCutoff(start.at), CaptureCeiling(end.at), start, end) as CaptureRangeVerdict.Ok
     return Membership.Active(event, Share(range.range, Direction.Both, AlbumChoice.LibraryOnly))
+}
+
+/** What [this] request opens, as the rig records it: the store page's url, or the site page's name. */
+private fun AppLinkRequest.opened(): String = when (this) {
+    is AppLinkRequest.StorePage -> store.url
+    is AppLinkRequest.SitePage -> page.name
 }

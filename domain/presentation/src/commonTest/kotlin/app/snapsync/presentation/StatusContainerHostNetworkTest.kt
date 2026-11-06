@@ -6,7 +6,6 @@ import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
-import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
@@ -16,8 +15,6 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
-import app.snapsync.format.InviteLinkText
-import app.snapsync.format.TimestampText
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.mobiledata.MobileDataQuery
@@ -285,7 +282,7 @@ class StatusContainerHostNetworkTest {
                 load = { if (loads++ == 0) JoinDetails.Unanswered(ServiceFault.UNREACHABLE) else FOUND },
             )
         driving(host) {
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), null))))
+            host.onInvite(invited(testEventId(EVENT), null))
             runCurrent()
             val offline = assertIs<Layer.JoiningEvent>(host.screen.value.layer)
             assertEquals(JoinPhase.LoadFailed, offline.phase)
@@ -309,7 +306,7 @@ class StatusContainerHostNetworkTest {
             JoinDetails.Unanswered(ServiceFault.UNREACHABLE)
         })
         driving(host) {
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), null))))
+            host.onInvite(invited(testEventId(EVENT), null))
             runCurrent()
             assertEquals(JoinPhase.LoadFailed, assertIs<Layer.JoiningEvent>(host.screen.value.layer).phase)
             network.access.value = NetworkAccess.Online(restricted = false) // no return: nothing was missing
@@ -323,7 +320,7 @@ class StatusContainerHostNetworkTest {
         val network = FakeNetwork()
         val host = host(network, config = null, load = { FOUND })
         driving(host) {
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), null))))
+            host.onInvite(invited(testEventId(EVENT), null))
             runCurrent()
             network.access.value = NetworkAccess.Blocked
             runCurrent()
@@ -339,25 +336,25 @@ class StatusContainerHostNetworkTest {
         val STARTED = TestMembership(
             testEventId(EVENT),
             "Party",
-            CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
-            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
-            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
-            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+            CaptureCutoff(timestamp("2026-07-06T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T00:00:00Z")),
+            endsAt = EventEnd(timestamp("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
         )
         val NOT_STARTED = TestMembership(
             testEventId(EVENT),
             "Party",
-            CaptureCutoff(TimestampText.parse("2026-07-10T00:00:00Z")),
-            startsAt = EventStart(CaptureCutoff(TimestampText.parse("2026-07-10T00:00:00Z")).at),
-            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
-            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
-            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+            CaptureCutoff(timestamp("2026-07-10T00:00:00Z")),
+            startsAt = EventStart(CaptureCutoff(timestamp("2026-07-10T00:00:00Z")).at),
+            maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T00:00:00Z")),
+            endsAt = EventEnd(timestamp("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
         )
         val FOUND = found(
             "Party",
-            EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
-            EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
-            DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
+            EventStart(timestamp("2026-07-06T00:00:00Z")),
+            EventEnd(timestamp("2026-07-13T00:00:00Z")),
+            DeletesAt(timestamp("2026-08-05T00:00:00Z")),
         )
     }
 }

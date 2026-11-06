@@ -158,8 +158,8 @@ class ModuleSetTest {
             // The application layer: use cases over data and the domain's verdicts, writing the structured log.
             "application" to setOf(":domain:domain", ":domain:data", ":domain:inbound"),
             // The query layer: what the screen reads — the membership, the join's and switch's lookups, and the
-            // request-keyed statuses — over data and the domain, writing nothing.
-            "query" to setOf(":domain:domain", ":domain:data", ":domain:inbound"),
+            // request-keyed statuses — over data and the domain, writing nothing; the invite in its link's text.
+            "query" to setOf(":domain:domain", ":domain:data", ":domain:inbound", ":domain:format"),
             // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
             // MIGRATING: the gateway and the device identity the need-shaped services stand on are data's since trust moved.
             "services" to setOf(
@@ -185,14 +185,10 @@ class ModuleSetTest {
                 ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:data", ":domain:application",
                 ":domain:format", ":domain:query",
             ),
-            // The UI-state reduction: of the zones, only the vocabulary and the features, and the screen's vocabulary it
-            // reduces into. `:ui:state` references nothing project-internal, so the edge
-            // hands the core no platform.
-            // And the inbound kinds its command door fires (`UserCommand`), which name no platform either.
-            "presentation" to setOf(
-                ":domain:model", ":domain:domain", ":domain:feature", ":ui:state", ":domain:format", ":domain:query",
-                ":domain:inbound",
-            ),
+            // The UI-state reduction: the domain's vocabulary, the query layer it reads, the inbound kinds its command door
+            // fires (`UserCommand`), and the screen's vocabulary it reduces into. `:ui:state` references nothing
+            // project-internal, so none of the four hands it a platform.
+            "presentation" to setOf(":domain:domain", ":domain:query", ":domain:inbound", ":ui:state"),
             // The shared host composition: the one zone that sees both the composition zone and presentation.
             "host" to setOf(
                 ":domain:model", ":domain:domain", ":domain:ports", ":domain:feature", ":domain:compose",

@@ -30,12 +30,12 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.request.OwnPage
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.presentation.url
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.resources.menu
@@ -461,12 +461,12 @@ class HostStatusActionsTest {
         onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
         awaitState(rig) { it.overlays.menuOpen }
         onNodeWithText(str(Res.string.menu_privacy)).performClick()
-        awaitFired(rig, "openLink:${app.snapsync.ui.state.AppLink.PRIVACY_POLICY.url}")
+        awaitFired(rig, "openLink:${OwnPage.PRIVACY_POLICY.name}")
         awaitState(rig) { !it.overlays.menuOpen }
         onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
         awaitState(rig) { it.overlays.menuOpen }
         onNodeWithText(str(Res.string.menu_website)).performClick()
-        awaitFired(rig, "openLink:${app.snapsync.ui.state.AppLink.WEBSITE.url}")
+        awaitFired(rig, "openLink:${OwnPage.WEBSITE.name}")
     }
 
     @Test

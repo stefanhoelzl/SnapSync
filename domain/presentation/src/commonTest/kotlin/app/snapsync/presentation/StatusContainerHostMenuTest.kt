@@ -8,12 +8,12 @@ import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.request.OwnPage
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
-import app.snapsync.format.TimestampText
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.testids.testEventId
@@ -47,11 +47,11 @@ import kotlin.time.Instant
 private val MEMBERSHIP = TestMembership(
     eventId = testEventId("11111111-1111-4111-8111-111111111111"),
     name = "Anna's Birthday",
-    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
-    startsAt = EventStart(TimestampText.parse("2026-07-06T14:32:11Z")),
-    endsAt = EventEnd(TimestampText.parse("2026-07-13T14:32:11Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z")),
-    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+    minPhotoDate = CaptureCutoff(timestamp("2026-07-06T14:32:11Z")),
+    startsAt = EventStart(timestamp("2026-07-06T14:32:11Z")),
+    endsAt = EventEnd(timestamp("2026-07-13T14:32:11Z")),
+    maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T14:32:11Z")),
+    deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
 )
 
 private fun MenuTestSync(): StateFlow<SharingProgressRead> = MutableStateFlow(
@@ -207,7 +207,7 @@ class StatusContainerHostMenuTest {
         host.onIntent(UiIntent.OpenLink(AppLink.PRIVACY_POLICY))
         host.stateWhere("menu closed") { !it.overlays.menuOpen }
         withTimeout(5.seconds) { while (world.links.isEmpty()) delay(10) }
-        assertEquals(listOf(AppLink.PRIVACY_POLICY.url), world.links)
+        assertEquals(listOf(OwnPage.PRIVACY_POLICY.name), world.links)
     }
 
     @Test

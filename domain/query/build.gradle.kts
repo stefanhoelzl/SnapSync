@@ -12,6 +12,8 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:domain"))
             implementation(project(":domain:data"))
+            // The invite as the screen shows and shares it: the text an invite link takes.
+            implementation(project(":domain:format"))
             // The structured log: what a lookup answered, labelled with the trigger that asked.
             implementation(project(":domain:inbound"))
         }
