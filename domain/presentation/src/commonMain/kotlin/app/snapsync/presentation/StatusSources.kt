@@ -1,6 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.KeyPresence
+import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
@@ -11,7 +12,6 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
-import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Store
 import app.snapsync.query.RequestStatus

@@ -24,7 +24,6 @@ import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.upload.UploaderArming
 import app.snapsync.domain.upload.UploaderChange
-import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Run
@@ -49,7 +48,6 @@ class TopUp(
     private val plan: PlanTopUp,
     private val create: CreateJobs,
     private val album: AlbumPlacement,
-    private val counts: ForegroundCounts,
 ) : Sequence<UploadPass>("top-up") {
     @OptIn(EntryPointCall::class)
     override suspend fun pass(on: Run) = on.steps {
@@ -57,7 +55,6 @@ class TopUp(
             is UploadGate.Run -> required { contributing(gate, on) }
             is UploadGate.Stop -> gate.pass
         }
-        isolated("counts") { counts.refresh() }
         passed
     }
 

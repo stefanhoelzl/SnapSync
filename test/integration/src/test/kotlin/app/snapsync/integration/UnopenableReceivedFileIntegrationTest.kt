@@ -9,7 +9,6 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
 import java.util.Base64
 import kotlin.test.Test
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * A received file the phone's photo library cannot open: the library takes it and saves nothing, and the app neither
@@ -48,7 +47,8 @@ class UnopenableReceivedFileIntegrationTest {
             fq.value.description to fr.value.description
         }
 
-        // What the transfers bring: FQ an ordinary photo, FR a file no photo library can decode.
+        // What the transfers bring: FQ an ordinary photo, FR a file no photo library can decode. The status follows on
+        // its own; the file that will never arrive is not waited on.
         whenever {
             val notAnImage = Base64.getEncoder().encodeToString(NOT_AN_IMAGE)
             downloadSession.finish(description = unreadable, base64Bytes = notAnImage)
@@ -57,13 +57,7 @@ class UnopenableReceivedFileIntegrationTest {
         then {
             event<WorldEvent.LibraryAssetCreated> { it.asset == "imported-$DEV_F-FQ" }
             never<WorldEvent.LibraryAssetCreated> { it.asset.startsWith("imported-$DEV_F-FR") }
-        }
-
-        // The status catches up on its own timer; the file that will never arrive is not waited on.
-        whenever { advance(2.seconds) }
-        then {
             screen<Layer.Joined> { it.health == SyncHealth.InSync }
-            never<WorldEvent.LibraryAssetCreated>()
         }
     }
 

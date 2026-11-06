@@ -171,7 +171,9 @@ coverage {
         // code measured without them. Measured 90.07 / 74.89 %.
         // → 89/70 in phase 4.4c (manifest): the publish, its producer and the end of a wake's settle, which the suite
         // covered, moved to the layers and the entry points. No test was lost. Measured 89.82 / 70.49 %.
-        integration(instructions = 89, branches = 70)
+        // → 88/65 in phase 4.9 (status): the poller, the refresh and the status sources, which the suite covered, moved
+        // to the change feed's queries and the total's use case. No test was lost. Measured 88.84 / 65.06 %.
+        integration(instructions = 88, branches = 65)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.

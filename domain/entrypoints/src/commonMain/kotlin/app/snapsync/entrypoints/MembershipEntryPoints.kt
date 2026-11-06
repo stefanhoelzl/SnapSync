@@ -25,6 +25,7 @@ import app.snapsync.application.receiving.RecognizeReceivedPhotos
 import app.snapsync.application.receiving.ReportReceivedPosition
 import app.snapsync.application.receiving.StopReason
 import app.snapsync.application.receiving.StopReceiving
+import app.snapsync.application.sharing.CountOwnPhotos
 import app.snapsync.application.upload.ReconcileUploader
 import app.snapsync.application.upload.StopUploads
 import app.snapsync.data.crypto.EventKeyStore
@@ -52,7 +53,6 @@ import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.feature.membership.ShareSetLoad
-import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.query.membership.MembershipQuery
@@ -229,7 +229,7 @@ class Joining(
 class AfterJoin(
     private val reconcile: ReconcileUploader,
     private val arm: UploaderArm,
-    private val statusRefresh: StatusRefresh,
+    private val count: CountOwnPhotos,
     private val album: EventAlbum,
     private val receivingOf: ReceivingOf,
     private val plan: PlanReceiving,
@@ -240,7 +240,7 @@ class AfterJoin(
     suspend fun run(id: RequestId, joined: Membership.Active, known: UnionPage?, on: Run) = on.steps {
         val armed = required { reconcile(UploaderChange.JOIN) }
         isolated("arm") { arm.apply(armed) }
-        isolated("status") { statusRefresh.run() }
+        isolated("total") { count() }
         required { album.run(joined, AlbumAsk.OptIn, on) }
         // The join itself starts receiving the event's history — no opening, no wake.
         when (val receiving = required { receivingOf(joined) }) {
@@ -275,7 +275,7 @@ class Leaving(
 
 /** What a saved settings change re-drives, before the member is told it is saved. */
 class AfterSettings(
-    private val statusRefresh: StatusRefresh,
+    private val count: CountOwnPhotos,
     private val reconcile: ReconcileUploader,
     private val arm: UploaderArm,
     private val album: EventAlbum,
@@ -287,7 +287,7 @@ class AfterSettings(
 ) {
     @OptIn(EntryPointCall::class)
     suspend fun run(id: RequestId, before: Membership.Active, saved: Membership.Active, on: Run) = on.steps {
-        isolated("status") { statusRefresh.run() }
+        isolated("total") { count() }
         // A kick whatever the direction: the cycle's policy decides what uploads; nothing in flight is cancelled.
         val armed = required { reconcile(UploaderChange.RECONFIGURE) }
         isolated("arm") { arm.apply(armed) }

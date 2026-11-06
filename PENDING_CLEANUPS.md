@@ -373,8 +373,9 @@ version or op gates these — each phase deletes its own uses, and the last one 
     `MembershipRepository` — `config` (a hand-written `StateFlow`, its opt-in pinned in `OptInPinsTest`), `read`,
     `reload`, `joinedOrRead`, `activeEventId` — and `Membership.asConfig()`. It writes nothing. Its readers:
     `ForegroundWork`'s stored-upload settle (4.4b's `SettleStoredUploads` takes the joined event from it) in
-    `domain/entrypoints/.../AppEntryPoints.kt`; `StatusRefresh` (4.9) and `CollectDiagnosticDump` (4.10); presentation's
-    `config` source (4.9). Receiving's (4.5) and the album's (4.7) are gone: their triggers branch on
+    `domain/entrypoints/.../AppEntryPoints.kt` (4.9); `CollectDiagnosticDump` (4.10); presentation's `config` source
+    (4.9). The status total's (4.9) is gone: `CountOwnPhotos` reads the repository itself. Receiving's (4.5) and the
+    album's (4.7) are gone too: their triggers branch on
     `MembershipQuery`; and the manifest's (4.4c): its publish and its end-of-wake settle read the membership the upload
     gate read, and the publish's "over" marks it through the data layer's `markDeleted`.
   - `domain/services/.../membership/MembershipTransition.kt`: the join-in-progress guard a sweep of leftovers waits
@@ -384,15 +385,6 @@ version or op gates these — each phase deletes its own uses, and the last one 
 - **Remove:** each phase moves its readers onto `MembershipRead` (the query's `MembershipQuery`, or a use case's
   answer) and its leftover sweep into a use case; the phase that removes the last reader deletes both files and this
   entry.
-
-### The selection as the old zones reach it (app)
-- **What:** the old zones reach the member's own photos (`OwnPhotos`, `domain/data/.../sharing/`) through edges that
-  stay theirs until their concepts move:
-  - the status total (`OwnDeviceGalleryStatusSource`, `StatusRefresh`, 4.9).
-- **Why:** phase 4.4a moved the selection into the layers; the status moves in its own phase. Receiving's (4.5) are
-  gone: `OwnPhotos` reads what was received itself, and recognition reads the grant's plan in `MarkedPhotos`; the
-  uploads' (4.4b) too: their rows are judged as `RecordedAsset`s and their walk reads `OwnPhotos` itself.
-- **Remove:** the phase that moves the status total deletes this entry.
 
 ### The old zones' throwing read of a stored id (app)
 - **What:** `held` (`domain/services/…/services/databases/StoredIds.kt`): an id column as the old zones read it — the

@@ -35,6 +35,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -43,7 +44,6 @@ import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.ForegroundReturn
 import app.snapsync.presentation.onIntent
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.LocalReduceMotion

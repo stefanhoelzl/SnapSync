@@ -48,8 +48,9 @@ import app.snapsync.query.receiving.ReceivingProgress
  * delivers a session's events builds the store and the staging, and nothing else.
  */
 internal class ReceivingLayers(private val core: AppCore) {
+    /** The download store's file — also what another process's commit to it is announced on. */
     @OptIn(AppProcessOnly::class)
-    private val file: DownloadDatabaseFile by lazy { DownloadDatabaseFile(core.ports.databases) }
+    val file: DownloadDatabaseFile by lazy { DownloadDatabaseFile(core.ports.databases) }
 
     private val staging: StagingArea by lazy { StagingArea(core.process.files) }
 
@@ -76,7 +77,9 @@ internal class ReceivingLayers(private val core: AppCore) {
     val markers: ImportMarkerWrites by lazy { ImportMarkerWrites(file) }
 
     /** The joined screen's download progress. */
-    val progress: ReceivingProgress by lazy { ReceivingProgress(counts, core.services.membership) }
+    val progress: ReceivingProgress by lazy {
+        ReceivingProgress(counts, core.services.membership, core.foreground, file.changes, core.scope)
+    }
 
     private val opening: DownloadOpening by lazy {
         DownloadOpening(

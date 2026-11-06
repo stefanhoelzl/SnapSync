@@ -24,7 +24,6 @@ import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.UnionTrigger
-import app.snapsync.feature.status.ForegroundCounts
 import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.scheduling.Concurrent
 import app.snapsync.scheduling.Run
@@ -117,7 +116,6 @@ class ImportReceived(
     private val albumForImport: AlbumForImport,
     private val markFilled: MarkAlbumFilled,
     private val importNext: ImportNextStaged,
-    private val counts: ForegroundCounts,
 ) : Sequence<Unit>("import-received", yieldsToJoin = true) {
     @OptIn(EntryPointCall::class)
     override suspend fun pass(on: Run) = on.steps {
@@ -130,7 +128,6 @@ class ImportReceived(
                 }
             }
         }
-        isolated("counts") { counts.refresh() }
     }
 
     @OptIn(EntryPointCall::class)

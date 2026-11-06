@@ -327,12 +327,13 @@ class MobileDataIntegrationTest {
         val event = given {
             network(NetworkState.RESTRICTED)
             mobileData(false)
+            inFront() // the screen the member watches follows the stores only while it is in front
             createdEvent()
         }
 
         whenever {
             confirmJoin()
-            advance(5.seconds) // the screen's status poll
+            advance(5.seconds) // past the status line's two-second bound
         }
         then { screen<Layer.Joined> { it.membership.eventId == event && it.counts != null } }
     }

@@ -814,9 +814,10 @@ a journey and a script tap the same sequences. Only `reconfigure` waits between 
 as a person waits — and the caller says how: on the world's events in a behaviour, by polling the state elsewhere.
 
 **The state read is narrow** (`host.state()`, `RigState`): the reduced `UiState`, the readiness derived from it, the
-download progress read-model, the build's facts and the OS's extension answer. Reading it is the screen's pull — it
-refreshes the ledger-count read-model first, as the foreground poll does — but it reports no ledger count: the ledger
-is the app's own bookkeeping, and bytes that landed are read from the backend. 11g2 dropped `ledger`, `permission`,
+download progress read-model, the build's facts and the OS's extension answer. It reads nothing of its own: the screen
+follows the stores while the app is in front, as on the phone, so its counts move then and stand still while the app is
+away. It reports no ledger count: the ledger is the app's own bookkeeping, and bytes that landed — the app away
+included — are read from the backend. 11g2 dropped `ledger`, `permission`,
 `inviteUrl`, `eventName` and `transientError` (the last four are inside `ui`); the reset is `dev-controls.reset()`.
 
 **On the JVM host every lever and read is a mock's operator face** — the backend's, the photo library's, the upload

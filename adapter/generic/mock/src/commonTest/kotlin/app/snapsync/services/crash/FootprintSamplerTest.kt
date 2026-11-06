@@ -1,10 +1,10 @@
 package app.snapsync.services.crash
 
+import app.snapsync.data.foreground.AppForeground
 import app.snapsync.mock.fixedClock
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.model.MemoryFootprint
 import app.snapsync.ports.ProcessInfo
-import app.snapsync.services.foreground.AppForeground
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -26,11 +26,8 @@ class FootprintSamplerTest {
         override fun memoryFootprint(): MemoryFootprint? = footprint.also { reads++ }
     }
 
-    private val backgrounded = AppForeground(fixedClock(Instant.fromEpochSeconds(0)), onEntered = {})
-    private val foregrounded = AppForeground(
-        fixedClock(Instant.fromEpochSeconds(0)),
-        onEntered = {},
-    ).apply { entered() }
+    private val backgrounded = AppForeground(fixedClock(Instant.fromEpochSeconds(0)))
+    private val foregrounded = AppForeground(fixedClock(Instant.fromEpochSeconds(0))).apply { entered() }
 
     @Test
     fun `a backgrounded app records its footprint at the moment`() {

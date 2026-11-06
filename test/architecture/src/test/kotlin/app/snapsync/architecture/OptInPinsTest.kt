@@ -62,10 +62,11 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                11,
+                12,
                 "the wake's prelude, a finished download's staging and record, a completed one's free, the key's " +
                     "restore, the push token's and credential's registration, the mobile-data change, the wake's " +
-                    "re-arm, a finished upload's record and the foreground's stored-upload settle call their use cases",
+                    "re-arm, a finished upload's record and the foreground's stored-upload settle call their use cases, " +
+                    "and a selection change counts the status total",
             ),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ReceivingEntryPoints.kt" to mapOf(

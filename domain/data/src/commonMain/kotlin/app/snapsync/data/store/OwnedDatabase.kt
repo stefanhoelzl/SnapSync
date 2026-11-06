@@ -33,6 +33,9 @@ abstract class OwnedDatabase<D>(
     /** What the store does once on the database, right after the open: nothing, unless it says otherwise. */
     protected open fun prepared(database: D) = Unit
 
+    /** That this database changed — a commit made through it, or (told by the store's owner) another process's. */
+    val changes: StoreChanges = StoreChanges()
+
     private val attempt = AtomicReference(lazy(::openOnce))
 
     /** Runs [statements] on the database: a failed open or a failed statement is [DbResult.Failed]. */
@@ -45,7 +48,9 @@ abstract class OwnedDatabase<D>(
     }
 
     private fun openOnce(): DbResult<Kept<D>> = when (val opened = databases.open(name, schema, readOnly = false)) {
-        is DbOpen.Opened -> opened.database.execute { driver -> Kept(opened.database, over(driver).also(::prepared)) }
+        is DbOpen.Opened -> opened.database.execute { driver ->
+            Kept(opened.database, over(AnnouncingDriver(driver, changes)).also(::prepared))
+        }
         is DbOpen.Failed -> DbResult.Failed(opened.detail)
         // Only a read-only open may answer these; an adapter that does breaks the `Databases` contract.
         DbOpen.Missing, DbOpen.OldSchema ->

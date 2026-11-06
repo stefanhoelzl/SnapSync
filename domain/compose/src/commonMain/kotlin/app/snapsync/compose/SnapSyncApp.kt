@@ -5,10 +5,10 @@ import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.Observers
 import app.snapsync.data.crypto.NewEventKeys
+import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.service.ServiceConditions
-import app.snapsync.data.sharing.Contribution
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
 import app.snapsync.data.sharing.MemoizedWalk
@@ -20,7 +20,7 @@ import app.snapsync.data.upload.OsUploader
 import app.snapsync.data.upload.UploaderSwitches
 import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.album.AlbumContents
-import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.trust.DeviceRefusal
@@ -34,19 +34,12 @@ import app.snapsync.feature.creation.readmodel.MintedEvent
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.feature.membership.ShareSetLoad
-import app.snapsync.feature.status.LedgerBackedSyncStatusSource
-import app.snapsync.feature.status.LedgerCounts
-import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
-import app.snapsync.feature.status.ReadingLedgerCountsSource
-import app.snapsync.feature.status.StatusCountsPoller
-import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
-import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UserCommands
 import app.snapsync.model.UserQueries
@@ -86,7 +79,6 @@ import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crash.FootprintSampler
-import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.transfer.SessionDrains
@@ -279,7 +271,7 @@ class AppCore internal constructor(
      * The app's foreground life: whether it is in front now, and its returns as the create screen's draft follows
      * them — stamped by the lifecycle's entry points over the process clock.
      */
-    internal val foreground: AppForeground = AppForeground(process.clock, onEntered = { serviceConditions.opening() })
+    internal val foreground: AppForeground = AppForeground(process.clock)
 
     /** [foreground]'s returns, for readers outside the core (the status host), which see no service type. */
     val foregroundReturns: StateFlow<ForegroundReturn> get() = foreground.returns
@@ -315,26 +307,14 @@ class AppCore internal constructor(
         backendServicesFor(services, attestation, exchange)
     }
 
-    // Own-device completeness AND in-flight, both from one consistent per-photo `assetProgress()` read,
-    // counted by the status source over the gallery's admitted set. Read-only;
-    // on any failure the last good value is retained.
-    val ledgerCounts: ReadingLedgerCountsSource by lazy {
-        // Per photo of the joined event — none while nothing is joined.
-        ReadingLedgerCountsSource {
-            LedgerCounts.of(
-                services.config.activeEventId()?.let(appUploader.progress::progress),
-            )
-        }
-    }
-
     /**
      * **The member's own photos** — the one place their contribution is decided (data's [OwnPhotos]): the upload
      * cycle, the status total `N`, the join preview and the album gather all take their answer from this instance, so
      * none can judge a photo another way. Its walk sits behind the walk memo, which is the app process's alone; the
      * extension builds its own, bare.
      *
-     * Public for the same reason [gallery] is: the dev/test control channel's gallery read asks THIS rather than
-     * walking PhotoKit itself, so what it reports is what the app would see — including the grant-dependent read.
+     * Public because the dev/test control channel's gallery read asks THIS rather than walking PhotoKit itself, so
+     * what it reports is what the app would see — including the grant-dependent read.
      */
     @OptIn(AppProcessOnly::class)
     val ownPhotos: OwnPhotos by lazy {
@@ -348,11 +328,10 @@ class AppCore internal constructor(
         )
     }
 
-    // The own-device upload TOTAL N: the member's own photos as the upload cycle admits them — the same discovery, so
-    // a rule applied to one and not the other cannot peg the joined screen below 100% forever.
-    val gallery: OwnDeviceGalleryStatusSource by lazy { OwnDeviceGalleryStatusSource(ownPhotos) }
+    /** The joined screen's status: the total, and how far sharing and receiving are, followed from the stores. */
+    internal val status: StatusLayers by lazy { StatusLayers(this) }
 
-    // The join-time shareable-count preview: the same admission the cycle and `gallery` (N) take.
+    // The join-time shareable-count preview: the same admission the cycle and the status total take.
     private val shareableCount: ShareableCountQuery by lazy { ShareableCountQuery(ownPhotos) }
 
     /**
@@ -381,10 +360,8 @@ class AppCore internal constructor(
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant
 
-    /** The real ledger-backed status source (ledger truth × permission × gallery total). */
-    val syncStatusSource: SyncStatusSource by lazy {
-        LedgerBackedSyncStatusSource(ledgerCounts, galleryAccess, gallery.admitted, scope)
-    }
+    /** The sharing progress, in the shape the status host still reads until it reads the query itself. */
+    val syncStatusSource: SyncStatusSource get() = status.syncStatus
 
     /** Receiving: its store, the staging, the transfers, the library's import, and its use cases. */
     internal val receiving: ReceivingLayers by lazy { ReceivingLayers(this) }
@@ -448,45 +425,6 @@ class AppCore internal constructor(
     /** The transfer sessions' drain reports, which a relaunch for their events waits for. */
     internal val uploadDrains: SessionDrains = SessionDrains()
     internal val downloadDrains: SessionDrains = SessionDrains()
-
-    /**
-     * What [membership] contributes now — the ONE derivation ([OwnPhotos.contribution]), for this composition's own
-     * readers: the status total and the album gather. The upload cycle reaches the same one through its entry gate.
-     */
-    private suspend fun contributionFor(membership: Membership): Contribution =
-        ownPhotos.contribution(membership)
-
-    /**
-     * The status-refresh **rule**: cheap local reads before the library
-     * enumeration, and no count at all without a membership. Seated in `feature/status` while the status is an old
-     * zone's: its callers are the foreground's work, a join's (`AfterJoin`) and a settings change's (`AfterSettings`),
-     * and it moves into the layers with the status (4.7).
-     *
-     * The two port touches it cannot make are built here: the config read, and the one policy
-     * derivation.
-     */
-    internal val statusRefresh: StatusRefresh by lazy {
-        StatusRefresh(
-            ledgerCounts = ledgerCounts,
-            gallery = gallery,
-            // The sibling feature, reached through a lambda so `feature/status` stays blind to it.
-            refreshDownloadLine = { receiving.progress.refresh() },
-            configSource = services.config,
-            contributionFor = ::contributionFor,
-            received = receiving.received,
-            log = services.log,
-        )
-    }
-
-    // The foreground-gated status-counts poll: started by the foreground's own work, stopped as the app leaves it —
-    // the cadence is the feature's rule.
-    //
-    // It ticks the GROUP through `StatusRefresh`, not the ledger source directly. Handing it `ledgerCounts`
-    // is what let the poll and the refresh disagree about what the cheap local reads are, leaving the
-    // download line refreshed once per foreground entry and the screen able to hold a false "In sync".
-    val statusCountsPoller: StatusCountsPoller by lazy {
-        StatusCountsPoller(scope, refreshCheapLocalReads = { statusRefresh.refreshCheapLocalReads() })
-    }
 
     /** The foreground-gated network watch and what it tells the member. */
     val network: AppNetwork by lazy { AppNetwork(runtime, ports.network) }
@@ -591,9 +529,8 @@ class AppCore internal constructor(
     fun installCompositionSubscriptions() {
         observation.follow(attestationStatus.tokenChanged, OnCredentialChanged(runtime, push.register))
         // One selection-change emission → ONE read serving both consumers, the status total and the enqueue:
-        // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
-        // `refresh` recounts N over the very same snapshot — no second library read on this path, and
-        // no snapshot-specific entry point for the total to drift through.
+        // the cell feeds the cycle's discovery AND the total's count, which reads the very same snapshot — no second
+        // library read on this path, and no snapshot-specific entry point for the total to drift through.
         // A selection bringing marked photos no pass recognised withholds the membership BEFORE any reader sees
         // it, and recognises them first (`changes/archive/2026-10-11-close-share-back-gaps`).
         observation.follow(
@@ -605,7 +542,7 @@ class AppCore internal constructor(
             OnSelectionChanged(
                 runtime,
                 work.selectionRecognitionPass,
-                statusRefresh,
+                status.count,
                 work.walkAndPublish,
                 work.wakeWork,
             ),

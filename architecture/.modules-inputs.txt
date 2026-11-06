@@ -312,6 +312,7 @@ edge :test:data :test:contracts
 edge :test:edge :adapter:generic:app
 edge :test:edge :test:contracts
 edge :test:feature :adapter:generic:mock
+edge :test:feature :domain:application
 edge :test:feature :domain:data
 edge :test:feature :domain:domain
 edge :test:feature :domain:feature

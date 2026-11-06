@@ -9,11 +9,13 @@ import app.snapsync.application.receiving.RecordOutcome
 import app.snapsync.application.receiving.RecordStaged
 import app.snapsync.application.receiving.StageDownload
 import app.snapsync.application.receiving.StageOutcome
+import app.snapsync.application.sharing.CountOwnPhotos
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.application.upload.RecordFinishedUpload
 import app.snapsync.application.upload.SettleStoredUploads
 import app.snapsync.application.wake.RearmHeartbeat
 import app.snapsync.data.crypto.EventKeyStore
+import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
@@ -21,6 +23,8 @@ import app.snapsync.data.network.NetworkStatus
 import app.snapsync.data.push.PushTokens
 import app.snapsync.data.receiving.ImportMarkerWrites
 import app.snapsync.data.receiving.ReceivingCounts
+import app.snapsync.data.service.ServiceConditions
+import app.snapsync.data.store.ChangedElsewhere
 import app.snapsync.data.upload.SessionEnd
 import app.snapsync.data.upload.StagingSweep
 import app.snapsync.data.upload.UploaderAdmission
@@ -37,8 +41,6 @@ import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.wake.UploadsLeft
 import app.snapsync.feature.links.readmodel.OpenedLinks
-import app.snapsync.feature.status.StatusCountsPoller
-import app.snapsync.feature.status.StatusRefresh
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.model.PlatformError
@@ -71,7 +73,6 @@ import app.snapsync.scheduling.Steps
 import app.snapsync.scheduling.orIfCut
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
-import app.snapsync.services.foreground.AppForeground
 import app.snapsync.services.links.LinkOpening
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.transfer.SessionDrains
@@ -87,16 +88,19 @@ import kotlin.coroutines.CoroutineContext
 /** The app came to the front: its own work, then the wake's. */
 class OnForeground(
     runtime: Runtime,
+    private val service: ServiceConditions,
     private val foreground: AppForeground,
     private val pushTokens: PushTokens,
     private val prelude: Prelude,
     private val host: HostAssembly,
     private val network: ForegroundNetwork,
-    private val counts: StatusCountsPoller,
     private val work: ForegroundWork,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<Unit>(runtime) {
     override suspend fun run(arg: Unit, on: Run) = on.steps {
+        // What a person sees must not start from an outcome of before the return (decision record
+        // `changes/tell-service-faults`, D4): the service's condition is forgotten before the return is told.
+        required { service.opening() }
         required { foreground.entered() }
         required { pushTokens.request() }
         // The membership before the screen: a launch before the phone's first unlock since it restarted read it
@@ -106,7 +110,6 @@ class OnForeground(
         required { host.assemble() }
         // What only a visible screen needs, until the app leaves the front (`OnBackground`).
         required { network.start() }
-        required { counts.start() }
         isolated("own work") { work.run(on) }
         required { wake.full(WakeKind.FOREGROUND, on) }
     }
@@ -117,7 +120,6 @@ class OnBackground(
     runtime: Runtime,
     private val foreground: AppForeground,
     private val network: ForegroundNetwork,
-    private val counts: StatusCountsPoller,
     private val footprints: FootprintSampler,
 ) : InboundEntryPoint<Unit>(runtime) {
     private val log = Log("OnBackground")
@@ -125,7 +127,6 @@ class OnBackground(
     override fun Delivery.run(arg: Unit) {
         foreground.left()
         network.stop()
-        counts.stop()
         log.unlabelled.i("app entering background")
         footprints.record("entering background")
     }
@@ -372,6 +373,13 @@ class OnLink(runtime: Runtime, private val opening: LinkOpening, private val lin
     override fun Delivery.run(arg: LinkDelivery) = links.offer(opening.urlIn(arg))
 }
 
+/** The upload extension committed to one of the app's databases: what follows that store re-reads it. */
+class OnChangedElsewhere(runtime: Runtime, private val stores: ChangedElsewhere) : InboundEntryPoint<String>(runtime) {
+    override fun about(arg: String): String = arg
+
+    override fun Delivery.run(arg: String) = stores.changed(arg)
+}
+
 /**
  * The member changed a partial grant's selection: the photos it brought that no pass recognised are recognised, the
  * selection is walked, then the wake's work follows.
@@ -379,13 +387,14 @@ class OnLink(runtime: Runtime, private val opening: LinkOpening, private val lin
 class OnSelectionChanged(
     runtime: Runtime,
     private val recognition: Recognition,
-    private val statusRefresh: StatusRefresh,
+    private val count: CountOwnPhotos,
     private val walkAndPublish: WalkAndPublish,
     private val wake: WakeWork,
 ) : BackgroundEntryPoint<Unit>(runtime) {
+    @OptIn(EntryPointCall::class)
     override suspend fun run(arg: Unit, on: Run) = on.steps {
         run(recognition)
-        isolated("total") { statusRefresh.refreshTotal() }
+        isolated("total") { count() }
         run(walkAndPublish)
         required { wake.full(WakeKind.SELECTION_CHANGE, on) }
     }
@@ -470,7 +479,7 @@ class ForegroundWork(
     private val config: MembershipProjection,
     private val staging: StagingSweep,
     private val settle: SettleStoredUploads,
-    private val statusRefresh: StatusRefresh,
+    private val count: CountOwnPhotos,
     private val receiving: ForegroundReceiving,
     private val stateRefresh: StateRefresh,
     private val leftovers: SweepLeftovers,
@@ -481,7 +490,7 @@ class ForegroundWork(
         concurrently {
             child("staging") { staging.releaseUnclaimed(config.activeEventId()) }
             child("settle") { settle(config.activeEventId()) }
-            child("status") { statusRefresh.run() }
+            child("total") { count() }
             receiving.children(this, on)
             child("membership") { stateRefresh.run(on) }
             child("leftovers") { leftovers.run(on) }
