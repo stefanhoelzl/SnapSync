@@ -3,8 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.sharing.PhotoGrant
-import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.SyncStatus
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.query.RequestStatus
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage
@@ -13,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
@@ -84,9 +82,7 @@ class CreateFormClockTest {
     ) = TestCommands().let { commands ->
         StatusContainerHost(
             StatusSources(
-                object : SyncStatusSource {
-                    override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
-                },
+                MutableStateFlow(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(null),
                 creation = MutableStateFlow(creation),

@@ -16,14 +16,13 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
-import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.ReportDestination
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -73,10 +72,9 @@ private val CONFIG = EventConfig(
     deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
-private class FakeSync : SyncStatusSource {
-    override val status: StateFlow<SyncStatus> =
-        MutableStateFlow(SyncStatus.Ready(SyncProgress(0, 0, 0, 0, active = false, estimatedRemaining = null)))
-}
+private fun FakeSync(): StateFlow<SharingProgressRead> = MutableStateFlow(
+    SharingProgressRead.Read(SharingProgress(shared = 0, total = 0, handedOver = 0)),
+)
 
 private data class Reconfigure(
     val eventId: String,

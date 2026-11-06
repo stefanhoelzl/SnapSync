@@ -17,12 +17,12 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.MemberCounts
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
@@ -70,7 +70,7 @@ private val ENDED = MEMBERSHIP.copy(
 )
 
 /** Everything of the member's shared: the snapshot that reads in sync. */
-private val SETTLED = SyncStatus.Ready(SyncProgress(0, 4, 4, 0, active = false, estimatedRemaining = null))
+private val SETTLED = SharingProgressRead.Read(SharingProgress(shared = 4, total = 4, handedOver = 0))
 
 /**
  * What the joined layer carries beside its health (capability `sync-status`, `manage-membership`): who the event is
@@ -83,7 +83,7 @@ class JoinedLayerTest {
     private fun joined(
         scope: CoroutineScope,
         config: EventConfig = MEMBERSHIP,
-        snapshot: SyncStatus = SETTLED,
+        snapshot: SharingProgressRead = SETTLED,
         download: DownloadProgress = DownloadProgress(0, 0),
         permission: PhotoGrant = PhotoGrant.FULL,
         commands: TestCommands = TestCommands(),
@@ -131,7 +131,7 @@ class JoinedLayerTest {
             "this member is still sharing" to joined(
                 backgroundScope,
                 ENDED.copy(members = waiting),
-                snapshot = SyncStatus.Ready(SyncProgress(1, 3, 4, 0, active = true, estimatedRemaining = null)),
+                snapshot = SharingProgressRead.Read(SharingProgress(shared = 3, total = 4, handedOver = 1)),
             ),
             "the counts are unknown" to joined(backgroundScope, ENDED),
             "photo access is missing" to joined(
@@ -270,7 +270,7 @@ class JoinedLayerTest {
         val notWaitingForOthers = mapOf(
             "a photo of its own waits to upload" to joined(
                 backgroundScope,
-                snapshot = SyncStatus.Ready(SyncProgress(0, 3, 4, 0, active = false, estimatedRemaining = null)),
+                snapshot = SharingProgressRead.Read(SharingProgress(shared = 3, total = 4, handedOver = 0)),
                 download = awaiting,
             ),
             "an offered photo is not here yet" to joined(
@@ -322,7 +322,7 @@ class JoinedLayerTest {
         val host = joined(
             backgroundScope,
             MEMBERSHIP.copy(direction = Direction.Neither),
-            snapshot = SyncStatus.Loading,
+            snapshot = SharingProgressRead.NotYetRead,
             permission = PhotoGrant.REFUSED,
         )
 

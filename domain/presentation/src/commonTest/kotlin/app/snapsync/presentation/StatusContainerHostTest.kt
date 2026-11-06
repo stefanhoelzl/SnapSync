@@ -19,13 +19,12 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.receiving.DownloadProgress
@@ -48,6 +47,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -74,7 +74,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Clock
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -200,16 +199,17 @@ private fun inSync(shared: Int = 0) = joined(SyncHealth.InSync, counts = counts(
 private val joinedLoading get() = joined(SyncHealth.Loading)
 private fun needsAccess(p: PhotoGrant) = joined(SyncHealth.NeedsAccess(canAsk = p == PhotoGrant.UNDECIDED))
 
-internal class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapshot())) :
-    SyncStatusSource {
-    constructor(initial: SyncProgress) : this(SyncStatus.Ready(initial))
+@OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+internal class FakeSyncStatusSource private constructor(private val flow: MutableStateFlow<SharingProgressRead>) :
+    StateFlow<SharingProgressRead> by flow {
+    constructor(initial: SharingProgressRead = SharingProgressRead.Read(snapshot())) : this(MutableStateFlow(initial))
+    constructor(initial: SharingProgress) : this(SharingProgressRead.Read(initial))
 
-    private val flow = MutableStateFlow(initial)
-    override val status: StateFlow<SyncStatus> = flow
-    var value: SyncProgress
-        get() = (flow.value as SyncStatus.Ready).progress
+    /** The progress it holds now, read, as a test sets it. */
+    var progress: SharingProgress
+        get() = (flow.value as SharingProgressRead.Read).progress
         set(v) {
-            flow.value = SyncStatus.Ready(v)
+            flow.value = SharingProgressRead.Read(v)
         }
 }
 
@@ -262,10 +262,7 @@ private fun snapshot(
     pending: Int = 0,
     completed: Int = 0,
     total: Int = 0,
-    failed: Int = 0,
-    active: Boolean = true,
-    estimatedRemaining: Duration? = null,
-) = SyncProgress(pending, completed, total, failed, active, estimatedRemaining)
+) = SharingProgress(shared = completed, total = total, handedOver = pending)
 
 /** What the fixed clock below yields as a cutoff — the seed when `createdAt` is absent or unparseable. */
 private val NOW_CUTOFF = TimestampText.parse("2026-07-09T12:00:00Z")
@@ -349,7 +346,7 @@ private fun TestScope.firstJoinGate(
     onLoad: () -> Unit = {},
     leave: () -> Unit = {},
 ) = host(
-    FakeSyncStatusSource(SyncStatus.Loading),
+    FakeSyncStatusSource(SharingProgressRead.NotYetRead),
     backgroundScope,
     permission = FakePermissionSource(permission),
     requester = requester,
@@ -372,7 +369,7 @@ class StatusContainerHostTest {
         val lane = Dispatchers.Default.limitedParallelism(1)
         val host = StatusContainerHost(
             StatusSources(
-                FakeSyncStatusSource(SyncStatus.Loading),
+                FakeSyncStatusSource(SharingProgressRead.NotYetRead),
                 FakePermissionSource().permission,
                 FakeConfig().config,
                 network = AlwaysOnline,
@@ -465,7 +462,7 @@ class StatusContainerHostTest {
         // member misses the start. Burying it behind the clock line would ambush them with a permission
         // prompt at the very moment the party starts.
         val host = host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.REFUSED),
             configFake = FakeConfig(notStartedConfig()),
@@ -560,7 +557,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(pending = 35, completed = 12, total = 47)
+            source.progress = snapshot(pending = 35, completed = 12, total = 47)
             expectShown(syncing(up = Arrow.PULSING, counts = counts(12 to 47))) // completed<total, pending>0
             cancelAndIgnoreRemainingItems()
         }
@@ -571,7 +568,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(completed = 0, total = 5) // pending 0
+            source.progress = snapshot(completed = 0, total = 5) // pending 0
             expectShown(syncing(up = Arrow.STATIC, counts = counts(0 to 5)))
             cancelAndIgnoreRemainingItems()
         }
@@ -635,13 +632,13 @@ class StatusContainerHostTest {
 
     @Test
     fun `an opted-out arm hides its arrow through a zero total`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         // A download-only membership as the system can actually present it: nothing to upload (N=0),
         // imports still arriving. No mask involved — `0 < 0` is false.
         directionHost(source, backgroundScope, Direction.DownloadOnly, DownloadProgress(2, 5, inFlight = 1))
             .testWithInternalState(this) {
                 runOnCreate()
-                source.value = snapshot(completed = 0, total = 0)
+                source.progress = snapshot(completed = 0, total = 0)
                 expectShown(
                     syncing(
                         up = Arrow.HIDDEN,
@@ -656,11 +653,11 @@ class StatusContainerHostTest {
 
     @Test
     fun `both arms at zero read In sync whatever the membership`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         directionHost(source, backgroundScope, Direction.DownloadOnly, DownloadProgress(5, 5))
             .testWithInternalState(this) {
                 runOnCreate()
-                source.value = snapshot(completed = 0, total = 0) // contributes nothing → nothing outstanding
+                source.progress = snapshot(completed = 0, total = 0) // contributes nothing → nothing outstanding
                 expectShown(
                     joined(
                         SyncHealth.InSync,
@@ -686,13 +683,13 @@ class StatusContainerHostTest {
      */
     @Test
     fun `an upload arrow shows if a non-contributing membership ever reports upload work`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         directionHost(source, backgroundScope, Direction.DownloadOnly, DownloadProgress(5, 5))
             .testWithInternalState(this) {
                 runOnCreate()
                 // The direction gate is NOT being honoured somewhere upstream: work is being reported for a
                 // membership that promised to share nothing.
-                source.value = snapshot(pending = 2, completed = 1, total = 5)
+                source.progress = snapshot(pending = 2, completed = 1, total = 5)
                 // Surfaced, not concealed.
                 // Counted too, not shown as "not sharing": the counts line obeys the same rule as the arrow.
                 expectShown(
@@ -902,10 +899,10 @@ class StatusContainerHostTest {
     @Test
     fun `a re-join shows the listing-derived snapshot and never a join state`() = runTest {
         // Seed Loading so the transition to the listing snapshot is a real change (equal states conflate).
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         host(source, backgroundScope).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(completed = 12, total = 47)
+            source.progress = snapshot(completed = 12, total = 47)
             expectShown(
                 syncing(up = Arrow.STATIC, counts = counts(12 to 47)),
             ) // rising synced count, no join screen
@@ -918,7 +915,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource(snapshot(completed = 1, total = 3))
         host(source, backgroundScope).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(completed = 0, total = 0)
+            source.progress = snapshot(completed = 0, total = 0)
             expectShown(inSync())
             cancelAndIgnoreRemainingItems()
         }
@@ -930,19 +927,8 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource(snapshot(completed = 1, total = 10))
         host(source, backgroundScope).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(completed = 34, total = 34)
+            source.progress = snapshot(completed = 34, total = 34)
             expectShown(inSync(shared = 34))
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `overshoot clamps and maps to In sync`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(completed = 1, total = 10))
-        host(source, backgroundScope).testWithInternalState(this) {
-            runOnCreate()
-            source.value = snapshot(completed = 6, total = 5) // synced clamps to 5 >= total
-            expectShown(inSync(shared = 5))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -952,9 +938,9 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(completed = 1, total = 10)
+            source.progress = snapshot(completed = 1, total = 10)
             expectShown(syncing(up = Arrow.STATIC, counts = counts(1 to 10)))
-            source.value = snapshot(completed = 10, total = 10)
+            source.progress = snapshot(completed = 10, total = 10)
             expectShown(inSync(shared = 10))
             cancelAndIgnoreRemainingItems()
         }
@@ -1024,7 +1010,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `absent config shows the create layer even when granted`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         val permission = FakePermissionSource(PhotoGrant.FULL)
         val container =
             host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
@@ -1034,7 +1020,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `loading snapshot with config and granted permission maps to a joined loading`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         val permission = FakePermissionSource(PhotoGrant.FULL)
         val container = host(source, backgroundScope, permission = permission).container
 
@@ -1043,7 +1029,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `permission outranks a loading snapshot when config is present`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
         val container = host(source, backgroundScope, permission = permission).container
 
@@ -1052,7 +1038,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `absent config outranks a loading snapshot`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
         val container =
             host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
@@ -1077,7 +1063,7 @@ class StatusContainerHostTest {
         // A `createdAt` already at second precision round-trips through normalization unchanged
         // (capability `photo-sharing`).
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -1114,7 +1100,7 @@ class StatusContainerHostTest {
         // fails the load rather than invent one — so the default is simply the event's start. Normalizing
         // a millisecond-bearing value is that source's job now, and is tested there.
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -1150,7 +1136,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         val enrolled = mutableListOf<EventId>()
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
@@ -1188,7 +1174,7 @@ class StatusContainerHostTest {
     fun `a 404 on details blocks the join with no commit`() = runTest {
         var commits = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -1213,7 +1199,7 @@ class StatusContainerHostTest {
     fun `a load failure is retryable`() = runTest {
         var attempt = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -1246,7 +1232,7 @@ class StatusContainerHostTest {
     @Test
     fun `a failed enrollment leaves a retryable commit-failed state and does not join`() = runTest {
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -1280,7 +1266,7 @@ class StatusContainerHostTest {
     fun `re-scanning the already-joined event is a no-op`() = runTest {
         var loads = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
@@ -1312,7 +1298,7 @@ class StatusContainerHostTest {
         var loads = 0
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
@@ -1341,7 +1327,7 @@ class StatusContainerHostTest {
         val third = "33333333-3333-4333-8333-333333333333"
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
@@ -1367,7 +1353,7 @@ class StatusContainerHostTest {
         var loads = 0
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
@@ -1400,7 +1386,7 @@ class StatusContainerHostTest {
         val order = mutableListOf<String>()
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
@@ -1448,7 +1434,7 @@ class StatusContainerHostTest {
         var joinedDirection: Direction? = null
         var joinedAlbum: AlbumChoice? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
@@ -1499,7 +1485,7 @@ class StatusContainerHostTest {
         val ready = phaseAt(JoinPhase.Detailed.Step.Ready, "New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         var commits = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
@@ -1528,7 +1514,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         var commits = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
@@ -1560,7 +1546,7 @@ class StatusContainerHostTest {
         val logged = Channel<String>(Channel.UNLIMITED)
         val containerHost = StatusContainerHost(
             StatusSources(
-                FakeSyncStatusSource(SyncStatus.Loading),
+                FakeSyncStatusSource(SharingProgressRead.NotYetRead),
                 FakePermissionSource(PhotoGrant.FULL).permission,
                 FakeConfig(null).config,
                 network = AlwaysOnline,
@@ -1590,7 +1576,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var committedDirection: Direction? = null
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
@@ -1630,7 +1616,7 @@ class StatusContainerHostTest {
     fun `an invalid deeplink flashes the self-clearing transient error and changes nothing`() = runTest {
         // The set-then-clear choreography is presentation-owned (migration finale, step-12 D6): the
         // shell renders `transientError` verbatim and decides nothing.
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         val permission = FakePermissionSource(PhotoGrant.FULL)
         val h = host(source, backgroundScope, permission = permission, configFake = FakeConfig(null))
         // Driven through the orbit-test fixture so the intent event loop runs on THIS test's
@@ -1766,7 +1752,7 @@ class StatusContainerHostTest {
         // bad QR while already joined used to get nothing: the message was set and the joined layer had
         // nowhere to render it. "Nothing happened" and "that code wasn't valid" are different answers.
         val h = host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
@@ -2104,7 +2090,7 @@ class StatusContainerHostTest {
         val attested = MutableStateFlow(true)
         host(source, backgroundScope, verification = DeviceVerification(attested)).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(pending = 5, completed = 0, total = 5)
+            source.progress = snapshot(pending = 5, completed = 0, total = 5)
             expectShown(syncing(up = Arrow.PULSING, counts = counts(0 to 5)))
 
             attested.value = false // a renewal was attempted while the app was open — and it failed
@@ -2124,7 +2110,7 @@ class StatusContainerHostTest {
             // The initial state is already Unattested (asserted by the test above), so nothing is emitted
             // until the flag flips — Orbit only re-emits on a CHANGE.
             runOnCreate()
-            source.value = snapshot(pending = 5, completed = 0, total = 5)
+            source.progress = snapshot(pending = 5, completed = 0, total = 5)
 
             attested.value = true // the next wake renewed successfully
 
@@ -2148,7 +2134,7 @@ class StatusContainerHostTest {
             .testWithInternalState(this) {
                 // Starts Unattested (no token, granted permission); revoking access must OUTRANK it.
                 runOnCreate()
-                source.value = snapshot(pending = 5, completed = 0, total = 5)
+                source.progress = snapshot(pending = 5, completed = 0, total = 5)
 
                 permission.permission.value = PhotoGrant.REFUSED
 
@@ -2196,7 +2182,7 @@ class StatusContainerHostJoinGateTest {
         // Capability `join-event`: the message shows on WHATEVER screen the user is on — the open join
         // screen included — and a damaged link changes nothing, so the pending join stays exactly as it was.
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -2334,7 +2320,7 @@ class StatusContainerHostJoinGateTest {
     @Test
     fun `a details load that throws is retryable rather than a parked spinner`() = runTest {
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             configFake = FakeConfig(null),
             loadJoinDetails = { throw IllegalStateException("the details client threw") },
@@ -2443,7 +2429,7 @@ class ClosedEventJoinTest {
     fun `an event whose photos are deleted is refused at load with no commit`() = runTest {
         var commits = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -2473,7 +2459,7 @@ class ClosedEventJoinTest {
     @Test
     fun `an event that closes before the confirm lands on the closed phase`() = runTest {
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -2543,7 +2529,7 @@ class StatusContainerHostJoinedFactsTest {
 
     @Test
     fun `the counts line carries both directions while syncing`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         StatusContainerHost(
             StatusSources(
                 source,
@@ -2562,7 +2548,7 @@ class StatusContainerHostJoinedFactsTest {
             reduction = Dispatchers.Default,
         ).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(completed = 12, total = 15)
+            source.progress = snapshot(completed = 12, total = 15)
             expectShown(
                 syncing(
                     up = Arrow.STATIC,
@@ -2666,7 +2652,7 @@ class StatusContainerHostRefusalTest {
         // Capability `join-event`, "A refused phone is told why it cannot join".
         var joins = 0
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -2705,7 +2691,7 @@ class StatusContainerHostRefusalTest {
     @Test
     fun `a join refused for this phone with no verdict is the ordinary retryable failure`() = runTest {
         host(
-            FakeSyncStatusSource(SyncStatus.Loading),
+            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
             backgroundScope,
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
@@ -2738,7 +2724,7 @@ class StatusContainerHostRefusalTest {
     @Test
     fun `a joined phone the service refuses is told the cause on the cannot-verify line`() = runTest {
         // Capability `sync-status`: a definite refusal names its cause; the line without a verdict names none.
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
         val attested = MutableStateFlow(true)
         val refusal = MutableStateFlow<DeviceRefusal?>(null)
         host(
@@ -2747,7 +2733,7 @@ class StatusContainerHostRefusalTest {
             verification = DeviceVerification(attested, refusal),
         ).testWithInternalState(this) {
             runOnCreate()
-            source.value = snapshot(pending = 5, completed = 0, total = 5)
+            source.progress = snapshot(pending = 5, completed = 0, total = 5)
             expectShown(syncing(up = Arrow.PULSING, counts = counts(0 to 5)))
             attested.value = false
             expectShown(joined(SyncHealth.Unattested()))

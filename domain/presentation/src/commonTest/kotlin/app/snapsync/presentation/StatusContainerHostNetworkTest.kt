@@ -14,12 +14,11 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
-import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.mobiledata.MobileDataQuery
@@ -68,9 +67,7 @@ class StatusContainerHostNetworkTest {
         }
     }
 
-    private class Sync(initial: SyncStatus) : SyncStatusSource {
-        override val status: StateFlow<SyncStatus> = MutableStateFlow(initial)
-    }
+    private fun Sync(initial: SharingProgressRead): StateFlow<SharingProgressRead> = MutableStateFlow(initial)
 
     private fun TestScope.host(
         network: FakeNetwork,
@@ -80,12 +77,12 @@ class StatusContainerHostNetworkTest {
         creation: RequestStatus<CreateResult> = Creating.Idle,
         load: suspend (String) -> JoinDetails = { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) },
         scope: CoroutineScope = backgroundScope,
-        progress: SyncProgress = SyncProgress(0, 0, 0, 0, false, null),
+        progress: SharingProgress = SharingProgress(shared = 0, total = 0, handedOver = 0),
         mobileData: Boolean = true,
     ) = TestCommands().let { commands ->
         StatusContainerHost(
             StatusSources(
-                Sync(SyncStatus.Ready(progress)),
+                Sync(SharingProgressRead.Read(progress)),
                 MutableStateFlow(permission),
                 MutableStateFlow(config),
                 creation = MutableStateFlow(creation),
@@ -192,7 +189,7 @@ class StatusContainerHostNetworkTest {
     @Test
     fun `work still draining after both directions are off is shown and not masked`() = runTest {
         val draining =
-            SyncProgress(pending = 1, completed = 0, total = 1, failed = 0, active = true, estimatedRemaining = null)
+            SharingProgress(shared = 0, total = 1, handedOver = 1)
         val health = host(
             FakeNetwork(),
             config = STARTED.copy(direction = Direction.Neither),
@@ -208,7 +205,7 @@ class StatusContainerHostNetworkTest {
 
     /** One upload handed to the platform and not yet done: shown, and in flight. */
     private val oneUploading =
-        SyncProgress(pending = 1, completed = 0, total = 1, failed = 0, active = true, estimatedRemaining = null)
+        SharingProgress(shared = 0, total = 1, handedOver = 1)
 
     @Test
     fun `photos kept off mobile data on a restricted network wait for Wi-Fi with still arrows`() = runTest {

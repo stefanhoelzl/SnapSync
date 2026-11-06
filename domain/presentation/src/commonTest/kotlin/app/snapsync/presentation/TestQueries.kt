@@ -42,11 +42,10 @@ import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
-import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
-import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
@@ -247,9 +246,7 @@ internal fun testDiagnostics(log: (String) -> Unit = {}, onIntentError: (Throwab
     StatusDiagnostics(log = log, onIntentError = onIntentError)
 
 /** A sync snapshot that holds [status] and never moves — for a test about something other than the snapshot. */
-internal class FixedSync(status: SyncStatus) : SyncStatusSource {
-    override val status: StateFlow<SyncStatus> = MutableStateFlow(status)
-}
+internal fun FixedSync(status: SharingProgressRead): StateFlow<SharingProgressRead> = MutableStateFlow(status)
 
 /** A host whose photos may always use mobile data, and whose choice no test changes. */
 internal object AlwaysAllowed : MobileDataQuery {

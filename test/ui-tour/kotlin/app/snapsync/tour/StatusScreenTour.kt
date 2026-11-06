@@ -70,9 +70,9 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.inbound.Background
@@ -80,7 +80,6 @@ import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Store
-import app.snapsync.model.SyncStatus
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.BuildStanding
 import app.snapsync.presentation.CutoffFormatter
@@ -302,9 +301,7 @@ abstract class StatusScreenTour {
 
         val host = StatusContainerHost(
             StatusSources(
-                sync = object : SyncStatusSource {
-                    override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
-                },
+                sync = MutableStateFlow(SharingProgressRead.NotYetRead),
                 permission = MutableStateFlow(permission),
                 config = this.config,
                 build = BuildStanding(refusal = MutableStateFlow(refusal), store = Store("App Store", STORE_URL)),

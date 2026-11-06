@@ -19,12 +19,3 @@ enum class GalleryAccess {
     LIMITED,
     GRANTED,
 }
-
-/**
- * The "may the app read photos at all" reading — [GalleryAccess.GRANTED] or [GalleryAccess.LIMITED]. This is the gate
- * for work that operates on whatever the platform lets the app see (album creation, imports, the sync-active signal).
- * It is deliberately NOT the gate for the autonomous library walks, which require [GalleryAccess.GRANTED] exactly —
- * under a partial grant those reads are selection-driven instead.
- */
-val GalleryAccess.grantsPhotoAccess: Boolean
-    get() = this == GalleryAccess.GRANTED || this == GalleryAccess.LIMITED

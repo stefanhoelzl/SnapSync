@@ -12,12 +12,12 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -68,8 +68,8 @@ private val DETAILS = EventDetails(
 private val FOUND = found(MEMBERSHIP.name, MEMBERSHIP.startsAt, MEMBERSHIP.endsAt, MEMBERSHIP.deletesAt)
 
 /** Everything of the member's shared, and photos still waiting. */
-private val SETTLED = SyncStatus.Ready(SyncProgress(0, 4, 4, 0, active = false, estimatedRemaining = null))
-private val WAITING = SyncStatus.Ready(SyncProgress(2, 2, 4, 0, active = false, estimatedRemaining = null))
+private val SETTLED = SharingProgressRead.Read(SharingProgress(shared = 4, total = 4, handedOver = 0))
+private val WAITING = SharingProgressRead.Read(SharingProgress(shared = 2, total = 4, handedOver = 2))
 
 /** What the host reads of this phone's verification and of the service — what [ServiceFaultReductionTest]'s cases vary. */
 private data class Verified(
@@ -90,7 +90,7 @@ class ServiceFaultReductionTest {
         scope: CoroutineScope,
         trust: Verified = Verified(),
         config: EventConfig? = MEMBERSHIP,
-        snapshot: SyncStatus = WAITING,
+        snapshot: SharingProgressRead = WAITING,
         creation: RequestStatus<CreateResult> = Creating.Idle,
         pending: PendingJoin? = null,
         load: suspend (String) -> JoinDetails = { FOUND },

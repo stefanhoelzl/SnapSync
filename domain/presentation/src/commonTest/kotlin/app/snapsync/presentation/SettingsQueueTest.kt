@@ -12,10 +12,10 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
@@ -43,7 +43,7 @@ private val MEMBERSHIP = EventConfig(
     deletesAt = DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
 )
 
-private val SETTLED = SyncStatus.Ready(SyncProgress(0, 0, 0, 0, active = false, estimatedRemaining = null))
+private val SETTLED = SharingProgressRead.Read(SharingProgress(shared = 0, total = 0, handedOver = 0))
 
 /**
  * The settings' one queue (capability `manage-membership`): every settings act runs after the ones before it, on the

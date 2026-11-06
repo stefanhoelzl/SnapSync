@@ -15,12 +15,11 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
-import app.snapsync.feature.status.readmodel.SyncStatusSource
+import app.snapsync.domain.sharing.SharingProgress
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SyncProgress
-import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -45,11 +44,9 @@ import kotlin.time.Instant
  */
 class KeyLostTest {
 
-    private class Sync : SyncStatusSource {
-        override val status: StateFlow<SyncStatus> = MutableStateFlow(
-            SyncStatus.Ready(SyncProgress(0, 0, 0, 0, false, null)),
-        )
-    }
+    private fun Sync(): StateFlow<SharingProgressRead> = MutableStateFlow(
+        SharingProgressRead.Read(SharingProgress(shared = 0, total = 0, handedOver = 0)),
+    )
 
     private fun TestScope.host(
         presence: KeyPresence,

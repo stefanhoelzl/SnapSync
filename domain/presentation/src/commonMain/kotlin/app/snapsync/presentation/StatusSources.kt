@@ -11,9 +11,9 @@ import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Store
 import app.snapsync.query.RequestStatus
@@ -39,7 +39,7 @@ import kotlinx.coroutines.flow.StateFlow
  * constructs without naming it.
  */
 class StatusSources(
-    val sync: SyncStatusSource,
+    val sync: StateFlow<SharingProgressRead>,
     /**
      * The photo-permission read-model. Observed for the health rung, and for whether confirming a join
      * also raises iOS's photo-access dialog.

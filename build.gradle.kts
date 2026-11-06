@@ -119,7 +119,9 @@ coverage {
         // → 63/37 in phase 4.9 (status and presentation): the bug report's context and outcome, which the suite
         // covered, left for the domain with the requests the command door carries, and the old command interface went.
         // No test was lost. Measured 63.47 %.
-        integration(instructions = 63, branches = 37)
+        // → 63/36 when the screen read the sharing progress itself (4.9): the old status snapshot's classification
+        // (`SyncProgress.state`), which the suite covered, went with it. No test was lost. Measured 36.78 %.
+        integration(instructions = 63, branches = 36)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.

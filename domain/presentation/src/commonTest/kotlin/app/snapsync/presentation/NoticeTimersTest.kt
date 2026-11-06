@@ -5,9 +5,9 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.PhotoGrant
+import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
@@ -69,7 +69,7 @@ class NoticeTimersTest {
     ) = TestCommands(sendDiagnostics = { _, _ -> report() }).let { commands ->
         StatusContainerHost(
             StatusSources(
-                FixedSync(SyncStatus.Loading),
+                FixedSync(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow<EventConfig?>(null),
                 creation = MutableStateFlow(creation),

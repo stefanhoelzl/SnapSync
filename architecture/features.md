@@ -10,8 +10,3 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 - files: `CollectDiagnosticDump.kt`, `ReportedIdentity.kt`
 - top-level types: `CollectDiagnosticDump (class)`
 
-## `feature/status`
-
-- files: `SyncStatusSource.kt`
-- top-level types: `SyncStatusSource (interface)`
-
