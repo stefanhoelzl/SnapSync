@@ -57,7 +57,7 @@ class BackDatedEventIntegrationTest {
         whenever {
             downloadSession.finish()
             os.foreground()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             event<WorldEvent.LibraryAssetCreated> { it.asset == "imported-$GUEST-GUEST-1" }
@@ -184,7 +184,7 @@ class BackDatedEventIntegrationTest {
         /** Past the week the host chose (created 1 June 12:00, open for 7 days). */
         const val AFTER_THE_WEEK = "2026-06-09T12:00:00Z"
 
-        /** Long enough for the joined screen's status poll (every 2 s) to read the event again. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the joined screen to re-read the event its change notice names. */
+        val SCREEN_REREAD = 5.seconds
     }
 }

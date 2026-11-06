@@ -135,7 +135,7 @@ class FullStackIntegrationTest {
         whenever {
             downloadSession.finish()
             os.foreground()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then { synced = screen<Layer.Joined> { it.health == SyncHealth.InSync } }
         assertEquals(SyncCounts(progress(2, 2), progress(3, 3)), synced.value.counts)
@@ -189,11 +189,11 @@ class FullStackIntegrationTest {
         then { waiting = screen<Layer.Joined> { it.health is SyncHealth.Syncing } }
         assertEquals(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN), waiting.value.health)
 
-        // One cycle: the job is created → the upload is in flight → the up arrow pulses (the screen's status poll, two
+        // One cycle: the job is created → the upload is in flight → the up arrow pulses (the screen re-reading the change, two
         // seconds on, reads it).
         whenever {
             cycle()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             event<WorldEvent.UploadJobCreated> { it.job == primaryJob("A") }
@@ -241,11 +241,11 @@ class FullStackIntegrationTest {
             downloadStarted(DEV_F, "FQ").state.libraryPhotos.orEmpty().size
         }
 
-        // The foreground's status read may run before the import lands; the status poll is what catches the line up.
+        // The foreground's status read may run before the import lands; the store's change notice is what catches the line up.
         whenever {
             downloadSession.finish()
             os.foreground()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FQ", DEV_F) } // the foreign photo imported
@@ -301,7 +301,7 @@ class FullStackIntegrationTest {
 
         whenever {
             downloadSession.finish()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             event<WorldEvent.LibraryAssetCreated> { it.asset == imported("FQ", DEV_F) } // imported under LIMITED
@@ -472,7 +472,7 @@ class FullStackIntegrationTest {
 
         // The download union read fails offline, without failing the reconcile (it keeps its last state).
         whenever {
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
             os.foreground()
         }
         then { staysInSync() }
@@ -579,7 +579,7 @@ class FullStackIntegrationTest {
         whenever {
             cycle()
             os.foreground()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             never<WorldEvent.UploadJobCreated>()
@@ -662,8 +662,8 @@ class FullStackIntegrationTest {
         const val FUTURE_START = "2099-12-01T00:00:00"
         const val FUTURE_END = "2099-12-31T00:00:00"
 
-        /** Past the screen's status poll, which reads the ledger every two seconds of mocked time. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the screen to re-read what a change of the stores tells it, on mocked time. */
+        val SCREEN_REREAD = 5.seconds
     }
 }
 

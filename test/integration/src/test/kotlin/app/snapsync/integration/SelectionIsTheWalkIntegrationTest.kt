@@ -56,7 +56,7 @@ class SelectionIsTheWalkIntegrationTest {
             library.permission(PhotoGrant.LIMITED)
             devControls.pin(app = true, extension = true)
             library.changeSelection(listOf("A", "B"))
-            advance(5.seconds) // the screen's status poll
+            advance(5.seconds) // the screen re-reads what changed
         }
         then {
             // The de-selected photos leave the manifest, in flight or not.

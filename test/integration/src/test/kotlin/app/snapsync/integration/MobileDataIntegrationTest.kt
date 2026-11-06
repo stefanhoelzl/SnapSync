@@ -93,7 +93,7 @@ class MobileDataIntegrationTest {
             network(NetworkState.RESTRICTED)
             step("P1 taken, its transfer created", act = {
                 shareFromForeground("P1")
-                advance(5.seconds) // the screen's status poll
+                advance(5.seconds) // the screen re-reads what changed
             }, until = {
                 event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("P1") }
                 screen<Layer.Joined> { it.health == WAITING_FOR_WIFI } // still arrows, and the line says it waits

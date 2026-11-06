@@ -35,7 +35,7 @@ class SharingOffMidUploadIntegrationTest {
             takePhoto(NEXT)
             uploadSession.complete()
             os.foreground()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             never<WorldEvent.ManifestPublished> { MINE in it.added }
@@ -124,17 +124,17 @@ class SharingOffMidUploadIntegrationTest {
         })
     }
 
-    /** The app in front long enough for the joined screen's status poll to read the device again. */
+    /** The app in front long enough for the joined screen to re-read what changed on the device. */
     private suspend fun Acts.readAgain() {
         os.foreground()
-        advance(STATUS_POLL)
+        advance(SCREEN_REREAD)
     }
 
     private companion object {
         const val MINE = "MINE"
         const val NEXT = "NEXT"
 
-        /** Long enough for the joined screen's status poll (every 2 s) to read again. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the joined screen to re-read what a change of the stores tells it. */
+        val SCREEN_REREAD = 5.seconds
     }
 }

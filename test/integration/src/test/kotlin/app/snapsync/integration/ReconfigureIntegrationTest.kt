@@ -60,7 +60,7 @@ class ReconfigureIntegrationTest {
         whenever {
             uploadAll()
             os.foreground()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             event<WorldEvent.BytesStored> { it.asset == "A" } // enabling share uploads the own photo
@@ -139,7 +139,7 @@ class ReconfigureIntegrationTest {
             downloadSession.finish()
             os.foreground()
             downloadSession.finish()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             never<WorldEvent.DownloadStarted>()
@@ -184,7 +184,7 @@ class ReconfigureIntegrationTest {
         // And the joined screen says so, ahead of everything else.
         whenever {
             os.foreground()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.Inactive } }
     }
@@ -223,7 +223,7 @@ class ReconfigureIntegrationTest {
     }
 
     private companion object {
-        /** Long enough for the joined screen's status poll (every 2 s) to read again. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the joined screen to re-read what a change of the stores tells it. */
+        val SCREEN_REREAD = 5.seconds
     }
 }

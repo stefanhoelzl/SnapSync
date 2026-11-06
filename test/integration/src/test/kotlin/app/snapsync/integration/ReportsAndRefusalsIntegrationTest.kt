@@ -118,7 +118,7 @@ class ReportsAndRefusalsIntegrationTest {
             step("three of them shared, the screen read", act = {
                 listOf("P0", "P1", "P2").forEach { uploadSession.complete(primaryKey(it)) }
                 os.foreground()
-                advance(STATUS_POLL)
+                advance(SCREEN_REREAD)
             }, until = {
                 screen<Layer.Joined> { it.counts?.shared == DirectionCount.Progress(3, 10) }
                 settled { true }
@@ -254,7 +254,7 @@ class ReportsAndRefusalsIntegrationTest {
     private companion object {
         const val NOTE = "photos stopped arriving"
 
-        /** Long enough for the joined screen's status poll (every 2 s) to read again. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the joined screen to re-read what a change of the stores tells it. */
+        val SCREEN_REREAD = 5.seconds
     }
 }
