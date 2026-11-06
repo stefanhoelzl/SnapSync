@@ -404,19 +404,29 @@ class OnSelectionChanged(
 class MobileDataRequest(val id: RequestId, val choice: MobileDataChoice)
 
 /**
- * The member switched whether photos may use mobile data: saved, and answered with the
- * choice now in effect — the one asked for, or, when it could not be saved, the one still governing the transfers.
+ * The member switched whether photos may use mobile data: saved, and answered with the choice now in effect — the one
+ * asked for, or, when it could not be saved, the one still governing the transfers. Turned on and saved, it runs a full
+ * wake: what waited for Wi-Fi and no transfer carries yet starts over mobile data now, not at the next opening.
  */
 class OnMobileDataChanged(
     runtime: Runtime,
     private val setMobileData: SetMobileData,
     private val store: MobileDataStore,
     private val statuses: MobileDataStatuses,
+    private val wake: WakeWork,
 ) : BackgroundEntryPoint<MobileDataRequest>(runtime) {
     @OptIn(EntryPointCall::class)
     override suspend fun run(arg: MobileDataRequest, on: Run) = on.steps {
         ensure("answer") { statuses.change.settle(arg.id, MobileDataOutcome.NotSaved(store.read())) }
-        required { statuses.change.done(arg.id, setMobileData(arg.choice)) }
+        val outcome = required { setMobileData(arg.choice) }
+        required { statuses.change.done(arg.id, outcome) }
+        when (outcome) {
+            is MobileDataOutcome.Saved -> when (outcome.inEffect) {
+                MobileDataChoice.ALLOWED -> required { wake.full(WakeKind.MOBILE_DATA, on) }
+                MobileDataChoice.WIFI_ONLY -> Unit
+            }
+            is MobileDataOutcome.NotSaved -> Unit
+        }
     }
 }
 
@@ -546,6 +556,7 @@ enum class WakeKind(val checksPhotos: Boolean, val boundsEventRead: Boolean) {
     ARM(checksPhotos = false, boundsEventRead = false),
     FOREGROUND(checksPhotos = true, boundsEventRead = false),
     NETWORK(checksPhotos = true, boundsEventRead = false),
+    MOBILE_DATA(checksPhotos = true, boundsEventRead = true),
     SILENT_PUSH(checksPhotos = true, boundsEventRead = false),
     SELECTION_CHANGE(checksPhotos = true, boundsEventRead = true),
     SCHEDULED(checksPhotos = true, boundsEventRead = true),

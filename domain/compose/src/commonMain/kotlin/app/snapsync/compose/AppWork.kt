@@ -283,6 +283,12 @@ internal class AppWork(private val core: AppCore) {
 
     /** The member switched whether photos may use mobile data. */
     internal val mobileDataChanged: OnMobileDataChanged by lazy {
-        OnMobileDataChanged(core.runtime, core.mobileData.set, core.services.mobileData, core.mobileData.statuses)
+        OnMobileDataChanged(
+            core.runtime,
+            core.mobileData.set,
+            core.services.mobileData,
+            core.mobileData.statuses,
+            wakeWork,
+        )
     }
 }

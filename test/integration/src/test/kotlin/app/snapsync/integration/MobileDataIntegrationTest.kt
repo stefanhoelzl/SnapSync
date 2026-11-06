@@ -399,6 +399,32 @@ class MobileDataIntegrationTest {
     }
 
     /**
+     * Turning mobile data on is itself what sends the rest: a photo taken while it waited, which no transfer carries yet,
+     * starts over mobile data at the switch — with no opening of the app after it.
+     */
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "A change applies to transfers that start afterwards",
+        scenario = "Turning mobile data on sends the rest at once",
+    )
+    fun turning_mobile_data_on_starts_what_waited_without_another_opening() = behaviour {
+        given {
+            waitingInBothDirections()
+            step("P2 taken, nothing carries it", act = { takePhoto("P2") }, until = {
+                never<WorldEvent.SessionTransferCreated>()
+                settled { true }
+            })
+        }
+
+        whenever { tap(UiIntent.MobileData(true)) }
+        then {
+            event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("P2") }
+            never<WorldEvent.Acted> { it.name == "os.foreground" }
+        }
+    }
+
+    /**
      * A sharing and receiving member with mobile data off, on mobile data: their photo P1 handed to the app's uploader
      * and a fellow member's FA to the download session, both held by the platform until an unrestricted network.
      */
