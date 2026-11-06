@@ -20,6 +20,7 @@ import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.network.NetworkStatusQuery
+import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.JoinPhase
@@ -75,6 +76,7 @@ class StatusContainerHostNetworkTest {
         scope: CoroutineScope = backgroundScope,
         progress: SharingProgress = SharingProgress(shared = 0, total = 0, handedOver = 0),
         mobileData: Boolean = true,
+        download: DownloadProgress = DownloadProgress(0, 0),
     ) = TestCommands().let { commands ->
         testHost(
             testQueries(
@@ -82,6 +84,7 @@ class StatusContainerHostNetworkTest {
                 MutableStateFlow(permission),
                 MutableStateFlow(config).held(),
                 creation = MutableStateFlow(creation),
+                download = MutableStateFlow(download),
                 verification = testVerification(MutableStateFlow(attested)),
                 network = network,
                 mobileData = object : MobileDataQuery {
@@ -208,6 +211,18 @@ class StatusContainerHostNetworkTest {
         val host =
             host(FakeNetwork(NetworkAccess.Online(restricted = true)), progress = oneUploading, mobileData = false)
         assertEquals(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN, waitingForWifi = true), host.health())
+    }
+
+    @Test
+    fun `only the others left outranks waiting for Wi-Fi`() = runTest {
+        // Nothing of this phone's own is held for Wi-Fi: its photos are all shared, and all offered here have arrived.
+        val host = host(
+            FakeNetwork(NetworkAccess.Online(restricted = true)),
+            progress = SharingProgress(shared = 1, total = 1, handedOver = 0),
+            mobileData = false,
+            download = DownloadProgress(downloaded = 6, total = 6, awaited = 10),
+        )
+        assertEquals(SyncHealth.Syncing(Arrow.HIDDEN, Arrow.STATIC, waitingForOthers = true), host.health())
     }
 
     @Test

@@ -199,16 +199,15 @@ private fun readHealth(progress: SharingProgress, observed: Observed): SyncHealt
 internal fun syncHealth(progress: SharingProgress, download: DownloadProgress, heldForWifi: Boolean): SyncHealth {
     val upload = uploadArrow(progress, heldForWifi)
     val downloadArrow = downloadArrow(download, heldForWifi)
-    return if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) {
-        SyncHealth.InSync
-    } else {
-        SyncHealth.Syncing(
-            upload = upload,
-            download = downloadArrow,
-            waitingForWifi = heldForWifi,
-            waitingForOthers = waitingForOthers(upload, downloadArrow, download, heldForWifi),
-        )
-    }
+    if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) return SyncHealth.InSync
+    // Only the others left outranks waiting for Wi-Fi: nothing of this device's own is held, so Wi-Fi would move nothing.
+    val others = onlyOthersLeft(upload, downloadArrow, download)
+    return SyncHealth.Syncing(
+        upload,
+        downloadArrow,
+        waitingForWifi = heldForWifi && !others,
+        waitingForOthers = others,
+    )
 }
 
 /** A held transfer is handed to the platform and so counts as in flight, but it is not RUNNING: no arrow pulses. */
@@ -225,8 +224,8 @@ private fun downloadArrow(download: DownloadProgress, heldForWifi: Boolean): Arr
 )
 
 /** Only the others are left: nothing of this device's own runs, waits or is offered and not yet here. */
-private fun waitingForOthers(upload: Arrow, downloadArrow: Arrow, download: DownloadProgress, heldForWifi: Boolean) =
-    !heldForWifi && upload == Arrow.HIDDEN && downloadArrow == Arrow.STATIC && download.downloaded >= download.total
+private fun onlyOthersLeft(upload: Arrow, downloadArrow: Arrow, download: DownloadProgress) =
+    upload == Arrow.HIDDEN && downloadArrow == Arrow.STATIC && download.downloaded >= download.total
 
 internal fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
     if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC
