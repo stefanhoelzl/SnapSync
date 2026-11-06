@@ -170,7 +170,11 @@ class UiStateFieldContractTest {
 
     @Test
     fun `the joined layer's parts require what they show`() {
-        assertFieldContract(PendingSwitch.serializer(), PendingSwitch("other", detailed))
+        assertFieldContract(
+            PendingSwitch.serializer(),
+            PendingSwitch("other", detailed, ServiceNotice.TROUBLE),
+            optional = setOf("service"),
+        )
         assertFieldContract(RenameState.Failed.serializer(), RenameState.Failed(ScreenMessage.RENAME_FAILED))
         assertFieldContract(
             JoinedSurface.Reconfigure.serializer(),

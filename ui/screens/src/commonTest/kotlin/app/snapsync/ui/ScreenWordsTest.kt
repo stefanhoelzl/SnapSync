@@ -202,12 +202,12 @@ class ScreenWordsTest {
 
     @Test
     fun `only a loaded switch asks to switch — naming the event it would join`() {
-        val prompt = switchPrompt(JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Ready))!!
+        val prompt = switchPrompt(JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Ready), null)!!
         assertEquals(listOf(Res.string.switch_body, Res.string.switch_confirm), listOf(prompt.body, prompt.confirm))
         assertEquals(SwitchAct.SWITCH, prompt.act)
         assertEquals("Anna's Birthday", prompt.switchingTo)
         // A commit cannot fail while the previous event is still configured; a commit in flight shows nothing.
-        assertNull(switchPrompt(JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Committing)))
+        assertNull(switchPrompt(JoinPhase.Detailed("Anna's Birthday", JoinPhase.Detailed.Step.Committing), null))
     }
 
     @Test
@@ -217,7 +217,7 @@ class ScreenWordsTest {
             Triple(JoinPhase.Closed, Res.string.event_closed_title, Res.string.event_closed_body),
             Triple(JoinPhase.WrongLink, Res.string.link_incomplete_title, Res.string.link_incomplete_body),
         )) {
-            val prompt = switchPrompt(phase)!!
+            val prompt = switchPrompt(phase, null)!!
             assertEquals(title, prompt.title, "$phase")
             body?.let { assertEquals(it, prompt.body, "$phase") }
             assertEquals(Res.string.ok, prompt.confirm, "$phase")
@@ -228,10 +228,19 @@ class ScreenWordsTest {
 
     @Test
     fun `a failed load offers Retry and nothing shows while the details load`() {
-        val prompt = switchPrompt(JoinPhase.LoadFailed)!!
+        val prompt = switchPrompt(JoinPhase.LoadFailed, null)!!
         assertEquals(listOf(Res.string.load_failed_title, Res.string.retry), listOf(prompt.title, prompt.confirm))
         assertEquals(SwitchAct.RETRY, prompt.act)
-        assertNull(switchPrompt(JoinPhase.Loading))
+        assertNull(switchPrompt(JoinPhase.Loading, null))
+    }
+
+    @Test
+    fun `a failed load the service caused says how, as the join screen does`() {
+        assertEquals(Res.string.load_failed_body, switchPrompt(JoinPhase.LoadFailed, null)!!.body)
+        assertEquals(
+            loadFailedBody(ServiceNotice.UPDATING),
+            switchPrompt(JoinPhase.LoadFailed, ServiceNotice.UPDATING)!!.body,
+        )
     }
 
     // ---- the report's screen label --------------------------------------------------------------------------------

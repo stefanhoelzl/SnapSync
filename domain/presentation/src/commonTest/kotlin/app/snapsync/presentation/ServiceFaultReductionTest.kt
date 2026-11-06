@@ -223,6 +223,18 @@ class ServiceFaultReductionTest {
     // ── the join screen ──────────────────────────────────────────────────────────────────────────────
 
     @Test
+    fun a_switch_whose_invite_the_service_failed_to_load_says_which_way() = runTest {
+        val joined = host(backgroundScope, load = { JoinDetails.Unanswered(ServiceFault.TROUBLE) })
+        joined.onInvite(invited(testEventId("66666666-6666-4666-8666-666666666666"), null))
+        val shown = withContext(Dispatchers.Default) {
+            withTimeout(5.seconds) {
+                joined.screen.first { (it.layer as? Layer.Joined)?.pendingSwitch?.phase == JoinPhase.LoadFailed }
+            }
+        }
+        assertEquals(ServiceNotice.TROUBLE, (shown.layer as Layer.Joined).pendingSwitch?.service)
+    }
+
+    @Test
     fun a_join_the_service_failed_says_which_way() = runTest {
         val failed = host(backgroundScope, config = null, commit = { JoinCommit.Failed(ServiceFault.TROUBLE) })
         failed.opened()

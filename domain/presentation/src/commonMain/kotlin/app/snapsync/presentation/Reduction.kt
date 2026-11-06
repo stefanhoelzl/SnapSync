@@ -71,7 +71,7 @@ private fun joinedFrom(
     val network = observed.network.notice
     val health = joinedHealth(observed, joined, network, nowCutoff, local.keyPresence == KeyPresence.Lost)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
-    val pendingSwitch = shown.pending?.let { PendingSwitch(it.eventId.value, it.phase.shows) }
+    val pendingSwitch = shown.pending?.let { PendingSwitch(it.eventId.value, it.phase.shows, it.service?.notice) }
     // Where the event is in its life, for the dates line. Informational only —
     // the health above is unchanged by it, and sync continues after the end in the backend grace window.
     val timing = eventTiming(joined.event.range.start, joined.event.range.end, nowCutoff)
