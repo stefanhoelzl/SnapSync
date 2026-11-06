@@ -1,0 +1,11 @@
+# The `query` tier (`DetektTiersPlugin`): `:domain:query`, what the screen reads.
+#
+# A CLAIM, not debt (`docs/patterns.md`): a query reads and answers — a state over the store's change notices, or a
+# lookup — and folds what it read into the screen's words, so a function stays at most 4 paths and 4 cognitive points.
+# A function that needs more is deciding, and a decision is a domain verdict. detekt fails AT the threshold, so each is
+# one above the claim: do not "correct" it.
+complexity:
+  CyclomaticComplexMethod:
+    threshold: 5
+  CognitiveComplexMethod:
+    threshold: 5

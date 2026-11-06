@@ -1,9 +1,11 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.KeyPresence
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.ui.state.PendingSwitch
+import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 
 /**
@@ -19,8 +21,8 @@ internal fun reduceFrom(
     nowCutoff: Timestamp,
     display: Display,
 ): Reduced {
-    val (joined, permission, snapshot, download, attested, access) = observed
-    val network = access.notice
+    val joined = observed.joined
+    val network = observed.network.notice
     val (pending, creation, renameStatus) = interaction
     val transient = local.transientError
     val form = local.form
@@ -39,28 +41,55 @@ internal fun reduceFrom(
             create,
             transient,
             Choices(form, local.picking),
-            permission,
+            observed.permission,
             network,
             observed.refusal,
             observed.attestFault,
             display,
         )
     }
+    return joinedFrom(observed, joined, JoinedInputs(pending, rename, reconfiguring, local), nowCutoff, display)
+}
+
+/** What the joined layer is reduced from beside the observed sources: the gate, the surfaces and the screen's cells. */
+internal class JoinedInputs(
+    val pending: PendingJoin?,
+    val rename: RenameStatus,
+    val reconfiguring: SettingsShown,
+    val local: Local,
+)
+
+/** The joined layer for [joined]: its health rung, and what it carries beside it. */
+private fun joinedFrom(
+    observed: Observed,
+    joined: Membership,
+    shown: JoinedInputs,
+    nowCutoff: Timestamp,
+    display: Display,
+): Reduced {
+    val local = shown.local
+    val network = observed.network.notice
     val health = joinedHealth(observed, joined, network, nowCutoff, local.keyPresence == KeyPresence.Lost)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
-    val pendingSwitch = pending?.let { PendingSwitch(it.eventId.value, it.phase.shows) }
+    val pendingSwitch = shown.pending?.let { PendingSwitch(it.eventId.value, it.phase.shows) }
     // Where the event is in its life, for the dates line. Informational only —
     // the health above is unchanged by it, and sync continues after the end in the backend grace window.
     val timing = eventTiming(joined.event.range.start, joined.event.range.end, nowCutoff)
-    // The counts line rides ONLY on the two health rungs that read the numbers; every rung above them
-    // means the numbers are unknown (not read yet), zero (no access collapses the gallery total) or beside
-    // the point (not started, unverified) — and the one status line is what the member should read.
-    val counts = (snapshot as? SharingProgressRead.Read)
-        ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
-        ?.let { syncCounts(it.progress, download, joined.share.direction) }
+    val counts = countsLine(observed, health, joined)
     return joinedLayer(
-        joined, health, pendingSwitch, permission,
+        joined, health, pendingSwitch, observed.permission,
         JoinedFacts(timing, counts, display.today(), display.joinableUntil(joined, nowCutoff)),
-        rename, reconfiguring, transient, Choices(form, local.picking), display, observed.invite,
+        shown.rename, shown.reconfiguring, local.transientError, Choices(local.form, local.picking), display,
+        observed.invite,
     )
 }
+
+/**
+ * The counts line rides ONLY on the two health rungs that read the numbers; every rung above them means the numbers
+ * are unknown (not read yet), zero (no access collapses the gallery total) or beside the point (not started,
+ * unverified) — and the one status line is what the member should read.
+ */
+private fun countsLine(observed: Observed, health: SyncHealth, joined: Membership): SyncCounts? =
+    (observed.sync as? SharingProgressRead.Read)
+        ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
+        ?.let { syncCounts(it.progress, observed.download, joined.share.direction) }
