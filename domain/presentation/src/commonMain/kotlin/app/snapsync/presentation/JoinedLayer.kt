@@ -8,6 +8,7 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.query.receiving.DownloadProgress
+import app.snapsync.ui.state.AccessFix
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.JoinedSurface
@@ -54,6 +55,7 @@ internal fun joinedLayer(
         // The resting affordance, not an attention state: a
         // partial grant's joined layer always offers the picker, whatever the health.
         canChoosePhotos = permission == PhotoGrant.LIMITED,
+        accessFix = accessFixOf(permission, joined.share.direction),
         timing = facts.timing,
         counts = facts.counts,
         deleted = joined is Membership.Deleted,
@@ -84,6 +86,13 @@ private fun surfaceOf(range: ResolvedRange, permission: PhotoGrant, choices: Cho
         saveFailed = shown.surface == SettingsSurface.SaveFailed,
         askingToStopSharing = shown.askingToStopSharing,
     )
+
+/** What gives the app the access it lacks — none with access, or with both directions off: then nothing needs it. */
+private fun accessFixOf(grant: PhotoGrant, direction: Direction): AccessFix? = when {
+    grant.readsPhotos || direction == Direction.Neither -> null
+    grant == PhotoGrant.UNDECIDED -> AccessFix.ASK
+    else -> AccessFix.SETTINGS
+}
 
 /**
  * Only once the range has ended and this member is in sync is "who are we waiting for" the member's question. Not a

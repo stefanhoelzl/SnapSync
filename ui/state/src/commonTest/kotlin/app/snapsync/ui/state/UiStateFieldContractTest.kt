@@ -150,6 +150,7 @@ class UiStateFieldContractTest {
                 today = at.date,
                 pendingSwitch = PendingSwitch("other", JoinPhase.Loading),
                 canChoosePhotos = true,
+                accessFix = AccessFix.SETTINGS,
                 timing = EventTiming.Ended,
                 counts = SyncCounts(DirectionCount.Off, DirectionCount.Progress(1, 2)),
                 renameState = RenameState.Failed(ScreenMessage.RENAME_FAILED),
@@ -161,7 +162,7 @@ class UiStateFieldContractTest {
                 joinableUntil = at,
             ),
             optional = setOf(
-                "pendingSwitch", "canChoosePhotos", "timing", "counts", "renameState", "surface", "notice", "deleted",
+                "pendingSwitch", "canChoosePhotos", "accessFix", "timing", "counts", "renameState", "surface", "notice", "deleted",
                 "members", "sharingNote", "joinableUntil",
             ),
         )

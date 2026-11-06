@@ -41,7 +41,6 @@ import app.snapsync.ui.resources.explain_share_off_title
 import app.snapsync.ui.resources.explain_share_title
 import app.snapsync.ui.state.JoinedEvent
 import app.snapsync.ui.state.Layer
-import app.snapsync.ui.state.SyncHealth
 import org.jetbrains.compose.resources.stringResource
 
 // The joined screen's explanation of how the event works for this member.
@@ -58,10 +57,10 @@ internal fun Explanation(
     onOpenEventSettings: () -> Unit,
 ) {
     val membership = state.membership
-    val blocked = state.health as? SyncHealth.NeedsAccess
     val settingsLink = CaptionLink(stringResource(Res.string.explain_settings_link), onOpenEventSettings)
     val accessText = stringResource(Res.string.explain_access_link)
-    val accessLink = blocked?.let { CaptionLink(accessText, accessAction(it, access)) }
+    // From the grant alone, whatever the status line above says: without access nothing is shared or received.
+    val accessLink = state.accessFix?.let { CaptionLink(accessText, accessAction(it, access)) }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(18.dp),

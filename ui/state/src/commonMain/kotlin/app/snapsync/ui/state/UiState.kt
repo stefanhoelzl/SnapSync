@@ -248,15 +248,21 @@ sealed interface Layer {
          *  affordance, never an attention state. */
         val canChoosePhotos: Boolean = false,
         /**
+         * What gives the app the photo access it lacks, or `null` when it has it — or when the member switched both
+         * directions off, which leaves nothing to give it for. Read from the grant alone, whatever the status line says:
+         * the explanation's rows tell it beneath any line.
+         */
+        val accessFix: AccessFix? = null,
+        /**
          * Where the event is in its life — the dates line's "starts in …" / "ends in …" / "ended". The range itself
          * is [membership]'s [JoinedEvent.startsAt]/[JoinedEvent.endsAt]; this is only the part that needs a clock,
          * reduced from the host's minute tick so the screen never reads one.
          */
         val timing: EventTiming = EventTiming.Running(remaining = null),
         /**
-         * The counts line: what was shared and received. Non-null exactly while [health] is [SyncHealth.InSync] or
-         * [SyncHealth.Syncing] — in every other status the numbers are unknown or zero, and the one status line is the
-         * thing to read.
+         * The counts line: what was shared and received. On a live event, non-null exactly while [health] is
+         * [SyncHealth.InSync] or [SyncHealth.Syncing] — in every other status the numbers are unknown or zero, and the one
+         * status line is the thing to read; a deleted event's are what it came to, whatever its line.
          */
         val counts: SyncCounts? = null,
         /**

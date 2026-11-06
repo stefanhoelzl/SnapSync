@@ -27,6 +27,7 @@ import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
+import app.snapsync.ui.state.AccessFix
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
@@ -124,6 +125,7 @@ private fun joined(
         today = TODAY,
         pendingSwitch = pendingSwitch,
         canChoosePhotos = canChoosePhotos,
+        accessFix = (health as? SyncHealth.NeedsAccess)?.let { if (it.canAsk) AccessFix.ASK else AccessFix.SETTINGS },
         timing = timing,
         counts = counts,
         renameState = renameState,

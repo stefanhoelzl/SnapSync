@@ -15,6 +15,7 @@ import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
+import app.snapsync.ui.state.AccessFix
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
@@ -155,6 +156,19 @@ class JoinedLayerTest {
         val uncounted = joined(backgroundScope, over, download = DownloadProgress.UNREAD).layer()
         assertNull(uncounted.counts, "no count this process never read")
     }
+
+    @Test
+    fun `what gives the app its access is read from the grant, whatever the line — and not while both are off`() =
+        runTest {
+            assertNull(joined(backgroundScope, permission = PhotoGrant.FULL).layer().accessFix)
+            assertEquals(AccessFix.ASK, joined(backgroundScope, permission = PhotoGrant.UNDECIDED).layer().accessFix)
+            assertEquals(AccessFix.SETTINGS, joined(backgroundScope, permission = PhotoGrant.REFUSED).layer().accessFix)
+            val off = MEMBERSHIP.copy(direction = Direction.Neither)
+            assertNull(
+                joined(backgroundScope, off, permission = PhotoGrant.REFUSED).layer().accessFix,
+                "a choice, not a fix",
+            )
+        }
 
     @Test
     fun `the member count is the event's present members and none once its photos are deleted`() = runTest {
