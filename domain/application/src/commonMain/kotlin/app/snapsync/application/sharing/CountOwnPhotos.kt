@@ -6,6 +6,7 @@ import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.ReceivedPhotosRead
 import app.snapsync.data.receiving.RecognitionRead
 import app.snapsync.data.sharing.AdmittedPhotos
+import app.snapsync.data.sharing.Contribution
 import app.snapsync.data.sharing.DiscoveryRead
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.membership.Membership
@@ -23,8 +24,9 @@ private val log = Log("CountOwnPhotos")
  *
  * Nothing is counted while no membership is held, and nothing while the membership's received photos are not
  * recognised yet: until they are, any of them could count as the member's own, and the upload withholds until then
- * too. A library that cannot be read is no count. In each case [admitted] keeps what it last held — never a count not
- * computed, never one withdrawn: "could not count" must never settle the screen as "counted nothing".
+ * too. A membership that shares nothing counts its zero at once, with nothing read. A library that cannot be read is
+ * no count. In each case [admitted] keeps what it last held — never a count not computed, never one withdrawn: "could
+ * not count" must never settle the screen as "counted nothing".
  */
 class CountOwnPhotos(
     private val membership: MembershipRepository,
@@ -35,21 +37,30 @@ class CountOwnPhotos(
 ) {
     @EntryPointCall
     suspend operator fun invoke(): OwnPhotosCount = when (val read = membership.state.value) {
-        is MembershipRead.Joined -> recognised(read.membership)
+        is MembershipRead.Joined -> contributing(read.membership)
         is MembershipRead.NotJoined, is MembershipRead.Unavailable -> OwnPhotosCount.NO_MEMBERSHIP
     }
 
-    private suspend fun recognised(joined: Membership): OwnPhotosCount =
+    /** A membership that shares nothing counts its zero at once: no received photo can be mistaken for its own. */
+    private suspend fun contributing(joined: Membership): OwnPhotosCount {
+        val contribution = photos.contribution(joined)
+        return when (contribution.policy.contributes) {
+            false -> counted(contribution)
+            true -> recognised(joined, contribution)
+        }
+    }
+
+    private suspend fun recognised(joined: Membership, contribution: Contribution): OwnPhotosCount =
         when (received.recognition(joined.event.id)) {
-            is RecognitionRead.Recognised -> counted(joined)
+            is RecognitionRead.Recognised -> counted(contribution)
             RecognitionRead.NotRecognised, is RecognitionRead.Unavailable -> OwnPhotosCount.NOT_RECOGNISED.also {
                 log.i("received photos not recognised yet — the total is not counted")
             }
         }
 
-    private suspend fun counted(joined: Membership): OwnPhotosCount {
+    private suspend fun counted(contribution: Contribution): OwnPhotosCount {
         val started = time.markNow()
-        return when (val read = photos.discover(photos.contribution(joined))) {
+        return when (val read = photos.discover(contribution)) {
             is DiscoveryRead.Discovered -> held(read, started)
             DiscoveryRead.NotReadable -> OwnPhotosCount.NOT_READABLE.also {
                 log.w("the library cannot be read — the total stays", "held" of heldTotal())

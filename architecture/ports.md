@@ -27,7 +27,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Branch` | `:domain:entrypoints` | `:domain:entrypoints` Omitted | no |
 | `Branch` | `:domain:ports` | `:domain:entrypoints` Omitted | no |
 | `BuildInfo` | `:domain:ports` | `:adapter:android` AndroidBuildInfo; `:adapter:generic:mock` Face; `:adapter:ios:ext-safe` IosBuildInfo; `:test:contracts` BuildInfoProxy | no |
-| `CandidateSet` | `:domain:domain` | `:domain:domain` NotReadable, Selected, Walked | no |
+| `CandidateSet` | `:domain:domain` | `:domain:domain` NotReadable, NothingShared, Selected, Walked | no |
 | `CaptureDate` | `:domain:domain` | `:domain:domain` Dated, Undated | no |
 | `CaptureRangeVerdict` | `:domain:domain` | `:domain:domain` Inverted, Ok, OutsideEvent, TooLong | no |
 | `ChallengeVerdict` | `:domain:domain` | `:domain:domain` Done, RetryOnce | no |

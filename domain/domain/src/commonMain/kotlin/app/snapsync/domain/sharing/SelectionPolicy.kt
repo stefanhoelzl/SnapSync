@@ -34,6 +34,7 @@ class SelectionPolicy private constructor(
         is CandidateSet.Walked -> admitted(set.assets, set.takenAt, DiscoverySource.LIBRARY, rules)
         is CandidateSet.Selected ->
             admitted(set.assets, set.takenAt, DiscoverySource.SELECTION, rules.filterNot { it.judgesWhatItIs })
+        is CandidateSet.NothingShared -> admitted(emptyList(), set.takenAt, DiscoverySource.NOTHING_SHARED, rules)
     }
 
     /**
