@@ -904,6 +904,28 @@ class StatusScreenTest {
     }
 
     @Test
+    fun `a name that changes while the sheet is open leaves what is being typed`() = runComposeUiTest {
+        val open = renaming()
+        val shown = mutableStateOf(open)
+        setContent { TestStatusScreen(shown.value) }
+        onNode(hasSetTextAction()).performTextInput("!")
+        val typed = onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+
+        val refreshed = (open.layer as Layer.Joined).let {
+            it.copy(
+                membership = it.membership.copy(name = "Lake weekend"),
+            )
+        }
+        shown.value = open.copy(layer = refreshed)
+        waitForIdle()
+        assertEquals(
+            typed,
+            onNode(hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text,
+            "the refreshed name did not overwrite the edit",
+        )
+    }
+
+    @Test
     fun `confirming submits the trimmed name with the membership’s event id`() = runComposeUiTest {
         val submitted = mutableListOf<Pair<String, String>>()
         setContent {
