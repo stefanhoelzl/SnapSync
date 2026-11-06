@@ -9,7 +9,6 @@ import app.snapsync.data.event.EventRename
 import app.snapsync.data.membership.EVENT
 import app.snapsync.data.membership.EventCheckRecord
 import app.snapsync.data.membership.LeaveNotifier
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.OTHER
 import app.snapsync.data.membership.PendingLeaves
 import app.snapsync.data.membership.PendingLeavesRead
@@ -19,6 +18,7 @@ import app.snapsync.data.membership.name
 import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling

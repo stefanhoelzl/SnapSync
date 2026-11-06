@@ -4,7 +4,6 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.application.membership.DEVICE_ID
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.OTHER
 import app.snapsync.data.membership.active
 import app.snapsync.data.receiving.DownloadDatabaseFile
@@ -13,6 +12,7 @@ import app.snapsync.data.receiving.RecognitionRead
 import app.snapsync.data.sharing.SelectionState
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.MintsConfirmedNotJoined
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.inbound.AppProcessOnly

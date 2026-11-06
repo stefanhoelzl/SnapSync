@@ -4,12 +4,12 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.KeepOutcome
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.RestoreVerdict
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.RestoreAnswer
 
 /**

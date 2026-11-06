@@ -3,7 +3,6 @@ package app.snapsync.application.receiving
 import app.snapsync.application.EntryPointCall
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.EventUnion
@@ -16,6 +15,7 @@ import app.snapsync.data.receiving.UnionRead
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.event.EventPhase
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.receiving.ForeignPhotos
 import app.snapsync.domain.receiving.HeldPosition
 import app.snapsync.domain.receiving.ReceivedReport

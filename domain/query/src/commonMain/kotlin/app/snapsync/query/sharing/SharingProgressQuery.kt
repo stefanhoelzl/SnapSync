@@ -1,13 +1,13 @@
 package app.snapsync.query.sharing
 
 import app.snapsync.data.foreground.AppForeground
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.sharing.AdmittedPhotos
 import app.snapsync.data.store.StoreChanges
 import app.snapsync.data.upload.ProgressRead
 import app.snapsync.data.upload.UploadProgress
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.upload.AssetProgress

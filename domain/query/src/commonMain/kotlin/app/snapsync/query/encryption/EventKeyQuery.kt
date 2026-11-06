@@ -1,10 +1,10 @@
 package app.snapsync.query.encryption
 
 import app.snapsync.data.crypto.EventKeyStore
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.event.KeyPresence
+import app.snapsync.domain.membership.MembershipRead
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

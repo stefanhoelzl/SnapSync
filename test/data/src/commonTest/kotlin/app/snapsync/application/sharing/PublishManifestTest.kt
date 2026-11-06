@@ -8,7 +8,6 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.json
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
@@ -25,6 +24,7 @@ import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.sharing.PublishedDeclaration

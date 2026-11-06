@@ -1,12 +1,12 @@
 package app.snapsync.application.upload
 
 import app.snapsync.application.EntryPointCall
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.upload.FinishedAnswer
 import app.snapsync.data.upload.SessionEnd
 import app.snapsync.data.upload.SessionEnds
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.membership.MembershipRead
 
 /**
  * **Record that a session upload ended** — the platform tells it once, so it is recorded right here, before the

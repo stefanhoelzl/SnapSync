@@ -2,10 +2,10 @@ package app.snapsync.rig
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.contracts.attest.InMemoryKeyAttestation
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.TrustSlots
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterParse

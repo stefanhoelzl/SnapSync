@@ -6,6 +6,7 @@ import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.data.store.db.SelectMembership
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 
 // What MembershipRepository runs inside the database, each a transaction's body. Every write after the entry is a
 // compare-and-set — its UPDATE or DELETE names the event it was decided for — and `changes()` says whether it held.

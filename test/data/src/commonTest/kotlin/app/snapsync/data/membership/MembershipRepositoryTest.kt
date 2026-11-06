@@ -13,6 +13,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.membership.ConfirmedDeletion
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.MintsConfirmedDeletion
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff

@@ -2,7 +2,6 @@ package app.snapsync.services.membership
 
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -10,6 +9,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.ConfirmedNotJoined
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.SharedStore

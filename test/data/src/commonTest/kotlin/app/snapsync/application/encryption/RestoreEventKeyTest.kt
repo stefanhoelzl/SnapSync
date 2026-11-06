@@ -6,7 +6,6 @@ import app.snapsync.data.RecordingSecureStore
 import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
@@ -14,6 +13,7 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.format.EventKeyText
 import app.snapsync.mock.DatabasesMock

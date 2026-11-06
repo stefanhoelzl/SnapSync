@@ -6,7 +6,6 @@ import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.EnrollFact
 import app.snapsync.data.membership.EventJoin
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.KeyToKeep
@@ -16,6 +15,7 @@ import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.KeptKey
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.MintsEnrolled
 import app.snapsync.domain.membership.Share
 import app.snapsync.domain.service.ServiceFault

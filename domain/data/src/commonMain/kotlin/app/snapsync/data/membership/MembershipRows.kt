@@ -15,6 +15,7 @@ import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.MintsConfirmedNotJoined
 import app.snapsync.domain.membership.Share
 import app.snapsync.domain.sharing.CaptureRange

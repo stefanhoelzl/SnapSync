@@ -13,13 +13,13 @@ import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
 import app.snapsync.data.event.EventDirectory
 import app.snapsync.data.membership.EVENT
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.active
 import app.snapsync.data.membership.enrolled
 import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchFacts
