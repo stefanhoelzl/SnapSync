@@ -70,7 +70,11 @@ class OptInPinsTest {
             ),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ReceivingEntryPoints.kt" to mapOf(
-            "EntryPointCall" to Pin(11, "receiving's triggers, ordered as steps, call its use cases (4.5)"),
+            "EntryPointCall" to Pin(
+                12,
+                "receiving's triggers, ordered as steps, call its use cases (4.5), and a usable grant counts the status " +
+                    "total once its recognition ran (4.9)",
+            ),
         ),
         "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/receiving/Receiving.kt" to mapOf(
             "MintsReceivingMembership" to Pin(1, "the one verdict that says a membership receives and holds its key"),
