@@ -7,10 +7,10 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.service.ServiceFault
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
@@ -309,7 +309,7 @@ class RangeIntentsTest {
                 object : SyncStatusSource {
                     override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
                 },
-                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(null),
                 creation = commands.requests.creation.status,
                 requests = commands.requests.flows,

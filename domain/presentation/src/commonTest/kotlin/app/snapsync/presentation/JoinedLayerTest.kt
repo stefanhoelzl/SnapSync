@@ -16,10 +16,10 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.MemberCounts
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
@@ -85,7 +85,7 @@ class JoinedLayerTest {
         config: EventConfig = MEMBERSHIP,
         snapshot: SyncStatus = SETTLED,
         download: DownloadProgress = DownloadProgress(0, 0),
-        permission: GalleryAccess = GalleryAccess.GRANTED,
+        permission: PhotoGrant = PhotoGrant.FULL,
         commands: TestCommands = TestCommands(),
         inviteKey: EventKey? = null,
         configFlow: MutableStateFlow<EventConfig?> = MutableStateFlow(config),
@@ -137,7 +137,7 @@ class JoinedLayerTest {
             "photo access is missing" to joined(
                 backgroundScope,
                 ENDED.copy(members = waiting),
-                permission = GalleryAccess.DENIED,
+                permission = PhotoGrant.REFUSED,
             ),
         )
         for ((case, host) in notWhen) assertNull(host.layer().sharingNote, case)
@@ -323,7 +323,7 @@ class JoinedLayerTest {
             backgroundScope,
             MEMBERSHIP.copy(direction = Direction.Neither),
             snapshot = SyncStatus.Loading,
-            permission = GalleryAccess.DENIED,
+            permission = PhotoGrant.REFUSED,
         )
 
         assertEquals(SyncHealth.Loading, host.layer().health)

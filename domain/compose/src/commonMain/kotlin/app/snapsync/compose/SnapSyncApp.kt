@@ -10,6 +10,7 @@ import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.event.EventCreation
 import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.gallery.GrantRead
+import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.links.OpenedInvites
 import app.snapsync.data.service.ServiceConditions
@@ -73,6 +74,7 @@ import app.snapsync.query.membership.JoinDetailsLookup
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.receiving.DownloadProgress
+import app.snapsync.query.sharing.PhotoGrantQuery
 import app.snapsync.query.sharing.ShareableCountLookup
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
@@ -352,6 +354,9 @@ class AppCore internal constructor(
 
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
     val photoPermission: StateFlow<GalleryAccess> get() = galleryAccess.grant
+
+    /** The photo-library grant, as the screen follows it. */
+    val photoGrant: PhotoGrantQuery by lazy { PhotoGrantQuery(PhotoGrants(ports.gallery.grant)) }
 
     /** The sharing progress, in the shape the status host still reads until it reads the query itself. */
     val syncStatusSource: SyncStatusSource get() = status.syncStatus

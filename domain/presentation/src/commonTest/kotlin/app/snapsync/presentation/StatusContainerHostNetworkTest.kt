@@ -13,11 +13,11 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
@@ -75,7 +75,7 @@ class StatusContainerHostNetworkTest {
     private fun TestScope.host(
         network: FakeNetwork,
         config: EventConfig? = STARTED,
-        permission: GalleryAccess = GalleryAccess.GRANTED,
+        permission: PhotoGrant = PhotoGrant.FULL,
         attested: Boolean = true,
         creation: RequestStatus<CreateResult> = Creating.Idle,
         load: suspend (String) -> JoinDetails = { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) },
@@ -132,7 +132,7 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `missing access outranks a missing network`() = runTest {
-        val host = host(FakeNetwork(NetworkAccess.Offline), permission = GalleryAccess.DENIED)
+        val host = host(FakeNetwork(NetworkAccess.Offline), permission = PhotoGrant.REFUSED)
         assertEquals(SyncHealth.NeedsAccess(canAsk = false), host.health())
     }
 
@@ -179,7 +179,7 @@ class StatusContainerHostNetworkTest {
         // Access, the network, the start and verification all concern photos that no longer move.
         assertEquals(
             SyncHealth.Inactive,
-            host(FakeNetwork(), config = neither, permission = GalleryAccess.DENIED).health(),
+            host(FakeNetwork(), config = neither, permission = PhotoGrant.REFUSED).health(),
         )
         assertEquals(SyncHealth.Inactive, host(FakeNetwork(NetworkAccess.Offline), config = neither).health())
         assertEquals(

@@ -44,6 +44,7 @@ import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.SyncStatusSource
@@ -52,7 +53,6 @@ import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
 import app.snapsync.presentation.BuildStanding
@@ -106,7 +106,7 @@ internal class TestClock(var instant: Instant = Instant.parse("2026-07-06T12:00:
 @Suppress("LongParameterList")
 internal class ContainerRig(
     config: EventConfig? = null,
-    permission: GalleryAccess = GalleryAccess.GRANTED,
+    permission: PhotoGrant = PhotoGrant.FULL,
     refusal: VersionRefusal? = null,
     private val details: suspend (String) -> JoinDetails = { error("no details here") },
     network: NetworkAccess = NetworkAccess.Online(restricted = false),

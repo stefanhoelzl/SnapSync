@@ -182,6 +182,9 @@ class OptInPinsTest {
         "/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/ScreenModel.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "a hand-written StateFlow over the screen model (4.9)"),
         ),
+        "/domain/data/src/commonMain/kotlin/app/snapsync/data/gallery/PhotoGrants.kt" to mapOf(
+            "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "the platform's grant read as the domain's `PhotoGrant`, one-to-one"),
+        ),
         "/domain/services/src/commonMain/kotlin/app/snapsync/services/gallery/GrantReading.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "a hand-written StateFlow over the platform's grant (4.4)"),
         ),

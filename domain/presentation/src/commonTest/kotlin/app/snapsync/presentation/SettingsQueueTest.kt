@@ -11,9 +11,9 @@ import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
@@ -77,7 +77,7 @@ class SettingsQueueTest {
     private fun host(world: World, scope: CoroutineScope) = StatusContainerHost(
         StatusSources(
             FixedSync(SETTLED),
-            MutableStateFlow(GalleryAccess.GRANTED),
+            MutableStateFlow(PhotoGrant.FULL),
             world.config,
             requests = world.saved.requests.flows,
             network = AlwaysOnline,

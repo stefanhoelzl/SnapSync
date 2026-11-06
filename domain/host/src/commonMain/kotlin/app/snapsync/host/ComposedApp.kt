@@ -211,7 +211,7 @@ private fun doorOf(commands: CoreCommands): UserCommands = UserCommands(
  */
 private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = StatusSources(
     sync = core.syncStatusSource,
-    permission = core.photoPermission,
+    permission = core.photoGrant.state,
     config = core.membership,
     creation = core.creationStatus.status,
     invites = core.invitesQuery.state,

@@ -32,11 +32,11 @@ import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.presentation.url
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -157,7 +157,7 @@ class HostStatusActionsTest {
 
     private fun rig(
         config: EventConfig? = null,
-        permission: GalleryAccess = GalleryAccess.GRANTED,
+        permission: PhotoGrant = PhotoGrant.FULL,
         refusal: VersionRefusal? = null,
         @Suppress("UNUSED_PARAMETER") diagnostics: Boolean = false,
         details: suspend (String) -> JoinDetails = { OTHER_EVENT },
@@ -260,7 +260,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a never-asked grant’s prompt requests access`() =
-        rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.NOT_DETERMINED)) { rig ->
+        rigTest(rig(config = MEMBERSHIP, permission = PhotoGrant.UNDECIDED)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText(str(ComponentRes.string.status_allow_access)).performClick()
             awaitFired(rig, "requestAccess")
@@ -269,7 +269,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a denied grant’s prompt opens Settings`() =
-        rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.DENIED)) { rig ->
+        rigTest(rig(config = MEMBERSHIP, permission = PhotoGrant.REFUSED)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText(str(ComponentRes.string.status_allow_access_settings)).performClick()
             awaitFired(rig, "openSettings")
@@ -296,7 +296,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a partial grant offers the picker and Settings — each its own`() =
-        rigTest(rig(config = MEMBERSHIP, permission = GalleryAccess.LIMITED)) { rig ->
+        rigTest(rig(config = MEMBERSHIP, permission = PhotoGrant.LIMITED)) { rig ->
             awaitState(rig) { it.joined?.canChoosePhotos == true }
             onNodeWithText(str(Res.string.choose_more_photos)).performClick()
             awaitFired(rig, "choosePhotos")
@@ -391,7 +391,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `a never-asked guest’s Join and allow photos requests access and commits`() =
-        rigTest(rig(permission = GalleryAccess.NOT_DETERMINED)) { rig ->
+        rigTest(rig(permission = PhotoGrant.UNDECIDED)) { rig ->
             rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
             awaitState(rig, ready)
             // The explanation is on request, and reading it raises nothing.

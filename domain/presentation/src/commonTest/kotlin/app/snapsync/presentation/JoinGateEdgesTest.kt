@@ -18,11 +18,11 @@ import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -133,7 +133,7 @@ class JoinGateEdgesTest {
         return StatusContainerHost(
             StatusSources(
                 FixedSync(SyncStatus.Loading),
-                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(PhotoGrant.FULL),
                 world.config,
                 requests = commands.requests.flows,
                 pending = world.pending,
@@ -205,7 +205,7 @@ class JoinGateEdgesTest {
         val host = StatusContainerHost(
             StatusSources(
                 FixedSync(SyncStatus.Loading),
-                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(PhotoGrant.FULL),
                 world.config,
                 pending = world.pending,
                 network = AlwaysOnline,
@@ -653,8 +653,8 @@ class JoinGateEdgesTest {
     @Test
     fun `the confirm announces the access dialog only for a first join on a phone never asked`() {
         // A switch's previous event, while still configured, is not yet a join this rule speaks for.
-        for (permission in GalleryAccess.entries) {
-            assertEquals(permission == GalleryAccess.NOT_DETERMINED, asksAccessOnJoin(null, permission), "$permission")
+        for (permission in PhotoGrant.entries) {
+            assertEquals(permission == PhotoGrant.UNDECIDED, asksAccessOnJoin(null, permission), "$permission")
             assertFalse(asksAccessOnJoin(OTHER_MEMBERSHIP, permission), "joined, $permission")
         }
     }

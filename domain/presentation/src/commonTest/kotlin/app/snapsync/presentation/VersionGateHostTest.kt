@@ -4,11 +4,11 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
@@ -179,7 +179,7 @@ private fun gateHost(
             sync = object : SyncStatusSource {
                 override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
             },
-            permission = MutableStateFlow(GalleryAccess.GRANTED),
+            permission = MutableStateFlow(PhotoGrant.FULL),
             config = MutableStateFlow(config),
             build = BuildStanding(refusal = refusal, store = store),
             requests = commands.requests.flows,
