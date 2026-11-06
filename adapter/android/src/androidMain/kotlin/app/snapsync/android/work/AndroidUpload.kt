@@ -44,6 +44,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.ConnectionPool
 import java.io.File
 import java.io.IOException
@@ -72,7 +74,10 @@ import java.util.concurrent.TimeUnit
  * later run — the upload flow's wake for that run asks for an unmetered network.
  *
  * **One transfer at a time** ([MAX_LIVE]); the next create answers [CreateOutcome.LIMIT_EXCEEDED], and the core
- * tops the freed slot up when it ends. Parallel streams add no bandwidth, only divide it: four PUTs on a thin uplink
+ * tops the freed slot up when it ends. A transfer still waiting for an unmetered network holds no slot — it sends
+ * nothing — so turning mobile data on lets a transfer that may use it start beside the waiting ones (measured on the
+ * API 36 emulator, 2026-11-06: before, the waiting one refused it); every PUT takes a send permit, so a waiting one
+ * the network releases still sends one at a time. Parallel streams add no bandwidth, only divide it: four PUTs on a thin uplink
  * each moved a few KB/s, and all four were cut off with nothing landed (Bugsink SNAPSYNC-54, 2026-10-08) — where one
  * at the whole uplink lands a photo, then the next. On a fast link a photo is megabytes, so one stream loses only the
  * per-request handshake between transfers.
@@ -105,6 +110,9 @@ class AndroidUpload(
     private val journal = appContext.getSharedPreferences(journalName, Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val live = ConcurrentHashMap<String, Live>()
+
+    /** At most [maxLive] transfers send at once — one a returned network released included. */
+    private val sends = Semaphore(maxLive)
 
     /**
      * A connection per transfer, never a pooled one: a streamed body is sent once, so a pooled connection the server
@@ -147,10 +155,11 @@ class AndroidUpload(
         runCatchingCancellable { URI(target.url).rawPath }.getOrNull()
             ?: return CreateOutcome.FAILED.also { log.w { "$tag: the destination is not a URL" } }
         synchronized(live) {
-            if (live.size >= maxLive) return CreateOutcome.LIMIT_EXCEEDED
+            // A transfer still waiting for an unmetered network holds no slot: it sends nothing yet.
+            if (live.values.count { !it.waitingForNetwork } >= maxLive) return CreateOutcome.LIMIT_EXCEEDED
             // The journal names the transfer, so a process that dies with it reports it at the next listen.
             journal.edit().putBoolean(tag, true).commit()
-            val transfer = Live(tag)
+            val transfer = Live(tag, waitingForNetwork = target.network == TransferNetwork.UNRESTRICTED_ONLY)
             live[tag] = transfer
             if (live.size == 1) hold = time.begin("uploads", expiresAll)
             transfer.job = scope.launch { transfer.result = transfer.run(body, target) }
@@ -192,8 +201,13 @@ class AndroidUpload(
     }
 
     /** One transfer this process runs. */
-    private inner class Live(val tag: String) : TransferHandle {
+    private inner class Live(val tag: String, waitingForNetwork: Boolean) : TransferHandle {
         var job: Job? = null
+
+        /** Whether it still waits for an unmetered network — sending nothing, holding no slot. */
+        @Volatile
+        var waitingForNetwork: Boolean = waitingForNetwork
+            private set
 
         /** What [run] answered, read by [ended] once the job completes normally. */
         @Volatile
@@ -201,8 +215,8 @@ class AndroidUpload(
 
         /** The transfer's own outcome: `null` for a success. A cancellation is not caught here — [ended] tells it. */
         suspend fun run(body: Body, target: UploadTarget): TransferFailure? = try {
-            if (target.network == TransferNetwork.UNRESTRICTED_ONLY) awaitUnrestricted()
-            val status = put(body, target)
+            if (waitingForNetwork) awaitUnrestricted()
+            val status = sends.withPermit { put(body, target) }
             if (status in 200..299) null else TransferFailure("http:$status")
         } catch (e: IOException) {
             log.i { "$tag: the transfer broke: ${e::class.simpleName}: ${e.message}" }
@@ -230,6 +244,7 @@ class AndroidUpload(
         private suspend fun awaitUnrestricted() {
             log.i { "$tag: held for an unmetered network" }
             unrestricted()
+            waitingForNetwork = false
         }
 
         private suspend fun put(body: Body, target: UploadTarget): Int {
