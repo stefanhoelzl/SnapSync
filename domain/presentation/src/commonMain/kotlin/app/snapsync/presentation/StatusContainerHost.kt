@@ -44,7 +44,6 @@ import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiState
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -199,16 +198,7 @@ class StatusContainerHost(
     private val settingsWorker by lazy {
         scope.launch {
             // Never closed: the worker lives as long as the container's scope, so it ends by cancellation only.
-            while (true) {
-                val act = settingsQueue.receive()
-                try {
-                    act()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    onIntentError(e)
-                }
-            }
+            while (true) settingsQueue.receive()()
         }
     }
 
@@ -402,16 +392,9 @@ class StatusContainerHost(
                     .collectLatest { key ->
                         if (key == null) return@collectLatest
                         local.update { it.copy(shareCount = ShareCount.Counting) }
-                        val count = try {
-                            key.range?.let { shareableCount.ask(it) }?.let { ShareCount.Ready(it) }
-                                ?: ShareCount.Unavailable
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            // A failed read is no count, not a crash: the row is omitted.
-                            log("shareable count failed: ${e.message}")
-                            ShareCount.Unavailable
-                        }
+                        // No count — no range, or none the lookup can state — is no row, never a zero.
+                        val count = key.range?.let { shareableCount.ask(it) }?.let { ShareCount.Ready(it) }
+                            ?: ShareCount.Unavailable
                         local.update { it.copy(shareCount = count) }
                     }
             }
