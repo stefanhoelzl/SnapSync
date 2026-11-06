@@ -40,8 +40,11 @@ internal fun unjoinedLayer(
 ): Reduced =
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
     // lands here — a transient no-event, shown full-screen with a Retry).
-    pending?.let { joiningLayer(it, transient, choices, permission, network, display) }
-        ?: createLayer(create, transient, network, refusal, attestFault)
+    if (pending != null) {
+        joiningLayer(pending, transient, choices, permission, network, display)
+    } else {
+        createLayer(create, transient, network, refusal, attestFault)
+    }
 
 /** The join gate over [pending]: its phase, the choices it offers and what it says. */
 private fun joiningLayer(

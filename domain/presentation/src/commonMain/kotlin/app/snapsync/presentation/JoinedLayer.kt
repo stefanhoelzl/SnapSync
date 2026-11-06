@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.service.ServiceFault
@@ -56,14 +57,14 @@ internal fun joinedLayer(
         timing = facts.timing,
         counts = facts.counts,
         deleted = joined is Membership.Deleted,
-        members = (joined as? Membership.Active)?.event?.members?.active,
+        members = (joined as? Membership.Active)?.let { it.event.members }?.active,
         sharingNote = sharingNote(joined, health, facts.timing),
         joinableUntil = facts.joinableUntil,
         renameState = rename.toRenameState(),
         // The same transient cell the create layer's banner reads. A rejected link is rejected wherever
         // it arrives, so the message reaches whichever layer is showing rather than only one of them.
         notice = transient,
-        surface = range?.let { surfaceOf(it, permission, choices, reconfiguring) } ?: JoinedSurface.Status,
+        surface = if (range != null) surfaceOf(range, permission, choices, reconfiguring) else JoinedSurface.Status,
     )
     return Reduced(layer, range)
 }
@@ -89,9 +90,13 @@ private fun surfaceOf(range: ResolvedRange, permission: PhotoGrant, choices: Cho
  * one-way latch: a late guest or new photos turn "everyone has shared" back into waiting.
  */
 private fun sharingNote(joined: Membership, health: SyncHealth, timing: EventTiming): SharingNote? =
-    (joined as? Membership.Active)?.event?.members
+    (joined as? Membership.Active)?.let { it.event.members }
         ?.takeIf { timing == EventTiming.Ended && settledForOthers(health) }
-        ?.let { if (it.waitingFor > 0) SharingNote.WaitingFor(it.waitingFor) else SharingNote.EveryoneShared }
+        ?.let(::noteOf)
+
+/** Who the event still waits for, or that everyone has shared. */
+private fun noteOf(members: MemberCounts): SharingNote =
+    if (members.waitingFor > 0) SharingNote.WaitingFor(members.waitingFor) else SharingNote.EveryoneShared
 
 /** In sync, or only the others left: this member has nothing more to do. */
 private fun settledForOthers(health: SyncHealth): Boolean =

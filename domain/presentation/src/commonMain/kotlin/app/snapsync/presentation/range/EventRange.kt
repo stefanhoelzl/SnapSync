@@ -64,8 +64,12 @@ internal fun EventRange.fromAllowed(time: LocalTime, bounds: RangeBounds): Boole
     }
     // No check against the earliest start: around an event, a start before it cannot reach an end that overlaps the
     // event within an event's length, which [reachesEnd] already refuses; a created event has no earliest start.
-    return reachesEnd && bounds.latestStart.let { it == null || candidate <= it }
+    return reachesEnd && startsInTime(candidate, bounds)
 }
+
+/** Whether [candidate] starts no later than [bounds] allow a start to. */
+private fun startsInTime(candidate: LocalDateTime, bounds: RangeBounds): Boolean =
+    bounds.latestStart.let { it == null || candidate <= it }
 
 /** Whether the range is complete and inside [bounds] — what a surface that confirms a range asks. */
 internal fun EventRange.isValid(bounds: RangeBounds): Boolean = validUntil(bounds) != null

@@ -115,7 +115,11 @@ internal fun reconfigureForm(
         receiveOn = settings.direction.includesDownload,
         saveToAlbum = settings.saveToAlbum,
         preset = if (whole) RangeChoice.EVENT_START else RangeChoice.CUSTOM,
-        customFrom = if (whole || fromAtFloor) null else toLocal(settings.from.at),
-        customUntil = if (whole || untilAtCeiling) null else toLocal(settings.until.at),
+        customFrom = customBound(fromAtFloor, settings.from.at, toLocal),
+        customUntil = customBound(untilAtCeiling, settings.until.at, toLocal),
     )
 }
+
+/** A custom bound seeded from [at], unless it sits on the event's own bound ([onEvent]): then the window's is meant. */
+private fun customBound(onEvent: Boolean, at: Timestamp, toLocal: (Timestamp) -> LocalDateTime): LocalDateTime? =
+    if (onEvent) null else toLocal(at)

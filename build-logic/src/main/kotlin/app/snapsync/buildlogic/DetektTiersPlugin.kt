@@ -87,6 +87,7 @@ class DetektTiersPlugin : Plugin<Project> {
         root.registerTier("detektDataTier", "data", srcDirs("data")) { exclude(excludeTests) }
         root.registerTier("detektApplicationTier", "application", srcDirs("application")) { exclude(excludeTests) }
         root.registerTier("detektQueryTier", "query", srcDirs("query")) { exclude(excludeTests) }
+        root.registerTier("detektPresentationTier", "presentation", srcDirs("presentation")) { exclude(excludeTests) }
         root.registerTier("detektHarnessTier", "harness", srcDirs("harness")) {
             exclude(excludeTests)
             // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2.
@@ -218,8 +219,7 @@ class DetektTiersPlugin : Plugin<Project> {
             ":app:jvm" to "shell",
             ":app:android" to "shell",
 
-            // The tested core and its adapters. `:domain:presentation` belongs here and not in `ui`: it is
-            // Compose-free, so none of Compose's structural inflation applies to it.
+            // The tested core and its adapters.
             ":domain:model" to "core",
             ":domain:inbound" to "core",
             ":domain:wire" to "core",
@@ -236,7 +236,6 @@ class DetektTiersPlugin : Plugin<Project> {
             ":adapter:ios:ext-safe" to "core",
             ":adapter:ios:ui" to "core",
             ":adapter:android" to "core",
-            ":domain:presentation" to "core",
             ":ui:state" to "core",
 
             // The layers whose ceilings are claims from their first line (`docs/patterns.md`): an entry point orders
@@ -247,6 +246,7 @@ class DetektTiersPlugin : Plugin<Project> {
             ":domain:data" to "data",
             ":domain:application" to "application",
             ":domain:query" to "query",
+            ":domain:presentation" to "presentation",
 
             // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
             // STRUCTURALLY — a screen that renders six states has six branches by construction.

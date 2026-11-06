@@ -43,9 +43,14 @@ internal interface Rung {
     fun health(facts: StatusFacts): SyncHealth?
 }
 
-/** The rungs in order: the first that applies is the line. The last always applies, so the ladder always answers. */
-internal class StatusLadder(private val rungs: List<Rung>) {
-    fun of(facts: StatusFacts): SyncHealth = rungs.firstNotNullOf { it.health(facts) }
+/** The rungs in order: the first that applies is the line, and [last] — which always answers — when none does. */
+internal class StatusLadder(private val rungs: List<Rung>, private val last: LastRung) {
+    fun of(facts: StatusFacts): SyncHealth = rungs.firstNotNullOfOrNull { it.health(facts) } ?: last.health(facts)
+}
+
+/** The ladder's bottom rung: it always answers. */
+internal interface LastRung {
+    fun health(facts: StatusFacts): SyncHealth
 }
 
 /**
@@ -118,8 +123,8 @@ private object NotStarted : Rung {
 private object VerificationFailing : Rung {
     override fun health(facts: StatusFacts): SyncHealth? {
         val observed = facts.observed
-        val fault = observed.attestFault?.takeIf { !observed.attested && observed.refusal == null }
-        return fault?.let { SyncHealth.ServiceFailing(it.notice) }
+        if (observed.attested || observed.refusal != null) return null
+        return observed.attestFault?.let { SyncHealth.ServiceFailing(it.notice) }
     }
 }
 
@@ -141,16 +146,14 @@ private object ServiceFailing : Rung {
 }
 
 /** What the snapshot says on its own: the bottom of the ladder, which always answers. */
-private object Settled : Rung {
+private object Settled : LastRung {
     override fun health(facts: StatusFacts): SyncHealth = facts.settled
 }
 
-/** The ladder, in the order `sync-status` ranks its lines. */
+/** The ladder, in the order the status line ranks its lines. */
 private val HEALTH_LADDER = StatusLadder(
-    listOf(
-        NothingMoves, KeyLost, NeedsAccess, NoNetwork, NotStarted, VerificationFailing, Unattested, ServiceFailing,
-        Settled,
-    ),
+    listOf(NothingMoves, KeyLost, NeedsAccess, NoNetwork, NotStarted, VerificationFailing, Unattested, ServiceFailing),
+    last = Settled,
 )
 
 /**
