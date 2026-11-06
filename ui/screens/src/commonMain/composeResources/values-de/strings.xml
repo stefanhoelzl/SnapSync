@@ -147,6 +147,7 @@
     <string name="counts_received_progress">%1$d/%2$d empfangen</string>
     <string name="counts_received">%1$d empfangen</string>
     <string name="counts_not_receiving">Empfangen aus</string>
+    <string name="counts_not_receiving_kept">Empfangen aus · %1$d empfangen</string>
     <plurals name="waiting_members">
         <item quantity="one">Warte auf %1$d Mitglied</item>
         <item quantity="other">Warte auf %1$d Mitglieder</item>

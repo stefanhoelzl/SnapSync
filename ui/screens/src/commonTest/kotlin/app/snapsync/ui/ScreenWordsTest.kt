@@ -1,7 +1,11 @@
 package app.snapsync.ui
 
 import app.snapsync.ui.resources.Res
+import app.snapsync.ui.resources.counts_not_receiving
+import app.snapsync.ui.resources.counts_not_receiving_kept
 import app.snapsync.ui.resources.counts_not_sharing
+import app.snapsync.ui.resources.counts_received
+import app.snapsync.ui.resources.counts_received_progress
 import app.snapsync.ui.resources.counts_shared
 import app.snapsync.ui.resources.counts_shared_progress
 import app.snapsync.ui.resources.create_lasts
@@ -145,13 +149,29 @@ class ScreenWordsTest {
     @Test
     fun `a direction says what an off direction says — its total once complete — and done of total while not`() {
         fun DirectionCount.shared() =
-            label(Res.string.counts_shared, Res.string.counts_shared_progress, Res.string.counts_not_sharing).said()
+            label(
+                Res.string.counts_shared,
+                Res.string.counts_shared_progress,
+                Res.string.counts_not_sharing,
+                kept = Res.string.counts_not_sharing,
+            ).said()
         assertEquals(listOf(Res.string.counts_not_sharing), DirectionCount.Off.shared())
         assertEquals(listOf(Res.string.counts_shared, 15), DirectionCount.Progress(done = 15, total = 15).shared())
         assertEquals(
             listOf(Res.string.counts_shared_progress, 12, 15),
             DirectionCount.Progress(done = 12, total = 15).shared(),
         )
+    }
+
+    @Test
+    fun `a direction switched off says it is off and how many photos it kept`() {
+        val said = DirectionCount.Kept(40).label(
+            Res.string.counts_received,
+            Res.string.counts_received_progress,
+            Res.string.counts_not_receiving,
+            kept = Res.string.counts_not_receiving_kept,
+        ).said()
+        assertEquals(listOf(Res.string.counts_not_receiving_kept, 40), said)
     }
 
     // ---- the range row --------------------------------------------------------------------------------------------

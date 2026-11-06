@@ -1328,6 +1328,9 @@ class StatusScreenTest {
         onNodeWithText(
             str(Res.string.counts_line, str(Res.string.counts_shared, 15), str(Res.string.counts_not_receiving)),
         ).assertExists()
+        // Switched off once 40 had arrived: off, and the 40 are still here.
+        state.value = joined(SyncHealth.InSync, counts = SyncCounts(progress(15, 15), DirectionCount.Kept(40)))
+        onNodeWithText("15 shared · Not receiving · 40 received").assertExists()
     }
 
     @Test

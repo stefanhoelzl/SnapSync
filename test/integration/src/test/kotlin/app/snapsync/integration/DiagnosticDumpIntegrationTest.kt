@@ -162,6 +162,7 @@ class DiagnosticDumpIntegrationTest {
 
     private fun DirectionCount.shown(): String = when (this) {
         DirectionCount.Off -> "off"
+        is DirectionCount.Kept -> "off, $count kept"
         is DirectionCount.Progress -> "$done/$total"
     }
 
