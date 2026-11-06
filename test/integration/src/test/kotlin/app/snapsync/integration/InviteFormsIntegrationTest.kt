@@ -45,7 +45,7 @@ class InviteFormsIntegrationTest {
     fun a_damaged_fragment_form_invite_is_reported_and_joins_nothing() = behaviour {
         whenever { openLink("$LINK_ORIGIN/join#v=3&d=not-base64!") }
         then {
-            screen<Layer.CreateEvent> { it.error == ScreenMessage.INVALID_LINK }
+            screen<Layer.CreateEvent> { it.passing == ScreenMessage.INVALID_LINK }
             neverScreen<Layer.JoiningEvent>()
         }
     }

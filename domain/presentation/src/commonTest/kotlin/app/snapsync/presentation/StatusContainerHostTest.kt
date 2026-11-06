@@ -1683,13 +1683,13 @@ class StatusContainerHostTest {
             runCurrent()
             assertEquals(
                 ScreenMessage.INVALID_LINK,
-                (containerHost.screen.value.layer as Layer.CreateEvent).error,
+                (containerHost.screen.value.layer as Layer.CreateEvent).passing,
             )
             // …and it self-clears a few seconds after it last appeared — the delay runs on this
             // test's virtual clock (the host scope is backgroundScope).
             advanceTimeBy(5_000)
             runCurrent()
-            assertEquals(null, (containerHost.screen.value.layer as Layer.CreateEvent).error)
+            assertEquals(null, (containerHost.screen.value.layer as Layer.CreateEvent).passing)
             cancelAndIgnoreRemainingItems()
         }
     }

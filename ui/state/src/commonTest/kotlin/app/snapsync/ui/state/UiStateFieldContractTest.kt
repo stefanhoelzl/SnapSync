@@ -101,8 +101,13 @@ class UiStateFieldContractTest {
         )
         assertFieldContract(
             Layer.CreateEvent.serializer(),
-            Layer.CreateEvent(FRESH_CREATE_FORM, ScreenMessage.CREATE_FAILED, NetworkNotice.OFFLINE),
-            optional = setOf("error", "network"),
+            Layer.CreateEvent(
+                FRESH_CREATE_FORM,
+                ScreenMessage.CREATE_FAILED,
+                NetworkNotice.OFFLINE,
+                ScreenMessage.INVALID_LINK,
+            ),
+            optional = setOf("error", "network", "passing"),
         )
         assertFieldContract(
             CreateForm.serializer(),

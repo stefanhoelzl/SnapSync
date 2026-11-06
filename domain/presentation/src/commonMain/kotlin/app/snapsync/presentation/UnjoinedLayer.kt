@@ -88,11 +88,10 @@ private fun createLayer(
     refusal: DeviceRefusal?,
     attestFault: ServiceFault?,
 ): Reduced {
-    // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
-    // until the next attempt, so a link scanned in between would otherwise be silently outranked by
-    // an older complaint. When it self-clears, the sticky failure shows again. A missing network outranks both on
-    // screen, but is carried beside them rather than instead of them, so the failure returns with the network. A
-    // create in flight is not interrupted: it ends as any create ends.
+    // The passing word on a link that opened nothing is carried apart from the failure and the network: it shows above
+    // both for its seconds, and they return as they were. A create failure is sticky until the next attempt; a missing
+    // network outranks it on screen but is carried beside it, so the failure returns with the network. A create in
+    // flight is not interrupted: it ends as any create ends.
     //
     // A phone the service refuses is told so in that same line as soon as the app learns of it — the front screen
     // tells a refused phone before it tries: below a failure, which for a refused phone IS the refusal, and above the
@@ -102,21 +101,14 @@ private fun createLayer(
         is RequestStatus.InFlight -> Layer.CreatingEvent
         is RequestStatus.Done -> Layer.CreateEvent(
             create.form,
-            failureLine(creation.value, transient, refused, attestFault),
+            creation.value.message(refused, attestFault.takeIf { refused == null }) ?: refused,
             network,
+            passing = transient,
         )
-        RequestStatus.Idle -> Layer.CreateEvent(form = create.form, error = transient ?: refused, network = network)
+        RequestStatus.Idle -> Layer.CreateEvent(create.form, error = refused, network = network, passing = transient)
     }
     return Reduced(layer)
 }
-
-/** The create surface's one line after a create was answered: the transient first, then what the create came to. */
-private fun failureLine(
-    result: CreateResult,
-    transient: ScreenMessage?,
-    refused: ScreenMessage?,
-    attestFault: ServiceFault?,
-): ScreenMessage? = transient ?: result.message(refused, attestFault.takeIf { refused == null }) ?: refused
 
 /**
  * The create request as the screen shows it: [mine] fired and not yet answered is in flight whether or not its run has

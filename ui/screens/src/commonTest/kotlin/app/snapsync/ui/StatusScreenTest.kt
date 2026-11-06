@@ -1536,6 +1536,20 @@ class StatusScreenTest {
         }
 
     @Test
+    fun `offline, a link that opened nothing is told over the network notice, which returns`() = runComposeUiTest {
+        val shown =
+            mutableStateOf(
+                UiState(createLayer(network = NetworkNotice.OFFLINE).copy(passing = ScreenMessage.INVALID_LINK)),
+            )
+        setContent { TestStatusScreen(shown.value) }
+        onNodeWithText(str(Res.string.message_invalid_link)).assertExists()
+        onNodeWithText(str(ComponentRes.string.network_offline)).assertDoesNotExist()
+
+        shown.value = UiState(createLayer(network = NetworkNotice.OFFLINE))
+        onNodeWithText(str(ComponentRes.string.network_offline)).assertExists()
+    }
+
+    @Test
     fun `missing access is explained beneath whatever line the status shows`() = runComposeUiTest {
         // A lost key outranks missing access on the status line; the explanation still says nothing is shared.
         setContent { TestStatusScreen(withAccessFix(joined(SyncHealth.KeyLost), AccessFix.SETTINGS)) }

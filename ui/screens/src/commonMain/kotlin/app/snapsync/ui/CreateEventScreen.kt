@@ -203,8 +203,6 @@ internal class CreateCallbacks(
  */
 @Composable
 private fun CreateActionsBar(state: Layer.CreateEvent, callbacks: CreateCallbacks, guide: StepGuide) {
-    // ONE value: the reduction already coalesced a sticky create failure and a self-clearing invalid-link
-    // notice, the transient winning, so the screen renders what it is given.
     val error: String? = state.error?.text()
     val form = state.form
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -219,7 +217,11 @@ private fun CreateActionsBar(state: Layer.CreateEvent, callbacks: CreateCallback
             onClick = callbacks.create.onCreate.takeIf { form.canCreate && state.network == null },
         )
         val network = state.network
-        if (network != null) {
+        val passing = state.passing
+        if (passing != null) {
+            // A word on what the member just did, above the network and the failure for its few seconds: both return.
+            StatusHint(passing.text(), isError = true)
+        } else if (network != null) {
             // The failure an earlier attempt left is kept by the reduction and returns with the network.
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 AppNetworkNotice(blocked = network == NetworkNotice.BLOCKED, onOpenSettings = callbacks.onOpenSettings)
