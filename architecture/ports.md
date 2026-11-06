@@ -125,7 +125,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JobOwner` | `:domain:data` | `:domain:data` None, Row, Unreadable | no |
 | `JoinCommit` | `:domain:domain` | `:domain:domain` Committed, EventOver, Failed, Unverified, WrongLink | no |
 | `JoinDetails` | `:domain:query` | `:domain:query` Found, NotFound, Unanswered, WrongLink | no |
-| `JoinDetailsQuery` | `:domain:query` | `:domain:query` JoinDetailsLookup | no |
 | `JoinProgress` | `:domain:presentation` | `:domain:presentation` Closed, Detailed, LoadFailed, Loading, NotFound, WrongLink | no |
 | `KeepOutcome` | `:domain:data` | `:domain:data` Kept, Refused | no |
 | `KeyFact` | `:domain:domain` | `:domain:domain` Absent, Invalid, Kept, Unreadable | no |
@@ -302,7 +301,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `UploaderAdmission` | `:domain:data` | `:domain:data` AppUploaderAdmission, ExtensionUploaderAdmission; `:test:data` Admission | yes |
 | `UsabilityVerdict` | `:domain:domain` | `:domain:domain` Unusable, Usable | no |
 | `UserCommands` | `:domain:model` | `:domain:presentation` TestCommands | no |
-| `UserQueries` | `:domain:model` | — | no |
 | `VersionObserver` | `:domain:data` | `:domain:data` AppVersionGate, Observers, ServiceConditions, VersionIgnored; `:test:feature` NoVersions | yes |
 | `VersionRead` | `:domain:data` | `:domain:data` Read, Unavailable | no |
 | `VersionVerdict` | `:domain:domain` | `:domain:domain` Clear, NoVerdict, Refuse | no |

@@ -44,15 +44,14 @@ import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
-import app.snapsync.model.UserQueries
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeEdit
 import app.snapsync.presentation.range.after
 import app.snapsync.presentation.range.validUntil
 import app.snapsync.query.RequestStatus
+import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
-import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Arrow
@@ -130,13 +129,12 @@ class StatusContainerHost(
     // NB the share-range rule is applied on the far side of the `commitJoin` command, by the join's use case — this
     // container passes the chosen range through raw, so no entry path can reach a membership by forgetting it here.
     private val commands: UserCommands,
-    // The user-query bundle (`docs/architecture.md`, "Queries cross a lane-gated door"): the join gate's
-    // details read and the shareable count. Reads this container INVOKES and reduces on, built and
-    // lane-decorated in `compose/` beside the commands — so neither runs a port read on the thread that
-    // asked.
-    private val queries: UserQueries,
-    // The join gate's read of an invite's event — awaited on the composition lane like every query.
-    private val joinDetails: JoinDetailsQuery,
+    // The screen's lookups (`docs/patterns.md`, "Lookups"): reads this container asks and reduces on, each read on the
+    // composition lane, never on the thread that asked. How many of the member's photos a range would share, `null`
+    // when no count can be stated…
+    private val shareableCount: ScreenLookup<CaptureRange, Int?>,
+    // …and the join gate's read of an invite's event.
+    private val joinDetails: ScreenLookup<InviteLink, JoinDetails>,
     // The two out-channels (see [StatusDiagnostics]): the dev-path log and the intent-error seam.
     diagnostics: StatusDiagnostics,
     // Where a bug report goes on this build — a constant the composition states,
@@ -413,7 +411,7 @@ class StatusContainerHost(
                         if (key == null) return@collectLatest
                         local.update { it.copy(shareCount = ShareCount.Counting) }
                         val count = try {
-                            key.range?.let { queries.shareableCount(it) }?.let { ShareCount.Ready(it) }
+                            key.range?.let { shareableCount.ask(it) }?.let { ShareCount.Ready(it) }
                                 ?: ShareCount.Unavailable
                         } catch (e: CancellationException) {
                             throw e
@@ -1236,7 +1234,7 @@ class StatusContainerHost(
      */
     private suspend fun load(eventId: EventId, key: EventKey?): Loaded {
         val load = try {
-            joinDetails.load(InviteLink(eventId, key))
+            joinDetails.ask(InviteLink(eventId, key))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (t: Throwable) {

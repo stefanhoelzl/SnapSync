@@ -36,7 +36,6 @@ class CommandLaneTest {
      * detached (the caller would have no answer) and never handed to the platform's UI (the reads are the
      * blocking work the main thread must never see; the shareable count used to run there).
      */
-    private val queryDecorators = listOf("awaitingOnCoreLane")
 
     private fun file(nameEnd: String) = SourceScan.kotlinFiles()
         .firstOrNull { it.path.endsWith(nameEnd) }
@@ -52,7 +51,6 @@ class CommandLaneTest {
     /** Where each bundle is built — one file in `compose/`. */
     private val builtIn = mapOf(
         "UserCommands" to "UserCommandsComposition.kt",
-        "UserQueries" to "UserCommandsComposition.kt",
     )
 
     /** The `object : <type> { ... }` body in the one place the bundle is built. */
@@ -95,18 +93,8 @@ class CommandLaneTest {
     }
 
     @Test
-    fun `every query in the bundle is awaited on the core lane`() {
-        val undeclared = undecorated("UserQueries", queryDecorators)
-        assertTrue(
-            undeclared.isEmpty(),
-            "these queries are built without `awaitingOnCoreLane` — a query run where it was asked runs its port " +
-                "reads on the main thread (law \"Queries cross a lane-gated door\"): $undeclared",
-        )
-    }
-
-    @Test
     fun `the gate sees every command and query the bundles declare`() {
-        listOf("UserCommands", "UserQueries").forEach { type ->
+        listOf("UserCommands").forEach { type ->
             val bundle = built(type)
             val missing = declared(type).filterNot { member(it).containsMatchIn(bundle) }
             assertTrue(

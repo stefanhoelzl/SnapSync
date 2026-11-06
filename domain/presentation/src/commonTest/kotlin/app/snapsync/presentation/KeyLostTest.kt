@@ -68,7 +68,7 @@ class KeyLostTest {
             mobileData = AlwaysAllowed,
         ),
         backgroundScope,
-        queries = noQueries,
+        shareableCount = noQueries,
         commands = object : UserCommands by TestCommands() {
             override fun restoreKey(key: EventKey): RequestId {
                 restored += key
@@ -180,7 +180,7 @@ class KeyLostTest {
                 mobileData = AlwaysAllowed,
             ),
             backgroundScope,
-            queries = noQueries,
+            shareableCount = noQueries,
             commands = sharingCommands { url -> shared += url },
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
             joinDetails = unanswered,

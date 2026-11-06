@@ -13,6 +13,8 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.SwitchFacts
 import app.snapsync.domain.service.ServiceFault
+import app.snapsync.query.ScreenLookup
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.StateFlow
 
 /** The membership as this process holds it — re-read at every entry. */
@@ -26,21 +28,22 @@ class MembershipQuery(private val membership: MembershipRepository) {
     }
 }
 
-/** The join screen's read of an invite's event. */
-interface JoinDetailsQuery {
-    suspend fun load(invite: InviteLink): JoinDetails
-}
-
 /**
  * The join screen's read of an invite's event: found — and then whether the invite's key opens it, so a link cut short
  * in sharing is told before the member chooses anything — not found, or no answer.
  */
-class JoinDetailsLookup(private val directory: EventDirectory, private val ids: EventKeyIds) : JoinDetailsQuery {
-    override suspend fun load(invite: InviteLink): JoinDetails = when (val found = directory.lookup(invite.event)) {
-        is EventLookupFact.Found -> keyed(invite, found)
+class JoinDetailsLookup(
+    private val directory: EventDirectory,
+    private val ids: EventKeyIds,
+    lane: CoroutineDispatcher,
+) : ScreenLookup<InviteLink, JoinDetails>("query.joinDetails", lane) {
+    override suspend fun read(arg: InviteLink): JoinDetails = when (val found = directory.lookup(arg.event)) {
+        is EventLookupFact.Found -> keyed(arg, found)
         EventLookupFact.NotFound -> JoinDetails.NotFound
         is EventLookupFact.Unanswered -> JoinDetails.Unanswered(found.fault, found.retryAfterSeconds)
     }
+
+    override fun about(arg: InviteLink): String = "eventId=${arg.event}"
 
     private fun keyed(invite: InviteLink, found: EventLookupFact.Found): JoinDetails =
         when (found.event.encryption.openedBy(invite.key?.let(ids::identify))) {

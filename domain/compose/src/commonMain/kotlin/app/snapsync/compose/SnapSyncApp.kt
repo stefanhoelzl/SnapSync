@@ -22,7 +22,6 @@ import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.service.ServiceFault
-import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.domain.version.VersionRefusal
@@ -42,7 +41,6 @@ import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.UserCommands
-import app.snapsync.model.UserQueries
 import app.snapsync.model.selectionPhotos
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
@@ -69,11 +67,11 @@ import app.snapsync.ports.TransferSession
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Wake
 import app.snapsync.query.encryption.EventKeyQuery
-import app.snapsync.query.membership.JoinDetailsQuery
+import app.snapsync.query.membership.JoinDetailsLookup
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.receiving.DownloadProgress
-import app.snapsync.query.sharing.ShareableCountQuery
+import app.snapsync.query.sharing.ShareableCountLookup
 import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
@@ -331,16 +329,14 @@ class AppCore internal constructor(
     /** The joined screen's status: the total, and how far sharing and receiving are, followed from the stores. */
     internal val status: StatusLayers by lazy { StatusLayers(this) }
 
-    // The join-time shareable-count preview: the same admission the cycle and the status total take.
-    private val shareableCount: ShareableCountQuery by lazy { ShareableCountQuery(ownPhotos) }
-
     /**
-     * The join surface's live "how many photos from your gallery will be shared" query: for a candidate [range] with
-     * sharing on, the count of own photos the policy admits, or `null` when the grant permits no count. Purely local —
-     * no backend LIST.
+     * The join and settings surfaces' shareable count, a lookup the screen asks on the composition lane: the same
+     * admission the cycle and the status total take, purely local.
      */
-    suspend fun loadShareableCount(range: CaptureRange): Int? =
-        shareableCount.count(range)
+    val shareableCount: ShareableCountLookup by lazy { ShareableCountLookup(ownPhotos, coreLane) }
+
+    /** The join gate's read of an invite's event, a lookup the screen asks on the composition lane. */
+    val joinDetails: JoinDetailsLookup get() = work.membership.joinDetails
 
     /** What the photo-library grant means now, over the permission port — the one read every feature takes. */
     val galleryAccess: GalleryAccessState by lazy { GalleryAccessState(ports.gallery.grant) }
@@ -443,12 +439,6 @@ class AppCore internal constructor(
 
     /** The user-tap command bundle — see [userCommandsFor]. */
     val userCommands: UserCommands by lazy { userCommandsFor() }
-
-    /** The user-query bundle, lane-decorated beside the commands — see [userQueriesFor]. */
-    val userQueries: UserQueries by lazy { userQueriesFor() }
-
-    /** The join gate's read of an invite's event, lane-decorated like the queries — see [joinDetailsFor]. */
-    val joinDetails: JoinDetailsQuery by lazy { joinDetailsFor() }
 
     /** The diagnostic dump assembly — see [diagnosticDumpFor]. */
     internal val collectDiagnosticDump: CollectDiagnosticDump by lazy { diagnosticDumpFor() }

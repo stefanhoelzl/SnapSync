@@ -124,7 +124,7 @@ class StatusContainerHostMenuTest {
                             now = { Instant.parse("2026-07-09T12:00:00Z") },
                             zone = TimeZone.UTC,
                         ),
-                        queries = noQueries,
+                        shareableCount = noQueries,
                         joinDetails = unanswered,
                         diagnostics = testDiagnostics(),
                         build = BuildLabel("0.12", "2140"),

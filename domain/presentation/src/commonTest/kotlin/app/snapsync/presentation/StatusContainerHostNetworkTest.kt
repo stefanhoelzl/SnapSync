@@ -101,7 +101,7 @@ class StatusContainerHostNetworkTest {
             joinDetails = joinDetails(load),
             commands = commands,
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
-            queries = noQueries,
+            shareableCount = noQueries,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )

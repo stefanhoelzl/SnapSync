@@ -38,7 +38,9 @@ internal class MembershipLayers(private val core: AppCore) {
     }
 
     val query: MembershipQuery by lazy { MembershipQuery(membership) }
-    val joinDetails: JoinDetailsLookup by lazy { JoinDetailsLookup(core.backend.directory, core.services.eventKeyIds) }
+    val joinDetails: JoinDetailsLookup by lazy {
+        JoinDetailsLookup(core.backend.directory, core.services.eventKeyIds, core.coreLane)
+    }
     val switchLookup: SwitchLookup by lazy { SwitchLookup(membership, core.backend.directory, core.services.wallClock) }
 
     /** The membership as every trigger reads it. */

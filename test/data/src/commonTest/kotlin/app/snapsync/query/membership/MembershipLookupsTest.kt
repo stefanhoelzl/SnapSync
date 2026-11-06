@@ -30,6 +30,7 @@ import app.snapsync.query.RequestStatus
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.models.EventDetails
 import app.snapsync.wire.runtime.WireJson
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -43,7 +44,7 @@ class MembershipLookupsTest {
 
     private val device = Device()
     private val directory = EventDirectory(device.gateway)
-    private val details = JoinDetailsLookup(directory, testKeyIds)
+    private val details = JoinDetailsLookup(directory, testKeyIds, Dispatchers.Unconfined)
     private val switch = SwitchLookup(device.membership, directory, device.wallClock)
 
     private fun found(keyId: String? = null, completedAt: String? = null, waiting: Int = 2) = json(
@@ -70,28 +71,28 @@ class MembershipLookupsTest {
     @Test
     fun `an event the invite's key opens is found, with whether its photos are deleted`() = runTest {
         answering(found(keyId = testKeyId("k1")))
-        val read = assertIs<JoinDetails.Found>(details.load(invite("k1")))
+        val read = assertIs<JoinDetails.Found>(details.ask(invite("k1")))
         assertEquals(testEventId(EVENT), read.event.id)
         assertEquals(MemberCounts(3, 1, 2), read.event.members)
         assertEquals(false, read.completed)
 
         answering(found(completedAt = "2026-08-01T00:00:00Z"))
-        assertEquals(true, assertIs<JoinDetails.Found>(details.load(invite())).completed)
+        assertEquals(true, assertIs<JoinDetails.Found>(details.ask(invite())).completed)
     }
 
     @Test
     fun `an invite whose key does not open the event is the wrong link`() = runTest {
         answering(found(keyId = testKeyId("k1")))
-        assertEquals(JoinDetails.WrongLink, details.load(invite("other")))
-        assertEquals(JoinDetails.WrongLink, details.load(invite()), "a key cut short in sharing")
+        assertEquals(JoinDetails.WrongLink, details.ask(invite("other")))
+        assertEquals(JoinDetails.WrongLink, details.ask(invite()), "a key cut short in sharing")
     }
 
     @Test
     fun `not found is told apart from no answer`() = runTest {
         answering(text(404, "event not found"))
-        assertEquals(JoinDetails.NotFound, details.load(invite()))
+        assertEquals(JoinDetails.NotFound, details.ask(invite()))
         answering(text(502, "down"))
-        assertEquals(JoinDetails.Unanswered(ServiceFault.TROUBLE), details.load(invite()), "and how the service failed")
+        assertEquals(JoinDetails.Unanswered(ServiceFault.TROUBLE), details.ask(invite()), "and how the service failed")
     }
 
     // ---- the switch's read of the joined membership ----
