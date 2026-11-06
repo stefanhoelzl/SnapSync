@@ -41,11 +41,7 @@ internal fun joinedLayer(
     display: Display,
     invite: String?,
 ): Reduced {
-    val form = choices.form
-    // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window. A deleted event has no settings
-    // any more: a surface left open when the deletion is learned gives way to the status.
-    val settingsOpen = reconfiguring.surface != SettingsSurface.Closed && joined !is Membership.Deleted
-    val range = if (settingsOpen) display.resolve(form, joined.event.range.start, joined.event.range.end) else null
+    val range = settingsRange(joined, reconfiguring, choices.form, display)
     val layer = Layer.Joined(
         membership = display.event(joined),
         // Derived once, in the query (`EventKeyQuery.invite`), and read HERE only (decision record `event-invite-qr`, D3's
@@ -60,30 +56,46 @@ internal fun joinedLayer(
         timing = facts.timing,
         counts = facts.counts,
         deleted = joined is Membership.Deleted,
-        members = joined.event.members?.active?.takeIf { joined !is Membership.Deleted },
-        // Only once the range has ended and this member is in sync is "who are we waiting for" the member's question.
-        // Not a one-way latch: a late guest or new photos turn "everyone has shared" back into waiting.
-        sharingNote = joined.event.members?.takeIf {
-            facts.timing == EventTiming.Ended && joined !is Membership.Deleted &&
-                (health == SyncHealth.InSync || (health as? SyncHealth.Syncing)?.waitingForOthers == true)
-        }?.let { if (it.waitingFor > 0) SharingNote.WaitingFor(it.waitingFor) else SharingNote.EveryoneShared },
+        members = (joined as? Membership.Active)?.event?.members?.active,
+        sharingNote = sharingNote(joined, health, facts.timing),
         joinableUntil = facts.joinableUntil,
         renameState = rename.toRenameState(),
         // The same transient cell the create layer's banner reads. A rejected link is rejected wherever
         // it arrives, so the message reaches whichever layer is showing rather than only one of them.
         notice = transient,
-        surface = if (range != null) {
-            JoinedSurface.Reconfigure(
-                range = form.view(range, permission, choices.picking),
-                saveFailed = reconfiguring.surface == SettingsSurface.SaveFailed,
-                askingToStopSharing = reconfiguring.askingToStopSharing,
-            )
-        } else {
-            JoinedSurface.Status
-        },
+        surface = range?.let { surfaceOf(it, permission, choices, reconfiguring) } ?: JoinedSurface.Status,
     )
     return Reduced(layer, range)
 }
+
+/**
+ * The settings surface's range, resolved against the MEMBERSHIP's own window while it is open, else `null`. A deleted
+ * event has no settings any more: a surface left open when the deletion is learned gives way to the status.
+ */
+private fun settingsRange(joined: Membership, shown: SettingsShown, form: RangeForm, display: Display): ResolvedRange? =
+    joined.takeIf { shown.surface != SettingsSurface.Closed && it is Membership.Active }
+        ?.let { display.resolve(form, it.event.range.start, it.event.range.end) }
+
+/** The settings surface over the joined screen, pre-filled from the choices. */
+private fun surfaceOf(range: ResolvedRange, permission: PhotoGrant, choices: Choices, shown: SettingsShown) =
+    JoinedSurface.Reconfigure(
+        range = choices.form.view(range, permission, choices.picking),
+        saveFailed = shown.surface == SettingsSurface.SaveFailed,
+        askingToStopSharing = shown.askingToStopSharing,
+    )
+
+/**
+ * Only once the range has ended and this member is in sync is "who are we waiting for" the member's question. Not a
+ * one-way latch: a late guest or new photos turn "everyone has shared" back into waiting.
+ */
+private fun sharingNote(joined: Membership, health: SyncHealth, timing: EventTiming): SharingNote? =
+    (joined as? Membership.Active)?.event?.members
+        ?.takeIf { timing == EventTiming.Ended && settledForOthers(health) }
+        ?.let { if (it.waitingFor > 0) SharingNote.WaitingFor(it.waitingFor) else SharingNote.EveryoneShared }
+
+/** In sync, or only the others left: this member has nothing more to do. */
+private fun settledForOthers(health: SyncHealth): Boolean =
+    health == SyncHealth.InSync || (health as? SyncHealth.Syncing)?.waitingForOthers == true
 
 /** What the joined layer says beside its health: the dates line's timing, the counts line, and the device's today. */
 internal class JoinedFacts(
@@ -99,20 +111,24 @@ internal class JoinedFacts(
 // reason is the one above `syncHealth` — a display that hides work in a switched-off direction conceals
 // exactly the mismatch the member most needs to see.
 internal fun syncCounts(progress: SharingProgress, download: DownloadProgress, direction: Direction): SyncCounts =
-    SyncCounts(
-        shared = if (!direction.includesUpload && progress.total == 0) {
-            DirectionCount.Off
-        } else {
-            DirectionCount.Progress(done = progress.shared, total = progress.total)
-        },
-        received = if (!direction.includesDownload && download.total + download.awaited == 0) {
-            DirectionCount.Off
-        } else {
-            (download.total + download.awaited).let { total ->
-                DirectionCount.Progress(done = minOf(download.downloaded, total), total = total)
-            }
-        },
-    )
+    SyncCounts(shared = sharedCount(progress, direction), received = receivedCount(download, direction))
+
+private fun sharedCount(progress: SharingProgress, direction: Direction): DirectionCount =
+    if (!direction.includesUpload && progress.total == 0) {
+        DirectionCount.Off
+    } else {
+        DirectionCount.Progress(done = progress.shared, total = progress.total)
+    }
+
+/** What is left to receive includes what the others declared and have not uploaded yet. */
+private fun receivedCount(download: DownloadProgress, direction: Direction): DirectionCount {
+    val total = download.total + download.awaited
+    return if (!direction.includesDownload && total == 0) {
+        DirectionCount.Off
+    } else {
+        DirectionCount.Progress(done = minOf(download.downloaded, total), total = total)
+    }
+}
 
 /**
  * The counts line as the screen showed it, for a bug report: `<done>/<total>` or `off`

@@ -37,34 +37,54 @@ internal fun unjoinedLayer(
     refusal: DeviceRefusal?,
     attestFault: ServiceFault?,
     display: Display,
-): Reduced {
-    val form = choices.form
+): Reduced =
     // A pending interactive join outranks the create layer (a switch whose leave already ran also
     // lands here — a transient no-event, shown full-screen with a Retry).
-    if (pending != null) {
-        // Resolved only where there IS a window: the detail-less phases render no range row, so an absent
-        // resolution is the honest answer rather than one invented from `now`.
-        val phase = pending.phase
-        val range = (phase as? JoinProgress.Detailed)?.let { display.resolve(form, it.event.startsAt, it.event.endsAt) }
-        val layer = Layer.JoiningEvent(
-            eventId = pending.eventId.value,
-            stage = when (val shown = phase.shows) {
-                is JoinPhase.Detailed ->
-                    JoinStage.Loaded(shown, form.view(checkNotNull(range), permission, choices.picking))
-                is JoinPhase.Eventless -> JoinStage.Unloaded(shown)
-            },
-            // The same transient cell the create and joined layers read: a rejected link is rejected
-            // wherever it arrives, including over an open join surface, and it touches the join not at all.
-            notice = transient,
-            // This rung is reached only with no event configured, so the permission alone decides.
-            asksAccessOnJoin = asksAccessOnJoin(null, permission),
-            // Join waits for a network; the screen names why.
-            network = network,
-            // A failed load or join the service caused is told in its own words.
-            service = pending.service?.notice,
-        )
-        return Reduced(layer, range)
-    }
+    pending?.let { joiningLayer(it, transient, choices, permission, network, display) }
+        ?: createLayer(create, transient, network, refusal, attestFault)
+
+/** The join gate over [pending]: its phase, the choices it offers and what it says. */
+private fun joiningLayer(
+    pending: PendingJoin,
+    transient: ScreenMessage?,
+    choices: Choices,
+    permission: PhotoGrant,
+    network: NetworkNotice?,
+    display: Display,
+): Reduced {
+    val form = choices.form
+    // Resolved only where there IS a window: the detail-less phases render no range row, so an absent
+    // resolution is the honest answer rather than one invented from `now`.
+    val phase = pending.phase
+    val range = (phase as? JoinProgress.Detailed)?.let { display.resolve(form, it.event.startsAt, it.event.endsAt) }
+    val layer = Layer.JoiningEvent(
+        eventId = pending.eventId.value,
+        stage = when (val shown = phase.shows) {
+            is JoinPhase.Detailed ->
+                JoinStage.Loaded(shown, form.view(checkNotNull(range), permission, choices.picking))
+            is JoinPhase.Eventless -> JoinStage.Unloaded(shown)
+        },
+        // The same transient cell the create and joined layers read: a rejected link is rejected
+        // wherever it arrives, including over an open join surface, and it touches the join not at all.
+        notice = transient,
+        // This rung is reached only with no event configured, so the permission alone decides.
+        asksAccessOnJoin = asksAccessOnJoin(null, permission),
+        // Join waits for a network; the screen names why.
+        network = network,
+        // A failed load or join the service caused is told in its own words.
+        service = pending.service?.notice,
+    )
+    return Reduced(layer, range)
+}
+
+/** The create surface: its form and its one line. */
+private fun createLayer(
+    create: Creation,
+    transient: ScreenMessage?,
+    network: NetworkNotice?,
+    refusal: DeviceRefusal?,
+    attestFault: ServiceFault?,
+): Reduced {
     // One banner, one value. The TRANSIENT wins while it is showing: a create failure is sticky
     // until the next attempt, so a link scanned in between would otherwise be silently outranked by
     // an older complaint. When it self-clears, the sticky failure shows again. A missing network outranks both on
@@ -78,14 +98,22 @@ internal fun unjoinedLayer(
     val layer = when (val creation = create.status) {
         is RequestStatus.InFlight -> Layer.CreatingEvent
         is RequestStatus.Done -> Layer.CreateEvent(
-            form = create.form,
-            error = transient ?: creation.value.message(refused, attestFault.takeIf { refused == null }) ?: refused,
-            network = network,
+            create.form,
+            failureLine(creation.value, transient, refused, attestFault),
+            network,
         )
         RequestStatus.Idle -> Layer.CreateEvent(form = create.form, error = transient ?: refused, network = network)
     }
     return Reduced(layer)
 }
+
+/** The create surface's one line after a create was answered: the transient first, then what the create came to. */
+private fun failureLine(
+    result: CreateResult,
+    transient: ScreenMessage?,
+    refused: ScreenMessage?,
+    attestFault: ServiceFault?,
+): ScreenMessage? = transient ?: result.message(refused, attestFault.takeIf { refused == null }) ?: refused
 
 /**
  * The create request as the screen shows it: [mine] fired and not yet answered is in flight whether or not its run has
