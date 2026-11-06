@@ -9,6 +9,8 @@ import app.snapsync.data.store.StoreChanges
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.receiving.AwaitedPhotos
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +22,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
+import kotlin.time.TimeSource
+
+private val log = Log("ReceivingProgress")
 
 /**
  * The joined screen's download progress: `downloaded` — the joined event's received photos, `total` — every foreign
@@ -56,9 +61,16 @@ class ReceivingProgress(
         is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
     }
 
-    private fun counted(joined: Membership): DownloadProgress? = when (val read = counts.counts(joined.event.id)) {
-        is DownloadRead.Ok -> progressOf(read.value, receives(joined))
-        is DownloadRead.Unavailable -> null
+    /** The counts read, their time logged: how long a commit's re-read takes of the lane. */
+    private suspend fun counted(joined: Membership): DownloadProgress? {
+        val started = TimeSource.Monotonic.markNow()
+        val progress = when (val read = counts.counts(joined.event.id)) {
+            is DownloadRead.Ok -> progressOf(read.value, receives(joined))
+            is DownloadRead.Unavailable -> null
+        }
+        val millis = started.elapsedNow().inWholeMilliseconds
+        log.i("download counts read", "millis" of millis, "answered" of (progress != null))
+        return progress
     }
 
     private fun receives(joined: Membership): Boolean = when (joined) {
