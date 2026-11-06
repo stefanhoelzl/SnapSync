@@ -128,3 +128,22 @@ internal val RETRYABLE_STEPS =
 /** [this] event as the join screen shows it. */
 internal fun Event.details(): EventDetails =
     EventDetails(name.text, range.start, range.end, deletesAt, members?.active, openUntil)
+
+/** What a details read came to, as the gate shows it. */
+internal fun loadedOf(load: JoinDetails): Loaded = when (load) {
+    is JoinDetails.Found -> found(load)
+    JoinDetails.NotFound -> Loaded(JoinProgress.NotFound, null, InviteFact.NotJoinable)
+    is JoinDetails.Unanswered -> Loaded(JoinProgress.LoadFailed, null, InviteFact.Unknown, failed = load)
+    JoinDetails.WrongLink -> Loaded(JoinProgress.WrongLink, null, InviteFact.NotJoinable)
+}
+
+/** An event whose photos are deleted is refused before any choice is offered. */
+private fun found(load: JoinDetails.Found): Loaded = if (load.completed) {
+    Loaded(JoinProgress.Closed, load.event, InviteFact.NotJoinable)
+} else {
+    Loaded(
+        JoinProgress.Detailed(load.event.details(), JoinPhase.Detailed.Step.Ready),
+        load.event,
+        InviteFact.Joinable,
+    )
+}

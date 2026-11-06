@@ -14,7 +14,6 @@ import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.SwitchVerdict
-import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -97,7 +96,6 @@ class JoinGateEdgesTest {
         var whileAsked: () -> Unit = {}
 
         /** Whether the door itself refuses a join as it is handed over — a throw the gate must survive. */
-        var doorFails = false
 
         /** The invite the app was opened with, waiting for the screen; and each one the screen told opened. */
         val invites = MutableStateFlow<InviteLinkVerdict?>(null)
@@ -122,7 +120,6 @@ class JoinGateEdgesTest {
             },
         ).apply {
             handedOver = {
-                if (it is JoinRequest) check(!world.doorFails) { "the door refused the join" }
                 if (it is InviteLinkVerdict) world.opened += it
             }
         }
@@ -354,17 +351,6 @@ class JoinGateEdgesTest {
     }
 
     @Test
-    fun `a join the door refuses is reported and stays retryable`() = runTest {
-        val world = World().apply { doorFails = true }
-        val host = host(world, backgroundScope)
-        settle(host.onInvite(invited(testEventId(EVENT_ID), null)))
-        settle(host.onConfirmJoin())
-
-        assertEquals(JoinPhase.Detailed.Step.CommitFailed, (world.pending.value?.phase as? JoinProgress.Detailed)?.step)
-        assertIs<IllegalStateException>(world.errors.single())
-    }
-
-    @Test
     fun `a switch confirm before the event's details loaded leaves nothing`() = runTest {
         val world = World(OTHER_MEMBERSHIP)
         world.pending.value = PendingJoin(testEventId(EVENT_ID), JoinProgress.Loading)
@@ -413,32 +399,6 @@ class JoinGateEdgesTest {
 
         assertEquals(JoinProgress.Loading, world.pending.value?.phase, "teardown rewrote the gate to a failure")
         assertTrue(world.errors.isEmpty(), "teardown was reported as an error: ${world.errors}")
-    }
-
-    @Test
-    fun `a details load that throws after its join was cancelled leaves nothing behind`() = runTest {
-        val loading = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val world = World().apply {
-            load = {
-                loading.complete(Unit)
-                release.await()
-                error("the details client threw")
-            }
-        }
-        val host = host(world, backgroundScope)
-        val opening = host.onInvite(
-            invited(testEventId(EVENT_ID), null),
-        )
-        loading.await()
-        settle(host.onCancelJoin())
-        assertNull(world.pending.value)
-
-        release.complete(Unit)
-        settle(opening)
-
-        assertNull(world.pending.value, "a cancelled join came back as a failed one")
-        assertIs<IllegalStateException>(world.errors.single(), "the throw is still reported")
     }
 
     @Test

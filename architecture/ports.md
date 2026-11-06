@@ -117,6 +117,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportReport` | `:domain:domain` | `:domain:domain` Failed, Imported | no |
 | `ImportVerdict` | `:domain:domain` | `:domain:domain` Deferred, Imported, Unimportable | no |
 | `Inbound` | `:domain:inbound` | `:domain:host` LiveScreen, ScreenIntents; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
+| `IntentRunner` | `:domain:presentation` | — | no |
 | `InterruptedImportVerdict` | `:domain:domain` | `:domain:domain` Clear, Leave, Settle | no |
 | `InviteLinkVerdict` | `:domain:domain` | `:domain:domain` Invite, KeyUnreadable, NotAnInvite | no |
 | `InviteRead` | `:domain:query` | `:domain:presentation` NoInvite; `:domain:query` EventKeyQuery | no |
@@ -135,6 +136,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Landed` | `:domain:data` | `:domain:data` Kept, NotKept | no |
 | `Landing` | `:domain:data` | `:domain:data` Plain, Sealed | no |
 | `LastRegistration` | `:domain:domain` | `:domain:domain` None, Recorded, Unavailable | no |
+| `LastRung` | `:domain:presentation` | `:domain:presentation` Settled | no |
 | `LeaveFact` | `:domain:data` | `:domain:data` Confirmed, Unanswered | no |
 | `LeaveOutcome` | `:domain:application` | `:domain:application` Left | no |
 | `LeaveResult` | `:domain:data` | `:domain:data` Failed, Left, NotJoined | no |
@@ -249,6 +251,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RowTransition` | `:domain:data` | `:domain:data` Gone, Superseded, Transitioned, Unavailable | no |
 | `RowsLook` | `:domain:query` | `:domain:query` Read, Refused | no |
 | `RowsRead` | `:domain:data` | `:domain:data` Read, Unavailable | no |
+| `Rung` | `:domain:presentation` | `:domain:presentation` KeyLost, NeedsAccess, NoNetwork, NotStarted, NothingMoves, ServiceFailing, Unattested, VerificationFailing | no |
 | `Running` | `:domain:inbound` | `:domain:scheduling` Expirable; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:ports` | `:domain:ports` Refused, Scheduled, Unsupported | no |
 | `SealOutcome` | `:domain:data` | `:domain:data` Failed, Sealed | no |

@@ -606,15 +606,19 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `a change that did not land shows the setting in effect and says so`() {
-        // The controls never hold a value that is not saved: the album goes back off, and the settings say why.
-        val spy = Spy().apply { reconfigureOutcome = SettingsResult.SaveFailed }
-        return onHost(spy) { host ->
-            host.surfaces.onOpenReconfigure()
-            host.reconfigureForm()
-            host.form.onSaveToAlbum(SwitchTo.ON)
-            val failed = host.stateWhere("the failed change") { it.settings()?.saveFailed == true }
-            assertEquals(false, failed.settings()?.range?.saveToAlbum, "the control shows the setting still in effect")
-            assertEquals(1, spy.reconfigures.size)
+        // The controls never hold a value that is not saved: the album goes back off, and the settings say why — whether
+        // the save failed or the range was refused.
+        for (answer in listOf(SettingsResult.SaveFailed, SettingsResult.Refused)) {
+            val spy = Spy().apply { reconfigureOutcome = answer }
+            onHost(spy) { host ->
+                host.surfaces.onOpenReconfigure()
+                host.reconfigureForm()
+                host.form.onSaveToAlbum(SwitchTo.ON)
+                val failed = host.stateWhere("the failed change") { it.settings()?.saveFailed == true }
+                val shown = failed.settings()?.range?.saveToAlbum
+                assertEquals(false, shown, "the control shows the setting still in effect")
+                assertEquals(1, spy.reconfigures.size)
+            }
         }
     }
 

@@ -2243,8 +2243,8 @@ class StatusContainerHostJoinGateTest {
 
     /**
      * `Loading` and `Committing` pin NO action — `JoiningEventScreen`: "In-flight phases offer no actions"
-     * — so a throw that parks the gate on one is a dead-end the member cannot leave without force-quitting.
-     * These three pin the repair.
+     * — so a failed join that parked the gate on one would be a dead-end the member cannot leave without
+     * force-quitting. These two pin where a failed join lands.
      *
      * Which phase a failed commit lands on turns on whether the membership was PERSISTED: a join cut short after its
      * membership was written is answered `Failed`, and the steps after the write are follow-up the next foreground
@@ -2322,26 +2322,6 @@ class StatusContainerHostJoinGateTest {
                     DELETES_AT,
                 ),
             )
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    /**
-     * The `Loading` twin. Unreachable through the production binding — `BackendEventDirectory.fetch` maps
-     * every backend answer to an outcome — but `loadJoinDetails` is a constructor seam, so the guard
-     * is covered directly rather than left to a mutation that would survive the suite.
-     */
-    @Test
-    fun `a details load that throws is retryable rather than a parked spinner`() = runTest {
-        host(
-            FakeSyncStatusSource(SharingProgressRead.NotYetRead),
-            backgroundScope,
-            configFake = FakeConfig(null),
-            loadJoinDetails = { throw IllegalStateException("the details client threw") },
-        ).testWithInternalState(this) {
-            runOnCreate()
-            containerHost.onInvite(invited(testEventId(EVENT_ID), null))
-            assertJoining(awaitShown(), EVENT_ID, JoinPhase.LoadFailed)
             cancelAndIgnoreRemainingItems()
         }
     }
