@@ -32,19 +32,20 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.snapsync.control.Verifies
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.presentation.onIntent
+import app.snapsync.query.RequestStatus
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.calendar_next_month
@@ -112,17 +113,17 @@ class CreateFlowTest {
 
     @Test
     fun `a create failure shows below Create in place of the scan hint`() =
-        createTest(ContainerRig(creation = failed(CreationFailureReason.SERVER))) { _ ->
+        createTest(ContainerRig(creation = failed(CreateResult.Unverified))) { _ ->
             onNodeWithText(str(Res.string.message_create_failed)).assertExists()
             onNodeWithText(str(Res.string.create_join_hint)).assertDoesNotExist()
         }
 
     @Test
     fun `a refused create says which part the service refused`() {
-        val creation = failed(CreationFailureReason.INVALID_NAME)
+        val creation = failed(CreateResult.InvalidName)
         createTest(ContainerRig(creation = creation)) { rig ->
             onNodeWithText(str(Res.string.message_create_name_refused)).assertExists()
-            creation.value = CreationStatus.Failed(CreationFailureReason.INVALID_WINDOW)
+            creation.value = RequestStatus.Done(RequestId(1), CreateResult.InvalidWindow)
             awaitState(rig) { it.create?.error == ScreenMessage.CREATE_DATES_REFUSED }
             onNodeWithText(str(Res.string.message_create_dates_refused)).assertExists()
         }
@@ -242,17 +243,17 @@ class CreateFlowTest {
         // Capability `create-event`, "A failed create keeps what the host entered". The form gives way to the in-flight
         // screen while the create runs; the clock moves meanwhile, so a draft rebuilt from scratch would show a
         // DIFFERENT start and no end.
-        val creation = kotlinx.coroutines.flow.MutableStateFlow<CreationStatus>(CreationStatus.Idle)
+        val creation = kotlinx.coroutines.flow.MutableStateFlow<RequestStatus<CreateResult>>(RequestStatus.Idle)
         createTest(ContainerRig(creation = creation)) { rig ->
             completeForm(rig, "My Party")
             onNodeWithText(str(Res.string.create_button)).performClick()
             awaitFired(rig, "create:My Party")
 
-            creation.value = CreationStatus.InFlight
+            creation.value = RequestStatus.InFlight(RequestId(1))
             awaitState(rig) { it.layer == Layer.CreatingEvent }
             // Still before the range's end (8 July 13:00), so the retry is not asked how long others may join.
             rig.clock.instant = Instant.parse("2026-07-08T08:30:00Z")
-            creation.value = CreationStatus.Failed(CreationFailureReason.SERVER)
+            creation.value = RequestStatus.Done(RequestId(1), CreateResult.Unverified)
             awaitState(rig) { it.create?.error == ScreenMessage.CREATE_FAILED }
 
             onNodeWithText(str(Res.string.message_create_failed)).assertExists()
@@ -451,7 +452,7 @@ class CreateFlowTest {
     @Test
     fun `offline Create cannot be tapped and the line below it says so`() =
         createTest(
-            ContainerRig(network = NetworkAccess.Offline, creation = failed(CreationFailureReason.SERVER)),
+            ContainerRig(network = NetworkAccess.Offline, creation = failed(CreateResult.Unverified)),
         ) { rig ->
             completeForm(rig, "Party")
             onNodeWithText(str(ComponentRes.string.network_offline)).assertExists()
@@ -468,8 +469,8 @@ class CreateFlowTest {
 
     // ---- fixtures ---------------------------------------------------------------------------------------------------
 
-    private fun failed(reason: CreationFailureReason) =
-        kotlinx.coroutines.flow.MutableStateFlow<CreationStatus>(CreationStatus.Failed(reason))
+    private fun failed(result: CreateResult) =
+        kotlinx.coroutines.flow.MutableStateFlow<RequestStatus<CreateResult>>(RequestStatus.Done(RequestId(1), result))
 
     /** The name field's text as shown. */
     private fun ComposeUiTest.nameShown(): String =

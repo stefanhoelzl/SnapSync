@@ -1,15 +1,17 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.event.CreateEvent
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.ShareRequest
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
-import app.snapsync.model.EventCreator
 import app.snapsync.model.outcome
 import app.snapsync.query.RequestStatusSink
 import app.snapsync.scheduling.BackgroundEntryPoint
@@ -26,12 +28,21 @@ import app.snapsync.services.platform.SystemSurfaces
 // put on the main thread; nothing acts on its answer, but a refusal is logged, because the member then tapped and
 // nothing happened (`docs/architecture.md`, "Absence is never silent").
 
-/** The member asked to create an event: minted, then routed into the join gate a scanned invite takes. */
-class OnCreateTapped(runtime: Runtime, private val creator: EventCreator) : BackgroundEntryPoint<CreateRequest>(
-    runtime,
-) {
+/**
+ * The member asked to create an event: minted, and answered on the creation status with its id and key — which the
+ * screen hands to the join gate a scanned invite takes.
+ */
+class OnCreateTapped(
+    runtime: Runtime,
+    private val create: CreateEvent,
+    private val statuses: RequestStatusSink<CreateResult>,
+) : BackgroundEntryPoint<CreateRequest>(runtime) {
+    @OptIn(EntryPointCall::class)
     override suspend fun run(arg: CreateRequest, on: Run) = on.steps {
-        required { creator.create(arg) }
+        statuses.begun(arg.id)
+        ensure("answer") { statuses.settle(arg.id, CreateResult.Failed(ServiceFault.UNREACHABLE)) }
+        val result = required { create(arg) }
+        required { statuses.done(arg.id, result) }
     }
 }
 

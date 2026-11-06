@@ -32,8 +32,18 @@ class KeyRestoreRequest(val id: RequestId, val key: EventKey)
 /** A change of the device's mobile-data choice the member made: [id] is answered on the mobile-data status. */
 class MobileDataRequest(val id: RequestId, val choice: MobileDataChoice)
 
-/** An event the member asked to create, [name] over [startsAt]–[endsAt], others joining until [openUntil]. */
-class CreateRequest(val name: String, val startsAt: EventStart, val endsAt: EventEnd, val openUntil: OpenUntil?)
+/**
+ * An event the member asked to create, [name] over [startsAt]–[endsAt], others joining until [openUntil], the range
+ * picked in [zone] (its id — for the event page alone): [id] is answered on the creation status.
+ */
+class CreateRequest(
+    val id: RequestId,
+    val name: String,
+    val startsAt: EventStart,
+    val endsAt: EventEnd,
+    val openUntil: OpenUntil?,
+    val zone: String,
+)
 
 /** The platform's share sheet asked for, carrying [text], titled [title] where the platform shows a title. */
 class ShareRequest(val text: String, val title: String)

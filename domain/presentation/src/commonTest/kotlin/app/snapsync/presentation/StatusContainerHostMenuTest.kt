@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -8,7 +9,6 @@ import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.TimestampText
 import app.snapsync.model.BuildLabel
@@ -16,6 +16,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.query.RequestStatus
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AppLink
@@ -71,7 +72,7 @@ class StatusContainerHostMenuTest {
 
     private class World {
         val config = MutableStateFlow<EventConfig?>(MEMBERSHIP)
-        val creation = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
+        val creation = MutableStateFlow<RequestStatus<CreateResult>>(Creating.Idle)
         val links = mutableListOf<String>()
         val reports = mutableListOf<String>()
         var outcome: suspend () -> ReportOutcome = { ReportOutcome.SENT }
@@ -218,7 +219,7 @@ class StatusContainerHostMenuTest {
         onHost(world) { host, _ ->
             host.onIntent(UiIntent.MenuOpen)
             host.stateWhere("menu open on the create layer") { it.layer is Layer.CreateEvent && it.overlays.menuOpen }
-            world.creation.value = CreationStatus.InFlight
+            world.creation.value = Creating.InFlight
             host.stateWhere(
                 "create in flight, menu masked",
             ) { it.layer == Layer.CreatingEvent && !it.overlays.menuOpen }

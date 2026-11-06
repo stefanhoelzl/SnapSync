@@ -40,8 +40,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CountRead` | `:domain:data` | `:domain:data` Counted, Unavailable | no |
 | `CrashReporter` | `:domain:ports` | `:adapter:generic:mock` InMemoryCrashReporter, Recording; `:adapter:generic:sentry` SentryCrashReporter, SettledStart; `:test:contracts` CrashReporterProxy | yes |
 | `CreateAnswer` | `:domain:data` | `:domain:data` Created, Failed, Full, NotNow, Unaddressed, Unverified, Withheld | no |
-| `CreateOutcome` | `:domain:model` | `:domain:model` Created, InvalidName, InvalidWindow, Transient, Unverified | no |
-| `CreationStatus` | `:domain:feature` | `:domain:feature` Failed, Idle, InFlight | no |
+| `CreateResult` | `:domain:domain` | `:domain:domain` Created, Failed, InvalidName, InvalidWindow, Unverified | no |
 | `Credential` | `:domain:data` | `:domain:data` AttestingCredential, DropOnlyCredential; `:domain:services` ScriptedCredential; `:test:contracts` HeldCredential; `:test:data` Gated, ScriptedCredential | yes |
 | `CredentialStore` | `:domain:data` | `:domain:data` CachedCredentialStore, SecureCredentialStore; `:test:data` ScriptedStore | yes |
 | `CredentialVerdict` | `:domain:domain` | `:domain:domain` Answered, Rejected | no |
@@ -77,8 +76,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EnterResult` | `:domain:data` | `:domain:data` AlreadyJoined, Entered, Failed, JoinedElsewhere | no |
 | `EntryEvent` | `:domain:ports` | `:domain:ports` Answered, Delivered, Done | no |
 | `EntryEvents` | `:domain:ports` | `:adapter:generic:app` NoEntryEvents; `:adapter:generic:mock` TellingEntryEvents; `:domain:scheduling` RecordingEntryEvents; `:test:contracts` EntryEventsProxy | no |
-| `EventCreation` | `:domain:services` | `:domain:services` BackendEventCreation; `:test:feature` FakeClient | yes |
-| `EventCreator` | `:domain:model` | `:domain:feature` CreateEvent; `:domain:presentation` SpyCreator | no |
 | `EventLookupFact` | `:domain:domain` | `:domain:domain` Found, NotFound, Unanswered | no |
 | `EventNameVerdict` | `:domain:domain` | `:domain:domain` Blank, Ok, TooLong | no |
 | `EventPort` | `:domain:ports` | — | no |

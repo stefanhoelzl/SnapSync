@@ -2,6 +2,7 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -12,8 +13,6 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
@@ -21,6 +20,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
@@ -77,7 +77,7 @@ class StatusContainerHostNetworkTest {
         config: EventConfig? = STARTED,
         permission: GalleryAccess = GalleryAccess.GRANTED,
         attested: Boolean = true,
-        creation: CreationStatus = CreationStatus.Idle,
+        creation: RequestStatus<CreateResult> = Creating.Idle,
         load: suspend (String) -> JoinDetails = { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) },
         scope: CoroutineScope = backgroundScope,
         progress: SyncProgress = SyncProgress(0, 0, 0, 0, false, null),
@@ -242,7 +242,7 @@ class StatusContainerHostNetworkTest {
     @Test
     fun `a failed create's message is kept under the notice and returns with the network`() = runTest {
         val network = FakeNetwork(NetworkAccess.Offline)
-        val host = host(network, config = null, creation = CreationStatus.Failed(CreationFailureReason.SERVER))
+        val host = host(network, config = null, creation = Creating.answered(CreateResult.Unverified))
         driving(host) {
             assertEquals(
                 Layer.CreateEvent(
@@ -271,7 +271,7 @@ class StatusContainerHostNetworkTest {
             host(
                 FakeNetwork(NetworkAccess.Offline),
                 config = null,
-                creation = CreationStatus.InFlight,
+                creation = Creating.InFlight,
             ).screen.value.layer,
         )
     }

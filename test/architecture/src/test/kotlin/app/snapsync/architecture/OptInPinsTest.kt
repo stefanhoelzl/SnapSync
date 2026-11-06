@@ -95,7 +95,7 @@ class OptInPinsTest {
             "AppProcessOnly" to Pin(2, "the app's download store: its read-write file, the one writer and migrator"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/TapEntryPoints.kt" to mapOf(
-            "EntryPointCall" to Pin(1, "the bug report's run: the dump collected and sent, as its tap's work"),
+            "EntryPointCall" to Pin(2, "the create's and the bug report's runs: the event minted, the dump collected and sent"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/UploadEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(

@@ -92,5 +92,4 @@ internal fun servicesOver(
     BackendServices(
         BackendGateway(exchangeOver(transport), ScriptedCredential(null)),
         identityOf("D", store),
-        zone = { null },
     )

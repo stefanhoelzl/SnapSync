@@ -1,11 +1,11 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
+import app.snapsync.query.RequestStatus
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.UiIntent
@@ -37,7 +37,7 @@ class CreateFormClockTest {
     fun `each return to the foreground keeps the draft and only a long absence starts a fresh one`() = runTest {
         // Capability `create-event`, "A long absence starts a fresh draft".
         val foreground = MutableStateFlow(ForegroundReturn.NONE)
-        val failed = CreationStatus.Failed(CreationFailureReason.SERVER)
+        val failed = Creating.answered(CreateResult.Unverified)
         host(backgroundScope, { NOON }, failed, foreground).testWithInternalState(this) {
             runOnCreate()
             containerHost.create.onName("Party")
@@ -79,7 +79,7 @@ class CreateFormClockTest {
     private fun host(
         scope: CoroutineScope,
         now: () -> Instant,
-        creation: CreationStatus = CreationStatus.Idle,
+        creation: RequestStatus<CreateResult> = Creating.Idle,
         foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
     ) = TestCommands().let { commands ->
         StatusContainerHost(

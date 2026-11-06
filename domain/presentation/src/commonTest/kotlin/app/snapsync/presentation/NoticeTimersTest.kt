@@ -2,12 +2,12 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.report.ReportOutcome
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
+import app.snapsync.query.RequestStatus
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
 import app.snapsync.ui.state.ReportNotice
@@ -63,7 +63,7 @@ class NoticeTimersTest {
 
     private fun host(
         scope: CoroutineScope,
-        creation: CreationStatus = CreationStatus.Idle,
+        creation: RequestStatus<CreateResult> = Creating.Idle,
         report: suspend () -> ReportOutcome = { ReportOutcome.SENT },
     ) = TestCommands(sendDiagnostics = { _, _ -> report() }).let { commands ->
         StatusContainerHost(
@@ -122,7 +122,7 @@ class NoticeTimersTest {
 
     @Test
     fun `a rejected link's message is told over a failed create's — which returns once it clears`() = onTimers { timers ->
-        val host = host(timers.scope, CreationStatus.Failed(CreationFailureReason.INVALID_NAME))
+        val host = host(timers.scope, Creating.answered(CreateResult.InvalidName))
         assertEquals(ScreenMessage.CREATE_NAME_REFUSED, host.screen.value.createError())
 
         timers.openBadLink(host)

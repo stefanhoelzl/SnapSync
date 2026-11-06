@@ -2,6 +2,7 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
@@ -11,14 +12,13 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.feature.creation.readmodel.CreationFailureReason
-import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
+import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
@@ -91,7 +91,7 @@ class ServiceFaultReductionTest {
         trust: Verified = Verified(),
         config: EventConfig? = MEMBERSHIP,
         snapshot: SyncStatus = WAITING,
-        creation: CreationStatus = CreationStatus.Idle,
+        creation: RequestStatus<CreateResult> = Creating.Idle,
         pending: PendingJoin? = null,
         load: suspend (String) -> JoinDetails = { FOUND },
         commit: suspend () -> JoinCommit = { JoinCommit.Committed },
@@ -200,7 +200,7 @@ class ServiceFaultReductionTest {
 
     @Test
     fun a_create_the_service_failed_says_which_way() = runTest {
-        fun error(creation: CreationStatus, attestFault: ServiceFault? = null) =
+        fun error(creation: RequestStatus<CreateResult>, attestFault: ServiceFault? = null) =
             assertIs<Layer.CreateEvent>(
                 host(
                     backgroundScope,
@@ -211,14 +211,14 @@ class ServiceFaultReductionTest {
             ).error
         assertEquals(
             ScreenMessage.SERVICE_TROUBLE,
-            error(CreationStatus.Failed(CreationFailureReason.SERVER, ServiceFault.TROUBLE)),
+            error(Creating.answered(CreateResult.Failed(ServiceFault.TROUBLE))),
         )
         assertEquals(
             ScreenMessage.SERVICE_UNREACHABLE,
-            error(CreationStatus.Failed(CreationFailureReason.UNVERIFIED), attestFault = ServiceFault.UNREACHABLE),
+            error(Creating.answered(CreateResult.Unverified), attestFault = ServiceFault.UNREACHABLE),
             "refused for want of a proof the service could not be reached for",
         )
-        assertEquals(ScreenMessage.CREATE_FAILED, error(CreationStatus.Failed(CreationFailureReason.UNVERIFIED)))
+        assertEquals(ScreenMessage.CREATE_FAILED, error(Creating.answered(CreateResult.Unverified)))
     }
 
     // ── the join screen ──────────────────────────────────────────────────────────────────────────────

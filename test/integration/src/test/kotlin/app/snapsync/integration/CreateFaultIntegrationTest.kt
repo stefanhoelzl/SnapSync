@@ -180,8 +180,12 @@ class CreateFaultIntegrationTest {
             neverScreen<Layer.CreateEvent> { it.error == null }
         }
 
+        // The next attempt goes ahead, and the message goes with it: the join gate opens over the event it created.
         whenever { createAgain() }
-        then { screen<Layer.CreatingEvent>() }
+        then {
+            screen<Layer.JoiningEvent>()
+            neverScreen<Layer.CreateEvent> { it.error != null }
+        }
     }
 
     @Test

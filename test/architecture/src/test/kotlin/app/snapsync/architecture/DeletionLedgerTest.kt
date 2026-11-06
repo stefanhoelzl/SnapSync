@@ -504,6 +504,11 @@ class DeletionLedgerTest {
             declared(files, """class ShareableCount""" + "Query\\b").forEach {
                 add("the shareable count as a query in $it (a lookup — 4.9)")
             }
+            val creation = """(class|interface|enum class|data class) (Creation""" + "Status|CreationFailure" + "Reason|Minted" +
+                "Event|Event" + "Creator|BackendEvent" + "Creation)\\b"
+            declared(files, creation).forEach {
+                add("the create before its request in $it (a create is answered on its status — 4.9)")
+            }
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
     }
