@@ -13,6 +13,7 @@ import app.snapsync.application.membership.EnterMembership
 import app.snapsync.application.membership.EnterOutcome
 import app.snapsync.application.membership.LeaveEvent
 import app.snapsync.application.membership.LeaveOutcome
+import app.snapsync.application.membership.LoadShareSet
 import app.snapsync.application.membership.ReconfigureEvent
 import app.snapsync.application.membership.ReconfigureOutcome
 import app.snapsync.application.membership.RefreshMembership
@@ -52,7 +53,6 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.upload.UploaderChange
-import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.query.membership.MembershipQuery
@@ -191,7 +191,7 @@ class OnRenameRequested(
  */
 class Joining(
     private val transition: MembershipTransition,
-    private val shareSet: ShareSetLoad,
+    private val shareSet: LoadShareSet,
     private val forgetOtherEvents: ForgetOtherEvents,
     private val recognize: RecognizeReceivedPhotos,
     private val enter: EnterMembership,
@@ -203,7 +203,7 @@ class Joining(
         ensure("transition") { transition.end() }
         required { transition.begin() }
         // The share set before the membership: no cycle ever sees the new membership over the previous one's ledger.
-        required { shareSet.load(enrolled.membership.event.id) }
+        required { shareSet(enrolled.membership.event.id) }
         // The photos an earlier install received are recognised before any uploader sees the membership — against
         // every photo of the event, after forgetting which photos were any other event's.
         isolated("forget other events") { forgetOtherEvents(enrolled.membership) }

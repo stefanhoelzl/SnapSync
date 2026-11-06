@@ -209,7 +209,9 @@ coverage {
         integration(instructions = 86, branches = 64)
     }
     ":domain:application" {
-        unit(alsoCoveredBy = listOf(":test:data"))
+        // `:test:feature` beside `:test:data` since the join-time load moved here (4.9): its suite runs over the
+        // feature tests' ledger and scripted backend.
+        unit(alsoCoveredBy = listOf(":test:data", ":test:feature"))
         // 95/85 → 87/61 in phase 4.2 (membership): the membership's use cases arrived, and their rare answers — a
         // refusal no screen can produce (a range or a key the join screen already refused), a write another road
         // superseded — are their unit suites' (`:test:data`, zero gate), not the integration surface's. → 86 when the
