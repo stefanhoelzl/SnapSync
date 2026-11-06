@@ -39,6 +39,7 @@ import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.TimeLeft
+import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import app.snapsync.ui.state.step
 import kotlinx.coroutines.CompletableDeferred
@@ -1653,8 +1654,8 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         host(FakeSyncStatusSource(), backgroundScope, permission = permission, requester = requester)
             .testWithInternalState(this) {
-                containerHost.access.onRequestPermission()
-                containerHost.access.onOpenSettings()
+                containerHost.onIntent(UiIntent.RequestPermission)
+                containerHost.onIntent(UiIntent.OpenSettings)
             }
         advanceUntilIdle()
 
@@ -2165,11 +2166,11 @@ class StatusContainerHostJoinGateTest {
             runOnCreate()
             containerHost.onInvite(invited(testEventId(EVENT_ID), null))
             skipItems(1)
-            containerHost.form.onShareOn(SwitchTo.OFF)
-            containerHost.form.onReceiveOn(SwitchTo.OFF)
+            containerHost.onIntent(UiIntent.ShareOn(SwitchTo.OFF))
+            containerHost.onIntent(UiIntent.ReceiveOn(SwitchTo.OFF))
             containerHost.onConfirmJoin()
             // A later intent lands only after the confirm ran (intents run in order), so this proves it did nothing.
-            containerHost.form.onShareOn(SwitchTo.ON)
+            containerHost.onIntent(UiIntent.ShareOn(SwitchTo.ON))
             do { val s = awaitShown() } while ((s.layer as? Layer.JoiningEvent)?.range?.shareOn != true)
             cancelAndIgnoreRemainingItems()
         }
@@ -2374,7 +2375,7 @@ class StatusContainerHostJoinGateTest {
                 val throwable = withTimeout(LIVENESS_TIMEOUT) { log.awaitError() }.cause
                 assertEquals(boom, throwable, "the throwable must be reported, not swallowed")
 
-                host.access.onRequestPermission()
+                host.onIntent(UiIntent.RequestPermission)
                 withTimeout(LIVENESS_TIMEOUT) { laterCommandRan.await() }
 
                 assertTrue(scope.isActive, "the composition scope must survive")

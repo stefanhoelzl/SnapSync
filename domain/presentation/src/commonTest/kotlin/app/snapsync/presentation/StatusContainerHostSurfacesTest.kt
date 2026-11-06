@@ -36,6 +36,7 @@ import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SwitchTo
+import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import app.snapsync.ui.state.step
 import kotlinx.coroutines.CoroutineScope
@@ -237,7 +238,7 @@ class StatusContainerHostSurfacesTest {
         // nothing the member had chosen for it.
         val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(config = config) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.stateWhere("the settings surface") { it.onSettings() }
 
             config.value = CONFIG.copy(eventId = testEventId("22222222-2222-4222-8222-222222222222"), name = "Trip")
@@ -263,7 +264,7 @@ class StatusContainerHostSurfacesTest {
             )
         }
         return onHost(config = config, joinDetails = details, onCommitJoin = { config.value = CONFIG }) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.stateWhere("the settings surface") { it.onSettings() }
 
             config.value = null
@@ -294,13 +295,13 @@ class StatusContainerHostSurfacesTest {
                 if (range.from.at == eventStart) 5 else 1
             },
         ) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.stateWhere("the event-start count") { it.reconfigureCount() == ShareCount.Ready(5) }
 
             // From now starts later than the whole event: it is asked about, and counted once it applies.
-            host.form.onRangePreset(RangeChoice.FROM_NOW)
+            host.onIntent(UiIntent.RangePreset(RangeChoice.FROM_NOW))
             host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
-            host.settings.onConfirmStopSharing()
+            host.onIntent(UiIntent.ConfirmStopSharing)
             host.stateWhere("the recount for From now") { it.reconfigureCount() == ShareCount.Ready(1) }
             assertEquals(2, asked.distinct().size, "each distinct range is counted, and nothing else")
         }
@@ -353,14 +354,14 @@ class StatusContainerHostSurfacesTest {
                 3
             },
         ) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.stateWhere("the count") { it.reconfigureCount() == ShareCount.Ready(3) }
-            host.form.onShareOn(SwitchTo.OFF)
+            host.onIntent(UiIntent.ShareOn(SwitchTo.OFF))
             host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
-            host.settings.onConfirmStopSharing()
+            host.onIntent(UiIntent.ConfirmStopSharing)
             host.stateWhere("sharing off") { it.settings()?.range?.shareOn == false }
             // With nothing shared a range withdraws nothing, so it applies without asking — and costs no read.
-            host.form.onRangePreset(RangeChoice.FROM_NOW)
+            host.onIntent(UiIntent.RangePreset(RangeChoice.FROM_NOW))
             awaitReconfigures(spy, 2)
             host.stateWhere("the new range shown") { it.settings()?.range?.preset == RangeChoice.CUSTOM }
             assertEquals(1, asked, "a hidden row must not cost a photo-library read")
@@ -371,7 +372,7 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `opening an overlay raises only its own flag`() = onHost { host ->
-        host.surfaces.onRenameOpen()
+        host.onIntent(UiIntent.RenameOpen)
         assertEquals(
             Overlays(renaming = true),
             host.stateWhere("the rename sheet") { it.overlays.renaming }.overlays,
@@ -380,13 +381,13 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `the leave confirmation and the diagnostic sheet each raise only their own`() = onHost { host ->
-        host.surfaces.onConfirmLeaveOpen()
+        host.onIntent(UiIntent.ConfirmLeaveOpen)
         assertEquals(
             Overlays(confirmingLeave = true),
             host.stateWhere("the leave confirmation") { it.overlays.confirmingLeave }.overlays,
         )
 
-        host.surfaces.onReportBugOpen()
+        host.onIntent(UiIntent.ReportBugOpen)
         assertEquals(
             Overlays(confirmingLeave = true, reportingBug = true),
             host.stateWhere("the diagnostic sheet") { it.overlays.reportingBug }.overlays,
@@ -395,14 +396,14 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `dismissing an overlay lowers only its own flag`() = onHost { host ->
-        host.surfaces.onRenameOpen()
-        host.surfaces.onConfirmLeaveOpen()
-        host.surfaces.onReportBugOpen()
+        host.onIntent(UiIntent.RenameOpen)
+        host.onIntent(UiIntent.ConfirmLeaveOpen)
+        host.onIntent(UiIntent.ReportBugOpen)
         host.stateWhere("all three open") {
             it.overlays == Overlays(renaming = true, confirmingLeave = true, reportingBug = true)
         }
 
-        host.surfaces.onRenameDismiss()
+        host.onIntent(UiIntent.RenameDismiss)
         assertEquals(
             Overlays(confirmingLeave = true, reportingBug = true),
             host.stateWhere("the rename sheet dismissed") { !it.overlays.renaming }.overlays,
@@ -417,7 +418,7 @@ class StatusContainerHostSurfacesTest {
         // leave below resets the cell instead of relying on this.
         val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(config = config) { host ->
-            host.surfaces.onRenameOpen()
+            host.onIntent(UiIntent.RenameOpen)
             host.stateWhere("the rename sheet") { it.overlays.renaming }
 
             config.value = null
@@ -429,10 +430,10 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `the invite's QR code opens on request and dismisses touching nothing else`() = onHost { host ->
-        host.surfaces.onQrOpen()
+        host.onIntent(UiIntent.QrOpen)
         assertEquals(Overlays(showingQr = true), host.stateWhere("the QR shown") { it.overlays.showingQr }.overlays)
 
-        host.surfaces.onQrDismiss()
+        host.onIntent(UiIntent.QrDismiss)
         assertEquals(Overlays(), host.stateWhere("the QR dismissed") { !it.overlays.showingQr }.overlays)
     }
 
@@ -442,7 +443,7 @@ class StatusContainerHostSurfacesTest {
         // the moment the deletion is learned — while the same membership is still on screen with Leave.
         val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(config = config) { host ->
-            host.surfaces.onQrOpen()
+            host.onIntent(UiIntent.QrOpen)
             host.stateWhere("the QR shown") { it.overlays.showingQr }
 
             config.value = CONFIG.copy(deleted = true)
@@ -462,7 +463,7 @@ class StatusContainerHostSurfacesTest {
         // fake leave does not clear the config, so the layer stays Joined — which is what makes this an
         // assertion about the cell rather than about the mask.
         return onHost { host ->
-            host.surfaces.onRenameOpen()
+            host.onIntent(UiIntent.RenameOpen)
             host.stateWhere("the rename sheet") { it.overlays.renaming }
 
             host.onLeaveEvent()
@@ -476,7 +477,7 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `opening the settings surface seeds the form from the persisted membership`() = onHost { host ->
-        host.surfaces.onOpenReconfigure()
+        host.onIntent(UiIntent.OpenReconfigure)
 
         val form = host.reconfigureForm()
         // Cutoff on the floor and ceiling on the event end → the whole event, the window's own bounds.
@@ -502,9 +503,9 @@ class StatusContainerHostSurfacesTest {
         // rather than overwriting a different membership; a switch never moves the range it does not touch.
         val spy = Spy()
         return onHost(spy) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onSaveToAlbum(SwitchTo.ON)
+            host.onIntent(UiIntent.SaveToAlbum(SwitchTo.ON))
             awaitReconfigures(spy, 1)
             val sent = spy.reconfigures.single()
             assertEquals(
@@ -529,11 +530,11 @@ class StatusContainerHostSurfacesTest {
         val spy = Spy()
         val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(spy, config = config) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onReceiveOn(SwitchTo.OFF)
-            host.form.onReceiveOn(SwitchTo.ON)
-            host.form.onReceiveOn(SwitchTo.OFF)
+            host.onIntent(UiIntent.ReceiveOn(SwitchTo.OFF))
+            host.onIntent(UiIntent.ReceiveOn(SwitchTo.ON))
+            host.onIntent(UiIntent.ReceiveOn(SwitchTo.OFF))
             awaitReconfigures(spy, 3)
             assertEquals(
                 listOf(Direction.UploadOnly, Direction.Both, Direction.UploadOnly),
@@ -548,10 +549,10 @@ class StatusContainerHostSurfacesTest {
         // The membership read can trail a save the use-case just made; a change built on it would undo the one before.
         val spy = Spy().apply { configFollows = false }
         return onHost(spy, config = MutableStateFlow(CONFIG.copy(direction = Direction.DownloadOnly))) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onShareOn(SwitchTo.ON)
-            host.form.onReceiveOn(SwitchTo.OFF)
+            host.onIntent(UiIntent.ShareOn(SwitchTo.ON))
+            host.onIntent(UiIntent.ReceiveOn(SwitchTo.OFF))
             awaitReconfigures(spy, 2)
             // Built on the stale read, the second would be "share nothing, receive nothing".
             assertEquals(listOf(Direction.Both, Direction.UploadOnly), spy.reconfigures.map { it.direction })
@@ -562,11 +563,11 @@ class StatusContainerHostSurfacesTest {
     fun `a switch set to what it shows saves nothing`() {
         val spy = Spy()
         return onHost(spy) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onShareOn(SwitchTo.ON)
-            host.form.onSaveToAlbum(switchTo(CONFIG.saveToAlbum))
-            host.form.onReceiveOn(SwitchTo.OFF)
+            host.onIntent(UiIntent.ShareOn(SwitchTo.ON))
+            host.onIntent(UiIntent.SaveToAlbum(switchTo(CONFIG.saveToAlbum)))
+            host.onIntent(UiIntent.ReceiveOn(SwitchTo.OFF))
             awaitReconfigures(spy, 1)
             assertEquals(
                 listOf(Direction.UploadOnly),
@@ -583,9 +584,9 @@ class StatusContainerHostSurfacesTest {
         for (answer in listOf(SettingsResult.SaveFailed, SettingsResult.Refused)) {
             val spy = Spy().apply { reconfigureOutcome = answer }
             onHost(spy) { host ->
-                host.surfaces.onOpenReconfigure()
+                host.onIntent(UiIntent.OpenReconfigure)
                 host.reconfigureForm()
-                host.form.onSaveToAlbum(SwitchTo.ON)
+                host.onIntent(UiIntent.SaveToAlbum(SwitchTo.ON))
                 val failed = host.stateWhere("the failed change") { it.settings()?.saveFailed == true }
                 val shown = failed.settings()?.range?.saveToAlbum
                 assertEquals(false, shown, "the control shows the setting still in effect")
@@ -598,9 +599,9 @@ class StatusContainerHostSurfacesTest {
     fun `closing writes nothing`() {
         val spy = Spy()
         return onHost(spy) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.surfaces.onCancelReconfigure()
+            host.onIntent(UiIntent.CancelReconfigure)
             host.stateWhere("the settings closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
             assertTrue(spy.reconfigures.isEmpty(), "closing reached the reconfigure use-case")
         }
@@ -610,14 +611,14 @@ class StatusContainerHostSurfacesTest {
     fun `switching sharing off asks first and applies only on stop sharing`() {
         val spy = Spy()
         return onHost(spy) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onShareOn(SwitchTo.OFF)
+            host.onIntent(UiIntent.ShareOn(SwitchTo.OFF))
             val asking = host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
             assertEquals(true, asking.settings()?.range?.shareOn, "sharing stays on until the member confirms")
             assertTrue(spy.reconfigures.isEmpty(), "a withdrawal applied before it was confirmed")
 
-            host.settings.onConfirmStopSharing()
+            host.onIntent(UiIntent.ConfirmStopSharing)
             awaitReconfigures(spy, 1)
             assertEquals(Direction.DownloadOnly, spy.reconfigures.single().direction)
             host.stateWhere("the question answered, sharing off") {
@@ -630,15 +631,15 @@ class StatusContainerHostSurfacesTest {
     fun `keep sharing drops the held change`() {
         val spy = Spy()
         return onHost(spy) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onShareOn(SwitchTo.OFF)
+            host.onIntent(UiIntent.ShareOn(SwitchTo.OFF))
             host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
-            host.settings.onKeepSharing()
+            host.onIntent(UiIntent.KeepSharing)
             val kept = host.stateWhere("the question gone") { it.settings()?.askingToStopSharing == false }
             assertEquals(true, kept.settings()?.range?.shareOn)
             // A later change proves the dropped one never ran: it is the only reconfigure.
-            host.form.onSaveToAlbum(switchTo(!CONFIG.saveToAlbum))
+            host.onIntent(UiIntent.SaveToAlbum(switchTo(!CONFIG.saveToAlbum)))
             awaitReconfigures(spy, 1)
             assertEquals(Direction.Both, spy.reconfigures.single().direction)
         }
@@ -650,9 +651,9 @@ class StatusContainerHostSurfacesTest {
         val narrowed = CONFIG.copy(minPhotoDate = CaptureCutoff(timestamp("2026-07-08T00:00:00Z")))
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(narrowed)) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onRangePreset(RangeChoice.EVENT_START)
+            host.onIntent(UiIntent.RangePreset(RangeChoice.EVENT_START))
             awaitReconfigures(spy, 1)
             assertEquals(CONFIG.minPhotoDate, spy.reconfigures.single().from, "widened to the event's start")
 
@@ -670,7 +671,7 @@ class StatusContainerHostSurfacesTest {
         )
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
             // Earlier start (wider), earlier end (narrower): something is withdrawn, so it asks.
             host.form.onRangeCustom(LocalDateTime(2026, 7, 7, 0, 0), LocalDateTime(2026, 7, 10, 0, 0))
@@ -684,9 +685,9 @@ class StatusContainerHostSurfacesTest {
         // Receive-only, receiving off: nothing of the member's is shared, so nothing is withdrawn and nothing asks.
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(CONFIG.copy(direction = Direction.DownloadOnly))) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onReceiveOn(SwitchTo.OFF)
+            host.onIntent(UiIntent.ReceiveOn(SwitchTo.OFF))
             awaitReconfigures(spy, 1)
             assertEquals(Direction.Neither, spy.reconfigures.single().direction)
         }
@@ -696,9 +697,9 @@ class StatusContainerHostSurfacesTest {
     fun `a change for a membership no longer current closes the settings`() {
         val spy = Spy().apply { reconfigureOutcome = SettingsResult.NotCurrent }
         return onHost(spy) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
-            host.form.onSaveToAlbum(SwitchTo.ON)
+            host.onIntent(UiIntent.SaveToAlbum(SwitchTo.ON))
             host.stateWhere("the settings closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
         }
     }
@@ -713,11 +714,11 @@ class StatusContainerHostSurfacesTest {
             config = MutableStateFlow(CONFIG.copy(saveToAlbum = false)),
             albumContents = AlbumContents.Received,
         ) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             val form = host.reconfigureForm()
             assertEquals(AlbumHolds.RECEIVED, form.albumHolds, "the settings know the album is a folder")
             assertEquals(false, form.saveToAlbum, "the stored choice is shown as it was saved")
-            host.form.onSaveToAlbum(SwitchTo.ON)
+            host.onIntent(UiIntent.SaveToAlbum(SwitchTo.ON))
             awaitReconfigures(spy, 1)
             assertEquals(AlbumChoice.SaveToAlbum, spy.reconfigures.single().album)
             val after = host.stateWhere("the album on") { it.settings()?.range?.saveToAlbum == true }
@@ -733,8 +734,8 @@ class StatusContainerHostSurfacesTest {
     fun `with the settings closed a form edit reaches no use-case`() {
         val spy = Spy()
         return onHost(spy) { host ->
-            host.form.onSaveToAlbum(SwitchTo.ON)
-            host.form.onShareOn(SwitchTo.OFF)
+            host.onIntent(UiIntent.SaveToAlbum(SwitchTo.ON))
+            host.onIntent(UiIntent.ShareOn(SwitchTo.OFF))
             host.stateWhere("the joined status") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
             delay(50)
             assertTrue(spy.reconfigures.isEmpty())
@@ -749,11 +750,11 @@ class StatusContainerHostSurfacesTest {
         // so it is asked about first.
         val from = LocalDateTime(2026, 7, 8, 9, 0)
         val until = LocalDateTime(2026, 7, 12, 21, 0)
-        host.surfaces.onOpenReconfigure()
+        host.onIntent(UiIntent.OpenReconfigure)
         host.reconfigureForm()
         host.form.onRangeCustom(from, until)
         host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
-        host.settings.onConfirmStopSharing()
+        host.onIntent(UiIntent.ConfirmStopSharing)
         val shown = host.stateWhere(
             "the custom range",
         ) { it.settings()?.range?.let { f -> f.from == from && f.until == until } == true }
@@ -768,11 +769,11 @@ class StatusContainerHostSurfacesTest {
         )
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             host.reconfigureForm()
             host.form.onRangeCustom(null, LocalDateTime(2026, 7, 11, 21, 0))
             host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
-            host.settings.onConfirmStopSharing()
+            host.onIntent(UiIntent.ConfirmStopSharing)
             awaitReconfigures(spy, 1)
             assertEquals(middle.minPhotoDate, spy.reconfigures.single().from, "the start in effect is kept")
         }
@@ -783,9 +784,9 @@ class StatusContainerHostSurfacesTest {
         val middle = CONFIG.copy(minPhotoDate = CaptureCutoff(timestamp("2026-07-08T09:00:00Z")))
         val spy = Spy()
         return onHost(spy, config = MutableStateFlow(middle)) { host ->
-            host.surfaces.onOpenReconfigure()
+            host.onIntent(UiIntent.OpenReconfigure)
             assertEquals(RangeChoice.CUSTOM, host.reconfigureForm().preset)
-            host.form.onRangePreset(RangeChoice.EVENT_START)
+            host.onIntent(UiIntent.RangePreset(RangeChoice.EVENT_START))
             awaitReconfigures(spy, 1)
             assertEquals(
                 CONFIG.minPhotoDate to CONFIG.maxPhotoDate,

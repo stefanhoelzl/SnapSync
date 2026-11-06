@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.datetime.LocalDateTime
 
 /** The create form's own taps: its name as typed, Create, and the back-dated sheet's answer. */
-class CreateFlow internal constructor(
+internal class CreateFlow(
     private val cells: ScreenCells,
     private val display: Display,
     private val cutoffFormatter: CutoffFormatter,

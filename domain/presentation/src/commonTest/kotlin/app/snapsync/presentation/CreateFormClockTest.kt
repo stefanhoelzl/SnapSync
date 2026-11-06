@@ -38,7 +38,7 @@ class CreateFormClockTest {
         val failed = Creating.answered(CreateResult.Unverified)
         host(backgroundScope, { NOON }, failed, foreground).testWithInternalState(this) {
             runOnCreate()
-            containerHost.create.onName("Party")
+            containerHost.onIntent(UiIntent.CreateName("Party"))
             val named = awaitShown().layer as Layer.CreateEvent
             assertEquals("Party" to 0, named.form.name to named.form.draft)
             // Returns within the limit keep what the host entered.

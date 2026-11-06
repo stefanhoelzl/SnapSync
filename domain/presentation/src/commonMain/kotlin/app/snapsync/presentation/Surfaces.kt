@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.update
  * nothing more. That is the property decision record `add-reconfigure-membership` D4 asked for — a pure navigation act
  * must not cross a flow command — and it still holds now that the answer is state rather than a screen-held flag.
  */
-class SurfaceCommands internal constructor(
+internal class SurfaceCommands(
     private val cells: ScreenCells,
     private val commands: UserCommands,
     private val mobileDataQuery: MobileDataQuery,

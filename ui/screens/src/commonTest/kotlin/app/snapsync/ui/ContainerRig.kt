@@ -136,6 +136,9 @@ internal class ContainerRig(
     val foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
 ) {
     val config = MutableStateFlow(config)
+
+    /** The invite the app was opened with, waiting for the screen until the screen tells it opened. */
+    val invites = MutableStateFlow<InviteLinkVerdict?>(null)
     val permission = MutableStateFlow(permission)
     private val firedCell = MutableStateFlow<List<String>>(emptyList())
     val fired: List<String> get() = firedCell.value
@@ -180,7 +183,7 @@ internal class ContainerRig(
                         this@ContainerRig.config.value?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
                 },
             ),
-            invites = MutableStateFlow(null),
+            invites = invites,
             creation = creation,
             versionRefusal = MutableStateFlow(refusal),
             verification = DeviceVerification(
@@ -209,7 +212,7 @@ internal class ContainerRig(
         scope = scope,
         cutoffFormatter = CutoffFormatter(now = { clock.instant }, zone = TimeZone.UTC),
         commands = UserCommands(
-            inviteOpened = command { _: InviteLinkVerdict -> },
+            inviteOpened = command { _: InviteLinkVerdict -> invites.value = null },
             leave = command { _: Unit ->
                 record("leave")
                 this@ContainerRig.config.value = null

@@ -14,7 +14,7 @@ import kotlinx.datetime.LocalDateTime
  * settings open each one IS the change, applied through [SettingsChanges.change]. They are intents rather than screen
  * state because the screen SHOWS them — and a GROUP because they are one surface's questions.
  */
-class FormEdits internal constructor(
+internal class FormEdits(
     private val cells: ScreenCells,
     private val membership: StateFlow<Membership?>,
     private val settings: SettingsChanges,

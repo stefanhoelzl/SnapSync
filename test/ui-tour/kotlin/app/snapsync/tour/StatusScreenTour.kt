@@ -297,6 +297,9 @@ abstract class StatusScreenTour {
         private val details: suspend (EventId) -> JoinDetails = { OTHER_EVENT },
     ) {
         val config = MutableStateFlow(config)
+
+        /** The invite the app was opened with, waiting for the screen until the screen tells it opened. */
+        val invites = MutableStateFlow<InviteLinkVerdict?>(null)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         /** What the rig answers the membership's requests on — at once, as a core that settles every one does. */
@@ -329,7 +332,7 @@ abstract class StatusScreenTour {
                             this@Rig.config.value?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
                     },
                 ),
-                invites = MutableStateFlow(null),
+                invites = invites,
                 creation = MutableStateFlow(RequestStatus.Idle),
                 versionRefusal = MutableStateFlow(refusal),
                 verification = DeviceVerification(
@@ -360,7 +363,7 @@ abstract class StatusScreenTour {
             scope = scope,
             cutoffFormatter = CUTOFF,
             commands = UserCommands(
-                inviteOpened = command { _: InviteLinkVerdict -> },
+                inviteOpened = command { _: InviteLinkVerdict -> invites.value = null },
                 leave = command { _: Unit -> this@Rig.config.value = null },
                 create = command { _: CreateRequest -> },
                 join = command { r: JoinRequest -> answered(r.id, statuses.join, JoinCommit.Failed()) },
@@ -614,14 +617,14 @@ abstract class StatusScreenTour {
         val rig = Rig(details = { if (++loads == 1) JoinDetails.Unanswered(ServiceFault.UNREACHABLE) else OTHER_EVENT })
         use(rig) { it.layer is Layer.CreateEvent }
         // A failed load, retried; then the gate cancelled.
-        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+        rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
         awaitShown { it.joining?.phase == JoinPhase.LoadFailed }
         onNodeWithText(str(Res.string.retry)).performClick()
         awaitShown(ready)
         onNodeWithText(str(Res.string.cancel)).performClick()
         awaitShown { it.layer is Layer.CreateEvent }
         // The gate again: every edit of its form, then a commit that fails and is retried.
-        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+        rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
         awaitShown(ready)
         // The calendar opened (Custom) and closed unchanged; the quick choices are chips on the screen.
         onNodeWithText(str(ComponentRes.string.share_range_custom)).performClick()
@@ -691,7 +694,7 @@ abstract class StatusScreenTour {
         onNodeWithContentDescription("Close sheet").performTouchInput { click(Offset(centerX, ABOVE_THE_SHEET_PX)) }
         awaitShown { it.joined != null && it.joined?.surface !is JoinedSurface.Reconfigure }
         // A different event's link while joined: the switch, cancelled.
-        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+        rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
         awaitShown { it.joined?.pendingSwitch != null }
         onNodeWithText(str(Res.string.cancel)).performClick()
         awaitShown { it.joined != null && it.joined?.pendingSwitch == null }
@@ -707,7 +710,7 @@ abstract class StatusScreenTour {
         val asked = Rig(config = MEMBERSHIP, permission = PhotoGrant.UNDECIDED)
         use(asked) { it.joined != null }
         onNodeWithText(str(ComponentRes.string.status_allow_access)).performClick()
-        asked.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+        asked.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
         awaitShown { it.joined?.pendingSwitch != null }
         onNodeWithText(str(Res.string.switch_confirm)).performClick()
         awaitShown { it.joining?.eventId == OTHER_ID }

@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.update
  * new range — held to the share-range rule around the event's window. OK takes its span as a custom range ([form]);
  * closing changes nothing.
  */
-class RangePicker internal constructor(
+internal class RangePicker(
     private val cells: ScreenCells,
     private val display: Display,
     private val cutoffFormatter: CutoffFormatter,
