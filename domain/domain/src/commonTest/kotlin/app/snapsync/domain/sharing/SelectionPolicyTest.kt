@@ -94,6 +94,17 @@ class SelectionPolicyTest {
     }
 
     @Test
+    fun `nothing read for a membership that shares nothing is a counted empty discovery`() {
+        val nothing = assertIs<AdmissionVerdict.Discovered>(
+            policy(Direction.DownloadOnly).admit(CandidateSet.NothingShared(now)),
+        ).discovery
+        assertEquals(emptyList(), nothing.admitted)
+        assertEquals(now, nothing.takenAt)
+        assertEquals(DiscoverySource.NOTHING_SHARED, nothing.source)
+        assertEquals(0, nothing.considered)
+    }
+
+    @Test
     fun `a read that could not be made admits nothing and is no discovery`() {
         assertEquals(AdmissionVerdict.NotReadable, policy().admit(CandidateSet.NotReadable))
     }

@@ -97,15 +97,28 @@ class OwnPhotosTest {
     }
 
     @Test
-    fun `a membership that shares nothing reads neither its albums nor the library`() = runTest {
-        val library = library()
-        val read = assertIs<DiscoveryRead.Discovered>(
-            library.own.discover(library.contribution(Direction.DownloadOnly)),
-        )
+    fun `a membership that shares nothing reads nothing and admits a counted empty set, whatever the grant`() = runTest {
+        for (grant in LibraryGrant.entries) {
+            val library = library(grant)
+            val read = assertIs<DiscoveryRead.Discovered>(
+                library.own.discover(library.contribution(Direction.DownloadOnly)),
+                "$grant",
+            )
 
-        assertEquals(emptyList(), read.admittedIds())
-        assertEquals(1, library.walks)
-        assertEquals(emptyList(), library.calls, "null bounds walk nothing, and no album is read")
+            assertEquals(emptyList(), read.admittedIds(), "$grant")
+            assertEquals(DiscoverySource.NOTHING_SHARED, read.discovery.source, "$grant")
+            assertEquals(0, library.walks, "$grant")
+            assertEquals(emptyList(), library.calls, "$grant: neither the library nor an album is read")
+        }
+    }
+
+    @Test
+    fun `a membership that shares nothing needs no record of what was received`() = runTest {
+        val library = library()
+        library.received.handles = HandlesRead.Unavailable("locked")
+
+        val read = library.own.discover(library.contribution(Direction.Neither))
+        assertEquals(emptyList(), assertIs<DiscoveryRead.Discovered>(read).admittedIds())
     }
 
     @Test

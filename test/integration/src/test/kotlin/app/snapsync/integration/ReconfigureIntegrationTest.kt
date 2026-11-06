@@ -5,6 +5,7 @@ import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.TransferEnd
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Layer
@@ -186,6 +187,39 @@ class ReconfigureIntegrationTest {
             advance(STATUS_POLL)
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.Inactive } }
+    }
+
+    /**
+     * A member with no photo access who switches both directions off: nothing of theirs can be read, and nothing needs
+     * to be — a membership that shares nothing counts a zero without a read, so the line says so rather than staying on
+     * its neutral first frame.
+     */
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen shows one status line in a fixed priority",
+        scenario = "Neither sharing nor receiving is said plainly",
+    )
+    fun both_directions_off_without_photo_access_says_so() = behaviour {
+        given {
+            photoAccess(PhotoGrant.NOT_DETERMINED)
+            step(
+                "the join's photo dialog answered with no",
+                act = { library.requestAnswer(PhotoGrant.DENIED) },
+                until = {},
+            )
+            joinedEvent()
+            step("in front, without access", act = { os.foreground() }, until = {
+                screen<Layer.Joined> { it.health is SyncHealth.NeedsAccess }
+                settled { true }
+            })
+        }
+
+        whenever { reconfigure(Choices(direction = Direction.Neither)) }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.Inactive }
+            settled { true }
+        }
     }
 
     private companion object {

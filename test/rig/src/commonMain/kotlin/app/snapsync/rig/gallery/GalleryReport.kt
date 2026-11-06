@@ -99,6 +99,8 @@ class GalleryReport(
         val (facts, selected) = when (val set = read.candidates) {
             is CandidateSet.Walked -> set.assets to false
             is CandidateSet.Selected -> set.assets to true
+            // A non-contributing policy reads nothing at all: there is nothing of the library to report.
+            is CandidateSet.NothingShared -> emptyList<AssetFacts>() to false
             CandidateSet.NotReadable ->
                 return GalleryView(census = census, grant = grant(), policy = null, notReadable = true)
         }

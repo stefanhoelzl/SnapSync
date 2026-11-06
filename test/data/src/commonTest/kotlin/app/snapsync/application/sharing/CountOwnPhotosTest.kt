@@ -4,14 +4,18 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.data.membership.EVENT
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.membership.enrolled
+import app.snapsync.data.membership.event
+import app.snapsync.data.membership.share
 import app.snapsync.data.membership.sharedOver
 import app.snapsync.data.receiving.RecognitionRead
 import app.snapsync.data.sharing.AdmittedPhotos
 import app.snapsync.data.sharing.DURING
 import app.snapsync.data.sharing.Library
 import app.snapsync.data.sharing.ids
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.MintsRecognised
 import app.snapsync.domain.receiving.Recognised
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.ports.LibraryGrant
@@ -58,6 +62,15 @@ class CountOwnPhotosTest {
 
         assertEquals(OwnPhotosCount.NO_MEMBERSHIP, count())
         assertNull(admitted.state.value)
+        assertEquals(0, library.walks)
+    }
+
+    @Test
+    fun `a membership that shares nothing counts its zero at once - nothing read, no recognition awaited`() = runTest {
+        membership.enter(enrolled(event().let { Membership.Active(it, share(it, direction = Direction.DownloadOnly)) }))
+
+        assertEquals(OwnPhotosCount.COUNTED, count())
+        assertEquals(emptySet(), admitted.state.value)
         assertEquals(0, library.walks)
     }
 

@@ -59,12 +59,18 @@ sealed interface CandidateSet {
     /** The member's hand-picked selection. */
     class Selected(val assets: List<AssetFacts>, val takenAt: Timestamp) : CandidateSet
 
+    /**
+     * Nothing was read, and none needed to be: the membership shares nothing, so whatever the grant, the read is the
+     * whole of what it shares from — none of its photos — and admits a counted empty set.
+     */
+    class NothingShared(val takenAt: Timestamp) : CandidateSet
+
     /** Nothing could be read; no admitted set can be stated. */
     data object NotReadable : CandidateSet
 }
 
 /** Where a [Discovery]'s photos came from. */
-enum class DiscoverySource { LIBRARY, SELECTION }
+enum class DiscoverySource { LIBRARY, SELECTION, NOTHING_SHARED }
 
 /** [SelectionPolicy.admit]'s answer. */
 sealed interface AdmissionVerdict {

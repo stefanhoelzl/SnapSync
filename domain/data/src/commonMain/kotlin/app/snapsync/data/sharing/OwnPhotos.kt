@@ -74,21 +74,26 @@ class OwnPhotos(
         return Contribution(SelectionInputs(direction, range, handles, denied), plan)
     }
 
-    /** The read [contribution] is applied to, made: its candidates before admission, and the way to their resources. */
-    suspend fun read(contribution: Contribution): Candidates = when (val plan = contribution.plan) {
-        ReadPlan.Walk -> walked(walk.read(contribution.policy.walkBounds))
-        is ReadPlan.Snapshot -> selected(plan.selection)
-        ReadPlan.NotReadable -> unreadable
+    /**
+     * The read [contribution] is applied to, made: its candidates before admission, and the way to their resources. A
+     * policy that shares nothing reads nothing, whatever the grant — its read is the whole of what it shares from.
+     */
+    suspend fun read(contribution: Contribution): Candidates = when (contribution.policy.contributes) {
+        false -> Candidates(CandidateSet.NothingShared(clock.now()), GalleryResources(gallery))
+        true -> when (val plan = contribution.plan) {
+            ReadPlan.Walk -> walked(walk.read(contribution.policy.walkBounds))
+            is ReadPlan.Snapshot -> selected(plan.selection)
+            ReadPlan.NotReadable -> unreadable
+        }
     }
 
-    /** One read of the member's photos, admitted by [contribution]'s policy as of what was received after the read. */
+    /**
+     * One read of the member's photos, admitted by [contribution]'s policy as of what was received after the read — a
+     * policy that shares nothing admits nothing, with no need to know what was received.
+     */
     suspend fun discover(contribution: Contribution): DiscoveryRead {
         val read = read(contribution)
-        val verdict = when (val handles = received.handles()) {
-            is HandlesRead.Ok -> contribution.policyWith(handles.ids).admit(read.candidates)
-            is HandlesRead.Unavailable -> AdmissionVerdict.NotReadable
-        }
-        return when (verdict) {
+        return when (val verdict = contribution.admit(read.candidates, received.handles())) {
             is AdmissionVerdict.Discovered -> DiscoveryRead.Discovered(verdict.discovery, read.resources)
             AdmissionVerdict.NotReadable -> DiscoveryRead.NotReadable
         }
@@ -141,10 +146,19 @@ class Contribution internal constructor(
 ) {
     val policy: SelectionPolicy = SelectionPolicy.of(inputs)
 
-    /** The same policy, knowing [received] as what this device has received by now. */
-    internal fun policyWith(received: Set<AssetId>): SelectionPolicy = SelectionPolicy.of(
-        SelectionInputs(inputs.direction, inputs.range, received, inputs.inDeniedAlbums),
-    )
+    /**
+     * [candidates], admitted by the policy knowing [received] as what this device has received by now — a record that
+     * cannot be read admits nothing. A policy that shares nothing admits nothing, needing no record at all.
+     */
+    internal fun admit(candidates: CandidateSet, received: HandlesRead): AdmissionVerdict = when (policy.contributes) {
+        false -> policy.admit(candidates)
+        true -> when (received) {
+            is HandlesRead.Ok -> SelectionPolicy.of(
+                SelectionInputs(inputs.direction, inputs.range, received.ids, inputs.inDeniedAlbums),
+            ).admit(candidates)
+            is HandlesRead.Unavailable -> AdmissionVerdict.NotReadable
+        }
+    }
 }
 
 /** [OwnPhotos.discover]'s answer. */
