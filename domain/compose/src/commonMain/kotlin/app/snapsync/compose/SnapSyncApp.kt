@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.application.event.CreateEvent
+import app.snapsync.application.membership.LoadShareSet
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
@@ -18,6 +19,7 @@ import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
+import app.snapsync.data.upload.DeviceListing
 import app.snapsync.data.upload.OsUploader
 import app.snapsync.data.upload.UploaderSwitches
 import app.snapsync.data.version.AppVersionGate
@@ -33,7 +35,6 @@ import app.snapsync.entrypoints.OnCredentialChanged
 import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.links.readmodel.OpenedLinks
-import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
@@ -382,9 +383,11 @@ class AppCore internal constructor(
     /** The link the app was last opened with, until the screen has opened it. */
     val openedLinks: OpenedLinks = OpenedLinks()
 
-    // The join-time load, built in `shareSetLoadFor`. Public for
-    // the world harness, whose operator provision runs this instance rather than a copy.
-    val shareSetLoad: ShareSetLoad by lazy { shareSetLoadFor(services, backend.gateway, appUploader.reset) }
+    // The join-time load: the joined event's rows made its share set from the device's stored-file listing. Public
+    // for the world harness, whose operator provision runs this instance rather than a copy.
+    val shareSetLoad: LoadShareSet by lazy {
+        LoadShareSet(DeviceListing(backend.gateway, services.deviceIdentity), appUploader.reset)
+    }
 
     /** The member's requests of the membership, each answered on its own status. */
     val membershipStatuses: MembershipStatuses = MembershipStatuses()

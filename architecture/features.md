@@ -15,11 +15,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 - files: `OpenedLinks.kt`
 - top-level types: `OpenedLinks (class)`
 
-## `feature/membership`
-
-- files: `ShareSetLoad.kt`
-- top-level types: `ShareSetLoad (class)`
-
 ## `feature/status`
 
 - files: `SyncStatusSource.kt`

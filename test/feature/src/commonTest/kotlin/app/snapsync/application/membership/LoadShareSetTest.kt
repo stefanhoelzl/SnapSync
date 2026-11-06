@@ -1,16 +1,20 @@
-package app.snapsync.feature.membership
+package app.snapsync.application.membership
 
+import app.snapsync.application.EntryPointCall
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.upload.DeviceListing
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadRow
-import app.snapsync.feature.support.CapturingLogWriter
 import app.snapsync.feature.support.ScriptedBackend
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
+import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLine
+import app.snapsync.inbound.LogWriter
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.inMemoryDatabases
@@ -32,7 +36,32 @@ import kotlin.test.assertTrue
  * resources in it, and every other event's rows are purged; a failed listing purges the other events and keeps
  * what this device already knew of the joined one (change `event-scoped-local-state`).
  */
-class ShareSetLoadTest {
+@OptIn(EntryPointCall::class, CompositionOnly::class)
+class LoadShareSetTest {
+
+    /** The severities of the load's log lines. */
+    private class Recorder {
+        val severities = mutableListOf<Severity>()
+    }
+
+    /** The load, its lines recorded into [recorder] while it runs. */
+    private class Loading(private val share: LoadShareSet, private val recorder: Recorder) {
+        suspend fun load(eventId: app.snapsync.domain.event.EventId): ShareSetLoaded {
+            Log.install(
+                listOf(object : LogWriter {
+                    override fun write(line: LogLine) {
+                        val told = line.tag == "LoadShareSet" && line.severity != Severity.Info
+                        if (told) recorder.severities += line.severity
+                    }
+                }),
+            )
+            return try {
+                share(eventId)
+            } finally {
+                Log.install(emptyList())
+            }
+        }
+    }
 
     private val deviceId = "11111111-1111-4111-8111-111111111111"
     private val eventId = "7a3f9c21-0000-4000-8000-000000000001"
@@ -44,8 +73,8 @@ class ShareSetLoadTest {
         backend: ScriptedBackend,
         ledger: TestLedger,
         identity: DeviceIdentity = testIdentity(deviceId),
-        recorder: CapturingLogWriter = CapturingLogWriter(),
-    ) = ShareSetLoad(DeviceListing(backend.gateway, identity), ledger.reset, recorder.logger("ShareSetLoadTest"))
+        recorder: Recorder = Recorder(),
+    ) = Loading(LoadShareSet(DeviceListing(backend.gateway, identity), ledger.reset), recorder)
 
     /**
      * What a device carries into a join: an earlier event's rows — work in flight, work waiting, a stale belief —
@@ -98,7 +127,7 @@ class ShareSetLoadTest {
 
     @Test
     fun `a purge the store refuses is an error, never a failed join`() = runTest {
-        val recorder = CapturingLogWriter()
+        val recorder = Recorder()
         val device = DatabasesMock()
         val ledger = TestLedger(device.port())
         ledger.put(earlierEvent, "R-primary.heic", LedgerState.REQUESTED)
@@ -107,12 +136,16 @@ class ShareSetLoadTest {
         load(ScriptedBackend { HttpResult.Unreachable("offline") }, ledger, recorder = recorder)
             .load(testEventId(eventId))
 
-        assertEquals(listOf(Severity.Error, Severity.Warn), recorder.severities)
+        assertEquals(
+            listOf(Severity.Warn, Severity.Error),
+            recorder.severities,
+            "the listing's failure, then the purge's",
+        )
     }
 
     @Test
     fun `a transport failure purges other events keeps the joined event's rows and warns`() = runTest {
-        val recorder = CapturingLogWriter()
+        val recorder = Recorder()
         val ledger = leftovers()
 
         load(ScriptedBackend { HttpResult.Unreachable("offline") }, ledger, recorder = recorder)
@@ -124,7 +157,7 @@ class ShareSetLoadTest {
 
     @Test
     fun `a listing this build cannot read purges other events and is an error`() = runTest {
-        val recorder = CapturingLogWriter()
+        val recorder = Recorder()
         val ledger = leftovers()
 
         load(listing("""[{"assetId":"bad id!","role":"primary","filename":"x"}]"""), ledger, recorder = recorder)
@@ -136,7 +169,7 @@ class ShareSetLoadTest {
 
     @Test
     fun `a listing that never answers times out purges other events and warns`() = runTest {
-        val recorder = CapturingLogWriter()
+        val recorder = Recorder()
         val ledger = leftovers()
 
         load(ScriptedBackend { awaitCancellation() }, ledger, recorder = recorder).load(testEventId(eventId))
@@ -154,7 +187,7 @@ class ShareSetLoadTest {
 
     @Test
     fun `a ledger that cannot be opened is an error not a failed join`() = runTest {
-        val recorder = CapturingLogWriter()
+        val recorder = Recorder()
         val ledger = TestLedger(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked"))))
 
         load(listing("""[{"assetId":"A","role":"primary","filename":"A.HEIC"}]"""), ledger, recorder = recorder)
