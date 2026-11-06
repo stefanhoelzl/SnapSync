@@ -2,6 +2,8 @@ package app.snapsync.presentation
 
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
+import app.snapsync.ui.state.RenameState
+import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.offersMenu
 
 /**
@@ -20,10 +22,19 @@ import app.snapsync.ui.state.offersMenu
 internal fun Overlays.maskedFor(layer: Layer): Overlays {
     val membership = when {
         layer !is Layer.Joined -> copy(confirmingLeave = false, renaming = false, showingQr = false)
-        layer.deleted -> copy(renaming = false, showingQr = false)
+        layer.deleted -> copy(renaming = renaming && saysEventOver(layer), showingQr = false)
         // No whole invite to show: a QR code already open closes.
         layer.inviteUrl == null -> copy(showingQr = false)
         else -> this
     }
     return if (layer.offersMenu) membership else membership.copy(menuOpen = false)
 }
+
+/**
+ * A deleted event offers no rename: its sheet closes — unless it is saying why the member's own rename did not land,
+ * that the event is over.
+ */
+private fun saysEventOver(layer: Layer.Joined): Boolean = layer.renameState == EVENT_OVER
+
+/** The member's own rename, answered: the event is over. */
+private val EVENT_OVER = RenameState.Failed(ScreenMessage.EVENT_OVER)

@@ -34,6 +34,7 @@ import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.RangeView
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ReportTarget
+import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
@@ -427,6 +428,28 @@ class StatusContainerHostSurfacesTest {
             assertTrue(!gone.overlays.renaming, "a dialog was left over a screen whose event is gone")
         }
     }
+
+    @Test
+    fun `a deleted event closes its rename sheet unless the sheet says the member's own rename met its end`() {
+        val spy = Spy().apply { renameAnswer = RenameResult.EventOver }
+        val config = MutableStateFlow<TestMembership?>(CONFIG)
+        return onHost(spy, config = config) { host ->
+            host.onIntent(UiIntent.RenameOpen)
+            host.onIntent(UiIntent.RenameEvent(EVENT_ID, "Anna's Wedding"))
+            host.stateWhere("the rename answered") { it.joined()?.renameState is RenameState.Failed }
+            config.value = CONFIG.copy(deleted = true)
+            val over = host.stateWhere("the event deleted") { it.joined()?.deleted == true }
+            assertTrue(over.overlays.renaming, "the sheet stays to say why the rename did not land")
+            assertEquals(RenameState.Failed(ScreenMessage.EVENT_OVER), over.joined()?.renameState)
+
+            host.onIntent(UiIntent.RenameStatusConsumed)
+            host.onIntent(UiIntent.RenameOpen)
+            val reopened = host.stateWhere("the latch consumed") { it.joined()?.renameState == RenameState.Idle }
+            assertTrue(!reopened.overlays.renaming, "a deleted event offers no rename of its own")
+        }
+    }
+
+    private fun UiState.joined(): Layer.Joined? = layer as? Layer.Joined
 
     @Test
     fun `the invite's QR code opens on request and dismisses touching nothing else`() = onHost { host ->
