@@ -15,12 +15,12 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
@@ -167,7 +167,7 @@ class StatusContainerHostSurfacesTest {
     ) = StatusContainerHost(
         StatusSources(
             FakeSync(),
-            MutableStateFlow(GalleryAccess.GRANTED),
+            MutableStateFlow(PhotoGrant.FULL),
             config,
             requests = commands.requests.flows,
             network = AlwaysOnline,

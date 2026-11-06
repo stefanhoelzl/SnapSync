@@ -18,12 +18,12 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
@@ -198,7 +198,7 @@ private val downloadOnly = SAMPLE_CONFIG.copy(direction = Direction.DownloadOnly
 /** Settled with [shared] of the member's photos shared and nothing to receive. */
 private fun inSync(shared: Int = 0) = joined(SyncHealth.InSync, counts = counts(shared to shared))
 private val joinedLoading get() = joined(SyncHealth.Loading)
-private fun needsAccess(p: GalleryAccess) = joined(SyncHealth.NeedsAccess(canAsk = p == GalleryAccess.NOT_DETERMINED))
+private fun needsAccess(p: PhotoGrant) = joined(SyncHealth.NeedsAccess(canAsk = p == PhotoGrant.UNDECIDED))
 
 internal class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapshot())) :
     SyncStatusSource {
@@ -216,7 +216,7 @@ internal class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snaps
 // A plain permission cell (no port interface): the host observes a bare StateFlow since the step-9
 // split — presentation never names `ports/`, so neither do its fakes.
 internal class FakePermissionSource(
-    initial: GalleryAccess = GalleryAccess.GRANTED,
+    initial: PhotoGrant = PhotoGrant.FULL,
 ) {
     val permission = MutableStateFlow(initial)
 }
@@ -341,7 +341,7 @@ private fun host(
 
 /** A first join (config absent) whose details load succeeds — the gate the explainer is decided in. */
 private fun TestScope.firstJoinGate(
-    permission: GalleryAccess,
+    permission: PhotoGrant,
     requester: SpyRequester,
     configFake: FakeConfig = FakeConfig(null),
     commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed() },
@@ -392,7 +392,7 @@ class StatusContainerHostTest {
     // The create layer is the top rung: config absent, reduced from the creation status.
     private fun createHost(
         creation: RequestStatus<CreateResult>,
-        permission: FakePermissionSource = FakePermissionSource(GalleryAccess.GRANTED),
+        permission: FakePermissionSource = FakePermissionSource(PhotoGrant.FULL),
         creator: SpyCreator = SpyCreator(),
         scope: CoroutineScope,
         foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
@@ -453,7 +453,7 @@ class StatusContainerHostTest {
         val host = host(
             FakeSyncStatusSource(snapshot(pending = 3, total = 5)),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(notStartedConfig()),
         )
         assertEquals(joined(SyncHealth.NotStarted, config = notStartedConfig()), host.screen.value)
@@ -467,7 +467,7 @@ class StatusContainerHostTest {
         val host = host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.DENIED),
+            permission = FakePermissionSource(PhotoGrant.REFUSED),
             configFake = FakeConfig(notStartedConfig()),
         )
         assertEquals(
@@ -481,7 +481,7 @@ class StatusContainerHostTest {
         val host = host(
             FakeSyncStatusSource(snapshot(completed = 5, total = 5)),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG), // startsAt defaults to CUTOFF, which precedes now
         )
         assertEquals(inSync(shared = 5), host.screen.value)
@@ -494,7 +494,7 @@ class StatusContainerHostTest {
         val host = host(
             FakeSyncStatusSource(snapshot(completed = 0, total = 0)),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(notStartedConfig(startsAt = EventStart(NOW_CUTOFF))),
         )
         assertEquals(
@@ -514,7 +514,7 @@ class StatusContainerHostTest {
         val host = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(snapshot(completed = 0, total = 0)),
-                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakePermissionSource(PhotoGrant.FULL).permission,
                 config.config,
                 network = AlwaysOnline,
                 mobileData = AlwaysAllowed,
@@ -600,7 +600,7 @@ class StatusContainerHostTest {
             StatusContainerHost(
                 StatusSources(
                     source,
-                    FakePermissionSource(GalleryAccess.GRANTED).permission,
+                    FakePermissionSource(PhotoGrant.FULL).permission,
                     cfg.config,
                     download = MutableStateFlow(download),
                     requests = commands.requests.flows,
@@ -760,7 +760,7 @@ class StatusContainerHostTest {
     fun `create layer ignores permission`() = runTest {
         val host = createHost(
             Creating.Idle,
-            permission = FakePermissionSource(GalleryAccess.DENIED),
+            permission = FakePermissionSource(PhotoGrant.REFUSED),
             scope = backgroundScope,
         )
         // Config absent outranks a non-granted permission — still the create input, not the joined layer.
@@ -814,7 +814,7 @@ class StatusContainerHostTest {
             StatusContainerHost(
                 StatusSources(
                     FakeSyncStatusSource(),
-                    FakePermissionSource(GalleryAccess.GRANTED).permission,
+                    FakePermissionSource(PhotoGrant.FULL).permission,
                     config.config,
                     requests = commands.requests.flows,
                     creation = commands.requests.creation.status,
@@ -875,7 +875,7 @@ class StatusContainerHostTest {
         val host = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(),
-                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakePermissionSource(PhotoGrant.FULL).permission,
                 config.config,
                 creation = creationStatus,
                 network = AlwaysOnline,
@@ -971,19 +971,19 @@ class StatusContainerHostTest {
     @Test
     fun `denied permission with config present folds into the NeedsAccess status line`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
-        val permission = FakePermissionSource(GalleryAccess.DENIED)
+        val permission = FakePermissionSource(PhotoGrant.REFUSED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(needsAccess(GalleryAccess.DENIED), container.stateFlow.value.ui)
+        assertEquals(needsAccess(PhotoGrant.REFUSED), container.stateFlow.value.ui)
     }
 
     @Test
     fun `not-determined permission with config present shows NeedsAccess`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
-        val permission = FakePermissionSource(GalleryAccess.NOT_DETERMINED)
+        val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(needsAccess(GalleryAccess.NOT_DETERMINED), container.stateFlow.value.ui)
+        assertEquals(needsAccess(PhotoGrant.UNDECIDED), container.stateFlow.value.ui)
     }
 
     @Test
@@ -992,7 +992,7 @@ class StatusContainerHostTest {
         // the scope, so the settled snapshot reads In sync — not the permission-attention line — and the
         // joined layer carries the choose-more-photos resting affordance.
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
-        val permission = FakePermissionSource(GalleryAccess.LIMITED)
+        val permission = FakePermissionSource(PhotoGrant.LIMITED)
         val container = host(source, backgroundScope, permission = permission).container
 
         assertEquals(
@@ -1004,7 +1004,7 @@ class StatusContainerHostTest {
     @Test
     fun `a full grant offers no choose-photos affordance`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
-        val permission = FakePermissionSource(GalleryAccess.GRANTED)
+        val permission = FakePermissionSource(PhotoGrant.FULL)
         val container = host(source, backgroundScope, permission = permission).container
 
         assertEquals(false, (container.stateFlow.value.ui.layer as Layer.Joined).canChoosePhotos)
@@ -1013,11 +1013,11 @@ class StatusContainerHostTest {
     @Test
     fun `revoking permission mid-sync switches the status line to NeedsAccess`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
-        val permission = FakePermissionSource(GalleryAccess.GRANTED)
+        val permission = FakePermissionSource(PhotoGrant.FULL)
         host(source, backgroundScope, permission = permission).testWithInternalState(this) {
             runOnCreate()
-            permission.permission.value = GalleryAccess.DENIED
-            expectShown(needsAccess(GalleryAccess.DENIED))
+            permission.permission.value = PhotoGrant.REFUSED
+            expectShown(needsAccess(PhotoGrant.REFUSED))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1025,7 +1025,7 @@ class StatusContainerHostTest {
     @Test
     fun `absent config shows the create layer even when granted`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
-        val permission = FakePermissionSource(GalleryAccess.GRANTED)
+        val permission = FakePermissionSource(PhotoGrant.FULL)
         val container =
             host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
 
@@ -1035,7 +1035,7 @@ class StatusContainerHostTest {
     @Test
     fun `loading snapshot with config and granted permission maps to a joined loading`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
-        val permission = FakePermissionSource(GalleryAccess.GRANTED)
+        val permission = FakePermissionSource(PhotoGrant.FULL)
         val container = host(source, backgroundScope, permission = permission).container
 
         assertEquals(joinedLoading, container.stateFlow.value.ui)
@@ -1044,16 +1044,16 @@ class StatusContainerHostTest {
     @Test
     fun `permission outranks a loading snapshot when config is present`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
-        val permission = FakePermissionSource(GalleryAccess.NOT_DETERMINED)
+        val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(needsAccess(GalleryAccess.NOT_DETERMINED), container.stateFlow.value.ui)
+        assertEquals(needsAccess(PhotoGrant.UNDECIDED), container.stateFlow.value.ui)
     }
 
     @Test
     fun `absent config outranks a loading snapshot`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
-        val permission = FakePermissionSource(GalleryAccess.NOT_DETERMINED)
+        val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
         val container =
             host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
 
@@ -1063,10 +1063,10 @@ class StatusContainerHostTest {
     @Test
     fun `granting permission reveals the current sync state`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
-        val permission = FakePermissionSource(GalleryAccess.NOT_DETERMINED)
+        val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
         host(source, backgroundScope, permission = permission).testWithInternalState(this) {
             runOnCreate()
-            permission.permission.value = GalleryAccess.GRANTED
+            permission.permission.value = PhotoGrant.FULL
             expectShown(inSync(shared = 34))
             cancelAndIgnoreRemainingItems()
         }
@@ -1079,7 +1079,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = {
                 found(
@@ -1116,7 +1116,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = {
                 found(
@@ -1152,7 +1152,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
             loadJoinDetails = { found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
@@ -1190,7 +1190,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = { JoinDetails.NotFound },
             commitJoin = { _ ->
@@ -1215,7 +1215,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = {
                 if (attempt++ == 0) {
@@ -1248,7 +1248,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = { found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ -> JoinCommit.Failed() },
@@ -1282,7 +1282,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
             loadJoinDetails = {
                 loads++
@@ -1314,7 +1314,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
             loadJoinDetails = {
                 loads++
@@ -1343,7 +1343,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
             loadJoinDetails = { found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
         ).testWithInternalState(this) {
@@ -1369,7 +1369,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
             loadJoinDetails = {
                 loads++
@@ -1402,7 +1402,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
             loadJoinDetails = { found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
@@ -1450,7 +1450,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
             loadJoinDetails = { found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
@@ -1501,7 +1501,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
             loadJoinDetails = { found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ ->
@@ -1530,7 +1530,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
             loadJoinDetails = { found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ ->
@@ -1561,7 +1561,7 @@ class StatusContainerHostTest {
         val containerHost = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(SyncStatus.Loading),
-                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakePermissionSource(PhotoGrant.FULL).permission,
                 FakeConfig(null).config,
                 network = AlwaysOnline,
                 mobileData = AlwaysAllowed,
@@ -1592,7 +1592,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = configFake,
             loadJoinDetails = { found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { join ->
@@ -1631,7 +1631,7 @@ class StatusContainerHostTest {
         // The set-then-clear choreography is presentation-owned (migration finale, step-12 D6): the
         // shell renders `transientError` verbatim and decides nothing.
         val source = FakeSyncStatusSource(SyncStatus.Loading)
-        val permission = FakePermissionSource(GalleryAccess.GRANTED)
+        val permission = FakePermissionSource(PhotoGrant.FULL)
         val h = host(source, backgroundScope, permission = permission, configFake = FakeConfig(null))
         // Driven through the orbit-test fixture so the intent event loop runs on THIS test's
         // virtual scheduler (its dispatcherOverride) — Orbit's public SettingsBuilder cannot pin
@@ -1661,7 +1661,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `intents pass through to the requester`() = runTest {
-        val permission = FakePermissionSource(GalleryAccess.NOT_DETERMINED)
+        val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
         val requester = SpyRequester()
         host(FakeSyncStatusSource(), backgroundScope, permission = permission, requester = requester)
             .testWithInternalState(this) {
@@ -1768,7 +1768,7 @@ class StatusContainerHostTest {
         val h = host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
         )
         h.testWithInternalState(this) {
@@ -1880,7 +1880,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `observing NOT_DETERMINED never auto-requests`() = runTest {
-        val permission = FakePermissionSource(GalleryAccess.NOT_DETERMINED)
+        val permission = FakePermissionSource(PhotoGrant.UNDECIDED)
         val requester = SpyRequester()
         host(FakeSyncStatusSource(), backgroundScope, permission = permission, requester = requester)
             .testWithInternalState(this) {
@@ -1897,7 +1897,7 @@ class StatusContainerHostTest {
     @Test
     fun `a first join with permission never asked says the confirm will ask and asks nothing yet`() = runTest {
         val requester = SpyRequester()
-        firstJoinGate(GalleryAccess.NOT_DETERMINED, requester).testWithInternalState(this) {
+        firstJoinGate(PhotoGrant.UNDECIDED, requester).testWithInternalState(this) {
             runOnCreate()
             containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             val state = awaitShown()
@@ -1924,7 +1924,7 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         var commits = 0
         firstJoinGate(
-            GalleryAccess.NOT_DETERMINED,
+            PhotoGrant.UNDECIDED,
             requester,
             commitJoin = { _ ->
                 commits++
@@ -1944,16 +1944,16 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `a granted user joins without a request`() = runTest { answeredJoin(GalleryAccess.GRANTED) }
+    fun `a granted user joins without a request`() = runTest { answeredJoin(PhotoGrant.FULL) }
 
     @Test
-    fun `a limited user joins without a request`() = runTest { answeredJoin(GalleryAccess.LIMITED) }
+    fun `a limited user joins without a request`() = runTest { answeredJoin(PhotoGrant.LIMITED) }
 
     /** From DENIED a request is a silent no-op, so announcing a dialog there would be false. */
     @Test
-    fun `a refused user joins without a request`() = runTest { answeredJoin(GalleryAccess.DENIED) }
+    fun `a refused user joins without a request`() = runTest { answeredJoin(PhotoGrant.REFUSED) }
 
-    private suspend fun TestScope.answeredJoin(answered: GalleryAccess) {
+    private suspend fun TestScope.answeredJoin(answered: PhotoGrant) {
         val requester = SpyRequester()
         var commits = 0
         firstJoinGate(
@@ -1982,7 +1982,7 @@ class StatusContainerHostTest {
             // capability `join-event`, "Limited access is told what is shared": only a partial grant shares a
             // selection.
             assertEquals(
-                answered == GalleryAccess.LIMITED,
+                answered == PhotoGrant.LIMITED,
                 (state.layer as Layer.JoiningEvent).range?.sharesSelection,
                 "$answered: what the surface says is shared",
             )
@@ -2003,7 +2003,7 @@ class StatusContainerHostTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val requester = SpyRequester()
         firstJoinGate(
-            GalleryAccess.NOT_DETERMINED,
+            PhotoGrant.UNDECIDED,
             requester,
             configFake = FakeConfig(SAMPLE_CONFIG),
         ).testWithInternalState(this) {
@@ -2040,7 +2040,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         var loads = 0
         firstJoinGate(
-            GalleryAccess.NOT_DETERMINED,
+            PhotoGrant.UNDECIDED,
             requester,
             configFake = configFake,
             onLoad = { loads++ },
@@ -2076,7 +2076,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         var commits = 0
         firstJoinGate(
-            GalleryAccess.NOT_DETERMINED,
+            PhotoGrant.UNDECIDED,
             requester,
             configFake = configFake,
             commitJoin = { _ ->
@@ -2138,7 +2138,7 @@ class StatusContainerHostTest {
         // Without library access there is nothing to upload, so an unusable token is not yet the user's
         // problem — and two attention states at once would just be confusing.
         val source = FakeSyncStatusSource()
-        val permission = FakePermissionSource(GalleryAccess.GRANTED)
+        val permission = FakePermissionSource(PhotoGrant.FULL)
         host(
             source,
             backgroundScope,
@@ -2150,9 +2150,9 @@ class StatusContainerHostTest {
                 runOnCreate()
                 source.value = snapshot(pending = 5, completed = 0, total = 5)
 
-                permission.permission.value = GalleryAccess.DENIED
+                permission.permission.value = PhotoGrant.REFUSED
 
-                expectShown(needsAccess(GalleryAccess.DENIED))
+                expectShown(needsAccess(PhotoGrant.REFUSED))
                 cancelAndIgnoreRemainingItems()
             }
     }
@@ -2169,7 +2169,7 @@ class StatusContainerHostJoinGateTest {
     fun `a confirm with both switches off joins nothing`() = runTest {
         var commits = 0
         firstJoinGate(
-            GalleryAccess.GRANTED,
+            PhotoGrant.FULL,
             SpyRequester(),
             commitJoin = { _ ->
                 commits++
@@ -2198,7 +2198,7 @@ class StatusContainerHostJoinGateTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = {
                 found(
@@ -2258,7 +2258,7 @@ class StatusContainerHostJoinGateTest {
     fun `a commit that throws after the membership was persisted lands on the joined screen`() = runTest {
         val configFake = FakeConfig(null)
         firstJoinGate(
-            GalleryAccess.GRANTED,
+            PhotoGrant.FULL,
             SpyRequester(),
             configFake = configFake,
             // A join whose work ends early once the membership is persisted: the core answers it `Failed`.
@@ -2291,7 +2291,7 @@ class StatusContainerHostJoinGateTest {
     @Test
     fun `a commit that throws before the membership was persisted stays retryable`() = runTest {
         firstJoinGate(
-            GalleryAccess.GRANTED,
+            PhotoGrant.FULL,
             SpyRequester(),
             configFake = FakeConfig(null),
             commitJoin = { _ -> throw IllegalStateException("enroll blew up") },
@@ -2445,7 +2445,7 @@ class ClosedEventJoinTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = {
                 found(
@@ -2475,7 +2475,7 @@ class ClosedEventJoinTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = { found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ -> JoinCommit.EventOver },
@@ -2510,7 +2510,7 @@ class StatusContainerHostJoinedFactsTest {
         val host = StatusContainerHost(
             StatusSources(
                 FakeSyncStatusSource(snapshot(completed = 3, total = 3)),
-                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakePermissionSource(PhotoGrant.FULL).permission,
                 FakeConfig(running).config,
                 network = AlwaysOnline,
                 mobileData = AlwaysAllowed,
@@ -2547,7 +2547,7 @@ class StatusContainerHostJoinedFactsTest {
         StatusContainerHost(
             StatusSources(
                 source,
-                FakePermissionSource(GalleryAccess.GRANTED).permission,
+                FakePermissionSource(PhotoGrant.FULL).permission,
                 FakeConfig().config,
                 download = MutableStateFlow(DownloadProgress(40, 52, inFlight = 1)),
                 network = AlwaysOnline,
@@ -2584,7 +2584,7 @@ class StatusContainerHostRefusalTest {
     // The create layer, as in [StatusContainerHostTest]: config absent, reduced from the creation status.
     private fun createHost(
         creation: RequestStatus<CreateResult>,
-        permission: FakePermissionSource = FakePermissionSource(GalleryAccess.GRANTED),
+        permission: FakePermissionSource = FakePermissionSource(PhotoGrant.FULL),
         creator: SpyCreator = SpyCreator(),
         scope: CoroutineScope,
         foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
@@ -2668,7 +2668,7 @@ class StatusContainerHostRefusalTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = { found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             // Refused, then — the service having stopped refusing — accepted on the Retry.
@@ -2707,7 +2707,7 @@ class StatusContainerHostRefusalTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading),
             backgroundScope,
-            permission = FakePermissionSource(GalleryAccess.GRANTED),
+            permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(null),
             loadJoinDetails = { found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { _ -> JoinCommit.Unverified },

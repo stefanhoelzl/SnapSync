@@ -9,11 +9,11 @@ import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.TimestampText
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
@@ -79,7 +79,7 @@ class StatusContainerHostMenuTest {
 
         /** The device's mobile-data choice, as the device holds it; [saves] plays a write that lands or not. */
         var mobileData = MobileDataChoice.ALLOWED
-        val permission = MutableStateFlow(GalleryAccess.GRANTED)
+        val permission = MutableStateFlow(PhotoGrant.FULL)
         var saves = true
     }
 
@@ -240,7 +240,7 @@ class StatusContainerHostMenuTest {
     fun `the settings surface under a partial grant says the selected photos are shared`() {
         // capability `join-event`, "Limited access is told what is shared" — the settings surface renders the same
         // participation sections as the join gate, so it says the same.
-        val world = World().apply { permission.value = GalleryAccess.LIMITED }
+        val world = World().apply { permission.value = PhotoGrant.LIMITED }
         onHost(world) { host, _ ->
             host.onIntent(UiIntent.OpenReconfigure)
             host.stateWhere("settings open, sharing the selection") {

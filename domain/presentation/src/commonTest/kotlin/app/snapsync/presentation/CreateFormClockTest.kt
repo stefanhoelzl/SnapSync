@@ -2,8 +2,8 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
 import app.snapsync.ui.state.Layer
@@ -87,7 +87,7 @@ class CreateFormClockTest {
                 object : SyncStatusSource {
                     override val status: StateFlow<SyncStatus> = MutableStateFlow(SyncStatus.Loading)
                 },
-                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(null),
                 creation = MutableStateFlow(creation),
                 foreground = foreground,

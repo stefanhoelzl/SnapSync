@@ -8,11 +8,11 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
@@ -96,7 +96,7 @@ class GuardedIntentTest {
                     StatusContainerHost(
                         StatusSources(
                             IdleSync(),
-                            MutableStateFlow(GalleryAccess.GRANTED),
+                            MutableStateFlow(PhotoGrant.FULL),
                             config,
                             requests = commands.requests.flows,
                             network = AlwaysOnline,

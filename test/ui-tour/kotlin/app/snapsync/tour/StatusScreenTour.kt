@@ -69,6 +69,7 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.SyncStatusSource
@@ -78,7 +79,6 @@ import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
 import app.snapsync.ports.Ui
@@ -275,7 +275,7 @@ abstract class StatusScreenTour {
     /** A real container over plain cells, its every state shown through [ui]. */
     private inner class Rig(
         config: EventConfig? = null,
-        permission: GalleryAccess = GalleryAccess.GRANTED,
+        permission: PhotoGrant = PhotoGrant.FULL,
         refusal: VersionRefusal? = null,
         deviceRefusal: DeviceRefusal? = null,
         private val details: suspend (EventId) -> JoinDetails = { OTHER_EVENT },
@@ -669,7 +669,7 @@ abstract class StatusScreenTour {
 
     private fun ComposeUiTest.permissions() {
         // Never asked: the prompt requests access; then a switch confirmed.
-        val asked = Rig(config = MEMBERSHIP, permission = GalleryAccess.NOT_DETERMINED)
+        val asked = Rig(config = MEMBERSHIP, permission = PhotoGrant.UNDECIDED)
         use(asked) { it.joined != null }
         onNodeWithText(str(ComponentRes.string.status_allow_access)).performClick()
         asked.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
@@ -677,10 +677,10 @@ abstract class StatusScreenTour {
         onNodeWithText(str(Res.string.switch_confirm)).performClick()
         awaitShown { it.joining?.eventId == OTHER_ID }
         // Denied: the prompt opens Settings.
-        use(Rig(config = MEMBERSHIP, permission = GalleryAccess.DENIED)) { it.joined != null }
+        use(Rig(config = MEMBERSHIP, permission = PhotoGrant.REFUSED)) { it.joined != null }
         onNodeWithText(str(ComponentRes.string.status_allow_access_settings)).performClick()
         // Partial: the picker.
-        use(Rig(config = MEMBERSHIP, permission = GalleryAccess.LIMITED)) { it.joined?.canChoosePhotos == true }
+        use(Rig(config = MEMBERSHIP, permission = PhotoGrant.LIMITED)) { it.joined?.canChoosePhotos == true }
         onNodeWithText(str(Res.string.choose_more_photos)).performClick()
         onNodeWithText(str(Res.string.allow_full_access)).performClick()
         waitForIdle()

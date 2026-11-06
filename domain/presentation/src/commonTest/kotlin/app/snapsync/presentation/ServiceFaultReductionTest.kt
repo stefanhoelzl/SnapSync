@@ -11,11 +11,11 @@ import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.RequestStatus
@@ -99,7 +99,7 @@ class ServiceFaultReductionTest {
         StatusContainerHost(
             StatusSources(
                 FixedSync(snapshot),
-                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(config),
                 creation = MutableStateFlow(creation),
                 verification = DeviceVerification(

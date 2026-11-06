@@ -40,6 +40,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
@@ -47,11 +48,9 @@ import app.snapsync.format.InviteLinkText
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeEdit
 import app.snapsync.presentation.range.after
@@ -450,7 +449,7 @@ class StatusContainerHost(
     private val display: Display get() = Display(cutoffFormatter, ::resolveRange)
 
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
-    private data class CountKey(val range: CaptureRange?, val grant: GalleryAccess)
+    private data class CountKey(val range: CaptureRange?, val grant: PhotoGrant)
 
     /** What the screen shows: the display half of the container's [ScreenModel]. */
     val screen: StateFlow<UiState> = Displayed { container.stateFlow }
@@ -1390,8 +1389,8 @@ private const val REPORT_NOTICE_MILLIS = 4_000L
  * refusal a request is a silent no-op, so announcing a dialog there would be false; a switch's previous
  * event, while still configured, is not yet a join this rule speaks for.
  */
-internal fun asksAccessOnJoin(config: EventConfig?, permission: GalleryAccess): Boolean =
-    config == null && permission == GalleryAccess.NOT_DETERMINED
+internal fun asksAccessOnJoin(config: EventConfig?, permission: PhotoGrant): Boolean =
+    config == null && permission == PhotoGrant.UNDECIDED
 
 /**
  * What is shown while NO event is configured: the interactive join confirmation, or the create surface. Nothing in
@@ -1402,7 +1401,7 @@ private fun unjoinedLayer(
     create: Creation,
     transient: ScreenMessage?,
     choices: Choices,
-    permission: GalleryAccess,
+    permission: PhotoGrant,
     network: NetworkNotice?,
     refusal: DeviceRefusal?,
     attestFault: ServiceFault?,
@@ -1584,7 +1583,7 @@ private fun joinedHealth(
         // them with a permission prompt at the very moment the party starts. LIMITED is NOT here: a
         // partial grant is a working state — it falls through to
         // the snapshot-derived health exactly like GRANTED.
-        !permission.grantsPhotoAccess -> SyncHealth.NeedsAccess(canAsk = permission == GalleryAccess.NOT_DETERMINED)
+        !permission.readsPhotos -> SyncHealth.NeedsAccess(canAsk = permission == PhotoGrant.UNDECIDED)
         // No usable network. Below access, which
         // decides what is shared and can be fixed offline; above everything else — before the start, received photos
         // cannot arrive either, and a missing network is the true cause of most failed verifications, so it outranks
@@ -1625,7 +1624,7 @@ private fun joinedLayer(
     config: EventConfig,
     health: SyncHealth,
     pendingSwitch: PendingSwitch?,
-    permission: GalleryAccess,
+    permission: PhotoGrant,
     facts: JoinedFacts,
     rename: RenameStatus,
     reconfiguring: SettingsShown,
@@ -1649,7 +1648,7 @@ private fun joinedLayer(
         pendingSwitch = pendingSwitch,
         // The resting affordance, not an attention state: a
         // partial grant's joined layer always offers the picker, whatever the health.
-        canChoosePhotos = permission == GalleryAccess.LIMITED,
+        canChoosePhotos = permission == PhotoGrant.LIMITED,
         timing = facts.timing,
         counts = facts.counts,
         deleted = config.deleted,
@@ -1985,7 +1984,7 @@ private val RETRYABLE_STEPS =
 /** The membership and what its health is read from — observed read-models (see [StatusSources]). */
 private data class Membership(
     val config: EventConfig?,
-    val permission: GalleryAccess,
+    val permission: PhotoGrant,
     val sync: SyncStatus,
     val download: DownloadProgress,
     val attested: Boolean,

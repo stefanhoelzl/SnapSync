@@ -5,11 +5,11 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.EventWindow
 import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.Store
 import app.snapsync.presentation.range.EventRange
@@ -144,7 +144,7 @@ internal fun CutoffFormatter.shareBounds(windowStart: LocalDateTime, windowEnd: 
  */
 internal fun RangeForm.view(
     range: ResolvedRange,
-    permission: GalleryAccess,
+    permission: PhotoGrant,
     picking: Picking?,
 ): RangeView = RangeView(
     shareOn = shareOn,
@@ -162,7 +162,7 @@ internal fun RangeForm.view(
     shareCount = range.shareCount,
     picker = picking?.let { it.range.view(it.bounds, range.today) },
     outside = outsideReach(range),
-    sharesSelection = permission == GalleryAccess.LIMITED,
+    sharesSelection = permission == PhotoGrant.LIMITED,
 )
 
 /**

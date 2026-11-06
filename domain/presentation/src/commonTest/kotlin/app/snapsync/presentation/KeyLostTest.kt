@@ -14,11 +14,11 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.testids.testEventId
@@ -54,7 +54,7 @@ class KeyLostTest {
     private fun TestScope.host(
         presence: KeyPresence,
         config: EventConfig = ENCRYPTED,
-        permission: GalleryAccess = GalleryAccess.GRANTED,
+        permission: PhotoGrant = PhotoGrant.FULL,
         restored: MutableList<EventKey> = mutableListOf(),
     ) = StatusContainerHost(
         StatusSources(
@@ -97,7 +97,7 @@ class KeyLostTest {
 
     @Test
     fun `a lost key outranks missing access`() = runTest {
-        val host = host(KeyPresence.Lost, permission = GalleryAccess.DENIED)
+        val host = host(KeyPresence.Lost, permission = PhotoGrant.REFUSED)
         driving(host) { assertEquals(SyncHealth.KeyLost, host.health()) }
     }
 
@@ -171,7 +171,7 @@ class KeyLostTest {
         val host = StatusContainerHost(
             StatusSources(
                 Sync(),
-                MutableStateFlow(GalleryAccess.GRANTED),
+                MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(ENCRYPTED),
                 eventKey = EventKeyView(presence = presence),
                 network = AlwaysOnline,
