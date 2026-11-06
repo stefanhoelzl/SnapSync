@@ -24,7 +24,9 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
     val ui = host.screen.value
     // Resolved once the SCREEN shows the joined event, not merely once the membership is read: a caller polling on this
     // then acts on what the member sees.
-    val joined = core.membership.value?.takeIf { (ui.layer as? Layer.Joined)?.membership?.eventId == it.event.id.value }
+    val joined = core.membership.value.held?.takeIf {
+        (ui.layer as? Layer.Joined)?.membership?.eventId == it.event.id.value
+    }
     return RigState(
         ui = ui,
         ready = Readiness(

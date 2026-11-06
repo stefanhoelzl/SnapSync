@@ -22,6 +22,7 @@ import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.query.encryption.InviteRead
+import app.snapsync.query.membership.MembershipShown
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.FlowCollector
@@ -71,7 +72,8 @@ internal data class TestMembership(
 }
 
 /** [this] flow of test memberships as the screen reads it: the domain's membership held, or none. */
-internal fun StateFlow<TestMembership?>.held(): StateFlow<Membership?> = Mapped(this) { it?.held() }
+internal fun StateFlow<TestMembership?>.held(): StateFlow<MembershipShown> =
+    Mapped(this) { test -> test?.let { MembershipShown.Held(it.held()) } ?: MembershipShown.None }
 
 /**
  * The key view of [this] flow's plain events: no key needed, and the joined one's invite as the query reads it — none

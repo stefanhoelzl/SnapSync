@@ -93,6 +93,11 @@ class UiStateFieldContractTest {
     }
 
     @Test
+    fun `an unreadable membership requires whether it is trying again`() {
+        assertFieldContract(Layer.MembershipUnreadable.serializer(), Layer.MembershipUnreadable(retrying = true))
+    }
+
+    @Test
     fun `a layer requires only what identifies it`() {
         assertFieldContract(
             Layer.UpdateRequired.serializer(),

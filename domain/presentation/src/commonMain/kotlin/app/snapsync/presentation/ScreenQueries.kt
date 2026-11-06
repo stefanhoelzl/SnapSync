@@ -7,7 +7,6 @@ import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinCommit
-import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchVerdict
@@ -23,6 +22,7 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.encryption.InviteRead
 import app.snapsync.query.membership.MembershipQuery
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.query.receiving.DownloadProgress
@@ -43,8 +43,11 @@ class ScreenQueries(
     val receiving: StateFlow<DownloadProgress>,
     /** The photo-library grant: the health's access rung, and whether a first join's confirm asks for it. */
     val grant: StateFlow<PhotoGrant>,
-    /** The membership held, `null` while none is ([MembershipQuery.joined]): its presence is the reduction's top rung. */
-    val membership: StateFlow<Membership?>,
+    /**
+     * The membership as the screen shows it ([MembershipQuery.shown]): held, none, or not readable — its presence is the
+     * reduction's top rung.
+     */
+    val membership: StateFlow<MembershipShown>,
     /** The joined event's key and the invite that carries it ([EventKeyView]). */
     val key: EventKeyView,
     /** The invite the app was opened with, read, until a screen has opened it. */
@@ -108,6 +111,8 @@ class RequestStatusFlows(
     val settings: StateFlow<RequestStatus<SettingsResult>>,
     val switch: StateFlow<RequestStatus<SwitchVerdict>>,
     val rename: StateFlow<RequestStatus<RenameResult>>,
+    /** Trying again to read the membership. */
+    val membershipRead: StateFlow<RequestStatus<Unit>>,
     val report: StateFlow<RequestStatus<ReportOutcome>>,
 )
 

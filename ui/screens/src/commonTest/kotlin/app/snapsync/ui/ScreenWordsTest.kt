@@ -281,6 +281,7 @@ class ScreenWordsTest {
             createLayer(),
             Layer.CreatingEvent,
             Layer.UpdateRequired(),
+            Layer.MembershipUnreadable(retrying = false),
         ).map { screenLabel(UiState(it)) }
         assertEquals(
             listOf(
@@ -291,6 +292,7 @@ class ScreenWordsTest {
                 "CreateEvent",
                 "CreatingEvent",
                 "UpdateRequired",
+                "MembershipUnreadable",
             ),
             labels,
         )

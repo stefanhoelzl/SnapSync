@@ -36,20 +36,20 @@ before these commits, after the phase's move. Each scenario's test carries `@Ver
 
 ## 4. An unreadable membership says so
 
-- [ ] 4.1 Integration scenario "An unreadable membership is told, not taken for a leave", with the membership's
+- [x] 4.1 Integration scenario "An unreadable membership is told, not taken for a leave", with the membership's
   database unreadable from launch: the screen, then Try again after the database recovers. Verify: FAILS before 4.2
   (the create screen shows).
-- [ ] 4.2 The new layer: title and line in English and German, the Try again button (the existing retry string)
+- [x] 4.2 The new layer: title and line in English and German, the Try again button (the existing retry string)
   showing that it is working while it runs, and the app menu in reach. A membership row this build refuses still shows
   the create screen. Verify: 4.1 green; unit tests for refused and not refused.
-- [ ] 4.3 Try again runs as its own request: the membership re-read, then the foreground's work, answered on its
+- [x] 4.3 Try again runs as its own request: the membership re-read, then the foreground's work, answered on its
   status. A second tap while one runs does nothing. Verify: an integration test with a double tap, and the entry
   point's unit test.
 
 ## 5. Integration
 
-- [ ] 5.1 `openspec validate status-and-invite-corrections --strict` passes. Verify: the command's output.
-- [ ] 5.2 Archive gates from `openspec/config.yaml`: no `TBD` Purpose in the tree, and no code identifier in the three
+- [x] 5.1 `openspec validate status-and-invite-corrections --strict` passes. Verify: the command's output.
+- [x] 5.2 Archive gates from `openspec/config.yaml`: no `TBD` Purpose in the tree, and no code identifier in the three
   touched specs. Verify: both checks print nothing.
 - [ ] 5.3 `./gradlew build` green, and `:test:architecture:verifiesReport` shows every requirement of the three specs
   verified. Verify: the report.

@@ -1,6 +1,6 @@
 package app.snapsync.presentation
 
-import app.snapsync.domain.membership.Membership
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.SwitchTo
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +16,7 @@ import kotlinx.datetime.LocalDateTime
  */
 internal class FormEdits(
     private val cells: ScreenCells,
-    private val membership: StateFlow<Membership?>,
+    private val membership: StateFlow<MembershipShown>,
     private val settings: SettingsChanges,
     private val ranges: RangeResolver,
 ) {
@@ -28,7 +28,7 @@ internal class FormEdits(
      * that follows it reads the form it left.
      */
     private fun formIntent(act: suspend () -> Unit) {
-        if (membership.value != null) settings.enqueue(act) else cells.runner.intent { act() }
+        if (membership.value.held != null) settings.enqueue(act) else cells.runner.intent { act() }
     }
 
     // At the join gate each edit drafts the form; with the event's settings open it applies at once.

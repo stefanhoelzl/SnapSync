@@ -239,6 +239,11 @@ sealed interface UiIntent {
     @SerialName("RetryJoin")
     data object RetryJoin : UiIntent
 
+    /** Try again to read whether this device is in an event. */
+    @Serializable
+    @SerialName("RetryMembershipRead")
+    data object RetryMembershipRead : UiIntent
+
     @Serializable
     @SerialName("CancelJoin")
     data object CancelJoin : UiIntent

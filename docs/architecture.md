@@ -1177,8 +1177,9 @@ the leave answers nothing but the membership itself. A failure the service cause
 `RenameResult.Failed`, an invite's `JoinDetails.Unanswered` with the wait an update suggested — so the screen tells it
 in its own words.
 
-**The screen reads the membership held** through `MembershipQuery.joined` — `null` while none is, or none can be
-read now — and the diagnostic dump reads the repository itself.
+**The screen reads the membership** through `MembershipQuery.shown` — held, none, or unreadable while nothing has been
+read since the process started (a row this build refuses reads as none: a join is the way back) — and the diagnostic
+dump reads the repository itself.
 
 ### Receiving
 

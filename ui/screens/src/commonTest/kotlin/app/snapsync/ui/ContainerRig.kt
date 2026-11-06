@@ -50,6 +50,7 @@ import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
@@ -89,6 +90,7 @@ import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.encryption.InviteRead
 import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
@@ -103,12 +105,16 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
@@ -175,7 +181,7 @@ internal class ContainerRig(
             sharing = MutableStateFlow(SharingProgressRead.NotYetRead),
             receiving = MutableStateFlow(DownloadProgress(0, 0)),
             grant = this.permission,
-            membership = this.config,
+            membership = ShownMembership(this.config),
             // The invite as the query reads it for a plain event: the joined one's, none while none is joined.
             key = EventKeyView(
                 presence = MutableStateFlow(KeyPresence.NotNeeded),
@@ -208,6 +214,7 @@ internal class ContainerRig(
                 settings = statuses.settings.status,
                 switch = statuses.switch.status,
                 rename = statuses.rename.status,
+                membershipRead = statuses.read.status,
                 report = reports.status,
             ),
         ),
@@ -257,6 +264,10 @@ internal class ContainerRig(
             restoreKey = command { r: KeyRestoreRequest ->
                 record("restoreKey")
                 answered(r.id, statuses.restore, null)
+            },
+            retryMembershipRead = command { r: MembershipReadRequest ->
+                record("retryMembershipRead")
+                answered(r.id, statuses.read, Unit)
             },
         ),
         shareableCount = object : ScreenLookup<CaptureRange, Int?>("test", Dispatchers.Unconfined) {
@@ -392,4 +403,18 @@ internal fun joinedTo(id: String, name: String, from: String, until: String): Me
 private fun AppLinkRequest.opened(): String = when (this) {
     is AppLinkRequest.StorePage -> store.url
     is AppLinkRequest.SitePage -> page.name
+}
+
+/** [config] as the screen reads it: held, or none — a rig's membership is never unreadable. */
+@OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+private class ShownMembership(private val config: StateFlow<Membership?>) : StateFlow<MembershipShown> {
+    override val value: MembershipShown get() = shown(config.value)
+    override val replayCache: List<MembershipShown> get() = listOf(value)
+
+    override suspend fun collect(collector: FlowCollector<MembershipShown>): Nothing {
+        config.map(::shown).collect(collector)
+        awaitCancellation()
+    }
+
+    private fun shown(held: Membership?): MembershipShown = held?.let { MembershipShown.Held(it) } ?: MembershipShown.None
 }

@@ -30,6 +30,9 @@ class SwitchRequest(val id: RequestId, val invite: InviteFact)
 /** A reopened invite's [key], offered to restore the joined event's: [id] is answered on the restore status. */
 class KeyRestoreRequest(val id: RequestId, val key: EventKey)
 
+/** Trying again to read whether this device is in an event: [id] is answered once the try has run. */
+class MembershipReadRequest(val id: RequestId)
+
 /** A change of the device's mobile-data choice the member made: [id] is answered on the mobile-data status. */
 class MobileDataRequest(val id: RequestId, val choice: MobileDataChoice)
 

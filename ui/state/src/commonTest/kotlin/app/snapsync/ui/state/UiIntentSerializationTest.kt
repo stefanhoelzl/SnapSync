@@ -71,6 +71,7 @@ class UiIntentSerializationTest {
         UiIntent.ConfirmJoin,
         UiIntent.ConfirmSwitch,
         UiIntent.RetryJoin,
+        UiIntent.RetryMembershipRead,
         UiIntent.CancelJoin,
         UiIntent.CancelSwitch,
         UiIntent.SendDiagnostics("x", "x"),

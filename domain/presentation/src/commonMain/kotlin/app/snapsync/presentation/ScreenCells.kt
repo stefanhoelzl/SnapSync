@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** The non-idempotent commands whose taps claim an in-flight slot (see `StatusContainerHost.guardedIntent`). */
-internal enum class Guarded { Create, Rename, SwitchLeave }
+internal enum class Guarded { Create, Rename, SwitchLeave, MembershipRead }
 
 /**
  * Surface state that belongs to one membership (decision record `harden-seam-bug-classes`, D13): written with the

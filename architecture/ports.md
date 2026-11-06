@@ -158,6 +158,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `MemberOf` | `:domain:domain` | `:domain:domain` Event, Nothing, Unreadable | no |
 | `Membership` | `:domain:domain` | `:domain:domain` Active, Deleted | no |
 | `MembershipRead` | `:domain:domain` | `:domain:domain` Joined, NotJoined, Unavailable | no |
+| `MembershipShown` | `:domain:query` | `:domain:query` Held, None, Unreadable | no |
 | `MembershipUpdate` | `:domain:domain` | `:domain:domain` Changed, Unchanged | no |
 | `MetricNode` | `:domain:ports` | `:domain:ports` Leaf | no |
 | `MintAnswerVerdict` | `:domain:domain` | `:domain:domain` Accept, NoVerdict, Refused | no |

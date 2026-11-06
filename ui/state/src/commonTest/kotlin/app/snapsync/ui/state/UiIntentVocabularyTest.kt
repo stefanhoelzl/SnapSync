@@ -68,6 +68,7 @@ class UiIntentVocabularyTest {
         UiIntent.ConfirmJoin -> "ConfirmJoin"
         UiIntent.ConfirmSwitch -> "ConfirmSwitch"
         UiIntent.RetryJoin -> "RetryJoin"
+        UiIntent.RetryMembershipRead -> "RetryMembershipRead"
         UiIntent.CancelJoin -> "CancelJoin"
         UiIntent.CancelSwitch -> "CancelSwitch"
         is UiIntent.SendDiagnostics -> "SendDiagnostics"
@@ -128,6 +129,7 @@ class UiIntentVocabularyTest {
                 UiIntent.ConfirmJoin,
                 UiIntent.ConfirmSwitch,
                 UiIntent.RetryJoin,
+                UiIntent.RetryMembershipRead,
                 UiIntent.CancelJoin,
                 UiIntent.CancelSwitch,
                 UiIntent.SendDiagnostics("note", "joined"),

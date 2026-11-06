@@ -13,6 +13,7 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.query.RequestStatus
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.ui.state.Overlays
 import app.snapsync.ui.state.ScreenMessage
@@ -30,7 +31,7 @@ internal data class Trust(
 
 /** The membership and what its health is read from — what the screen observes (see [ScreenQueries]). */
 internal data class Observed(
-    val joined: Membership?,
+    val membership: MembershipShown,
     val permission: PhotoGrant,
     val sync: SharingProgressRead,
     val download: DownloadProgress,
@@ -47,7 +48,10 @@ internal data class Observed(
     val serviceFault: ServiceFault? = null,
     /** The joined event's invite as the member shares it, read beside the membership ([EventKeyView.invite]). */
     val invite: String? = null,
-)
+) {
+    /** The membership held, `null` while none is — or while none can be read. */
+    val joined: Membership? get() = membership.held
+}
 
 /** The observed outcomes of what the member started: the join gate, a create, a rename — and a refused build. */
 internal data class Interaction(
@@ -117,6 +121,8 @@ internal data class Local(
      * carries the refused verification's facts. Kept out of [Overlays]: it is how the sheet was opened, not what is shown.
      */
     val verifiedReport: Boolean = false,
+    /** The member's try at reading the membership again is running. */
+    val retryingRead: Boolean = false,
 )
 
 /**

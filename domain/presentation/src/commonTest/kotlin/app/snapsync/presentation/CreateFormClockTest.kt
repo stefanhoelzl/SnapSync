@@ -5,6 +5,7 @@ import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.query.RequestStatus
+import app.snapsync.query.membership.MembershipShown
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.UiIntent
@@ -84,7 +85,7 @@ class CreateFormClockTest {
             testQueries(
                 MutableStateFlow(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
-                MutableStateFlow(null),
+                MutableStateFlow(MembershipShown.None),
                 creation = MutableStateFlow(creation),
                 foreground = foreground,
                 requests = commands.requests.flows,

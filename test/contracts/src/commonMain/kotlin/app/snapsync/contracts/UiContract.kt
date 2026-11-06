@@ -94,6 +94,7 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
         UiIntent.ConfirmJoin::class,
         UiIntent.ConfirmSwitch::class,
         UiIntent.RetryJoin::class,
+        UiIntent.RetryMembershipRead::class,
         UiIntent.CancelJoin::class,
         UiIntent.CancelSwitch::class,
         UiIntent.SendDiagnostics::class,
@@ -160,6 +161,7 @@ object UiContract : Contract<UiStateForContract, UiUnderTest>("Ui") {
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ConfirmJoin::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.ConfirmSwitch::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RetryJoin::class)
+                    calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.RetryMembershipRead::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.CancelJoin::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.CancelSwitch::class)
                     calls(UiHandlers<UiState, UiIntent>::onIntent, UiIntent.SendDiagnostics::class)

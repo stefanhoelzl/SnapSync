@@ -19,6 +19,7 @@ import app.snapsync.entrypoints.OnInviteForOtherEvent
 import app.snapsync.entrypoints.OnJoinConfirmed
 import app.snapsync.entrypoints.OnKeyRestoreRequested
 import app.snapsync.entrypoints.OnLeaveConfirmed
+import app.snapsync.entrypoints.OnMembershipReadRetried
 import app.snapsync.entrypoints.OnMobileDataChanged
 import app.snapsync.entrypoints.OnRenameRequested
 import app.snapsync.entrypoints.OnSelectionAnswerable
@@ -202,6 +203,11 @@ internal class AppWork(private val core: AppCore) {
     /** A reopened invite of the joined event offered its key back. */
     internal val keyRestoreRequested: OnKeyRestoreRequested by lazy {
         OnKeyRestoreRequested(core.runtime, membership.restoreKey, foregroundWork, wakeWork, statuses)
+    }
+
+    /** The member tried again to read whether this device is in an event. */
+    internal val membershipReadRetried: OnMembershipReadRetried by lazy {
+        OnMembershipReadRetried(core.runtime, prelude, foregroundWork, wakeWork, statuses)
     }
 
     /** The member confirmed a join. */

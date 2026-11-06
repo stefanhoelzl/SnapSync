@@ -77,6 +77,50 @@ class AppExperienceIntegrationTest {
     @Test
     @Verifies(
         spec = "app-experience",
+        requirement = "The first frame is never a guessed state",
+        scenario = "An unreadable membership is told, not taken for a leave",
+    )
+    fun an_unreadable_membership_is_told_and_tried_again() = behaviour {
+        given {
+            joinedEvent()
+            step("the membership's store unreadable from the next launch on", act = {
+                databases.unreadable("ledger.db", on = true)
+            }, until = {})
+        }
+
+        // Nothing has been read since the launch: not the joined screen, which needs the event, and never the create
+        // screen, which would say the member left.
+        whenever { host.relaunch() }
+        then {
+            screen<Layer.MembershipUnreadable> { !it.retrying && it.offersMenu }
+            neverScreen<Layer.CreateEvent>()
+        }
+
+        // Still unreadable, a double tap tries once: the second tap finds the first still running. (That the button
+        // shows it is working is the presentation's, held open there: here the try answers within one frame.)
+        whenever {
+            tap(UiIntent.RetryMembershipRead)
+            tap(UiIntent.RetryMembershipRead)
+        }
+        then {
+            times(1) { event<WorldEvent.Delivered> { it.entry == "OnMembershipReadRetried" } }
+            neverScreen<Layer.CreateEvent>()
+        }
+
+        // The store recovers, and trying again shows what it found.
+        whenever {
+            databases.unreadable("ledger.db", on = false)
+            tap(UiIntent.RetryMembershipRead)
+        }
+        then {
+            screen<Layer.Joined>()
+            neverScreen<Layer.CreateEvent>()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "app-experience",
         requirement = "The app keeps its place across backgrounding",
         scenario = "Returning to an open settings surface",
     )

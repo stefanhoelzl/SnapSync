@@ -33,6 +33,7 @@ import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ReportRequest
@@ -55,6 +56,7 @@ import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.testids.testEventId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -138,6 +140,7 @@ internal class TestRequests {
         settings = statuses.settings.status,
         switch = statuses.switch.status,
         rename = statuses.rename.status,
+        membershipRead = statuses.read.status,
         report = reports.status,
     )
 
@@ -185,6 +188,9 @@ internal class TestCommands(
     /** Restoring a lost key is answered nowhere the screen reads; a test about it answers otherwise. */
     var restoreKey: suspend (EventKey) -> RestoreAnswer? = { RestoreAnswer.NothingChanged }
 
+    /** Trying the membership read again is answered at once, or once [readMayAnswer] completes when a test sets it. */
+    var readMayAnswer: CompletableDeferred<Unit>? = null
+
     /** What the door does as each request is handed to it, before its work runs — a throw there is the firing intent's. */
     var handedOver: (Any) -> Unit = {}
 
@@ -228,6 +234,9 @@ internal class TestCommands(
         },
         restoreKey = command { r: KeyRestoreRequest ->
             requests.answer(r.id, requests.statuses.restore, RestoreAnswer.Failed) { restoreKey(r.key) }
+        },
+        retryMembershipRead = command { r: MembershipReadRequest ->
+            requests.answer(r.id, requests.statuses.read, Unit) { readMayAnswer?.await() ?: Unit }
         },
     )
 

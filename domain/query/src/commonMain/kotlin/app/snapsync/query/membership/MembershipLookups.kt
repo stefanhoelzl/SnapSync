@@ -24,10 +24,10 @@ class MembershipQuery(private val membership: MembershipRepository) {
     val state: StateFlow<MembershipRead> get() = membership.state
 
     /**
-     * The membership held, or `null` while none is as far as this process can tell — not joined, or not readable now:
-     * what a screen shows either way. Distinct, and as current as [state] at every read; building it reads nothing.
+     * The membership as a screen shows it: held, none, or not readable since this process started. Distinct, and as
+     * current as [state] at every read; building it reads nothing.
      */
-    val joined: StateFlow<Membership?> = JoinedFlow(membership)
+    val shown: StateFlow<MembershipShown> = ShownFlow(membership)
 
     /** The active membership held, or `null` when none is — a deleted one, none at all, or one that cannot be read. */
     fun active(): Membership.Active? = when (val read = state.value) {
@@ -37,24 +37,52 @@ class MembershipQuery(private val membership: MembershipRepository) {
 }
 
 /**
- * The membership's read as the membership held: re-derived at every read, emitted only when it changes. The store's
+ * What a screen shows of the membership — the one read a screen takes of it, so whether it is held and whether it can
+ * be read never reach the screen apart.
+ */
+sealed interface MembershipShown {
+    /** The membership held, or `null` while none is. */
+    val held: Membership?
+
+    data class Held(override val held: Membership) : MembershipShown
+
+    /**
+     * None held: not joined — or a row this build refuses, which reads the same however often it is read, so a join is
+     * the member's way back.
+     */
+    data object None : MembershipShown {
+        override val held: Membership? get() = null
+    }
+
+    /** Not readable, and not read since this process started: whether the device is in an event is not known. */
+    data object Unreadable : MembershipShown {
+        override val held: Membership? get() = null
+    }
+}
+
+/**
+ * The membership's read as a screen shows it: re-derived at every read, emitted only when it changes. The store's
  * state is reached only when read, since its first read opens the shared database.
  */
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-private class JoinedFlow(private val membership: MembershipRepository) : StateFlow<Membership?> {
-    override val value: Membership? get() = membership.state.value.held()
-    override val replayCache: List<Membership?> get() = listOf(value)
+private class ShownFlow(private val membership: MembershipRepository) : StateFlow<MembershipShown> {
+    override val value: MembershipShown get() = membership.state.value.shown()
+    override val replayCache: List<MembershipShown> get() = listOf(value)
 
-    override suspend fun collect(collector: FlowCollector<Membership?>): Nothing {
+    override suspend fun collect(collector: FlowCollector<MembershipShown>): Nothing {
         var told: Any? = NothingTold
         membership.state.collect { read ->
-            val held = read.held()
-            if (held != told) collector.emit(held)
-            told = held
+            val shown = read.shown()
+            if (shown != told) collector.emit(shown)
+            told = shown
         }
     }
 
-    private fun MembershipRead.held(): Membership? = (this as? MembershipRead.Joined)?.membership
+    private fun MembershipRead.shown(): MembershipShown = when (this) {
+        is MembershipRead.Joined -> MembershipShown.Held(this.membership)
+        is MembershipRead.NotJoined -> MembershipShown.None
+        is MembershipRead.Unavailable -> if (refused) MembershipShown.None else MembershipShown.Unreadable
+    }
 
     /** What was told before anything was: unequal to every membership and to none. */
     private object NothingTold

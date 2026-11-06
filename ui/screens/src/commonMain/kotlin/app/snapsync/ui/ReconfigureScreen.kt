@@ -122,6 +122,7 @@ internal fun screenLabel(state: UiState): String {
         is Layer.CreateEvent -> "CreateEvent"
         Layer.CreatingEvent -> "CreatingEvent"
         is Layer.UpdateRequired -> "UpdateRequired"
+        is Layer.MembershipUnreadable -> "MembershipUnreadable"
     }
 }
 

@@ -14,4 +14,7 @@ class MembershipStatuses {
     val switch = RequestStatuses<SwitchVerdict>()
     val rename = RequestStatuses<RenameResult>()
     val restore = RequestStatuses<RestoreAnswer>()
+
+    /** Trying again to read the membership: answered once it was read again and what opening the app runs has run. */
+    val read = RequestStatuses<Unit>()
 }

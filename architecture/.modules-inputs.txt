@@ -148,6 +148,7 @@ edge :app:desktop :domain:feature
 edge :app:desktop :domain:model
 edge :app:desktop :domain:ports
 edge :app:desktop :domain:presentation
+edge :app:desktop :domain:query
 edge :app:desktop :domain:services
 edge :app:desktop :test:control
 edge :app:desktop :ui:components

@@ -412,7 +412,7 @@ Every write goes through the generated queries (`StoreWritesAnnounceTest`): a ra
 screen over the rows it changed would stay stale with no error anywhere.
 
 What the screen **asks** is a query, in `:domain:query`: a read over the data layer, never a write
-(`QueryReadOnlyTest`) — the membership held (`MembershipQuery.joined`), the joined event's key and its invite
+(`QueryReadOnlyTest`) — the membership as shown (`MembershipQuery.shown`), the joined event's key and its invite
 (`EventKeyQuery`), the counts (`SharingProgressQuery`, `ReceivingProgress`), each a state the store's change notices
 re-read while the app is in front. What the screen asks once is a **lookup** (`ScreenLookup`): an invite's event
 (`JoinDetailsLookup`), how many photos a range would share (`ShareableCountLookup`) — read on the composition lane,

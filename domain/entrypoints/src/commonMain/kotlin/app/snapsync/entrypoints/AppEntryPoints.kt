@@ -38,6 +38,7 @@ import app.snapsync.domain.push.PushTrigger
 import app.snapsync.domain.receiving.TransferFacts
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MembershipReadRequest
 import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.domain.upload.UploadPass
@@ -298,6 +299,30 @@ class OnKeyRestoreRequested(
             }
             false -> Unit
         }
+    }
+}
+
+/**
+ * The member tried again to read whether this device is in an event: the membership and the key read again — the screen
+ * shows what was found as soon as it is — then what opening the app runs, and only then answered, so a second try
+ * never runs beside it.
+ */
+class OnMembershipReadRetried(
+    runtime: Runtime,
+    private val prelude: Prelude,
+    private val work: ForegroundWork,
+    private val wake: WakeWork,
+    private val statuses: MembershipStatuses,
+) : BackgroundEntryPoint<MembershipReadRequest>(runtime) {
+    @OptIn(EntryPointCall::class)
+    override suspend fun run(arg: MembershipReadRequest, on: Run) = on.steps {
+        statuses.read.begun(arg.id)
+        ensure("answer") { statuses.read.settle(arg.id, Unit) }
+        isolated("membership") { prelude.membership() }
+        isolated("key") { prelude.key() }
+        isolated("own work") { work.run(on) }
+        required { wake.full(WakeKind.FOREGROUND, on) }
+        required { statuses.read.done(arg.id, Unit) }
     }
 }
 
