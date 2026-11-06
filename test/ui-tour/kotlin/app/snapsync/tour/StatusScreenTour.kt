@@ -42,6 +42,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.InviteFact
@@ -342,6 +343,7 @@ abstract class StatusScreenTour {
                     service = MutableStateFlow(null),
                 ),
                 foreground = MutableStateFlow(ForegroundReturn.NONE),
+                inFront = MutableStateFlow(InFront.IN_FRONT),
                 network = object : NetworkStatusQuery {
                     override val access: StateFlow<NetworkAccess> = MutableStateFlow(
                         NetworkAccess.Online(restricted = false),

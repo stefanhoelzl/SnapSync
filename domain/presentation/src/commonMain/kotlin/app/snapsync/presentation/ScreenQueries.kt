@@ -4,6 +4,7 @@ import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.Membership
@@ -62,6 +63,8 @@ class ScreenQueries(
     val mobileData: MobileDataQuery,
     /** The app's latest return to the foreground: the create screen's draft follows it. */
     val foreground: StateFlow<ForegroundReturn>,
+    /** Whether the app is in front now: the screen's clock-driven lines tick only then. */
+    val inFront: StateFlow<InFront>,
 )
 
 /**

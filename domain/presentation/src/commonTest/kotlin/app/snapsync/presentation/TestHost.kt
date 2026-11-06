@@ -4,6 +4,7 @@ import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.Membership
@@ -54,6 +55,7 @@ internal fun testQueries(
     network: NetworkStatusQuery = AlwaysOnline,
     mobileData: MobileDataQuery = AlwaysAllowed,
     foreground: StateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
+    inFront: StateFlow<InFront> = MutableStateFlow(InFront.IN_FRONT),
     eventKey: EventKeyView = testKeys(),
 ): ScreenQueries = ScreenQueries(
     sharing = sync,
@@ -69,6 +71,7 @@ internal fun testQueries(
     network = network,
     mobileData = mobileData,
     foreground = foreground,
+    inFront = inFront,
 )
 
 /** The phone's standing as a test states it: verified, and the service answering, unless the test is about it. */

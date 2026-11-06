@@ -29,11 +29,11 @@ import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.SyncHealth
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -98,7 +98,7 @@ class StatusContainerHostNetworkTest {
             commands = commands.door,
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
             shareableCount = noQueries,
-            reduction = Dispatchers.Default,
+            reduction = StandardTestDispatcher(testScheduler),
         )
     }
 
