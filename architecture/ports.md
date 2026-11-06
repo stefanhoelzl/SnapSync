@@ -282,7 +282,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SwitchVerdict` | `:domain:domain` | `:domain:domain` Ask, Quiet, Stay | no |
 | `SyncStatus` | `:domain:model` | `:domain:model` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:feature` | `:domain:presentation` FakeSync, FakeSyncStatusSource, FixedSync, IdleSync, MenuTestSync, Sync | yes |
-| `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosSystemUi; `:test:contracts` SystemUiProxy | no |
+| `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosSystemUi; `:domain:services` Ui; `:test:contracts` SystemUiProxy | no |
 | `Target` | `:domain:data` | `:domain:data` To, Withheld | no |
 | `ThreadLabel` | `:domain:ports` | `:adapter:android` AndroidThreadLabel; `:adapter:generic:app` JvmThreadLabel; `:adapter:generic:mock` Labelled, ThreadLabelMock; `:adapter:generic:sentry` Unlabelled; `:adapter:ios:ext-safe` IosThreadLabel; `:domain:scheduling` FakeThreadLabel, Unlabelled; `:test:contracts` ThreadLabelProxy; `:test:rig` CheckedThreadLabel | yes |
 | `TokenIssuance` | `:domain:domain` | `:domain:domain` ChallengeStale, Minted, NoAnswer, NotAttested, ProofFailed, Refused | no |
@@ -300,7 +300,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `UploadTier` | `:domain:data` | `:domain:data` OsQueueTier, SessionTier | no |
 | `UploaderAdmission` | `:domain:data` | `:domain:data` AppUploaderAdmission, ExtensionUploaderAdmission; `:test:data` Admission | yes |
 | `UsabilityVerdict` | `:domain:domain` | `:domain:domain` Unusable, Usable | no |
-| `UserCommands` | `:domain:model` | `:domain:presentation` TestCommands | no |
 | `VersionObserver` | `:domain:data` | `:domain:data` AppVersionGate, Observers, ServiceConditions, VersionIgnored; `:test:feature` NoVersions | yes |
 | `VersionRead` | `:domain:data` | `:domain:data` Read, Unavailable | no |
 | `VersionVerdict` | `:domain:domain` | `:domain:domain` Clear, NoVerdict, Refuse | no |

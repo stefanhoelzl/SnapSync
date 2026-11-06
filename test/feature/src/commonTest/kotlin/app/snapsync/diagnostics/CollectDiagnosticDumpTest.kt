@@ -9,6 +9,7 @@ import app.snapsync.data.upload.UploadProgress
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -34,7 +35,6 @@ import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
-import app.snapsync.model.ReportContext
 import app.snapsync.model.StandbyBucket
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DeviceConditions

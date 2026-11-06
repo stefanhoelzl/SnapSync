@@ -5,6 +5,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
+import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.creation.readmodel.CreationStatus
@@ -13,10 +14,8 @@ import app.snapsync.format.TimestampText
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AppLink
@@ -93,21 +92,20 @@ class StatusContainerHostMenuTest {
                         world.reports += note
                         world.outcome()
                     },
-                )
+                ).apply {
+                    setMobileData = { choice ->
+                        when (world.saves) {
+                            true -> MobileDataOutcome.Saved(choice).also { world.mobileData = choice }
+                            false -> MobileDataOutcome.NotSaved(world.mobileData)
+                        }
+                    }
+                }
                 val changes = base.requests.mobileData.change
                 val choice = object : MobileDataQuery {
                     override fun current(): MobileDataChoice = world.mobileData
                     override val changes = changes.status
                 }
-                val host = object : UserCommands by base {
-                    override fun setMobileData(choice: MobileDataChoice) =
-                        base.requests.ask(changes, MobileDataOutcome.NotSaved(world.mobileData)) {
-                            when (world.saves) {
-                                true -> MobileDataOutcome.Saved(choice).also { world.mobileData = choice }
-                                false -> MobileDataOutcome.NotSaved(world.mobileData)
-                            }
-                        }
-                }.let { commands ->
+                val host = base.door.let { commands ->
                     StatusContainerHost(
                         StatusSources(
                             MenuTestSync(),

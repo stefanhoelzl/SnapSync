@@ -25,14 +25,26 @@ import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.report.ReportContext
+import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.request.AppLinkRequest
+import app.snapsync.domain.request.CreateRequest
+import app.snapsync.domain.request.JoinRequest
+import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MobileDataRequest
+import app.snapsync.domain.request.RenameRequest
+import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.request.SettingsRequest
+import app.snapsync.domain.request.ShareRequest
+import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.model.ReportContext
-import app.snapsync.model.ReportOutcome
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.InboundImplementation
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
@@ -114,20 +126,23 @@ internal fun servedEvent(
  */
 internal class TestRequests {
     val statuses = MembershipStatuses()
+
+    /** A bug report's answers. */
+    val reports = RequestStatuses<ReportOutcome>()
     val flows = RequestStatusFlows(
         join = statuses.join.status,
         settings = statuses.settings.status,
         switch = statuses.switch.status,
         rename = statuses.rename.status,
+        report = reports.status,
     )
 
     /** The mobile-data choice's changes, answered as the live door's work answers them. */
     val mobileData = MobileDataStatuses()
-    private var next = 0L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
 
-    fun <T : Any> ask(on: RequestStatuses<T>, unanswered: T, answer: suspend () -> T?): RequestId {
-        val id = RequestId(++next)
+    /** [id], answered on [on] by [answer] — [unanswered] if it throws, and left running if it answers `null`. */
+    fun <T : Any> answer(id: RequestId, on: RequestStatuses<T>, unanswered: T, answer: suspend () -> T?) {
         on.begun(id)
         scope.launch {
             val answered = try {
@@ -138,11 +153,13 @@ internal class TestRequests {
             }
             answered?.let { on.done(id, it) }
         }
-        return id
     }
 }
 
-/** The user-command bundle with the inert defaults the production implementation does not carry. */
+/**
+ * The screen's door with the inert defaults the production one does not carry: each command a [Background] fake that
+ * runs its lambda where it is fired, answering a request on [requests] as the live door's work answers it.
+ */
 internal class TestCommands(
     private val leave: () -> Unit = {},
     private val create: (name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) -> Unit =
@@ -157,53 +174,63 @@ internal class TestCommands(
     private val switch: suspend (InviteFact) -> SwitchVerdict? = { SwitchVerdict.Ask },
     private val sendDiagnostics: suspend (note: String, context: ReportContext) -> ReportOutcome =
         { _, _ -> ReportOutcome.SENT },
-) : UserCommands {
-    /** Where this bundle's requests are answered — the statuses a host built over it reads. */
+) {
+    /** The menu's mobile-data switch saves; a test about it answers otherwise. */
+    var setMobileData: suspend (MobileDataChoice) -> MobileDataOutcome? = { MobileDataOutcome.Saved(it) }
+
+    /** Restoring a lost key is answered nowhere the screen reads; a test about it answers otherwise. */
+    var restoreKey: suspend (EventKey) -> RestoreAnswer? = { RestoreAnswer.NothingChanged }
+
+    /** What the door does as each request is handed to it, before its work runs — a throw there is the firing intent's. */
+    var handedOver: (Any) -> Unit = {}
+
+    /** Where this door's requests are answered — the statuses a host built over it reads. */
     val requests = TestRequests()
 
-    override fun leave() = leave.invoke()
+    /** The door a host is built over. */
+    val door: UserCommands = UserCommands(
+        leave = command { _: Unit -> leave() },
+        create = command { r: CreateRequest -> create(r.name, r.startsAt, r.endsAt, r.openUntil) },
+        join = command { r: JoinRequest ->
+            requests.answer(r.id, requests.statuses.join, JoinCommit.Failed()) { commitJoin(r.choice) }
+        },
+        share = command { r: ShareRequest -> share(r.text, r.title) },
+        requestAccess = command { _: Unit -> requestAccess() },
+        openSettings = command { _: Unit -> openSettings() },
+        openLink = command { r: AppLinkRequest -> openLink(r.url) },
+        // No presentation test is about the picker; its binding is the shells' and compose/'s.
+        choosePhotos = command { _: Unit -> },
+        reconfigure = command { r: SettingsRequest ->
+            requests.answer(r.id, requests.statuses.settings, SettingsResult.NotCurrent) { reconfigure(r.choice) }
+        },
+        rename = command { r: RenameRequest ->
+            requests.answer(r.id, requests.statuses.rename, RenameResult.Failed()) { rename(r.event, r.name) }
+        },
+        switch = command { r: SwitchRequest ->
+            requests.answer(r.id, requests.statuses.switch, SwitchVerdict.Ask) { switch(r.invite) }
+        },
+        sendDiagnostics = command { r: ReportRequest ->
+            requests.answer(r.id, requests.reports, ReportOutcome.NOT_SENT) { sendDiagnostics(r.note, r.context) }
+        },
+        setMobileData = command { r: MobileDataRequest ->
+            requests.answer(r.id, requests.mobileData.change, MobileDataOutcome.NotSaved(r.choice)) {
+                setMobileData(r.choice)
+            }
+        },
+        restoreKey = command { r: KeyRestoreRequest ->
+            requests.answer(r.id, requests.statuses.restore, RestoreAnswer.Failed) { restoreKey(r.key) }
+        },
+    )
 
-    override suspend fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) =
-        create.invoke(name, startsAt, endsAt, openUntil)
-
-    override fun commitJoin(choice: JoinChoice) = requests.ask(
-        requests.statuses.join,
-        JoinCommit.Failed(),
-    ) { commitJoin.invoke(choice) }
-
-    override suspend fun share(url: String, title: String) = share.invoke(url, title)
-
-    override suspend fun requestAccess() = requestAccess.invoke()
-
-    override suspend fun openSettings() = openSettings.invoke()
-
-    override suspend fun openLink(url: String) = openLink.invoke(url)
-
-    // No presentation test is about the picker; its binding is the shells' and compose/'s.
-    override suspend fun choosePhotos() = Unit
-
-    override fun reconfigure(choice: ShareChoice) = requests.ask(
-        requests.statuses.settings,
-        SettingsResult.NotCurrent,
-    ) { reconfigure.invoke(choice) }
-
-    override fun rename(eventId: EventId, name: String) =
-        requests.ask(requests.statuses.rename, RenameResult.Failed()) { rename.invoke(eventId, name) }
-
-    override fun switch(invite: InviteFact) = requests.ask(
-        requests.statuses.switch,
-        SwitchVerdict.Ask,
-    ) { switch.invoke(invite) }
-
-    override suspend fun sendDiagnostics(note: String, context: ReportContext) = sendDiagnostics.invoke(note, context)
-
-    // The menu's mobile-data switch saves; a test about it overrides this.
-    override fun setMobileData(choice: MobileDataChoice) =
-        requests.ask(requests.mobileData.change, MobileDataOutcome.NotSaved(choice)) { MobileDataOutcome.Saved(choice) }
-
-    // Restoring a lost key is answered nowhere the screen reads; a test about it overrides this.
-    override fun restoreKey(key: EventKey) =
-        requests.ask(requests.statuses.restore, RestoreAnswer.Failed) { RestoreAnswer.NothingChanged }
+    @OptIn(InboundImplementation::class)
+    private fun <A> command(run: (A) -> Unit): UserCommand<A> = UserCommand(
+        object : Background<A> {
+            override fun handle(arg: A, completion: Completion) {
+                handedOver(arg as Any)
+                run(arg)
+            }
+        },
+    )
 }
 
 /** Diagnostics that go nowhere unless a test is about them. */

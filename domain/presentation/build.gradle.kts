@@ -20,6 +20,8 @@ kotlin {
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:query"))
+            // The command door's entry points (`UserCommand`): fired, never awaited.
+            implementation(project(":domain:inbound"))
             implementation(project(":domain:format"))
             implementation(project(":domain:feature"))
             // The screen's vocabulary this zone reduces into (`UiState`) and hears (`UiIntent`).

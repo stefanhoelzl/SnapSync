@@ -7,12 +7,12 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
-import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -252,10 +252,10 @@ private class SpyCreator : EventCreator {
     val created = mutableListOf<String>()
     val starts = mutableListOf<String>()
     val ends = mutableListOf<String>()
-    override suspend fun create(name: String, startsAt: String, endsAt: String, openUntil: OpenUntil?) {
-        created += name
-        starts += startsAt
-        ends += endsAt
+    override suspend fun create(request: CreateRequest) {
+        created += request.name
+        starts += TimestampText.format(request.startsAt.at)
+        ends += TimestampText.format(request.endsAt.at)
     }
 }
 
@@ -333,7 +333,7 @@ private fun host(
     ),
     scope,
     joinDetails = joinDetails(loadJoinDetails),
-    commands = commands,
+    commands = commands.door,
     cutoffFormatter = fixedCutoffFormatter(),
     shareableCount = noQueries,
     diagnostics = testDiagnostics(onIntentError = onIntentError),
@@ -380,7 +380,7 @@ class StatusContainerHostTest {
                 mobileData = AlwaysAllowed,
             ),
             backgroundScope,
-            commands = TestCommands(),
+            commands = TestCommands().door,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             joinDetails = unanswered,
@@ -402,12 +402,7 @@ class StatusContainerHostTest {
         return TestCommands(
             create = { n, st, en, ou ->
                 scope.launch {
-                    creator.create(
-                        n,
-                        TimestampText.format(st.at),
-                        TimestampText.format(en.at),
-                        ou,
-                    )
+                    creator.create(CreateRequest(n, st, en, ou))
                 }
             },
         ).let { commands ->
@@ -423,7 +418,7 @@ class StatusContainerHostTest {
                     mobileData = AlwaysAllowed,
                 ),
                 scope,
-                commands = commands,
+                commands = commands.door,
                 cutoffFormatter = fixedCutoffFormatter(),
                 shareableCount = noQueries,
                 joinDetails = unanswered,
@@ -525,7 +520,7 @@ class StatusContainerHostTest {
             backgroundScope,
             cutoffFormatter = movableCutoffFormatter(clock),
             shareableCount = noQueries,
-            commands = TestCommands(),
+            commands = TestCommands().door,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
@@ -613,7 +608,7 @@ class StatusContainerHostTest {
                 scope,
                 cutoffFormatter = fixedCutoffFormatter(),
                 shareableCount = noQueries,
-                commands = commands,
+                commands = commands.door,
                 joinDetails = unanswered,
                 diagnostics = testDiagnostics(),
                 reduction = Dispatchers.Default,
@@ -809,7 +804,7 @@ class StatusContainerHostTest {
                     mobileData = AlwaysAllowed,
                 ),
                 backgroundScope,
-                commands = commands,
+                commands = commands.door,
                 joinDetails = joinDetails {
                     found(
                         "My Party",
@@ -871,7 +866,7 @@ class StatusContainerHostTest {
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
-            commands = TestCommands(),
+            commands = TestCommands().door,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
@@ -1558,7 +1553,7 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             diagnostics = testDiagnostics(log = { logged.trySend(it) }),
-            commands = TestCommands(),
+            commands = TestCommands().door,
             reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
@@ -1674,7 +1669,7 @@ class StatusContainerHostTest {
                 mobileData = AlwaysAllowed,
             ),
             backgroundScope,
-            commands = TestCommands(leave = { leaves++ }),
+            commands = TestCommands(leave = { leaves++ }).door,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             joinDetails = unanswered,
@@ -1711,7 +1706,7 @@ class StatusContainerHostTest {
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
-            commands = TestCommands(),
+            commands = TestCommands().door,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
@@ -1736,7 +1731,7 @@ class StatusContainerHostTest {
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
-            commands = TestCommands(),
+            commands = TestCommands().door,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
@@ -1788,7 +1783,7 @@ class StatusContainerHostTest {
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
-            commands = TestCommands(),
+            commands = TestCommands().door,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
@@ -1811,7 +1806,7 @@ class StatusContainerHostTest {
                 mobileData = AlwaysAllowed,
             ),
             backgroundScope,
-            commands = TestCommands(share = { url, title -> shared += url to title }),
+            commands = TestCommands(share = { url, title -> shared += url to title }).door,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             joinDetails = unanswered,
@@ -1842,7 +1837,7 @@ class StatusContainerHostTest {
                 mobileData = AlwaysAllowed,
             ),
             backgroundScope,
-            commands = TestCommands(share = { url, title -> shared += url to title }),
+            commands = TestCommands(share = { url, title -> shared += url to title }).door,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             joinDetails = unanswered,
@@ -2376,7 +2371,7 @@ class StatusContainerHostJoinGateTest {
                             mobileData = AlwaysAllowed,
                         ),
                         scope,
-                        commands = commands,
+                        commands = commands.door,
                         cutoffFormatter = fixedCutoffFormatter(),
                         joinDetails = unanswered,
                         diagnostics = testDiagnostics(onIntentError = { reported.complete(it) }),
@@ -2503,7 +2498,7 @@ class StatusContainerHostJoinedFactsTest {
             backgroundScope,
             cutoffFormatter = movableCutoffFormatter(clock),
             shareableCount = noQueries,
-            commands = TestCommands(),
+            commands = TestCommands().door,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
@@ -2541,7 +2536,7 @@ class StatusContainerHostJoinedFactsTest {
             backgroundScope,
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
-            commands = TestCommands(),
+            commands = TestCommands().door,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
@@ -2579,12 +2574,7 @@ class StatusContainerHostRefusalTest {
         return TestCommands(
             create = { n, st, en, ou ->
                 scope.launch {
-                    creator.create(
-                        n,
-                        TimestampText.format(st.at),
-                        TimestampText.format(en.at),
-                        ou,
-                    )
+                    creator.create(CreateRequest(n, st, en, ou))
                 }
             },
         ).let { commands ->
@@ -2601,7 +2591,7 @@ class StatusContainerHostRefusalTest {
                     mobileData = AlwaysAllowed,
                 ),
                 scope,
-                commands = commands,
+                commands = commands.door,
                 cutoffFormatter = fixedCutoffFormatter(),
                 shareableCount = noQueries,
                 joinDetails = unanswered,

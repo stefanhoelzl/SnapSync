@@ -2,8 +2,12 @@ package app.snapsync.feature.creation
 
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.NewEventKeys
+import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.request.CreateRequest
 import app.snapsync.feature.creation.readmodel.CreationStatus
+import app.snapsync.format.TimestampText
 import app.snapsync.mock.DevControlsMock
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.model.CreateOutcome
@@ -23,6 +27,13 @@ import kotlin.test.assertTrue
  * only its id is sent, and the key itself goes to the creator's own join.
  */
 class CreateEventKeyTest {
+
+    private val party = CreateRequest(
+        "Party",
+        EventStart(TimestampText.parse("2026-07-14T18:00:00Z")),
+        EventEnd(TimestampText.parse("2026-07-21T18:00:00Z")),
+        openUntil = null,
+    )
 
     private val eventId = "11111111-1111-4111-8111-111111111111"
 
@@ -60,7 +71,7 @@ class CreateEventKeyTest {
     fun `an encrypted create sends only the key id and routes the key to the creator's join`() = runTest {
         val w = World()
 
-        w.create(eventId).create("Party", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z", openUntil = null)
+        w.create(eventId).create(party)
 
         val keyId = assertNotNull(w.sentKeyId)
         val key = assertNotNull(w.mintedKey)
@@ -73,7 +84,7 @@ class CreateEventKeyTest {
     fun `a build that creates plain events mints no key and sends no key id`() = runTest {
         val w = World().apply { controls.encrypts = false }
 
-        w.create(eventId).create("Party", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z", openUntil = null)
+        w.create(eventId).create(party)
 
         assertNull(w.sentKeyId)
         assertTrue(w.routed, "the plain event still reaches the creator's join")

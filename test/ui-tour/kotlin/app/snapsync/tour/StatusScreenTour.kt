@@ -50,7 +50,19 @@ import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.report.ReportContext
+import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.request.AppLinkRequest
+import app.snapsync.domain.request.CreateRequest
+import app.snapsync.domain.request.JoinRequest
+import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MobileDataRequest
+import app.snapsync.domain.request.RenameRequest
+import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.request.SettingsRequest
+import app.snapsync.domain.request.ShareRequest
+import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -61,13 +73,13 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.InboundImplementation
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReportContext
-import app.snapsync.model.ReportOutcome
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
@@ -75,6 +87,8 @@ import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
+import app.snapsync.presentation.UserCommand
+import app.snapsync.presentation.UserCommands
 import app.snapsync.presentation.onIntent
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
@@ -83,7 +97,6 @@ import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.network.NetworkStatusQuery
-import app.snapsync.ui.components.resources.Res as ComponentRes
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.components.resources.share_range_custom
@@ -148,6 +161,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import kotlin.concurrent.Volatile
 import kotlin.time.Instant
+import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /** The event the joined parts of the tour are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
@@ -268,12 +282,20 @@ abstract class StatusScreenTour {
 
         /** What the rig answers the membership's requests on — at once, as a core that settles every one does. */
         private val statuses = MembershipStatuses()
-        private var lastRequest = 0L
 
-        private fun <T> answered(on: RequestStatuses<T>, answer: T?): RequestId = RequestId(++lastRequest).also { id ->
+        private val reports = RequestStatuses<ReportOutcome>()
+
+        private fun <T> answered(id: RequestId, on: RequestStatuses<T>, answer: T?) {
             on.begun(id)
             answer?.let { on.done(id, it) }
         }
+
+        @OptIn(InboundImplementation::class)
+        private fun <A> command(run: (A) -> Unit): UserCommand<A> = UserCommand(
+            object : Background<A> {
+                override fun handle(arg: A, completion: Completion) = run(arg)
+            },
+        )
 
         val host = StatusContainerHost(
             StatusSources(
@@ -300,42 +322,31 @@ abstract class StatusScreenTour {
                     settings = statuses.settings.status,
                     switch = statuses.switch.status,
                     rename = statuses.rename.status,
+                    report = reports.status,
                 ),
             ),
             scope = scope,
             cutoffFormatter = CUTOFF,
-            commands = object : UserCommands {
-                override fun leave() {
-                    this@Rig.config.value = null
-                }
-
-                override suspend fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) = Unit
-
-                override fun commitJoin(choice: JoinChoice) = answered(statuses.join, JoinCommit.Failed())
-
-                override suspend fun share(url: String, title: String) = Unit
-
-                override suspend fun requestAccess() = Unit
-
-                override suspend fun openSettings() = Unit
-
-                override suspend fun openLink(url: String) = Unit
-
-                override suspend fun choosePhotos() = Unit
-
-                override fun reconfigure(choice: ShareChoice) = answered(statuses.settings, SettingsResult.Saved)
-
-                override fun rename(eventId: EventId, name: String) = answered(statuses.rename, RenameResult.Renamed)
-
-                override fun switch(invite: InviteFact) = answered(statuses.switch, SwitchVerdict.Ask)
-
-                override suspend fun sendDiagnostics(note: String, context: ReportContext) = ReportOutcome.SENT
-
-                override fun setMobileData(choice: MobileDataChoice) =
-                    answered(MobileDataStatuses().change, MobileDataOutcome.Saved(choice))
-
-                override fun restoreKey(key: EventKey) = answered(statuses.restore, RestoreAnswer.NothingChanged)
-            },
+            commands = UserCommands(
+                leave = command { _: Unit -> this@Rig.config.value = null },
+                create = command { _: CreateRequest -> },
+                join = command { r: JoinRequest -> answered(r.id, statuses.join, JoinCommit.Failed()) },
+                share = command { _: ShareRequest -> },
+                requestAccess = command { _: Unit -> },
+                openSettings = command { _: Unit -> },
+                openLink = command { _: AppLinkRequest -> },
+                choosePhotos = command { _: Unit -> },
+                reconfigure = command { r: SettingsRequest -> answered(r.id, statuses.settings, SettingsResult.Saved) },
+                rename = command { r: RenameRequest -> answered(r.id, statuses.rename, RenameResult.Renamed) },
+                switch = command { r: SwitchRequest -> answered(r.id, statuses.switch, SwitchVerdict.Ask) },
+                sendDiagnostics = command { r: ReportRequest -> answered(r.id, reports, ReportOutcome.SENT) },
+                setMobileData = command { r: MobileDataRequest ->
+                    answered(r.id, MobileDataStatuses().change, MobileDataOutcome.Saved(r.choice))
+                },
+                restoreKey = command { r: KeyRestoreRequest ->
+                    answered(r.id, statuses.restore, RestoreAnswer.NothingChanged)
+                },
+            ),
             shareableCount = object : ScreenLookup<CaptureRange, Int?>("test", Dispatchers.Unconfined) {
                 override suspend fun read(arg: CaptureRange): Int? = null
             },

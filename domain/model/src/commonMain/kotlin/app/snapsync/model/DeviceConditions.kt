@@ -99,19 +99,3 @@ data class AppFacts(
     /** Under limited photo access, how many photos the selection holds; unsupported under any other grant. */
     val selectionPhotos: Fact<Int>,
 )
-
-/**
- * What the screen contributes to a bug report: the opaque label of the surface it was sent from, and [shown] — what
- * that surface displayed, keyed as the report keys it (`shown_shared`, `shown_received`). Both recorded verbatim: a
- * report exists to catch the screen disagreeing with the stores, so it carries what was rendered rather than a
- * re-derivation.
- */
-data class ReportContext(
-    val screen: String,
-    val shown: Map<String, String> = emptyMap(),
-    /**
-     * The report was opened from "Report this" beside a refusal: only then does it carry the refused verification's
-     * facts.
-     */
-    val verification: Boolean = false,
-)

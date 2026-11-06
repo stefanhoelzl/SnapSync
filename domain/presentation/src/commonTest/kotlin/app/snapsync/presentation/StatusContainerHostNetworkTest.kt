@@ -99,7 +99,7 @@ class StatusContainerHostNetworkTest {
             ),
             scope,
             joinDetails = joinDetails(load),
-            commands = commands,
+            commands = commands.door,
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
             shareableCount = noQueries,
             diagnostics = testDiagnostics(),

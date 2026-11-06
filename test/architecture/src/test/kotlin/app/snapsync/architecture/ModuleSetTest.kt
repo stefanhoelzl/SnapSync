@@ -188,8 +188,10 @@ class ModuleSetTest {
             // only their `readmodel` packages — a line inside one module, held by `ReadModelImportsTest`), and the
             // screen's vocabulary it reduces into. `:ui:state` references nothing project-internal, so the edge
             // hands the core no platform.
+            // And the inbound kinds its command door fires (`UserCommand`), which name no platform either.
             "presentation" to setOf(
                 ":domain:model", ":domain:domain", ":domain:feature", ":ui:state", ":domain:format", ":domain:query",
+                ":domain:inbound",
             ),
             // The shared host composition: the one zone that sees both the composition zone and presentation.
             "host" to setOf(

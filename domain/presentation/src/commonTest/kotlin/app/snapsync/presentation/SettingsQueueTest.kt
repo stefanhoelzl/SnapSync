@@ -7,7 +7,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
-import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -16,7 +16,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
@@ -64,16 +63,14 @@ class SettingsQueueTest {
         /** The door itself: what happens as a change is handed to it — a throw there is the intent's own. */
         var door: (ShareChoice) -> Unit = {}
 
-        /** Where every change the door takes is saved, and answered. */
-        val saved = TestCommands(reconfigure = { SettingsResult.Saved })
-    }
-
-    /** The settings' door over [world]: every change it is handed is recorded, then saved. */
-    private fun commands(world: World): UserCommands = object : UserCommands by world.saved {
-        override fun reconfigure(choice: ShareChoice): RequestId {
-            world.reconfigured += choice.direction
-            world.door(choice)
-            return world.saved.reconfigure(choice)
+        /** Where every change the door takes is saved, and answered — each recorded as it is handed over. */
+        val saved = TestCommands(reconfigure = { SettingsResult.Saved }).apply {
+            handedOver = { request ->
+                if (request is SettingsRequest) {
+                    reconfigured += request.choice.direction
+                    door(request.choice)
+                }
+            }
         }
     }
 
@@ -88,7 +85,7 @@ class SettingsQueueTest {
         ),
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-        commands = commands(world),
+        commands = world.saved.door,
         shareableCount = noQueries,
         joinDetails = unanswered,
         diagnostics = testDiagnostics(onIntentError = { world.errors += it }),

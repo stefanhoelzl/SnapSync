@@ -106,7 +106,7 @@ class JoinedLayerTest {
         ),
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-        commands = commands,
+        commands = commands.door,
         shareableCount = noQueries,
         joinDetails = unanswered,
         diagnostics = testDiagnostics(),

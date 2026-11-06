@@ -2,8 +2,11 @@ package app.snapsync.feature.creation
 
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.NewEventKeys
+import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
@@ -33,6 +36,9 @@ class CreateEventTest {
 
     /** The event's end date, already canonical — passed through the interactive create alongside startsAt. */
     private val endsAt = "2026-07-21T18:00:00Z"
+
+    private fun request(name: String, openUntil: OpenUntil? = null) =
+        CreateRequest(name, EventStart(TimestampText.parse(startsAt)), EventEnd(TimestampText.parse(endsAt)), openUntil)
 
     private class FakeClient(private val outcome: CreateOutcome) : EventCreation {
         var lastName: String? = null
@@ -66,7 +72,7 @@ class CreateEventTest {
             keys = plainKeys(),
         )
 
-        useCase.create("  My Party  ", startsAt, endsAt, openUntil = null)
+        useCase.create(request("  My Party  "))
 
         assertEquals("My Party", client.lastName) // trimmed before the call
         assertEquals(startsAt, client.lastStartsAt) // start date passed through VERBATIM, never re-derived
@@ -81,7 +87,7 @@ class CreateEventTest {
         val status = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
         val useCase = CreateEvent(client, status, onMinted = { _, _ -> }, keys = plainKeys())
 
-        useCase.create("Party", startsAt, endsAt, openUntil = OpenUntil(TimestampText.parse("2026-07-28T18:00:00Z")))
+        useCase.create(request("Party", OpenUntil(TimestampText.parse("2026-07-28T18:00:00Z"))))
 
         assertEquals("2026-07-28T18:00:00Z", client.lastOpenUntil)
     }
@@ -113,9 +119,9 @@ class CreateEventTest {
                 keys = plainKeys(),
             )
 
-        val first = launch { useCase.create("Party", startsAt, endsAt, openUntil = null) }
+        val first = launch { useCase.create(request("Party")) }
         runCurrent()
-        useCase.create("Party", startsAt, endsAt, openUntil = null)
+        useCase.create(request("Party"))
         gate.complete(Unit)
         first.join()
 
@@ -133,7 +139,7 @@ class CreateEventTest {
             keys = plainKeys(),
         )
 
-        useCase.create("x", startsAt, endsAt, openUntil = null)
+        useCase.create(request("x"))
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.INVALID_NAME), status.value)
         assertNull(provisioned)
@@ -150,7 +156,7 @@ class CreateEventTest {
             keys = plainKeys(),
         )
 
-        useCase.create("x", startsAt, endsAt, openUntil = null)
+        useCase.create(request("x"))
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.INVALID_WINDOW), status.value)
         assertNull(provisioned)
@@ -167,7 +173,7 @@ class CreateEventTest {
             keys = plainKeys(),
         )
 
-        useCase.create("x", startsAt, endsAt, openUntil = null)
+        useCase.create(request("x"))
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.SERVER, ServiceFault.UNREACHABLE), status.value)
         assertNull(provisioned)
@@ -184,7 +190,7 @@ class CreateEventTest {
             keys = plainKeys(),
         )
 
-        useCase.create("x", startsAt, endsAt, openUntil = null)
+        useCase.create(request("x"))
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.UNVERIFIED), status.value)
         assertNull(provisioned)

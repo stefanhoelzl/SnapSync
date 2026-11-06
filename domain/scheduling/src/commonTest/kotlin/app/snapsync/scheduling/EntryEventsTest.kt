@@ -240,27 +240,18 @@ class EntryEventsTest {
     }
 
     @Test
-    fun `a command started alongside a delivery is its work - and holds no background time`() = runTest {
+    fun `work a delivery's handling starts elsewhere, in its context, is its work until it ends`() = runTest {
         val world = World(this)
-        val mint = CompletableDeferred<Unit>()
+        val elsewhere = CompletableDeferred<Unit>()
         OnReport(world) {
-            val handled = kotlinx.coroutines.Job()
-            joining(handled)
             // Elsewhere — as a screen's container runs an intent — in the delivery's context.
-            world.runtime.scope.launch(context) {
-                world.runtime.alongside("tap.create") { mint.await() }
-                handled.complete()
-            }
+            joining(world.runtime.scope.launch(context) { elsewhere.await() })
         }.deliver(Unit)
         runCurrent()
-        assertTrue(world.backgroundTime.holds.isEmpty(), "a person's command took background time")
-        assertEquals(listOf("delivered OnReport", "answered OnReport"), world.entries.seen(), "done before the mint")
-        mint.complete(Unit)
+        assertEquals(listOf("delivered OnReport", "answered OnReport"), world.entries.seen(), "not done while it runs")
+        elsewhere.complete(Unit)
         runCurrent()
         assertEquals("done OnReport COMPLETED", world.entries.seen().last())
-        world.runtime.alongside("tap.share") {}
-        runCurrent()
-        assertEquals("done tap.share COMPLETED", world.entries.seen().last(), "outside any delivery it is its own")
     }
 
     @Test

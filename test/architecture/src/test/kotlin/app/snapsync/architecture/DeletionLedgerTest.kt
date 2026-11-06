@@ -481,6 +481,34 @@ class DeletionLedgerTest {
     }
 
     /**
+     * The doors before the command door and the lookups (phase 4.9): an interface the composition implemented with every
+     * command and query lane-decorated in one file (`UserCommands` as an interface, `UserQueries`, `JoinDetailsQuery`),
+     * and the decorators themselves, which a gate held that file to. A command is an entry point the screen fires
+     * (presentation's `UserCommand`), and a one-off read a `ScreenLookup`, each on the composition lane by construction.
+     */
+    @Test
+    fun `the command door's retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """interface (User""" + "Commands|User" + "Queries|JoinDetails" + "Query)\\b"
+            declared(
+                files,
+                pre,
+            ).forEach { add("a lane-decorated door in $it (the command door's and the lookups' — 4.9)") }
+            val decorators = """fun (<T> )?(AppCore\.)?(awaitingOn""" + "CoreLane|detachedOn" + "CoreLane|handed" +
+                "Off|userCommands" + "For|userQueries" + "For|joinDetails" + "For)\\b"
+            declared(
+                files,
+                decorators,
+            ).forEach { add("a lane decorator in $it (an entry point runs on the lane — 4.9)") }
+            declared(files, """class ShareableCount""" + "Query\\b").forEach {
+                add("the shareable count as a query in $it (a lookup — 4.9)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
      * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop

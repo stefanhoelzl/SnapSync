@@ -1,0 +1,45 @@
+package app.snapsync.domain.request
+
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.membership.InviteFact
+import app.snapsync.domain.membership.JoinChoice
+import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.report.ReportContext
+
+// What a member asks for with a tap, each request answered on its own status under its [RequestId]: the screen mints
+// the id, fires the request, and acts only on the answer to it.
+
+/** A join the member confirmed: [id] is answered on the join status. */
+class JoinRequest(val id: RequestId, val choice: JoinChoice)
+
+/** Settings the member changed: [id] is answered on the settings status. */
+class SettingsRequest(val id: RequestId, val choice: ShareChoice)
+
+/** A rename of [event] the member asked for: [id] is answered on the rename status. */
+class RenameRequest(val id: RequestId, val event: EventId, val name: String)
+
+/** Another event's invite, loaded: [id] is answered with the switch verdict. */
+class SwitchRequest(val id: RequestId, val invite: InviteFact)
+
+/** A reopened invite's [key], offered to restore the joined event's: [id] is answered on the restore status. */
+class KeyRestoreRequest(val id: RequestId, val key: EventKey)
+
+/** A change of the device's mobile-data choice the member made: [id] is answered on the mobile-data status. */
+class MobileDataRequest(val id: RequestId, val choice: MobileDataChoice)
+
+/** An event the member asked to create, [name] over [startsAt]–[endsAt], others joining until [openUntil]. */
+class CreateRequest(val name: String, val startsAt: EventStart, val endsAt: EventEnd, val openUntil: OpenUntil?)
+
+/** The platform's share sheet asked for, carrying [text], titled [title] where the platform shows a title. */
+class ShareRequest(val text: String, val title: String)
+
+/** A page outside the app the member asked to open: the store's, or the help page. */
+class AppLinkRequest(val url: String)
+
+/** A bug report the member confirmed, [note] in their words, from [context]: [id] is answered on the report status. */
+class ReportRequest(val id: RequestId, val note: String, val context: ReportContext)
