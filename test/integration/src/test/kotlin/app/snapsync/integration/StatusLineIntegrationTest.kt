@@ -340,6 +340,47 @@ class StatusLineIntegrationTest {
         }
     }
 
+    /**
+     * A photo the walk recorded but no job carries yet — the OS takes no job — waits: its row is not done, but nothing
+     * of it runs, so the arrow stands still until a job is handed over.
+     */
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Direction arrows show the work left and the transfer running",
+        scenario = "A new photo waiting to upload",
+    )
+    fun a_recorded_photo_no_job_carries_waits_with_a_still_arrow() = behaviour {
+        given {
+            extensionUploadsOnly()
+            joinedEvent()
+            step("no slot", act = { uploadQueue.jobLimit(0) }, until = {})
+        }
+
+        whenever {
+            takePhoto("P1")
+            cycle()
+            readAgain()
+        }
+        then {
+            event<WorldEvent.ManifestPublished> { "P1" in it.added }
+            never<WorldEvent.UploadJobCreated>()
+            settled { true }
+            screen<Layer.Joined> { it.health == SyncHealth.Syncing(upload = Arrow.STATIC, download = Arrow.HIDDEN) }
+            neverScreen<Layer.Joined> { (it.health as? SyncHealth.Syncing)?.upload == Arrow.PULSING }
+        }
+
+        whenever {
+            uploadQueue.jobLimit()
+            cycle()
+            readAgain()
+        }
+        then {
+            event<WorldEvent.UploadJobCreated>()
+            screen<Layer.Joined> { it.health == SyncHealth.Syncing(upload = Arrow.PULSING, download = Arrow.HIDDEN) }
+        }
+    }
+
     @Test
     @Verifies(
         spec = "sync-status",

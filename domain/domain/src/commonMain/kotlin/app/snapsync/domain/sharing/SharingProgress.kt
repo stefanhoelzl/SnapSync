@@ -1,21 +1,22 @@
 package app.snapsync.domain.sharing
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.upload.AssetProgress
 
 /**
  * How far the member's own photos are shared, as the joined screen counts them: [shared] of [total], and [handedOver]
- * — those whose upload is under way, never more than what is left. The total is the membership's admitted photos and
- * nothing else, so a photo the upload would never send is never counted, and a row of a photo no longer admitted (a
- * raised cutoff, a deleted photo) counts for nothing.
+ * — those a job carries, so their upload is under way; a photo waiting for a job is left, but nothing of it runs. The
+ * total is the membership's admitted photos and nothing else, so a photo the upload would never send is never counted,
+ * and a row of a photo no longer admitted (a raised cutoff, a deleted photo) counts for nothing.
  */
 data class SharingProgress(val shared: Int, val total: Int, val handedOver: Int) {
     companion object {
-        /** The progress of [admitted], given which photos the upload rows hold [done] and which [underWay]. */
-        fun of(admitted: Set<AssetId>, done: Set<AssetId>, underWay: Set<AssetId>): SharingProgress {
-            val shared = admitted.count { it in done }
-            val left = admitted.size - shared
-            return SharingProgress(shared, admitted.size, minOf(admitted.count { it in underWay }, left))
-        }
+        /** The progress of [admitted], given how far each photo the upload rows hold has got. */
+        fun of(admitted: Set<AssetId>, photos: Map<AssetId, AssetProgress>): SharingProgress = SharingProgress(
+            shared = admitted.count { photos[it] == AssetProgress.DONE },
+            total = admitted.size,
+            handedOver = admitted.count { photos[it] == AssetProgress.HANDED_OVER },
+        )
     }
 }
 

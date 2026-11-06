@@ -1,6 +1,7 @@
 package app.snapsync.domain.sharing
 
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.testids.testAssetId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,18 +12,23 @@ class SharingProgressTest {
 
     private fun ids(vararg names: String): Set<AssetId> = names.mapTo(mutableSetOf(), ::testAssetId)
 
-    @Test
-    fun `shared counts the admitted photos whose rows are done`() {
-        assertEquals(
-            SharingProgress(shared = 2, total = 3, handedOver = 1),
-            SharingProgress.of(ids("a", "b", "c"), done = ids("a", "b"), underWay = ids("c")),
-        )
-    }
+    private fun photos(vararg each: Pair<String, AssetProgress>): Map<AssetId, AssetProgress> =
+        each.associate { (name, progress) -> testAssetId(name) to progress }
 
     @Test
-    fun `under way is clamped to what is left`() {
-        // A deleted photo whose row lingers can over-count: what is under way never exceeds what is left to share.
-        assertEquals(1, SharingProgress.of(ids("a", "b"), done = ids("a"), underWay = ids("a", "b")).handedOver)
+    fun `shared counts the admitted photos done, handed over those a job carries, never a waiting one`() {
+        assertEquals(
+            SharingProgress(shared = 2, total = 4, handedOver = 1),
+            SharingProgress.of(
+                ids("a", "b", "c", "d"),
+                photos(
+                    "a" to AssetProgress.DONE,
+                    "b" to AssetProgress.DONE,
+                    "c" to AssetProgress.HANDED_OVER,
+                    "d" to AssetProgress.WAITING,
+                ),
+            ),
+        )
     }
 
     @Test
@@ -30,16 +36,13 @@ class SharingProgressTest {
         // A raised cutoff leaves done rows of photos it no longer admits: they must not mask an in-window photo left.
         assertEquals(
             SharingProgress(shared = 0, total = 1, handedOver = 0),
-            SharingProgress.of(ids("in"), done = ids("old-1", "old-2"), underWay = emptySet()),
+            SharingProgress.of(ids("in"), photos("old-1" to AssetProgress.DONE, "old-2" to AssetProgress.HANDED_OVER)),
         )
     }
 
     @Test
     fun `an admitted photo with no row is neither shared nor under way`() {
-        assertEquals(
-            SharingProgress(shared = 0, total = 1, handedOver = 0),
-            SharingProgress.of(ids("new"), emptySet(), emptySet()),
-        )
+        assertEquals(SharingProgress(shared = 0, total = 1, handedOver = 0), SharingProgress.of(ids("new"), emptyMap()))
     }
 
     @Test
@@ -53,7 +56,7 @@ class SharingProgressTest {
     fun `nothing admitted is a counted zero`() {
         assertEquals(
             SharingProgress(shared = 0, total = 0, handedOver = 0),
-            SharingProgress.of(emptySet(), ids("a"), ids("b")),
+            SharingProgress.of(emptySet(), photos("a" to AssetProgress.DONE, "b" to AssetProgress.HANDED_OVER)),
         )
     }
 }

@@ -6,6 +6,7 @@ import app.snapsync.data.store.use
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.domain.upload.CreatedJob
 import app.snapsync.domain.upload.DestinationPath
 import app.snapsync.domain.upload.FoundResource
@@ -116,8 +117,8 @@ class RowsResetAndProgressTest {
     }
 
     @Test
-    fun `progress is per photo - done only once every one of its rows is, an empty ledger counting none`() {
-        assertEquals(emptyMap(), assertIs<ProgressRead.Read>(progress.progress(event)).done)
+    fun `progress is per photo - done once every row is, else handed over while a job carries one, else waiting`() {
+        assertEquals(emptyMap(), assertIs<ProgressRead.Read>(progress.progress(event)).photos)
 
         reset.seed(event, listOf(StoredBytes(key("DONE"))))
         walk.discover(
@@ -125,15 +126,21 @@ class RowsResetAndProgressTest {
             listOf(
                 FoundResource(key("LIVE"), RowDetail(CaptureDate.Undated, "image/heic", "x")),
                 FoundResource(key("LIVE", ResourceRole.LIVE), RowDetail(CaptureDate.Undated, "video/quicktime", "x")),
+                FoundResource(key("SENDING"), RowDetail(CaptureDate.Undated, "image/heic", "x")),
             ),
         )
         moves.requested(event, CreatedJob(key("LIVE")), DestinationPath("/p"))
         moves.landed(event, ReportedLanding(key("LIVE")))
+        moves.requested(event, CreatedJob(key("SENDING")), DestinationPath("/s"))
 
         assertEquals(
-            mapOf(AssetId.parse("DONE")!! to true, AssetId.parse("LIVE")!! to false),
-            assertIs<ProgressRead.Read>(progress.progress(event)).done,
-            "a Live Photo whose video still waits is not done",
+            mapOf(
+                AssetId.parse("DONE")!! to AssetProgress.DONE,
+                AssetId.parse("LIVE")!! to AssetProgress.WAITING,
+                AssetId.parse("SENDING")!! to AssetProgress.HANDED_OVER,
+            ),
+            assertIs<ProgressRead.Read>(progress.progress(event)).photos,
+            "a Live Photo whose video still waits for a job is waiting",
         )
     }
 
@@ -145,7 +152,7 @@ class RowsResetAndProgressTest {
                 app.snapsync.domain.upload.LedgerState.COMPLETED, "", "primary", "", "", null,
             )
         }
-        assertEquals(emptyMap(), assertIs<ProgressRead.Read>(progress.progress(event)).done)
+        assertEquals(emptyMap(), assertIs<ProgressRead.Read>(progress.progress(event)).photos)
     }
 
     @Test
