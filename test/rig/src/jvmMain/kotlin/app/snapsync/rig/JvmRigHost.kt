@@ -2,6 +2,7 @@
 
 package app.snapsync.rig
 
+import app.snapsync.domain.version.Store
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
 import app.snapsync.levers.ExtensionAnswer
@@ -10,7 +11,6 @@ import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.StorePage
 import app.snapsync.model.ProcessingAnswer
-import app.snapsync.model.Store
 import app.snapsync.model.uploadersCarried
 import app.snapsync.rig.time.LoopTime
 import app.snapsync.services.logs.LogTailService

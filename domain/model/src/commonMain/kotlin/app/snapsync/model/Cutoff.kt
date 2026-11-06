@@ -2,14 +2,8 @@ package app.snapsync.model
 
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.time.Timestamp
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toInstant
 
-/** Capture-date helpers: the local-pick conversion and the deletion witness. */
-
-/** A picked **local** wall-clock date-time in the device [zone], as the capture date it names. */
-fun localToCutoff(local: LocalDateTime, zone: TimeZone): Timestamp = Timestamp.of(local.toInstant(zone))
+/** Capture-date helpers: the deletion witness. */
 
 /**
  * Has this membership's own retention deadline passed? [deletesAt] is the server-derived instant persisted on the

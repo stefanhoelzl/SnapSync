@@ -26,6 +26,14 @@ class CutoffFormatterWindowTest {
     }
 
     @Test
+    fun `a local pick converts to the corresponding UTC cutoff`() {
+        // 16:32:11 local in CEST (UTC+2, July) is 14:32:11 UTC.
+        val local = LocalDateTime(2026, 7, 6, 16, 32, 11)
+        val f = CutoffFormatter(now, TimeZone.of("Europe/Berlin"))
+        assertEquals(TimestampText.parse("2026-07-06T14:32:11Z"), f.toCutoff(local))
+    }
+
+    @Test
     fun `the latest end is exactly the window after the start`() {
         val f = CutoffFormatter(now, TimeZone.UTC)
         val from = LocalDateTime(2026, 7, 14, 18, 0)

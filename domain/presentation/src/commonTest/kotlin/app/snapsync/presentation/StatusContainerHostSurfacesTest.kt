@@ -9,7 +9,9 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
+import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.report.ReportContext
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -21,8 +23,6 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.ReportDestination
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId

@@ -1,7 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.domain.version.Store
 import app.snapsync.model.Platform
-import app.snapsync.model.Store
 
 /**
  * **What the running build is** — the constants its bundle carries, and the few facts of the running OS a process

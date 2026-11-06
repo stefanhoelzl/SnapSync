@@ -7,7 +7,6 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.time.Timestamp
-import app.snapsync.model.localToCutoff
 import app.snapsync.ui.state.CoarseDuration
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
@@ -47,7 +46,7 @@ class CutoffFormatter(
     fun millisToNextMinute(): Long = MILLIS_PER_MINUTE - now().toEpochMilliseconds().mod(MILLIS_PER_MINUTE)
 
     /** A picked local wall-clock value as the capture date it names. */
-    fun toCutoff(local: LocalDateTime): Timestamp = localToCutoff(local, zone)
+    fun toCutoff(local: LocalDateTime): Timestamp = Timestamp.of(local.toInstant(zone))
 
     /** A capture date as a local value for the picker. */
     fun toLocal(date: Timestamp): LocalDateTime = date.at.toLocalDateTime(zone)

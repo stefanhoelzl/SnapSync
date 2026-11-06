@@ -24,7 +24,10 @@ import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.domain.report.BuildLabel
+import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.report.ReportContext
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
@@ -49,9 +52,6 @@ import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.format.InviteLinkText
-import app.snapsync.model.BuildLabel
-import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.ReportDestination
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeEdit
 import app.snapsync.presentation.range.after

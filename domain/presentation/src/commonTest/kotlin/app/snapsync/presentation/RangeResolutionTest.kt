@@ -8,7 +8,6 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.TimestampText
-import app.snapsync.model.localToCutoff
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeChoice
@@ -20,6 +19,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 /**
  * The capture-range resolution rules, tested **directly** (capability `photo-sharing`).
@@ -229,7 +229,9 @@ class RangeResolutionTest {
     }
 
     /** A fixed-shape cutoff conversion — the resolution is under test, not the formatter. */
-    private fun stubCutoff(local: LocalDateTime): Timestamp = localToCutoff(local, TimeZone.UTC)
+    private val utc = CutoffFormatter({ Instant.DISTANT_PAST }, TimeZone.UTC)
+
+    private fun stubCutoff(local: LocalDateTime): Timestamp = utc.toCutoff(local)
 
     // ── directionOf ─────────────────────────────────────────────────────────────────────────────
 

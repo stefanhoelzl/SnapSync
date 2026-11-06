@@ -9,6 +9,7 @@ import app.snapsync.data.upload.UploadProgress
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -31,7 +32,6 @@ import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DeviceConditionsReading
 import app.snapsync.model.DiagnosticEnvironment
-import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact

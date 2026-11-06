@@ -3,6 +3,7 @@ package app.snapsync.services.crash
 import app.snapsync.compose.NoProcessMetrics
 import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.snapSyncProcess
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.LogLine
 import app.snapsync.mock.BuildInfoMock
@@ -19,7 +20,6 @@ import app.snapsync.model.DumpHandOff
 import app.snapsync.model.DumpResult
 import app.snapsync.model.NON_REDACTED_TAG
 import app.snapsync.model.ProcessMetricReport
-import app.snapsync.model.ReportDestination
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetricPayload

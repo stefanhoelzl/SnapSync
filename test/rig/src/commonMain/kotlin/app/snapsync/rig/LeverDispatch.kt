@@ -1,5 +1,6 @@
 package app.snapsync.rig
 
+import app.snapsync.domain.version.Store
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BackgroundTimeLevers
 import app.snapsync.levers.BuildLevers
@@ -45,7 +46,6 @@ import app.snapsync.levers.WorldLevers
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.StorePage
-import app.snapsync.model.Store
 import app.snapsync.ports.LibraryGrant
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow

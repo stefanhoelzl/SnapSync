@@ -3,11 +3,11 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.DiagnosticKeys
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage

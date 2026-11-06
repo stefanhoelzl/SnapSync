@@ -13,6 +13,7 @@ import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.format.TimestampText
@@ -22,7 +23,6 @@ import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DeviceConditionsReading
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DiagnosticEnvironment
-import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.runCatchingCancellable

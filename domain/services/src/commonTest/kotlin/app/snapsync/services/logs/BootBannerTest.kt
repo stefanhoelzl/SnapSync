@@ -1,7 +1,7 @@
 package app.snapsync.services.logs
 
+import app.snapsync.domain.version.Store
 import app.snapsync.model.Platform
-import app.snapsync.model.Store
 import app.snapsync.ports.BuildInfo
 import kotlin.test.Test
 import kotlin.test.assertEquals

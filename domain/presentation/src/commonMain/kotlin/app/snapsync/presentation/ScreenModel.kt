@@ -5,13 +5,13 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.EventWindow
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.report.BuildLabel
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.model.BuildLabel
-import app.snapsync.model.ReportDestination
-import app.snapsync.model.Store
+import app.snapsync.domain.version.Store
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeBounds
 import app.snapsync.presentation.range.view
