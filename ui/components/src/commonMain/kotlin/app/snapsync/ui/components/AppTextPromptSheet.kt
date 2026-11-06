@@ -60,9 +60,9 @@ import androidx.compose.ui.unit.dp
  *
  * **The input is the component's own state**, seeded from [initialValue]. The caller learns what was
  * written only on [onConfirm], because a half-typed sentence is not something any screen's state should
- * have to carry — the same reason the confirm dialogs keep their visibility local. The seed is keyed on
- * [initialValue], so re-opening the sheet for a different value starts from that value rather than from
- * a stale edit.
+ * have to carry — the same reason the confirm dialogs keep their visibility local. The seed is read ONCE, as the sheet
+ * opens: a value that changes while it is open — a refreshed name — never overwrites what the person is typing, and a
+ * sheet opened again starts from the value as it then stands.
  *
  * [onConfirm] receives the **trimmed** text, and confirming is impossible while that trimmed text is
  * empty **or equal to the trimmed [initialValue]** — so a caller editing an existing value cannot submit
@@ -93,7 +93,7 @@ fun AppTextPromptSheet(
     onDismiss: () -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    var text by remember(field.initialValue) { mutableStateOf(field.initialValue) }
+    var text by remember { mutableStateOf(field.initialValue) }
     val written = text.trim()
     // A no-op submission is unreachable, not merely rejected. For an empty seed this IS the empty check. A seed that IS
     // the submission — a report the app wrote for the user — may be sent as it stands.
