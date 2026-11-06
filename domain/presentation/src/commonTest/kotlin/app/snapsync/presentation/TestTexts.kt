@@ -1,0 +1,24 @@
+package app.snapsync.presentation
+
+import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.time.Timestamp
+import kotlin.time.Instant
+
+/** The instant [text] names (ISO-8601), as the screen's facts carry it. */
+internal fun timestamp(text: String): Timestamp = Timestamp.of(Instant.parse(text))
+
+/** [this] instant as a test states it: ISO-8601, to the second. */
+internal fun Timestamp.text(): String = at.toString()
+
+/** The invite to [event] a link opened, already read — carrying [key] for an encrypted event. */
+internal fun invited(
+    event: EventId,
+    key: EventKey? = null,
+): InviteLinkVerdict = InviteLinkVerdict.Invite(InviteLink(event, key))
+
+/** The invite text a test hands the screen for [event]: the screen shows and shares it as given. */
+internal fun inviteText(event: EventId, key: EventKey? = null): String =
+    "invite:${event.value}" + if (key == null) "" else "#key-${key.hashCode()}"

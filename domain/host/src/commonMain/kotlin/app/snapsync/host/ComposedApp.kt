@@ -223,5 +223,5 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     network = core.network.query,
     mobileData = core.mobileDataQuery,
     foreground = core.foregroundReturns,
-    eventKey = EventKeyView(core.keyQuery.presence),
+    eventKey = EventKeyView(core.keyQuery.presence, core.keyQuery),
 )

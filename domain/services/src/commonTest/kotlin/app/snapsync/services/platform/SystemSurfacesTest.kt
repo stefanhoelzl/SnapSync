@@ -1,5 +1,9 @@
 package app.snapsync.services.platform
 
+import app.snapsync.domain.request.AppLinkRequest
+import app.snapsync.domain.request.OwnPage
+import app.snapsync.domain.version.Store
+import app.snapsync.format.OwnPageText
 import app.snapsync.model.Handoff
 import app.snapsync.ports.SystemUi
 import kotlinx.coroutines.test.runTest
@@ -29,10 +33,16 @@ class SystemSurfacesTest {
         val ui = Ui(Handoff.Accepted)
         val surfaces = SystemSurfaces(ui)
         surfaces.share("https://snapsync.app/join", "Anna's Birthday")
-        surfaces.open("https://apps.apple.com/app")
+        surfaces.open(AppLinkRequest.StorePage(Store("App Store", "https://apps.apple.com/app")))
+        surfaces.open(AppLinkRequest.SitePage(OwnPage.PRIVACY_POLICY))
         surfaces.openSettings()
         assertEquals(
-            listOf("share https://snapsync.app/join Anna's Birthday", "open https://apps.apple.com/app", "settings"),
+            listOf(
+                "share https://snapsync.app/join Anna's Birthday",
+                "open https://apps.apple.com/app",
+                "open ${OwnPageText.url(OwnPage.PRIVACY_POLICY)}",
+                "settings",
+            ),
             ui.asked,
         )
     }
@@ -42,7 +52,7 @@ class SystemSurfacesTest {
         val ui = Ui(Handoff.Refused("no window"))
         val surfaces = SystemSurfaces(ui)
         surfaces.share("https://snapsync.app/join", "Party")
-        surfaces.open("https://apps.apple.com/app")
+        surfaces.open(AppLinkRequest.SitePage(OwnPage.WEBSITE))
         assertEquals(2, ui.asked.size)
     }
 }

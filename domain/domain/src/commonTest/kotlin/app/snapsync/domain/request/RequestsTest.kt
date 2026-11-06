@@ -16,6 +16,7 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.domain.version.Store
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -52,7 +53,9 @@ class RequestsTest {
     fun `the platform's and the report's requests carry what was asked`() {
         val share = ShareRequest("https://snapsync.app/join", "Party")
         assertEquals("https://snapsync.app/join" to "Party", share.text to share.title)
-        assertEquals("https://apps.apple.com/app", AppLinkRequest("https://apps.apple.com/app").url)
+        val store = Store("App Store", "https://apps.apple.com/app")
+        assertEquals(store, AppLinkRequest.StorePage(store).store)
+        assertEquals(OwnPage.PRIVACY_POLICY, AppLinkRequest.SitePage(OwnPage.PRIVACY_POLICY).page)
         val report = ReportRequest(id, "stuck", ReportContext("Joined"))
         assertEquals(id to "stuck", report.id to report.note)
         assertEquals(ReportContext("Joined", emptyMap(), verification = false), report.context)

@@ -3,9 +3,10 @@ package app.snapsync.integration
 import app.snapsync.control.Verifies
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.request.OwnPage
+import app.snapsync.format.OwnPageText
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
-import app.snapsync.presentation.url
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.UiIntent
@@ -72,7 +73,7 @@ class HandOffIntegrationTest {
     )
     fun a_menu_link_opens_its_page_outside_the_app() = behaviour {
         whenever { tap(UiIntent.OpenLink(AppLink.PRIVACY_POLICY)) }
-        then { event<WorldEvent.UrlOpened> { it.url == AppLink.PRIVACY_POLICY.url } }
+        then { event<WorldEvent.UrlOpened> { it.url == OwnPageText.url(OwnPage.PRIVACY_POLICY) } }
     }
 
     @Test

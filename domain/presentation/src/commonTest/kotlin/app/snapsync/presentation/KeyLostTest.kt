@@ -10,15 +10,13 @@ import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.MintsIdentifiedKey
-import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
-import app.snapsync.format.InviteLinkText
-import app.snapsync.format.TimestampText
+import app.snapsync.query.encryption.InviteRead
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -114,7 +112,7 @@ class KeyLostTest {
         val restored = mutableListOf<EventKey>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY))))
+            host.onInvite(invited(testEventId(EVENT), LINK_KEY))
             runCurrent()
             assertEquals(listOf(LINK_KEY), restored)
             assertEquals(null, (host.screen.value.layer as Layer.Joined).pendingSwitch, "no join screen")
@@ -126,7 +124,7 @@ class KeyLostTest {
         val restored = mutableListOf<EventKey>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY))))
+            host.onInvite(invited(testEventId(EVENT), LINK_KEY))
             runCurrent()
             assertEquals(
                 listOf(LINK_KEY),
@@ -142,7 +140,7 @@ class KeyLostTest {
         val restored = mutableListOf<EventKey>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), null))))
+            host.onInvite(invited(testEventId(EVENT), null))
             runCurrent()
             assertEquals(emptyList(), restored)
             assertEquals(SyncHealth.KeyLost, host.health())
@@ -154,7 +152,7 @@ class KeyLostTest {
         val restored = mutableListOf<EventKey>()
         val host = host(KeyPresence.Held(HELD), restored = restored)
         driving(host) {
-            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY))))
+            host.onInvite(invited(testEventId(EVENT), LINK_KEY))
             runCurrent()
             assertEquals(emptyList(), restored)
         }
@@ -169,7 +167,15 @@ class KeyLostTest {
                 Sync(),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(ENCRYPTED).held(),
-                eventKey = EventKeyView(presence = presence),
+                // The invite as the query reads it: whole while the key is held, none without it.
+                eventKey = EventKeyView(
+                    presence = presence,
+                    invite = object : InviteRead {
+                        override fun invite(): String? = (presence.value as? KeyPresence.Held)?.let {
+                            inviteText(testEventId(EVENT), it.key.key)
+                        }
+                    },
+                ),
                 network = AlwaysOnline,
                 mobileData = AlwaysAllowed,
             ),
@@ -184,7 +190,7 @@ class KeyLostTest {
         driving(host) {
             val joined = { host.screen.value.layer as Layer.Joined }
             assertEquals(
-                InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY)),
+                inviteText(testEventId(EVENT), LINK_KEY),
                 joined().inviteUrl,
                 "the whole invite",
             )
@@ -215,10 +221,10 @@ class KeyLostTest {
         val ENCRYPTED = TestMembership(
             testEventId(EVENT),
             "Party",
-            CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
-            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
-            endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
-            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+            CaptureCutoff(timestamp("2026-07-06T00:00:00Z")),
+            maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T00:00:00Z")),
+            endsAt = EventEnd(timestamp("2099-12-31T00:00:00Z")),
+            deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
             keyId = "0123456789abcdef",
         )
     }

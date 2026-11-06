@@ -14,7 +14,6 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
-import app.snapsync.format.TimestampText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
@@ -35,11 +34,11 @@ import kotlin.time.Instant
 private val MEMBERSHIP = TestMembership(
     eventId = testEventId("55555555-5555-4555-8555-555555555555"),
     name = "Lake Weekend",
-    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
-    startsAt = EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
-    endsAt = EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
-    deletesAt = DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
+    minPhotoDate = CaptureCutoff(timestamp("2026-07-06T00:00:00Z")),
+    startsAt = EventStart(timestamp("2026-07-06T00:00:00Z")),
+    endsAt = EventEnd(timestamp("2026-07-13T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T00:00:00Z")),
+    deletesAt = DeletesAt(timestamp("2026-08-05T00:00:00Z")),
 )
 
 private val SETTLED = SharingProgressRead.Read(SharingProgress(shared = 0, total = 0, handedOver = 0))

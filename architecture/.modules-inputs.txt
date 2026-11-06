@@ -243,14 +243,12 @@ edge :domain:ports :domain:domain
 edge :domain:ports :domain:inbound
 edge :domain:ports :domain:model
 edge :domain:presentation :domain:domain
-edge :domain:presentation :domain:feature
-edge :domain:presentation :domain:format
 edge :domain:presentation :domain:inbound
-edge :domain:presentation :domain:model
 edge :domain:presentation :domain:query
 edge :domain:presentation :ui:state
 edge :domain:query :domain:data
 edge :domain:query :domain:domain
+edge :domain:query :domain:format
 edge :domain:query :domain:inbound
 edge :domain:scheduling :domain:domain
 edge :domain:scheduling :domain:inbound

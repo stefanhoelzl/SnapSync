@@ -6,7 +6,6 @@ import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
-import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -15,8 +14,6 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.format.InviteLinkText
-import app.snapsync.format.TimestampText
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -50,11 +47,11 @@ private const val EVENT_ID = "55555555-5555-4555-8555-555555555555"
 private val MEMBERSHIP = TestMembership(
     eventId = testEventId(EVENT_ID),
     name = "Lake Weekend",
-    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
-    startsAt = EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
-    endsAt = EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
-    deletesAt = DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
+    minPhotoDate = CaptureCutoff(timestamp("2026-07-06T00:00:00Z")),
+    startsAt = EventStart(timestamp("2026-07-06T00:00:00Z")),
+    endsAt = EventEnd(timestamp("2026-07-13T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T00:00:00Z")),
+    deletesAt = DeletesAt(timestamp("2026-08-05T00:00:00Z")),
 )
 
 private val DETAILS = EventDetails(
@@ -311,7 +308,7 @@ class ServiceFaultReductionTest {
             config = null,
             load = { (if (loads.isEmpty()) updating else FOUND).also { loads += loads.size } },
         )
-        host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))).join()
+        host.onInvite(invited(testEventId(EVENT_ID), null)).join()
         timers.advanceBy(0)
         host.awaitJoin { it.phase == JoinPhase.LoadFailed && it.service == ServiceNotice.UPDATING }
 

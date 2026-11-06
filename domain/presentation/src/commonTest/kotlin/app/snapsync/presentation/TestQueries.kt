@@ -171,7 +171,8 @@ internal class TestCommands(
     private val share: (url: String, title: String) -> Unit = { _, _ -> },
     private val requestAccess: () -> Unit = {},
     private val openSettings: () -> Unit = {},
-    private val openLink: (url: String) -> Unit = {},
+    /** What an open-link request opened, as a test reads it: the store page's url, or the site page's name. */
+    private val openLink: (opened: String) -> Unit = {},
     private val reconfigure: suspend (ShareChoice) -> SettingsResult? = { SettingsResult.Saved },
     private val rename: suspend (eventId: EventId, name: String) -> RenameResult? = { _, _ -> null },
     private val switch: suspend (InviteFact) -> SwitchVerdict? = { SwitchVerdict.Ask },
@@ -204,7 +205,7 @@ internal class TestCommands(
             share = command { r: ShareRequest -> share(r.text, r.title) },
             requestAccess = command { _: Unit -> requestAccess() },
             openSettings = command { _: Unit -> openSettings() },
-            openLink = command { r: AppLinkRequest -> openLink(r.url) },
+            openLink = command { r: AppLinkRequest -> openLink(r.named()) },
             // No presentation test is about the picker; its binding is the shells' and compose/'s.
             choosePhotos = command { _: Unit -> },
         ),
@@ -266,4 +267,10 @@ internal object Creating {
     val InFlight: RequestStatus<CreateResult> = RequestStatus.InFlight(RequestId(1))
 
     fun answered(result: CreateResult): RequestStatus<CreateResult> = RequestStatus.Done(RequestId(1), result)
+}
+
+/** [this] request as a test reads what it opened: the store page's url, or the site page's name. */
+internal fun AppLinkRequest.named(): String = when (this) {
+    is AppLinkRequest.StorePage -> store.url
+    is AppLinkRequest.SitePage -> page.name
 }

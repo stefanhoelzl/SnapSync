@@ -13,9 +13,11 @@ import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.KeyToKeep
+import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.format.EventKeyText
+import app.snapsync.format.InviteLinkText
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.ports.SecureStoreRead
@@ -27,6 +29,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 /**
  * What the screen reads of the joined event's key (capabilities `sync-status`, `invite-link`): whether it is held, and
@@ -50,6 +53,7 @@ class EventKeyQueryTest {
     fun `no membership, or one that cannot be read, needs no key and offers none`() = runTest {
         val query = EventKeyQuery(device.membership, keys, backgroundScope)
         assertEquals(KeyPresence.NotNeeded, query.presence.value)
+        assertNull(query.invite(), "no membership, no invite")
         val unreadable = MembershipRepository(SharedDatabase(DatabasesMock().port(), legacy = null))
         assertIs<MembershipRead.Unavailable>(unreadable.state.value)
         assertEquals(KeyPresence.NotNeeded, EventKeyQuery(unreadable, keys, backgroundScope).presence.value)
@@ -62,11 +66,13 @@ class EventKeyQueryTest {
         keys.keep(KeyToKeep.Key(key), testEventId(EVENT))
         val query = EventKeyQuery(device.membership, keys, backgroundScope)
         assertEquals(key.key, assertIs<KeyPresence.Held>(query.presence.value).key.key)
+        assertEquals(InviteLinkText.format(InviteLink(testEventId(EVENT), key.key)), query.invite(), "the whole invite")
 
         secure.answers.remove(EncryptionSlots.EVENT_KEY)
         keys.reload()
         runCurrent()
         assertEquals(KeyPresence.Lost, query.presence.value)
+        assertNull(query.invite(), "an encrypted event's invite is never offered without its key")
 
         secure.answers[EncryptionSlots.EVENT_KEY] = SecureStoreRead.Unavailable("locked")
         keys.reload()
@@ -82,5 +88,10 @@ class EventKeyQueryTest {
             SecureStoreRead.Found(EventKeyText.encode(key.key), StoredProtection.BACKGROUND_READABLE)
         val query = EventKeyQuery(device.membership, keys, backgroundScope)
         assertEquals(KeyPresence.NotNeeded, query.presence.value)
+        assertEquals(
+            InviteLinkText.format(InviteLink(testEventId(EVENT), null)),
+            query.invite(),
+            "even with a key read",
+        )
     }
 }

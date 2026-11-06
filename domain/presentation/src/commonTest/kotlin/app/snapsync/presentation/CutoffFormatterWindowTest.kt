@@ -1,7 +1,6 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.EventWindow
-import app.snapsync.format.TimestampText
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
@@ -30,7 +29,7 @@ class CutoffFormatterWindowTest {
         // 16:32:11 local in CEST (UTC+2, July) is 14:32:11 UTC.
         val local = LocalDateTime(2026, 7, 6, 16, 32, 11)
         val f = CutoffFormatter(now, TimeZone.of("Europe/Berlin"))
-        assertEquals(TimestampText.parse("2026-07-06T14:32:11Z"), f.toCutoff(local))
+        assertEquals(timestamp("2026-07-06T14:32:11Z"), f.toCutoff(local))
     }
 
     @Test
@@ -58,9 +57,9 @@ class CutoffFormatterWindowTest {
         // Berlin falls back on 25 Oct 2026: seven days from 22 Oct 12:00 are 11:00 on the wall clock on 29 Oct, and
         // exactly 7 x 24 hours of real time — so the 30-day choice never exceeds the 30 days the backend allows.
         val f = CutoffFormatter({ Instant.parse("2026-10-22T10:00:00Z") }, TimeZone.of("Europe/Berlin"))
-        assertEquals("2026-10-29T10:00:00Z", TimestampText.format(f.openFor(7).at))
+        assertEquals("2026-10-29T10:00:00Z", f.openFor(7).at.text())
         assertEquals(LocalDateTime(2026, 10, 29, 11, 0), f.toLocal(f.openFor(7)))
-        val thirty = Instant.parse(TimestampText.format(f.openFor(30).at)) - Instant.parse("2026-10-22T10:00:00Z")
+        val thirty = Instant.parse(f.openFor(30).at.text()) - Instant.parse("2026-10-22T10:00:00Z")
         assertEquals(EventWindow.MAX.inWholeSeconds, thirty.inWholeSeconds)
     }
 }

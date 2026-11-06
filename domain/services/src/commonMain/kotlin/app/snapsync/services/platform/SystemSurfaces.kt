@@ -1,5 +1,7 @@
 package app.snapsync.services.platform
 
+import app.snapsync.domain.request.AppLinkRequest
+import app.snapsync.format.OwnPageText
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.model.Handoff
@@ -18,11 +20,16 @@ class SystemSurfaces(private val systemUi: SystemUi) {
     /** The share sheet, carrying [text], titled [title] where the platform shows one. */
     suspend fun share(text: String, title: String) = recorded("share", systemUi.share(text, title))
 
-    /** [url], opened outside this app. */
-    suspend fun open(url: String) = recorded("link", systemUi.openUrl(url))
+    /** The page [link] names, opened outside this app. */
+    suspend fun open(link: AppLinkRequest) = recorded("link", systemUi.openUrl(urlOf(link)))
 
     /** This app's own Settings page. */
     fun openSettings() = systemUi.openSettings()
+
+    private fun urlOf(link: AppLinkRequest): String = when (link) {
+        is AppLinkRequest.StorePage -> link.store.url
+        is AppLinkRequest.SitePage -> OwnPageText.url(link.page)
+    }
 
     private suspend fun recorded(what: String, handoff: Handoff) = when (handoff) {
         Handoff.Accepted -> Unit

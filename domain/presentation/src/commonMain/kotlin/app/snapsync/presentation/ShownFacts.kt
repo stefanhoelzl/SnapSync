@@ -3,10 +3,10 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.request.OwnPage
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.NetworkNotice
@@ -53,11 +53,11 @@ val DeviceRefusal.message: ScreenMessage
         DeviceRefusal.APP_NOT_GENUINE -> ScreenMessage.APP_NOT_GENUINE
     }
 
-/** The page [this] link opens: a page of the invite link's own site. */
-val AppLink.url: String
+/** The page of the app's own site [this] link opens. */
+internal val AppLink.page: OwnPage
     get() = when (this) {
-        AppLink.WEBSITE -> LINK_ORIGIN
-        AppLink.PRIVACY_POLICY -> "${LINK_ORIGIN}/#privacy"
+        AppLink.WEBSITE -> OwnPage.WEBSITE
+        AppLink.PRIVACY_POLICY -> OwnPage.PRIVACY_POLICY
     }
 
 /** [span] floored to its largest whole unit. */

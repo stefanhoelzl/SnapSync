@@ -2,7 +2,6 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
-import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -51,7 +50,6 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.format.InviteLinkText
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeEdit
 import app.snapsync.presentation.range.after
@@ -188,6 +186,7 @@ class StatusContainerHost(
     private val store = sources.build.store
     private val foreground = sources.foreground
     private val keyPresence = sources.eventKey.presence
+    private val inviteRead = sources.eventKey.invite
 
     private val log = diagnostics.log
     private val onIntentError = diagnostics.onIntentError
@@ -195,7 +194,12 @@ class StatusContainerHost(
     // Declared here rather than beside their use because `container`'s initializer reduces over it:
     // a property initialized later is null at that moment.
     private val local = MutableStateFlow(
-        Local(form = freshForm, create = CreateDraft.fresh(CreateDraftSession(), cutoffFormatter.nowToTheMinute())),
+        Local(
+            form = freshForm,
+            create = CreateDraft.fresh(CreateDraftSession(), cutoffFormatter.nowToTheMinute()),
+            // The key's presence as it stands, so the first state already says whether it is lost.
+            keyPresence = keyPresence.value,
+        ),
     )
     private var transientErrorClear: Job? = null
     private var reportNoticeClear: Job? = null
@@ -314,6 +318,7 @@ class StatusContainerHost(
                     refusal.value,
                     attestFault.value,
                     serviceFault.value,
+                    inviteRead.invite(),
                 ),
                 Interaction(pending.value, creationStatus.value, renameFlow.value, versionRefusal.value),
                 local.value,
@@ -366,7 +371,7 @@ class StatusContainerHost(
                     render(
                         Observed(
                             joined, permission, sync, download, trust.attested, access, mobileData,
-                            trust.refusal, trust.attestFault, trust.serviceFault,
+                            trust.refusal, trust.attestFault, trust.serviceFault, inviteRead.invite(),
                         ),
                         Interaction(pending, creation, rename, refusal),
                         local,
@@ -375,7 +380,7 @@ class StatusContainerHost(
                 }.collect { model -> reduce { model } }
             }
             // Whether the joined event's key is held: a lost one is the joined screen's status line until a reopened invite
-            // gives it back, and an encrypted event's invite carries the held key — one read, so the two never disagree.
+            // gives it back, and a change of it re-reads the invite an encrypted event offers only with its key held.
             intent {
                 keyPresence.collect { presence -> local.update { it.copy(keyPresence = presence) } }
             }
@@ -680,7 +685,7 @@ class StatusContainerHost(
      * does not hold.
      */
     fun onOpenAppStore() = intent {
-        state.shown.store?.let { commands.platform.openLink.fire(AppLinkRequest(it.url)) }
+        state.shown.store?.let { commands.platform.openLink.fire(AppLinkRequest.StorePage(it)) }
     }
 
     /**
@@ -777,7 +782,7 @@ class StatusContainerHost(
          */
         fun onOpenLink(link: AppLink) = intent {
             local.editOverlays { it.copy(menuOpen = false) }
-            commands.platform.openLink.fire(AppLinkRequest(link.url))
+            commands.platform.openLink.fire(AppLinkRequest.SitePage(link.page))
         }
 
         /** The report's brief word, tapped away before it cleared itself. */
@@ -1528,7 +1533,7 @@ private fun reduceFrom(
     return joinedLayer(
         joined, health, pendingSwitch, permission,
         JoinedFacts(timing, counts, display.today(), display.joinableUntil(joined, nowCutoff)),
-        rename, reconfiguring, transient, Choices(form, local.picking), display, local.inviteKey(),
+        rename, reconfiguring, transient, Choices(form, local.picking), display, observed.invite,
     )
 }
 
@@ -1635,7 +1640,7 @@ private fun joinedLayer(
     transient: ScreenMessage?,
     choices: Choices,
     display: Display,
-    inviteKey: EventKey?,
+    invite: String?,
 ): Reduced {
     val form = choices.form
     // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window. A deleted event has no settings
@@ -1644,9 +1649,9 @@ private fun joinedLayer(
     val range = if (settingsOpen) display.resolve(form, joined.event.range.start, joined.event.range.end) else null
     val layer = Layer.Joined(
         membership = display.event(joined),
-        // Derived HERE and nowhere else (decision record `event-invite-qr`, D3's surviving half):
-        // one derivation feeds both the rendered QR and the share action, so they cannot drift.
-        inviteUrl = joined.inviteUrl(inviteKey),
+        // Derived once, in the query (`EventKeyQuery.invite`), and read HERE only (decision record `event-invite-qr`, D3's
+        // surviving half): one derivation feeds both the rendered QR and the share action, so they cannot drift.
+        inviteUrl = invite,
         health = health,
         today = facts.today,
         pendingSwitch = pendingSwitch,
@@ -1765,18 +1770,6 @@ private fun DirectionCount.shown(): String = when (this) {
 
 private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
     if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC
-
-// Derive the invite link from the persisted config's eventId (the wire payload is eventId-only).
-/**
- * The invite a member shares. An ENCRYPTED event's carries its key — only ever the key of the event its config names
- * (a key read for no encrypted membership is ignored); a plain event's carries none, in the form every build reads.
- */
-private fun Membership.inviteUrl(key: EventKey?): String? = when {
-    event.encryption == Encryption.Plain -> InviteLinkText.format(InviteLink(event.id, null))
-    // An encrypted event's invite is offered only whole: no key read, no invite.
-    key == null -> null
-    else -> InviteLinkText.format(InviteLink(event.id, key))
-}
 
 private fun RenameStatus.toRenameState(): RenameState = when (this) {
     RenameStatus.Idle -> RenameState.Idle
@@ -1996,6 +1989,8 @@ private data class Observed(
     val attestFault: ServiceFault? = null,
     /** How SnapSync's service failed the latest request, if it is failing. */
     val serviceFault: ServiceFault? = null,
+    /** The joined event's invite as the member shares it, read beside the membership ([EventKeyView.invite]). */
+    val invite: String? = null,
 )
 
 /** The observed outcomes of what the member started: the join gate, a create, a rename — and a refused build. */
@@ -2066,13 +2061,7 @@ private data class Local(
      * carries the refused verification's facts. Kept out of [Overlays]: it is how the sheet was opened, not what is shown.
      */
     val verifiedReport: Boolean = false,
-) {
-    /** The key the joined event's invite carries: the held one, else none — and then no invite is offered. */
-    fun inviteKey(): EventKey? = when (keyPresence) {
-        is KeyPresence.Held -> keyPresence.key.key
-        KeyPresence.NotNeeded, KeyPresence.Unknown, KeyPresence.Lost -> null
-    }
-}
+)
 
 /**
  * [combine] over thirteen flows, typed. The library's typed overloads stop at five, and nesting them is not the same

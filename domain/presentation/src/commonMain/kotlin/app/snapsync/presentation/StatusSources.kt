@@ -17,6 +17,7 @@ import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.query.RequestStatus
+import app.snapsync.query.encryption.InviteRead
 import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.network.NetworkStatusQuery
@@ -112,6 +113,11 @@ class EventKeyView(
      * gives it back. Defaults to none needed.
      */
     val presence: StateFlow<KeyPresence> = MutableStateFlow(KeyPresence.NotNeeded),
+    /**
+     * The joined event's invite as the member shares it, read at each reduction so it belongs to the membership read
+     * beside it ([InviteRead]). Defaults to none.
+     */
+    val invite: InviteRead = NoInvite,
 )
 
 /**
@@ -194,3 +200,8 @@ class BuildStanding(
      */
     val store: Store? = null,
 )
+
+/** No invite to share: the key view's default, for a host that joins nothing. */
+private object NoInvite : InviteRead {
+    override fun invite(): String? = null
+}

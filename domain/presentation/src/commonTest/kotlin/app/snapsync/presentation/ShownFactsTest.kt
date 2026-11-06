@@ -1,8 +1,8 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.request.OwnPage
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.ScreenMessage
@@ -33,8 +33,8 @@ class ShownFactsTest {
     }
 
     @Test
-    fun `the links are pages of the invite link's own site`() {
-        assertEquals(LINK_ORIGIN, AppLink.WEBSITE.url)
-        assertEquals("$LINK_ORIGIN/#privacy", AppLink.PRIVACY_POLICY.url)
+    fun `the links are the app's own site's pages`() {
+        assertEquals(OwnPage.WEBSITE, AppLink.WEBSITE.page)
+        assertEquals(OwnPage.PRIVACY_POLICY, AppLink.PRIVACY_POLICY.page)
     }
 }

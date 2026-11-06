@@ -13,17 +13,13 @@ plugins {
 kotlin {
     sourceSets {
         // The core's `presentation` zone (`docs/architecture.md`, "Zones inside the core"): the UI-state
-        // reduction. Every edge is `implementation()` — a consumer that needs `model/`, `feature/`, Orbit or
-        // kotlinx-datetime declares it, rather than receiving it from here. Of `feature/`, only the `readmodel`
-        // packages may be named (the read-model import gate, `docs/architecture.md`).
+        // reduction, over the domain's vocabulary and the query layer's state. Every edge is `implementation()` — a
+        // consumer that needs Orbit or kotlinx-datetime declares it, rather than receiving it from here.
         commonMain.dependencies {
-            implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:query"))
             // The command door's entry points (`UserCommand`): fired, never awaited.
             implementation(project(":domain:inbound"))
-            implementation(project(":domain:format"))
-            implementation(project(":domain:feature"))
             // The screen's vocabulary this zone reduces into (`UiState`) and hears (`UiIntent`).
             implementation(project(":ui:state"))
             implementation(libs.orbit.core)

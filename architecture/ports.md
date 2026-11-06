@@ -15,6 +15,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AlbumPhotosRead` | `:domain:application` | `:domain:application` Read, Unavailable | no |
 | `AlbumWishVerdict` | `:domain:domain` | `:domain:domain` NoAccess, NotWanted, Wanted | no |
 | `Answered` | `:domain:inbound` | `:adapter:ios:ext-safe` ContractOr; `:domain:scheduling` AnsweredEntryPoint; `:test:contracts` AnsweredProxy; `:test:launch-adapters` Completed | yes |
+| `AppLinkRequest` | `:domain:domain` | `:domain:domain` SitePage, StorePage | no |
 | `AssetResources` | `:domain:data` | `:domain:data` GalleryResources, SnapshotResources | no |
 | `AttestationHealthVerdict` | `:domain:domain` | `:domain:domain` Attested, Unattested | no |
 | `Authenticated` | `:domain:data` | `:domain:data` Not, Plain | no |
@@ -118,6 +119,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Inbound` | `:domain:inbound` | `:domain:host` LiveScreen, ScreenIntents; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
 | `InterruptedImportVerdict` | `:domain:domain` | `:domain:domain` Clear, Leave, Settle | no |
 | `InviteLinkVerdict` | `:domain:domain` | `:domain:domain` Invite, KeyUnreadable, NotAnInvite | no |
+| `InviteRead` | `:domain:query` | `:domain:presentation` NoInvite; `:domain:query` EventKeyQuery | no |
 | `Items` | `:domain:ports` | — | no |
 | `JobOwner` | `:domain:data` | `:domain:data` None, Row, Unreadable | no |
 | `JoinCommit` | `:domain:domain` | `:domain:domain` Committed, EventOver, Failed, Unverified, WrongLink | no |

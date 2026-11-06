@@ -4,15 +4,12 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
-import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
-import app.snapsync.format.InviteLinkText
-import app.snapsync.format.TimestampText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
@@ -42,11 +39,11 @@ private const val OTHER = "22222222-2222-4222-8222-222222222222"
 private val CONFIG = TestMembership(
     eventId = testEventId(JOINED),
     name = "Anna's Birthday",
-    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
-    startsAt = EventStart(TimestampText.parse("2026-07-06T14:32:11Z")),
-    endsAt = EventEnd(TimestampText.parse("2026-07-13T14:32:11Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z")),
-    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+    minPhotoDate = CaptureCutoff(timestamp("2026-07-06T14:32:11Z")),
+    startsAt = EventStart(timestamp("2026-07-06T14:32:11Z")),
+    endsAt = EventEnd(timestamp("2026-07-13T14:32:11Z")),
+    maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T14:32:11Z")),
+    deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
 )
 
 private fun IdleSync(): StateFlow<SharingProgressRead> = MutableStateFlow(
@@ -103,9 +100,9 @@ class GuardedIntentTest {
                         joinDetails = joinDetails {
                             found(
                                 "Trip",
-                                EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
-                                EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
-                                DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
+                                EventStart(timestamp("2026-07-06T00:00:00Z")),
+                                EventEnd(timestamp("2026-07-13T00:00:00Z")),
+                                DeletesAt(timestamp("2026-08-05T00:00:00Z")),
                             )
                         },
                         commands = commands.door,
@@ -134,7 +131,7 @@ class GuardedIntentTest {
         }
 
     private suspend fun StatusContainerHost.awaitSwitchConfirmation() {
-        onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(OTHER), null))))
+        onInvite(invited(testEventId(OTHER), null))
         stateWhere("the switch confirmation") { (it.layer as? Layer.Joined)?.pendingSwitch?.eventId == OTHER }
     }
 

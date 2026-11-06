@@ -8,7 +8,6 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.format.TimestampText
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import kotlinx.coroutines.CoroutineScope
@@ -77,8 +76,8 @@ class VersionGateHostTest {
                 "Anna's Birthday",
                 GATE_CUTOFF,
                 maxPhotoDate = GATE_CEILING,
-                endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
-                deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+                endsAt = EventEnd(timestamp("2099-12-31T00:00:00Z")),
+                deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
             ),
         ).testWithInternalState(this) {
             runOnCreate() // the initial state is the joined layer
@@ -156,8 +155,8 @@ class VersionGateHostTest {
 private const val STORE_URL = "https://apps.apple.com/de/app/id6781692480"
 
 private const val GATE_EVENT_ID = "11111111-1111-4111-8111-111111111111"
-private val GATE_CUTOFF = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z"))
-private val GATE_CEILING = CaptureCeiling(TimestampText.parse("2026-07-13T14:32:11Z"))
+private val GATE_CUTOFF = CaptureCutoff(timestamp("2026-07-06T14:32:11Z"))
+private val GATE_CEILING = CaptureCeiling(timestamp("2026-07-13T14:32:11Z"))
 
 /**
  * A container carrying only what this capability needs: the refusal read-model, the build's store URL,

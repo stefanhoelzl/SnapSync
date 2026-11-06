@@ -2,16 +2,9 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
-import app.snapsync.domain.event.EventKey
-import app.snapsync.domain.event.EventKeyId
 import app.snapsync.domain.event.EventStart
-import app.snapsync.domain.event.IdentifiedKey
-import app.snapsync.domain.event.KeyPresence
-import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.MemberCounts
-import app.snapsync.domain.event.MintsIdentifiedKey
 import app.snapsync.domain.event.OpenUntil
-import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -20,8 +13,6 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
-import app.snapsync.format.InviteLinkText
-import app.snapsync.format.TimestampText
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
@@ -55,17 +46,17 @@ private const val EVENT_ID = "44444444-4444-4444-8444-444444444444"
 private val MEMBERSHIP = TestMembership(
     eventId = testEventId(EVENT_ID),
     name = "Lake Weekend",
-    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
-    startsAt = EventStart(TimestampText.parse("2026-07-06T00:00:00Z")),
-    endsAt = EventEnd(TimestampText.parse("2026-07-13T00:00:00Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T00:00:00Z")),
-    deletesAt = DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
+    minPhotoDate = CaptureCutoff(timestamp("2026-07-06T00:00:00Z")),
+    startsAt = EventStart(timestamp("2026-07-06T00:00:00Z")),
+    endsAt = EventEnd(timestamp("2026-07-13T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(timestamp("2026-07-13T00:00:00Z")),
+    deletesAt = DeletesAt(timestamp("2026-08-05T00:00:00Z")),
 )
 
 /** The same membership once its event has ended (before the fixed clock), the event still open. */
 private val ENDED = MEMBERSHIP.copy(
-    endsAt = EventEnd(TimestampText.parse("2026-07-08T00:00:00Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-08T00:00:00Z")),
+    endsAt = EventEnd(timestamp("2026-07-08T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(timestamp("2026-07-08T00:00:00Z")),
 )
 
 /** Everything of the member's shared: the snapshot that reads in sync. */
@@ -86,7 +77,6 @@ class JoinedLayerTest {
         download: DownloadProgress = DownloadProgress(0, 0),
         permission: PhotoGrant = PhotoGrant.FULL,
         commands: TestCommands = TestCommands(),
-        inviteKey: EventKey? = null,
         configFlow: MutableStateFlow<TestMembership?> = MutableStateFlow(config),
     ) = StatusContainerHost(
         StatusSources(
@@ -95,11 +85,7 @@ class JoinedLayerTest {
             configFlow.held(),
             requests = commands.requests.flows,
             download = MutableStateFlow(download),
-            eventKey = EventKeyView(
-                presence = MutableStateFlow(
-                    inviteKey?.let { KeyPresence.Held(heldKey(it)) } ?: KeyPresence.NotNeeded,
-                ),
-            ),
+            eventKey = configFlow.plainKeys(),
             network = AlwaysOnline,
             mobileData = AlwaysAllowed,
         ),
@@ -170,7 +156,7 @@ class JoinedLayerTest {
     @Test
     fun `a back-dated event says until when others can join while that day is ahead`() = runTest {
         // Clock: 2026-07-09T12:00Z. ENDED ends 2026-07-08.
-        val backDated = ENDED.copy(openUntil = OpenUntil(TimestampText.parse("2026-07-15T12:00:00Z")))
+        val backDated = ENDED.copy(openUntil = OpenUntil(timestamp("2026-07-15T12:00:00Z")))
         assertEquals(
             LocalDateTime.parse("2026-07-15T12:00"),
             joined(backgroundScope, backDated).layer().joinableUntil,
@@ -178,39 +164,13 @@ class JoinedLayerTest {
         val notWhen = mapOf(
             "a regular event" to ENDED.copy(openUntil = OpenUntil(ENDED.endsAt.at)),
             "no open-until date served" to ENDED,
-            "the day has passed" to ENDED.copy(openUntil = OpenUntil(TimestampText.parse("2026-07-09T06:00:00Z"))),
+            "the day has passed" to ENDED.copy(openUntil = OpenUntil(timestamp("2026-07-09T06:00:00Z"))),
             "the event's photos were deleted" to backDated.copy(deleted = true),
         )
         for ((case, config) in notWhen) assertNull(joined(backgroundScope, config).layer().joinableUntil, case)
     }
 
     // ---- the invite --------------------------------------------------------------------------------
-
-    @Test
-    fun `an encrypted event's invite carries its key`() = runTest {
-        val host = joined(backgroundScope, MEMBERSHIP.copy(keyId = "k1"), inviteKey = INVITE_KEY)
-
-        val layer = host.screen.first { (it.layer as? Layer.Joined)?.inviteUrl?.contains("#k=") == true }
-            .layer as Layer.Joined
-
-        assertEquals(INVITE_KEY, decodedKey(layer.inviteUrl!!))
-    }
-
-    @Test
-    fun `a plain event's invite carries no key — even one read for it`() = runTest {
-        // The key cell still holds a key once the membership names no encrypted event — the invite must drop it.
-        val config = MutableStateFlow<TestMembership?>(MEMBERSHIP.copy(keyId = "k1"))
-        val host = joined(backgroundScope, inviteKey = INVITE_KEY, configFlow = config)
-        host.screen.first { (it.layer as? Layer.Joined)?.inviteUrl?.contains("#k=") == true }
-
-        config.value = MEMBERSHIP.copy(name = "Plain Weekend")
-        val layer = host.screen.first {
-            (it.layer as? Layer.Joined)?.membership?.name == "Plain Weekend"
-        }.layer as Layer.Joined
-
-        assertNull(decodedKey(layer.inviteUrl!!))
-        assertFalse("#k=" in layer.inviteUrl!!)
-    }
 
     // ---- the rename dialog -------------------------------------------------------------------------
 
@@ -327,16 +287,4 @@ class JoinedLayerTest {
 
         assertEquals(SyncHealth.Loading, host.layer().health)
     }
-
-    private fun decodedKey(url: String): EventKey? =
-        assertIs<InviteLinkVerdict.Invite>(InviteLinkText.parse(url)).link.key
-
-    private companion object {
-        @OptIn(MakesEventKey::class)
-        val INVITE_KEY = EventKey.of(ByteArray(EventKey.LENGTH) { (it * 7).toByte() })!!
-    }
 }
-
-/** [key], as the store reads it back held. */
-@OptIn(MintsIdentifiedKey::class)
-private fun heldKey(key: EventKey) = IdentifiedKey(key, EventKeyId("k1"))

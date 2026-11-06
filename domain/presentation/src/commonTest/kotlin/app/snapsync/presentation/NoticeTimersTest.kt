@@ -3,10 +3,10 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.CreateResult
+import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
-import app.snapsync.format.InviteLinkText
 import app.snapsync.query.RequestStatus
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
@@ -98,7 +98,7 @@ class NoticeTimersTest {
     }
 
     private suspend fun Timers.openBadLink(host: StatusContainerHost) {
-        host.onInvite(InviteLinkText.parse("https://example.com/not-an-event")).join()
+        host.onInvite(InviteLinkVerdict.NotAnInvite).join()
         advanceBy(0)
     }
 

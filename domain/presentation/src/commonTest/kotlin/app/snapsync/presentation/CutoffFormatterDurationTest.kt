@@ -1,6 +1,5 @@
 package app.snapsync.presentation
 
-import app.snapsync.format.TimestampText
 import app.snapsync.ui.state.CoarseDuration
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -53,7 +52,7 @@ class CutoffFormatterDurationTest {
     fun `a capture date is its local value in the zone`() {
         assertEquals(
             LocalDateTime(2026, 7, 14, 18, 0),
-            f.toLocal(app.snapsync.format.TimestampText.parse("2026-07-14T18:00:00Z")),
+            f.toLocal(timestamp("2026-07-14T18:00:00Z")),
         )
     }
 }

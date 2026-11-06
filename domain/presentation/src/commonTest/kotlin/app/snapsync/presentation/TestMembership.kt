@@ -21,6 +21,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.query.encryption.InviteRead
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.FlowCollector
@@ -70,15 +71,27 @@ internal data class TestMembership(
 }
 
 /** [this] flow of test memberships as the screen reads it: the domain's membership held, or none. */
-internal fun StateFlow<TestMembership?>.held(): StateFlow<Membership?> = HeldFlow(this)
+internal fun StateFlow<TestMembership?>.held(): StateFlow<Membership?> = Mapped(this) { it?.held() }
 
+/**
+ * The key view of [this] flow's plain events: no key needed, and the joined one's invite as the query reads it — none
+ * while none is joined.
+ */
+internal fun StateFlow<TestMembership?>.plainKeys(): EventKeyView =
+    EventKeyView(
+        invite = object : InviteRead {
+            override fun invite(): String? = value?.let { inviteText(it.eventId) }
+        },
+    )
+
+/** [source] seen through [map], at every read. */
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-private class HeldFlow(private val source: StateFlow<TestMembership?>) : StateFlow<Membership?> {
-    override val value: Membership? get() = source.value?.held()
-    override val replayCache: List<Membership?> get() = listOf(value)
+private class Mapped<T, R>(private val source: StateFlow<T>, private val map: (T) -> R) : StateFlow<R> {
+    override val value: R get() = map(source.value)
+    override val replayCache: List<R> get() = listOf(value)
 
-    override suspend fun collect(collector: FlowCollector<Membership?>): Nothing {
-        source.map { it?.held() }.collect(collector)
+    override suspend fun collect(collector: FlowCollector<R>): Nothing {
+        source.map(map).collect(collector)
         awaitCancellation()
     }
 }
