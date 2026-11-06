@@ -384,12 +384,9 @@ class StatusContainerHost(
                     range?.let { CountKey(it.chosen, grant) }
                 }
                     .distinctUntilChanged()
+                    .filterNotNull()
                     .collectLatest { key ->
-                        if (key == null) return@collectLatest
-                        local.update { it.copy(shareCount = ShareCount.Counting) }
-                        // No count — no range, or none the lookup can state — is no row, never a zero.
-                        val count = key.range?.let { shareableCount.ask(it) }?.let { ShareCount.Ready(it) }
-                            ?: ShareCount.Unavailable
+                        val count = countFor(key)
                         local.update { it.copy(shareCount = count) }
                     }
             }
@@ -397,6 +394,16 @@ class StatusContainerHost(
 
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
     private data class CountKey(val range: CaptureRange?, val grant: PhotoGrant)
+
+    /**
+     * The count for [key]. A grant that reads no photos, or bounds that are no range, answer no count at once — no
+     * "Counting…" is shown for what cannot be counted — and no count the lookup can state is no row, never a zero.
+     */
+    private suspend fun countFor(key: CountKey): ShareCount {
+        val range = key.range?.takeIf { key.grant.readsPhotos } ?: return ShareCount.Unavailable
+        local.update { it.copy(shareCount = ShareCount.Counting) }
+        return shareableCount.ask(range)?.let { ShareCount.Ready(it) } ?: ShareCount.Unavailable
+    }
 
     /** What the screen shows: the display half of the container's [ScreenModel]. */
     val screen: StateFlow<UiState> = Displayed { container.stateFlow }

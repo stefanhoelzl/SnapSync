@@ -48,6 +48,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -126,6 +127,7 @@ class StatusContainerHostSurfacesTest {
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
         albumContents: AlbumContents = AlbumContents.SharedAndReceived,
+        grant: PhotoGrant = PhotoGrant.FULL,
     ): StatusContainerHost {
         val commands = TestCommands(
             reconfigure = { choice ->
@@ -153,7 +155,7 @@ class StatusContainerHostSurfacesTest {
                 JoinCommit.Committed
             },
         )
-        return host(scope, config, commands, shareableCount, joinDetails, reportDestination, albumContents)
+        return host(scope, config, commands, shareableCount, joinDetails, reportDestination, albumContents, grant)
     }
 
     private fun host(
@@ -164,10 +166,11 @@ class StatusContainerHostSurfacesTest {
         joinDetails: ScreenLookup<InviteLink, JoinDetails>,
         reportDestination: ReportDestination,
         albumContents: AlbumContents,
+        grant: PhotoGrant,
     ) = testHost(
         testQueries(
             FakeSync(),
-            MutableStateFlow(PhotoGrant.FULL),
+            MutableStateFlow(grant),
             config.held(),
             eventKey = config.plainKeys(),
             requests = commands.requests.flows,
@@ -215,13 +218,17 @@ class StatusContainerHostSurfacesTest {
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
         albumContents: AlbumContents = AlbumContents.SharedAndReceived,
+        grant: PhotoGrant = PhotoGrant.FULL,
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
         withContext(Dispatchers.Default) {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
                 body(
-                    host(scope, spy, config, sendDiagnostics, shareableCount, joinDetails, onCommitJoin, reportDestination, albumContents),
+                    host(
+                        scope, spy, config, sendDiagnostics, shareableCount, joinDetails, onCommitJoin,
+                        reportDestination, albumContents, grant,
+                    ),
                 )
             } finally {
                 scope.cancel()
@@ -341,6 +348,29 @@ class StatusContainerHostSurfacesTest {
                 (it.layer as? Layer.JoiningEvent)?.eventId == long && shareCount(it) == ShareCount.Unavailable
             }
             assertEquals(1, asked.size, "no read is made for a range that is no capture range")
+        }
+    }
+
+    @Test
+    fun `a grant that reads no photos shows no count at all — not even counting`() {
+        var asked = 0
+        return onHost(
+            shareableCount = counting { _ ->
+                asked++
+                3
+            },
+            grant = PhotoGrant.REFUSED,
+        ) { host ->
+            val seen = mutableListOf<ShareCount?>()
+            val watching = CoroutineScope(Dispatchers.Default).launch {
+                host.screen.collect { seen += it.reconfigureCount() }
+            }
+            host.onIntent(UiIntent.OpenReconfigure)
+            host.stateWhere("the settings") { it.reconfigureCount() != null }
+            delay(200)
+            watching.cancel()
+            assertEquals(0, asked)
+            assertTrue(ShareCount.Counting !in seen, "no counting is shown for what cannot be counted: $seen")
         }
     }
 
