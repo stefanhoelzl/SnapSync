@@ -18,13 +18,13 @@ Decision record: changes/archive/2026-10-06-explain-joined-screen
 ### Requirement: The joined screen shows one status line in a fixed priority
 
 The joined screen SHALL show exactly one status line. When several conditions hold at once it SHALL show the
-first that applies, in this order: the app is still reading its state; the member neither shares nor receives
-(both switched off in the event's settings, capability `manage-membership`) and no work remains in either
-direction — the line then reads "Not sharing or receiving"; the device has lost the event's key (as "A device that
-lost the event's key asks for its invite" requires); photo access missing; no usable network (as "The
-app says when it cannot reach the network" requires); the event has not started; the device cannot be
-verified; the service is failing (as "A failing service is shown while photos wait" requires); then "Up to date"
-or work in progress. Limited photo access SHALL NOT count as
+first that applies, in this order: the member neither shares nor receives (both switched off in the event's
+settings, capability `manage-membership`) — the line then reads "Not sharing or receiving" once no work remains in
+either direction, and the neutral line while the app is still reading its state; the device has lost the event's
+key (as "A device that lost the event's key asks for its invite" requires); photo access missing; no usable network
+(as "The app says when it cannot reach the network" requires); the event has not started; the device cannot be
+verified; the service is failing (as "A failing service is shown while photos wait" requires); the app is still
+reading its state; then "Up to date" or work in progress. Limited photo access SHALL NOT count as
 missing access (capability `photo-access`).
 
 #### Scenario: Missing access outranks a future start
@@ -51,6 +51,10 @@ missing access (capability `photo-access`).
 #### Scenario: A failing service outranks progress
 - **WHEN** a member with access is joined to a started event, photos wait to be shared, and the service is failing
 - **THEN** the status line tells the service's condition rather than the progress
+
+#### Scenario: A known problem shows before the app has looked
+- **WHEN** a joined member without photo access opens the app and it has not finished reading its state
+- **THEN** the status line asks for photo access at once, without showing the neutral line first
 
 #### Scenario: Limited access shows ordinary progress
 - **WHEN** a member with limited access is joined to a started event
@@ -241,11 +245,13 @@ join screen (capability `join-event`).
 
 The status line SHALL NOT read "Up to date" until the app has actually read, since it was opened, what the
 member has to share, what has been shared, and what there is to receive. Until then it SHALL show a
-neutral line saying it is loading, with no check mark, no arrows and no attention styling. A read that finds
-nothing to do SHALL settle to "Up to date".
+neutral line saying it is loading, with no check mark, no arrows and no attention styling — unless a condition that
+outranks it is already known (requirement "The joined screen shows one status line in a fixed priority"), which it
+shows instead. A read that finds nothing to do SHALL settle to "Up to date".
 
 #### Scenario: A cold launch shows the neutral line
-- **WHEN** the app launches into a joined event and has not finished reading its state
+- **WHEN** the app launches into a joined event, no condition that outranks reading is known, and it has not
+  finished reading its state
 - **THEN** the status line is neutral and never shows "Up to date"
 
 #### Scenario: A short visit never shows a false settle
@@ -394,7 +400,9 @@ membership shares and how many of them are shared (capability `photo-sharing`, c
 "Progress counts only what this membership shares"), and the other members' photos there are to receive and
 how many of them arrived (capability `receiving-photos`). A direction with work remaining SHALL show both
 numbers; a complete direction SHALL show its total alone. A direction the member switched off SHALL say it is
-off instead of numbers. The counts SHALL be shown only while the status line reads "Up to date" or
+off instead of its progress. Receiving switched off SHALL also say how many of the others' photos arrived, once
+none is still arriving and when any did, since they stay in the member's library; sharing switched off withdraws
+what it shared, and shows no number. The counts SHALL be shown only while the status line reads "Up to date" or
 work in progress, and SHALL be hidden in every other status. They SHALL stay as current as the
 status line and never contradict it: "Up to date" SHALL NOT be shown beside a direction with work remaining.
 
@@ -413,6 +421,10 @@ status line and never contradict it: "Up to date" SHALL NOT be shown beside a di
 #### Scenario: Sharing switched off
 - **WHEN** a receive-only member has 40 of 52 photos received
 - **THEN** the counts say the member is not sharing, and 40 of 52 received
+
+#### Scenario: Receiving switched off keeps what arrived
+- **WHEN** a member who received 40 of the others' photos switches receiving off, and none is still arriving
+- **THEN** the counts say the member is not receiving, and that 40 photos were received
 
 #### Scenario: Switching sharing off mid-upload counts nothing as shared
 - **WHEN** a member with 3 photos still to share switches sharing off while one of them is uploading

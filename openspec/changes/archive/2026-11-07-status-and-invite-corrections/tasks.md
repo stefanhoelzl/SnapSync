@@ -51,5 +51,5 @@ before these commits, after the phase's move. Each scenario's test carries `@Ver
 - [x] 5.1 `openspec validate status-and-invite-corrections --strict` passes. Verify: the command's output.
 - [x] 5.2 Archive gates from `openspec/config.yaml`: no `TBD` Purpose in the tree, and no code identifier in the three
   touched specs. Verify: both checks print nothing.
-- [ ] 5.3 `./gradlew build` green, and `:test:architecture:verifiesReport` shows every requirement of the three specs
+- [x] 5.3 `./gradlew build` green, and `:test:architecture:verifiesReport` shows every requirement of the three specs
   verified. Verify: the report.
