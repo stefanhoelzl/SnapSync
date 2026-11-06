@@ -48,7 +48,6 @@ import app.snapsync.model.ReportOutcome
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
-import app.snapsync.model.UserQueries
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
 import app.snapsync.presentation.RequestStatusFlows
@@ -57,8 +56,8 @@ import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
 import app.snapsync.query.RequestStatuses
+import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
-import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
@@ -210,11 +209,11 @@ internal class ContainerRig(
                 return answered(statuses.restore, null)
             }
         },
-        queries = object : UserQueries {
-            override suspend fun shareableCount(range: CaptureRange): Int? = null
+        shareableCount = object : ScreenLookup<CaptureRange, Int?>("test", Dispatchers.Unconfined) {
+            override suspend fun read(arg: CaptureRange): Int? = null
         },
-        joinDetails = object : JoinDetailsQuery {
-            override suspend fun load(invite: InviteLink): JoinDetails = details(invite.event.value)
+        joinDetails = object : ScreenLookup<InviteLink, JoinDetails>("test", Dispatchers.Unconfined) {
+            override suspend fun read(arg: InviteLink): JoinDetails = details(arg.event.value)
         },
         diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
         reduction = Dispatchers.Default,

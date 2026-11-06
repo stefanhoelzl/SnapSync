@@ -11,6 +11,7 @@ import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.InviteLinkText
@@ -23,8 +24,8 @@ import app.snapsync.model.ReportDestination
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserQueries
-import app.snapsync.query.membership.JoinDetailsQuery
+import app.snapsync.query.ScreenLookup
+import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
@@ -120,8 +121,8 @@ class StatusContainerHostSurfacesTest {
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
         sendDiagnostics: suspend (String, ReportContext) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
-        queries: UserQueries = noQueries,
-        joinDetails: JoinDetailsQuery = unanswered,
+        shareableCount: ScreenLookup<CaptureRange, Int?> = noQueries,
+        joinDetails: ScreenLookup<InviteLink, JoinDetails> = unanswered,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
         albumContents: AlbumContents = AlbumContents.SharedAndReceived,
@@ -152,15 +153,15 @@ class StatusContainerHostSurfacesTest {
                 JoinCommit.Committed
             },
         )
-        return host(scope, config, commands, queries, joinDetails, reportDestination, albumContents)
+        return host(scope, config, commands, shareableCount, joinDetails, reportDestination, albumContents)
     }
 
     private fun host(
         scope: CoroutineScope,
         config: MutableStateFlow<EventConfig?>,
         commands: TestCommands,
-        queries: UserQueries,
-        joinDetails: JoinDetailsQuery,
+        shareableCount: ScreenLookup<CaptureRange, Int?>,
+        joinDetails: ScreenLookup<InviteLink, JoinDetails>,
         reportDestination: ReportDestination,
         albumContents: AlbumContents,
     ) = StatusContainerHost(
@@ -178,7 +179,7 @@ class StatusContainerHostSurfacesTest {
             now = { Instant.parse("2026-07-09T12:00:00Z") },
             zone = TimeZone.UTC,
         ),
-        queries = queries,
+        shareableCount = shareableCount,
         joinDetails = joinDetails,
         diagnostics = testDiagnostics(),
         reportDestination = reportDestination,
@@ -210,8 +211,8 @@ class StatusContainerHostSurfacesTest {
         spy: Spy = Spy(),
         config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
         sendDiagnostics: suspend (String, ReportContext) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
-        queries: UserQueries = noQueries,
-        joinDetails: JoinDetailsQuery = unanswered,
+        shareableCount: ScreenLookup<CaptureRange, Int?> = noQueries,
+        joinDetails: ScreenLookup<InviteLink, JoinDetails> = unanswered,
         onCommitJoin: suspend (eventId: String) -> Unit = {},
         reportDestination: ReportDestination = ReportDestination.DEVELOPER,
         albumContents: AlbumContents = AlbumContents.SharedAndReceived,
@@ -221,7 +222,7 @@ class StatusContainerHostSurfacesTest {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
             try {
                 body(
-                    host(scope, spy, config, sendDiagnostics, queries, joinDetails, onCommitJoin, reportDestination, albumContents),
+                    host(scope, spy, config, sendDiagnostics, shareableCount, joinDetails, onCommitJoin, reportDestination, albumContents),
                 )
             } finally {
                 scope.cancel()
@@ -291,7 +292,7 @@ class StatusContainerHostSurfacesTest {
         val eventStart = CONFIG.startsAt.at
         val asked = mutableListOf<CaptureCutoff>()
         return onHost(
-            queries = counting { range ->
+            shareableCount = counting { range ->
                 asked += range.from
                 if (range.from.at == eventStart) 5 else 1
             },
@@ -314,7 +315,7 @@ class StatusContainerHostSurfacesTest {
         // state alone passes before the read ran. The read is awaited itself, then Unavailable is the failure's answer.
         val asked = CompletableDeferred<Unit>()
         return onHost(
-            queries = counting { _ ->
+            shareableCount = counting { _ ->
                 asked.complete(Unit)
                 error("download store unreadable")
             },
@@ -339,7 +340,7 @@ class StatusContainerHostSurfacesTest {
         val spy = Spy()
         return onHost(
             spy,
-            queries = counting { _ ->
+            shareableCount = counting { _ ->
                 asked++
                 3
             },
@@ -369,7 +370,7 @@ class StatusContainerHostSurfacesTest {
         val asked = mutableListOf<CaptureCutoff>()
         return onHost(
             config = config,
-            queries = counting { range ->
+            shareableCount = counting { range ->
                 asked += range.from
                 4
             },

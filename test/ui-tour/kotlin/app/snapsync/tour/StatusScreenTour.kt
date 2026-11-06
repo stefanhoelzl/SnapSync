@@ -2,29 +2,6 @@
 
 package app.snapsync.tour
 
-import app.snapsync.domain.mobiledata.MobileDataChoice
-import app.snapsync.domain.mobiledata.MobileDataOutcome
-import app.snapsync.domain.membership.RestoreAnswer
-import app.snapsync.domain.event.EventKey
-import app.snapsync.domain.event.Encryption
-import app.snapsync.domain.service.ServiceFault
-import app.snapsync.domain.event.Event
-import app.snapsync.domain.event.EventName
-import app.snapsync.domain.event.EventNameVerdict
-import app.snapsync.domain.event.EventRange
-import app.snapsync.domain.event.EventRangeVerdict
-import app.snapsync.domain.membership.ShareChoice
-import app.snapsync.domain.membership.InviteFact
-import app.snapsync.domain.membership.SwitchVerdict
-import app.snapsync.domain.request.RequestId
-import app.snapsync.query.mobiledata.MobileDataQuery
-import app.snapsync.query.mobiledata.MobileDataStatuses
-import app.snapsync.query.RequestStatuses
-import app.snapsync.query.membership.MembershipStatuses
-import app.snapsync.query.membership.JoinDetailsQuery
-import app.snapsync.presentation.RequestStatusFlows
-import app.snapsync.format.InviteLinkText
-import app.snapsync.domain.invite.InviteLink
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -50,40 +27,63 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import app.snapsync.contracts.UiUnderTest
 import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Encryption
+import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.event.EventKey
+import app.snapsync.domain.event.EventName
+import app.snapsync.domain.event.EventNameVerdict
+import app.snapsync.domain.event.EventRange
+import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.membership.InviteFact
+import app.snapsync.domain.membership.JoinChoice
+import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.RenameResult
+import app.snapsync.domain.membership.RestoreAnswer
+import app.snapsync.domain.membership.SettingsResult
+import app.snapsync.domain.membership.ShareChoice
+import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.mobiledata.MobileDataChoice
+import app.snapsync.domain.mobiledata.MobileDataOutcome
+import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.feature.status.readmodel.SyncStatusSource
-import app.snapsync.domain.sharing.Direction
+import app.snapsync.format.InviteLinkText
+import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.domain.membership.JoinChoice
-import app.snapsync.domain.membership.JoinCommit
-import app.snapsync.query.membership.JoinDetails
-import app.snapsync.domain.network.NetworkAccess
-import app.snapsync.domain.membership.RenameResult
-import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
-import app.snapsync.format.TimestampText
 import app.snapsync.model.UserCommands
-import app.snapsync.model.UserQueries
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.onIntent
+import app.snapsync.query.RequestStatuses
+import app.snapsync.query.ScreenLookup
+import app.snapsync.query.membership.JoinDetails
+import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.query.mobiledata.MobileDataQuery
+import app.snapsync.query.mobiledata.MobileDataStatuses
+import app.snapsync.query.network.NetworkStatusQuery
+import app.snapsync.ui.components.resources.Res as ComponentRes
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.components.resources.share_range_custom
@@ -148,7 +148,6 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import kotlin.concurrent.Volatile
 import kotlin.time.Instant
-import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /** The event the joined parts of the tour are members of. */
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
@@ -337,11 +336,11 @@ abstract class StatusScreenTour {
 
                 override fun restoreKey(key: EventKey) = answered(statuses.restore, RestoreAnswer.NothingChanged)
             },
-            queries = object : UserQueries {
-                override suspend fun shareableCount(range: CaptureRange): Int? = null
+            shareableCount = object : ScreenLookup<CaptureRange, Int?>("test", Dispatchers.Unconfined) {
+                override suspend fun read(arg: CaptureRange): Int? = null
             },
-            joinDetails = object : JoinDetailsQuery {
-                override suspend fun load(invite: InviteLink): JoinDetails = details(invite.event)
+            joinDetails = object : ScreenLookup<InviteLink, JoinDetails>("test", Dispatchers.Unconfined) {
+                override suspend fun read(arg: InviteLink): JoinDetails = details(arg.event)
             },
             diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
             reduction = Dispatchers.Default,

@@ -320,7 +320,7 @@ class RangeIntentsTest {
                     DeletesAt(TimestampText.parse("2026-08-03T18:00:00Z")),
                 )
             },
-            queries = noQueries,
+            shareableCount = noQueries,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )

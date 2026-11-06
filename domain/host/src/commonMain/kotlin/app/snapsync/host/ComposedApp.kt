@@ -110,7 +110,7 @@ fun snapSyncHost(
             reduction = reduction,
             cutoffFormatter = cutoffFormatter,
             commands = core.userCommands,
-            queries = core.userQueries,
+            shareableCount = core.shareableCount,
             joinDetails = core.joinDetails,
             // Where a bug report goes on this build — the sheet says it.
             reportDestination = process.reportDestination,

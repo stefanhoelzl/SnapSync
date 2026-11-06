@@ -98,7 +98,7 @@ class CreateFormClockTest {
             scope,
             commands = commands,
             cutoffFormatter = CutoffFormatter(now = now, zone = TimeZone.UTC),
-            queries = noQueries,
+            shareableCount = noQueries,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,

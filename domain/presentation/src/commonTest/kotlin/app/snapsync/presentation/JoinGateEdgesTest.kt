@@ -25,7 +25,6 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
 import app.snapsync.query.membership.JoinDetails
-import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.step
@@ -139,7 +138,7 @@ class JoinGateEdgesTest {
             scope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
             commands = door,
-            queries = noQueries,
+            shareableCount = noQueries,
             joinDetails = joinDetails { id ->
                 world.loads++
                 world.load(id)
@@ -196,12 +195,10 @@ class JoinGateEdgesTest {
             backgroundScope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
             commands = TestCommands(),
-            queries = noQueries,
-            joinDetails = object : JoinDetailsQuery {
-                override suspend fun load(invite: InviteLink): JoinDetails {
-                    keys += invite.key
-                    return JoinDetails.Unanswered(ServiceFault.UNREACHABLE)
-                }
+            shareableCount = noQueries,
+            joinDetails = lookup { invite: InviteLink ->
+                keys += invite.key
+                JoinDetails.Unanswered(ServiceFault.UNREACHABLE)
             },
             diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,

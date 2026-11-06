@@ -57,7 +57,7 @@ class IntentInvalidProgramStateTest {
                 cutoffFormatter = CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.UTC),
                 joinDetails = unanswered,
                 diagnostics = testDiagnostics(onIntentError = { reported += it }),
-                queries = noQueries,
+                shareableCount = noQueries,
                 reduction = Dispatchers.Default,
             )
             host.onLeaveEvent()

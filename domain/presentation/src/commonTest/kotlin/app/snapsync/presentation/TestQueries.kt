@@ -33,11 +33,10 @@ import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.UserCommands
-import app.snapsync.model.UserQueries
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
+import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
-import app.snapsync.query.membership.JoinDetailsQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
@@ -52,25 +51,32 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
-/** A query bundle whose shareable count is [count]; by default no count is available. */
-internal fun counting(count: suspend (CaptureRange) -> Int? = { null }): UserQueries =
-    object : UserQueries {
-        override suspend fun shareableCount(range: CaptureRange) = count(range)
+/** A lookup asked on the asking thread, answering [answer]. */
+internal fun <A, R> lookup(answer: suspend (A) -> R): ScreenLookup<A, R> =
+    object : ScreenLookup<A, R>("test", Dispatchers.Unconfined) {
+        override suspend fun read(arg: A): R = answer(arg)
     }
 
-/** A query bundle that answers nothing: no count is available. */
-internal val noQueries: UserQueries = counting()
+/** A shareable count of [count]; by default no count is available. */
+internal fun counting(
+    count: suspend (CaptureRange) -> Int? = { null },
+): ScreenLookup<CaptureRange, Int?> = lookup(count)
+
+/** A shareable count that answers nothing: no count is available. */
+internal val noQueries: ScreenLookup<CaptureRange, Int?> = counting()
 
 /** The join screen's read, answering [load] for the invite's event id — an event found is the invite's own. */
-internal fun joinDetails(load: suspend (String) -> JoinDetails): JoinDetailsQuery = object : JoinDetailsQuery {
-    override suspend fun load(invite: InviteLink): JoinDetails = when (val details = load(invite.event.value)) {
-        is JoinDetails.Found -> details.copy(event = details.event.copy(id = invite.event))
-        else -> details
+internal fun joinDetails(load: suspend (String) -> JoinDetails): ScreenLookup<InviteLink, JoinDetails> =
+    lookup { invite ->
+        when (val details = load(invite.event.value)) {
+            is JoinDetails.Found -> details.copy(event = details.event.copy(id = invite.event))
+            else -> details
+        }
     }
-}
 
 /** A join screen's read that never finds an answer. */
-internal val unanswered: JoinDetailsQuery = joinDetails { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) }
+internal val unanswered: ScreenLookup<InviteLink, JoinDetails> =
+    joinDetails { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) }
 
 /** The event the server serves for an invite: [name] over `[startsAt, endsAt]`, found and not deleted unless [completed]. */
 internal fun found(

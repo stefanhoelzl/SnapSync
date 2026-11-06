@@ -5,13 +5,11 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
-import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.request.RequestId
-import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.entrypoints.JoinRequest
 import app.snapsync.entrypoints.KeyRestoreRequest
 import app.snapsync.entrypoints.MobileDataRequest
@@ -26,12 +24,9 @@ import app.snapsync.model.Handoff
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome
 import app.snapsync.model.UserCommands
-import app.snapsync.model.UserQueries
 import app.snapsync.model.outcome
 import app.snapsync.model.recordingRefusal
 import app.snapsync.query.RequestStatusSink
-import app.snapsync.query.membership.JoinDetails
-import app.snapsync.query.membership.JoinDetailsQuery
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
@@ -64,7 +59,7 @@ private val tapLog = Logger.withTag("userTap")
  */
 internal suspend fun <T> AppCore.awaitingOnCoreLane(
     name: String,
-    params: String = "",
+    params: String,
     result: (T) -> String = { "" },
     block: suspend () -> T,
 ): T = withContext(scope.coroutineContext.minusKey(Job) + Trigger.of(name)) {
@@ -246,22 +241,4 @@ internal fun AppCore.userCommandsFor(): UserCommands = object : UserCommands {
         membershipStatuses.restore,
         work.keyRestoreRequested,
     ) { id -> KeyRestoreRequest(id, key) }
-}
-
-/**
- * The user-query bundle: the reads the status container invokes, each awaited on the composition lane — so a store,
- * photo-library or network read never runs on the thread that asked.
- */
-internal fun AppCore.userQueriesFor(): UserQueries = object : UserQueries {
-    override suspend fun shareableCount(range: CaptureRange): Int? =
-        awaitingOnCoreLane("query.shareableCount") { loadShareableCount(range) }
-}
-
-/** The join gate's read of an invite's event, awaited on the composition lane like every query. */
-internal fun AppCore.joinDetailsFor(): JoinDetailsQuery = object : JoinDetailsQuery {
-    override suspend fun load(invite: InviteLink): JoinDetails =
-        awaitingOnCoreLane(
-            "query.joinDetails",
-            "eventId=${invite.event}",
-        ) { work.membership.joinDetails.load(invite) }
 }

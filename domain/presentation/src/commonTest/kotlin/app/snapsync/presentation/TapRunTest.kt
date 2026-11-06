@@ -97,7 +97,7 @@ class TapRunTest {
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
         commands = commands(world),
-        queries = noQueries,
+        shareableCount = noQueries,
         joinDetails = unanswered,
         diagnostics = testDiagnostics(),
         reduction = reduction,
