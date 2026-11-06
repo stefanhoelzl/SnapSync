@@ -1070,6 +1070,7 @@ class StatusContainerHostTest {
     }
 
     @Test
+    // A known problem shows before the app has looked: missing access needs no count, so it is never held behind one.
     fun `permission outranks a loading snapshot when config is present`() = runTest {
         val source = FakeSharingProgress(SharingProgressRead.NotYetRead)
         val permission = FakePermissionSource(PhotoGrant.UNDECIDED)

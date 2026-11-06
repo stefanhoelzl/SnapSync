@@ -54,6 +54,7 @@ class UnreadStatusIntegrationTest {
             aPhotoTaken()
         }
 
+        // Access granted and the network up — the world's defaults — so no condition outranks the read.
         // The cold launch: a joined membership, photos in the library, and nothing read yet. The neutral first frame,
         // and it STAYS neutral: nothing has been counted, so there is nothing to be settled about. Before the fix the
         // projection minted a snapshot from three placeholder zeros and this read `Joined(InSync)` within a dispatch.
@@ -70,6 +71,29 @@ class UnreadStatusIntegrationTest {
         // Once the counts are read the truth arrives — and it is "still working", not "settled".
         whenever { os.foreground() }
         then { screen<Layer.Joined> { it.health is SyncHealth.Syncing } }
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen shows one status line in a fixed priority",
+        scenario = "A known problem shows before the app has looked",
+    )
+    fun a_known_missing_access_shows_before_the_status_is_read() = behaviour {
+        given {
+            joinedEvent()
+            aPhotoTaken()
+            photoAccess(PhotoGrant.DENIED)
+        }
+
+        // The cold launch again, nothing read — but the app already knows access is refused. That needs no count, so
+        // the line asks for it at once: no neutral frame first that would hide it for as long as the read takes.
+        whenever { host.relaunch() }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.NeedsAccess(canAsk = false) }
+            neverScreen<Layer.Joined> { it.health == SyncHealth.Loading }
+            neverScreen<Layer.Joined> { it.health == SyncHealth.NeedsAccess(canAsk = true) }
+        }
     }
 
     @Test

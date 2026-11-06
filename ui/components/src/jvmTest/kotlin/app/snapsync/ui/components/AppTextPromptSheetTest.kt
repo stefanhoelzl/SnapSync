@@ -112,6 +112,11 @@ class AppTextPromptSheetTest {
     }
 
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Text entry sheets stay usable while typing",
+        scenario = "A report the app wrote can be sent as it stands",
+    )
     fun `while idle a text worth sending can be saved`() {
         var saved: String? = null
         setSheet(busy = false, submitUnchanged = true, onConfirm = { saved = it })

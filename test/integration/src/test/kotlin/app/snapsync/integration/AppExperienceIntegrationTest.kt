@@ -6,6 +6,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.levers.BackendCall
+import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinStage
@@ -46,6 +47,29 @@ class AppExperienceIntegrationTest {
             screen<Layer.Joined> { it.health == SyncHealth.Loading }
             neverScreen<Layer.CreateEvent>()
             neverScreen<Layer.Joined> { it.health == SyncHealth.InSync }
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "The first frame is never a guessed state",
+        scenario = "Joined launch",
+    )
+    fun a_joined_launch_without_access_opens_asking_for_it() = behaviour {
+        given {
+            joinedEvent()
+            photos("P1")
+            photoAccess(PhotoGrant.DENIED)
+        }
+
+        // A condition the app already knows is no guess: the first frame asks for access, and nothing corrects it.
+        whenever { host.relaunch() }
+        then {
+            screen<Layer.Joined> { it.health == SyncHealth.NeedsAccess(canAsk = false) }
+            neverScreen<Layer.CreateEvent>()
+            neverScreen<Layer.Joined> { it.health != SyncHealth.NeedsAccess(canAsk = false) }
             settled { true }
         }
     }
