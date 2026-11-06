@@ -491,12 +491,40 @@ class JoinGateEdgesTest {
     }
 
     @Test
-    fun `a link whose key cannot be read lands on the wrong-link phase and loads nothing`() = runTest {
-        val world = World()
-        settle(gate(world, backgroundScope).onInvite(InviteLinkVerdict.KeyUnreadable(testEventId(EVENT_ID))))
+    fun `a link whose key cannot be read reads its event first, and its event there opens the wrong-link phase`() =
+        runTest {
+            val world = World()
+            settle(gate(world, backgroundScope).onInvite(InviteLinkVerdict.KeyUnreadable(testEventId(EVENT_ID))))
 
-        assertEquals(JoinProgress.WrongLink, world.pending.value?.phase)
-        assertEquals(0, world.loads, "an invite that cannot be read whole asks the server nothing")
+            assertEquals(JoinProgress.WrongLink, world.pending.value?.phase)
+            assertEquals(1, world.loads)
+        }
+
+    @Test
+    fun `a link whose key cannot be read tells a missing, closed or unanswered event as itself`() = runTest {
+        val answers = mapOf(
+            JoinDetails.NotFound to JoinProgress.NotFound,
+            JoinDetails.Found(FOUND.event, completed = true) to JoinProgress.Closed,
+            JoinDetails.Unanswered(ServiceFault.UNREACHABLE) to JoinProgress.LoadFailed,
+        )
+        for ((answer, phase) in answers) {
+            val world = World().apply { load = { answer } }
+            settle(gate(world, backgroundScope).onInvite(InviteLinkVerdict.KeyUnreadable(testEventId(EVENT_ID))))
+            assertEquals(phase, world.pending.value?.phase, "$answer")
+        }
+    }
+
+    @Test
+    fun `a retry of a link whose key cannot be read still cannot open its event`() = runTest {
+        var answer: JoinDetails = JoinDetails.Unanswered(ServiceFault.UNREACHABLE)
+        val world = World().apply { load = { answer } }
+        val gate = gate(world, backgroundScope)
+        settle(gate.onInvite(InviteLinkVerdict.KeyUnreadable(testEventId(EVENT_ID))))
+        assertEquals(JoinProgress.LoadFailed, world.pending.value?.phase)
+
+        answer = FOUND
+        settle(gate.onRetryLoad())
+        assertEquals(JoinProgress.WrongLink, world.pending.value?.phase, "found again, the invite still opens nothing")
     }
 
     @Test

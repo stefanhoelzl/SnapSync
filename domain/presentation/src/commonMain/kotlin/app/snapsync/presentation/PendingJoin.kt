@@ -32,6 +32,11 @@ data class PendingJoin(
      * `null` on every other phase, and for a failure that was not the service's.
      */
     val service: ServiceFault? = null,
+    /**
+     * The invite carried a key that cannot be read — cut short in sharing. Its event is still read, so a missing, closed
+     * or unanswered one is told as such; one that is there opens the incomplete-invite screen.
+     */
+    val keyUnreadable: Boolean = false,
 ) {
     /** Never the key: a pending join reaches logs and test failures. */
     override fun toString(): String = "PendingJoin(eventId=$eventId, phase=$phase, key=${key?.let { "present" }})"

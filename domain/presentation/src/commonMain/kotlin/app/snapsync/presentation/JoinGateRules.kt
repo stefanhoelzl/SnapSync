@@ -147,3 +147,10 @@ private fun found(load: JoinDetails.Found): Loaded = if (load.completed) {
         InviteFact.Joinable,
     )
 }
+
+/**
+ * What a details read came to for an invite whose key cannot be read: a missing, closed or unanswered event as itself,
+ * and one that is there — which the invite cannot open — the incomplete-invite screen.
+ */
+internal fun Loaded.forUnreadableKey(): Loaded =
+    if (phase is JoinProgress.Detailed) Loaded(JoinProgress.WrongLink, null, InviteFact.NotJoinable) else this

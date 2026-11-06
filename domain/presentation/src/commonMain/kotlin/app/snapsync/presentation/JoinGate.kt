@@ -74,7 +74,7 @@ internal class JoinGate(
         }
     }
 
-    private fun keyUnreadable(event: EventId) = when (event) {
+    private suspend fun keyUnreadable(event: EventId) = when (event) {
         pending.value?.eventId -> ignoreRepeat(event, "a pending join is open")
         joinedId() -> ignoreRepeat(event, "already joined")
         else -> startUnreadable(event)
@@ -142,8 +142,12 @@ internal class JoinGate(
         val p = pending.value ?: return@intent
         maintenanceReload?.cancel()
         pending.value = p.copy(phase = JoinProgress.Loading, service = null)
-        showLoaded(p.eventId, load(p.eventId, p.key))
+        showLoaded(p.eventId, loadFor(p))
     }
+
+    /** [p]'s event read again, as its invite reads it. */
+    private suspend fun loadFor(p: PendingJoin): Loaded =
+        load(p.eventId, p.key).let { if (p.keyUnreadable) it.forUnreadableKey() else it }
 
     /**
      * Confirm a first join with the chosen range, direction and album: enroll → provision (no leave).
@@ -219,13 +223,16 @@ internal class JoinGate(
     suspend fun eventCreated(eventId: EventId, key: EventKey?) = startPending(eventId, key)
 
     /**
-     * An invite to [eventId] whose key cannot be read: the incomplete-invite screen, with nothing loaded and nothing
-     * left — what the member needs is the whole invite, from whoever shared it.
+     * An invite to [eventId] whose key cannot be read. Its event is read first, so a missing, closed or unanswered one
+     * is told as such; one that is there opens the incomplete-invite screen — what the member needs is the whole
+     * invite, from whoever shared it — and nothing is left.
      */
-    private fun startUnreadable(eventId: EventId) {
+    private suspend fun startUnreadable(eventId: EventId) {
         log.i("invite key unreadable", "eventId" of eventId)
         local.update { it.copy(form = ranges.freshForm, picking = null) }
-        pending.value = PendingJoin(eventId, JoinProgress.WrongLink, key = null)
+        val opening = PendingJoin(eventId, JoinProgress.Loading, key = null, keyUnreadable = true)
+        pending.value = opening
+        showLoaded(eventId, loadFor(opening))
     }
 
     private suspend fun startPending(eventId: EventId, key: EventKey?, leavesQuietly: Boolean = false) {
