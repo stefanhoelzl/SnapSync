@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
@@ -13,6 +14,7 @@ import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.entrypoints.OnChoosePhotosTapped
 import app.snapsync.entrypoints.OnCreateTapped
+import app.snapsync.entrypoints.OnInviteOpened
 import app.snapsync.entrypoints.OnOpenLinkTapped
 import app.snapsync.entrypoints.OnOpenSettingsTapped
 import app.snapsync.entrypoints.OnRequestAccessTapped
@@ -44,6 +46,7 @@ class CoreCommands internal constructor(
     val sendDiagnostics: Background<ReportRequest>,
     val setMobileData: Background<MobileDataRequest>,
     val restoreKey: Background<KeyRestoreRequest>,
+    val inviteOpened: Background<InviteLinkVerdict>,
 )
 
 /** The core's commands, over its entry points; the taps handing something to the platform are built here. */
@@ -65,5 +68,6 @@ internal fun AppCore.commandsFor(reports: RequestStatuses<ReportOutcome>): CoreC
         sendDiagnostics = OnSendDiagnosticsTapped(runtime, collectDiagnosticDump, process.crash, reports),
         setMobileData = work.mobileDataChanged,
         restoreKey = work.keyRestoreRequested,
+        inviteOpened = OnInviteOpened(runtime, openedInvites),
     )
 }

@@ -289,7 +289,7 @@ class StatusContainerHostNetworkTest {
                 load = { if (loads++ == 0) JoinDetails.Unanswered(ServiceFault.UNREACHABLE) else FOUND },
             )
         driving(host) {
-            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), null)))
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), null))))
             runCurrent()
             val offline = assertIs<Layer.JoiningEvent>(host.screen.value.layer)
             assertEquals(JoinPhase.LoadFailed, offline.phase)
@@ -313,7 +313,7 @@ class StatusContainerHostNetworkTest {
             JoinDetails.Unanswered(ServiceFault.UNREACHABLE)
         })
         driving(host) {
-            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), null)))
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), null))))
             runCurrent()
             assertEquals(JoinPhase.LoadFailed, assertIs<Layer.JoiningEvent>(host.screen.value.layer).phase)
             network.access.value = NetworkAccess.Online(restricted = false) // no return: nothing was missing
@@ -327,7 +327,7 @@ class StatusContainerHostNetworkTest {
         val network = FakeNetwork()
         val host = host(network, config = null, load = { FOUND })
         driving(host) {
-            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), null)))
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), null))))
             runCurrent()
             network.access.value = NetworkAccess.Blocked
             runCurrent()

@@ -118,7 +118,7 @@ class KeyLostTest {
         val restored = mutableListOf<EventKey>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY)))
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY))))
             runCurrent()
             assertEquals(listOf(LINK_KEY), restored)
             assertEquals(null, (host.screen.value.layer as Layer.Joined).pendingSwitch, "no join screen")
@@ -130,7 +130,7 @@ class KeyLostTest {
         val restored = mutableListOf<EventKey>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY)))
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY))))
             runCurrent()
             assertEquals(
                 listOf(LINK_KEY),
@@ -146,7 +146,7 @@ class KeyLostTest {
         val restored = mutableListOf<EventKey>()
         val host = host(KeyPresence.Lost, restored = restored)
         driving(host) {
-            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), null)))
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), null))))
             runCurrent()
             assertEquals(emptyList(), restored)
             assertEquals(SyncHealth.KeyLost, host.health())
@@ -158,7 +158,7 @@ class KeyLostTest {
         val restored = mutableListOf<EventKey>()
         val host = host(KeyPresence.Held(HELD), restored = restored)
         driving(host) {
-            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY)))
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT), LINK_KEY))))
             runCurrent()
             assertEquals(emptyList(), restored)
         }

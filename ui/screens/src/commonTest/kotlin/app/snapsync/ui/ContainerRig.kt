@@ -23,6 +23,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchVerdict
@@ -54,8 +55,10 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
+import app.snapsync.presentation.BuildStanding
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.PlatformCommands
 import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
@@ -151,9 +154,8 @@ internal class ContainerRig(
             permission = this.permission,
             config = this.config,
             creation = creation,
-            versionRefusal = MutableStateFlow(refusal),
+            build = BuildStanding(refusal = MutableStateFlow(refusal), store = Store("App Store", RIG_STORE_URL)),
             verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
-            store = Store("App Store", RIG_STORE_URL),
             network = object : NetworkStatusQuery {
                 override val access: StateFlow<NetworkAccess> = MutableStateFlow(network)
                 override val returned: Flow<Unit> = emptyFlow()
@@ -174,6 +176,7 @@ internal class ContainerRig(
         scope = scope,
         cutoffFormatter = CutoffFormatter(now = { clock.instant }, zone = TimeZone.UTC),
         commands = UserCommands(
+            inviteOpened = command { _: InviteLinkVerdict -> },
             leave = command { _: Unit ->
                 record("leave")
                 this@ContainerRig.config.value = null
@@ -188,11 +191,13 @@ internal class ContainerRig(
                 record("commitJoin:${r.choice.event.id}:${r.choice.direction}:${r.choice.album}")
                 answered(r.id, statuses.join, JoinCommit.Failed())
             },
-            share = command { r: ShareRequest -> record("share:${r.text}") },
-            requestAccess = command { _: Unit -> record("requestAccess") },
-            openSettings = command { _: Unit -> record("openSettings") },
-            openLink = command { r: AppLinkRequest -> record("openLink:${r.url}") },
-            choosePhotos = command { _: Unit -> record("choosePhotos") },
+            platform = PlatformCommands(
+                share = command { r: ShareRequest -> record("share:${r.text}") },
+                requestAccess = command { _: Unit -> record("requestAccess") },
+                openSettings = command { _: Unit -> record("openSettings") },
+                openLink = command { r: AppLinkRequest -> record("openLink:${r.url}") },
+                choosePhotos = command { _: Unit -> record("choosePhotos") },
+            ),
             reconfigure = command { r: SettingsRequest ->
                 record("reconfigure:${r.choice.event}:${r.choice.direction}")
                 answered(r.id, statuses.settings, SettingsResult.Saved)

@@ -10,11 +10,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 - files: `CollectDiagnosticDump.kt`, `ReportedIdentity.kt`
 - top-level types: `CollectDiagnosticDump (class)`
 
-## `feature/links`
-
-- files: `OpenedLinks.kt`
-- top-level types: `OpenedLinks (class)`
-
 ## `feature/status`
 
 - files: `SyncStatusSource.kt`

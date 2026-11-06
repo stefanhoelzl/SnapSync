@@ -3,6 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
@@ -51,6 +52,8 @@ class StatusSources(
      * constructs unchanged; the iOS shell injects the instance the create use-case drives.
      */
     val creation: StateFlow<RequestStatus<CreateResult>> = MutableStateFlow(RequestStatus.Idle),
+    /** The invite the app was opened with, read, until a screen has opened it. */
+    val invites: StateFlow<InviteLinkVerdict?> = MutableStateFlow(null),
     /**
      * The member's requests of the membership, each answered on its own status under the request's id. Inert by
      * default (idle) so a host that never asks constructs unchanged.
@@ -73,15 +76,8 @@ class StatusSources(
      * commit/cancel. Injected — defaulting to a fresh instance, which the gate drives.
      */
     val pending: MutableStateFlow<PendingJoin?> = MutableStateFlow(null),
-    /**
-     * Whether the backend is refusing this build as too old, and the version it named — `AppVersionGate.refusal`,
-     * written by the core's authenticated backend on every backend answer.
-     *
-     * An OBSERVATION, like every field here, so it is no command (`docs/architecture.md`, "Commands cross one door":
-     * reads do not). Defaults to never-refused, so a host with no backend —
-     * every test that does not exercise it — constructs unchanged.
-     */
-    val versionRefusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),
+    /** Whether this build is refused, and its store page — the refusal's one remedy ([BuildStanding]). */
+    val build: BuildStanding = BuildStanding(),
     /**
      * Whether the app can reach the network, as the member is told, and when a missing one comes back: the app says
      * when it cannot reach the network.
@@ -93,12 +89,6 @@ class StatusSources(
      * changes as they are answered.
      */
     val mobileData: MobileDataQuery,
-    /**
-     * This build's store page, or `null` when it carries none. A build constant supplied by the
-     * composition root, not a source — it is here because the ONE screen that needs it is the refusal
-     * above, and pairing them is what stops a host wiring the state without the remedy.
-     */
-    val store: Store? = null,
     /**
      * The app's latest return to the foreground: the create screen's draft follows it.
      * Defaults to none ever, so a host that never foregrounds keeps one draft.
@@ -180,4 +170,23 @@ class RequestStatusFlows(
     val switch: StateFlow<RequestStatus<SwitchVerdict>> = MutableStateFlow(RequestStatus.Idle),
     val rename: StateFlow<RequestStatus<RenameResult>> = MutableStateFlow(RequestStatus.Idle),
     val report: StateFlow<RequestStatus<ReportOutcome>> = MutableStateFlow(RequestStatus.Idle),
+)
+
+/** Whether the service refuses this build, and the store page that is its one remedy. */
+class BuildStanding(
+    /**
+     * Whether the backend is refusing this build as too old, and the version it named — `AppVersionGate.refusal`,
+     * written by the core's authenticated backend on every backend answer.
+     *
+     * An OBSERVATION, like every field here, so it is no command (`docs/architecture.md`, "Commands cross one door":
+     * reads do not). Defaults to never-refused, so a host with no backend —
+     * every test that does not exercise it — constructs unchanged.
+     */
+    val refusal: StateFlow<VersionRefusal?> = MutableStateFlow(null),
+    /**
+     * This build's store page, or `null` when it carries none. A build constant supplied by the composition root, not a
+     * source — it is here because the ONE screen that needs it is the refusal above, and pairing them is what stops a
+     * host wiring the state without the remedy.
+     */
+    val store: Store? = null,
 )

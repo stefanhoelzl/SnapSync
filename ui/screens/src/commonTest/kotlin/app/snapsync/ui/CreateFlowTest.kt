@@ -42,6 +42,7 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.presentation.onIntent
@@ -105,7 +106,7 @@ class CreateFlowTest {
 
     @Test
     fun `invalid deeplink error shows below Create in place of the scan hint`() = createTest { rig ->
-        rig.host.onOpenUrl("not an invite")
+        rig.host.onInvite(InviteLinkText.parse("not an invite"))
         awaitState(rig) { it.create?.error == ScreenMessage.INVALID_LINK }
         onNodeWithText(str(Res.string.message_invalid_link)).assertExists()
         onNodeWithText(str(Res.string.create_join_hint)).assertDoesNotExist()

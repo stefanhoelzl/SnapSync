@@ -137,7 +137,7 @@ class GuardedIntentTest {
         }
 
     private suspend fun StatusContainerHost.awaitSwitchConfirmation() {
-        onOpenUrl(InviteLinkText.format(InviteLink(testEventId(OTHER), null)))
+        onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(OTHER), null))))
         stateWhere("the switch confirmation") { (it.layer as? Layer.Joined)?.pendingSwitch?.eventId == OTHER }
     }
 

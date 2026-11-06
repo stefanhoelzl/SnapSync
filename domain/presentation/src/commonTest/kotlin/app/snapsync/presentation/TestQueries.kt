@@ -15,6 +15,7 @@ import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
@@ -192,6 +193,7 @@ internal class TestCommands(
 
     /** The door a host is built over. */
     val door: UserCommands = UserCommands(
+        inviteOpened = command { _: InviteLinkVerdict -> },
         leave = command { _: Unit -> leave() },
         create = command { r: CreateRequest ->
             requests.answer(r.id, requests.creation, CreateResult.Failed(ServiceFault.UNREACHABLE)) { create(r) }
@@ -199,12 +201,14 @@ internal class TestCommands(
         join = command { r: JoinRequest ->
             requests.answer(r.id, requests.statuses.join, JoinCommit.Failed()) { commitJoin(r.choice) }
         },
-        share = command { r: ShareRequest -> share(r.text, r.title) },
-        requestAccess = command { _: Unit -> requestAccess() },
-        openSettings = command { _: Unit -> openSettings() },
-        openLink = command { r: AppLinkRequest -> openLink(r.url) },
-        // No presentation test is about the picker; its binding is the shells' and compose/'s.
-        choosePhotos = command { _: Unit -> },
+        platform = PlatformCommands(
+            share = command { r: ShareRequest -> share(r.text, r.title) },
+            requestAccess = command { _: Unit -> requestAccess() },
+            openSettings = command { _: Unit -> openSettings() },
+            openLink = command { r: AppLinkRequest -> openLink(r.url) },
+            // No presentation test is about the picker; its binding is the shells' and compose/'s.
+            choosePhotos = command { _: Unit -> },
+        ),
         reconfigure = command { r: SettingsRequest ->
             requests.answer(r.id, requests.statuses.settings, SettingsResult.NotCurrent) { reconfigure(r.choice) }
         },

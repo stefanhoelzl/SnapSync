@@ -270,7 +270,7 @@ class StatusContainerHostSurfacesTest {
             host.stateWhere("the settings surface") { it.onSettings() }
 
             config.value = null
-            host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             host.stateWhere("the join surface, ready") {
                 ((it.layer as? Layer.JoiningEvent)?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready
             }

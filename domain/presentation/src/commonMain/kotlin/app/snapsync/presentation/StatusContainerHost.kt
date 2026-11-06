@@ -96,6 +96,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -160,6 +161,7 @@ class StatusContainerHost(
     private val permission = sources.permission
     private val config = sources.config
     private val creationStatus = sources.creation
+    private val invites = sources.invites
     private val downloadSource = sources.download
     private val attested = sources.verification.attested
     private val refusal = sources.verification.refusal
@@ -171,7 +173,7 @@ class StatusContainerHost(
         combine(attested, refusal, attestFault, serviceFault) { a, r, f, s -> Trust(a, r, f, s) }
     private var maintenanceReload: Job? = null
     private val pending = sources.pending
-    private val versionRefusal = sources.versionRefusal
+    private val versionRefusal = sources.build.refusal
     private val network = sources.network
     private val mobileDataQuery = sources.mobileData
 
@@ -182,7 +184,7 @@ class StatusContainerHost(
     /** The ids of this screen's requests. */
     private val ids = RequestIds()
     private val renameFlow: StateFlow<RequestStatus<RenameResult>> = requests.rename
-    private val store = sources.store
+    private val store = sources.build.store
     private val foreground = sources.foreground
     private val keyPresence = sources.eventKey.presence
 
@@ -343,6 +345,14 @@ class StatusContainerHost(
                 }
             },
         ) {
+            intent {
+                // An invite the app was opened with waits in the core until a screen can open it: from this
+                // container's start on, it opens — and is told opened, so it no longer waits.
+                invites.filterNotNull().collect { invite ->
+                    onInvite(invite)
+                    commands.inviteOpened.fire(invite)
+                }
+            }
             intent {
                 // Each new value reduces straight to a UI state. The only clock-driven input is `nowTick`, and
                 // it runs ONLY while an event has not ended (see above) — every other re-emission is a real
@@ -621,15 +631,15 @@ class StatusContainerHost(
     val access: AccessCommands = AccessCommands()
 
     inner class AccessCommands internal constructor() {
-        fun onRequestPermission() = intent { commands.requestAccess.fire(Unit) }
+        fun onRequestPermission() = intent { commands.platform.requestAccess.fire(Unit) }
 
         /**
          * The joined layer's "Choose more photos" tap — presents the
          * platform's limited-library picker; the selection outcome arrives via the selection seam.
          */
-        fun onChoosePhotos() = intent { commands.choosePhotos.fire(Unit) }
+        fun onChoosePhotos() = intent { commands.platform.choosePhotos.fire(Unit) }
 
-        fun onOpenSettings() = intent { commands.openSettings.fire(Unit) }
+        fun onOpenSettings() = intent { commands.platform.openSettings.fire(Unit) }
     }
 
     /**
@@ -656,7 +666,7 @@ class StatusContainerHost(
     // byte-identical to the QR being rendered rather than a second derivation that could drift.
     fun onShareInvite() = intent {
         (state.ui.layer as? Layer.Joined)?.let { joined ->
-            joined.inviteUrl?.let { commands.share.fire(ShareRequest(it, joined.membership.name)) }
+            joined.inviteUrl?.let { commands.platform.share.fire(ShareRequest(it, joined.membership.name)) }
         }
     }
 
@@ -669,7 +679,7 @@ class StatusContainerHost(
      * does not hold.
      */
     fun onOpenAppStore() = intent {
-        state.shown.store?.let { commands.openLink.fire(AppLinkRequest(it.url)) }
+        state.shown.store?.let { commands.platform.openLink.fire(AppLinkRequest(it.url)) }
     }
 
     /**
@@ -766,7 +776,7 @@ class StatusContainerHost(
          */
         fun onOpenLink(link: AppLink) = intent {
             local.editOverlays { it.copy(menuOpen = false) }
-            commands.openLink.fire(AppLinkRequest(link.url))
+            commands.platform.openLink.fire(AppLinkRequest(link.url))
         }
 
         /** The report's brief word, tapped away before it cleared itself. */
@@ -1053,15 +1063,15 @@ class StatusContainerHost(
     }
 
     /**
-     * An event link arrived (forwarded raw from the platform). Read with the one codec ([InviteLinkText]): what is no
-     * invite flashes the transient error without touching state; an invite whose key cannot be read — cut short in
+     * An invite the app was opened with, read at the boundary (`LinkReading`): what is no invite flashes the transient
+     * error without touching state; an invite whose key cannot be read — cut short in
      * sharing — opens the incomplete-invite screen, as a key that does not open its event does; an invite opens the
      * **join gate** — a first join the full-screen confirmation, a different event while joined a switch
      * confirmation. Nothing a link says joins without a tap. Re-scanning the already-joined event is a no-op (never
      * re-enrolls).
      */
-    fun onOpenUrl(raw: String) = intent {
-        when (val read = InviteLinkText.parse(raw)) {
+    fun onInvite(read: InviteLinkVerdict) = intent {
+        when (read) {
             InviteLinkVerdict.NotAnInvite -> showTransientError()
             is InviteLinkVerdict.KeyUnreadable -> when {
                 pending.value?.eventId == read.event -> ignoreRepeat(read.event, "a pending join is open")
@@ -1144,7 +1154,7 @@ class StatusContainerHost(
      * `simplify-join-screen`, D3). A retry never re-requests: by then iOS has an answer.
      */
     fun onConfirmJoin() = intent {
-        if (asksAccessOnJoin(config.value, permission.value)) commands.requestAccess.fire(Unit)
+        if (asksAccessOnJoin(config.value, permission.value)) commands.platform.requestAccess.fire(Unit)
         commit()
     }
 

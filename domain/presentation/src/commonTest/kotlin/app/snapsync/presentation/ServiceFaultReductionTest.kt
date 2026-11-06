@@ -312,7 +312,7 @@ class ServiceFaultReductionTest {
             config = null,
             load = { (if (loads.isEmpty()) updating else FOUND).also { loads += loads.size } },
         )
-        host.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))).join()
+        host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))).join()
         timers.advanceBy(0)
         host.awaitJoin { it.phase == JoinPhase.LoadFailed && it.service == ServiceNotice.UPDATING }
 

@@ -15,9 +15,11 @@ import app.snapsync.inbound.Inbound
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.UiHandlers
+import app.snapsync.presentation.BuildStanding
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
 import app.snapsync.presentation.EventKeyView
+import app.snapsync.presentation.PlatformCommands
 import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
@@ -32,7 +34,6 @@ import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /**
@@ -133,13 +134,6 @@ fun snapSyncHost(
         // The platform's UI is shown every state the host reduces, from assembly on. `show` only hands the state over:
         // the adapter renders it on its own main thread.
         scope.launch { host.screen.collect(ports.ui::show) }
-        // A link the app was opened with waits in the core until a screen can open it: from assembly on, it opens.
-        scope.launch {
-            core.openedLinks.pending.filterNotNull().collect { url ->
-                host.onOpenUrl(url)
-                core.openedLinks.consume(url)
-            }
-        }
         host
     }
     // A minted event routes into the host's join gate, so create and a scanned QR take one gate: collected from
@@ -192,17 +186,20 @@ private fun doorOf(commands: CoreCommands): UserCommands = UserCommands(
     leave = UserCommand(commands.leave),
     create = UserCommand(commands.create),
     join = UserCommand(commands.join),
-    share = UserCommand(commands.share),
-    requestAccess = UserCommand(commands.requestAccess),
-    openSettings = UserCommand(commands.openSettings),
-    openLink = UserCommand(commands.openLink),
-    choosePhotos = UserCommand(commands.choosePhotos),
+    platform = PlatformCommands(
+        share = UserCommand(commands.share),
+        requestAccess = UserCommand(commands.requestAccess),
+        openSettings = UserCommand(commands.openSettings),
+        openLink = UserCommand(commands.openLink),
+        choosePhotos = UserCommand(commands.choosePhotos),
+    ),
     reconfigure = UserCommand(commands.reconfigure),
     rename = UserCommand(commands.rename),
     switch = UserCommand(commands.switch),
     sendDiagnostics = UserCommand(commands.sendDiagnostics),
     setMobileData = UserCommand(commands.setMobileData),
     restoreKey = UserCommand(commands.restoreKey),
+    inviteOpened = UserCommand(commands.inviteOpened),
 )
 
 /**
@@ -214,14 +211,14 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     permission = core.photoPermission,
     config = core.membership,
     creation = core.creationStatus.status,
+    invites = core.invitesQuery.state,
     requests = requestFlowsOf(core.membershipStatuses, core.reportStatus),
     download = core.downloadProgress,
     verification = DeviceVerification(core.attested, core.refusal, core.attestationFault, core.serviceFault),
     pending = MutableStateFlow(null),
-    versionRefusal = core.versionRefusal,
+    build = BuildStanding(refusal = core.versionRefusal, store = ports.process.build.store),
     network = core.network.query,
     mobileData = core.mobileDataQuery,
-    store = ports.process.build.store,
     foreground = core.foregroundReturns,
     eventKey = EventKeyView(core.keyQuery.presence),
 )
