@@ -107,6 +107,7 @@ import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
+import org.orbitmvi.orbit.OrbitContainerHost
 import org.orbitmvi.orbit.orbitContainer
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -153,7 +154,7 @@ class StatusContainerHost(
     // What the event album holds on this phone, read from the photo library: the composition reads
     // it once and the surfaces' album note follows. Defaulted to the iPhone's.
     private val albumContents: AlbumContents = AlbumContents.SharedAndReceived,
-) : TappedContainerHost() {
+) : OrbitContainerHost<ScreenModel, ScreenModel, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,
     // where a caller has to read it; inside, each source keeps the name that says what it is.
@@ -879,7 +880,7 @@ class StatusContainerHost(
         /** Run [act] after every settings act enqueued before it — see [settingsQueue]. */
         internal fun enqueue(act: suspend () -> Unit) {
             settingsWorker.start()
-            settingsQueue.trySend(tapping.queued(act))
+            settingsQueue.trySend(act)
         }
 
         /**

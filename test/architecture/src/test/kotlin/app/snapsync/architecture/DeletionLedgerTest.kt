@@ -505,7 +505,8 @@ class DeletionLedgerTest {
                 add("the shareable count as a query in $it (a lookup — 4.9)")
             }
             val creation = """(class|interface|enum class|data class) (Creation""" + "Status|CreationFailure" + "Reason|Minted" +
-                "Event|Event" + "Creator|BackendEvent" + "Creation|ShareSet" + "Load|Opened" + "Links|Link" + "Opening)\\b"
+                "Event|Event" + "Creator|BackendEvent" + "Creation|ShareSet" + "Load|Opened" + "Links|Link" + "Opening|On" +
+                "Tap|Tap" + "Run|Tapping|Tapped" + "ContainerHost)\\b"
             declared(files, creation).forEach {
                 add("the create before its request in $it (a create is answered on its status — 4.9)")
             }

@@ -164,7 +164,10 @@ class OptInPinsTest {
         ),
         "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt" to mapOf(
             "CompositionOnly" to Pin(1, "the host's registration"),
-            "InboundImplementation" to Pin(1, "the screen's live state — its taps are an entry point, `OnTap`"),
+            "InboundImplementation" to Pin(
+                2,
+                "the screen's live state, and its intents (`ScreenIntents`): the user's door for every tap",
+            ),
         ),
         "/domain/services/src/commonMain/kotlin/app/snapsync/services/logs/ProcessLogWriters.kt" to mapOf(
             "CompositionOnly" to Pin(1, "installing the structured log's writers, once per process"),
