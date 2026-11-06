@@ -177,6 +177,7 @@ flowchart LR
   domain_presentation --> domain_domain
   domain_presentation --> domain_feature
   domain_presentation --> domain_format
+  domain_presentation --> domain_inbound
   domain_presentation --> domain_model
   domain_presentation --> domain_query
   domain_presentation --> ui_state

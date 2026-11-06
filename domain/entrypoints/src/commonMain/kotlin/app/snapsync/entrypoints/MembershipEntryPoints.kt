@@ -33,24 +33,24 @@ import app.snapsync.data.crypto.KeepOutcome
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.domain.album.AlbumAsk
-import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.domain.membership.Enrolled
-import app.snapsync.domain.membership.InviteFact
-import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
-import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.push.PushTrigger
 import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionTrigger
+import app.snapsync.domain.request.JoinRequest
+import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.request.SettingsRequest
+import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.feature.membership.ShareSetLoad
 import app.snapsync.inbound.Log
@@ -70,18 +70,6 @@ import app.snapsync.services.membership.MembershipTransition
 // its own status (`MembershipStatuses`), keyed by the request: the tap returns at once with its id, and the work runs
 // here, detached. Every request run ends answered, however it ended (`ensure("answer")`).
 
-/** A join the member confirmed: [id] is answered on the join status. */
-class JoinRequest(val id: RequestId, val choice: JoinChoice)
-
-/** Settings the member changed: [id] is answered on the settings status. */
-class SettingsRequest(val id: RequestId, val choice: ShareChoice)
-
-/** A rename of [event] the member asked for: [id] is answered on the rename status. */
-class RenameRequest(val id: RequestId, val event: EventId, val name: String)
-
-/** Another event's invite, loaded: [id] is answered with the switch verdict. */
-class SwitchRequest(val id: RequestId, val invite: InviteFact)
-
 /** The member confirmed a join: enrolled, then entered — and what follows a join. */
 class OnJoinConfirmed(
     runtime: Runtime,
@@ -90,6 +78,7 @@ class OnJoinConfirmed(
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<JoinRequest>(runtime) {
     override suspend fun run(arg: JoinRequest, on: Run) = on.steps {
+        statuses.join.begun(arg.id)
         ensure("answer") { statuses.join.settle(arg.id, JoinCommit.Failed()) }
         when (val admitted = required { enroll.admit(arg.choice) }) {
             is Admitted -> required { enrolling.run(arg.id, admitted, on) }
@@ -143,6 +132,7 @@ class OnInviteForOtherEvent(
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<SwitchRequest>(runtime) {
     override suspend fun run(arg: SwitchRequest, on: Run) = on.steps {
+        statuses.switch.begun(arg.id)
         ensure("answer") { statuses.switch.settle(arg.id, SwitchVerdict.Ask) }
         val facts = required { lookup.facts() }
         val holds = when (facts.needsReceivedCheck) {
@@ -162,6 +152,7 @@ class OnSettingsChanged(
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<SettingsRequest>(runtime) {
     override suspend fun run(arg: SettingsRequest, on: Run) = on.steps {
+        statuses.settings.begun(arg.id)
         ensure("answer") { statuses.settings.settle(arg.id, SettingsResult.NotCurrent) }
         membership(membership, Freshness.Cached) {
             active { joined ->
@@ -182,6 +173,7 @@ class OnRenameRequested(
     private val statuses: MembershipStatuses,
 ) : BackgroundEntryPoint<RenameRequest>(runtime) {
     override suspend fun run(arg: RenameRequest, on: Run) = on.steps {
+        statuses.rename.begun(arg.id)
         ensure("answer") { statuses.rename.settle(arg.id, RenameResult.Failed()) }
         membership(membership, Freshness.Cached) {
             active { joined ->

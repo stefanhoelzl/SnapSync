@@ -1,5 +1,6 @@
 package app.snapsync.model
 
+import app.snapsync.domain.report.ReportOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -34,12 +34,15 @@ internal enum class RenameFailureReason {
     EVENT_OVER,
 }
 
-/** The member's own rename [mine] as [status] answers it — another request's answer is none of the screen's. */
+/**
+ * The member's own rename [mine] as [status] answers it — another request's answer is none of the screen's. A rename
+ * asked for and not yet answered is in flight, whether or not its run has begun: the screen fires it, and the entry
+ * point marks it begun once it runs.
+ */
 internal fun renameOf(status: RequestStatus<RenameResult>, mine: RequestId?): RenameStatus = when {
     mine == null -> RenameStatus.Idle
     status is RequestStatus.Done && status.id == mine -> status.value.shown()
-    status is RequestStatus.InFlight && status.id == mine -> RenameStatus.InFlight
-    else -> RenameStatus.Idle
+    else -> RenameStatus.InFlight
 }
 
 private fun RenameResult.shown(): RenameStatus = when (this) {

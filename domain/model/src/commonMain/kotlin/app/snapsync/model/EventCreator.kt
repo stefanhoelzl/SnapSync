@@ -1,6 +1,6 @@
 package app.snapsync.model
 
-import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.request.CreateRequest
 
 /**
  * The command port for creating an event: fire-and-forget, like `SystemUi.openSettings`. It returns
@@ -13,5 +13,5 @@ import app.snapsync.domain.event.OpenUntil
  * until, chosen for an event created after its end; `null` for every other event.
  */
 interface EventCreator {
-    suspend fun create(name: String, startsAt: String, endsAt: String, openUntil: OpenUntil?)
+    suspend fun create(request: CreateRequest)
 }

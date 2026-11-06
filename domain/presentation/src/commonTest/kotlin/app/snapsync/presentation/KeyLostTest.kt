@@ -11,7 +11,6 @@ import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.MintsIdentifiedKey
 import app.snapsync.domain.invite.InviteLink
-import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -22,7 +21,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -69,12 +67,12 @@ class KeyLostTest {
         ),
         backgroundScope,
         shareableCount = noQueries,
-        commands = object : UserCommands by TestCommands() {
-            override fun restoreKey(key: EventKey): RequestId {
+        commands = TestCommands().apply {
+            restoreKey = { key ->
                 restored += key
-                return RequestId(0L)
+                null
             }
-        },
+        }.door,
         cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
         joinDetails = unanswered,
         diagnostics = testDiagnostics(),
@@ -181,7 +179,7 @@ class KeyLostTest {
             ),
             backgroundScope,
             shareableCount = noQueries,
-            commands = sharingCommands { url -> shared += url },
+            commands = sharingCommands { url -> shared += url }.door,
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),

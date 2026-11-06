@@ -111,7 +111,7 @@ class GuardedIntentTest {
                                 DeletesAt(TimestampText.parse("2026-08-05T00:00:00Z")),
                             )
                         },
-                        commands = commands,
+                        commands = commands.door,
                         cutoffFormatter = CutoffFormatter(
                             now = { Instant.parse("2026-07-09T12:00:00Z") },
                             zone = TimeZone.UTC,

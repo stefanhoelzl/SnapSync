@@ -6,6 +6,7 @@ import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchVerdict
+import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
@@ -172,10 +173,11 @@ class DeviceVerification(
     val service: StateFlow<ServiceFault?> = MutableStateFlow(null),
 )
 
-/** The membership's request statuses, read: a join, a settings change, a switch and a rename. */
+/** The request statuses, read: a join, a settings change, a switch, a rename, and a bug report. */
 class RequestStatusFlows(
     val join: StateFlow<RequestStatus<JoinCommit>> = MutableStateFlow(RequestStatus.Idle),
     val settings: StateFlow<RequestStatus<SettingsResult>> = MutableStateFlow(RequestStatus.Idle),
     val switch: StateFlow<RequestStatus<SwitchVerdict>> = MutableStateFlow(RequestStatus.Idle),
     val rename: StateFlow<RequestStatus<RenameResult>> = MutableStateFlow(RequestStatus.Idle),
+    val report: StateFlow<RequestStatus<ReportOutcome>> = MutableStateFlow(RequestStatus.Idle),
 )

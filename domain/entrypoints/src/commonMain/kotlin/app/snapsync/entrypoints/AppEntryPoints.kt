@@ -28,7 +28,6 @@ import app.snapsync.data.store.ChangedElsewhere
 import app.snapsync.data.upload.SessionEnd
 import app.snapsync.data.upload.StagingSweep
 import app.snapsync.data.upload.UploaderAdmission
-import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
@@ -36,7 +35,8 @@ import app.snapsync.domain.push.PushTailVerdict
 import app.snapsync.domain.push.PushTrigger
 import app.snapsync.domain.receiving.TransferFacts
 import app.snapsync.domain.receiving.UnionTrigger
-import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.wake.UploadsLeft
@@ -287,6 +287,7 @@ class OnKeyRestoreRequested(
 
     @OptIn(EntryPointCall::class)
     override suspend fun run(arg: KeyRestoreRequest, on: Run) = on.steps {
+        statuses.restore.begun(arg.id)
         ensure("answer") { statuses.restore.settle(arg.id, RestoreAnswer.Failed) }
         val restored = required { restore(arg.key) }
         required { log.i("key restore answered", "answer" of restored.answer) }
@@ -300,9 +301,6 @@ class OnKeyRestoreRequested(
         }
     }
 }
-
-/** A reopened invite's [key], offered to restore the joined event's: [id] is answered on the restore status. */
-class KeyRestoreRequest(val id: RequestId, val key: EventKey)
 
 /** The library is creating an import's asset, inside its change block: the marker that keeps it from going back up. */
 class OnImportPlaceholder(runtime: Runtime, private val markers: ImportMarkerWrites) :
@@ -400,9 +398,6 @@ class OnSelectionChanged(
     }
 }
 
-/** A change of the device's mobile-data choice the member made: [id] is answered on the mobile-data status. */
-class MobileDataRequest(val id: RequestId, val choice: MobileDataChoice)
-
 /**
  * The member switched whether photos may use mobile data: saved, and answered with the choice now in effect — the one
  * asked for, or, when it could not be saved, the one still governing the transfers. Turned on and saved, it runs a full
@@ -417,6 +412,7 @@ class OnMobileDataChanged(
 ) : BackgroundEntryPoint<MobileDataRequest>(runtime) {
     @OptIn(EntryPointCall::class)
     override suspend fun run(arg: MobileDataRequest, on: Run) = on.steps {
+        statuses.change.begun(arg.id)
         ensure("answer") { statuses.change.settle(arg.id, MobileDataOutcome.NotSaved(store.read())) }
         val outcome = required { setMobileData(arg.choice) }
         required { statuses.change.done(arg.id, outcome) }

@@ -21,7 +21,18 @@ import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.domain.report.ReportContext
+import app.snapsync.domain.request.AppLinkRequest
+import app.snapsync.domain.request.CreateRequest
+import app.snapsync.domain.request.JoinRequest
+import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MobileDataRequest
+import app.snapsync.domain.request.RenameRequest
+import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.request.SettingsRequest
+import app.snapsync.domain.request.ShareRequest
+import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -38,12 +49,9 @@ import app.snapsync.model.BuildLabel
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
-import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeEdit
@@ -171,6 +179,9 @@ class StatusContainerHost(
     /** The choice the menu's switch shows: read as the screen is built, then moved only by a change's answer. */
     private val mobileData = MutableStateFlow(mobileDataQuery.current() == MobileDataChoice.ALLOWED)
     private val requests = sources.requests
+
+    /** The ids of this screen's requests. */
+    private val ids = RequestIds()
     private val renameFlow: StateFlow<RequestStatus<RenameResult>> = requests.rename
     private val store = sources.store
     private val foreground = sources.foreground
@@ -501,11 +512,13 @@ class StatusContainerHost(
      */
     fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: OpenUntil? = null) =
         guardedIntent(Guarded.Create) {
-            commands.create(
-                name,
-                EventStart(cutoffFormatter.toCutoff(startsAt)),
-                EventEnd(cutoffFormatter.toCutoff(endsAt)),
-                openUntil,
+            commands.create.fire(
+                CreateRequest(
+                    name,
+                    EventStart(cutoffFormatter.toCutoff(startsAt)),
+                    EventEnd(cutoffFormatter.toCutoff(endsAt)),
+                    openUntil,
+                ),
             )
         }
 
@@ -600,15 +613,15 @@ class StatusContainerHost(
     val access: AccessCommands = AccessCommands()
 
     inner class AccessCommands internal constructor() {
-        fun onRequestPermission() = intent { commands.requestAccess() }
+        fun onRequestPermission() = intent { commands.requestAccess.fire(Unit) }
 
         /**
          * The joined layer's "Choose more photos" tap — presents the
          * platform's limited-library picker; the selection outcome arrives via the selection seam.
          */
-        fun onChoosePhotos() = intent { commands.choosePhotos() }
+        fun onChoosePhotos() = intent { commands.choosePhotos.fire(Unit) }
 
-        fun onOpenSettings() = intent { commands.openSettings() }
+        fun onOpenSettings() = intent { commands.openSettings.fire(Unit) }
     }
 
     /**
@@ -622,7 +635,7 @@ class StatusContainerHost(
         // CELL (rather than only hiding them) is what stops a later rejoin from reopening a dialog the
         // member dismissed by leaving.
         local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
-        commands.leave()
+        commands.leave.fire(Unit)
     }
 
     /**
@@ -635,7 +648,7 @@ class StatusContainerHost(
     // byte-identical to the QR being rendered rather than a second derivation that could drift.
     fun onShareInvite() = intent {
         (state.ui.layer as? Layer.Joined)?.let { joined ->
-            joined.inviteUrl?.let { commands.share(it, joined.membership.name) }
+            joined.inviteUrl?.let { commands.share.fire(ShareRequest(it, joined.membership.name)) }
         }
     }
 
@@ -648,7 +661,7 @@ class StatusContainerHost(
      * does not hold.
      */
     fun onOpenAppStore() = intent {
-        state.shown.store?.let { commands.openLink(it.url) }
+        state.shown.store?.let { commands.openLink.fire(AppLinkRequest(it.url)) }
     }
 
     /**
@@ -717,7 +730,10 @@ class StatusContainerHost(
          */
         fun onMobileData(on: Boolean) = intent {
             local.update { it.copy(mobileDataNotSaved = false) }
-            val id = commands.setMobileData(if (on) MobileDataChoice.ALLOWED else MobileDataChoice.WIFI_ONLY)
+            val id = ids.next()
+            commands.setMobileData.fire(
+                MobileDataRequest(id, if (on) MobileDataChoice.ALLOWED else MobileDataChoice.WIFI_ONLY),
+            )
             val outcome = mobileDataQuery.changes.answerTo(id)
             mobileData.value = outcome.inEffect == MobileDataChoice.ALLOWED
             when (outcome) {
@@ -742,7 +758,7 @@ class StatusContainerHost(
          */
         fun onOpenLink(link: AppLink) = intent {
             local.editOverlays { it.copy(menuOpen = false) }
-            commands.openLink(link.url)
+            commands.openLink.fire(AppLinkRequest(link.url))
         }
 
         /** The report's brief word, tapped away before it cleared itself. */
@@ -797,7 +813,8 @@ class StatusContainerHost(
     fun onRenameEvent(eventId: String, name: String) = guardedIntent(Guarded.Rename) {
         // The screen hands back the id it was shown; one that names no event renames nothing.
         val event = EventId.parse(eventId) ?: return@guardedIntent
-        val id = commands.rename(event, name)
+        val id = ids.next()
+        commands.rename.fire(RenameRequest(id, event, name))
         local.update { it.copy(renameOwner = event, renameRequest = id) }
         renameFlow.answerTo(id)
     }
@@ -819,14 +836,11 @@ class StatusContainerHost(
         intent {
             // Read and spent here: the sheet is dismissed before it sends, so the report remembers how it was opened.
             val verification = local.getAndUpdate { it.copy(verifiedReport = false) }.verifiedReport
-            val outcome = try {
-                commands.sendDiagnostics(note, ReportContext(screen, shownCounts(state.ui), verification))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                onIntentError(e)
-                ReportOutcome.NOT_SENT
-            }
+            val id = ids.next()
+            commands.sendDiagnostics.fire(
+                ReportRequest(id, note, ReportContext(screen, shownCounts(state.ui), verification)),
+            )
+            val outcome = requests.report.answerTo(id)
             // Shown, then cleared after a moment; a later report's word replaces an earlier one's.
             local.editOverlays { it.copy(reportNotice = outcome.shown) }
             reportNoticeClear?.cancel()
@@ -886,13 +900,17 @@ class StatusContainerHost(
          */
         private suspend fun applySetting(config: EventConfig, before: SettingChange, next: SettingChange) {
             local.update { it.copy(pendingWithdrawal = Owned(null, null)) }
-            val id = commands.reconfigure(
-                ShareChoice(
-                    config.eventId,
-                    next.from,
-                    next.until,
-                    next.direction,
-                    AlbumSwitch.choice(next.saveToAlbum),
+            val id = ids.next()
+            commands.reconfigure.fire(
+                SettingsRequest(
+                    id,
+                    ShareChoice(
+                        config.eventId,
+                        next.from,
+                        next.until,
+                        next.direction,
+                        AlbumSwitch.choice(next.saveToAlbum),
+                    ),
                 ),
             )
             val outcome = requests.settings.answerTo(id)
@@ -1091,7 +1109,8 @@ class StatusContainerHost(
      * screen follows the key's presence, not the request's answer.
      */
     private fun restoreKey(eventId: EventId, key: EventKey) {
-        val request = commands.restoreKey(key)
+        val request = ids.next()
+        commands.restoreKey.fire(KeyRestoreRequest(request, key))
         log("join gate: the reopened invite of $eventId offers its key back ($request)")
     }
 
@@ -1117,7 +1136,7 @@ class StatusContainerHost(
      * `simplify-join-screen`, D3). A retry never re-requests: by then iOS has an answer.
      */
     fun onConfirmJoin() = intent {
-        if (asksAccessOnJoin(config.value, permission.value)) commands.requestAccess()
+        if (asksAccessOnJoin(config.value, permission.value)) commands.requestAccess.fire(Unit)
         commit()
     }
 
@@ -1141,7 +1160,7 @@ class StatusContainerHost(
         if ((p.phase as? JoinProgress.Detailed)?.step != JoinPhase.Detailed.Step.Ready) return@guardedIntent
         val left = config.value?.eventId ?: return@guardedIntent
         local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
-        commands.leave()
+        commands.leave.fire(Unit)
         // The leave answers nothing but the membership: the guard is held until it is gone — or the switch was given
         // up, since a leave that cannot be written leaves the member joined — so a second tap asks for no second leave.
         combine(config, pending) { joined, open -> joined?.eventId != left || open?.eventId != p.eventId }.first { it }
@@ -1216,11 +1235,13 @@ class StatusContainerHost(
         // then a first join, whose Cancel leaves the device in no event, exactly as after a confirmed switch. Asked
         // only once the invite has loaded: an invite that cannot be joined never leaves the joined event.
         if (leavesQuietly && pending.value?.eventId == eventId) {
-            val verdict = requests.switch.answerTo(commands.switch(loaded.invite))
+            val id = ids.next()
+            commands.switch.fire(SwitchRequest(id, loaded.invite))
+            val verdict = requests.switch.answerTo(id)
             if (verdict == SwitchVerdict.Quiet && pending.value?.eventId == eventId) {
                 log("join gate: leaving the joined event for $eventId without asking — it loses nothing")
                 local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
-                commands.leave()
+                commands.leave.fire(Unit)
             }
         }
         pending.update { it.showing(eventId, loaded) }
@@ -1292,7 +1313,9 @@ class StatusContainerHost(
         pending.value = p.copy(phase = JoinProgress.Detailed(event, JoinPhase.Detailed.Step.Committing), service = null)
         beginMembership()
         val commit = try {
-            requests.join.answerTo(commands.commitJoin(choice))
+            val id = ids.next()
+            commands.join.fire(JoinRequest(id, choice))
+            requests.join.answerTo(id)
         } catch (cancelled: CancellationException) {
             // Cancellation is teardown, not failure: rethrow before the repair below, or a cancelled
             // commit would rewrite the phase on its way out (the `StatusCountsPoller` shape).

@@ -9,6 +9,8 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
+import app.snapsync.domain.report.ReportContext
+import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
@@ -19,9 +21,7 @@ import app.snapsync.format.TimestampText
 import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportDestination
-import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.query.ScreenLookup
@@ -174,7 +174,7 @@ class StatusContainerHostSurfacesTest {
             mobileData = AlwaysAllowed,
         ),
         scope,
-        commands = commands,
+        commands = commands.door,
         cutoffFormatter = CutoffFormatter(
             now = { Instant.parse("2026-07-09T12:00:00Z") },
             zone = TimeZone.UTC,

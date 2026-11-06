@@ -116,7 +116,10 @@ coverage {
         // dead leftovers with it. Measured 67.02 / 37.41 %.
         // → 64/37 in phase 4.4c (manifest): the device manifest and the ledger row it read, which the suite covered,
         // left for the domain and the data layer. No test was lost. Measured 64.49 / 37.40 %.
-        integration(instructions = 64, branches = 37)
+        // → 63/37 in phase 4.9 (status and presentation): the bug report's context and outcome, which the suite
+        // covered, left for the domain with the requests the command door carries, and the old command interface went.
+        // No test was lost. Measured 63.47 %.
+        integration(instructions = 63, branches = 37)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.

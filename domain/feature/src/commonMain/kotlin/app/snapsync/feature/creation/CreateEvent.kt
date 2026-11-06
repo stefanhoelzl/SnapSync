@@ -4,7 +4,7 @@ import app.snapsync.data.crypto.NewEventKey
 import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKey
-import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.request.CreateRequest
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.format.TimestampText
@@ -52,7 +52,7 @@ class CreateEvent(
     // Suspending, and holding no scope: the composition launches this (law "Dispatcher lanes are
     // fixed by the composition"), which is what lets the tap's `Logger.invocation` span the real work
     // instead of timing the hand-off — `← tap.create (1ms)` against a multi-second mint.
-    override suspend fun create(name: String, startsAt: String, endsAt: String, openUntil: OpenUntil?) {
+    override suspend fun create(request: CreateRequest) {
         // One create at a time — a non-idempotent command is in flight before it first suspends: a second tap
         // that reached the lane while the first mint is out would mint a second
         // event. Checked and set before the first suspension, so on the serial lane nothing can come between.
@@ -69,11 +69,11 @@ class CreateEvent(
         }
         when (
             val outcome = client.create(
-                name.trim(),
-                startsAt,
-                endsAt,
+                request.name.trim(),
+                TimestampText.format(request.startsAt.at),
+                TimestampText.format(request.endsAt.at),
                 key?.id?.value,
-                openUntil?.at?.let(TimestampText::format),
+                request.openUntil?.at?.let(TimestampText::format),
             )
         ) {
             is CreateOutcome.Created -> {

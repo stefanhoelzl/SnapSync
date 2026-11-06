@@ -4,13 +4,13 @@ import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.EventWindow
+import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportDestination
-import app.snapsync.model.ReportOutcome
 import app.snapsync.model.Store
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeBounds

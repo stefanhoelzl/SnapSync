@@ -13,7 +13,7 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.SwitchVerdict
-import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.request.JoinRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -23,7 +23,6 @@ import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
@@ -118,13 +117,7 @@ class JoinGateEdgesTest {
                 world.whileAsked()
                 if (world.losesNothing) SwitchVerdict.Quiet else SwitchVerdict.Ask
             },
-        )
-        val door = object : UserCommands by commands {
-            override fun commitJoin(choice: JoinChoice): RequestId = when (world.doorFails) {
-                true -> error("the door refused the join")
-                false -> commands.commitJoin(choice)
-            }
-        }
+        ).apply { handedOver = { if (it is JoinRequest) check(!world.doorFails) { "the door refused the join" } } }
         return StatusContainerHost(
             StatusSources(
                 FixedSync(SyncStatus.Loading),
@@ -137,7 +130,7 @@ class JoinGateEdgesTest {
             ),
             scope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-            commands = door,
+            commands = commands.door,
             shareableCount = noQueries,
             joinDetails = joinDetails { id ->
                 world.loads++
@@ -194,7 +187,7 @@ class JoinGateEdgesTest {
             ),
             backgroundScope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-            commands = TestCommands(),
+            commands = TestCommands().door,
             shareableCount = noQueries,
             joinDetails = lookup { invite: InviteLink ->
                 keys += invite.key

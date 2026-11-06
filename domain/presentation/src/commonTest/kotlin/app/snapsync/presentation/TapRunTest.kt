@@ -6,17 +6,15 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.membership.SettingsResult
-import app.snapsync.domain.membership.ShareChoice
-import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.CompletableDeferred
@@ -63,26 +61,19 @@ class TapRunTest {
         val seen = mutableListOf<String>()
         val joined = mutableListOf<Job>()
 
-        /** Where each settings change is saved, and answered. */
-        val saved = TestCommands(reconfigure = { SettingsResult.Saved })
+        /** Where each settings change is saved, and answered; each report is answered with the tap it was sent for. */
+        val saved = TestCommands(
+            reconfigure = { SettingsResult.Saved },
+            sendDiagnostics = { _, _ ->
+                reported.complete(currentCoroutineContext()[Tap]?.name)
+                ReportOutcome.SENT
+            },
+        ).apply { handedOver = { if (it is SettingsRequest) seen += "reconfigure" } }
 
         /** Which tap the report was sent for — completed as it is sent. */
         val reported = CompletableDeferred<String?>()
 
         fun run(name: String) = TapRun(Tap(name)) { joined += it }
-    }
-
-    /** Answers each report with which tap it was sent for, and counts the settings changes it is handed. */
-    private fun commands(world: World): UserCommands = object : UserCommands by TestCommands(
-        sendDiagnostics = { _, _ ->
-            world.reported.complete(currentCoroutineContext()[Tap]?.name)
-            ReportOutcome.SENT
-        },
-    ) {
-        override fun reconfigure(choice: ShareChoice): RequestId {
-            world.seen += "reconfigure"
-            return world.saved.reconfigure(choice)
-        }
     }
 
     private fun host(world: World, scope: CoroutineScope, reduction: CoroutineDispatcher) = StatusContainerHost(
@@ -96,7 +87,7 @@ class TapRunTest {
         ),
         scope,
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-        commands = commands(world),
+        commands = world.saved.door,
         shareableCount = noQueries,
         joinDetails = unanswered,
         diagnostics = testDiagnostics(),
@@ -116,7 +107,7 @@ class TapRunTest {
         val host = started(world)
         host.onTap(UiIntent.SendDiagnostics("stuck", "Joined"), world.run("report"))
         assertEquals(1, world.joined.size, "the intent was not counted as the tap's work")
-        assertEquals("report", world.reported.await())
+        world.reported.await()
         world.joined.single().join()
     }
 

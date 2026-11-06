@@ -50,9 +50,6 @@ import kotlin.time.TimeSource
 internal enum class OsTime {
     HELD,
     GRANTED,
-
-    /** A person's work, started while the app is in front — which keeps it running: no hold of its own. */
-    IN_FRONT,
 }
 
 /**
@@ -155,14 +152,6 @@ class Runtime(
         val outlived = scope.async((trigger ?: Trigger.of("outliving")) + (joined ?: EmptyCoroutineContext)) { block() }
         work?.let { outlived.invokeOnCompletion { cause -> it.closed(endedAs(cause)) } }
         return outlived.await()
-    }
-
-    /**
-     * Starts [body] without awaiting it and without a background-time hold of its own — a person's command, which the
-     * app being in front keeps running — labelled [name]. Inside an entry point's work (a tap's) it is that work's.
-     */
-    suspend fun alongside(name: String, body: suspend () -> Unit) {
-        detached(Trigger.of(name), currentCoroutineContext()[WorkElement]?.work, body, OsTime.IN_FRONT)
     }
 
     /**

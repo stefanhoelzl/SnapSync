@@ -9,6 +9,7 @@ import app.snapsync.data.upload.ProgressRead
 import app.snapsync.data.upload.UploadProgress
 import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.format.TimestampText
 import app.snapsync.model.AppFacts
@@ -21,7 +22,6 @@ import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReportContext
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.gallery.GalleryAccessState

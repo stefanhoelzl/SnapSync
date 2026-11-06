@@ -41,6 +41,31 @@ class HandOffIntegrationTest {
 
     @Test
     @Verifies(
+        spec = "invite-link",
+        requirement = "The joined screen offers the invite until the event's photos are deleted",
+    )
+    fun a_share_no_app_presents_leaves_the_joined_screen_as_it_was() = behaviour {
+        lateinit var joined: Seen<Layer.Joined>
+        given {
+            createdEvent()
+            step("joined", act = { confirmJoin() }, until = {
+                joined = screen<Layer.Joined> { it.inviteUrl != null }
+                settled { true }
+            })
+            step("no app presents the share sheet", act = { systemUi.noSheet(true) }, until = {})
+        }
+
+        // The platform refuses the hand-off: nothing is shared, and the screen and the invite stay as they were.
+        whenever { tap(UiIntent.ShareInvite) }
+        then {
+            never<WorldEvent.Shared>()
+            neverScreen<Layer.Joined> { it.inviteUrl != joined.value.inviteUrl }
+            settled { true }
+        }
+    }
+
+    @Test
+    @Verifies(
         spec = "app-experience",
         requirement = "The app menu is one tap away on every screen",
         scenario = "Reading the Privacy Policy",

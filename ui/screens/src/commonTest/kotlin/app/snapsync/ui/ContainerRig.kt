@@ -19,41 +19,48 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.snapsync.domain.event.EventEnd
-import app.snapsync.domain.event.EventId
-import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
-import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLink
-import app.snapsync.domain.membership.InviteFact
-import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.SettingsResult
-import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.request.AppLinkRequest
+import app.snapsync.domain.request.CreateRequest
+import app.snapsync.domain.request.JoinRequest
+import app.snapsync.domain.request.KeyRestoreRequest
+import app.snapsync.domain.request.MobileDataRequest
+import app.snapsync.domain.request.RenameRequest
+import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.RequestId
+import app.snapsync.domain.request.SettingsRequest
+import app.snapsync.domain.request.ShareRequest
+import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.TimestampText
+import app.snapsync.inbound.Background
+import app.snapsync.inbound.Completion
+import app.snapsync.inbound.InboundImplementation
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReportContext
-import app.snapsync.model.ReportOutcome
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
-import app.snapsync.model.UserCommands
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
 import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
+import app.snapsync.presentation.UserCommand
+import app.snapsync.presentation.UserCommands
 import app.snapsync.presentation.onIntent
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
@@ -117,14 +124,22 @@ internal class ContainerRig(
 
     /** What the rig answers the membership's requests on — at once, as a core that settles every one does. */
     private val statuses = MembershipStatuses()
-    private var lastRequest = 0L
+    private val reports = RequestStatuses<ReportOutcome>()
 
     private val mobileDataStatuses = MobileDataStatuses()
 
-    private fun <T> answered(on: RequestStatuses<T>, answer: T?): RequestId = RequestId(++lastRequest).also { id ->
+    private fun <T> answered(id: RequestId, on: RequestStatuses<T>, answer: T?) {
         on.begun(id)
         answer?.let { on.done(id, it) }
     }
+
+    /** A command the rig records as it is fired, answering it at once. */
+    @OptIn(InboundImplementation::class)
+    private fun <A> command(run: (A) -> Unit): UserCommand<A> = UserCommand(
+        object : Background<A> {
+            override fun handle(arg: A, completion: Completion) = run(arg)
+        },
+    )
 
     val host = StatusContainerHost(
         StatusSources(
@@ -151,64 +166,52 @@ internal class ContainerRig(
                 settings = statuses.settings.status,
                 switch = statuses.switch.status,
                 rename = statuses.rename.status,
+                report = reports.status,
             ),
         ),
         scope = scope,
         cutoffFormatter = CutoffFormatter(now = { clock.instant }, zone = TimeZone.UTC),
-        commands = object : UserCommands {
-            override fun leave() {
+        commands = UserCommands(
+            leave = command { _: Unit ->
                 record("leave")
                 this@ContainerRig.config.value = null
-            }
-
-            override suspend fun create(name: String, startsAt: EventStart, endsAt: EventEnd, openUntil: OpenUntil?) {
-                record("create:$name${openUntil?.let { ":open-until:${TimestampText.format(it.at)}" }.orEmpty()}")
-                createdCell.update { it + Triple(name, startsAt, endsAt) }
-            }
-
-            override fun commitJoin(choice: JoinChoice): RequestId {
-                record("commitJoin:${choice.event.id}:${choice.direction}:${choice.album}")
-                return answered(statuses.join, JoinCommit.Failed())
-            }
-
-            override suspend fun share(url: String, title: String) = record("share:$url")
-
-            override suspend fun requestAccess() = record("requestAccess")
-
-            override suspend fun openSettings() = record("openSettings")
-
-            override suspend fun openLink(url: String) = record("openLink:$url")
-
-            override suspend fun choosePhotos() = record("choosePhotos")
-
-            override fun reconfigure(choice: ShareChoice): RequestId {
-                record("reconfigure:${choice.event}:${choice.direction}")
-                return answered(statuses.settings, SettingsResult.Saved)
-            }
-
-            override fun rename(eventId: EventId, name: String): RequestId {
-                record("rename:$eventId:$name")
-                return answered(statuses.rename, null)
-            }
-
-            override fun switch(invite: InviteFact): RequestId = answered(statuses.switch, SwitchVerdict.Ask)
-
-            override suspend fun sendDiagnostics(note: String, context: ReportContext): ReportOutcome {
+            },
+            create = command { r: CreateRequest ->
+                record("create:${r.name}${r.openUntil?.let { ":open-until:${TimestampText.format(it.at)}" }.orEmpty()}")
+                createdCell.update { it + Triple(r.name, r.startsAt, r.endsAt) }
+            },
+            join = command { r: JoinRequest ->
+                record("commitJoin:${r.choice.event.id}:${r.choice.direction}:${r.choice.album}")
+                answered(r.id, statuses.join, JoinCommit.Failed())
+            },
+            share = command { r: ShareRequest -> record("share:${r.text}") },
+            requestAccess = command { _: Unit -> record("requestAccess") },
+            openSettings = command { _: Unit -> record("openSettings") },
+            openLink = command { r: AppLinkRequest -> record("openLink:${r.url}") },
+            choosePhotos = command { _: Unit -> record("choosePhotos") },
+            reconfigure = command { r: SettingsRequest ->
+                record("reconfigure:${r.choice.event}:${r.choice.direction}")
+                answered(r.id, statuses.settings, SettingsResult.Saved)
+            },
+            rename = command { r: RenameRequest ->
+                record("rename:${r.event}:${r.name}")
+                answered(r.id, statuses.rename, null)
+            },
+            switch = command { r: SwitchRequest -> answered(r.id, statuses.switch, SwitchVerdict.Ask) },
+            sendDiagnostics = command { r: ReportRequest ->
                 // A report opened from "Report this" is marked: only it carries the refused verification's facts.
-                record("sendDiagnostics:$note" + if (context.verification) " [verification]" else "")
-                return ReportOutcome.SENT
-            }
-
-            override fun setMobileData(choice: MobileDataChoice): RequestId {
-                record("setMobileData:${choice == MobileDataChoice.ALLOWED}")
-                return answered(mobileDataStatuses.change, MobileDataOutcome.Saved(choice))
-            }
-
-            override fun restoreKey(key: EventKey): RequestId {
+                record("sendDiagnostics:${r.note}" + if (r.context.verification) " [verification]" else "")
+                answered(r.id, reports, ReportOutcome.SENT)
+            },
+            setMobileData = command { r: MobileDataRequest ->
+                record("setMobileData:${r.choice == MobileDataChoice.ALLOWED}")
+                answered(r.id, mobileDataStatuses.change, MobileDataOutcome.Saved(r.choice))
+            },
+            restoreKey = command { r: KeyRestoreRequest ->
                 record("restoreKey")
-                return answered(statuses.restore, null)
-            }
-        },
+                answered(r.id, statuses.restore, null)
+            },
+        ),
         shareableCount = object : ScreenLookup<CaptureRange, Int?>("test", Dispatchers.Unconfined) {
             override suspend fun read(arg: CaptureRange): Int? = null
         },

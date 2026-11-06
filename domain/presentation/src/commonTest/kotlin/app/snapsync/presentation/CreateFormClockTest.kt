@@ -96,7 +96,7 @@ class CreateFormClockTest {
                 mobileData = AlwaysAllowed,
             ),
             scope,
-            commands = commands,
+            commands = commands.door,
             cutoffFormatter = CutoffFormatter(now = now, zone = TimeZone.UTC),
             shareableCount = noQueries,
             joinDetails = unanswered,

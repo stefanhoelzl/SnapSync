@@ -2,11 +2,11 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.feature.creation.readmodel.CreationFailureReason
 import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.ReportOutcome
 import app.snapsync.model.SyncStatus
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
@@ -78,7 +78,7 @@ class NoticeTimersTest {
             ),
             scope,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-            commands = commands,
+            commands = commands.door,
             shareableCount = noQueries,
             joinDetails = unanswered,
             diagnostics = testDiagnostics(),

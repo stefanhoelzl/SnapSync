@@ -37,7 +37,6 @@ import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.UserCommands
 import app.snapsync.presentation.url
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -151,8 +150,8 @@ private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(testEvent
  *
  * Each test is chosen so that crossing a binding with its SIBLING fails it — open with dismiss, confirm with cancel,
  * request with settings. The assertion is always an outcome the container owns: the state it reduced to, or the
- * command it fired through [UserCommands]. The container runs on a real scope, so every assertion waits for the
- * intent to land rather than assuming it already has.
+ * command it fired through the door ([app.snapsync.presentation.UserCommands]). The container runs on a real scope, so
+ * every assertion waits for the intent to land rather than assuming it already has.
  */
 class HostStatusActionsTest {
 

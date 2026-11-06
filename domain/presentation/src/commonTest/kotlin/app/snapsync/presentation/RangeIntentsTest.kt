@@ -310,7 +310,7 @@ class RangeIntentsTest {
                 mobileData = AlwaysAllowed,
             ),
             scope,
-            commands = commands,
+            commands = commands.door,
             cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
             joinDetails = joinDetails { _ ->
                 found(

@@ -2,11 +2,13 @@ package app.snapsync.host
 
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
+import app.snapsync.compose.CoreCommands
 import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.followNetworkReturns
 import app.snapsync.compose.inbound
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.compose.taps
+import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.entrypoints.HostAssembly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
@@ -21,7 +23,10 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.TapRun
+import app.snapsync.presentation.UserCommand
+import app.snapsync.presentation.UserCommands
 import app.snapsync.presentation.onTap
+import app.snapsync.query.RequestStatuses
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -109,7 +114,7 @@ fun snapSyncHost(
             scope = scope,
             reduction = reduction,
             cutoffFormatter = cutoffFormatter,
-            commands = core.userCommands,
+            commands = doorOf(core.commands),
             shareableCount = core.shareableCount,
             joinDetails = core.joinDetails,
             // Where a bug report goes on this build — the sheet says it.
@@ -173,9 +178,33 @@ private class LiveScreen(private val composed: ComposedApp) : Inbound<Unit, UiSt
     override fun deliver(arg: Unit): UiState = composed.host.screen.value
 }
 
-/** The membership's request statuses, as the status host reads them. */
-private fun requestFlowsOf(statuses: MembershipStatuses): RequestStatusFlows =
-    RequestStatusFlows(statuses.join.status, statuses.settings.status, statuses.switch.status, statuses.rename.status)
+/** The request statuses, as the status host reads them. */
+private fun requestFlowsOf(statuses: MembershipStatuses, reports: RequestStatuses<ReportOutcome>): RequestStatusFlows =
+    RequestStatusFlows(
+        statuses.join.status,
+        statuses.settings.status,
+        statuses.switch.status,
+        statuses.rename.status,
+        reports.status,
+    )
+
+/** The core's commands, as the screen's door: each fired, never awaited. */
+private fun doorOf(commands: CoreCommands): UserCommands = UserCommands(
+    leave = UserCommand(commands.leave),
+    create = UserCommand(commands.create),
+    join = UserCommand(commands.join),
+    share = UserCommand(commands.share),
+    requestAccess = UserCommand(commands.requestAccess),
+    openSettings = UserCommand(commands.openSettings),
+    openLink = UserCommand(commands.openLink),
+    choosePhotos = UserCommand(commands.choosePhotos),
+    reconfigure = UserCommand(commands.reconfigure),
+    rename = UserCommand(commands.rename),
+    switch = UserCommand(commands.switch),
+    sendDiagnostics = UserCommand(commands.sendDiagnostics),
+    setMobileData = UserCommand(commands.setMobileData),
+    restoreKey = UserCommand(commands.restoreKey),
+)
 
 /**
  * Every read-model the status host reduces over, from the composed [core] and its [ports] — all of them, named
@@ -186,7 +215,7 @@ private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = Sta
     permission = core.photoPermission,
     config = core.membership,
     creation = core.creationStatus,
-    requests = requestFlowsOf(core.membershipStatuses),
+    requests = requestFlowsOf(core.membershipStatuses, core.reportStatus),
     download = core.downloadProgress,
     verification = DeviceVerification(core.attested, core.refusal, core.attestationFault, core.serviceFault),
     pending = MutableStateFlow(null),

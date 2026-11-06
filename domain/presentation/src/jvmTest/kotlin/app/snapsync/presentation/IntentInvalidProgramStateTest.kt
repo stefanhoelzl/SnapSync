@@ -53,7 +53,7 @@ class IntentInvalidProgramStateTest {
                     mobileData = AlwaysAllowed,
                 ),
                 scope,
-                commands = commands,
+                commands = commands.door,
                 cutoffFormatter = CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.UTC),
                 joinDetails = unanswered,
                 diagnostics = testDiagnostics(onIntentError = { reported += it }),

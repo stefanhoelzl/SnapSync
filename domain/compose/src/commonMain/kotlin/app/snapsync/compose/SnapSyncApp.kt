@@ -21,6 +21,7 @@ import app.snapsync.data.upload.UploaderSwitches
 import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.upload.UploaderChange
@@ -40,7 +41,6 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.UserCommands
 import app.snapsync.model.selectionPhotos
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
@@ -66,6 +66,7 @@ import app.snapsync.ports.SystemUi
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.Ui
 import app.snapsync.ports.Wake
+import app.snapsync.query.RequestStatuses
 import app.snapsync.query.encryption.EventKeyQuery
 import app.snapsync.query.membership.JoinDetailsLookup
 import app.snapsync.query.membership.MembershipStatuses
@@ -437,8 +438,11 @@ class AppCore internal constructor(
         work.uploaderChange.deliver(UploaderChange.LAUNCH)
     }
 
-    /** The user-tap command bundle — see [userCommandsFor]. */
-    val userCommands: UserCommands by lazy { userCommandsFor() }
+    /** A bug report's status: what the member is told of the report they sent. */
+    val reportStatus: RequestStatuses<ReportOutcome> = RequestStatuses()
+
+    /** What the member can ask for, as the core's entry points — see [commandsFor]. */
+    val commands: CoreCommands by lazy { commandsFor(reportStatus) }
 
     /** The diagnostic dump assembly — see [diagnosticDumpFor]. */
     internal val collectDiagnosticDump: CollectDiagnosticDump by lazy { diagnosticDumpFor() }

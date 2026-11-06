@@ -27,10 +27,14 @@ class RenameRequestsTest {
     }
 
     @Test
-    fun `no request of the member's, or another one's answer, is idle`() {
+    fun `no request of the member's is idle`() {
         assertEquals(RenameStatus.Idle, renameOf(RequestStatus.Done(other, RenameResult.Renamed), null))
-        assertEquals(RenameStatus.Idle, renameOf(RequestStatus.Done(other, RenameResult.Renamed), mine))
-        assertEquals(RenameStatus.Idle, renameOf(RequestStatus.InFlight(other), mine))
-        assertEquals(RenameStatus.Idle, renameOf(RequestStatus.Idle, mine))
+    }
+
+    @Test
+    fun `the member's request unanswered is in flight, whether or not its run has begun - another's answer is not its`() {
+        assertEquals(RenameStatus.InFlight, renameOf(RequestStatus.Idle, mine))
+        assertEquals(RenameStatus.InFlight, renameOf(RequestStatus.InFlight(other), mine))
+        assertEquals(RenameStatus.InFlight, renameOf(RequestStatus.Done(other, RenameResult.Renamed), mine))
     }
 }

@@ -11,13 +11,6 @@ data class BuildLabel(val version: String, val buildNumber: String) {
 }
 
 /**
- * What became of a bug report the user confirmed, as the app briefly says it: handed
- * to the reporting service, kept on this device, or neither. [SENT] is a hand-off, never a delivery — the channel
- * may queue and retry, and nothing reports back.
- */
-enum class ReportOutcome { SENT, SAVED, NOT_SENT }
-
-/**
  * Where a bug report goes — a constant of the build: a distributed build sends it to
  * the developer's error-tracking service; a build that reports nowhere keeps it on this device.
  */
