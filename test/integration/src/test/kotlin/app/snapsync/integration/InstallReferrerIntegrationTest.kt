@@ -73,7 +73,7 @@ class InstallReferrerIntegrationTest {
         then {
             settled { true }
             neverScreen<Layer.JoiningEvent>()
-            neverScreen<Layer.CreateEvent> { it.error != null }
+            neverScreen<Layer.CreateEvent> { it.error != null || it.passing != null }
         }
     }
 

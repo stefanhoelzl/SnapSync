@@ -278,7 +278,7 @@ class InviteLinkIntegrationTest {
 
         whenever { openLink(TRUNCATED) }
         then {
-            screen<Layer.CreateEvent> { it.error == ScreenMessage.INVALID_LINK }
+            screen<Layer.CreateEvent> { it.passing == ScreenMessage.INVALID_LINK }
             neverScreen<Layer.JoiningEvent>()
         }
 

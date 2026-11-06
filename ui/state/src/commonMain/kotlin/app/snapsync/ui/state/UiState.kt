@@ -150,9 +150,9 @@ sealed interface Layer {
 
     /**
      * The create-event landing layer (create-event), shown while no event is connected
-     * (`config == null`) and no create is in flight. Carries an optional inline
-     * [error] — the last create failure (sticky until the next attempt) or a transient
-     * invalid link. Config-absent outranks everything, so this is the top reduction rung.
+     * (`config == null`) and no create is in flight. Carries an optional inline [error] — the last create failure,
+     * sticky until the next attempt, or the phone's refusal. Config-absent outranks everything, so this is the top
+     * reduction rung.
      */
     @Serializable
     data class CreateEvent(
@@ -164,6 +164,11 @@ sealed interface Layer {
          * — and Create is unavailable.
          */
         val network: NetworkNotice? = null,
+        /**
+         * A passing word on what the member just did — a link that opened no invite — shown in the hint line above the
+         * network and [error] for its few seconds, and then gone: both return as they were.
+         */
+        val passing: ScreenMessage? = null,
     ) : Layer
 
     /**

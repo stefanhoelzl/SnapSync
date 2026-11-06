@@ -38,7 +38,7 @@ class EntryIntegrationTest {
     fun a_link_that_decodes_to_nothing_shows_the_error_and_opens_no_gate() = behaviour {
         whenever { openLink("https://example.invalid/not-an-invite") }
         then {
-            screen<Layer.CreateEvent> { it.error != null }
+            screen<Layer.CreateEvent> { it.passing != null }
             neverScreen<Layer.JoiningEvent>()
         }
     }

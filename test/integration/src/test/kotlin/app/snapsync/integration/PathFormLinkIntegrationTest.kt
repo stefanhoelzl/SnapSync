@@ -45,11 +45,11 @@ class PathFormLinkIntegrationTest {
         lateinit var create: Seen<Layer.CreateEvent>
         whenever { openLink("$LINK_ORIGIN/join/not-an-event") }
         then {
-            create = screen<Layer.CreateEvent> { it.error != null }
+            create = screen<Layer.CreateEvent> { it.passing != null }
             // A damaged invite joins nothing.
             neverScreen<Layer.Joined>()
             never<WorldEvent.MemberJoined>()
         }
-        assertEquals(ScreenMessage.INVALID_LINK, create.value.error)
+        assertEquals(ScreenMessage.INVALID_LINK, create.value.passing)
     }
 }

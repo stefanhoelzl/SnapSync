@@ -102,7 +102,7 @@ class CreateFlowTest {
     @Test
     fun `invalid deeplink error shows below Create in place of the scan hint`() = createTest { rig ->
         rig.invites.value = InviteLinkText.parse("not an invite")
-        awaitState(rig) { it.create?.error == ScreenMessage.INVALID_LINK }
+        awaitState(rig) { it.create?.passing == ScreenMessage.INVALID_LINK }
         onNodeWithText(str(Res.string.message_invalid_link)).assertExists()
         onNodeWithText(str(Res.string.create_join_hint)).assertDoesNotExist()
     }

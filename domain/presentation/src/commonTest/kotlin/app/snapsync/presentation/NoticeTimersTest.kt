@@ -85,7 +85,9 @@ class NoticeTimersTest {
         )
     }
 
-    private fun UiState.createError(): ScreenMessage? = assertIs<Layer.CreateEvent>(layer).error
+    private fun UiState.createError(): ScreenMessage? = assertIs<Layer.CreateEvent>(layer).passing
+
+    private fun UiState.createFailure(): ScreenMessage? = assertIs<Layer.CreateEvent>(layer).error
 
     /**
      * The state once the reduction has caught up — it runs off the test's scheduler, so a read that expects NOTHING
@@ -120,15 +122,17 @@ class NoticeTimersTest {
     }
 
     @Test
-    fun `a rejected link's message is told over a failed create's — which returns once it clears`() = onTimers { timers ->
+    fun `a rejected link's message passes over a failed create's, which stays`() = onTimers { timers ->
         val host = host(timers.scope, Creating.answered(CreateResult.InvalidName))
-        assertEquals(ScreenMessage.CREATE_NAME_REFUSED, host.screen.value.createError())
+        assertEquals(ScreenMessage.CREATE_NAME_REFUSED, host.screen.value.createFailure())
 
         timers.openBadLink(host)
-        host.screen.first { it.createError() == ScreenMessage.INVALID_LINK }
+        val passing = host.screen.first { it.createError() == ScreenMessage.INVALID_LINK }
+        assertEquals(ScreenMessage.CREATE_NAME_REFUSED, passing.createFailure(), "the failure stays beneath it")
 
         timers.advanceBy(4_001)
-        host.screen.first { it.createError() == ScreenMessage.CREATE_NAME_REFUSED }
+        val passed = host.screen.first { it.createError() == null }
+        assertEquals(ScreenMessage.CREATE_NAME_REFUSED, passed.createFailure())
     }
 
     @Test
