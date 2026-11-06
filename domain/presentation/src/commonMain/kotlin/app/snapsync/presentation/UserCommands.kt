@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.JoinRequest
@@ -31,17 +32,27 @@ class UserCommands(
     val leave: UserCommand<Unit>,
     val create: UserCommand<CreateRequest>,
     val join: UserCommand<JoinRequest>,
-    val share: UserCommand<ShareRequest>,
-    val requestAccess: UserCommand<Unit>,
-    val openSettings: UserCommand<Unit>,
-    val openLink: UserCommand<AppLinkRequest>,
-    val choosePhotos: UserCommand<Unit>,
+    val platform: PlatformCommands,
     val reconfigure: UserCommand<SettingsRequest>,
     val rename: UserCommand<RenameRequest>,
     val switch: UserCommand<SwitchRequest>,
     val sendDiagnostics: UserCommand<ReportRequest>,
     val setMobileData: UserCommand<MobileDataRequest>,
     val restoreKey: UserCommand<KeyRestoreRequest>,
+    // The screen opened the invite the app was opened with: it no longer waits.
+    val inviteOpened: UserCommand<InviteLinkVerdict>,
+)
+
+/**
+ * What the member hands to the platform, or asks of it: a share sheet, a page outside the app, Settings, and the photo
+ * grant's question and picker.
+ */
+class PlatformCommands(
+    val share: UserCommand<ShareRequest>,
+    val openLink: UserCommand<AppLinkRequest>,
+    val openSettings: UserCommand<Unit>,
+    val requestAccess: UserCommand<Unit>,
+    val choosePhotos: UserCommand<Unit>,
 )
 
 /** The ids of one screen's requests: unique for the container's life, which is as long as a status is read by it. */

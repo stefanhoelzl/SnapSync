@@ -11,6 +11,7 @@ import app.snapsync.data.event.EventCreation
 import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.photoAccess
+import app.snapsync.data.links.OpenedInvites
 import app.snapsync.data.service.ServiceConditions
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
@@ -34,7 +35,6 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnCredentialChanged
 import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
-import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
@@ -68,6 +68,7 @@ import app.snapsync.ports.Ui
 import app.snapsync.ports.Wake
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.encryption.EventKeyQuery
+import app.snapsync.query.links.OpenedInvitesQuery
 import app.snapsync.query.membership.JoinDetailsLookup
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
@@ -79,7 +80,7 @@ import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.links.LinkOpening
+import app.snapsync.services.links.LinkReading
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
@@ -378,10 +379,13 @@ class AppCore internal constructor(
     /** The rig's per-uploader switches — on in every shipped build. */
     internal val uploaderSwitches: UploaderSwitches by lazy { UploaderSwitches(ports.devControls) }
 
-    internal val linkOpening: LinkOpening by lazy { LinkOpening(process.logger("links")) }
+    internal val linkReading: LinkReading by lazy { LinkReading() }
 
-    /** The link the app was last opened with, until the screen has opened it. */
-    val openedLinks: OpenedLinks = OpenedLinks()
+    /** The invite the app was last opened with, read, until a screen has opened it. */
+    internal val openedInvites: OpenedInvites = OpenedInvites()
+
+    /** The invite waiting to be opened, as the screen follows it. */
+    val invitesQuery: OpenedInvitesQuery by lazy { OpenedInvitesQuery(openedInvites) }
 
     // The join-time load: the joined event's rows made its share set from the device's stored-file listing. Public
     // for the world harness, whose operator provision runs this instance rather than a copy.

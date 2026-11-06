@@ -16,6 +16,7 @@ import app.snapsync.application.upload.SettleStoredUploads
 import app.snapsync.application.wake.RearmHeartbeat
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.foreground.AppForeground
+import app.snapsync.data.links.OpenedInvites
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
@@ -28,6 +29,7 @@ import app.snapsync.data.store.ChangedElsewhere
 import app.snapsync.data.upload.SessionEnd
 import app.snapsync.data.upload.StagingSweep
 import app.snapsync.data.upload.UploaderAdmission
+import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
@@ -40,7 +42,6 @@ import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.wake.UploadsLeft
-import app.snapsync.feature.links.readmodel.OpenedLinks
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.model.PlatformError
@@ -73,7 +74,7 @@ import app.snapsync.scheduling.Steps
 import app.snapsync.scheduling.orIfCut
 import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.crash.ProcessAccount
-import app.snapsync.services.links.LinkOpening
+import app.snapsync.services.links.LinkReading
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.transfer.SessionDrains
 import kotlinx.coroutines.Job
@@ -365,10 +366,21 @@ interface Screen<I> {
     fun tapped(intent: I, context: CoroutineContext, joining: (Job) -> Unit)
 }
 
-/** The app was opened with a link: kept until the screen opens it. */
-class OnLink(runtime: Runtime, private val opening: LinkOpening, private val links: OpenedLinks) :
+/** The app was opened with a link: read, and kept until a screen opens it. */
+class OnLink(runtime: Runtime, private val reading: LinkReading, private val invites: OpenedInvites) :
     InboundEntryPoint<LinkDelivery>(runtime) {
-    override fun Delivery.run(arg: LinkDelivery) = links.offer(opening.urlIn(arg))
+    // A delivery that opens nothing changes nothing: an invite already waiting still waits.
+    override fun Delivery.run(arg: LinkDelivery) {
+        reading.inviteIn(arg)?.let(invites::offer)
+    }
+}
+
+/** A screen opened the invite the app was opened with: it no longer waits — a newer one offered meanwhile stays. */
+class OnInviteOpened(runtime: Runtime, private val invites: OpenedInvites) :
+    BackgroundEntryPoint<InviteLinkVerdict>(runtime) {
+    override suspend fun run(arg: InviteLinkVerdict, on: Run) = on.steps {
+        required { invites.opened(arg) }
+    }
 }
 
 /** The upload extension committed to one of the app's databases: what follows that store re-reads it. */

@@ -39,6 +39,7 @@ import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
@@ -81,8 +82,10 @@ import app.snapsync.model.GalleryAccess
 import app.snapsync.model.Store
 import app.snapsync.model.SyncStatus
 import app.snapsync.ports.Ui
+import app.snapsync.presentation.BuildStanding
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.PlatformCommands
 import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
@@ -304,9 +307,8 @@ abstract class StatusScreenTour {
                 },
                 permission = MutableStateFlow(permission),
                 config = this.config,
-                versionRefusal = MutableStateFlow(refusal),
+                build = BuildStanding(refusal = MutableStateFlow(refusal), store = Store("App Store", STORE_URL)),
                 verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
-                store = Store("App Store", STORE_URL),
                 network = object : NetworkStatusQuery {
                     override val access: StateFlow<NetworkAccess> = MutableStateFlow(
                         NetworkAccess.Online(restricted = false),
@@ -328,14 +330,17 @@ abstract class StatusScreenTour {
             scope = scope,
             cutoffFormatter = CUTOFF,
             commands = UserCommands(
+                inviteOpened = command { _: InviteLinkVerdict -> },
                 leave = command { _: Unit -> this@Rig.config.value = null },
                 create = command { _: CreateRequest -> },
                 join = command { r: JoinRequest -> answered(r.id, statuses.join, JoinCommit.Failed()) },
-                share = command { _: ShareRequest -> },
-                requestAccess = command { _: Unit -> },
-                openSettings = command { _: Unit -> },
-                openLink = command { _: AppLinkRequest -> },
-                choosePhotos = command { _: Unit -> },
+                platform = PlatformCommands(
+                    share = command { _: ShareRequest -> },
+                    requestAccess = command { _: Unit -> },
+                    openSettings = command { _: Unit -> },
+                    openLink = command { _: AppLinkRequest -> },
+                    choosePhotos = command { _: Unit -> },
+                ),
                 reconfigure = command { r: SettingsRequest -> answered(r.id, statuses.settings, SettingsResult.Saved) },
                 rename = command { r: RenameRequest -> answered(r.id, statuses.rename, RenameResult.Renamed) },
                 switch = command { r: SwitchRequest -> answered(r.id, statuses.switch, SwitchVerdict.Ask) },
@@ -574,14 +579,14 @@ abstract class StatusScreenTour {
         val rig = Rig(details = { if (++loads == 1) JoinDetails.Unanswered(ServiceFault.UNREACHABLE) else OTHER_EVENT })
         use(rig) { it.layer is Layer.CreateEvent }
         // A failed load, retried; then the gate cancelled.
-        rig.host.onOpenUrl(linkTo(OTHER_ID))
+        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
         awaitShown { it.joining?.phase == JoinPhase.LoadFailed }
         onNodeWithText(str(Res.string.retry)).performClick()
         awaitShown(ready)
         onNodeWithText(str(Res.string.cancel)).performClick()
         awaitShown { it.layer is Layer.CreateEvent }
         // The gate again: every edit of its form, then a commit that fails and is retried.
-        rig.host.onOpenUrl(linkTo(OTHER_ID))
+        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
         awaitShown(ready)
         // The calendar opened (Custom) and closed unchanged; the quick choices are chips on the screen.
         onNodeWithText(str(ComponentRes.string.share_range_custom)).performClick()
@@ -651,7 +656,7 @@ abstract class StatusScreenTour {
         onNodeWithContentDescription("Close sheet").performTouchInput { click(Offset(centerX, ABOVE_THE_SHEET_PX)) }
         awaitShown { it.joined != null && it.joined?.surface !is JoinedSurface.Reconfigure }
         // A different event's link while joined: the switch, cancelled.
-        rig.host.onOpenUrl(linkTo(OTHER_ID))
+        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
         awaitShown { it.joined?.pendingSwitch != null }
         onNodeWithText(str(Res.string.cancel)).performClick()
         awaitShown { it.joined != null && it.joined?.pendingSwitch == null }
@@ -667,7 +672,7 @@ abstract class StatusScreenTour {
         val asked = Rig(config = MEMBERSHIP, permission = GalleryAccess.NOT_DETERMINED)
         use(asked) { it.joined != null }
         onNodeWithText(str(ComponentRes.string.status_allow_access)).performClick()
-        asked.host.onOpenUrl(linkTo(OTHER_ID))
+        asked.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
         awaitShown { it.joined?.pendingSwitch != null }
         onNodeWithText(str(Res.string.switch_confirm)).performClick()
         awaitShown { it.joining?.eventId == OTHER_ID }

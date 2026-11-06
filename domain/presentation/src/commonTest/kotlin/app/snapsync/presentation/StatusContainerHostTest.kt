@@ -1091,7 +1091,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,
@@ -1128,7 +1128,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             // Note it is NOT NOW_CUTOFF (2026-07-09): the event's own start wins.
             assertJoining(
                 awaitShown(),
@@ -1171,7 +1171,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,
@@ -1199,7 +1199,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(awaitShown(), EVENT_ID, JoinPhase.NotFound)
             containerHost.confirmJoinAs() // inert when not Ready
             containerHost.onCancelJoin()
@@ -1231,7 +1231,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(awaitShown(), EVENT_ID, JoinPhase.LoadFailed)
             containerHost.onRetryLoad()
             assertJoining(
@@ -1254,7 +1254,7 @@ class StatusContainerHostTest {
             commitJoin = { _ -> JoinCommit.Failed() },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,
@@ -1290,7 +1290,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             expectNoItems()
             cancelAndIgnoreRemainingItems()
         }
@@ -1323,9 +1323,9 @@ class StatusContainerHostTest {
         ).testWithInternalState(this) {
             runOnCreate()
             val link = InviteLinkText.format(InviteLink(testEventId(other), null))
-            containerHost.onOpenUrl(link)
+            containerHost.onInvite(InviteLinkText.parse(link))
             expectShown(joined(SyncHealth.Loading, PendingSwitch(other, ready)))
-            containerHost.onOpenUrl(link).join()
+            containerHost.onInvite(InviteLinkText.parse(link)).join()
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(1, loads)
@@ -1348,9 +1348,9 @@ class StatusContainerHostTest {
             loadJoinDetails = { found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(other), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(other), null))))
             expectShown(joined(SyncHealth.Loading, PendingSwitch(other, ready)))
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(third), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(third), null))))
             // The synchronous fake resolves within the intent, so the Loading frame collapses into Ready.
             expectShown(joined(SyncHealth.Loading, PendingSwitch(third, ready)))
             cancelAndIgnoreRemainingItems()
@@ -1378,10 +1378,10 @@ class StatusContainerHostTest {
         ).testWithInternalState(this) {
             runOnCreate()
             val link = InviteLinkText.format(InviteLink(testEventId(other), null))
-            containerHost.onOpenUrl(link)
+            containerHost.onInvite(InviteLinkText.parse(link))
             expectShown(joined(SyncHealth.Loading, PendingSwitch(other, ready)))
             containerHost.onCancelSwitch().join()
-            containerHost.onOpenUrl(link).join()
+            containerHost.onInvite(InviteLinkText.parse(link)).join()
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(2, loads)
@@ -1425,7 +1425,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(other), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(other), null))))
             expectShown(joined(SyncHealth.Loading, PendingSwitch(other, ready)))
             containerHost.onConfirmSwitch()
             // The leave alone: config gone, the SAME pending join now full-screen for the new event.
@@ -1471,7 +1471,7 @@ class StatusContainerHostTest {
             leave = { configFake.clear() },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(other), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(other), null))))
             skipItems(1)
             containerHost.onConfirmSwitch()
             skipItems(1)
@@ -1511,7 +1511,7 @@ class StatusContainerHostTest {
             leave = { /* the clear failed: config stays present, as LeaveEvent's swallow leaves it */ },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(other), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(other), null))))
             expectShown(joined(SyncHealth.Loading, PendingSwitch(other, ready)))
             containerHost.onConfirmSwitch()
             // Unchanged: still the joined layer with the same confirmation, ready to confirm again.
@@ -1540,7 +1540,7 @@ class StatusContainerHostTest {
             leave = { configFake.clear() },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(other), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(other), null))))
             skipItems(1)
             containerHost.onConfirmSwitch()
             skipItems(1)
@@ -1576,7 +1576,7 @@ class StatusContainerHostTest {
         )
         containerHost.testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertEquals(
                 "join gate: details load did not succeed for $EVENT_ID (NotFound)",
                 logged.receive(),
@@ -1612,7 +1612,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,
@@ -1644,7 +1644,7 @@ class StatusContainerHostTest {
             // The reduction has to be collecting for the transient error to reach the state: it is an
             // INPUT to `reduceFrom` now, not a sibling read-model the shell polled.
             runOnCreate()
-            containerHost.onOpenUrl("not a config link").join()
+            containerHost.onInvite(InviteLinkText.parse("not a config link")).join()
             runCurrent()
             assertEquals(
                 ScreenMessage.INVALID_LINK,
@@ -1773,7 +1773,7 @@ class StatusContainerHostTest {
         )
         h.testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl("not a config link").join()
+            containerHost.onInvite(InviteLinkText.parse("not a config link")).join()
             runCurrent()
             assertEquals(
                 ScreenMessage.INVALID_LINK,
@@ -1899,7 +1899,7 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         firstJoinGate(GalleryAccess.NOT_DETERMINED, requester).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             val state = awaitShown()
             assertJoining(
                 state,
@@ -1932,7 +1932,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             skipItems(1)
             containerHost.onConfirmJoin()
             do { val s = awaitShown() } while (s.joinStep() != JoinPhase.Detailed.Step.CommitFailed)
@@ -1965,7 +1965,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             val state = awaitShown()
             assertJoining(
                 state,
@@ -2008,7 +2008,7 @@ class StatusContainerHostTest {
             configFake = FakeConfig(SAMPLE_CONFIG),
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(other), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(other), null))))
             expectShown(
                 joined(
                     SyncHealth.NeedsAccess(canAsk = true),
@@ -2047,7 +2047,7 @@ class StatusContainerHostTest {
             leave = { configFake.clear() },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(other), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(other), null))))
             skipItems(1)
             containerHost.onConfirmSwitch()
             val state = awaitShown()
@@ -2085,7 +2085,7 @@ class StatusContainerHostTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             skipItems(1)
             containerHost.onCancelJoin()
             expectShown(shownAs(createLayerAt(fixedCutoffFormatter())))
@@ -2177,7 +2177,7 @@ class StatusContainerHostJoinGateTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             skipItems(1)
             containerHost.form.onShareOn(false)
             containerHost.form.onReceiveOn(false)
@@ -2210,7 +2210,9 @@ class StatusContainerHostJoinGateTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))).join()
+            containerHost.onInvite(
+                InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))),
+            ).join()
             runCurrent()
             val ready =
                 phaseAt(
@@ -2222,7 +2224,7 @@ class StatusContainerHostJoinGateTest {
                 )
             assertJoining(containerHost.screen.value, EVENT_ID, ready)
 
-            containerHost.onOpenUrl("not a config link").join()
+            containerHost.onInvite(InviteLinkText.parse("not a config link")).join()
             runCurrent()
             val flashed = containerHost.screen.value
             assertJoining(flashed, EVENT_ID, ready)
@@ -2266,7 +2268,7 @@ class StatusContainerHostJoinGateTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,
@@ -2295,7 +2297,7 @@ class StatusContainerHostJoinGateTest {
             commitJoin = { _ -> throw IllegalStateException("enroll blew up") },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,
@@ -2338,7 +2340,7 @@ class StatusContainerHostJoinGateTest {
             loadJoinDetails = { throw IllegalStateException("the details client threw") },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(awaitShown(), EVENT_ID, JoinPhase.LoadFailed)
             cancelAndIgnoreRemainingItems()
         }
@@ -2460,7 +2462,7 @@ class ClosedEventJoinTest {
             },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(awaitShown(), EVENT_ID, JoinPhase.Closed)
             containerHost.confirmJoinAs() // inert when not Ready
             cancelAndIgnoreRemainingItems()
@@ -2479,7 +2481,7 @@ class ClosedEventJoinTest {
             commitJoin = { _ -> JoinCommit.EventOver },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,
@@ -2674,7 +2676,7 @@ class StatusContainerHostRefusalTest {
             verification = DeviceVerification(refusal = MutableStateFlow(DeviceRefusal.DEVICE_MODIFIED)),
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,
@@ -2711,7 +2713,7 @@ class StatusContainerHostRefusalTest {
             commitJoin = { _ -> JoinCommit.Unverified },
         ).testWithInternalState(this) {
             runOnCreate()
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             assertJoining(
                 awaitShown(),
                 EVENT_ID,

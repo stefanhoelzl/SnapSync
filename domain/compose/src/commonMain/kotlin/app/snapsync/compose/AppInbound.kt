@@ -76,7 +76,7 @@ fun AppCore.inbound(host: HostAssembly) {
         ),
     )
     ports.pushNotifications.inbound(pushHandlers())
-    ports.links.inbound(LinkHandlers(OnLink(runtime, linkOpening, openedLinks)))
+    ports.links.inbound(LinkHandlers(OnLink(runtime, linkReading, openedInvites)))
     // What the upload extension commits reaches the app's readers of that store. The app's alone: the extension
     // registers no handler, and follows nothing.
     ports.databases.inbound(DatabaseHandlers(OnChangedElsewhere(runtime, status.changedElsewhere)))

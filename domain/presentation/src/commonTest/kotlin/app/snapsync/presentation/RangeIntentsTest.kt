@@ -121,7 +121,7 @@ class RangeIntentsTest {
             testScheduler.runCurrent()
             assertEquals(before, containerHost.screen.value)
 
-            containerHost.onOpenUrl(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null)))
+            containerHost.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
             awaitShown { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.Ready }
 
             containerHost.onIntent(UiIntent.RangePickerOpen)
