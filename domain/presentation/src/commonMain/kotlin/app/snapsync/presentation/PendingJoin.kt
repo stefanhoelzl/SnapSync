@@ -17,9 +17,8 @@ import app.snapsync.ui.state.ScreenMessage
  * `Layer.JoiningEvent` (config absent) or `Joined.pendingSwitch` (config present); `null` means no
  * confirmation is open.
  *
- * Held in a `MutableStateFlow` ([StatusSources.pending]) that the container both reads and writes: its gate
- * methods advance the [phase], and the reduction reads it. A test may inject one to start the gate at any
- * [JoinProgress].
+ * Held in the screen's own cell ([ScreenCells.pending]): the join gate advances the [phase], and the reduction reads
+ * it.
  */
 data class PendingJoin(
     val eventId: EventId,

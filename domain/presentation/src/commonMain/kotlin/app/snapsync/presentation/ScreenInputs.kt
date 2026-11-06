@@ -28,7 +28,7 @@ internal data class Trust(
     val serviceFault: ServiceFault?,
 )
 
-/** The membership and what its health is read from — observed read-models (see [StatusSources]). */
+/** The membership and what its health is read from — what the screen observes (see [ScreenQueries]). */
 internal data class Observed(
     val joined: Membership?,
     val permission: PhotoGrant,

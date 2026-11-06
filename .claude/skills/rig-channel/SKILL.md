@@ -536,7 +536,7 @@ $R --url $B world events | jq -cn 'first(inputs | select(<the event>))'
 
 **What has an event:** what the screen shows (on every host — the decorated screen sees the real one), what a
 **mocked** system records (launch-time adapters, above), and **the app's own work**: every entry point — each `os`
-delivery, each tap (`OnTap`, with the intent as `about`), each upload finishing — tells `delivered`, `answered` (the OS
+delivery, each command a tap fires (`OnCreateTapped`, the join's, the leave's), each upload finishing — tells `delivered`, `answered` (the OS
 got its answer) and `done` (its run AND everything it started have ended; `outcome`: `completed`, `expired`, `failed`),
 whichever adapter delivered it, real or mocked (`docs/patterns.md`, "Entry events"). **Wait on `done`, never on
 `answered`**: a silent push and a session's relaunch answer the OS first and run the wake after. **What has none: a REAL
@@ -561,9 +561,10 @@ $R --url $B world events | jq -cn 'first(inputs | select(.type == "upload-job-cr
 $R --url $B os silent-push --event <id>
 $R --url $B world events | jq -cn 'first(inputs | select(.type == "done" and .entry == "OnSilentPush"))'
 
-# A tap's work, done: everything the intent started — here the create's mint and the join gate it routes to.
+# A tap's work, done: a tap is no entry point — the screen reduces it and fires what it asks for, each command an
+# entry point of its own. Here the create the form fires: its mint, answered on the creation's status.
 $R --url $B screen tap --intent '{"type":"ConfirmCreate"}'
-$R --url $B world events | jq -cn 'first(inputs | select(.type == "done" and .entry == "OnTap" and .about == "ConfirmCreate"))'
+$R --url $B world events | jq -cn 'first(inputs | select(.type == "done" and .entry == "OnCreateTapped"))'
 ```
 
 ## Triggers return what the PLATFORM returns
