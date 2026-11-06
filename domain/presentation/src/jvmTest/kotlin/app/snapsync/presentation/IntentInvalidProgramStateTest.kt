@@ -45,7 +45,7 @@ class IntentInvalidProgramStateTest {
             val commands = TestCommands(leave = { throw fatal })
             val host = testHost(
                 testQueries(
-                    FakeSyncStatusSource(),
+                    FakeSharingProgress(),
                     FakePermissionSource().permission,
                     FakeConfig().config,
                     requests = commands.requests.flows,

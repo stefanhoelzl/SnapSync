@@ -1241,8 +1241,7 @@ are iOS's too (Android files no photo into an album — `GRANTED_SEEDED_ALBUMS_W
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
 
 The client compiles against `model/`, presentation and `feature/`, never `ports/`, `entrypoints/`, `compose/` or
-the host, and `ReadModelImportsTest` confines its `feature/` references to the `readmodel` packages. **That
-compile boundary and that gate are the read-model rule.** Decision record:
+the host. **That compile boundary is the read-model rule.** Decision record:
 `changes/archive/2026-09-23-add-rig-jvm-host`.
 
 ---
@@ -1334,7 +1333,7 @@ every settle, and some test asserts it at a settle. Every request a caller makes
 not — so everything after an act's announcement is the act's or later.
 
 **An act's own work ends at its `done`.** A delivery made while a tagged act runs carries the act's tag, and so do its
-`Answered` and its `Done` — a tap's `OnTap`, the `os` service's deliveries, and a mock's own (a landed transfer's
+`Answered` and its `Done` — the entry points a tap's commands are (`OnCreateTapped`, the join's, the leave's), the `os` service's deliveries, and a mock's own (a landed transfer's
 `OnUploadFinished`). `Done` comes once the delivery's run and everything it started have ended, so `event<Done> { it.tag
 == … }` is "the app finished what my act caused" on every host — a device too, where nothing settles. `Answered` is
 only the operating system's answer: several entries answer and then work on. `Acted` stays the act's own record: an
@@ -1468,7 +1467,7 @@ manifest publish — or the library's enumeration — unanswered until released 
 harness builds no status host, so the screen is the app's own, commands and all — create, the join gate, leave,
 reconfigure, rename, the bug report. The inspector plays the mocks' **operator faces** through a **single
 controller**, one named method per control, with no mutation inside composables, and reads only them and the
-screen (it is held to `ReadModelImportsTest` like the other consumers). It offers:
+screen. It offers:
 - presets (Clean, Enrolled, Fresh join, Re-provision (dedup), Foreign download). Each builds a fresh app over fresh
   mocks, because deposited state cannot be un-set, and joins through the app's own create form and join gate.
 - **Invoke extension**: the extension's `process()` through its entry port, then the silent push a member's upload

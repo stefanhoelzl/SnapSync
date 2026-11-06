@@ -81,11 +81,11 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
   (a staged download, a transition's arm) is a small class whose `requested()` starts it
   `detached` under that name (`OnDownloadStaged`, `OnArm`). Started inside an entry point's work,
   it is that work's; started outside any, it is its own.
-- A person's tap is an entry point too: `OnTap`, on the UI port, hands the intent to the status host's intent table,
-  and every intent that launches — and every command it runs — is the tap's work. A fire-and-forget command starts
-  through `Runtime.alongside`: detached, with no background-time hold of its own (the app is in front). A request a
-  tap hands to an entry point of its own — a join, a leave, a settings change, a rename, a switch — is that entry
-  point's delivery, with its own `done`; the tap's ends with the hand-off.
+- A person's tap is no entry point: the UI port hands the intent to the status screen's intent table (`onIntent`),
+  which logs its name and reduces. What the tap asks of the core it fires through the screen's door — every command
+  a `UserCommand` over an entry point of its own (`OnCreateTapped`, `OnShareTapped`, the join, the leave, a settings
+  change, a rename, a switch), each that entry point's delivery with its own `done`. Fired, never awaited: an
+  answer the screen needs it reads from the request's status.
 - State whose change starts work is **followed**, not polled: `Observation.follow(flow, entryPoint)` hands each
   emission to an entry point as a delivery, and the next waits for that run (`OnSelectionChanged`, `OnPhotoAccessChanged`,
   `OnNetworkReturned`).
@@ -158,9 +158,9 @@ line beside each (`Info`; a `done` that failed or expired is a `Warn`):
 
 `done`, not `answered`, means "finished": a silent push and a session's relaunch answer after their prelude and then
 run the wake detached, and an upload's finish answers at once and tops up detached. The work of a delivery is every
-run started inside it — `detached` steps, a `Delivery`'s `detached`, `Runtime.detached(name)` and `alongside` called
-from inside it, `outliving` work (which runs on after its caller is cancelled), and what a tap's intents start — carried
-in the coroutine context. Work started for no delivery (`OnArm` from a grant change) is its own: a `done` with nothing
+run started inside it — `detached` steps, a `Delivery`'s `detached`, `Runtime.detached(name)` called from inside
+it and `outliving` work (which runs on after its caller is cancelled) — carried in the coroutine context. Work
+started for no delivery (`OnArm` from a grant change) is its own: a `done` with nothing
 before it. A sequence's pass runs in the process scope, never in a waiter's: what it detaches is its own, named by the
 pass's trigger, and a waiter's `done` covers the pass only while it waits for it.
 
@@ -412,8 +412,11 @@ Every write goes through the generated queries (`StoreWritesAnnounceTest`): a ra
 screen over the rows it changed would stay stale with no error anywhere.
 
 What the screen **asks** is a query, in `:domain:query`: a read over the data layer, never a write
-(`QueryReadOnlyTest`) — the membership (`MembershipQuery`), an invite's event (`JoinDetailsQuery`), the server's word
-on the joined membership when another invite opens (`SwitchLookup`). A query answers a value the caller waits for.
+(`QueryReadOnlyTest`) — the membership held (`MembershipQuery.joined`), the joined event's key and its invite
+(`EventKeyQuery`), the counts (`SharingProgressQuery`, `ReceivingProgress`), each a state the store's change notices
+re-read while the app is in front. What the screen asks once is a **lookup** (`ScreenLookup`): an invite's event
+(`JoinDetailsLookup`), how many photos a range would share (`ShareableCountLookup`) — read on the composition lane,
+never on the thread that asked. A lookup asked inside an entry point's run (`SwitchLookup`) is on the lane already.
 
 What a member **asks the app to do** is a request: the tap crosses the `UserCommands` door at once with a
 `RequestId`, an entry point runs it, and its outcome is answered on that kind of request's **status**
