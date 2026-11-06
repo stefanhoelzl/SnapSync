@@ -172,6 +172,7 @@ flowchart LR
   domain_host --> ui_state
   domain_model --> domain_domain
   domain_model --> domain_format
+  domain_ports --> domain_domain
   domain_ports --> domain_inbound
   domain_ports --> domain_model
   domain_presentation --> domain_domain

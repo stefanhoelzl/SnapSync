@@ -1,11 +1,11 @@
 package app.snapsync.mock
 
+import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DeviceConditionsView
 import app.snapsync.model.BackgroundRefresh
 import app.snapsync.model.Charging
 import app.snapsync.model.DeviceConditionsReading
-import app.snapsync.model.DiagnosticKeys
 import app.snapsync.model.Fact
 import app.snapsync.model.StandbyBucket
 import app.snapsync.model.Thermal

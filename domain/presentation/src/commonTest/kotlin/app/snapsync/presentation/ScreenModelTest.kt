@@ -2,7 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.trust.DeviceRefusal
-import app.snapsync.model.Store
+import app.snapsync.domain.version.Store
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RefusalCause

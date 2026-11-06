@@ -239,6 +239,7 @@ edge :domain:host :domain:scheduling
 edge :domain:host :ui:state
 edge :domain:model :domain:domain
 edge :domain:model :domain:format
+edge :domain:ports :domain:domain
 edge :domain:ports :domain:inbound
 edge :domain:ports :domain:model
 edge :domain:presentation :domain:domain

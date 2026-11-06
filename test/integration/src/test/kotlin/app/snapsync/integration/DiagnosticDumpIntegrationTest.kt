@@ -5,11 +5,11 @@ import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.levers.LogProcess
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
-import app.snapsync.model.DiagnosticKeys
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer

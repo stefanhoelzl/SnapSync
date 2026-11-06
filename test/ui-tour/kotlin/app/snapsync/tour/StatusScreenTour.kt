@@ -72,6 +72,7 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
@@ -79,7 +80,6 @@ import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.model.EventConfig
-import app.snapsync.model.Store
 import app.snapsync.ports.Ui
 import app.snapsync.presentation.BuildStanding
 import app.snapsync.presentation.CutoffFormatter

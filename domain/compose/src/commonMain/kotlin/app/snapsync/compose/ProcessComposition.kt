@@ -1,9 +1,9 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.report.BuildLabel
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.entrypoints.OnMetricReport
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BuildLabel
-import app.snapsync.model.ReportDestination
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashHandlers

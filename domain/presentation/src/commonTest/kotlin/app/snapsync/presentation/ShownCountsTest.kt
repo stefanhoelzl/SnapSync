@@ -2,10 +2,10 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
-import app.snapsync.model.DiagnosticKeys
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer

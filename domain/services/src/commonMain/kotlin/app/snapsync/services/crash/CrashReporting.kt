@@ -1,5 +1,6 @@
 package app.snapsync.services.crash
 
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.inbound.LogLine
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
@@ -12,7 +13,6 @@ import app.snapsync.model.PROCESS_METRIC_CONTEXT
 import app.snapsync.model.PROCESS_TAG
 import app.snapsync.model.ProcessMetricEmission
 import app.snapsync.model.ProcessMetricReport
-import app.snapsync.model.ReportDestination
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.model.crashDist
 import app.snapsync.model.describedBuildStamped

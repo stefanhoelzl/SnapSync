@@ -146,8 +146,9 @@ class ModuleSetTest {
             "wire" to emptySet<String>(),
             // The inbound kinds an event port delivers through, the trigger and the structured log: nothing below them.
             "inbound" to emptySet<String>(),
-            // The deliveries' kinds: an event port's handlers are typed by them.
-            "ports" to setOf(":domain:model", ":domain:inbound"),
+            // The deliveries' kinds: an event port's handlers are typed by them. The domain's values a port hands over
+            // as they are (the build's store page).
+            "ports" to setOf(":domain:model", ":domain:inbound", ":domain:domain"),
             // The runtime runs on the process's background time and labels its threads: two ports, nothing above — and
             // the domain's `InvalidProgramState`, which its containment never contains.
             "scheduling" to setOf(":domain:inbound", ":domain:ports", ":domain:domain"),

@@ -18,6 +18,7 @@ import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.domain.sharing.WalkBounds
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.version.Store
 import app.snapsync.inbound.Completion
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmLanes
@@ -35,7 +36,6 @@ import app.snapsync.mock.MockManifestAsset
 import app.snapsync.mock.MockManifestResource
 import app.snapsync.mock.StorePage
 import app.snapsync.mock.id
-import app.snapsync.model.Store
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.AssetFilter

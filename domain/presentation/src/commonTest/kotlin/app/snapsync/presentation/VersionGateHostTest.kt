@@ -6,9 +6,9 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.format.TimestampText
-import app.snapsync.model.Store
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import kotlinx.coroutines.CoroutineScope

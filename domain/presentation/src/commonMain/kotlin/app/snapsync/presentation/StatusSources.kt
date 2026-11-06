@@ -14,8 +14,8 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.model.Store
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.query.mobiledata.MobileDataQuery

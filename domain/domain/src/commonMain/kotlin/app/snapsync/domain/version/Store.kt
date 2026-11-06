@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.domain.version
 
 /**
  * A build's store page: the store's [name] AND its page's [url], one value so neither can be set without the other.
