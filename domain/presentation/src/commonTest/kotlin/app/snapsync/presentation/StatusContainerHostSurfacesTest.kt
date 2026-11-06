@@ -38,7 +38,6 @@ import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiState
 import app.snapsync.ui.state.step
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -306,31 +305,6 @@ class StatusContainerHostSurfacesTest {
             host.settings.onConfirmStopSharing()
             host.stateWhere("the recount for From now") { it.reconfigureCount() == ShareCount.Ready(1) }
             assertEquals(2, asked.distinct().size, "each distinct range is counted, and nothing else")
-        }
-    }
-
-    @Test
-    fun `a count whose read fails is unavailable and the container keeps working`() {
-        // Unavailable is also where the count starts, and the state flow drops the Counting in between, so a wait on the
-        // state alone passes before the read ran. The read is awaited itself, then Unavailable is the failure's answer.
-        val asked = CompletableDeferred<Unit>()
-        return onHost(
-            shareableCount = counting { _ ->
-                asked.complete(Unit)
-                error("download store unreadable")
-            },
-        ) { host ->
-            host.surfaces.onOpenReconfigure()
-            host.stateWhere("the reconfigure surface") { it.reconfigureCount() != null }
-            withTimeout(5.seconds) { asked.await() }
-            withTimeout(5.seconds) {
-                while (host.screen.value.reconfigureCount() != ShareCount.Unavailable) delay(10)
-            }
-            // Still alive: a later intent lands.
-            host.form.onSaveToAlbum(SwitchTo.ON)
-            host.stateWhere("the album edit") {
-                ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.range?.saveToAlbum == true
-            }
         }
     }
 

@@ -126,7 +126,6 @@ class CatchSitesTest {
             // is no settled share. Its own phase (4.4c) answers the decode as a value.
             "/domain/model/src/commonMain/kotlin/app/snapsync/model/ConfigFile.kt" to 2,
             "/domain/model/src/commonMain/kotlin/app/snapsync/model/Footprint.kt" to 1,
-            "/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/StatusContainerHost.kt" to 2,
             // The invite link's codec moved from model with its catches (phase 4.2): a library's parse failure, read
             // as "no invite".
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to 1,

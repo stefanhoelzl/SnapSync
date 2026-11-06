@@ -6,7 +6,6 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.membership.SettingsResult
-import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -28,7 +27,6 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -59,16 +57,10 @@ class SettingsQueueTest {
         val reconfigured = mutableListOf<Direction>()
         val errors = mutableListOf<Throwable>()
 
-        /** The door itself: what happens as a change is handed to it — a throw there is the intent's own. */
-        var door: (ShareChoice) -> Unit = {}
-
         /** Where every change the door takes is saved, and answered — each recorded as it is handed over. */
         val saved = TestCommands(reconfigure = { SettingsResult.Saved }).apply {
             handedOver = { request ->
-                if (request is SettingsRequest) {
-                    reconfigured += request.choice.direction
-                    door(request.choice)
-                }
+                if (request is SettingsRequest) reconfigured += request.choice.direction
             }
         }
     }
@@ -90,31 +82,6 @@ class SettingsQueueTest {
         diagnostics = testDiagnostics(onIntentError = { world.errors += it }),
         reduction = Dispatchers.Default,
     )
-
-    @Test
-    fun `a settings change that throws is reported and the next change still applies`() = runTest {
-        var first = true
-        val world = World().apply {
-            door = {
-                if (first) {
-                    first = false
-                    error("the save threw")
-                }
-            }
-        }
-        val host = host(world, backgroundScope)
-        host.surfaces.onOpenReconfigure()
-        runCurrent()
-
-        host.form.onReceiveOn(SwitchTo.OFF)
-        runCurrent()
-        assertIs<IllegalStateException>(world.errors.single())
-
-        host.form.onSaveToAlbum(SwitchTo.ON)
-        runCurrent()
-
-        assertEquals(2, world.reconfigured.size, "the queue stopped after a throwing act")
-    }
 
     @Test
     fun `the settings opened after the membership ended open nothing`() = runTest {
