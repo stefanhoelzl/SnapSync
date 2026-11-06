@@ -484,10 +484,11 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `the invite's QR code opens on request and dismisses touching nothing else`() = onHost { host ->
         host.onIntent(UiIntent.QrOpen)
-        assertEquals(Overlays(showingQr = true), host.stateWhere("the QR shown") { it.overlays.showingQr }.overlays)
+        val shown = host.stateWhere("the QR shown") { it.overlays.shownQr != null }
+        assertEquals(Overlays(shownQr = shown.joined()?.inviteUrl), shown.overlays, "the whole invite, and nothing else")
 
         host.onIntent(UiIntent.QrDismiss)
-        assertEquals(Overlays(), host.stateWhere("the QR dismissed") { !it.overlays.showingQr }.overlays)
+        assertEquals(Overlays(), host.stateWhere("the QR dismissed") { it.overlays.shownQr == null }.overlays)
     }
 
     @Test
@@ -497,15 +498,15 @@ class StatusContainerHostSurfacesTest {
         val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(config = config) { host ->
             host.onIntent(UiIntent.QrOpen)
-            host.stateWhere("the QR shown") { it.overlays.showingQr }
+            host.stateWhere("the QR shown") { it.overlays.shownQr != null }
 
             config.value = CONFIG.copy(deleted = true)
             val deleted = host.stateWhere("the event deleted") { (it.layer as? Layer.Joined)?.deleted == true }
-            assertTrue(!deleted.overlays.showingQr, "an invite was left over an event that admits nobody")
+            assertTrue(deleted.overlays.shownQr == null, "an invite was left over an event that admits nobody")
 
             config.value = null
             val gone = host.stateWhere("the membership gone") { it.layer !is Layer.Joined }
-            assertTrue(!gone.overlays.showingQr, "an invite was left over a screen whose event is gone")
+            assertTrue(gone.overlays.shownQr == null, "an invite was left over a screen whose event is gone")
         }
     }
 

@@ -789,7 +789,7 @@ class StatusScreenTest {
 
     @Test
     fun `the QR sheet renders when the state says it is up`() = runComposeUiTest {
-        val state = inSync.copy(overlays = inSync.overlays.copy(showingQr = true))
+        val state = inSync.copy(overlays = inSync.overlays.copy(shownQr = SAMPLE_INVITE))
         setContent { TestStatusScreen(state) }
         val name = (state.layer as Layer.Joined).membership.name
         onNodeWithText(str(Res.string.qr_sheet_title, name)).assertExists()
@@ -1659,7 +1659,7 @@ class StatusScreenTest {
     fun `the rename sheet and the QR sheet need a joined event to show`() = runComposeUiTest {
         setContent {
             TestStatusScreen(
-                UiState(createLayer(), Overlays(renaming = true, showingQr = true)),
+                UiState(createLayer(), Overlays(renaming = true, shownQr = SAMPLE_INVITE)),
             )
         }
         onNodeWithText(str(Res.string.rename_body)).assertDoesNotExist()

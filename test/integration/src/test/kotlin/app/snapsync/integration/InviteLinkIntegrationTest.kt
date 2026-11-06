@@ -407,11 +407,11 @@ class InviteLinkIntegrationTest {
         }
 
         whenever { tap(UiIntent.QrOpen) }
-        then { opened = event<WorldEvent.UiChanged> { it.ui.overlays.showingQr && it.ui.layer is Layer.Joined } }
+        then { opened = event<WorldEvent.UiChanged> { it.ui.overlays.shownQr != null && it.ui.layer is Layer.Joined } }
 
         whenever { tap(UiIntent.QrDismiss) }
         then {
-            event<WorldEvent.UiChanged> { !it.ui.overlays.showingQr && it.ui.layer == opened.value.ui.layer }
+            event<WorldEvent.UiChanged> { it.ui.overlays.shownQr == null && it.ui.layer == opened.value.ui.layer }
             never<WorldEvent.BackendReceived>()
             never<WorldEvent.MemberLeft>()
         }
@@ -432,7 +432,7 @@ class InviteLinkIntegrationTest {
         }
         then {
             screen<Layer.Joined>()
-            never<WorldEvent.UiChanged> { it.ui.overlays.showingQr }
+            never<WorldEvent.UiChanged> { it.ui.overlays.shownQr != null }
             settled { true }
         }
     }
@@ -484,7 +484,7 @@ class InviteLinkIntegrationTest {
         val event = given {
             joinedEvent().also {
                 step("the QR code shown", act = { tap(UiIntent.QrOpen) }, until = {
-                    event<WorldEvent.UiChanged> { it.ui.overlays.showingQr }
+                    event<WorldEvent.UiChanged> { it.ui.overlays.shownQr != null }
                     settled { true }
                 })
             }
@@ -496,9 +496,58 @@ class InviteLinkIntegrationTest {
         }
         then {
             event<WorldEvent.UiChanged> {
-                (it.ui.layer as? Layer.Joined)?.deleted == true && !it.ui.overlays.showingQr
+                (it.ui.layer as? Layer.Joined)?.deleted == true && it.ui.overlays.shownQr == null
             }
         }
+    }
+
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The joined screen offers the invite until the event's photos are deleted",
+        scenario = "A shown QR code stays while the key cannot be read",
+    )
+    fun a_shown_qr_code_stays_while_the_key_cannot_be_read() = behaviour {
+        lateinit var shown: Seen<WorldEvent.UiChanged>
+        given {
+            joinedEvent()
+            step("the QR code shown", act = { tap(UiIntent.QrOpen) }, until = {
+                shown = event<WorldEvent.UiChanged> { it.ui.overlays.shownQr != null }
+                settled { true }
+            })
+        }
+        val invite = shown.value.ui.overlays.shownQr
+
+        // The phone restarts behind the open app and is not unlocked: the key cannot be read on the way back in. No new
+        // invite is offered — but the code on screen was whole, and it stays.
+        whenever {
+            device.lock()
+            os.background()
+            os.foreground()
+        }
+        then {
+            screen<Layer.Joined> { it.inviteUrl == null }
+            never<WorldEvent.UiChanged> { it.ui.overlays.shownQr != invite }
+        }
+
+        whenever {
+            device.unlock()
+            os.background()
+            os.foreground()
+        }
+        then {
+            screen<Layer.Joined> { it.inviteUrl != null }
+            never<WorldEvent.UiChanged> { it.ui.overlays.shownQr != invite }
+        }
+
+        // Closed, it comes back only on request.
+        whenever { tap(UiIntent.QrDismiss) }
+        then { event<WorldEvent.UiChanged> { it.ui.overlays.shownQr == null } }
+        whenever {
+            os.background()
+            os.foreground()
+        }
+        then { never<WorldEvent.UiChanged> { it.ui.overlays.shownQr != null } }
     }
 
     // ---- helpers --------------------------------------------------------------------------------

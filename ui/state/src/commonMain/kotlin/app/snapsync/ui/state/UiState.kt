@@ -94,8 +94,11 @@ data class Overlays(
     val confirmingLeave: Boolean = false,
     /** The rename dialog, opened by the pen beside the heading. */
     val renaming: Boolean = false,
-    /** The invite's QR code, shown on request over the joined screen. */
-    val showingQr: Boolean = false,
+    /**
+     * The invite whose QR code is shown over the joined screen — captured whole when the member asked for it, and
+     * shown until they close it; `null` while none is shown.
+     */
+    val shownQr: String? = null,
     /**
      * The diagnostic-dump sheet, opened from the app menu's "Report a problem" or by the hidden double-tap on the
      * app-name label. Reachable from every layer, which is why this bundle is not layer-scoped.

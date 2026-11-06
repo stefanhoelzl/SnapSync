@@ -74,7 +74,7 @@ class UiStateFieldContractTest {
             Overlays(
                 confirmingLeave = true,
                 renaming = true,
-                showingQr = true,
+                shownQr = "https://snapsync.stho.net/join#v=3&d=x",
                 reportingBug = true,
                 reportSeed = ScreenMessage.DEVICE_UNVERIFIABLE,
                 menuOpen = true,
@@ -83,7 +83,7 @@ class UiStateFieldContractTest {
             optional = setOf(
                 "confirmingLeave",
                 "renaming",
-                "showingQr",
+                "shownQr",
                 "reportingBug",
                 "reportSeed",
                 "menuOpen",

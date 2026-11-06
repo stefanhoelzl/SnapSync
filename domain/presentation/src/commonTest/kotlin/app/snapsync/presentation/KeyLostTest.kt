@@ -31,7 +31,6 @@ import kotlinx.datetime.TimeZone
 import org.orbitmvi.orbit.test.testWithInternalState
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.time.Instant
 
@@ -159,7 +158,7 @@ class KeyLostTest {
     }
 
     @Test
-    fun `no invite is offered without its key and a shown QR closes`() = runTest {
+    fun `no invite is offered without its key and a shown QR stays`() = runTest {
         val shared = mutableListOf<String>()
         val presence = MutableStateFlow<KeyPresence>(KeyPresence.Held(HELD))
         val host = testHost(
@@ -198,7 +197,11 @@ class KeyLostTest {
             presence.value = KeyPresence.Unknown
             runCurrent()
             assertNull(joined().inviteUrl, "an encrypted event's invite is never offered without its key")
-            assertFalse(host.screen.value.overlays.showingQr, "a shown QR closes")
+            assertEquals(
+                inviteText(testEventId(EVENT), LINK_KEY),
+                host.screen.value.overlays.shownQr,
+                "a shown QR, captured whole, stays",
+            )
             host.onShareInvite()
             runCurrent()
             assertEquals(emptyList(), shared, "nothing is shared")

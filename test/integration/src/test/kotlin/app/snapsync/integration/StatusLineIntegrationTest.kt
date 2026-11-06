@@ -1011,7 +1011,7 @@ class StatusLineIntegrationTest {
         then { event<WorldEvent.Shared>() }
 
         whenever { tap(UiIntent.QrOpen) }
-        then { event<WorldEvent.UiChanged> { it.ui.overlays.showingQr } }
+        then { event<WorldEvent.UiChanged> { it.ui.overlays.shownQr != null } }
 
         whenever { tap(UiIntent.QrDismiss, UiIntent.OpenReconfigure) }
         then { screen<Layer.Joined> { it.surface is JoinedSurface.Reconfigure } }

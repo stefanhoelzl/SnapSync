@@ -6,6 +6,7 @@ import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.ui.state.AppLink
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.SwitchTo
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,9 +45,13 @@ internal class SurfaceCommands(
 
     fun onRenameDismiss() = runner.intent { local.editOverlays { it.copy(renaming = false) } }
 
-    fun onQrOpen() = runner.intent { local.editOverlays { it.copy(showingQr = true) } }
+    /** The QR code of the invite the joined screen offers now — none while it offers none. */
+    fun onQrOpen() = runner.intent {
+        val invite = (runner.current().ui.layer as? Layer.Joined)?.inviteUrl
+        local.editOverlays { it.copy(shownQr = invite) }
+    }
 
-    fun onQrDismiss() = runner.intent { local.editOverlays { it.copy(showingQr = false) } }
+    fun onQrDismiss() = runner.intent { local.editOverlays { it.copy(shownQr = null) } }
 
     fun onReportBugOpen() = runner.intent {
         local.update {
