@@ -182,12 +182,13 @@ SELECT
     COUNT(CASE WHEN notDone = 0 THEN 1 END) AS completed
 FROM perAsset;
 
--- Per photo, whether every row is done (capability `photo-sharing`, "Per-asset progress read"): the same
--- per-asset collapse `aggregates` performs, un-counted, in one query. Status intersects it with the admitted
--- set it counts `N` over; the ledger interprets nothing about admission.
+-- Per photo, whether every row is done and whether any is handed over (capability `photo-sharing`, "Per-asset
+-- progress read"): the same per-asset collapse `aggregates` performs, un-counted, in one query. Status intersects
+-- it with the admitted set it counts `N` over; the ledger interprets nothing about admission.
 assetProgress:
 SELECT assetId,
-       SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone
+       SUM(CASE WHEN state NOT IN :doneStates THEN 1 ELSE 0 END) AS notDone,
+       SUM(CASE WHEN state IN :handedOverStates THEN 1 ELSE 0 END) AS handedOver
 FROM ledgerRow
 WHERE eventId = :eventId
 GROUP BY assetId;

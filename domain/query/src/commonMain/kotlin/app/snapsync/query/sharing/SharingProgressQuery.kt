@@ -10,6 +10,7 @@ import app.snapsync.data.upload.UploadProgress
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.domain.upload.AssetProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,7 +45,7 @@ class SharingProgressQuery(
      */
     val state: StateFlow<SharingProgressRead> =
         combine(
-            foreground.whileInFront(rowsLooks()).scan<RowsLook, Rows?>(null, ::keptOnFailure),
+            foreground.whileInFront(rowsLooks()).scan<RowsLook, Map<AssetId, AssetProgress>?>(null, ::keptOnFailure),
             admitted.state,
             ::readOf,
         )
@@ -61,37 +62,29 @@ class SharingProgressQuery(
 
     private fun rowsOf(held: MembershipRead): RowsLook = when (held) {
         is MembershipRead.Joined -> when (val read = rows.progress(held.membership.event.id)) {
-            is ProgressRead.Read -> RowsLook.Read(
-                Rows(done = read.done.filterValues { it }.keys, underWay = read.done.filterValues { !it }.keys),
-            )
+            is ProgressRead.Read -> RowsLook.Read(read.photos)
             is ProgressRead.Unavailable -> RowsLook.Refused
         }
         // No membership held, or none readable: nothing of anyone's is counted — a counted zero, not an unread one.
-        is MembershipRead.NotJoined, is MembershipRead.Unavailable -> RowsLook.Read(Rows.NONE)
+        is MembershipRead.NotJoined, is MembershipRead.Unavailable -> RowsLook.Read(emptyMap())
     }
 
     /** The rows held: the last read, or `null` before the first; a refused look keeps them. */
-    private fun keptOnFailure(last: Rows?, next: RowsLook): Rows? = when (next) {
-        is RowsLook.Read -> next.rows
-        RowsLook.Refused -> last
-    }
+    private fun keptOnFailure(last: Map<AssetId, AssetProgress>?, next: RowsLook): Map<AssetId, AssetProgress>? =
+        when (next) {
+            is RowsLook.Read -> next.photos
+            RowsLook.Refused -> last
+        }
 
     /** Read once both halves are: the rows, and the total. */
-    private fun readOf(rows: Rows?, admitted: Set<AssetId>?): SharingProgressRead =
-        rows?.let { read -> admitted?.let { SharingProgress.of(it, read.done, read.underWay) } }
+    private fun readOf(photos: Map<AssetId, AssetProgress>?, admitted: Set<AssetId>?): SharingProgressRead =
+        photos?.let { read -> admitted?.let { SharingProgress.of(it, read) } }
             ?.let(SharingProgressRead::Read)
             ?: SharingProgressRead.NotYetRead
 
-    /** Which photos the upload rows hold done, and which under way. */
-    private data class Rows(val done: Set<AssetId>, val underWay: Set<AssetId>) {
-        companion object {
-            val NONE = Rows(emptySet(), emptySet())
-        }
-    }
-
-    /** One look at the upload rows: read, or refused by the store. */
+    /** One look at the upload rows: how far each photo they hold has got, or refused by the store. */
     private sealed interface RowsLook {
-        data class Read(val rows: Rows) : RowsLook
+        data class Read(val photos: Map<AssetId, AssetProgress>) : RowsLook
 
         data object Refused : RowsLook
     }

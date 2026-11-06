@@ -8,6 +8,7 @@ import app.snapsync.data.membership.sharedOver
 import app.snapsync.data.sharing.AdmittedPhotos
 import app.snapsync.data.store.ChangedElsewhere
 import app.snapsync.data.store.LEDGER_DB_NAME
+import app.snapsync.data.upload.RowTransitions
 import app.snapsync.data.upload.UploadProgress
 import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.data.upload.WalkRecord
@@ -16,7 +17,10 @@ import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.domain.upload.CreatedJob
+import app.snapsync.domain.upload.DestinationPath
 import app.snapsync.domain.upload.FoundResource
+import app.snapsync.domain.upload.MintsCreatedJob
 import app.snapsync.domain.upload.MintsStoredBytes
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.StoredBytes
@@ -35,7 +39,7 @@ import kotlin.test.assertEquals
  * total, re-read each time the shared database changes — this process's commit or the upload extension's — only while
  * the app is in front; never "read" before both halves are; never back to unread; a refused read keeps the last.
  */
-@OptIn(MintsStoredBytes::class)
+@OptIn(MintsStoredBytes::class, MintsCreatedJob::class)
 class SharingProgressQueryTest {
 
     private val r = Receiver()
@@ -43,6 +47,7 @@ class SharingProgressQueryTest {
     private val admitted = AdmittedPhotos()
     private val walk = WalkRecord(r.device.shared)
     private val reset = UploadRowsReset(r.device.shared)
+    private val moves = RowTransitions(r.device.shared)
 
     private fun key(asset: String) = UploadKey.of(testAssetId(asset), ResourceRole.PRIMARY, "IMG.HEIC")
 
@@ -76,8 +81,16 @@ class SharingProgressQueryTest {
     /** [assets] found by a walk and still to share. */
     private fun discovered(vararg assets: String) = walk.discover(event, found(*assets))
 
-    private fun read(shared: Int, total: Int, underWay: Int) =
-        SharingProgressRead.Read(SharingProgress(shared, total, underWay))
+    /** [assets] found and handed over: a job carries each. */
+    private fun handedOver(vararg assets: String) = handedOver(walk, moves, *assets)
+
+    private fun handedOver(through: WalkRecord, by: RowTransitions, vararg assets: String) {
+        through.discover(event, found(*assets))
+        assets.forEach { by.requested(event, CreatedJob(key(it)), DestinationPath("/$it")) }
+    }
+
+    private fun read(shared: Int, total: Int, handedOver: Int) =
+        SharingProgressRead.Read(SharingProgress(shared, total, handedOver))
 
     @Test
     fun `nothing is read before a screen follows it`() = runTest {
@@ -97,16 +110,17 @@ class SharingProgressQueryTest {
 
         admitted.counted(ids("A"))
         runCurrent()
-        assertEquals(read(shared = 1, total = 1, underWay = 0), query.state.value)
+        assertEquals(read(shared = 1, total = 1, handedOver = 0), query.state.value)
     }
 
     @Test
-    fun `the rows are counted against the admitted total`() = runTest {
+    fun `the rows are counted against the admitted total, only a photo a job carries as handed over`() = runTest {
         shared("A")
-        discovered("B")
-        admitted.counted(ids("A", "B", "C"))
+        handedOver("B")
+        discovered("D")
+        admitted.counted(ids("A", "B", "C", "D"))
 
-        assertEquals(read(shared = 1, total = 3, underWay = 1), followed().state.value)
+        assertEquals(read(shared = 1, total = 4, handedOver = 1), followed().state.value)
     }
 
     @Test
@@ -114,11 +128,11 @@ class SharingProgressQueryTest {
         shared("A")
         admitted.counted(ids("A", "B"))
         val query = followed()
-        assertEquals(read(shared = 1, total = 2, underWay = 0), query.state.value)
+        assertEquals(read(shared = 1, total = 2, handedOver = 0), query.state.value)
 
-        discovered("B")
+        handedOver("B")
         runCurrent()
-        assertEquals(read(shared = 1, total = 2, underWay = 1), query.state.value)
+        assertEquals(read(shared = 1, total = 2, handedOver = 1), query.state.value)
     }
 
     @Test
@@ -128,13 +142,14 @@ class SharingProgressQueryTest {
         val query = followed()
 
         // The other process writes through its own view of the database: nothing in this one announces it.
-        WalkRecord(sharedOver(r.device.databases)).discover(event, found("B"))
+        val elsewhere = sharedOver(r.device.databases)
+        handedOver(WalkRecord(elsewhere), RowTransitions(elsewhere), "B")
         runCurrent()
-        assertEquals(read(shared = 1, total = 2, underWay = 0), query.state.value, "not yet told")
+        assertEquals(read(shared = 1, total = 2, handedOver = 0), query.state.value, "not yet told")
 
         ChangedElsewhere(r.device.shared, r.file).changed(LEDGER_DB_NAME)
         runCurrent()
-        assertEquals(read(shared = 1, total = 2, underWay = 1), query.state.value)
+        assertEquals(read(shared = 1, total = 2, handedOver = 1), query.state.value)
     }
 
     @Test
@@ -145,13 +160,13 @@ class SharingProgressQueryTest {
         foreground.left()
         runCurrent()
 
-        discovered("B")
+        handedOver("B")
         runCurrent()
-        assertEquals(read(shared = 1, total = 2, underWay = 0), query.state.value, "away: not read")
+        assertEquals(read(shared = 1, total = 2, handedOver = 0), query.state.value, "away: not read")
 
         foreground.entered()
         runCurrent()
-        assertEquals(read(shared = 1, total = 2, underWay = 1), query.state.value)
+        assertEquals(read(shared = 1, total = 2, handedOver = 1), query.state.value)
     }
 
     @Test
@@ -170,13 +185,13 @@ class SharingProgressQueryTest {
     @Test
     fun `no membership counts a zero, not an unread`() = runTest {
         admitted.counted(emptySet())
-        assertEquals(read(shared = 0, total = 0, underWay = 0), followed().state.value)
+        assertEquals(read(shared = 0, total = 0, handedOver = 0), followed().state.value)
     }
 
     @Test
     fun `a membership that cannot be read counts no one's rows`() = runTest {
         r.device.databases.lock()
         admitted.counted(emptySet())
-        assertEquals(read(shared = 0, total = 0, underWay = 0), followed().state.value)
+        assertEquals(read(shared = 0, total = 0, handedOver = 0), followed().state.value)
     }
 }

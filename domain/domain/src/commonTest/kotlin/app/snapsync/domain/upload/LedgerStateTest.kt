@@ -12,8 +12,9 @@ class LedgerStateTest {
     }
 
     @Test
-    fun `only a discovered row needs a job, and only a completed one is done`() {
+    fun `only a discovered row needs a job, only a requested one is handed over, and only a completed one is done`() {
         assertEquals(listOf(LedgerState.DISCOVERED), LedgerState.needingJob)
+        assertEquals(listOf(LedgerState.REQUESTED), LedgerState.handedOver)
         assertEquals(listOf(LedgerState.COMPLETED), LedgerState.done)
     }
 }

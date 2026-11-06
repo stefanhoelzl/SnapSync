@@ -9,6 +9,7 @@ import app.snapsync.data.upload.ProgressRead
 import app.snapsync.data.upload.UploadProgress
 import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.format.TimestampText
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
@@ -196,19 +197,19 @@ class CollectDiagnosticDump(
             is DownloadRead.Unavailable -> error("the download store cannot be read: ${read.detail}")
         }
         return mapOf(
-            "photos_pending" to photos.count { !it }.toString(),
-            "photos_completed" to photos.count { it }.toString(),
+            "photos_pending" to photos.count { it != AssetProgress.DONE }.toString(),
+            "photos_completed" to photos.count { it == AssetProgress.DONE }.toString(),
             "downloads_imported" to downloadCounts.imported.toString(),
             "downloads_assets" to downloadCounts.stillArriving.toString(),
             "downloads_in_flight" to downloadCounts.inFlight.toString(),
         )
     }
 
-    /** Per photo of the joined event, whether all its rows are done — none while nothing is joined or readable. */
-    private fun ownProgress(): Collection<Boolean> {
+    /** Per photo of the joined event, how far it has got — none while nothing is joined or readable. */
+    private fun ownProgress(): Collection<AssetProgress> {
         val event = config.activeEventId() ?: return emptyList()
         return when (val read = progress.progress(event)) {
-            is ProgressRead.Read -> read.done.values
+            is ProgressRead.Read -> read.photos.values
             is ProgressRead.Unavailable -> emptyList()
         }
     }

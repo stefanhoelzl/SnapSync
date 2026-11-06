@@ -61,10 +61,19 @@ enum class LedgerState {
             DISCOVERED, REQUESTED -> false
         }
 
+        /** Whether a row in [state] is handed over: a job carries it, so its transfer is under way. */
+        fun isHandedOver(state: LedgerState): Boolean = when (state) {
+            REQUESTED -> true
+            DISCOVERED, COMPLETED -> false
+        }
+
         /** The states that need a job, bound into every state-scoped statement rather than spelled there. */
         val needingJob: List<LedgerState> get() = entries.filter(::needsJob)
 
         /** The settled states, bound the same way. */
         val done: List<LedgerState> get() = entries.filter(::isDone)
+
+        /** The handed-over states, bound the same way. */
+        val handedOver: List<LedgerState> get() = entries.filter(::isHandedOver)
     }
 }
