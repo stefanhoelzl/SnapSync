@@ -24,15 +24,15 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: 
     val ui = host.screen.value
     // Resolved once the SCREEN shows the joined event, not merely once the membership is read: a caller polling on this
     // then acts on what the member sees.
-    val config = core.membership.value?.takeIf { (ui.layer as? Layer.Joined)?.membership?.eventId == it.eventId.value }
+    val joined = core.membership.value?.takeIf { (ui.layer as? Layer.Joined)?.membership?.eventId == it.event.id.value }
     return RigState(
         ui = ui,
         ready = Readiness(
-            configResolved = config != null,
-            eventId = config?.eventId?.value,
-            direction = config?.direction?.name,
-            minPhotoDate = config?.minPhotoDate?.at?.let(TimestampText::format),
-            maxPhotoDate = config?.maxPhotoDate?.at?.let(TimestampText::format),
+            configResolved = joined != null,
+            eventId = joined?.event?.id?.value,
+            direction = joined?.share?.direction?.name,
+            minPhotoDate = joined?.share?.range?.from?.at?.let(TimestampText::format),
+            maxPhotoDate = joined?.share?.range?.until?.at?.let(TimestampText::format),
         ),
         download = DownloadView(
             downloaded = progress.downloaded,

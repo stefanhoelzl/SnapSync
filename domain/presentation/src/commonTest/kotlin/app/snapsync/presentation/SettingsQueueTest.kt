@@ -15,7 +15,6 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
@@ -33,7 +32,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
-private val MEMBERSHIP = EventConfig(
+private val MEMBERSHIP = TestMembership(
     eventId = testEventId("55555555-5555-4555-8555-555555555555"),
     name = "Lake Weekend",
     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
@@ -56,7 +55,7 @@ private val SETTLED = SharingProgressRead.Read(SharingProgress(shared = 0, total
 class SettingsQueueTest {
 
     private class World {
-        val config = MutableStateFlow<EventConfig?>(MEMBERSHIP)
+        val config = MutableStateFlow<TestMembership?>(MEMBERSHIP)
         val reconfigured = mutableListOf<Direction>()
         val errors = mutableListOf<Throwable>()
 
@@ -78,7 +77,7 @@ class SettingsQueueTest {
         StatusSources(
             FixedSync(SETTLED),
             MutableStateFlow(PhotoGrant.FULL),
-            world.config,
+            world.config.held(),
             requests = world.saved.requests.flows,
             network = AlwaysOnline,
             mobileData = AlwaysAllowed,

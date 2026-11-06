@@ -8,7 +8,6 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.model.localToCutoff
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.OutsideReach
@@ -281,7 +280,7 @@ class RangeResolutionTest {
 
     // ── reconfigureForm ─────────────────────────────────────────────────────────────────────────
 
-    private fun membership(from: String, until: String) = EventConfig(
+    private fun membership(from: String, until: String) = TestMembership(
         eventId = testEventId("11111111-1111-4111-8111-111111111111"),
         name = "Anna's Birthday",
         minPhotoDate = CaptureCutoff(TimestampText.parse(from)),
@@ -291,12 +290,16 @@ class RangeResolutionTest {
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
 
+    /** The settings surface's seed for [joined]: its event's window and the settings it holds. */
+    private fun seeded(joined: TestMembership) =
+        joined.held().let { reconfigureForm(it.event.range, SettingChange.of(it), ::local) }
+
     /** The wall clock is the instant's own digits — the zone is not what is under test. */
     private fun local(at: Timestamp): LocalDateTime = LocalDateTime.parse(TimestampText.format(at).removeSuffix("Z"))
 
     @Test
     fun `a membership spanning the whole window pre-fills the whole event`() {
-        val form = reconfigureForm(membership("2026-07-06T14:00:00Z", "2026-07-13T14:00:00Z"), ::local)
+        val form = seeded(membership("2026-07-06T14:00:00Z", "2026-07-13T14:00:00Z"))
         assertEquals(RangeChoice.EVENT_START, form.preset)
         assertNull(form.customFrom)
         assertNull(form.customUntil)
@@ -305,7 +308,7 @@ class RangeResolutionTest {
     @Test
     fun `a narrower start pre-fills a custom range with that start and the window end`() {
         // A past "From now" is exactly this: a start after the event's, which is just a custom start now.
-        val form = reconfigureForm(membership("2026-07-08T09:30:00Z", "2026-07-13T14:00:00Z"), ::local)
+        val form = seeded(membership("2026-07-08T09:30:00Z", "2026-07-13T14:00:00Z"))
         assertEquals(RangeChoice.CUSTOM, form.preset)
         assertEquals(LocalDateTime(2026, 7, 8, 9, 30), form.customFrom)
         assertNull(form.customUntil, "the end sits on the ceiling, so it resolves to the window end")
@@ -313,7 +316,7 @@ class RangeResolutionTest {
 
     @Test
     fun `a narrower end pre-fills a custom range with that end`() {
-        val form = reconfigureForm(membership("2026-07-06T14:00:00Z", "2026-07-10T20:00:00Z"), ::local)
+        val form = seeded(membership("2026-07-06T14:00:00Z", "2026-07-10T20:00:00Z"))
         assertEquals(RangeChoice.CUSTOM, form.preset)
         assertNull(form.customFrom)
         assertEquals(LocalDateTime(2026, 7, 10, 20, 0), form.customUntil)

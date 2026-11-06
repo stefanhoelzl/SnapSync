@@ -23,7 +23,6 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.LINK_ORIGIN
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
@@ -67,12 +66,12 @@ private val FOUND = found(
 ) as JoinDetails.Found
 
 /** A membership of a DIFFERENT event — what a switch leaves. */
-private val OTHER_MEMBERSHIP = EventConfig(
+private val OTHER_MEMBERSHIP = TestMembership(
     eventId = testEventId(OTHER_EVENT_ID),
     name = "Anna's Birthday",
     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),
     endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2099-12-31T00:00:00Z")),
+    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-31T00:00:00Z")),
     deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
 )
 
@@ -86,7 +85,7 @@ private val OTHER_MEMBERSHIP = EventConfig(
  */
 class JoinGateEdgesTest {
 
-    private class World(config: EventConfig? = null) {
+    private class World(config: TestMembership? = null) {
         val config = MutableStateFlow(config)
         val pending = MutableStateFlow<PendingJoin?>(null)
         val acts = mutableListOf<String>()
@@ -134,7 +133,7 @@ class JoinGateEdgesTest {
             StatusSources(
                 FixedSync(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
-                world.config,
+                world.config.held(),
                 requests = commands.requests.flows,
                 pending = world.pending,
                 invites = world.invites,
@@ -206,7 +205,7 @@ class JoinGateEdgesTest {
             StatusSources(
                 FixedSync(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
-                world.config,
+                world.config.held(),
                 pending = world.pending,
                 network = AlwaysOnline,
                 mobileData = AlwaysAllowed,
@@ -655,7 +654,7 @@ class JoinGateEdgesTest {
         // A switch's previous event, while still configured, is not yet a join this rule speaks for.
         for (permission in PhotoGrant.entries) {
             assertEquals(permission == PhotoGrant.UNDECIDED, asksAccessOnJoin(null, permission), "$permission")
-            assertFalse(asksAccessOnJoin(OTHER_MEMBERSHIP, permission), "joined, $permission")
+            assertFalse(asksAccessOnJoin(OTHER_MEMBERSHIP.held(), permission), "joined, $permission")
         }
     }
 

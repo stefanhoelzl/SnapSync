@@ -28,6 +28,7 @@ import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.SharingProgressRead
@@ -39,7 +40,6 @@ import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.selectionPhotos
@@ -340,8 +340,8 @@ class AppCore internal constructor(
     /** What the photo-library grant means now, over the permission port — the one read every feature takes. */
     val galleryAccess: GalleryAccessState by lazy { GalleryAccessState(ports.gallery.grant) }
 
-    /** The membership's cell, for readers outside the core (the status host), which see no service type. */
-    val membership: StateFlow<EventConfig?> get() = services.config.config
+    /** The membership held, for readers outside the core (the status host), which see no service type. */
+    val membership: StateFlow<Membership?> get() = work.membership.query.joined
 
     /** What the screen reads of the joined event's key: whether it is held, and so the key its invite carries. */
     val keyQuery: EventKeyQuery by lazy { EventKeyQuery(services.membership, services.eventKeyStore, scope) }

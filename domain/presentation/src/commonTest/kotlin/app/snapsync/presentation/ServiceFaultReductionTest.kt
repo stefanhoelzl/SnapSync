@@ -17,7 +17,6 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -48,7 +47,7 @@ import kotlin.time.Instant
 private const val EVENT_ID = "55555555-5555-4555-8555-555555555555"
 
 /** An open membership whose event is under way at the fixed clock (2026-07-09T12:00Z). */
-private val MEMBERSHIP = EventConfig(
+private val MEMBERSHIP = TestMembership(
     eventId = testEventId(EVENT_ID),
     name = "Lake Weekend",
     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
@@ -89,7 +88,7 @@ class ServiceFaultReductionTest {
     private fun host(
         scope: CoroutineScope,
         trust: Verified = Verified(),
-        config: EventConfig? = MEMBERSHIP,
+        config: TestMembership? = MEMBERSHIP,
         snapshot: SharingProgressRead = WAITING,
         creation: RequestStatus<CreateResult> = Creating.Idle,
         pending: PendingJoin? = null,
@@ -100,7 +99,7 @@ class ServiceFaultReductionTest {
             StatusSources(
                 FixedSync(snapshot),
                 MutableStateFlow(PhotoGrant.FULL),
-                MutableStateFlow(config),
+                MutableStateFlow(config).held(),
                 creation = MutableStateFlow(creation),
                 verification = DeviceVerification(
                     MutableStateFlow(trust.attested),

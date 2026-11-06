@@ -33,21 +33,16 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import app.snapsync.control.Verifies
 import app.snapsync.domain.event.CreateResult
-import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.request.RequestId
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.presentation.onIntent
 import app.snapsync.query.RequestStatus
-import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.calendar_next_month
 import app.snapsync.ui.components.resources.network_blocked
@@ -519,13 +514,11 @@ class CreateFlowTest {
         /** No keyboard override: the test platform's own. */
         val KEEP: SoftwareKeyboardController = CountingKeyboard()
 
-        val MEMBERSHIP = EventConfig(
-            eventId = testEventId("11111111-1111-4111-8111-111111111111"),
-            name = "My Party",
-            minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
-            endsAt = EventEnd(TimestampText.parse("2026-07-08T13:00:00Z")),
-            maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-08T13:00:00Z")),
-            deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+        val MEMBERSHIP = joinedTo(
+            "11111111-1111-4111-8111-111111111111",
+            "My Party",
+            from = "2026-07-06T12:00:00Z",
+            until = "2026-07-08T13:00:00Z",
         )
     }
 }

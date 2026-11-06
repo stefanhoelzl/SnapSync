@@ -17,8 +17,8 @@ import app.snapsync.domain.upload.LedgerState
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.support.LEDGER_EVENT
 import app.snapsync.feature.support.TestLedger
-import app.snapsync.feature.support.configService
 import app.snapsync.feature.support.galleryAccess
+import app.snapsync.feature.support.membershipIn
 import app.snapsync.feature.support.receivingCounts
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.DeviceConditionsMock
@@ -107,7 +107,7 @@ class CollectDiagnosticDumpTest {
         ),
         progress = UploadProgress(ledger.shared),
         downloads = downloads,
-        config = configService(config),
+        membership = membershipIn(config),
         permission = galleryAccess(MutableStateFlow(permission)),
         network = NetworkReadings(inMemoryNetworkMonitor(MutableStateFlow(network))),
         mobileData = mobileData,

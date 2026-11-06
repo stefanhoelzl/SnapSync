@@ -18,14 +18,24 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.event.CreateResult
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.Encryption
+import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventName
+import app.snapsync.domain.event.EventNameVerdict
+import app.snapsync.domain.event.EventRange
+import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.SettingsResult
+import app.snapsync.domain.membership.Share
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
@@ -43,7 +53,11 @@ import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.service.ServiceFault
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.CaptureRangeVerdict
+import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
@@ -52,7 +66,6 @@ import app.snapsync.format.TimestampText
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
-import app.snapsync.model.EventConfig
 import app.snapsync.model.Store
 import app.snapsync.presentation.BuildStanding
 import app.snapsync.presentation.CutoffFormatter
@@ -73,6 +86,7 @@ import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.network.NetworkStatusQuery
+import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.wheel_end_hour
 import app.snapsync.ui.components.resources.wheel_end_minute
@@ -104,7 +118,7 @@ internal class TestClock(var instant: Instant = Instant.parse("2026-07-06T12:00:
  */
 @Suppress("LongParameterList")
 internal class ContainerRig(
-    config: EventConfig? = null,
+    config: Membership? = null,
     permission: PhotoGrant = PhotoGrant.FULL,
     refusal: VersionRefusal? = null,
     private val details: suspend (String) -> JoinDetails = { error("no details here") },
@@ -149,7 +163,7 @@ internal class ContainerRig(
         StatusSources(
             sync = MutableStateFlow(SharingProgressRead.NotYetRead),
             permission = this.permission,
-            config = this.config,
+            membership = this.config,
             creation = creation,
             build = BuildStanding(refusal = MutableStateFlow(refusal), store = Store("App Store", RIG_STORE_URL)),
             verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
@@ -323,4 +337,21 @@ internal fun ComposeUiTest.completeForm(rig: ContainerRig, name: String) {
     typeName(rig, name)
     pickDay(rig, "Wednesday, 8 July 2026", day = 8)
     setUntilHour(rig, "13")
+}
+
+/** An active membership of the event [id] named [name], `[from, until]`, sharing all of it both ways. */
+internal fun joinedTo(id: String, name: String, from: String, until: String): Membership {
+    val start = EventStart(TimestampText.parse(from))
+    val end = EventEnd(TimestampText.parse(until))
+    val event = Event(
+        id = testEventId(id),
+        name = (EventName.of(name) as EventNameVerdict.Ok).name,
+        range = (EventRange.of(start, end) as EventRangeVerdict.Ok).range,
+        openUntil = null,
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+        encryption = Encryption.Plain,
+        members = null,
+    )
+    val range = CaptureRange.of(CaptureCutoff(start.at), CaptureCeiling(end.at), start, end) as CaptureRangeVerdict.Ok
+    return Membership.Active(event, Share(range.range, Direction.Both, AlbumChoice.LibraryOnly))
 }

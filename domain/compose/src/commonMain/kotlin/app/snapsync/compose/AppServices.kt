@@ -18,7 +18,6 @@ import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.logs.LogTailService
-import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.membership.MembershipTransition
 import co.touchlab.kermit.Logger
 
@@ -41,9 +40,6 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * writes and a pre-first-unlock seed never notify this process's state flow.
      */
     val membership: MembershipRepository by lazy { MembershipRepository(sharedDatabase) }
-
-    /** The membership as the old zones read it — MIGRATING ([MembershipProjection]). */
-    val config: MembershipProjection by lazy { MembershipProjection(membership) }
 
     /** The device's wall clock, as the layers read time. */
     val wallClock: WallClock by lazy { WallClock(process.clock) }

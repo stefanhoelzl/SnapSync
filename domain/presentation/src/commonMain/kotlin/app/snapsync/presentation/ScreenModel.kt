@@ -4,12 +4,12 @@ import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.EventWindow
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.model.BuildLabel
-import app.snapsync.model.EventConfig
 import app.snapsync.model.ReportDestination
 import app.snapsync.model.Store
 import app.snapsync.presentation.range.EventRange
@@ -68,27 +68,27 @@ internal class Display(
     val resolve: (RangeForm, EventStart, EventEnd) -> ResolvedRange,
 ) {
     /** The joined membership as the joined screen states it. */
-    fun event(config: EventConfig): JoinedEvent = JoinedEvent(
-        eventId = config.eventId.value,
-        name = config.name,
-        startsAt = dates.toLocal(config.startsAt),
-        endsAt = dates.toLocal(config.endsAt),
-        sharesFrom = dates.toLocal(config.minPhotoDate),
-        sharesUntil = dates.toLocal(config.maxPhotoDate),
-        shares = config.direction.includesUpload,
-        receives = config.direction.includesDownload,
-        savesToAlbum = config.saveToAlbum,
+    fun event(joined: Membership): JoinedEvent = JoinedEvent(
+        eventId = joined.event.id.value,
+        name = joined.event.name.text,
+        startsAt = dates.toLocal(joined.event.range.start),
+        endsAt = dates.toLocal(joined.event.range.end),
+        sharesFrom = dates.toLocal(joined.share.range.from),
+        sharesUntil = dates.toLocal(joined.share.range.until),
+        shares = joined.share.direction.includesUpload,
+        receives = joined.share.direction.includesDownload,
+        savesToAlbum = AlbumSwitch.isOn(joined.share.album),
     )
 
     /** The device's date. */
     fun today(): LocalDate = dates.nowLocal().date
 
     /**
-     * Until when guests can still join [config]'s event, for an event created after its end (its open-until date lies
+     * Until when guests can still join [joined]'s event, for an event created after its end (its open-until date lies
      * past its end) while that date is still ahead of [now] and the event's photos are not deleted; `null` otherwise.
      */
-    fun joinableUntil(config: EventConfig, now: Timestamp): LocalDateTime? = config.openUntil
-        ?.takeIf { !config.deleted && it.at > config.endsAt.at && it.at > now }
+    fun joinableUntil(joined: Membership, now: Timestamp): LocalDateTime? = joined.event.openUntil
+        ?.takeIf { joined !is Membership.Deleted && it.at > joined.event.range.end.at && it.at > now }
         ?.let(dates::toLocal)
 
     /** What a created event's range may be: anywhere in time, at most the event window long, its end time the host's. */

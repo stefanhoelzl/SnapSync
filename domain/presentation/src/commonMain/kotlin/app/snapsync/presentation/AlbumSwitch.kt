@@ -5,4 +5,7 @@ import app.snapsync.domain.album.AlbumChoice
 /** The album switch as the screens hold it — on or off — in the domain's words, where a choice crosses into the core. */
 internal object AlbumSwitch {
     fun choice(on: Boolean): AlbumChoice = if (on) AlbumChoice.SaveToAlbum else AlbumChoice.LibraryOnly
+
+    /** Whether [choice] shows the switch on. */
+    fun isOn(choice: AlbumChoice): Boolean = choice == AlbumChoice.SaveToAlbum
 }

@@ -13,7 +13,6 @@ import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
@@ -40,7 +39,7 @@ import kotlin.time.Instant
 private const val JOINED = "11111111-1111-4111-8111-111111111111"
 private const val OTHER = "22222222-2222-4222-8222-222222222222"
 
-private val CONFIG = EventConfig(
+private val CONFIG = TestMembership(
     eventId = testEventId(JOINED),
     name = "Anna's Birthday",
     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
@@ -72,7 +71,7 @@ class GuardedIntentTest {
 
     private fun onHost(
         spy: Spy,
-        config: MutableStateFlow<EventConfig?>,
+        config: MutableStateFlow<TestMembership?>,
         rename: suspend (EventId, String) -> RenameResult? = { _, _ -> null },
         body: suspend (StatusContainerHost) -> Unit,
     ) = runTest {
@@ -95,7 +94,7 @@ class GuardedIntentTest {
                         StatusSources(
                             IdleSync(),
                             MutableStateFlow(PhotoGrant.FULL),
-                            config,
+                            config.held(),
                             requests = commands.requests.flows,
                             network = AlwaysOnline,
                             mobileData = AlwaysAllowed,
