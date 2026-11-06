@@ -324,7 +324,8 @@ with their camera. Sharing or showing the QR code SHALL have no effect on the ap
 or cancelled. Invite affordances SHALL NOT appear while the device is in no event, nor once the event's photos
 have been deleted, nor while the device cannot read an encrypted event's key — after it lost the key (capability `sync-status`)
 or while the phone is locked since it was started — so an invite is only ever offered whole, never without its key
-(see "An incomplete invite never joins an encrypted event"); a QR code already shown then closes. They SHALL return as soon as the key can be read
+(see "An incomplete invite never joins an encrypted event"); a QR code already shown, being whole, stays until the
+member closes it, and once closed is shown again only on request. They SHALL return as soon as the key can be read
 again.
 
 #### Scenario: A host shares the invite before granting photo access
@@ -374,6 +375,12 @@ again.
 #### Scenario: A phone that lost the event's key offers no invite
 - **WHEN** a member of an encrypted event whose phone lost the event's key opens the joined screen
 - **THEN** it offers neither to share the invite nor to show its QR code
+
+#### Scenario: A shown QR code stays while the key cannot be read
+- **WHEN** a member is showing the event's QR code and the phone stops being able to read the event's key, then
+  can read it again
+- **THEN** the shown QR code stays until the member closes it, the screen offers no new invite while the key
+  cannot be read, and once closed no QR code appears until the member asks for it
 
 #### Scenario: The invite returns with the key
 - **WHEN** that member opens the event's whole invite and the key is restored

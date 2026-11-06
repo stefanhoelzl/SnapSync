@@ -193,6 +193,7 @@ class UiStateFieldContractTest {
         )
         assertFieldContract(SyncCounts.serializer(), SyncCounts(DirectionCount.Progress(1, 2), DirectionCount.Off))
         assertFieldContract(DirectionCount.Progress.serializer(), DirectionCount.Progress(1, 2))
+        assertFieldContract(DirectionCount.Kept.serializer(), DirectionCount.Kept(40))
         assertFieldContract(SharingNote.WaitingFor.serializer(), SharingNote.WaitingFor(2))
         assertFieldContract(JoinedEvent.serializer(), membership)
         assertFieldContract(EventTiming.Upcoming.serializer(), EventTiming.Upcoming(TimeLeft.Days(2)))
