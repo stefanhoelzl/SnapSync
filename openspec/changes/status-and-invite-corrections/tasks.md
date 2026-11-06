@@ -6,15 +6,15 @@ before these commits, after the phase's move. Each scenario's test carries `@Ver
 
 ## 1. The four corrections: pin what the app already does
 
-- [ ] 1.1 `sync-status`, "The joined screen shows one status line in a fixed priority": an integration scenario "A
+- [x] 1.1 `sync-status`, "The joined screen shows one status line in a fixed priority": an integration scenario "A
   known problem shows before the app has looked": no photo access, state not yet read, so the line asks for access with
   no neutral frame first. The presentation test "permission outranks a loading snapshot" carries the same claim.
   Verify: green; the ladder's order test matches the corrected order.
-- [ ] 1.2 `sync-status`, "'Up to date' is never claimed before the app has looked": the cold-launch scenario runs with
+- [x] 1.2 `sync-status`, "'Up to date' is never claimed before the app has looked": the cold-launch scenario runs with
   access granted and the network up. Verify: green.
-- [ ] 1.3 `app-experience`, "The first frame is never a guessed state", scenario "Joined launch": a launch without
+- [x] 1.3 `app-experience`, "The first frame is never a guessed state", scenario "Joined launch": a launch without
   access, whose first frame asks for access. Verify: green.
-- [ ] 1.4 `app-experience`, "Failures are told calmly…": the create-failure test asserts the message sits below Create.
+- [x] 1.4 `app-experience`, "Failures are told calmly…": the create-failure test asserts the message sits below Create.
   "Picking a date range…": the shared-range dialog tests keep their claims. "Text entry sheets…": a Compose test that
   the seeded report sheet's confirm is enabled unchanged. Verify: all green, each carrying `@Verifies`.
 

@@ -21,6 +21,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -108,9 +109,16 @@ class CreateFlowTest {
     }
 
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Failures are told calmly, never as a red field",
+        scenario = "A submission is refused",
+    )
     fun `a create failure shows below Create in place of the scan hint`() =
         createTest(ContainerRig(creation = failed(CreateResult.Unverified))) { _ ->
-            onNodeWithText(str(Res.string.message_create_failed)).assertExists()
+            val message = onNodeWithText(str(Res.string.message_create_failed)).getUnclippedBoundsInRoot()
+            val create = onNodeWithText(str(Res.string.create_button)).getUnclippedBoundsInRoot()
+            assertTrue(message.top >= create.bottom, "the failure sits below Create")
             onNodeWithText(str(Res.string.create_join_hint)).assertDoesNotExist()
         }
 
