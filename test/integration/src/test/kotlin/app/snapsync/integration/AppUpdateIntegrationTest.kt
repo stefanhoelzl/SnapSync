@@ -215,7 +215,7 @@ class AppUpdateIntegrationTest {
         // The app opens: the same event, the same settings, and every photo that travelled counted once.
         whenever {
             os.foreground()
-            advance(COUNTS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             nothingTwice()
@@ -236,7 +236,7 @@ class AppUpdateIntegrationTest {
         whenever {
             uploadQueue.completeJob(primaryJob(WAITING))
             extensionHost.process()
-            advance(COUNTS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             nothingTwice()
@@ -278,7 +278,7 @@ class AppUpdateIntegrationTest {
         val RECEIVED = listOf("F1", "F2", "F3")
 
         /** Past the joined screen's next read of the counts. */
-        val COUNTS_POLL = 5.seconds
+        val SCREEN_REREAD = 5.seconds
 
         /** Enough refusals that the leave is never heard until the faults are lifted. */
         const val UNTIL_RECOVERED = 1_000

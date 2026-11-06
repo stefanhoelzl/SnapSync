@@ -55,7 +55,7 @@ class InterruptedImportIntegrationTest {
             host.relaunch()
             os.foreground()
             downloadSession.finish()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             screen<Layer.Joined> { it.received() == SETTLED } // the row settles against the asset that exists
@@ -142,7 +142,7 @@ class InterruptedImportIntegrationTest {
 
         whenever {
             heartbeat()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             // the failed attempt's id is spent, so the photo arrives under the library's next one
@@ -260,7 +260,7 @@ class InterruptedImportIntegrationTest {
         // The commit finally lands and reports.
         whenever {
             library.resumeImport(succeeded = true)
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             times(1) { event<WorldEvent.LibraryAssetCreated>() }
@@ -299,7 +299,7 @@ class InterruptedImportIntegrationTest {
         whenever {
             os.foreground()
             heartbeat()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             event<WorldEvent.CompletionReleased> { !it.again }
@@ -396,7 +396,7 @@ class InterruptedImportIntegrationTest {
             act = {
                 library.suspendNextImport(afterCommit = true)
                 downloadSession.finish()
-                advance(STATUS_POLL)
+                advance(SCREEN_REREAD)
             },
             until = {
                 event<WorldEvent.LibraryImportParked>()
@@ -442,7 +442,7 @@ class InterruptedImportIntegrationTest {
         /** The one photo planned, imported. */
         val SETTLED = DirectionCount.Progress(1, 1)
 
-        /** Longer than the screen's status poll, on mocked time. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the screen to re-read what changed, on mocked time. */
+        val SCREEN_REREAD = 5.seconds
     }
 }

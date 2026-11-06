@@ -177,7 +177,7 @@ class ReinstallIntegrationTest {
         // status stays on its neutral line.
         whenever {
             cycle()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             never<WorldEvent.UploadJobCreated>()
@@ -548,8 +548,8 @@ class ReinstallIntegrationTest {
         /** The event's union read (its OpenAPI `operationId`). */
         const val UNION = "eventFiles"
 
-        /** Long enough for the joined screen's status poll (every 2 s) to read again. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the joined screen to re-read what a change of the stores tells it. */
+        val SCREEN_REREAD = 5.seconds
 
         /** An event that starts the day after `Defaults.PHOTO_DATE`, the capture date of every fellow member's photo. */
         const val START = "2026-06-02T00:00:00"

@@ -213,7 +213,7 @@ class ReceivingIntegrationTest {
 
         whenever {
             uploadAll()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             event<WorldEvent.BytesStored> { it.asset == "MINE" }
@@ -264,7 +264,7 @@ class ReceivingIntegrationTest {
         /** The day after `Defaults.PHOTO_DATE`. */
         const val THE_NEXT_DAY = "2026-06-02T12:00:00Z"
 
-        /** Long enough for the joined screen's status poll (every 2 s) to read again. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the joined screen to re-read what a change of the stores tells it. */
+        val SCREEN_REREAD = 5.seconds
     }
 }

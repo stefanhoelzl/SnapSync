@@ -91,7 +91,7 @@ class DeclaredPhotosIntegrationTest {
         whenever {
             publicBackend.foreignDeviceLeave(DEV_F)
             os.foreground()
-            advance(COUNTS_POLL)
+            advance(SCREEN_REREAD)
         }
         // What arrived stays counted; what never will is gone.
         then {
@@ -124,7 +124,7 @@ class DeclaredPhotosIntegrationTest {
         whenever {
             os.foreground()
             cycle()
-            advance(COUNTS_POLL)
+            advance(SCREEN_REREAD)
         }
         then { running = screen<Layer.Joined> { (it.health as? SyncHealth.Syncing)?.upload == Arrow.PULSING } }
         assertEquals(
@@ -166,7 +166,7 @@ class DeclaredPhotosIntegrationTest {
 
         whenever {
             reconfigure(Choices(direction = Direction.DownloadOnly))
-            advance(COUNTS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             screen<Layer.Joined> {
@@ -196,10 +196,10 @@ class DeclaredPhotosIntegrationTest {
         },
     )
 
-    /** Every planned download arrives, and the joined screen's poll reads the counts again. */
+    /** Every planned download arrives, and the joined screen re-reads the counts the arrivals changed. */
     private suspend fun Acts.arrivedAndCounted() {
         downloadSession.finish()
-        advance(COUNTS_POLL)
+        advance(SCREEN_REREAD)
     }
 
     /** What the joined screen counts as received. */
@@ -207,6 +207,6 @@ class DeclaredPhotosIntegrationTest {
 
     private companion object {
         /** Past the joined screen's next read of the counts. */
-        val COUNTS_POLL = 5.seconds
+        val SCREEN_REREAD = 5.seconds
     }
 }

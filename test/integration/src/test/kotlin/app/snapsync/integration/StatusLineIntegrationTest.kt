@@ -181,7 +181,7 @@ class StatusLineIntegrationTest {
 
         whenever {
             os.foreground()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             event<WorldEvent.BackendReceived> { it.operation in setOf("challenge", "mintToken", "renewToken") }
@@ -407,7 +407,7 @@ class StatusLineIntegrationTest {
 
         whenever {
             network.set(NetworkState.ONLINE)
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then {
             screen<Layer.Joined> {
@@ -437,7 +437,7 @@ class StatusLineIntegrationTest {
 
         whenever {
             downloadSession.finish()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
@@ -455,7 +455,7 @@ class StatusLineIntegrationTest {
                 publicBackend.foreignDevice(DEV_F, listOf("A", "B", "C"), uploading = listOf("C"))
                 os.foreground()
                 downloadSession.finish()
-                advance(STATUS_POLL)
+                advance(SCREEN_REREAD)
             }, until = {
                 screen<Layer.Joined> { it.counts?.received == DirectionCount.Progress(2, 3) }
                 settled { true }
@@ -605,7 +605,7 @@ class StatusLineIntegrationTest {
             cycle()
             uploadQueue.completeJob()
             cycle()
-            advance(STATUS_POLL)
+            advance(SCREEN_REREAD)
         }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
@@ -979,13 +979,13 @@ class StatusLineIntegrationTest {
     private suspend fun Acts.reopened() {
         host.relaunch()
         os.foreground()
-        advance(STATUS_POLL)
+        advance(SCREEN_REREAD)
     }
 
-    /** The app in front long enough for the joined screen's status poll to read the device again. */
+    /** The app in front long enough for the joined screen to re-read what changed on the device. */
     private suspend fun Acts.readAgain() {
         os.foreground()
-        advance(STATUS_POLL)
+        advance(SCREEN_REREAD)
     }
 
     /** Joined, in front, and up to date. */
@@ -1027,8 +1027,8 @@ class StatusLineIntegrationTest {
     }
 
     private companion object {
-        /** Long enough for the joined screen's status poll (every 2 s) to read again. */
-        val STATUS_POLL = 5.seconds
+        /** Long enough for the joined screen to re-read what a change of the stores tells it. */
+        val SCREEN_REREAD = 5.seconds
 
         /** Longer than the network watch's grace before it reports a change, and a drop shorter than it. */
         val NETWORK_GRACE = 6.seconds

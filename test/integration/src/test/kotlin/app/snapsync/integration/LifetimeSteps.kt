@@ -9,7 +9,7 @@ import app.snapsync.ui.state.Layer
 
 /**
  * The app goes to the background — the phone in the pocket — and the mocked clock moves to [at], an ISO instant, the app
- * settled there. In the background, so what the app polls only while in front does not tick through the days.
+ * settled there. In the background, so what the app reads only while in front does not run through the days.
  */
 suspend fun Given.laterInThePocket(at: String) = step(
     "in the pocket until $at",
