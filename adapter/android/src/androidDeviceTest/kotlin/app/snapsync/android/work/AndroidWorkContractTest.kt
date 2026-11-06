@@ -351,6 +351,76 @@ class AndroidWorkContractTest {
         }
     }
 
+    /**
+     * Mobile data turned on while a photo waits for Wi-Fi: the waiting transfer holds no slot, so one that may use any
+     * network is created beside it and lands, while the waiting one still waits.
+     */
+    @Test
+    fun `a transfer waiting for an unmetered network holds no slot`() {
+        val base = fixture()
+        val journal = "contract.held-slot"
+        val ended = CompletableDeferred<Ended>()
+        val upload = AndroidUpload(
+            context,
+            AndroidBackgroundTime(context),
+            journalName = journal,
+            unrestricted = awaitUnrestrictedNetwork(context),
+        )
+        upload.inbound(
+            TransferHandlers(
+                onFinished = inboundOf { finished ->
+                    if (finished.tag == uploadClauseKey("ANY")) ended.complete(Ended(finished.tag, finished.failure))
+                },
+                onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
+                onEventsDrained = inboundOf {},
+            ),
+        )
+        MeteredWifi.enter()
+        val seeded = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-03T12:00:00Z", count = 2)
+        try {
+            runBlocking {
+                val (waiting, any) = seeded.map {
+                    TransferSource.Resource(
+                        MediaStoreResource(
+                            ContentUris.withAppendedId(
+                                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                                it.value.toLong(),
+                            ),
+                        ),
+                    )
+                }
+                val held = UploadTarget(
+                    base + TransferSessionContract.path("WAITING", FixtureAnswer.Hold),
+                    emptyMap(),
+                    TransferNetwork.UNRESTRICTED_ONLY,
+                )
+                assertEquals(CreateOutcome.CREATED, upload.create(waiting, held, uploadClauseKey("WAITING")))
+                val anyNetwork = UploadTarget(
+                    base + TransferSessionContract.path("ANY", FixtureAnswer.Respond(HttpURLConnection.HTTP_OK)),
+                    emptyMap(),
+                    TransferNetwork.ANY,
+                )
+                assertEquals(CreateOutcome.CREATED, upload.create(any, anyNetwork, uploadClauseKey("ANY")))
+                val landed = assertNotNull(
+                    withTimeoutOrNull(WAIT_MILLIS) { ended.await() },
+                    "the transfer that may use any network ends",
+                )
+                assertEquals(null, landed.failure, "and lands over the metered network")
+                // Its end is reported before it leaves the live set: wait for that, then only the waiting one is left.
+                val left = withTimeoutOrNull(WAIT_MILLIS) {
+                    while (upload.live().size > 1) delay(POLL_MILLIS)
+                    upload.live().map { it.tag }
+                }
+                assertEquals(listOf(uploadClauseKey("WAITING")), left, "the waiting one still waits")
+            }
+        } finally {
+            runBlocking { upload.live().forEach { upload.cancel(it) } }
+            MeteredWifi.lift()
+            MediaStoreSeeder.delete(seeded)
+            context.deleteSharedPreferences(journal)
+        }
+    }
+
     @Test
     fun `a transfer a dead process left is reported failed at the next start`() {
         val base = fixture()
