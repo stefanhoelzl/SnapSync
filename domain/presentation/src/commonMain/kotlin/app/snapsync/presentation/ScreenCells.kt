@@ -32,11 +32,17 @@ internal fun MutableStateFlow<Local>.editOverlays(edit: (Overlays) -> Overlays) 
 
 internal fun MutableStateFlow<Local>.editForm(edit: (RangeForm) -> RangeForm) = update { it.copy(form = edit(it.form)) }
 
-/** How a part of the screen runs its work on the container: as an intent, or as a guarded one ([Guarded]). */
+/**
+ * How a part of the screen runs its work on the container — as an intent, or as a guarded one ([Guarded]) — and reads
+ * what the container holds now.
+ */
 internal interface IntentRunner {
     fun intent(block: suspend () -> Unit): Job
 
     fun guarded(command: Guarded, block: suspend () -> Unit)
+
+    /** The screen's model as the container holds it now. */
+    fun current(): ScreenModel
 }
 
 /**

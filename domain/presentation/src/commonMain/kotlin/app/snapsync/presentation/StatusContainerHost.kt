@@ -1,55 +1,36 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.album.AlbumContents
-import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
-import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.RenameResult
-import app.snapsync.domain.membership.SettingsResult
-import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.mobiledata.MobileDataChoice
-import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.domain.report.BuildLabel
-import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.request.AppLinkRequest
-import app.snapsync.domain.request.CreateRequest
-import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.request.RenameRequest
-import app.snapsync.domain.request.ReportRequest
-import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
-import app.snapsync.presentation.range.EventRange
-import app.snapsync.presentation.range.RangeEdit
-import app.snapsync.presentation.range.after
-import app.snapsync.presentation.range.validUntil
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
-import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.MobileDataState
 import app.snapsync.ui.state.Overlays
-import app.snapsync.ui.state.RangeChoice
-import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ShareCount
-import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -63,7 +44,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
@@ -168,6 +148,8 @@ class StatusContainerHost(
         override fun intent(block: suspend () -> Unit): Job = this@StatusContainerHost.intent { block() }
 
         override fun guarded(command: Guarded, block: suspend () -> Unit) = guardedIntent(command, block)
+
+        override fun current(): ScreenModel = container.stateFlow.value
     }
 
     /** The screen's own cells, shared by its parts. */
@@ -183,24 +165,41 @@ class StatusContainerHost(
         joinDetails,
         scope,
     )
-    private var reportNoticeClear: Job? = null
+
+    /** The event's settings, applied as they change ([SettingsChanges]). */
+    val settings: SettingsChanges =
+        SettingsChanges(cells, membership, commands, requests, cutoffFormatter, albumContents, scope)
+
+    /** The member's edits to the participation form ([FormEdits]). */
+    val form: FormEdits = FormEdits(cells, membership, settings, ranges)
+
+    /** The conversions from the domain into what the screen shows (see [Display]). */
+    private val display = Display(cutoffFormatter, ::resolveRange)
+
+    /** The create form's own taps ([CreateFlow]). */
+    val create: CreateFlow = CreateFlow(cells, display, cutoffFormatter, commands, creationStatus, gate)
+
+    /** The range calendars ([RangePicker]). */
+    val picker: RangePicker = RangePicker(cells, display, cutoffFormatter, form)
+
+    /** The three photo-access taps ([AccessAsks]). */
+    val access: AccessAsks = AccessAsks(runner, commands)
+
+    /** A bug report and the word on what became of it ([ReportFlow]). */
+    private val report = ReportFlow(cells, commands, requests, scope)
+
+    /** What is drawn over — or instead of — the current layer ([SurfaceCommands]). */
+    val surfaces: SurfaceCommands = SurfaceCommands(cells, commands, mobileDataQuery, mobileData, settings, report)
+
+    /** Create a new event ([CreateFlow.onCreateEvent]). */
+    fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: OpenUntil? = null) =
+        create.onCreateEvent(name, startsAt, endsAt, openUntil)
+
+    /** Send the diagnostic dump with the member's note, from the surface named [screen][ReportFlow.send]. */
+    val onSendDiagnostics: (String, String) -> Unit = { note, screen -> report.send(note, screen) }
 
     /** The non-idempotent commands claimed while their intent runs — see [guardedIntent]. */
     private val inFlight = MutableStateFlow<Set<Guarded>>(emptySet())
-
-    /**
-     * The settings' changes, in the order they were made: changes made one after another apply in order, the last
-     * one standing. Orbit runs intents concurrently, so a confirm, the next switch or
-     * a close could overtake a change still saving; each settings act is enqueued HERE, synchronously in the tapping
-     * thread, and one consumer runs them one at a time. Started lazily on the container's scope.
-     */
-    private val settingsQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
-    private val settingsWorker by lazy {
-        scope.launch {
-            // Never closed: the worker lives as long as the container's scope, so it ends by cancellation only.
-            while (true) settingsQueue.receive()()
-        }
-    }
 
     /** An untouched surface's choices on this phone: all on, the album included. */
     private val freshForm: RangeForm get() = ranges.freshForm
@@ -400,9 +399,6 @@ class StatusContainerHost(
             }
         }
 
-    /** The conversions from the domain into what the screen shows (see [Display]). */
-    private val display: Display get() = Display(cutoffFormatter, ::resolveRange)
-
     /** What the count is recomputed on — the bounds and the grant, never the count itself. */
     private data class CountKey(val range: CaptureRange?, val grant: PhotoGrant)
 
@@ -437,142 +433,6 @@ class StatusContainerHost(
             ui,
             Shown(store = store.takeIf { refused != null }, range = reduced.range, countedRange = counted),
         )
-    }
-
-    /**
-     * Create a new event with [name], starting at [startsAt]. Delegates to the
-     * injected [EventCreator] (fire-and-forget): it mints the event and, on success, provisions it
-     * through the same path a scanned QR uses (config goes present, the reduction leaves the create
-     * layer). Permission is not consulted here — a missing grant surfaces afterward via
-     * `PermissionBlocked`. The in-flight and failure outcomes arrive back through the creation status read-model;
-     * nothing is reduced here.
-     *
-     * [startsAt] arrives as the screen's **local** wall-clock pick and is converted here, through the same
-     * [CutoffFormatter] the join surface uses — so the app has exactly one origin of "now" and one
-     * local→UTC conversion, and `:ui:screens` stays free of any clock or timezone knowledge. [openUntil] is the day
-     * guests may join until, for an event created after its end (the back-dated sheet's choice); `null` otherwise.
-     */
-    fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: OpenUntil? = null) =
-        guardedIntent(Guarded.Create) {
-            val id = ids.next()
-            local.update { it.copy(createRequest = id) }
-            commands.create.fire(
-                CreateRequest(
-                    id,
-                    name,
-                    EventStart(cutoffFormatter.toCutoff(startsAt)),
-                    EventEnd(cutoffFormatter.toCutoff(endsAt)),
-                    openUntil,
-                    cutoffFormatter.zoneId(),
-                ),
-            )
-            // The guard is held until the create is answered: one at a time, or a second tap mints a second event.
-            // A create that minted nothing is told on the form, from the status; only a minted event opens the gate.
-            val created = creationStatus.answerTo(id)
-            local.update { it.copy(createRequest = null) }
-            if (created is CreateResult.Created) gate.eventCreated(created.eventId, created.key)
-        }
-
-    /** The create form's own taps: its name as typed, and Create. */
-    val create: CreateCommands = CreateCommands()
-
-    inner class CreateCommands internal constructor() {
-        /**
-         * The name as typed so far. Applied at once rather than as an intent, so a Create tapped right after the last
-         * keystroke submits it.
-         */
-        fun onName(name: String) = local.update { it.copy(create = it.create.copy(name = name)) }
-
-        /**
-         * Create the event the form describes — inert unless the draft may be created: complete, inside the window. A
-         * range already over when Create is tapped first asks how long guests have to join (decision record
-         * `changes/back-dated-events`, D9); the answer, [onKeepOpenFor], creates it.
-         */
-        fun onConfirm() {
-            val draft = local.value.create
-            val end = display.creatableEnd(draft) ?: return
-            if (cutoffFormatter.toCutoff(end) < cutoffFormatter.nowCutoff()) {
-                local.update { it.copy(create = it.create.copy(askingHowLong = true)) }
-                return
-            }
-            onCreateEvent(draft.name, draft.range.from, end)
-        }
-
-        /**
-         * The back-dated sheet's answer: create the event the form describes, guests joining for [days] more days. Inert
-         * unless the sheet is asking and [days] is one of its choices — a tap that outlived the sheet creates nothing.
-         * The sheet closes either way, so a create that fails returns to the form and the next Create asks again.
-         */
-        fun onKeepOpenFor(days: Int) {
-            val draft = local.value.create
-            if (!draft.askingHowLong || days !in KEEP_OPEN_DAYS) return
-            onKeepOpenDismiss()
-            val end = display.creatableEnd(draft) ?: return
-            onCreateEvent(draft.name, draft.range.from, end, cutoffFormatter.openFor(days))
-        }
-
-        /** The back-dated sheet closed unchosen: the form stays exactly as the host left it, and nothing is created. */
-        fun onKeepOpenDismiss() = local.update { it.copy(create = it.create.copy(askingHowLong = false)) }
-    }
-
-    /**
-     * The range calendars: the gestures on the create
-     * form's calendar or the open one's; and the calendar over a participation surface, which opens on the range the
-     * surface resolves, complete — so the first tap on a day starts a new range — held to the share-range rule around
-     * the event's window. OK takes its span as a custom range; closing changes nothing.
-     */
-    val picker: PickerCommands = PickerCommands()
-
-    inner class PickerCommands internal constructor() {
-        /**
-         * A gesture on a range calendar: the open calendar's, or else the
-         * create form's. Applied at once, in the order the gestures came, so a drag's moves land one after another.
-         */
-        internal fun onEdit(edit: RangeEdit) = local.update { l ->
-            val picking = l.picking
-            if (picking != null) {
-                l.copy(
-                    picking = picking.copy(range = picking.range.after(edit, picking.bounds, picking.range.from.hour)),
-                )
-            } else {
-                val hour = cutoffFormatter.nowLocal().hour
-                l.copy(create = l.create.choose(l.create.range.after(edit, display.createBounds, hour)))
-            }
-        }
-
-        fun onOpen() {
-            val r = container.stateFlow.value.shown.range ?: return
-            val range = EventRange(r.from, r.until.date, r.until.time, endPending = false)
-            local.update { it.copy(picking = Picking(range, cutoffFormatter.shareBounds(r.windowStart, r.windowEnd))) }
-        }
-
-        fun onDismiss() = local.update { it.copy(picking = null) }
-
-        fun onConfirm() {
-            val open = local.value.picking ?: return
-            val until = open.range.validUntil(open.bounds) ?: return
-            onDismiss()
-            form.onRangeCustom(open.range.from, until)
-        }
-    }
-
-    /**
-     * The three photo-access taps, grouped —
-     * they are one question the screen asks in three forms, and the screen's own `AccessActions` bundle
-     * already mirrors this grouping.
-     */
-    val access: AccessCommands = AccessCommands()
-
-    inner class AccessCommands internal constructor() {
-        fun onRequestPermission() = intent { commands.platform.requestAccess.fire(Unit) }
-
-        /**
-         * The joined layer's "Choose more photos" tap — presents the
-         * platform's limited-library picker; the selection outcome arrives via the selection seam.
-         */
-        fun onChoosePhotos() = intent { commands.platform.choosePhotos.fire(Unit) }
-
-        fun onOpenSettings() = intent { commands.platform.openSettings.fire(Unit) }
     }
 
     /**
@@ -616,145 +476,6 @@ class StatusContainerHost(
     }
 
     /**
-     * Opening and closing what is drawn over — or instead of — the current layer.
-     *
-     * Grouped for the same reason [form] is: these are one question ("what is on screen"), and each of
-     * them reduces and nothing more. That is the property decision record `add-reconfigure-membership` D4 asked for — a
-     * pure navigation act must not cross a flow command — and it still holds now that the answer is
-     * state rather than a screen-held flag.
-     */
-    val surfaces: SurfaceCommands = SurfaceCommands()
-
-    inner class SurfaceCommands internal constructor() {
-        fun onConfirmLeaveOpen() = intent { local.editOverlays { it.copy(confirmingLeave = true) } }
-
-        fun onConfirmLeaveDismiss() = intent { local.editOverlays { it.copy(confirmingLeave = false) } }
-
-        /**
-         * Open the rename sheet on a clean latch: a rename that finished after the sheet was dismissed left its
-         * terminal status behind, and the sheet would read it as this edit's outcome and close itself.
-         */
-        fun onRenameOpen() = intent {
-            local.update { it.copy(renameRequest = null, overlays = it.overlays.copy(renaming = true)) }
-        }
-
-        fun onRenameDismiss() = intent { local.editOverlays { it.copy(renaming = false) } }
-
-        fun onQrOpen() = intent { local.editOverlays { it.copy(showingQr = true) } }
-
-        fun onQrDismiss() = intent { local.editOverlays { it.copy(showingQr = false) } }
-
-        fun onReportBugOpen() = intent {
-            local.update {
-                it.copy(
-                    overlays = it.overlays.copy(reportingBug = true, reportSeed = null),
-                    verifiedReport = false,
-                )
-            }
-        }
-
-        /** "Report this" beside a refusal: the same sheet, its description written for [message]. */
-        fun onReportRefusal(message: ScreenMessage) = intent {
-            local.update {
-                it.copy(
-                    overlays = it.overlays.copy(menuOpen = false, reportingBug = true, reportSeed = message),
-                    verifiedReport = true,
-                )
-            }
-        }
-
-        fun onReportBugDismiss() = intent { local.editOverlays { it.copy(reportingBug = false, reportSeed = null) } }
-
-        /** The app menu. Where the layer does not offer it, an open flag is masked. */
-        fun onMenuOpen() = intent {
-            local.update { it.copy(overlays = it.overlays.copy(menuOpen = true), mobileDataNotSaved = false) }
-        }
-
-        fun onMenuDismiss() = intent {
-            local.update { it.copy(overlays = it.overlays.copy(menuOpen = false), mobileDataNotSaved = false) }
-        }
-
-        /**
-         * The menu's mobile-data switch: applied as it is flipped, the menu staying open. The
-         * switch shows the device's choice, which only a save moves — so a flip that could not be saved leaves it where
-         * it was, and the menu says so (decision record `changes/archive/2026-10-07-mobile-data-per-device`, D3).
-         */
-        fun onMobileData(to: SwitchTo) = intent {
-            local.update { it.copy(mobileDataNotSaved = false) }
-            val id = ids.next()
-            commands.setMobileData.fire(
-                MobileDataRequest(id, to.mobileData()),
-            )
-            val outcome = mobileDataQuery.changes.answerTo(id)
-            mobileData.value = outcome.inEffect == MobileDataChoice.ALLOWED
-            when (outcome) {
-                is MobileDataOutcome.Saved -> Unit
-                is MobileDataOutcome.NotSaved -> local.update { it.copy(mobileDataNotSaved = true) }
-            }
-        }
-
-        /** The menu's "Report a problem": the menu gives way to the sheet in one edit, so the two never stack. */
-        fun onMenuReportBug() = intent {
-            local.update {
-                it.copy(
-                    overlays = it.overlays.copy(menuOpen = false, reportingBug = true, reportSeed = null),
-                    verifiedReport = false,
-                )
-            }
-        }
-
-        /**
-         * One of the menu's links, opened outside the app. The menu closes first, so
-         * coming back finds the screen rather than the drawer; a refused hand-off is logged by the command.
-         */
-        fun onOpenLink(link: AppLink) = intent {
-            local.editOverlays { it.copy(menuOpen = false) }
-            commands.platform.openLink.fire(AppLinkRequest.SitePage(link.page))
-        }
-
-        /** The report's brief word, tapped away before it cleared itself. */
-        fun onReportNoticeDismiss() = intent {
-            reportNoticeClear?.cancel()
-            local.editOverlays { it.copy(reportNotice = null) }
-        }
-
-        /**
-         * Open the settings surface, pre-filled from the persisted membership. Seeding HERE rather than
-         * in the reduction is what makes the pre-fill a SNAPSHOT: a foreground refresh landing mid-edit
-         * updates the heading, not the controls in the member's hand.
-         */
-        fun onOpenReconfigure() = settings.enqueue {
-            val joined = membership.value ?: return@enqueue
-            val form = reconfigureForm(joined.event.range, SettingChange.of(joined), cutoffFormatter::toLocal)
-                .copy(albumContents = albumContents)
-            local.update {
-                it.copy(
-                    form = form,
-                    picking = null,
-                    settings = Owned(joined.event.id, SettingsSurface.Open),
-                    pendingWithdrawal = Owned(null, null),
-                    lastApplied = Owned(null, null),
-                )
-            }
-        }
-
-        /**
-         * Close the settings: swiped down, back, or a tap on the joined screen above
-         * them. Every change already applied as it was made, so closing writes nothing — and a question still open
-         * about withdrawing photos is answered "keep sharing".
-         */
-        fun onCancelReconfigure() = settings.enqueue {
-            local.update {
-                it.copy(
-                    settings = Owned(null, SettingsSurface.Closed),
-                    pendingWithdrawal = Owned(null, null),
-                    picking = null,
-                )
-            }
-        }
-    }
-
-    /**
      * Rename the joined event, confirmed on the heading's rename dialog.
      * Delegates to the injected [UserCommands.rename] with [eventId] — the event the dialog was opened
      * for — so a switch that landed mid-edit makes the use-case a no-op rather than renaming a different
@@ -773,230 +494,6 @@ class StatusContainerHost(
 
     /** The screen has consumed the rename's answer: the next rename starts from none. */
     fun onRenameStatusConsumed() = intent { local.update { it.copy(renameRequest = null) } }
-
-    /**
-     * Send the diagnostic dump with the operator's account of the
-     * problem — already trimmed and length-bounded by the sheet that collected it — an opaque label for the
-     * surface it was sent from (the screen, which only the screen itself can name), and the counts that surface
-     * showed, taken from the state this host last reduced ([shownCounts]). On a build that reports nowhere the report
-     * is kept on the device instead ([UiState.reportDestination] says which).
-     * Once it has been handed off, the app briefly says what became of it ([Overlays.reportNotice]) — sent, saved,
-     * or neither — and makes no delivery claim (the channel may queue and retransmit). A command that failed
-     * outright is "neither": the user confirmed a report, and silence would read as sent.
-     */
-    val onSendDiagnostics: (String, String) -> Unit = { note, screen ->
-        intent {
-            // Read and spent here: the sheet is dismissed before it sends, so the report remembers how it was opened.
-            val verification = local.getAndUpdate { it.copy(verifiedReport = false) }.verifiedReport
-            val id = ids.next()
-            commands.sendDiagnostics.fire(
-                ReportRequest(id, note, ReportContext(screen, shownCounts(state.ui), verification)),
-            )
-            val outcome = requests.report.answerTo(id)
-            // Shown, then cleared after a moment; a later report's word replaces an earlier one's.
-            local.editOverlays { it.copy(reportNotice = outcome.shown) }
-            reportNoticeClear?.cancel()
-            reportNoticeClear = scope.launch {
-                delay(REPORT_NOTICE_MILLIS)
-                local.editOverlays { it.copy(reportNotice = null) }
-            }
-        }
-    }
-
-    /**
-     * The event's settings, applied as they change: the queue every settings act
-     * runs through, what the next change builds on, and the answers to the withdrawal question.
-     */
-    val settings: SettingsChanges = SettingsChanges()
-
-    inner class SettingsChanges internal constructor() {
-        /** Run [act] after every settings act enqueued before it — see [settingsQueue]. */
-        internal fun enqueue(act: suspend () -> Unit) {
-            settingsWorker.start()
-            settingsQueue.trySend(act)
-        }
-
-        /**
-         * The settings apply each change as it is made: one reconfigure per change, built from the membership IN EFFECT
-         * with that one change, and run in the container's intent order — so quick changes apply one after another and
-         * the last one stands. A change that would withdraw photos from the event (sharing
-         * off, or a narrower range) is held instead, and asked about ([pendingWithdrawal][Local.pendingWithdrawal]).
-         * [config] is the membership whose settings are open ([openMembership]).
-         */
-        internal suspend fun change(joined: Membership, change: (SettingChange, Membership) -> SettingChange) {
-            val inEffect = settingsInEffect(joined)
-            val next = change(inEffect, joined)
-            // A switch set to what it shows changes nothing, so there is nothing to save.
-            if (next == inEffect) return
-            if (next.withdrawsFrom(inEffect)) {
-                local.update { it.copy(pendingWithdrawal = Owned(joined.event.id, next)) }
-                return
-            }
-            applySetting(joined, inEffect, next)
-        }
-
-        /**
-         * The settings in effect: the last change these settings applied, else the membership as read. The read can lag a
-         * save the use-case just made, and a change built on it would quietly undo the one before — so quick changes
-         * build on each other, not on a stale read.
-         */
-        private fun settingsInEffect(joined: Membership): SettingChange =
-            local.value.lastApplied.forMembership(joined.event.id, null) ?: SettingChange.of(joined)
-
-        /**
-         * Run one change through [UserCommands.reconfigure]. The event id rides with the values so a switch that landed
-         * while the settings were open makes the use-case a no-op rather than overwriting a different membership; the
-         * share-range rule is the use-case's. Afterwards the controls are re-seeded from the settings in
-         * effect — the change if it landed, the ones before it if not — so a change that did not land shows the setting
-         * still in effect, and says so: the controls never hold a value that is not saved.
-         */
-        private suspend fun applySetting(joined: Membership, before: SettingChange, next: SettingChange) {
-            local.update { it.copy(pendingWithdrawal = Owned(null, null)) }
-            val id = ids.next()
-            commands.reconfigure.fire(
-                SettingsRequest(
-                    id,
-                    ShareChoice(
-                        joined.event.id,
-                        next.from,
-                        next.until,
-                        next.direction,
-                        AlbumSwitch.choice(next.saveToAlbum),
-                    ),
-                ),
-            )
-            when (requests.settings.answerTo(id)) {
-                SettingsResult.NotCurrent -> closeSettings()
-                SettingsResult.Saved -> reseed(joined, next, SettingsSurface.Open)
-                SettingsResult.SaveFailed, SettingsResult.Refused -> reseed(joined, before, SettingsSurface.SaveFailed)
-            }
-        }
-
-        /** A switch landed while the settings were open: they close, the membership they were for being gone. */
-        private fun closeSettings() = local.update {
-            it.copy(settings = Owned(null, SettingsSurface.Closed), lastApplied = Owned(null, null))
-        }
-
-        /** The controls re-seeded from the settings [inEffect], the surface showing [surface]. */
-        private fun reseed(joined: Membership, inEffect: SettingChange, surface: SettingsSurface) {
-            val reseeded = reconfigureForm(joined.event.range, inEffect, cutoffFormatter::toLocal)
-                .copy(albumContents = albumContents)
-            local.update {
-                it.copy(
-                    form = reseeded,
-                    settings = Owned(joined.event.id, surface),
-                    lastApplied = Owned(joined.event.id, inEffect),
-                )
-            }
-        }
-
-        /** "Stop sharing" on the withdrawal question: the held change applies. */
-        fun onConfirmStopSharing() = enqueue {
-            val joined = membership.value ?: return@enqueue
-            val held = local.value.pendingWithdrawal.forMembership(joined.event.id, null) ?: return@enqueue
-            applySetting(joined, settingsInEffect(joined), held)
-        }
-
-        /** "Keep sharing": the held change is dropped, and the controls — which never took it — stay as they were. */
-        fun onKeepSharing() = enqueue { local.update { it.copy(pendingWithdrawal = Owned(null, null)) } }
-
-        /**
-         * The membership whose settings are open over the joined screen — where a form edit applies rather than drafts —
-         * or `null` when none are.
-         */
-        internal fun openMembership(): Membership? = membership.value?.takeIf {
-            local.value.settings.forMembership(it.event.id, SettingsSurface.Closed) != SettingsSurface.Closed
-        }
-    }
-
-    /**
-     * The member's edits to the participation form, grouped.
-     *
-     * At the join gate each only reduces: a tap touches no port and dispatches no command until Join. With the
-     * event's settings open each one IS the change, applied through [SettingsChanges.change]. They are intents rather than
-     * screen state because the screen SHOWS them — and a GROUP because they are one surface's questions.
-     */
-    val form: FormEdits = FormEdits()
-
-    inner class FormEdits internal constructor() {
-        /**
-         * While joined, an edit can only be a settings change, so it takes its place in the settings' order
-         * ([SettingsChanges.enqueue]) — behind an open still queued. At the join gate it is an ordinary intent, so the Join that
-         * follows it reads the form it left.
-         */
-        private fun formIntent(act: suspend () -> Unit) {
-            if (membership.value != null) settings.enqueue(act) else intent { act() }
-        }
-
-        // At the join gate each edit drafts the form; with the event's settings open it applies at once.
-        fun onShareOn(to: SwitchTo) = formIntent {
-            val on = to.isOn
-            val open = settings.openMembership()
-            if (open != null) {
-                settings.change(open) { now, _ ->
-                    now.copy(direction = directionOf(on, now.direction.includesDownload))
-                }
-            } else {
-                local.editForm { it.copy(shareOn = on) }
-            }
-        }
-
-        fun onReceiveOn(to: SwitchTo) = formIntent {
-            val on = to.isOn
-            val open = settings.openMembership()
-            if (open != null) {
-                settings.change(open) { now, _ -> now.copy(direction = directionOf(now.direction.includesUpload, on)) }
-            } else {
-                local.editForm { it.copy(receiveOn = on) }
-            }
-        }
-
-        fun onSaveToAlbum(to: SwitchTo) = formIntent {
-            val on = to.isOn
-            val open = settings.openMembership()
-            if (open != null) {
-                settings.change(open) { now, _ -> now.copy(saveToAlbum = on) }
-            } else {
-                local.editForm {
-                    it.copy(saveToAlbum = on)
-                }
-            }
-        }
-
-        fun onRangePreset(preset: RangeChoice) {
-            // A preset chip is a complete choice: the calendar it sits on closes.
-            local.update { it.copy(picking = null) }
-            formIntent { editRange { it.copy(preset = preset) } }
-        }
-
-        /** A custom range from the calendar; a `null` bound keeps the one already picked. */
-        fun onRangeCustom(from: LocalDateTime?, until: LocalDateTime?) = formIntent {
-            editRange { f ->
-                f.copy(
-                    preset = RangeChoice.CUSTOM,
-                    customFrom = from ?: f.customFrom,
-                    customUntil = until ?: f.customUntil,
-                )
-            }
-        }
-
-        /**
-         * A committed range (a preset chip, or the calendar's OK). With the settings open it is the one place the
-         * bounds are re-resolved from the form; every other change carries the bounds in effect untouched.
-         */
-        private suspend fun editRange(edit: (RangeForm) -> RangeForm) {
-            val open = settings.openMembership()
-            if (open == null) {
-                local.editForm(edit)
-                return
-            }
-            val form = edit(local.value.form)
-            settings.change(open) { now, c ->
-                val range = resolveRange(form, c.event.range.start, c.event.range.end)
-                now.copy(from = range.chosenFrom, until = range.chosenUntil)
-            }
-        }
-    }
 
     /** An invite the app was opened with, read at the boundary ([JoinGate.onInvite]). */
     fun onInvite(read: InviteLinkVerdict): Job = gate.onInvite(read)
@@ -1043,6 +540,3 @@ class StatusContainerHost(
  * nothing of the member's can upload before the start regardless.
  */
 private const val NOT_STARTED_TICK_MILLIS = 60_000L
-
-/** How long the word on a sent report stays: long enough to read, then gone. */
-private const val REPORT_NOTICE_MILLIS = 4_000L
