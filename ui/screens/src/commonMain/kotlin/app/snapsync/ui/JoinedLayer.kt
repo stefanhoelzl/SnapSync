@@ -14,9 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.ui.components.AccessPrompt
 import app.snapsync.ui.components.AppDatesLine
-import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppHeadingStatement
 import app.snapsync.ui.components.AppOverStatement
+import app.snapsync.ui.components.AppPassingBanner
 import app.snapsync.ui.components.AppSectionDivider
 import app.snapsync.ui.components.AppStatusDetail
 import app.snapsync.ui.components.AppStatusLine
@@ -77,7 +77,7 @@ internal fun JoinedLayer(
     ) {
         // A rejected event link, if one just arrived. First because it is about what the member JUST DID, and it
         // self-clears on its own; without it a bad scan while joined said nothing at all.
-        state.notice?.let { AppErrorBanner(it.text()) }
+        state.notice?.let { AppPassingBanner(it.text()) }
         if (state.deleted) {
             // Over for good: what it was is all there is left to say — no explanation of a sharing that has ended.
             OverBlock(state)
