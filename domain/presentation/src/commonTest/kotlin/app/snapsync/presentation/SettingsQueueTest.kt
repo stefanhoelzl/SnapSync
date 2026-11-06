@@ -55,7 +55,7 @@ class SettingsQueueTest {
     private class World {
         val config = MutableStateFlow<TestMembership?>(MEMBERSHIP)
         val reconfigured = mutableListOf<Direction>()
-        val errors = mutableListOf<Throwable>()
+        val log = TestLog()
 
         /** Where every change the door takes is saved, and answered — each recorded as it is handed over. */
         val saved = TestCommands(reconfigure = { SettingsResult.Saved }).apply {
@@ -65,8 +65,8 @@ class SettingsQueueTest {
         }
     }
 
-    private fun host(world: World, scope: CoroutineScope) = StatusContainerHost(
-        StatusSources(
+    private fun host(world: World, scope: CoroutineScope) = testHost(
+        testQueries(
             FixedSync(SETTLED),
             MutableStateFlow(PhotoGrant.FULL),
             world.config.held(),
@@ -79,7 +79,6 @@ class SettingsQueueTest {
         commands = world.saved.door,
         shareableCount = noQueries,
         joinDetails = unanswered,
-        diagnostics = testDiagnostics(onIntentError = { world.errors += it }),
         reduction = Dispatchers.Default,
     )
 
@@ -95,7 +94,7 @@ class SettingsQueueTest {
         val state = host.screen.first { it.layer is Layer.Joined }
         val surface = (state.layer as Layer.Joined).surface
         assertEquals(JoinedSurface.Status, surface, "a later membership opened on its settings")
-        assertTrue(world.errors.isEmpty(), "${world.errors}")
+        assertTrue(world.log.errors.isEmpty(), "${world.log.errors}")
     }
 
     @Test
@@ -110,7 +109,7 @@ class SettingsQueueTest {
         runCurrent()
 
         assertTrue(world.reconfigured.isEmpty())
-        assertTrue(world.errors.isEmpty(), "${world.errors}")
+        assertTrue(world.log.errors.isEmpty(), "${world.log.errors}")
     }
 
     @Test
@@ -143,7 +142,7 @@ class SettingsQueueTest {
         runCurrent()
 
         assertTrue(world.reconfigured.isEmpty())
-        assertTrue(world.errors.isEmpty(), "${world.errors}")
+        assertTrue(world.log.errors.isEmpty(), "${world.log.errors}")
     }
 
     @Test

@@ -2,10 +2,12 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.event.OpenUntil
@@ -19,9 +21,11 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.step
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -32,11 +36,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,6 +55,10 @@ import kotlin.time.Instant
 
 private const val EVENT_ID = "22222222-2222-4222-8222-222222222222"
 private const val OTHER_EVENT_ID = "33333333-3333-4333-8333-333333333333"
+
+/** The test's clock: 2026-07-09 12:00 UTC, in UTC. */
+private val CLOCK = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC)
+private val NOW = LocalDateTime(2026, 7, 9, 12, 0)
 
 /** An encrypted event's key, as an invite link carries it. */
 @OptIn(MakesEventKey::class)
@@ -86,8 +96,7 @@ class JoinGateEdgesTest {
         val pending = MutableStateFlow<PendingJoin?>(null)
         val acts = mutableListOf<String>()
         val commits = mutableListOf<JoinChoice>()
-        val logged = mutableListOf<String>()
-        val errors = mutableListOf<Throwable>()
+        val log = TestLog()
         var load: suspend (String) -> JoinDetails = { FOUND }
         var commit: suspend () -> JoinCommit = { JoinCommit.Committed }
         var loads = 0
@@ -95,56 +104,89 @@ class JoinGateEdgesTest {
         var asked = 0
         var whileAsked: () -> Unit = {}
 
-        /** Whether the door itself refuses a join as it is handed over — a throw the gate must survive. */
-
         /** The invite the app was opened with, waiting for the screen; and each one the screen told opened. */
         val invites = MutableStateFlow<InviteLinkVerdict?>(null)
-        val opened = mutableListOf<InviteLinkVerdict>()
-    }
 
-    private fun host(world: World, scope: CoroutineScope): StatusContainerHost {
+        val opened = mutableListOf<InviteLinkVerdict>()
+
+        /** The commands the gate fires, as this world answers them. */
         val commands = TestCommands(
             leave = {
-                world.acts += "leave"
-                world.config.value = null
+                acts += "leave"
+                this.config.value = null
             },
             commitJoin = { choice ->
-                world.acts += "commit"
-                world.commits += choice
-                world.commit()
+                acts += "commit"
+                commits += choice
+                commit()
             },
             switch = {
-                world.asked++
-                world.whileAsked()
-                if (world.losesNothing) SwitchVerdict.Quiet else SwitchVerdict.Ask
+                asked++
+                whileAsked()
+                if (losesNothing) SwitchVerdict.Quiet else SwitchVerdict.Ask
             },
         ).apply {
             handedOver = {
-                if (it is InviteLinkVerdict) world.opened += it
+                if (it is InviteLinkVerdict) opened += it
             }
         }
-        return StatusContainerHost(
-            StatusSources(
-                FixedSync(SharingProgressRead.NotYetRead),
-                MutableStateFlow(PhotoGrant.FULL),
-                world.config.held(),
-                requests = commands.requests.flows,
-                pending = world.pending,
-                invites = world.invites,
-                network = AlwaysOnline,
-                mobileData = AlwaysAllowed,
-            ),
-            scope,
-            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-            commands = commands.door,
-            shareableCount = noQueries,
-            joinDetails = joinDetails { id ->
-                world.loads++
-                world.load(id)
-            },
-            diagnostics = testDiagnostics(log = { world.logged += it }, onIntentError = { world.errors += it }),
-            reduction = Dispatchers.Default,
+    }
+
+    private fun gate(
+        world: World,
+        scope: CoroutineScope,
+        details: ScreenLookup<InviteLink, JoinDetails> = joinDetails { id ->
+            world.loads++
+            world.load(id)
+        },
+    ): JoinGate {
+        val commands = world.commands
+        val ranges = RangeResolver(CLOCK, AlbumContents.SharedAndReceived)
+        val local = MutableStateFlow(
+            Local(form = ranges.freshForm, create = CreateDraft.fresh(CreateDraftSession(), NOW)),
         )
+        return JoinGate(
+            ScreenCells(local, world.pending, RequestIds(), GateRunner(scope), scope),
+            GateReads(
+                world.config.held(),
+                MutableStateFlow(PhotoGrant.FULL),
+                MutableStateFlow(KeyPresence.NotNeeded),
+                MutableStateFlow(null),
+                MutableStateFlow(null),
+            ),
+            ranges,
+            commands.door,
+            commands.requests.flows,
+            details,
+            scope,
+        )
+    }
+
+    /** The whole screen over [world], for the one road the gate is reached by from the container: a waiting invite. */
+    private fun host(world: World, scope: CoroutineScope): StatusContainerHost = testHost(
+        testQueries(
+            FixedSync(SharingProgressRead.NotYetRead),
+            MutableStateFlow(PhotoGrant.FULL),
+            world.config.held(),
+            requests = world.commands.requests.flows,
+            invites = world.invites,
+        ),
+        scope,
+        Dispatchers.Default,
+        CLOCK,
+        commands = world.commands.door,
+        joinDetails = joinDetails { id -> world.load(id) },
+    )
+
+    /** The gate's work run as the container runs it: each act launched on its own, off the test's thread. */
+    private class GateRunner(private val scope: CoroutineScope) : IntentRunner {
+        override fun intent(block: suspend () -> Unit): Job = scope.launch(Dispatchers.Default) { block() }
+
+        override fun guarded(command: Guarded, block: suspend () -> Unit) {
+            intent(block)
+        }
+
+        override fun current(): ScreenModel = error("the gate reads no screen")
     }
 
     private suspend fun TestScope.settle(job: Job) {
@@ -159,9 +201,11 @@ class JoinGateEdgesTest {
         val world = World()
         val invite = invited(testEventId(EVENT_ID), null)
         world.invites.value = invite
-        host(world, backgroundScope).screen.first()
-        val opening = withContext(Dispatchers.Default) { withTimeout(5.seconds) { world.pending.first { it != null } } }
-        assertEquals(testEventId(EVENT_ID), opening?.eventId, "the gate opened on it")
+        val host = host(world, backgroundScope)
+        val opening = withContext(Dispatchers.Default) {
+            withTimeout(5.seconds) { host.screen.first { it.layer is Layer.JoiningEvent } }
+        }
+        assertEquals(EVENT_ID, (opening.layer as Layer.JoiningEvent).eventId, "the gate opened on it")
         assertEquals(listOf(invite), world.opened, "and the core was told it no longer waits")
     }
 
@@ -172,7 +216,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a retry with no join open loads nothing`() = runTest {
         val world = World()
-        settle(host(world, backgroundScope).onRetryLoad())
+        settle(gate(world, backgroundScope).onRetryLoad())
 
         assertEquals(0, world.loads)
         assertNull(world.pending.value)
@@ -182,25 +226,13 @@ class JoinGateEdgesTest {
     fun `a retry re-sends the link's key with the load`() = runTest {
         val world = World().apply { load = { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) } }
         val keys = mutableListOf<EventKey?>()
-        val host = StatusContainerHost(
-            StatusSources(
-                FixedSync(SharingProgressRead.NotYetRead),
-                MutableStateFlow(PhotoGrant.FULL),
-                world.config.held(),
-                pending = world.pending,
-                network = AlwaysOnline,
-                mobileData = AlwaysAllowed,
-            ),
+        val host = gate(
+            world,
             backgroundScope,
-            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
-            commands = TestCommands().door,
-            shareableCount = noQueries,
-            joinDetails = lookup { invite: InviteLink ->
+            lookup { invite: InviteLink ->
                 keys += invite.key
                 JoinDetails.Unanswered(ServiceFault.UNREACHABLE)
             },
-            diagnostics = testDiagnostics(),
-            reduction = Dispatchers.Default,
         )
 
         settle(host.onInvite(invited(testEventId(EVENT_ID), LINK_KEY)))
@@ -215,7 +247,7 @@ class JoinGateEdgesTest {
     @Test
     fun `another invite leaves without asking when the joined event loses nothing by it`() = runTest {
         val world = World(OTHER_MEMBERSHIP).apply { losesNothing = true }
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         settle(host.onInvite(invited(testEventId(EVENT_ID), null)))
 
         assertEquals(listOf("leave"), world.acts, "left without the switch question, and nothing committed yet")
@@ -233,7 +265,7 @@ class JoinGateEdgesTest {
     @Test
     fun `another invite asks as before when the joined event could lose something`() = runTest {
         val world = World(OTHER_MEMBERSHIP) // a member still sharing, offline, a failed read: all answer `false`
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         settle(host.onInvite(invited(testEventId(EVENT_ID), null)))
 
         assertEquals(1, world.asked)
@@ -246,7 +278,7 @@ class JoinGateEdgesTest {
     fun `the join screen carries how many members the event has`() = runTest {
         val world = World().apply { load = { FOUND.copy(event = FOUND.event.copy(members = MemberCounts(3, 1))) } }
         settle(
-            host(
+            gate(
                 world,
                 backgroundScope,
             ).onInvite(invited(testEventId(EVENT_ID), null)),
@@ -261,7 +293,7 @@ class JoinGateEdgesTest {
             whileAsked = { pending.value = null } // the member backed out while the event was read
         }
         settle(
-            host(
+            gate(
                 world,
                 backgroundScope,
             ).onInvite(invited(testEventId(EVENT_ID), null)),
@@ -275,7 +307,7 @@ class JoinGateEdgesTest {
     fun `a first join never asks whether a switch loses nothing`() = runTest {
         val world = World()
         settle(
-            host(
+            gate(
                 world,
                 backgroundScope,
             ).onInvite(invited(testEventId(EVENT_ID), null)),
@@ -286,7 +318,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a switch confirm with no switch open leaves nothing`() = runTest {
         val world = World(OTHER_MEMBERSHIP)
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         host.onConfirmSwitch()
         graceForAnIntentThatShouldDoNothing()
 
@@ -297,7 +329,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a switch confirm with nothing joined leaves nothing`() = runTest {
         val world = World()
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         settle(host.onInvite(invited(testEventId(EVENT_ID), null)))
         host.onConfirmSwitch()
         graceForAnIntentThatShouldDoNothing()
@@ -313,7 +345,7 @@ class JoinGateEdgesTest {
             FOUND
         }
         settle(
-            host(
+            gate(
                 world,
                 backgroundScope,
             ).onInvite(invited(testEventId(EVENT_ID), null)),
@@ -333,7 +365,7 @@ class JoinGateEdgesTest {
                 JoinPhase.Detailed.Step.Ready,
             ),
         )
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         host.onConfirmJoin()
         graceForAnIntentThatShouldDoNothing()
 
@@ -343,7 +375,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a commit carries the invite's key`() = runTest {
         val world = World()
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         settle(host.onInvite(invited(testEventId(EVENT_ID), LINK_KEY)))
         settle(host.onConfirmJoin())
 
@@ -354,7 +386,7 @@ class JoinGateEdgesTest {
     fun `a switch confirm before the event's details loaded leaves nothing`() = runTest {
         val world = World(OTHER_MEMBERSHIP)
         world.pending.value = PendingJoin(testEventId(EVENT_ID), JoinProgress.Loading)
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         host.onConfirmSwitch()
         graceForAnIntentThatShouldDoNothing()
 
@@ -367,7 +399,7 @@ class JoinGateEdgesTest {
         // Without it the joined screen would say until when others can join only after the next refresh.
         val openUntil = OpenUntil(timestamp("2026-07-16T12:00:00Z"))
         val world = World().apply { load = { FOUND.copy(event = FOUND.event.copy(openUntil = openUntil)) } }
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         settle(host.onInvite(invited(testEventId(EVENT_ID), null)))
 
         settle(host.onConfirmJoin())
@@ -387,7 +419,7 @@ class JoinGateEdgesTest {
             }
         }
         val scope = CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job]))
-        val opening = host(
+        val opening = gate(
             world,
             scope,
         ).onInvite(invited(testEventId(EVENT_ID), null))
@@ -398,7 +430,7 @@ class JoinGateEdgesTest {
         opening.join()
 
         assertEquals(JoinProgress.Loading, world.pending.value?.phase, "teardown rewrote the gate to a failure")
-        assertTrue(world.errors.isEmpty(), "teardown was reported as an error: ${world.errors}")
+        assertTrue(world.log.errors.isEmpty(), "teardown was reported as an error: ${world.log.errors}")
     }
 
     @Test
@@ -412,7 +444,7 @@ class JoinGateEdgesTest {
                 FOUND
             }
         }
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         val opening = host.onInvite(
             invited(testEventId(EVENT_ID), null),
         )
@@ -440,7 +472,7 @@ class JoinGateEdgesTest {
                 }
             }
         }
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         val first = host.onInvite(invited(testEventId(EVENT_ID), null))
         firstLoading.await()
         settle(
@@ -461,7 +493,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a link whose key cannot be read lands on the wrong-link phase and loads nothing`() = runTest {
         val world = World()
-        settle(host(world, backgroundScope).onInvite(InviteLinkVerdict.KeyUnreadable(testEventId(EVENT_ID))))
+        settle(gate(world, backgroundScope).onInvite(InviteLinkVerdict.KeyUnreadable(testEventId(EVENT_ID))))
 
         assertEquals(JoinProgress.WrongLink, world.pending.value?.phase)
         assertEquals(0, world.loads, "an invite that cannot be read whole asks the server nothing")
@@ -471,14 +503,14 @@ class JoinGateEdgesTest {
     fun `a link whose key cannot be read changes nothing while its event's join is open or joined`() = runTest {
         val cut = InviteLinkVerdict.KeyUnreadable(testEventId(EVENT_ID))
         val pending = World()
-        val host = host(pending, backgroundScope)
+        val host = gate(pending, backgroundScope)
         settle(host.onInvite(invited(testEventId(EVENT_ID), null)))
         val opened = pending.pending.value
         settle(host.onInvite(cut))
         assertEquals(opened, pending.pending.value, "the open join stays as it is")
 
         val joined = World(OTHER_MEMBERSHIP.copy(eventId = testEventId(EVENT_ID)))
-        settle(host(joined, backgroundScope).onInvite(cut))
+        settle(gate(joined, backgroundScope).onInvite(cut))
         assertNull(joined.pending.value, "the joined event's own invite opens nothing")
     }
 
@@ -486,7 +518,7 @@ class JoinGateEdgesTest {
     fun `a link refused at load for its key lands on the wrong-link phase`() = runTest {
         val world = World().apply { load = { JoinDetails.WrongLink } }
         settle(
-            host(
+            gate(
                 world,
                 backgroundScope,
             ).onInvite(invited(testEventId(EVENT_ID), null)),
@@ -500,7 +532,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a commit refused for the link's key lands on the wrong-link phase with no retry`() = runTest {
         val world = World().apply { commit = { JoinCommit.WrongLink } }
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         settle(host.onInvite(invited(testEventId(EVENT_ID), null)))
 
         settle(host.onConfirmJoin())
@@ -520,7 +552,7 @@ class JoinGateEdgesTest {
                 JoinCommit.Committed
             }
         }
-        val host = host(world, backgroundScope)
+        val host = gate(world, backgroundScope)
         settle(host.onInvite(invited(testEventId(EVENT_ID), null)))
         val first = host.onConfirmJoin()
         committing.await()
@@ -535,7 +567,7 @@ class JoinGateEdgesTest {
     @Test
     fun `a confirm with no join open commits nothing`() = runTest {
         val world = World()
-        settle(host(world, backgroundScope).onConfirmJoin())
+        settle(gate(world, backgroundScope).onConfirmJoin())
 
         assertTrue(world.commits.isEmpty())
     }
@@ -549,7 +581,7 @@ class JoinGateEdgesTest {
             { JoinCommit.EventOver },
             { error("the commit threw") },
         )
-        val since: Map<String, suspend (StatusContainerHost) -> Job> = mapOf(
+        val since: Map<String, suspend (JoinGate) -> Job> = mapOf(
             "overtaken" to {
                 it.onInvite(invited(testEventId(OTHER_EVENT_ID), null))
             },
@@ -566,7 +598,7 @@ class JoinGateEdgesTest {
                         outcome()
                     }
                 }
-                val host = host(world, backgroundScope)
+                val host = gate(world, backgroundScope)
                 settle(
                     host.onInvite(invited(testEventId(EVENT_ID), null)),
                 )

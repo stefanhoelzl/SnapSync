@@ -26,6 +26,8 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import app.snapsync.contracts.UiUnderTest
+import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
@@ -37,21 +39,27 @@ import app.snapsync.domain.event.EventNameVerdict
 import app.snapsync.domain.event.EventRange
 import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.membership.SettingsResult
+import app.snapsync.domain.membership.Share
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ReportContext
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
@@ -68,6 +76,7 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
+import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
@@ -79,26 +88,28 @@ import app.snapsync.format.TimestampText
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
-import app.snapsync.model.EventConfig
 import app.snapsync.ports.Ui
-import app.snapsync.presentation.BuildStanding
+import app.snapsync.presentation.BuildFacts
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
+import app.snapsync.presentation.EventKeyView
 import app.snapsync.presentation.PlatformCommands
 import app.snapsync.presentation.RequestStatusFlows
+import app.snapsync.presentation.ScreenQueries
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusDiagnostics
-import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.UserCommand
 import app.snapsync.presentation.UserCommands
 import app.snapsync.presentation.onIntent
+import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
+import app.snapsync.query.encryption.InviteRead
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.network.NetworkStatusQuery
+import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.ui.components.resources.menu
 import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.components.resources.share_range_custom
@@ -179,15 +190,21 @@ private const val SOURCE = "StatusScreenTour.kt"
 /** A tap just inside the top of the sheet's scrim: above the sheet, where a tap closes it. */
 private const val ABOVE_THE_SHEET_PX = 5f
 
-private val MEMBERSHIP = EventConfig(
-    eventId = EventId.parse(JOINED_ID)!!,
-    name = "Anna’s Birthday",
-    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-04T18:00:00Z")),
-    startsAt = EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
-    endsAt = EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-20T18:00:00Z")),
-    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
-)
+private val MEMBERSHIP: Membership = run {
+    val start = EventStart(TimestampText.parse("2026-07-04T18:00:00Z"))
+    val end = EventEnd(TimestampText.parse("2026-07-20T18:00:00Z"))
+    val event = Event(
+        id = EventId.parse(JOINED_ID)!!,
+        name = (EventName.of("Anna’s Birthday") as EventNameVerdict.Ok).name,
+        range = (EventRange.of(start, end) as EventRangeVerdict.Ok).range,
+        openUntil = null,
+        deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+        encryption = Encryption.Plain,
+        members = null,
+    )
+    val range = CaptureRange.of(CaptureCutoff(start.at), CaptureCeiling(end.at), start, end) as CaptureRangeVerdict.Ok
+    Membership.Active(event, Share(range.range, Direction.Both, AlbumChoice.LibraryOnly))
+}
 
 private val OTHER_EVENT = JoinDetails.Found(
     Event(
@@ -273,7 +290,7 @@ abstract class StatusScreenTour {
 
     /** A real container over plain cells, its every state shown through [ui]. */
     private inner class Rig(
-        config: EventConfig? = null,
+        config: Membership? = null,
         permission: PhotoGrant = PhotoGrant.FULL,
         refusal: VersionRefusal? = null,
         deviceRefusal: DeviceRefusal? = null,
@@ -300,12 +317,28 @@ abstract class StatusScreenTour {
         )
 
         val host = StatusContainerHost(
-            StatusSources(
-                sync = MutableStateFlow(SharingProgressRead.NotYetRead),
-                permission = MutableStateFlow(permission),
-                config = this.config,
-                build = BuildStanding(refusal = MutableStateFlow(refusal), store = Store("App Store", STORE_URL)),
-                verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
+            queries = ScreenQueries(
+                sharing = MutableStateFlow(SharingProgressRead.NotYetRead),
+                receiving = MutableStateFlow(DownloadProgress(0, 0)),
+                grant = MutableStateFlow(permission),
+                membership = this.config,
+                key = EventKeyView(
+                    presence = MutableStateFlow(KeyPresence.NotNeeded),
+                    invite = object : InviteRead {
+                        override fun invite(): String? =
+                            this@Rig.config.value?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
+                    },
+                ),
+                invites = MutableStateFlow(null),
+                creation = MutableStateFlow(RequestStatus.Idle),
+                versionRefusal = MutableStateFlow(refusal),
+                verification = DeviceVerification(
+                    attested = MutableStateFlow(true),
+                    refusal = MutableStateFlow(deviceRefusal),
+                    fault = MutableStateFlow(null),
+                    service = MutableStateFlow(null),
+                ),
+                foreground = MutableStateFlow(ForegroundReturn.NONE),
                 network = object : NetworkStatusQuery {
                     override val access: StateFlow<NetworkAccess> = MutableStateFlow(
                         NetworkAccess.Online(restricted = false),
@@ -355,7 +388,12 @@ abstract class StatusScreenTour {
             joinDetails = object : ScreenLookup<InviteLink, JoinDetails>("test", Dispatchers.Unconfined) {
                 override suspend fun read(arg: InviteLink): JoinDetails = details(arg.event)
             },
-            diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
+            facts = BuildFacts(
+                store = Store("App Store", STORE_URL),
+                reportDestination = ReportDestination.DEVELOPER,
+                label = BuildLabel.UNKNOWN,
+                albumContents = AlbumContents.SharedAndReceived,
+            ),
             reduction = Dispatchers.Default,
         )
     }

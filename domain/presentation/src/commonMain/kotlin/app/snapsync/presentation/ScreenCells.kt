@@ -47,14 +47,13 @@ internal interface IntentRunner {
 
 /**
  * The screen's own cells, shared by its parts: what it holds beside what it observes ([local]), the join in progress
- * ([pending]), the ids of its requests, how its work runs ([runner]) and the gate's log.
+ * ([pending]), the ids of its requests and how its work runs ([runner]).
  */
 internal class ScreenCells(
     val local: MutableStateFlow<Local>,
     val pending: MutableStateFlow<PendingJoin?>,
     val ids: RequestIds,
     val runner: IntentRunner,
-    val log: (String) -> Unit,
     private val scope: CoroutineScope,
 ) {
     private var invalidLinkClear: Job? = null

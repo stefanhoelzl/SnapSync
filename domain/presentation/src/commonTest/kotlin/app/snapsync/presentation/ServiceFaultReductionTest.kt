@@ -88,23 +88,21 @@ class ServiceFaultReductionTest {
         config: TestMembership? = MEMBERSHIP,
         snapshot: SharingProgressRead = WAITING,
         creation: RequestStatus<CreateResult> = Creating.Idle,
-        pending: PendingJoin? = null,
         load: suspend (String) -> JoinDetails = { FOUND },
         commit: suspend () -> JoinCommit = { JoinCommit.Committed },
     ) = TestCommands(commitJoin = { commit() }).let { commands ->
-        StatusContainerHost(
-            StatusSources(
+        testHost(
+            testQueries(
                 FixedSync(snapshot),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(config).held(),
                 creation = MutableStateFlow(creation),
-                verification = DeviceVerification(
+                verification = testVerification(
                     MutableStateFlow(trust.attested),
                     MutableStateFlow(trust.refusal),
                     MutableStateFlow(trust.attestFault),
                     MutableStateFlow(trust.service),
                 ),
-                pending = MutableStateFlow(pending),
                 requests = commands.requests.flows,
                 network = AlwaysOnline,
                 mobileData = AlwaysAllowed,
@@ -114,9 +112,14 @@ class ServiceFaultReductionTest {
             commands = commands.door,
             shareableCount = noQueries,
             joinDetails = joinDetails(load),
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
+    }
+
+    /** The join screen opened on an invite to [EVENT_ID], its details loaded and ready to confirm. */
+    private suspend fun StatusContainerHost.opened() {
+        onInvite(invited(testEventId(EVENT_ID), null))
+        awaitJoin { it.phase.step == JoinPhase.Detailed.Step.Ready }
     }
 
     private fun StatusContainerHost.health(): SyncHealth = assertIs<Layer.Joined>(screen.value.layer).health
@@ -221,17 +224,8 @@ class ServiceFaultReductionTest {
 
     @Test
     fun a_join_the_service_failed_says_which_way() = runTest {
-        val ready = PendingJoin(
-            testEventId(EVENT_ID),
-            JoinProgress.Detailed(DETAILS, JoinPhase.Detailed.Step.Ready),
-            loaded = (FOUND as JoinDetails.Found).event.copy(id = testEventId(EVENT_ID)),
-        )
-        val failed = host(
-            backgroundScope,
-            config = null,
-            pending = ready,
-            commit = { JoinCommit.Failed(ServiceFault.TROUBLE) },
-        )
+        val failed = host(backgroundScope, config = null, commit = { JoinCommit.Failed(ServiceFault.TROUBLE) })
+        failed.opened()
         failed.onConfirmJoin()
         failed.awaitJoin { it.phase.step == JoinPhase.Detailed.Step.CommitFailed && it.service == ServiceNotice.TROUBLE }
 
@@ -239,9 +233,9 @@ class ServiceFaultReductionTest {
             backgroundScope,
             Verified(attestFault = ServiceFault.UPDATING),
             config = null,
-            pending = ready,
             commit = { JoinCommit.Unverified },
         )
+        unproved.opened()
         unproved.onConfirmJoin()
         unproved.awaitJoin { it.phase.step == JoinPhase.Detailed.Step.CommitFailed && it.service == ServiceNotice.UPDATING }
     }
@@ -271,13 +265,15 @@ class ServiceFaultReductionTest {
         }
     }
 
-    /** A join screen whose details load failed, and the loads [answers] give in turn. */
-    private fun failedLoad(timers: Timers, loads: MutableList<Int>, answers: (Int) -> JoinDetails) = host(
+    /** A join screen opened on an invite, its details loaded by the answers [answers] give in turn. */
+    private suspend fun opened(timers: Timers, loads: MutableList<Int>, answers: (Int) -> JoinDetails) = host(
         timers.scope,
         config = null,
-        pending = PendingJoin(testEventId(EVENT_ID), JoinProgress.LoadFailed),
         load = { answers(loads.size).also { loads += loads.size } },
-    )
+    ).also {
+        it.onInvite(invited(testEventId(EVENT_ID), null))
+        timers.advanceBy(0)
+    }
 
     private suspend fun Timers.retried(host: StatusContainerHost) {
         host.onRetryLoad().join()
@@ -285,20 +281,6 @@ class ServiceFaultReductionTest {
     }
 
     private val updating = JoinDetails.Unanswered(ServiceFault.UPDATING, retryAfterSeconds = 60)
-
-    @Test
-    fun a_load_during_an_update_loads_again_once_the_service_s_wait_has_passed() = onTimers { timers ->
-        val loads = mutableListOf<Int>()
-        val host = failedLoad(timers, loads) { if (it == 0) updating else FOUND }
-        timers.retried(host)
-        host.awaitJoin { it.phase == JoinPhase.LoadFailed && it.service == ServiceNotice.UPDATING }
-
-        timers.advanceBy(59)
-        assertEquals(1, loads.size, "not before the service's suggested wait")
-        timers.advanceBy(1)
-        host.awaitJoin { it.phase is JoinPhase.Detailed }
-        assertEquals(2, loads.size)
-    }
 
     @Test
     fun an_invite_opened_during_an_update_loads_again_once_the_service_s_wait_has_passed() = onTimers { timers ->
@@ -320,8 +302,7 @@ class ServiceFaultReductionTest {
     @Test
     fun a_retry_during_an_update_waits_afresh_and_loads_once() = onTimers { timers ->
         val loads = mutableListOf<Int>()
-        val host = failedLoad(timers, loads) { if (it < 2) updating else FOUND }
-        timers.retried(host)
+        val host = opened(timers, loads) { if (it < 2) updating else FOUND }
         timers.advanceBy(30)
         timers.retried(host)
         assertEquals(2, loads.size, "the member's retry")
@@ -336,8 +317,7 @@ class ServiceFaultReductionTest {
     @Test
     fun a_join_screen_left_during_an_update_loads_nothing_more() = onTimers { timers ->
         val loads = mutableListOf<Int>()
-        val host = failedLoad(timers, loads) { updating }
-        timers.retried(host)
+        val host = opened(timers, loads) { updating }
         host.onCancelJoin().join()
         timers.advanceBy(120)
         assertEquals(1, loads.size)

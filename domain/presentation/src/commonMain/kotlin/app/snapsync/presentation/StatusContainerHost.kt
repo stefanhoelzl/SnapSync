@@ -1,6 +1,5 @@
 package app.snapsync.presentation
 
-import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
@@ -10,14 +9,13 @@ import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.program.InvalidProgramState
-import app.snapsync.domain.report.BuildLabel
-import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.RenameRequest
 import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.inbound.Log
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
@@ -50,84 +48,74 @@ import org.orbitmvi.orbit.OrbitContainerHost
 import org.orbitmvi.orbit.orbitContainer
 
 class StatusContainerHost(
-    // Every read-model this container reduces over (see [StatusSources]). Bundled because they are one
-    // KIND of thing — values observed and folded into `UiState` — while what the container INVOKES
-    // ([commands], [queries]) and what it EMITS ([StatusDiagnostics]) stay separate.
-    sources: StatusSources,
-    private val scope: CoroutineScope,
-    // The lane presentation reduces on — the CPU lane (`docs/architecture.md`, "Concurrency and failure"): Orbit's event
-    // loop, kept off the composition lane so a blocked platform call there never freezes the screen. Named by the
-    // composition, never left to Orbit's default, so a host that must see every task (the control channel's JVM host)
-    // can hand its own.
-    private val reduction: CoroutineDispatcher,
-    // Supplies "now" as a cutoff string and converts a local pick.
-    // Injected — with NO default: a default would have to read the system clock here, which the
-    // through-ports law forbids. Production wires
-    // the `Clock` port (now, and the zone read once); tests pass a fixed instant and zone.
-    private val cutoffFormatter: CutoffFormatter,
-    // The user-tap **command bundle** (`docs/architecture.md`, "Commands cross one door"):
-    // leave / create / commitJoin / share / requestAccess / openSettings — `model/` vocabulary whose
-    // live instance is built only in `compose/` (`AppCore.userCommands`) — this container fires
-    // commands solely through it and never references a feature command (or `ports/`, or an entry point)
-    // directly; the armed presentation gate enforces the import law. Required: a host states every
-    // command it wires, so a forgotten one is a compile error rather than an inert tap.
-    //
-    // NB the share-range rule is applied on the far side of the `commitJoin` command, by the join's use case — this
-    // container passes the chosen range through raw, so no entry path can reach a membership by forgetting it here.
-    private val commands: UserCommands,
+    // Everything this container reduces over (see [ScreenQueries]): values observed and folded into `UiState`, while
+    // what the container INVOKES — its lookups and its commands — and the build's constants stay apart.
+    queries: ScreenQueries,
     // The screen's lookups (`docs/patterns.md`, "Lookups"): reads this container asks and reduces on, each read on the
     // composition lane, never on the thread that asked. How many of the member's photos a range would share, `null`
     // when no count can be stated…
     private val shareableCount: ScreenLookup<CaptureRange, Int?>,
     // …and the join gate's read of an invite's event.
     private val joinDetails: ScreenLookup<InviteLink, JoinDetails>,
-    // The two out-channels (see [StatusDiagnostics]): the dev-path log and the intent-error seam.
-    diagnostics: StatusDiagnostics,
-    // Where a bug report goes on this build — a constant the composition states,
-    // carried on every `UiState` so the sheet says it. Defaulted to the distributed build's answer.
-    private val reportDestination: ReportDestination = ReportDestination.DEVELOPER,
-    // Which build this is — the app menu's footer, a constant the composition states.
-    private val build: BuildLabel = BuildLabel.UNKNOWN,
-    // What the event album holds on this phone, read from the photo library: the composition reads
-    // it once and the surfaces' album note follows. Defaulted to the iPhone's.
-    private val albumContents: AlbumContents = AlbumContents.SharedAndReceived,
+    // The user-tap **command door** (`docs/architecture.md`, "Commands cross one door"): every command an entry point,
+    // fired and never awaited. Required: a host states every command it wires, so a forgotten one is a compile error
+    // rather than an inert tap.
+    //
+    // NB the share-range rule is applied on the far side of the join command, by the join's use case — this container
+    // passes the chosen range through raw, so no entry path can reach a membership by forgetting it here.
+    private val commands: UserCommands,
+    // The build's constants the screen states ([BuildFacts]).
+    facts: BuildFacts,
+    // Supplies "now" as a cutoff string and converts a local pick. Injected — with NO default: a default would have to
+    // read the system clock here, which the through-ports law forbids. Production wires the `Clock` port (now, and the
+    // zone read once); tests pass a fixed instant and zone.
+    private val cutoffFormatter: CutoffFormatter,
+    private val scope: CoroutineScope,
+    // The lane presentation reduces on — the CPU lane (`docs/architecture.md`, "Concurrency and failure"): Orbit's event
+    // loop, kept off the composition lane so a blocked platform call there never freezes the screen. Named by the
+    // composition, never left to Orbit's default, so a host that must see every task (the control channel's JVM host)
+    // can hand its own.
+    private val reduction: CoroutineDispatcher,
 ) : OrbitContainerHost<ScreenModel, ScreenModel, Nothing> {
 
     // The bundles are unpacked into the names the body already uses. Grouping happens at the boundary,
     // where a caller has to read it; inside, each source keeps the name that says what it is.
-    private val syncSource = sources.sync
-    private val permission = sources.permission
-    private val membership = sources.membership
-    private val creationStatus = sources.creation
-    private val invites = sources.invites
-    private val downloadSource = sources.download
-    private val attested = sources.verification.attested
-    private val refusal = sources.verification.refusal
-    private val attestFault = sources.verification.fault
-    private val serviceFault = sources.verification.service
+    private val syncSource = queries.sharing
+    private val permission = queries.grant
+    private val membership = queries.membership
+    private val creationStatus = queries.creation
+    private val invites = queries.invites
+    private val downloadSource = queries.receiving
+    private val attested = queries.verification.attested
+    private val refusal = queries.verification.refusal
+    private val attestFault = queries.verification.fault
+    private val serviceFault = queries.verification.service
 
     // The attestation's verdict and the service's condition travel as one input, so the reduction below keeps its arity.
     private val trust: Flow<Trust> =
         combine(attested, refusal, attestFault, serviceFault) { a, r, f, s -> Trust(a, r, f, s) }
-    private val pending = sources.pending
-    private val versionRefusal = sources.build.refusal
-    private val network = sources.network
-    private val mobileDataQuery = sources.mobileData
+
+    /** The join in progress: the gate's own cell — set by an opened invite, cleared by a commit or a cancel. */
+    private val pending = MutableStateFlow<PendingJoin?>(null)
+    private val versionRefusal = queries.versionRefusal
+    private val network = queries.network
+    private val mobileDataQuery = queries.mobileData
 
     /** The choice the menu's switch shows: read as the screen is built, then moved only by a change's answer. */
     private val mobileData = MutableStateFlow(mobileDataQuery.current() == MobileDataChoice.ALLOWED)
-    private val requests = sources.requests
+    private val requests = queries.requests
 
     /** The ids of this screen's requests. */
     private val ids = RequestIds()
     private val renameFlow: StateFlow<RequestStatus<RenameResult>> = requests.rename
-    private val store = sources.build.store
-    private val foreground = sources.foreground
-    private val keyPresence = sources.eventKey.presence
-    private val inviteRead = sources.eventKey.invite
-
-    private val log = diagnostics.log
-    private val onIntentError = diagnostics.onIntentError
+    private val store = facts.store
+    private val reportDestination = facts.reportDestination
+    private val build = facts.label
+    private val albumContents = facts.albumContents
+    private val foreground = queries.foreground
+    private val keyPresence = queries.key.presence
+    private val inviteRead = queries.key.invite
+    private val log = Log("StatusContainerHost")
 
     /** Resolves a form against an event window, and seeds a fresh one ([RangeResolver]). */
     private val ranges = RangeResolver(cutoffFormatter, albumContents)
@@ -153,7 +141,7 @@ class StatusContainerHost(
     }
 
     /** The screen's own cells, shared by its parts. */
-    private val cells = ScreenCells(local, pending, ids, runner, log, scope)
+    private val cells = ScreenCells(local, pending, ids, runner, scope)
 
     /** The join gate ([JoinGate]): an opened invite, the event it names, a first join or a switch. */
     private val gate = JoinGate(
@@ -301,7 +289,7 @@ class StatusContainerHost(
                     // Nothing catches an InvalidProgramState: rethrown, it ends the process.
                     when (throwable) {
                         is InvalidProgramState -> throw throwable
-                        else -> onIntentError(throwable)
+                        else -> log.unlabelled.e("intent failed", cause = throwable)
                     }
                 }
             },

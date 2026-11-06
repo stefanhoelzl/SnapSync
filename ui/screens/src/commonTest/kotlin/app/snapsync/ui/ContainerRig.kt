@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Encryption
@@ -29,6 +30,7 @@ import app.snapsync.domain.event.EventNameVerdict
 import app.snapsync.domain.event.EventRange
 import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
+import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
@@ -40,6 +42,8 @@ import app.snapsync.domain.membership.SwitchVerdict
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.report.BuildLabel
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
@@ -68,15 +72,14 @@ import app.snapsync.format.TimestampText
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
-import app.snapsync.presentation.BuildStanding
+import app.snapsync.presentation.BuildFacts
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
 import app.snapsync.presentation.EventKeyView
 import app.snapsync.presentation.PlatformCommands
 import app.snapsync.presentation.RequestStatusFlows
+import app.snapsync.presentation.ScreenQueries
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusDiagnostics
-import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.UserCommand
 import app.snapsync.presentation.UserCommands
 import app.snapsync.presentation.onIntent
@@ -89,6 +92,7 @@ import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.mobiledata.MobileDataStatuses
 import app.snapsync.query.network.NetworkStatusQuery
+import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.wheel_end_hour
@@ -163,20 +167,28 @@ internal class ContainerRig(
     )
 
     val host = StatusContainerHost(
-        StatusSources(
-            sync = MutableStateFlow(SharingProgressRead.NotYetRead),
-            permission = this.permission,
+        queries = ScreenQueries(
+            sharing = MutableStateFlow(SharingProgressRead.NotYetRead),
+            receiving = MutableStateFlow(DownloadProgress(0, 0)),
+            grant = this.permission,
             membership = this.config,
             // The invite as the query reads it for a plain event: the joined one's, none while none is joined.
-            eventKey = EventKeyView(
+            key = EventKeyView(
+                presence = MutableStateFlow(KeyPresence.NotNeeded),
                 invite = object : InviteRead {
                     override fun invite(): String? =
                         this@ContainerRig.config.value?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
                 },
             ),
+            invites = MutableStateFlow(null),
             creation = creation,
-            build = BuildStanding(refusal = MutableStateFlow(refusal), store = Store("App Store", RIG_STORE_URL)),
-            verification = DeviceVerification(refusal = MutableStateFlow(deviceRefusal)),
+            versionRefusal = MutableStateFlow(refusal),
+            verification = DeviceVerification(
+                attested = MutableStateFlow(true),
+                refusal = MutableStateFlow(deviceRefusal),
+                fault = MutableStateFlow(null),
+                service = MutableStateFlow(null),
+            ),
             network = object : NetworkStatusQuery {
                 override val access: StateFlow<NetworkAccess> = MutableStateFlow(network)
                 override val returned: Flow<Unit> = emptyFlow()
@@ -248,7 +260,12 @@ internal class ContainerRig(
         joinDetails = object : ScreenLookup<InviteLink, JoinDetails>("test", Dispatchers.Unconfined) {
             override suspend fun read(arg: InviteLink): JoinDetails = details(arg.event.value)
         },
-        diagnostics = StatusDiagnostics(log = {}, onIntentError = {}),
+        facts = BuildFacts(
+            store = Store("App Store", RIG_STORE_URL),
+            reportDestination = ReportDestination.DEVELOPER,
+            label = BuildLabel.UNKNOWN,
+            albumContents = AlbumContents.SharedAndReceived,
+        ),
         reduction = Dispatchers.Default,
     )
 

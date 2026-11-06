@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.EventKey
 import app.snapsync.testids.testEventId
+import app.snapsync.ui.state.JoinPhase
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -31,6 +32,20 @@ class PendingJoinTest {
         assertEquals(
             "PendingJoin(eventId=${testEventId("event-1")}, phase=Loading, key=null)",
             PendingJoin(testEventId("event-1"), JoinProgress.Loading).toString(),
+        )
+    }
+
+    @Test
+    fun `each phase with no event shows as itself`() {
+        assertEquals(
+            listOf(JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed, JoinPhase.Closed, JoinPhase.WrongLink),
+            listOf(
+                JoinProgress.Loading,
+                JoinProgress.NotFound,
+                JoinProgress.LoadFailed,
+                JoinProgress.Closed,
+                JoinProgress.WrongLink,
+            ).map { it.shows },
         )
     }
 }

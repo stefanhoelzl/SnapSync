@@ -170,12 +170,12 @@ private fun gateHost(
     config: TestMembership? = null,
     openLink: (String) -> Unit = {},
 ) = TestCommands(openLink = openLink).let { commands ->
-    StatusContainerHost(
-        StatusSources(
+    testHost(
+        testQueries(
             sync = MutableStateFlow(SharingProgressRead.NotYetRead),
             permission = MutableStateFlow(PhotoGrant.FULL),
             membership = MutableStateFlow(config?.held()),
-            build = BuildStanding(refusal = refusal, store = store),
+            versionRefusal = refusal,
             requests = commands.requests.flows,
             network = AlwaysOnline,
             mobileData = AlwaysAllowed,
@@ -185,7 +185,7 @@ private fun gateHost(
         cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
         shareableCount = noQueries,
         joinDetails = unanswered,
-        diagnostics = testDiagnostics(),
+        facts = testFacts(store = store),
         reduction = Dispatchers.Default,
     )
 }

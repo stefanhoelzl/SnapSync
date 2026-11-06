@@ -242,10 +242,6 @@ internal class TestCommands(
     )
 }
 
-/** Diagnostics that go nowhere unless a test is about them. */
-internal fun testDiagnostics(log: (String) -> Unit = {}, onIntentError: (Throwable) -> Unit = {}) =
-    StatusDiagnostics(log = log, onIntentError = onIntentError)
-
 /** A sync snapshot that holds [status] and never moves — for a test about something other than the snapshot. */
 internal fun FixedSync(status: SharingProgressRead): StateFlow<SharingProgressRead> = MutableStateFlow(status)
 

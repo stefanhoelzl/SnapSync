@@ -78,8 +78,8 @@ class JoinedLayerTest {
         permission: PhotoGrant = PhotoGrant.FULL,
         commands: TestCommands = TestCommands(),
         configFlow: MutableStateFlow<TestMembership?> = MutableStateFlow(config),
-    ) = StatusContainerHost(
-        StatusSources(
+    ) = testHost(
+        testQueries(
             FixedSync(snapshot),
             MutableStateFlow(permission),
             configFlow.held(),
@@ -94,7 +94,6 @@ class JoinedLayerTest {
         commands = commands.door,
         shareableCount = noQueries,
         joinDetails = unanswered,
-        diagnostics = testDiagnostics(),
         reduction = Dispatchers.Default,
     )
 

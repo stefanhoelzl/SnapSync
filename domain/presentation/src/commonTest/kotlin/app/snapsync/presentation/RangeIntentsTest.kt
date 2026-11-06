@@ -299,8 +299,8 @@ class RangeIntentsTest {
             CreateResult.Failed(ServiceFault.UNREACHABLE)
         },
     ).let { commands ->
-        StatusContainerHost(
-            StatusSources(
+        testHost(
+            testQueries(
                 MutableStateFlow(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(null),
@@ -321,7 +321,6 @@ class RangeIntentsTest {
                 )
             },
             shareableCount = noQueries,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
     }
