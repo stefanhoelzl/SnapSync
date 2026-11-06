@@ -220,7 +220,7 @@ private fun CreateActionsBar(state: Layer.CreateEvent, callbacks: CreateCallback
         val passing = state.passing
         if (passing != null) {
             // A word on what the member just did, above the network and the failure for its few seconds: both return.
-            StatusHint(passing.text(), isError = true)
+            StatusHint(passing.text())
         } else if (network != null) {
             // The failure an earlier attempt left is kept by the reduction and returns with the network.
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {

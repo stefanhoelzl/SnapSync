@@ -11,12 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.AppInvitationHeaderLoading
 import app.snapsync.ui.components.AppJoinProgress
 import app.snapsync.ui.components.AppNetworkNotice
 import app.snapsync.ui.components.AppNoticeCard
+import app.snapsync.ui.components.AppPassingBanner
 import app.snapsync.ui.components.JoinNoticeFailed
 import app.snapsync.ui.components.JoinNoticeInvalid
 import app.snapsync.ui.components.JoinNoticeOffline
@@ -65,7 +65,7 @@ internal fun JoiningEventScreen(
         // A rejected event link that arrived while this surface is open (the
         // self-clearing "not valid" message shows on whatever screen the user is on). Above the phase for the
         // joined layer's reason — it is about what the user JUST DID — and it changes nothing below.
-        layer.notice?.let { AppErrorBanner(it.text()) }
+        layer.notice?.let { AppPassingBanner(it.text()) }
         // A missing network — without one, the join screen waits for one — is said above the
         // phase, and every step that would reach the backend — Join, a retried join, a retried load — waits.
         val network = layer.network
