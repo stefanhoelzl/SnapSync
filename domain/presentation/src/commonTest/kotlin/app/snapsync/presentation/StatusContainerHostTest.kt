@@ -9,6 +9,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
@@ -43,6 +44,7 @@ import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import app.snapsync.ui.state.step
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -54,6 +56,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -303,6 +306,8 @@ private fun movableCutoffFormatter(clock: MovableClock) =
 private fun host(
     source: FakeSharingProgress,
     scope: CoroutineScope,
+    // The reduction lane: a test that moves time hands the test's own, so the screen's clock follows it.
+    reduction: CoroutineDispatcher = Dispatchers.Default,
     permission: FakePermissionSource = FakePermissionSource(),
     requester: SpyRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
@@ -332,7 +337,7 @@ private fun host(
     commands = commands.door,
     cutoffFormatter = fixedCutoffFormatter(),
     shareableCount = noQueries,
-    reduction = Dispatchers.Default,
+    reduction = reduction,
 )
 
 /** A first join (config absent) whose details load succeeds — the gate the explainer is decided in. */
@@ -501,6 +506,39 @@ class StatusContainerHostTest {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
+    fun `away from the front the clock stands still, and a return reads it afresh`() = runTest {
+        val clock = MovableClock(NOW_CUTOFF.at)
+        val config = FakeConfig(notStartedConfig())
+        val inFront = MutableStateFlow(InFront.AWAY)
+        val host = testHost(
+            testQueries(
+                FakeSharingProgress(snapshot(completed = 0, total = 0)),
+                FakePermissionSource(PhotoGrant.FULL).permission,
+                config.config,
+                eventKey = config.keys,
+                inFront = inFront,
+            ),
+            backgroundScope,
+            cutoffFormatter = movableCutoffFormatter(clock),
+            reduction = StandardTestDispatcher(testScheduler),
+        )
+        host.testWithInternalState(this) {
+            runOnCreate()
+            runCurrent()
+            assertEquals(SyncHealth.NotStarted, (containerHost.screen.value.layer as Layer.Joined).health)
+            // The start passes while the app is away: no tick reads it.
+            clock.instant = Instant.parse("2026-07-09T18:00:01Z")
+            advanceTimeBy(61_000)
+            assertEquals(SyncHealth.NotStarted, (containerHost.screen.value.layer as Layer.Joined).health)
+
+            inFront.value = InFront.IN_FRONT
+            advanceTimeBy(1_000)
+            assertEquals(SyncHealth.InSync, (containerHost.screen.value.layer as Layer.Joined).health)
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
     fun `the foreground tick retires the clock line when the start passes`() = runTest {
         // NotStarted is the one health driven by WALL-CLOCK time, not the ledger — no snapshot emission
         // would ever retire it. Without the tick the clock line would sit there past the start until
@@ -521,7 +559,7 @@ class StatusContainerHostTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            reduction = Dispatchers.Default,
+            reduction = StandardTestDispatcher(testScheduler),
         )
         host.testWithInternalState(this) {
             runOnCreate()
@@ -1621,7 +1659,13 @@ class StatusContainerHostTest {
         // shell renders `transientError` verbatim and decides nothing.
         val source = FakeSharingProgress(SharingProgressRead.NotYetRead)
         val permission = FakePermissionSource(PhotoGrant.FULL)
-        val h = host(source, backgroundScope, permission = permission, configFake = FakeConfig(null))
+        val h = host(
+            source,
+            backgroundScope,
+            StandardTestDispatcher(testScheduler),
+            permission,
+            configFake = FakeConfig(null),
+        )
         // Driven through the orbit-test fixture so the intent event loop runs on THIS test's
         // virtual scheduler (its dispatcherOverride) — Orbit's public SettingsBuilder cannot pin
         // it, and calling the intent on the bare container WAS the twice-measured ios-test flake
@@ -1755,6 +1799,7 @@ class StatusContainerHostTest {
         val h = host(
             FakeSharingProgress(SharingProgressRead.NotYetRead),
             backgroundScope,
+            StandardTestDispatcher(testScheduler),
             permission = FakePermissionSource(PhotoGrant.FULL),
             configFake = FakeConfig(SAMPLE_CONFIG),
         )
@@ -2488,7 +2533,7 @@ class StatusContainerHostJoinedFactsTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            reduction = Dispatchers.Default,
+            reduction = StandardTestDispatcher(testScheduler),
         )
         fun settled(timing: EventTiming) =
             joined(SyncHealth.InSync, config = running, counts = counts(3 to 3), timing = timing)

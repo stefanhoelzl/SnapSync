@@ -1,9 +1,11 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.RenameResult
@@ -39,9 +41,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.OrbitContainer
 import org.orbitmvi.orbit.OrbitContainerHost
@@ -113,6 +117,7 @@ class StatusContainerHost(
     private val build = facts.label
     private val albumContents = facts.albumContents
     private val foreground = queries.foreground
+    private val inFront = queries.inFront
     private val keyPresence = queries.key.presence
     private val inviteRead = queries.key.invite
     private val log = Log("StatusContainerHost")
@@ -216,46 +221,37 @@ class StatusContainerHost(
         ranges.resolve(form, startsAt, endsAt, local.value.shareCount)
 
     /**
-     * "Now", re-emitted every minute **only** while the joined event has not ended: the not-started line and the dates
-     * line's countdown are the two things it moves.
+     * "Now", re-emitted whenever a clock-driven line can next change ([nextClockChange]) — and only while the app is in
+     * front: the not-started line, the dates line's countdown, the "guests can join until" line and the device's today
+     * are what it moves. Each return to the front starts it afresh, from a fresh "now".
      *
-     * `SyncHealth.NotStarted` is the one health that depends on **wall-clock time** rather than the
-     * ledger, so no snapshot emission would ever retire it — without this, the clock line would sit there
-     * past the start until something unrelated happened to re-emit.
+     * `SyncHealth.NotStarted` is the one health that depends on **wall-clock time** rather than the stores, so no
+     * snapshot emission would ever retire it — without this, the clock line would sit there past the start until
+     * something unrelated happened to re-emit.
      *
-     * It **self-terminates**: the loop breaks the moment `now >= startsAt`, so a started event carries no
-     * timer for the rest of its life, and an event with no config carries none at all. And because a
-     * backgrounded iOS app is *suspended* — its coroutines do not run — a `delay`-based ticker on the
-     * container scope is already foreground-only in practice; no lifecycle hook is needed to get that.
-     *
-     * Up to a minute of staleness is accepted: nothing of the member's can upload before the start in any
-     * case (the floor guarantees it), so a briefly-late transition costs the label and nothing else.
+     * It waits on the reduction lane ([reduction]), so it keeps the clock the process keeps: a host whose lanes run on a
+     * clock of its own (the control channel's JVM host) moves this line when that clock moves.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val nowTick: Flow<Timestamp> =
-        membership
-            .map { held -> held?.let { it.event.range } }
+        combine(membership.map { held -> held?.let { it.event } }, inFront) { event, front -> event to front }
             .distinctUntilChanged()
-            .flatMapLatest { bounds ->
-                flow {
-                    while (true) {
-                        val now = cutoffFormatter.nowCutoff()
-                        emit(now)
-                        if (bounds == null) return@flow
-                        val (startsAt, endsAt) = bounds
-                        // Two wall-clock things depend on this tick: NotStarted (until `startsAt`) and the
-                        // dates line's countdown — "starts in …", "ends in …", then "ended" (until `endsAt`).
-                        // Keep ticking while EITHER boundary is still ahead; once both have passed, no
-                        // clock-driven line can change, so the timer self-terminates. Canonical fixed-width
-                        // UTC ⇒ lexicographic order IS chronological.
-                        // (A backgrounded iOS app is suspended, so this is foreground-only in practice.)
-                        val startPassed = now >= startsAt.at
-                        val endPassed = now >= endsAt.at
-                        if (startPassed && endPassed) return@flow
-                        delay(NOT_STARTED_TICK_MILLIS)
-                    }
-                }
-            }
+            .flatMapLatest { (event, front) -> clockOf(event, front) }
+
+    /** "Now", and then at each next change while [front] — none at all without an [event]. */
+    private fun clockOf(event: Event?, front: InFront): Flow<Timestamp> =
+        if (event == null || front == InFront.AWAY) flowOf(cutoffFormatter.nowCutoff()) else ticking(event)
+
+    /** "Now", and then at each next change of [event]'s clock-driven lines. */
+    private fun ticking(event: Event): Flow<Timestamp> = flow {
+        emit(cutoffFormatter.nowCutoff())
+        while (true) {
+            val now = cutoffFormatter.nowCutoff()
+            // The wait alone runs on the reduction lane, whose clock is the process's; the line is emitted where it was asked.
+            withContext(reduction) { delay(nextClockChange(event, now, cutoffFormatter).at - now.at) }
+            emit(cutoffFormatter.nowCutoff())
+        }
+    }
 
     override val container: OrbitContainer<ScreenModel, ScreenModel, Nothing> =
         scope.orbitContainer(
@@ -533,10 +529,3 @@ class StatusContainerHost(
         }
     }
 }
-
-/**
- * How often the joined screen re-checks the wall clock. One minute: the
- * dates line's finest unit is a minute ("ends in 40 min"), so a finer tick would buy nothing visible, and
- * nothing of the member's can upload before the start regardless.
- */
-private const val NOT_STARTED_TICK_MILLIS = 60_000L

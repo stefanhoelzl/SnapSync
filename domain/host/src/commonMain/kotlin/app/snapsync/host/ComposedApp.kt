@@ -217,4 +217,5 @@ private fun screenQueriesOf(core: AppCore): ScreenQueries = ScreenQueries(
     network = core.network.query,
     mobileData = core.mobileDataQuery,
     foreground = core.foregroundReturns,
+    inFront = core.inFront,
 )

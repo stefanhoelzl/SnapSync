@@ -8,10 +8,13 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.ui.state.CoarseDuration
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.periodUntil
+import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Duration.Companion.days
@@ -71,6 +74,10 @@ class CutoffFormatter(
      * instants rather than local values needs no zone.
      */
     fun nowCutoff(): Timestamp = toCutoff(nowLocal())
+
+    /** The first local midnight after [after], in this device's zone: where the joined screen's "today" next changes. */
+    fun nextMidnight(after: Timestamp): Timestamp =
+        Timestamp.of(after.at.toLocalDateTime(zone).date.plus(1, DateTimeUnit.DAY).atStartOfDayIn(zone))
 
     /**
      * The latest end an event starting at [from] may have: [from] plus the

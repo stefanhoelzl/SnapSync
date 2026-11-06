@@ -28,6 +28,7 @@ import app.snapsync.data.version.AppVersionGate
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
@@ -272,6 +273,9 @@ class AppCore internal constructor(
 
     /** [foreground]'s returns, for readers outside the core (the status host), which see no service type. */
     val foregroundReturns: StateFlow<ForegroundReturn> get() = foreground.returns
+
+    /** Whether the app is in front now, for the status host: its clock-driven lines tick only then. */
+    val inFront: StateFlow<InFront> get() = foreground.inFront
 
     /** The app's own memory readings, taken while it settles in the background. */
     internal val footprints: FootprintSampler by lazy {

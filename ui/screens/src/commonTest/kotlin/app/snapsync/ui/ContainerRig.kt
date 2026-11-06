@@ -32,6 +32,7 @@ import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.foreground.ForegroundReturn
+import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinCommit
@@ -197,6 +198,7 @@ internal class ContainerRig(
                 override val returned: Flow<Unit> = emptyFlow()
             },
             foreground = foreground,
+            inFront = MutableStateFlow(InFront.IN_FRONT),
             mobileData = object : MobileDataQuery {
                 override fun current(): MobileDataChoice = MobileDataChoice.ALLOWED
                 override val changes = mobileDataStatuses.change.status
