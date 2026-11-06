@@ -19,6 +19,7 @@ import app.snapsync.application.receiving.ReportReceivedPosition
 import app.snapsync.application.receiving.SettleInterruptedImports
 import app.snapsync.application.receiving.SweepUnclaimedStaging
 import app.snapsync.application.receiving.WithholdRecognition
+import app.snapsync.application.sharing.CountOwnPhotos
 import app.snapsync.data.sharing.SelectionState
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.Membership
@@ -223,9 +224,23 @@ class SelectionRecognition(private val membership: MembershipQuery, private val 
     suspend fun before(selection: SelectionState.Read) = withhold(membership.state.value, selection)
 }
 
-/** The photo grant became usable: the received photos an earlier install left are recognised now. */
-class OnPhotoGrantUsable(private val runtime: Runtime, private val recognition: Recognition) {
-    suspend fun requested() = runtime.detached("OnPhotoGrantUsable") { on -> on.steps { run(recognition) } }
+/**
+ * The photo grant became usable: the received photos an earlier install left are recognised now — and then the total
+ * of what the member shares is counted, which waited on that recognition: without it, a grant given while the app is
+ * open would leave the status line on its neutral line until the next opening.
+ */
+class OnPhotoGrantUsable(
+    private val runtime: Runtime,
+    private val recognition: Recognition,
+    private val count: CountOwnPhotos,
+) {
+    @OptIn(EntryPointCall::class)
+    suspend fun requested() = runtime.detached("OnPhotoGrantUsable") { on ->
+        on.steps {
+            run(recognition)
+            isolated("total") { count() }
+        }
+    }
 }
 
 /**

@@ -186,7 +186,7 @@ internal class AppWork(private val core: AppCore) {
 
     /** The photo grant became usable: the received photos an earlier install left are recognised. */
     internal val photoGrantUsable: OnPhotoGrantUsable by lazy {
-        OnPhotoGrantUsable(core.runtime, recognitionBeforeImporting)
+        OnPhotoGrantUsable(core.runtime, recognitionBeforeImporting, core.status.count)
     }
 
     /** A selection about to be published withholds the recognition its unrecognised marked photos need. */
