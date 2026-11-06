@@ -2,6 +2,7 @@ package app.snapsync.compose
 
 import app.snapsync.entrypoints.HostAssembly
 import app.snapsync.entrypoints.OnBackground
+import app.snapsync.entrypoints.OnChangedElsewhere
 import app.snapsync.entrypoints.OnDownloadCompleted
 import app.snapsync.entrypoints.OnDownloadFinished
 import app.snapsync.entrypoints.OnDownloadSessionEvents
@@ -21,6 +22,7 @@ import app.snapsync.entrypoints.OnUploadSessionEvents
 import app.snapsync.entrypoints.Screen
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
+import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.DownloadHandlers
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.LifecycleHandlers
@@ -61,20 +63,23 @@ fun AppCore.inbound(host: HostAssembly) {
         LifecycleHandlers(
             OnForeground(
                 runtime,
+                serviceConditions,
                 foreground,
                 services.pushTokens,
                 work.prelude,
                 host,
                 network.foreground,
-                statusCountsPoller,
                 work.foregroundWork,
                 work.wakeWork,
             ),
-            OnBackground(runtime, foreground, network.foreground, statusCountsPoller, footprints),
+            OnBackground(runtime, foreground, network.foreground, footprints),
         ),
     )
     ports.pushNotifications.inbound(pushHandlers())
     ports.links.inbound(LinkHandlers(OnLink(runtime, linkOpening, openedLinks)))
+    // What the upload extension commits reaches the app's readers of that store. The app's alone: the extension
+    // registers no handler, and follows nothing.
+    ports.databases.inbound(DatabaseHandlers(OnChangedElsewhere(runtime, status.changedElsewhere)))
 }
 
 /**

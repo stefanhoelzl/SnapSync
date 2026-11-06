@@ -8,6 +8,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinChoice
@@ -24,7 +25,6 @@ import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventCreator
-import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus

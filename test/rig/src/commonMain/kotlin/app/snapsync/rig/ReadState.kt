@@ -12,12 +12,11 @@ import app.snapsync.ui.state.UiState
 /**
  * Read the whole snapshot: every field a flow's current value, or a fact of the build.
  *
- * Reading it is the screen's pull, as the phone's foreground poll pulls: the ledger-count read-model is refreshed first
- * (`ReadingLedgerCountsSource.refresh()`, the one consistent read the status source performs), so the reduced [UiState]
- * the next read returns reflects what the uploads did. The counts themselves are not reported.
+ * It reads nothing of its own: the screen it reports follows the stores while the app is in front, as on the phone, so
+ * the counts in [UiState] move then and stand still while the app is away. A caller that needs what landed with the
+ * app away reads the backend. The counts themselves are not reported.
  */
 internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: RigHooks): RigState {
-    core.ledgerCounts.refresh()
     val progress = core.downloadProgress.value
     // The invite URL and the inline create error live INSIDE the UI state, so the rig
     // reports exactly what the screen is rendering. The membership's own facts — its direction and capture range —

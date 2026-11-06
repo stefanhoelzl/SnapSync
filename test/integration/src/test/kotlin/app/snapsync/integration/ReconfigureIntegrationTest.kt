@@ -123,10 +123,12 @@ class ReconfigureIntegrationTest {
             })
         }
 
+        // Receiving off cancels the download under way, and the screen follows at once: nothing is left to receive.
         whenever { reconfigure(Choices(direction = Direction.UploadOnly)) }
         then {
             screen<Layer.Joined> { it.membership.shares && !it.membership.receives }
             event<WorldEvent.DownloadEnded> { it.outcome.how == TransferEnd.How.CANCELLED }
+            screen<Layer.Joined> { it.health == SyncHealth.InSync }
             settled { true }
         }
 
@@ -141,7 +143,7 @@ class ReconfigureIntegrationTest {
         then {
             never<WorldEvent.DownloadStarted>()
             never<WorldEvent.LibraryAssetCreated>() // receive-off cancels in-flight downloads; nothing imports
-            screen<Layer.Joined> { it.health == SyncHealth.InSync }
+            neverScreen<Layer.Joined> { it.health != SyncHealth.InSync }
         }
     }
 

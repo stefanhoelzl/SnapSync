@@ -1,40 +1,64 @@
 package app.snapsync.query.receiving
 
+import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.DownloadCounts
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.ReceivingCounts
+import app.snapsync.data.store.StoreChanges
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.receiving.AwaitedPhotos
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.scan
+import kotlinx.coroutines.flow.stateIn
 
 /**
- * The joined screen's download progress: `downloaded` — the joined event's received photos,
- * `total` — every foreign photo known for it that can still arrive, `inFlight` — those with a transfer under way, and
- * `awaited` — what the others declared beyond them ([AwaitedPhotos]). Scoped to the joined event: the store keeps
- * every past event's received rows as suppression handles, and unscoped "received" was every photo ever received.
+ * The joined screen's download progress: `downloaded` — the joined event's received photos, `total` — every foreign
+ * photo known for it that can still arrive, `inFlight` — those with a transfer under way, and `awaited` — what the
+ * others declared beyond them ([AwaitedPhotos]). Scoped to the joined event: the store keeps every past event's
+ * received rows as suppression handles, and unscoped "received" was every photo ever received.
  *
- * Seeded [DownloadProgress.UNREAD]: before the first [refresh] nothing has been read, and saying so stops the download
- * arrow from hiding — and the whole screen from settling — over counts nobody took. A failed read keeps the last good
- * value: it is still the most recent thing read, and never regresses to a placeholder or to a counted zero.
+ * Re-read in ONE statement, so it is never a torn composite, each time the download store changes or the membership
+ * does — only while the app is in front ([AppForeground.whileInFront]) and a screen follows it. Seeded
+ * [DownloadProgress.UNREAD]: before the first read nothing has been read, and saying so stops the download arrow from
+ * hiding — and the whole screen from settling — over counts nobody took. A failed read keeps the last good value: it is
+ * still the most recent thing read, and never regresses to a placeholder or to a counted zero.
  */
-class ReceivingProgress(private val counts: ReceivingCounts, private val membership: MembershipRepository) {
-    private val latest = MutableStateFlow(DownloadProgress.UNREAD)
+class ReceivingProgress(
+    private val counts: ReceivingCounts,
+    private val membership: MembershipRepository,
+    foreground: AppForeground,
+    private val changes: StoreChanges,
+    scope: CoroutineScope,
+) {
+    val progress: StateFlow<DownloadProgress> = foreground.whileInFront(looks())
+        .scan(DownloadProgress.UNREAD) { last, read -> read ?: last }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.WhileSubscribed(), DownloadProgress.UNREAD)
 
-    val progress: StateFlow<DownloadProgress> get() = latest.asStateFlow()
-
-    /** Read the counts again, in ONE statement, so the published progress can never be a torn composite. */
-    suspend fun refresh() = when (val read = membership.state.value) {
-        is MembershipRead.Joined -> counted(read.membership)
-        is MembershipRead.NotJoined, is MembershipRead.Unavailable -> Unit
+    /** One read per change; deferred, since the membership's first read opens the shared database. */
+    private fun looks(): Flow<DownloadProgress?> = flow {
+        emitAll(combine(membership.state, changes.looks) { held, _ -> held }.map(::read))
     }
 
-    private suspend fun counted(joined: Membership) = when (val read = counts.counts(joined.event.id)) {
-        is DownloadRead.Ok -> latest.value = progressOf(read.value, receives(joined))
-        is DownloadRead.Unavailable -> Unit
+    /** The counts now, or `null` when there are none to read or the store refused: the last read stands. */
+    private suspend fun read(held: MembershipRead): DownloadProgress? = when (held) {
+        is MembershipRead.Joined -> counted(held.membership)
+        is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
+    }
+
+    private fun counted(joined: Membership): DownloadProgress? = when (val read = counts.counts(joined.event.id)) {
+        is DownloadRead.Ok -> progressOf(read.value, receives(joined))
+        is DownloadRead.Unavailable -> null
     }
 
     private fun receives(joined: Membership): Boolean = when (joined) {

@@ -390,6 +390,26 @@ first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the
 
 ## 13. Queries and requests
 
+### The change feed
+
+A query that shows what a store holds **follows the store**, and reads nothing on its own account. Each database has
+one change signal (`StoreChanges`, `:domain:data`): `OwnedDatabase` builds its generated database over a driver that
+announces every commit this process makes (SQLDelight's notice to the driver's listeners — after a statement outside a
+transaction, after a commit, never for a rollback), and the app's `OnChangedElsewhere` announces what the upload
+extension committed, as the `Databases` port tells it. The signal carries no table: the other process's notice names
+only the database, so a reader re-reads in one statement. Several changes before a look are one look.
+
+A query built on it is a cold flow, started `WhileSubscribed` and followed only while the app is in front
+(`AppForeground.whileInFront`): away, a commit reads nothing; each return reads afresh — the foreground's safety net,
+since a suspended app hears no other process. Its first read of a store is deferred into the flow, so building the
+query opens nothing. A refused read keeps the last good value, and nothing goes back to "not read yet".
+
+What no store holds is not followed: the member's admitted photos — the status total — are a library walk, counted by
+a use case (`CountOwnPhotos`) as a step of the entry points that change it, and held for the query to read.
+
+Every write goes through the generated queries (`StoreWritesAnnounceTest`): a raw statement announces nothing, and a
+screen over the rows it changed would stay stale with no error anywhere.
+
 What the screen **asks** is a query, in `:domain:query`: a read over the data layer, never a write
 (`QueryReadOnlyTest`) — the membership (`MembershipQuery`), an invite's event (`JoinDetailsQuery`), the server's word
 on the joined membership when another invite opens (`SwitchLookup`). A query answers a value the caller waits for.

@@ -38,7 +38,6 @@ import app.snapsync.entrypoints.UploadOwn
 import app.snapsync.entrypoints.UploaderArm
 import app.snapsync.entrypoints.WakeWork
 import app.snapsync.entrypoints.WalkAndPublish
-import app.snapsync.feature.status.ForegroundCounts
 
 /**
  * What the app's entry points run (`domain/entrypoints`, `docs/patterns.md`): the work a wake and the foreground share,
@@ -52,7 +51,7 @@ internal class AppWork(private val core: AppCore) {
     /** The top-up: the one sequence that creates the app's upload jobs. */
     internal val topUp: TopUp by lazy {
         val layers = uploads.layers
-        TopUp(layers.gate, layers.contribute, layers.plan, layers.create(uploads.tier), layers.album, foregroundCounts)
+        TopUp(layers.gate, layers.contribute, layers.plan, layers.create(uploads.tier), layers.album)
     }
 
     /** The walk → publish: a wake's under a full grant, a selection change's, and the end of a wake's settle. */
@@ -77,8 +76,6 @@ internal class AppWork(private val core: AppCore) {
 
     private val receiving get() = core.receiving
 
-    private val foregroundCounts: ForegroundCounts by lazy { ForegroundCounts(core.foreground, core.ledgerCounts) }
-
     /** A recognition pass before a drain imports, or once a grant became usable. */
     private val recognitionBeforeImporting: Recognition by lazy {
         Recognition(
@@ -102,7 +99,6 @@ internal class AppWork(private val core: AppCore) {
             core.album.forImport,
             core.album.markFilled,
             receiving.importNext,
-            foregroundCounts,
         )
     }
 
@@ -172,7 +168,7 @@ internal class AppWork(private val core: AppCore) {
             core.services.config,
             uploads.sweep,
             uploads.settleStored,
-            core.statusRefresh,
+            core.status.count,
             ForegroundReceiving(planJoined, receiving.sweepUnclaimed, receiving.releaseImported),
             stateRefresh,
             SweepLeftovers(
@@ -225,7 +221,7 @@ internal class AppWork(private val core: AppCore) {
                     AfterJoin(
                         uploads.reconcile,
                         uploaderArm,
-                        core.statusRefresh,
+                        core.status.count,
                         eventAlbum,
                         receiving.receivingOf,
                         receiving.plan,
@@ -266,7 +262,7 @@ internal class AppWork(private val core: AppCore) {
             membership.branch,
             membership.reconfigure,
             AfterSettings(
-                core.statusRefresh,
+                core.status.count,
                 uploads.reconcile,
                 uploaderArm,
                 eventAlbum,

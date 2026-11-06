@@ -462,6 +462,25 @@ class DeletionLedgerTest {
     }
 
     /**
+     * The status before its layers (phase 4.9): a foreground-gated poll that re-read the counts on a cadence
+     * (`StatusCountsPoller`), the refresh calls the screen's counts waited on (`StatusRefresh`, `ForegroundCounts`), and
+     * the old zones' sources of them (`LedgerBackedSyncStatusSource`, `LedgerCountsSource`, `OwnDeviceGallery-
+     * StatusSource`). The screen's counts follow the stores' change feed (`StoreChanges`, read by the queries); only the
+     * total, which no store holds, is counted by a step (`CountOwnPhotos`).
+     */
+    @Test
+    fun `the status's retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """(class|interface|object|fun) (StatusCounts""" + "Poller|Status" + "Refresh|Foreground" +
+                "Counts|LedgerBackedSync" + "StatusSource|LedgerCounts" + "Source|ReadingLedger" + "CountsSource|" +
+                "MutableLedger" + "CountsSource|OwnDeviceGallery" + "StatusSource)\\b"
+            declared(files, pre).forEach { add("the status's pre-layer types in $it (the change feed's — 4.9)") }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
      * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop

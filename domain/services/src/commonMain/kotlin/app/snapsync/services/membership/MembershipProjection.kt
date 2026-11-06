@@ -22,9 +22,6 @@ class MembershipProjection(private val repository: MembershipRepository) {
     /** The membership as a config, `null` while none is held as far as this process can tell. */
     val config: StateFlow<EventConfig?> = ConfigFlow(repository)
 
-    /** The membership as last read conclusively — what a reader that acts on absence reads. */
-    val membership: MembershipRead get() = repository.state.value
-
     /** The membership as the store holds it now. */
     fun read(): MembershipRead = repository.read()
 

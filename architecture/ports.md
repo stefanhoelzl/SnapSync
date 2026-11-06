@@ -99,7 +99,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Gallery` | `:domain:ports` | `:adapter:android` AndroidGallery; `:adapter:generic:mock` InMemoryGallery; `:adapter:ios:app-only` IosGallery; `:test:contracts` GalleryProxy | yes |
 | `GalleryImport` | `:domain:ports` | `:test:contracts` GalleryImportProxy, GalleryProxy; `:test:data` RecordingImport, ScriptedImport | yes |
 | `GalleryRead` | `:domain:ports` | `:domain:ports` NotReadable, Read | no |
-| `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:generic:mock` Library; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:services` GrantOnlyReader; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:data` AlbumLibrary, ExportingLibrary; `:test:feature` ObservedGallery | yes |
+| `GalleryReader` | `:domain:ports` | `:adapter:android` AndroidGalleryReader; `:adapter:ios:app-only` IosGallery; `:adapter:ios:ext-safe` IosGalleryReader; `:domain:services` GrantOnlyReader; `:test:contracts` GalleryProxy, GalleryReaderProxy, UnusedReader; `:test:data` AlbumLibrary, ExportingLibrary; `:test:feature` ObservedGallery | yes |
 | `GalleryResourceHandle` | `:domain:ports` | `:adapter:android` MediaStoreResource; `:adapter:generic:mock` InMemoryResource, NotThisPlatformsHandle; `:adapter:ios:ext-safe` NotAPhoto, PhotoKitResource, ReplayOther, ReplayPhoto, StandInPhoto; `:domain:services` TestHandle; `:test:data` Handle, Held; `:test:feature` TestPhoto | yes |
 | `GateRead` | `:domain:domain` | `:domain:domain` Read, Unreadable | no |
 | `GateStep` | `:domain:domain` | `:domain:domain` Proceed, Stop | no |
@@ -140,11 +140,10 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `LeaveFact` | `:domain:data` | `:domain:data` Confirmed, Unanswered | no |
 | `LeaveOutcome` | `:domain:application` | `:domain:application` Left | no |
 | `LeaveResult` | `:domain:data` | `:domain:data` Failed, Left, NotJoined | no |
-| `LedgerCountsSource` | `:domain:feature` | `:domain:feature` MutableLedgerCountsSource, ReadingLedgerCountsSource; `:test:feature` CountingSource | yes |
 | `LegacyCopy` | `:domain:data` | `:domain:services` LegacyRecords; `:test:data` Copied, RecordingCopy | yes |
 | `LibraryChangeToken` | `:domain:ports` | `:adapter:android` VolumeGenerations; `:adapter:generic:mock` Token; `:adapter:ios:app-only` PhotoKitLibraryChangeToken; `:test:contracts` TokenProxy; `:test:data` Token | yes |
 | `LibraryChangeTokenRead` | `:domain:ports` | `:test:contracts` GalleryProxy, LibraryChangeTokenReadProxy; `:test:data` Tokens | yes |
-| `LibraryWalk` | `:domain:data` | `:adapter:generic:mock` Switchable; `:domain:data` GalleryWalk, MemoizedWalk; `:test:data` Scripted | yes |
+| `LibraryWalk` | `:domain:data` | `:domain:data` GalleryWalk, MemoizedWalk; `:test:data` Scripted | yes |
 | `Lifecycle` | `:domain:ports` | `:adapter:android` AndroidLifecycle, MainThreadListen; `:adapter:generic:mock` Face; `:adapter:ios:ui` IosLifecycle; `:test:contracts` LifecycleProxy | no |
 | `LinkDelivery` | `:domain:ports` | `:domain:ports` InstallReferrer, Link, NoUrl, NotALink | no |
 | `Links` | `:domain:ports` | `:adapter:android` AndroidLinks; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosLinks; `:test:contracts` LinksProxy | no |
@@ -212,7 +211,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RangeEdit` | `:domain:presentation` | `:domain:presentation` Day, DragEnd, DragStart, FromHour, FromMinute, Sweep, UntilHour, UntilMinute, UntilMinuteDrag | no |
 | `ReadPlan` | `:domain:domain` | `:domain:domain` NotReadable, Snapshot, Walk | no |
 | `RearmOutcome` | `:domain:application` | `:domain:application` Armed, NotArmed, NotJoined | no |
-| `ReceivedPhotosRead` | `:domain:data` | `:adapter:generic:mock` Received; `:domain:data` ReceivedPhotos, ReceivedPhotosReader; `:domain:services` NothingReceived; `:test:data` Received; `:test:feature` TestReceived | yes |
+| `ReceivedPhotosRead` | `:domain:data` | `:domain:data` ReceivedPhotos, ReceivedPhotosReader; `:domain:services` NothingReceived; `:test:data` Received; `:test:feature` TestReceived | yes |
 | `ReceivedPlacementVerdict` | `:domain:domain` | `:domain:domain` Place, Skip | no |
 | `ReceivedReadiness` | `:domain:data` | `:domain:data` OldSchema, Ready, Unavailable | no |
 | `ReceivedReply` | `:domain:data` | `:domain:data` NotRecorded, Recorded | no |
@@ -250,6 +249,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RetryVerdict` | `:domain:domain` | `:domain:domain` Retry, Stands | no |
 | `RowRead` | `:domain:data` | `:domain:data` Absent, Found, Unavailable | no |
 | `RowTransition` | `:domain:data` | `:domain:data` Gone, Superseded, Transitioned, Unavailable | no |
+| `RowsLook` | `:domain:query` | `:domain:query` Read, Refused | no |
 | `RowsRead` | `:domain:data` | `:domain:data` Read, Unavailable | no |
 | `Running` | `:domain:inbound` | `:domain:scheduling` Expirable; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:ports` | `:domain:ports` Refused, Scheduled, Unsupported | no |
@@ -267,6 +267,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ShareDeclaration` | `:domain:domain` | `:domain:domain` Settled, Sharing | no |
 | `SharePhase` | `:domain:domain` | `:domain:domain` Ended, Sharing | no |
 | `SharedRecordsReadiness` | `:domain:data` | `:domain:data` LegacyPending, Ready, Unavailable | no |
+| `SharingProgressRead` | `:domain:domain` | `:domain:domain` NotYetRead, Read | no |
 | `Slot` | `:domain:data` | `:domain:data` Kept, Unread | no |
 | `StageOutcome` | `:domain:application` | `:domain:application` Landed | no |
 | `StageRecord` | `:domain:data` | `:domain:data` NoRow, Recorded | no |

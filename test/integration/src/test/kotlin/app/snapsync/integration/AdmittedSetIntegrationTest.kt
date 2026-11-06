@@ -75,7 +75,8 @@ class AdmittedSetIntegrationTest {
         then { declared("IN", excluded = listOf("AFTER")) } // the manifest lists only the in-window photo
 
         // ② the status total N — the half the user can see. Counting AFTER here is what pegged the screen below
-        //    100% forever, because its bytes were never going to arrive: In sync once IN has landed is N = 1.
+        //    100% forever, because its bytes were never going to arrive: In sync once IN has landed is N = 1. The
+        //    member opens the app for the first time here, so this is the screen's first look.
         whenever { os.foreground() }
         then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
@@ -111,15 +112,14 @@ class AdmittedSetIntegrationTest {
             }
         }
 
+        // Both landed, and the screen follows the extension's record of it: In sync is N = 2.
         whenever { landedAndRecorded() }
         then {
             event<WorldEvent.BytesStored> { it.asset == "IN" }
             event<WorldEvent.BytesStored> { it.asset == "AFTER" }
             never<WorldEvent.ManifestPublished> { it.withdrawn.isNotEmpty() }
+            screen<Layer.Joined> { it.health == SyncHealth.InSync }
         }
-
-        whenever { os.foreground() }
-        then { screen<Layer.Joined> { it.health == SyncHealth.InSync } }
     }
 
     @Test

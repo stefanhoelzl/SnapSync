@@ -272,17 +272,21 @@ class StatusLineIntegrationTest {
             joinedEvent()
             photos("P1", "P2")
             // The service is slow to take the manifest: the earlier visit's upload pass waits on it, unfinished.
+            // Real progress: the photos waiting to be shared are counted while the pass waits — the counts follow the stores.
             step("the earlier visit's pass stuck", act = {
                 backend.hold(BackendCall.PUBLISH)
                 os.foreground()
-            }, until = { event<WorldEvent.BackendHeld> { it.call == BackendCall.PUBLISH } })
+            }, until = {
+                event<WorldEvent.BackendHeld> { it.call == BackendCall.PUBLISH }
+                screen<Layer.Joined> { it.health is SyncHealth.Syncing }
+            })
             step("the earlier visit ends", act = { os.background() }, until = { settled { true } })
         }
 
+        // Reopening, the count stands: never the neutral line while the earlier pass still waits.
         whenever { os.foreground() }
         then {
-            // Real progress: the photos waiting to be shared are counted, while the earlier pass still waits.
-            screen<Layer.Joined> { it.health is SyncHealth.Syncing }
+            neverScreen<Layer.Joined> { it.health == SyncHealth.Loading }
             never<WorldEvent.ManifestPublished>()
             settled { true }
         }
@@ -496,14 +500,14 @@ class StatusLineIntegrationTest {
             })
             step("P1 shared", act = { uploadSession.complete(primaryKey("P1")) }, until = { settled { true } })
             step("P2 shared", act = { uploadSession.complete(primaryKey("P2")) }, until = { settled { true } })
-            step("two of three of the others' arrived", act = {
-                publicBackend.foreignDevice(DEV_F, listOf("A", "B", "C"), uploading = listOf("C"))
-                os.foreground()
-                downloadSession.finish()
-            }, until = { settled { true } })
         }
 
-        whenever { readAgain() }
+        // Two of three of the others' arrive: the screen follows what the stores now hold, with no further read.
+        whenever {
+            publicBackend.foreignDevice(DEV_F, listOf("A", "B", "C"), uploading = listOf("C"))
+            os.foreground()
+            downloadSession.finish()
+        }
         then {
             screen<Layer.Joined> {
                 it.health is SyncHealth.Syncing &&
@@ -711,14 +715,22 @@ class StatusLineIntegrationTest {
         lateinit var before: Seen<Layer.Joined>
         val event = given {
             joinedEvent().also {
-                received(DEV_F, "FQ")
-                step("the counts read", act = { readAgain() }, until = {
-                    before = screen<Layer.Joined> { it.counts != null && it.members != null }
+                step("$DEV_F's photo FQ on its way", act = {
+                    publicBackend.foreignDevice(DEV_F, listOf("FQ"))
+                    os.foreground()
+                }, until = {
+                    event<WorldEvent.DownloadStarted>()
+                    settled { true }
+                })
+                // The counts as they stand once it arrived: what the deleted event's screen must keep.
+                step("$DEV_F's photo FQ received", act = { downloadSession.finish() }, until = {
+                    before = screen<Layer.Joined> { it.counts?.received == DirectionCount.Progress(1, 1) }
                     settled { true }
                 })
             }
         }
 
+        // The deletion is learnt at the next opening, as on the phone.
         whenever {
             backend.complete(event)
             readAgain()

@@ -35,6 +35,7 @@ class SelectionIsTheWalkIntegrationTest {
             extensionUploadsOnly()
             photoAccess(PhotoGrant.GRANTED)
             joinedEvent()
+            inFront() // the screen the member watches follows the stores only while it is in front
             photos(*all.toTypedArray())
             step("four jobs in flight under the full grant", act = { cycle() }, until = {
                 all.forEach { id -> event<WorldEvent.ManifestPublished> { id in it.added } }

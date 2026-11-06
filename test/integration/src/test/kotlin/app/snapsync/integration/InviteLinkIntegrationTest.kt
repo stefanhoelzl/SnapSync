@@ -395,21 +395,22 @@ class InviteLinkIntegrationTest {
         scenario = "The QR code is shown on request",
     )
     fun the_qr_code_shows_on_request_and_closing_it_returns_the_joined_screen_unchanged() = behaviour {
-        lateinit var before: Seen<WorldEvent.UiChanged>
+        // The joined screen as it stood when the QR code opened — what closing it must return to unchanged.
+        lateinit var opened: Seen<WorldEvent.UiChanged>
         given {
             joinedEvent()
             step("the joined screen read", act = { os.foreground() }, until = {
-                before = event<WorldEvent.UiChanged> { it.ui.layer is Layer.Joined }
+                event<WorldEvent.UiChanged> { it.ui.layer is Layer.Joined }
                 settled { true }
             })
         }
 
         whenever { tap(UiIntent.QrOpen) }
-        then { event<WorldEvent.UiChanged> { it.ui.overlays.showingQr && it.ui.layer is Layer.Joined } }
+        then { opened = event<WorldEvent.UiChanged> { it.ui.overlays.showingQr && it.ui.layer is Layer.Joined } }
 
         whenever { tap(UiIntent.QrDismiss) }
         then {
-            event<WorldEvent.UiChanged> { !it.ui.overlays.showingQr && it.ui.layer == before.value.ui.layer }
+            event<WorldEvent.UiChanged> { !it.ui.overlays.showingQr && it.ui.layer == opened.value.ui.layer }
             never<WorldEvent.BackendReceived>()
             never<WorldEvent.MemberLeft>()
         }

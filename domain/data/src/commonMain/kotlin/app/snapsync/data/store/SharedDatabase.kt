@@ -66,6 +66,9 @@ class SharedDatabase(databases: Databases, legacy: LegacyCopy?) {
     /** Runs [statements] on the database: a failed open or a failed statement is [DbResult.Failed]. */
     fun <T> execute(statements: (LedgerDatabase) -> T): DbResult<T> = owned.execute(statements)
 
+    /** That the shared database changed, in this process or the other. */
+    val changes: StoreChanges get() = owned.changes
+
     /** Whether [source] lives in this database now, rather than in its legacy file or key. */
     fun imported(source: LegacySource): DbResult<Boolean> =
         execute { source.key in it.legacyImportQueries.selectImported().executeAsList() }

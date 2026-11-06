@@ -121,12 +121,6 @@ class CompositionSeamTest {
         "CollectDiagnosticDump.refusalFacts" to
             "the latest refused attestation's facts the credential's status holds in memory (AttestationStatus." +
             "refusalFacts) — read for a report offered from \"Report this\" (capability `privacy-security`)",
-        "ReadingLedgerCountsSource.read" to
-            "a read-only LedgerStore.assetProgress() mapped to LedgerCounts in compose/, so ledger types never " +
-            "reach feature/status (stated at the class); the store is the LedgerStore port",
-        "StatusCountsPoller.refreshCheapLocalReads" to "this core's own StatusRefresh.refreshCheapLocalReads()",
-        "StatusRefresh.refreshDownloadLine" to "the sibling download status source's refresh — feature-blindness",
-        "StatusRefresh.contributionFor" to "the membership's ONE contribution (OwnPhotos), derived in compose/",
     )
 
     // ---- scanning ---------------------------------------------------------------------------------
@@ -243,9 +237,11 @@ class CompositionSeamTest {
         // adoption's record went with the controller — receiving's steps are use cases now. 9 since the uploads
         // moved into the layers (4.4b): the cycle's gate, engine, discovery and album hooks, the admissions, the final
         // share's publish and the transitions' engine are typed steps now — and 4.7 the gather's policy lambda, which reads
-        // the selection through `OwnAlbumPhotos` now. Lower it only with a removal like those, never to pass.
+        // the selection through `OwnAlbumPhotos` now. 4 since the status moved (4.9): the ledger counts' read, the poll's
+        // group and the refresh's download line and contribution went with the poller and the refresh — the screen's
+        // counts follow the stores' change feed. Lower it only with a removal like those, never to pass.
         assertTrue(
-            found.size >= 8,
+            found.size >= 4,
             "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
                 "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
         )

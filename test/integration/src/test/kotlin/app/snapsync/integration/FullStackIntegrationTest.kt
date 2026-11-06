@@ -334,6 +334,7 @@ class FullStackIntegrationTest {
         given {
             photoAccess(PhotoGrant.LIMITED)
             joinedEvent()
+            inFront() // the screen the member watches follows the stores only while it is in front
             photos("A", "B", "UNSELECTED") // UNSELECTED: in the library, never selected — must not upload
         }
 
@@ -380,6 +381,7 @@ class FullStackIntegrationTest {
         given {
             photoAccess(PhotoGrant.LIMITED)
             joinedEvent()
+            inFront() // the screen the member watches follows the stores only while it is in front
             photoTaken("OK")
             photoTaken("OLD", date = "2001-01-01T00:00:00Z") // pre-cutoff
             photoTaken("SHOT", kind = LibraryPhotoKind.SCREENSHOT) // a screenshot, which a library walk excludes

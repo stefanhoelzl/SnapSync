@@ -137,11 +137,17 @@ internal fun GalleryRead<List<GalleryAssetResources>>.resolvedIds(): List<String
     GalleryRead.NotReadable -> null
 }
 
-/** The received photos as a sharing reader sees them: the handles [handles] answers, never written. */
-internal class Received(var handles: HandlesRead = HandlesRead.Ok(emptySet())) : ReceivedPhotosRead {
+/**
+ * The received photos as a sharing reader sees them: the handles [handles] answers, and whether the membership's are
+ * recognised — [recognition], not yet unless a test says so. Never written.
+ */
+internal class Received(
+    var handles: HandlesRead = HandlesRead.Ok(emptySet()),
+    var recognition: RecognitionRead = RecognitionRead.NotRecognised,
+) : ReceivedPhotosRead {
     override suspend fun readiness(): ReceivedReadiness = ReceivedReadiness.Ready
 
     override suspend fun handles(): HandlesRead = handles
 
-    override suspend fun recognition(event: EventId): RecognitionRead = RecognitionRead.NotRecognised
+    override suspend fun recognition(event: EventId): RecognitionRead = recognition
 }

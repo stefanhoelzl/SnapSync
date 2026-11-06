@@ -1,7 +1,8 @@
 package app.snapsync.services.crash
 
+import app.snapsync.data.foreground.AppForeground
+import app.snapsync.domain.foreground.InFront
 import app.snapsync.ports.ProcessInfo
-import app.snapsync.services.foreground.AppForeground
 
 /**
  * Reads the app's own memory footprint into the [trail] the next process-metric report carries — only while the
@@ -16,7 +17,7 @@ class FootprintSampler(
 ) {
     /** Record the footprint at [moment] — as the app enters the background, or a wake's work ends there. */
     fun record(moment: String) {
-        if (foreground.isForeground) return
+        if (foreground.inFront.value == InFront.IN_FRONT) return
         processInfo.memoryFootprint()?.let { trail.record(moment, it) }
     }
 }

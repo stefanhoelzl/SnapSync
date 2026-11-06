@@ -1,11 +1,19 @@
 package app.snapsync.model
 
+import app.snapsync.application.EntryPointCall
+import app.snapsync.application.sharing.CountOwnPhotos
+import app.snapsync.data.membership.MembershipRepository
+import app.snapsync.data.sharing.AdmittedPhotos
 import app.snapsync.data.sharing.Contribution
 import app.snapsync.data.sharing.DiscoveryRead
 import app.snapsync.data.sharing.PreviewRead
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.ResourceRole
+import app.snapsync.domain.event.DeletesAt
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.sharing.CaptureCeiling
+import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.DeviceManifest
 import app.snapsync.domain.sharing.ManifestVersion
@@ -14,13 +22,14 @@ import app.snapsync.domain.upload.MintsUploadRow
 import app.snapsync.domain.upload.RowDetail
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
-import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.support.OwnLibrary
+import app.snapsync.feature.support.SharedStore
 import app.snapsync.feature.support.captureRange
 import app.snapsync.feature.support.photo
 import app.snapsync.format.TimestampText
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
+import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -89,10 +98,25 @@ class CeilingReachesEveryConsumerTest {
         return read.discovery.admitted.mapTo(mutableSetOf()) { it.facts.assetId }
     }
 
-    /** The status total's admitted set, as the status source publishes it. */
-    private suspend fun counted(): Set<AssetId>? = OwnDeviceGalleryStatusSource(library.photos)
-        .apply { refresh(contribution()) }
-        .admitted.value
+    /** The status total's admitted set, as the count publishes it — for a membership sharing [window]. */
+    @OptIn(EntryPointCall::class)
+    private suspend fun counted(): Set<AssetId>? {
+        val store = SharedStore().apply {
+            persist(
+                EventConfig(
+                    eventId = testEventId("11111111-1111-4111-8111-111111111111"),
+                    name = "Picnic",
+                    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-01T00:00:00Z")),
+                    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-08T00:00:00Z")),
+                    endsAt = EventEnd(TimestampText.parse("2026-07-08T00:00:00Z")),
+                    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
+                ),
+            )
+        }
+        val admitted = AdmittedPhotos()
+        CountOwnPhotos(MembershipRepository(store.db), library.received, library.photos, admitted)()
+        return admitted.state.value
+    }
 
     @Test
     fun `the byte upload admits only the in-window asset`() = runTest {

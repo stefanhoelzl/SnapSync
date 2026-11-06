@@ -33,6 +33,8 @@ kotlin {
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
             implementation(project(":domain:data"))
+            // The status total's use case, which the cross-consumer ceiling fixture asks like every other consumer.
+            implementation(project(":domain:application"))
             implementation(project(":domain:feature"))
             // The runtime a feature's outliving work runs under (`support/Runtime.kt`), and the entry points' tests.
             implementation(project(":domain:scheduling"))

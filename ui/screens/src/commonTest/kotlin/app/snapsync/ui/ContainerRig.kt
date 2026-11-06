@@ -23,6 +23,7 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
@@ -41,7 +42,6 @@ import app.snapsync.feature.creation.readmodel.CreationStatus
 import app.snapsync.feature.status.readmodel.SyncStatusSource
 import app.snapsync.format.TimestampText
 import app.snapsync.model.EventConfig
-import app.snapsync.model.ForegroundReturn
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.ReportContext
 import app.snapsync.model.ReportOutcome

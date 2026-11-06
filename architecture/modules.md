@@ -320,6 +320,7 @@ flowchart LR
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
   test_feature --> adapter_generic_mock
+  test_feature --> domain_application
   test_feature --> domain_data
   test_feature --> domain_domain
   test_feature --> domain_feature
