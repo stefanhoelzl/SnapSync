@@ -6,7 +6,6 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.format.TimestampText
 import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.EventConfig
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
@@ -39,7 +38,7 @@ class ShownCountsTest {
 
     private fun joinedState(counts: SyncCounts?) = UiState(
         Layer.Joined(
-            membership = EventConfig(
+            membership = TestMembership(
                 eventId = testEventId("5b6f0c62-3f4a-4a1e-9a2d-8f0a1b2c3d4e"),
                 name = "Anna's Birthday",
                 minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),

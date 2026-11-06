@@ -1,5 +1,6 @@
 package app.snapsync.feature.diagnostics
 
+import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.receiving.DownloadRead
@@ -7,6 +8,9 @@ import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.trust.RefusalFacts
 import app.snapsync.data.upload.ProgressRead
 import app.snapsync.data.upload.UploadProgress
+import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.report.ReportContext
@@ -19,14 +23,12 @@ import app.snapsync.model.DeviceConditionsReading
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.device.DeviceConditionsReadings
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.logs.LogTailService
-import app.snapsync.services.membership.MembershipProjection
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
@@ -60,7 +62,7 @@ class CollectDiagnosticDump(
     private val logs: LogTailService,
     private val progress: UploadProgress,
     private val downloads: ReceivingCounts,
-    private val config: MembershipProjection,
+    private val membership: MembershipRepository,
     private val permission: GalleryAccessState,
     /** The device's network, read fresh for the report — not the screen's notice, which lags by its grace period. */
     private val network: NetworkReadings,
@@ -97,7 +99,7 @@ class CollectDiagnosticDump(
         val (appLog, extensionLog) = readLogsWithinBudget()
         return DiagnosticDump(
             note = note,
-            state = stateSection(config.config.value, permission.grant.value, context) + device,
+            state = stateSection(joined(), permission.grant.value, context) + device,
             ledger = ledgerSection(),
             appLog = appLog,
             extensionLog = extensionLog,
@@ -128,7 +130,7 @@ class CollectDiagnosticDump(
      * it shares.
      */
     private fun stateSection(
-        config: EventConfig?,
+        joined: Membership?,
         permission: GalleryAccess,
         context: ReportContext,
     ): Map<String, String> =
@@ -150,16 +152,22 @@ class CollectDiagnosticDump(
             put("upload_base", environment.uploadBase)
             put("reporter_environment", environment.reporterEnvironment)
             put("photo_permission", permission.name)
-            put("joined", (config != null).toString())
-            if (config != null) {
-                put("event_id", config.eventId.value)
-                put("event_name", config.name)
-                put("direction", config.direction.name)
-                put("shares_from", TimestampText.format(config.minPhotoDate.at))
-                put("shares_until", TimestampText.format(config.maxPhotoDate.at))
-                put("save_to_album", config.saveToAlbum.toString())
-            }
+            put("joined", (joined != null).toString())
+            if (joined != null) putAll(membershipFacts(joined))
         }
+
+    /** The membership held, `null` while none is or it cannot be read now. */
+    private fun joined(): Membership? = (membership.state.value as? MembershipRead.Joined)?.membership
+
+    /** Which event, how it was configured, and what window it shares. */
+    private fun membershipFacts(joined: Membership): Map<String, String> = mapOf(
+        "event_id" to joined.event.id.value,
+        "event_name" to joined.event.name.text,
+        "direction" to joined.share.direction.name,
+        "shares_from" to TimestampText.format(joined.share.range.from.at),
+        "shares_until" to TimestampText.format(joined.share.range.until.at),
+        "save_to_album" to (joined.share.album == AlbumChoice.SaveToAlbum).toString(),
+    )
 
     /**
      * What a report offered for a refused phone carries about its verification: the
@@ -207,7 +215,7 @@ class CollectDiagnosticDump(
 
     /** Per photo of the joined event, how far it has got — none while nothing is joined or readable. */
     private fun ownProgress(): Collection<AssetProgress> {
-        val event = config.activeEventId() ?: return emptyList()
+        val event = joined()?.event?.id ?: return emptyList()
         return when (val read = progress.progress(event)) {
             is ProgressRead.Read -> read.photos.values
             is ProgressRead.Unavailable -> emptyList()

@@ -18,16 +18,17 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
 import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.EventConfig
 import app.snapsync.model.ReportDestination
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
+import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
@@ -56,13 +57,14 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
 
 /** A membership whose cutoff sits exactly on the floor and ceiling, so the form seeds to both presets. */
-private val CONFIG = EventConfig(
+private val CONFIG = TestMembership(
     eventId = testEventId(EVENT_ID),
     name = "Anna's Birthday",
     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
@@ -117,7 +119,7 @@ class StatusContainerHostSurfacesTest {
     private fun host(
         scope: CoroutineScope,
         spy: Spy = Spy(),
-        config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
+        config: MutableStateFlow<TestMembership?> = MutableStateFlow(CONFIG),
         sendDiagnostics: suspend (String, ReportContext) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
         shareableCount: ScreenLookup<CaptureRange, Int?> = noQueries,
         joinDetails: ScreenLookup<InviteLink, JoinDetails> = unanswered,
@@ -156,7 +158,7 @@ class StatusContainerHostSurfacesTest {
 
     private fun host(
         scope: CoroutineScope,
-        config: MutableStateFlow<EventConfig?>,
+        config: MutableStateFlow<TestMembership?>,
         commands: TestCommands,
         shareableCount: ScreenLookup<CaptureRange, Int?>,
         joinDetails: ScreenLookup<InviteLink, JoinDetails>,
@@ -166,7 +168,7 @@ class StatusContainerHostSurfacesTest {
         StatusSources(
             FakeSync(),
             MutableStateFlow(PhotoGrant.FULL),
-            config,
+            config.held(),
             requests = commands.requests.flows,
             network = AlwaysOnline,
             mobileData = AlwaysAllowed,
@@ -207,7 +209,7 @@ class StatusContainerHostSurfacesTest {
 
     private fun onHost(
         spy: Spy = Spy(),
-        config: MutableStateFlow<EventConfig?> = MutableStateFlow(CONFIG),
+        config: MutableStateFlow<TestMembership?> = MutableStateFlow(CONFIG),
         sendDiagnostics: suspend (String, ReportContext) -> ReportOutcome = { _, _ -> ReportOutcome.SENT },
         shareableCount: ScreenLookup<CaptureRange, Int?> = noQueries,
         joinDetails: ScreenLookup<InviteLink, JoinDetails> = unanswered,
@@ -236,7 +238,7 @@ class StatusContainerHostSurfacesTest {
     fun `settings open when the membership changes do not follow into the next one`() {
         // B7: the flag survived a switch, so the new membership opened on the settings surface — pre-filled from
         // nothing the member had chosen for it.
-        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(config = config) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the settings surface") { it.onSettings() }
@@ -254,7 +256,7 @@ class StatusContainerHostSurfacesTest {
         // The rejoin goes through the join gate, as a member's does: that is where a membership begins, and where
         // its surface state is reset. The config change alone could not be relied on to say so — the leave and
         // the rejoin of one event can conflate in the StateFlow into A → A.
-        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        val config = MutableStateFlow<TestMembership?>(CONFIG)
         val details = joinDetails {
             found(
                 CONFIG.name,
@@ -333,6 +335,42 @@ class StatusContainerHostSurfacesTest {
     }
 
     @Test
+    fun `an event longer than any capture range is not counted`() {
+        // The server serves an event 66 days long: longer than any range may be, so no range of it is a capture range and
+        // the count is unavailable without a read. A counted event's invite comes first, so the count the long one
+        // shows can only be its own.
+        val long = "22222222-2222-4222-8222-222222222222"
+        val asked = mutableListOf<CaptureCutoff>()
+        val details = joinDetails { id ->
+            found(
+                CONFIG.name,
+                CONFIG.startsAt,
+                if (id == long) EventEnd(Timestamp.of(CONFIG.startsAt.at.at + 66.days)) else CONFIG.endsAt,
+                DeletesAt(TimestampText.parse("2099-08-05T14:32:11Z")),
+            )
+        }
+        val shareCount = { state: UiState ->
+            ((state.layer as? Layer.JoiningEvent)?.stage as? JoinStage.Loaded)?.range?.shareCount
+        }
+        return onHost(
+            config = MutableStateFlow(null),
+            joinDetails = details,
+            shareableCount = counting { range ->
+                asked += range.from
+                4
+            },
+        ) { host ->
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(EVENT_ID), null))))
+            host.stateWhere("the counted event") { shareCount(it) == ShareCount.Ready(4) }
+            host.onInvite(InviteLinkText.parse(InviteLinkText.format(InviteLink(testEventId(long), null))))
+            host.stateWhere("no count for the long event") {
+                (it.layer as? Layer.JoiningEvent)?.eventId == long && shareCount(it) == ShareCount.Unavailable
+            }
+            assertEquals(1, asked.size, "no read is made for a range that is no capture range")
+        }
+    }
+
+    @Test
     fun `no count is asked for while sharing is off`() {
         var asked = 0
         val spy = Spy()
@@ -354,39 +392,6 @@ class StatusContainerHostSurfacesTest {
             awaitReconfigures(spy, 2)
             host.stateWhere("the new range shown") { it.settings()?.range?.preset == RangeChoice.CUSTOM }
             assertEquals(1, asked, "a hidden row must not cost a photo-library read")
-        }
-    }
-
-    @Test
-    fun `bounds that make no capture range for the event are not counted`() {
-        // A stored start 66 days before a 7-day event's: longer than any range may be, so the bounds make no capture
-        // range and the count is unavailable without a read. Once the range is the event's again, it is counted.
-        // Unavailable is also where the count starts, so the bounds that are no range follow a count: only their
-        // handling turns Ready into Unavailable, and a wait on it cannot pass before it.
-        val tooLong = CONFIG.copy(minPhotoDate = CaptureCutoff(TimestampText.parse("2026-05-01T00:00:00Z")))
-        val config = MutableStateFlow<EventConfig?>(CONFIG)
-        val asked = mutableListOf<CaptureCutoff>()
-        return onHost(
-            config = config,
-            shareableCount = counting { range ->
-                asked += range.from
-                4
-            },
-        ) { host ->
-            host.surfaces.onOpenReconfigure()
-            host.stateWhere("the count of the event's range") { it.reconfigureCount() == ShareCount.Ready(4) }
-            host.surfaces.onCancelReconfigure()
-            host.stateWhere("the settings closed") { it.settings() == null }
-            config.value = tooLong
-            host.surfaces.onOpenReconfigure()
-            host.stateWhere("no count for bounds that are no range") { it.reconfigureCount() == ShareCount.Unavailable }
-            assertEquals(listOf(CONFIG.minPhotoDate), asked.distinct(), "no read is made for bounds that are no range")
-
-            host.form.onRangePreset(RangeChoice.EVENT_START)
-            host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
-            host.settings.onConfirmStopSharing()
-            host.stateWhere("the count of the event's range again") { it.reconfigureCount() == ShareCount.Ready(4) }
-            assertEquals(listOf(CONFIG.minPhotoDate), asked.distinct())
         }
     }
 
@@ -438,7 +443,7 @@ class StatusContainerHostSurfacesTest {
         // outlived its layer by any route other than the leave is masked out of the projection rather
         // than merely unlikely — and it comes back if the membership does, which is exactly why the
         // leave below resets the cell instead of relying on this.
-        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(config = config) { host ->
             host.surfaces.onRenameOpen()
             host.stateWhere("the rename sheet") { it.overlays.renaming }
@@ -463,7 +468,7 @@ class StatusContainerHostSurfacesTest {
     fun `a shown QR code disappears when the event's photos are deleted or the membership ends`() {
         // A deleted event admits nobody (capability `invite-link`), so the invite it would show is masked
         // the moment the deletion is learned — while the same membership is still on screen with Leave.
-        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(config = config) { host ->
             host.surfaces.onQrOpen()
             host.stateWhere("the QR shown") { it.overlays.showingQr }
@@ -550,7 +555,7 @@ class StatusContainerHostSurfacesTest {
     @Test
     fun `quick changes apply in order and the last one stands`() {
         val spy = Spy()
-        val config = MutableStateFlow<EventConfig?>(CONFIG)
+        val config = MutableStateFlow<TestMembership?>(CONFIG)
         return onHost(spy, config = config) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()

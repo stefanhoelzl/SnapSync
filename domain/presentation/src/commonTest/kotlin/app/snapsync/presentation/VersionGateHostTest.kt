@@ -8,7 +8,6 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.model.Store
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
@@ -73,7 +72,7 @@ class VersionGateHostTest {
         gateHost(
             backgroundScope,
             refusal,
-            config = EventConfig(
+            config = TestMembership(
                 testEventId(GATE_EVENT_ID),
                 "Anna's Birthday",
                 GATE_CUTOFF,
@@ -169,14 +168,14 @@ private fun gateHost(
     scope: CoroutineScope,
     refusal: MutableStateFlow<VersionRefusal?> = MutableStateFlow(null),
     store: Store? = Store("App Store", STORE_URL),
-    config: EventConfig? = null,
+    config: TestMembership? = null,
     openLink: (String) -> Unit = {},
 ) = TestCommands(openLink = openLink).let { commands ->
     StatusContainerHost(
         StatusSources(
             sync = MutableStateFlow(SharingProgressRead.NotYetRead),
             permission = MutableStateFlow(PhotoGrant.FULL),
-            config = MutableStateFlow(config),
+            membership = MutableStateFlow(config?.held()),
             build = BuildStanding(refusal = refusal, store = store),
             requests = commands.requests.flows,
             network = AlwaysOnline,

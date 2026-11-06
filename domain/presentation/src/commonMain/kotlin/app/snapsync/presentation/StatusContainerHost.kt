@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
+import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventId
@@ -14,6 +15,7 @@ import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
@@ -49,7 +51,6 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.model.BuildLabel
 import app.snapsync.model.DiagnosticKeys
-import app.snapsync.model.EventConfig
 import app.snapsync.model.ReportDestination
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeEdit
@@ -159,7 +160,7 @@ class StatusContainerHost(
     // where a caller has to read it; inside, each source keeps the name that says what it is.
     private val syncSource = sources.sync
     private val permission = sources.permission
-    private val config = sources.config
+    private val membership = sources.membership
     private val creationStatus = sources.creation
     private val invites = sources.invites
     private val downloadSource = sources.download
@@ -273,8 +274,8 @@ class StatusContainerHost(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val nowTick: Flow<Timestamp> =
-        config
-            .map { it?.let { c -> c.startsAt to c.endsAt } }
+        membership
+            .map { held -> held?.let { it.event.range } }
             .distinctUntilChanged()
             .flatMapLatest { bounds ->
                 flow {
@@ -302,8 +303,8 @@ class StatusContainerHost(
             // All seams hold their current truth synchronously, so the first state the screen can ever
             // render derives from real values — never a guess or a placeholder.
             initialState = render(
-                Membership(
-                    config.value,
+                Observed(
+                    membership.value,
                     permission.value,
                     syncSource.value,
                     downloadSource.value,
@@ -358,13 +359,13 @@ class StatusContainerHost(
                 // it runs ONLY while an event has not ended (see above) — every other re-emission is a real
                 // source change or a presentation-owned cell's.
                 combineFlat(
-                    config, permission, syncSource, downloadSource, trust, network.access, mobileData,
+                    membership, permission, syncSource, downloadSource, trust, network.access, mobileData,
                     pending, creationStatus, renameFlow, versionRefusal,
                     local, nowTick,
-                ) { config, permission, sync, download, trust, access, mobileData, pending, creation, rename, refusal, local, now ->
+                ) { joined, permission, sync, download, trust, access, mobileData, pending, creation, rename, refusal, local, now ->
                     render(
-                        Membership(
-                            config, permission, sync, download, trust.attested, access, mobileData,
+                        Observed(
+                            joined, permission, sync, download, trust.attested, access, mobileData,
                             trust.refusal, trust.attestFault, trust.serviceFault,
                         ),
                         Interaction(pending, creation, rename, refusal),
@@ -462,19 +463,19 @@ class StatusContainerHost(
      * not syncing, a create that cannot succeed, a join that cannot commit. Its layer joins the refusal with this
      * build's store link, a constant, which is why it is assembled here rather than ranked inside [reduceFrom].
      */
-    private fun render(membership: Membership, interaction: Interaction, local: Local, now: Timestamp): ScreenModel {
+    private fun render(observed: Observed, interaction: Interaction, local: Local, now: Timestamp): ScreenModel {
         val refused = interaction.versionRefusal
         val reduced = if (refused != null) {
             Reduced(Layer.UpdateRequired(minimumVersion = refused.minimumVersion, store = store?.name))
         } else {
-            reduceFrom(membership, interaction, local, now, display)
+            reduceFrom(observed, interaction, local, now, display)
         }
         val ui = UiState(
             reduced.layer,
             local.overlays.maskedFor(reduced.layer),
             reportDestination.shown,
             build.shown,
-            MobileDataState(on = membership.mobileData, notSaved = local.mobileDataNotSaved),
+            MobileDataState(on = observed.mobileData, notSaved = local.mobileDataNotSaved),
         )
         // The count row renders only while sharing is on, so no photo-library read is made for a row nobody sees.
         val counted = reduced.range?.takeIf { local.form.shareOn }
@@ -791,13 +792,14 @@ class StatusContainerHost(
          * updates the heading, not the controls in the member's hand.
          */
         fun onOpenReconfigure() = settings.enqueue {
-            val config = config.value ?: return@enqueue
-            val form = reconfigureForm(config, cutoffFormatter::toLocal).copy(albumContents = albumContents)
+            val joined = membership.value ?: return@enqueue
+            val form = reconfigureForm(joined.event.range, SettingChange.of(joined), cutoffFormatter::toLocal)
+                .copy(albumContents = albumContents)
             local.update {
                 it.copy(
                     form = form,
                     picking = null,
-                    settings = Owned(config.eventId, SettingsSurface.Open),
+                    settings = Owned(joined.event.id, SettingsSurface.Open),
                     pendingWithdrawal = Owned(null, null),
                     lastApplied = Owned(null, null),
                 )
@@ -889,16 +891,16 @@ class StatusContainerHost(
          * off, or a narrower range) is held instead, and asked about ([pendingWithdrawal][Local.pendingWithdrawal]).
          * [config] is the membership whose settings are open ([openMembership]).
          */
-        internal suspend fun change(config: EventConfig, change: (SettingChange, EventConfig) -> SettingChange) {
-            val inEffect = settingsInEffect(config)
-            val next = change(inEffect, config)
+        internal suspend fun change(joined: Membership, change: (SettingChange, Membership) -> SettingChange) {
+            val inEffect = settingsInEffect(joined)
+            val next = change(inEffect, joined)
             // A switch set to what it shows changes nothing, so there is nothing to save.
             if (next == inEffect) return
             if (next.withdrawsFrom(inEffect)) {
-                local.update { it.copy(pendingWithdrawal = Owned(config.eventId, next)) }
+                local.update { it.copy(pendingWithdrawal = Owned(joined.event.id, next)) }
                 return
             }
-            applySetting(config, inEffect, next)
+            applySetting(joined, inEffect, next)
         }
 
         /**
@@ -906,8 +908,8 @@ class StatusContainerHost(
          * save the use-case just made, and a change built on it would quietly undo the one before — so quick changes
          * build on each other, not on a stale read.
          */
-        private fun settingsInEffect(config: EventConfig): SettingChange =
-            local.value.lastApplied.forMembership(config.eventId, null) ?: SettingChange.of(config)
+        private fun settingsInEffect(joined: Membership): SettingChange =
+            local.value.lastApplied.forMembership(joined.event.id, null) ?: SettingChange.of(joined)
 
         /**
          * Run one change through [UserCommands.reconfigure]. The event id rides with the values so a switch that landed
@@ -916,14 +918,14 @@ class StatusContainerHost(
          * effect — the change if it landed, the ones before it if not — so a change that did not land shows the setting
          * still in effect, and says so: the controls never hold a value that is not saved.
          */
-        private suspend fun applySetting(config: EventConfig, before: SettingChange, next: SettingChange) {
+        private suspend fun applySetting(joined: Membership, before: SettingChange, next: SettingChange) {
             local.update { it.copy(pendingWithdrawal = Owned(null, null)) }
             val id = ids.next()
             commands.reconfigure.fire(
                 SettingsRequest(
                     id,
                     ShareChoice(
-                        config.eventId,
+                        joined.event.id,
                         next.from,
                         next.until,
                         next.direction,
@@ -943,25 +945,23 @@ class StatusContainerHost(
             }
             val saved = outcome == SettingsResult.Saved
             val inEffect = if (saved) next else before
-            val reseeded = reconfigureForm(
-                inEffect.appliedTo(config),
-                cutoffFormatter::toLocal,
-            ).copy(albumContents = albumContents)
+            val reseeded = reconfigureForm(joined.event.range, inEffect, cutoffFormatter::toLocal)
+                .copy(albumContents = albumContents)
             val surface = if (saved) SettingsSurface.Open else SettingsSurface.SaveFailed
             local.update {
                 it.copy(
                     form = reseeded,
-                    settings = Owned(config.eventId, surface),
-                    lastApplied = Owned(config.eventId, inEffect),
+                    settings = Owned(joined.event.id, surface),
+                    lastApplied = Owned(joined.event.id, inEffect),
                 )
             }
         }
 
         /** "Stop sharing" on the withdrawal question: the held change applies. */
         fun onConfirmStopSharing() = enqueue {
-            val config = config.value ?: return@enqueue
-            val held = local.value.pendingWithdrawal.forMembership(config.eventId, null) ?: return@enqueue
-            applySetting(config, settingsInEffect(config), held)
+            val joined = membership.value ?: return@enqueue
+            val held = local.value.pendingWithdrawal.forMembership(joined.event.id, null) ?: return@enqueue
+            applySetting(joined, settingsInEffect(joined), held)
         }
 
         /** "Keep sharing": the held change is dropped, and the controls — which never took it — stay as they were. */
@@ -971,8 +971,8 @@ class StatusContainerHost(
          * The membership whose settings are open over the joined screen — where a form edit applies rather than drafts —
          * or `null` when none are.
          */
-        internal fun openMembership(): EventConfig? = config.value?.takeIf {
-            local.value.settings.forMembership(it.eventId, SettingsSurface.Closed) != SettingsSurface.Closed
+        internal fun openMembership(): Membership? = membership.value?.takeIf {
+            local.value.settings.forMembership(it.event.id, SettingsSurface.Closed) != SettingsSurface.Closed
         }
     }
 
@@ -992,7 +992,7 @@ class StatusContainerHost(
          * follows it reads the form it left.
          */
         private fun formIntent(act: suspend () -> Unit) {
-            if (config.value != null) settings.enqueue(act) else intent { act() }
+            if (membership.value != null) settings.enqueue(act) else intent { act() }
         }
 
         // At the join gate each edit drafts the form; with the event's settings open it applies at once.
@@ -1056,7 +1056,7 @@ class StatusContainerHost(
             }
             val form = edit(local.value.form)
             settings.change(open) { now, c ->
-                val range = resolveRange(form, c.startsAt, c.endsAt)
+                val range = resolveRange(form, c.event.range.start, c.event.range.end)
                 now.copy(from = range.chosenFrom, until = range.chosenUntil)
             }
         }
@@ -1075,20 +1075,20 @@ class StatusContainerHost(
             InviteLinkVerdict.NotAnInvite -> showTransientError()
             is InviteLinkVerdict.KeyUnreadable -> when {
                 pending.value?.eventId == read.event -> ignoreRepeat(read.event, "a pending join is open")
-                config.value?.eventId == read.event -> ignoreRepeat(read.event, "already joined")
+                membership.value?.let { it.event.id } == read.event -> ignoreRepeat(read.event, "already joined")
                 else -> startUnreadable(read.event)
             }
             is InviteLinkVerdict.Invite -> {
                 val eventId = read.link.event
                 val key = read.link.key
-                val current = config.value
+                val current = membership.value
                 when {
                     // The two DUPLICATE rungs, first because they outrank every other reading of the same link.
                     pending.value?.eventId == eventId -> ignoreRepeat(eventId, "a pending join is open")
                     // The joined event's own invite gives a LOST key back; any other reopening of it changes nothing.
-                    current?.eventId == eventId && key != null && keyPresence.value == KeyPresence.Lost ->
+                    current?.let { it.event.id } == eventId && key != null && keyPresence.value == KeyPresence.Lost ->
                         restoreKey(eventId, key)
-                    current?.eventId == eventId -> ignoreRepeat(eventId, "already joined")
+                    current?.let { it.event.id } == eventId -> ignoreRepeat(eventId, "already joined")
                     // First join → JoiningEvent; a different event while joined → Joined.pendingSwitch (the
                     // same-event case is the duplicate rung above).
                     else -> startPending(eventId, key, leavesQuietly = current != null)
@@ -1154,7 +1154,7 @@ class StatusContainerHost(
      * `simplify-join-screen`, D3). A retry never re-requests: by then iOS has an answer.
      */
     fun onConfirmJoin() = intent {
-        if (asksAccessOnJoin(config.value, permission.value)) commands.platform.requestAccess.fire(Unit)
+        if (asksAccessOnJoin(membership.value, permission.value)) commands.platform.requestAccess.fire(Unit)
         commit()
     }
 
@@ -1176,12 +1176,15 @@ class StatusContainerHost(
     fun onConfirmSwitch() = guardedIntent(Guarded.SwitchLeave) {
         val p = pending.value ?: return@guardedIntent
         if ((p.phase as? JoinProgress.Detailed)?.step != JoinPhase.Detailed.Step.Ready) return@guardedIntent
-        val left = config.value?.eventId ?: return@guardedIntent
+        val left = membership.value?.let { it.event.id } ?: return@guardedIntent
         local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
         commands.leave.fire(Unit)
         // The leave answers nothing but the membership: the guard is held until it is gone — or the switch was given
         // up, since a leave that cannot be written leaves the member joined — so a second tap asks for no second leave.
-        combine(config, pending) { joined, open -> joined?.eventId != left || open?.eventId != p.eventId }.first { it }
+        combine(
+            membership,
+            pending,
+        ) { joined, open -> joined?.let { it.event.id } != left || open?.eventId != p.eventId }.first { it }
     }
 
     /**
@@ -1347,7 +1350,7 @@ class StatusContainerHost(
                     p,
                     detailed,
                     JoinCommit.Failed(),
-                    config.value,
+                    membership.value,
                     refusal.value,
                     attestFault.value,
                 )
@@ -1357,7 +1360,7 @@ class StatusContainerHost(
             // Orbit's re-throw would cancel the intent job and take every later command with it.
             throw t
         }
-        pending.update { it.settled(p, detailed, commit, config.value, refusal.value, attestFault.value) }
+        pending.update { it.settled(p, detailed, commit, membership.value, refusal.value, attestFault.value) }
     }
 
     /**
@@ -1389,8 +1392,8 @@ private const val REPORT_NOTICE_MILLIS = 4_000L
  * refusal a request is a silent no-op, so announcing a dialog there would be false; a switch's previous
  * event, while still configured, is not yet a join this rule speaks for.
  */
-internal fun asksAccessOnJoin(config: EventConfig?, permission: PhotoGrant): Boolean =
-    config == null && permission == PhotoGrant.UNDECIDED
+internal fun asksAccessOnJoin(joined: Membership?, permission: PhotoGrant): Boolean =
+    joined == null && permission == PhotoGrant.UNDECIDED
 
 /**
  * What is shown while NO event is configured: the interactive join confirmation, or the create surface. Nothing in
@@ -1477,25 +1480,26 @@ private class Choices(val form: RangeForm, val picking: Picking?)
  * the one-line status, never a hero-replacing gate.
  */
 private fun reduceFrom(
-    membership: Membership,
+    observed: Observed,
     interaction: Interaction,
     local: Local,
     nowCutoff: Timestamp,
     display: Display,
 ): Reduced {
-    val (config, permission, snapshot, download, attested, access) = membership
+    val (joined, permission, snapshot, download, attested, access) = observed
     val network = access.notice
     val (pending, creation, renameStatus) = interaction
     val transient = local.transientError
     val form = local.form
     // Surface state belongs to the membership it was opened in; another membership reads it as closed / idle.
+    val joinedId = joined?.let { it.event.id }
     val rename = Owned(local.renameOwner, renameOf(renameStatus, local.renameRequest))
-        .forMembership(config?.eventId, RenameStatus.Idle)
+        .forMembership(joinedId, RenameStatus.Idle)
     val reconfiguring = SettingsShown(
-        surface = local.settings.forMembership(config?.eventId, SettingsSurface.Closed),
-        askingToStopSharing = local.pendingWithdrawal.forMembership(config?.eventId, null) != null,
+        surface = local.settings.forMembership(joinedId, SettingsSurface.Closed),
+        askingToStopSharing = local.pendingWithdrawal.forMembership(joinedId, null) != null,
     )
-    if (config == null) {
+    if (joined == null) {
         val create = Creation(creatingOf(creation, local.createRequest), display.create(local.create))
         return unjoinedLayer(
             pending,
@@ -1504,26 +1508,26 @@ private fun reduceFrom(
             Choices(form, local.picking),
             permission,
             network,
-            membership.refusal,
-            membership.attestFault,
+            observed.refusal,
+            observed.attestFault,
             display,
         )
     }
-    val health = joinedHealth(membership, config, network, nowCutoff, local.keyPresence == KeyPresence.Lost)
+    val health = joinedHealth(observed, joined, network, nowCutoff, local.keyPresence == KeyPresence.Lost)
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
     val pendingSwitch = pending?.let { PendingSwitch(it.eventId.value, it.phase.shows) }
     // Where the event is in its life, for the dates line. Informational only —
     // the health above is unchanged by it, and sync continues after the end in the backend grace window.
-    val timing = eventTiming(config.startsAt, config.endsAt, nowCutoff)
+    val timing = eventTiming(joined.event.range.start, joined.event.range.end, nowCutoff)
     // The counts line rides ONLY on the two health rungs that read the numbers; every rung above them
     // means the numbers are unknown (not read yet), zero (no access collapses the gallery total) or beside
     // the point (not started, unverified) — and the one status line is what the member should read.
     val counts = (snapshot as? SharingProgressRead.Read)
         ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
-        ?.let { syncCounts(it.progress, download, config.direction) }
+        ?.let { syncCounts(it.progress, download, joined.share.direction) }
     return joinedLayer(
-        config, health, pendingSwitch, permission,
-        JoinedFacts(timing, counts, display.today(), display.joinableUntil(config, nowCutoff)),
+        joined, health, pendingSwitch, permission,
+        JoinedFacts(timing, counts, display.today(), display.joinableUntil(joined, nowCutoff)),
         rename, reconfiguring, transient, Choices(form, local.picking), display, local.inviteKey(),
     )
 }
@@ -1534,13 +1538,13 @@ private fun reduceFrom(
  * layer [reduceFrom] builds.
  */
 private fun joinedHealth(
-    membership: Membership,
-    config: EventConfig,
+    observed: Observed,
+    joined: Membership,
     network: NetworkNotice?,
     nowCutoff: Timestamp,
     keyLost: Boolean,
 ): SyncHealth {
-    val (_, permission, snapshot, download, attested, access) = membership
+    val (_, permission, snapshot, download, attested, access) = observed
     // What the snapshot says on its own: not read yet, settled, or work remaining. The bottom of the ladder below,
     // and what decides whether a membership that neither shares nor receives may say so.
     val settled = when (snapshot) {
@@ -1563,7 +1567,7 @@ private fun joinedHealth(
             syncHealth(
                 snapshot.progress,
                 download,
-                heldForWifi = !membership.mobileData && access == NetworkAccess.Online(restricted = true),
+                heldForWifi = !observed.mobileData && access == NetworkAccess.Online(restricted = true),
             )
         }
     }
@@ -1572,8 +1576,8 @@ private fun joinedHealth(
         // either direction, that is the one thing worth saying — access, the network, the start and verification
         // all concern photos that no longer move. Work still draining in a switched-off direction is shown by the
         // ladder below, never masked (the reason above `syncHealth`).
-        config.direction == Direction.Neither && settled == SyncHealth.InSync -> SyncHealth.Inactive
-        config.direction == Direction.Neither && settled == SyncHealth.Loading -> SyncHealth.Loading
+        joined.share.direction == Direction.Neither && settled == SyncHealth.InSync -> SyncHealth.Inactive
+        joined.share.direction == Direction.Neither && settled == SyncHealth.Loading -> SyncHealth.Loading
         // The device lost the event's key: nothing moves in either direction, and only the
         // event's invite — from someone in the group — brings it back, so no rung below says anything truer.
         keyLost -> SyncHealth.KeyLost
@@ -1593,7 +1597,7 @@ private fun joinedHealth(
         // CAN be syncing yet — the cutoff floor guarantees it (`minPhotoDate >= startsAt > now`, and a
         // photo cannot be captured in the future) — so a snapshot line would say nothing true that this
         // does not say better. Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
-        config.startsAt.at > nowCutoff -> SyncHealth.NotStarted
+        joined.event.range.start.at > nowCutoff -> SyncHealth.NotStarted
         // Uploads are gated on an attestation token (change `withhold-unverified-uploads`), and we could not get one.
         // Ranked BELOW permission and BELOW NotStarted for the same reason: with no library access — or before the
         // event begins — nothing of this member's can upload anyway, so an unusable token is not yet their problem,
@@ -1602,13 +1606,13 @@ private fun joinedHealth(
         // A definite refusal names its cause on the same rung; no verdict names none.
         // No proof, because SnapSync failed when asked for one: its condition is told, never that this device
         // cannot be verified — a refusal, or a proof this phone could not give, keeps the line above.
-        !attested && membership.refusal == null && membership.attestFault != null ->
-            SyncHealth.ServiceFailing(membership.attestFault.notice)
-        !attested -> SyncHealth.Unattested(membership.refusal?.cause)
+        !attested && observed.refusal == null && observed.attestFault != null ->
+            SyncHealth.ServiceFailing(observed.attestFault.notice)
+        !attested -> SyncHealth.Unattested(observed.refusal?.cause)
         // Photos wait and SnapSync is failing: the line says which way and that they are safe. Never over
         // "Up to date": with nothing waiting, an outage is no one's concern.
-        membership.serviceFault != null && settled is SyncHealth.Syncing ->
-            SyncHealth.ServiceFailing(membership.serviceFault.notice)
+        observed.serviceFault != null && settled is SyncHealth.Syncing ->
+            SyncHealth.ServiceFailing(observed.serviceFault.notice)
         else -> settled
     }
 }
@@ -1621,7 +1625,7 @@ private fun joinedHealth(
  */
 @Suppress("LongParameterList")
 private fun joinedLayer(
-    config: EventConfig,
+    joined: Membership,
     health: SyncHealth,
     pendingSwitch: PendingSwitch?,
     permission: PhotoGrant,
@@ -1636,13 +1640,13 @@ private fun joinedLayer(
     val form = choices.form
     // The settings surface, pre-filled and resolved against the MEMBERSHIP's own window. A deleted event has no settings
     // any more: a surface left open when the deletion is learned gives way to the status.
-    val settingsOpen = reconfiguring.surface != SettingsSurface.Closed && !config.deleted
-    val range = if (settingsOpen) display.resolve(form, config.startsAt, config.endsAt) else null
+    val settingsOpen = reconfiguring.surface != SettingsSurface.Closed && joined !is Membership.Deleted
+    val range = if (settingsOpen) display.resolve(form, joined.event.range.start, joined.event.range.end) else null
     val layer = Layer.Joined(
-        membership = display.event(config),
+        membership = display.event(joined),
         // Derived HERE and nowhere else (decision record `event-invite-qr`, D3's surviving half):
         // one derivation feeds both the rendered QR and the share action, so they cannot drift.
-        inviteUrl = config.inviteUrl(inviteKey),
+        inviteUrl = joined.inviteUrl(inviteKey),
         health = health,
         today = facts.today,
         pendingSwitch = pendingSwitch,
@@ -1651,12 +1655,12 @@ private fun joinedLayer(
         canChoosePhotos = permission == PhotoGrant.LIMITED,
         timing = facts.timing,
         counts = facts.counts,
-        deleted = config.deleted,
-        members = config.members?.active?.takeIf { !config.deleted },
+        deleted = joined is Membership.Deleted,
+        members = joined.event.members?.active?.takeIf { joined !is Membership.Deleted },
         // Only once the range has ended and this member is in sync is "who are we waiting for" the member's question.
         // Not a one-way latch: a late guest or new photos turn "everyone has shared" back into waiting.
-        sharingNote = config.members?.takeIf {
-            facts.timing == EventTiming.Ended && !config.deleted &&
+        sharingNote = joined.event.members?.takeIf {
+            facts.timing == EventTiming.Ended && joined !is Membership.Deleted &&
                 (health == SyncHealth.InSync || (health as? SyncHealth.Syncing)?.waitingForOthers == true)
         }?.let { if (it.waitingFor > 0) SharingNote.WaitingFor(it.waitingFor) else SharingNote.EveryoneShared },
         joinableUntil = facts.joinableUntil,
@@ -1767,11 +1771,11 @@ private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
  * The invite a member shares. An ENCRYPTED event's carries its key — only ever the key of the event its config names
  * (a key read for no encrypted membership is ignored); a plain event's carries none, in the form every build reads.
  */
-private fun EventConfig.inviteUrl(key: EventKey?): String? = when {
-    keyId == null -> InviteLinkText.format(InviteLink(eventId, null))
+private fun Membership.inviteUrl(key: EventKey?): String? = when {
+    event.encryption == Encryption.Plain -> InviteLinkText.format(InviteLink(event.id, null))
     // An encrypted event's invite is offered only whole: no key read, no invite.
     key == null -> null
-    else -> InviteLinkText.format(InviteLink(eventId, key))
+    else -> InviteLinkText.format(InviteLink(event.id, key))
 }
 
 private fun RenameStatus.toRenameState(): RenameState = when (this) {
@@ -1835,17 +1839,11 @@ internal data class SettingChange(
     fun withdrawsFrom(inEffect: SettingChange): Boolean = inEffect.direction.includesUpload &&
         (!direction.includesUpload || from.at > inEffect.from.at || until.at < inEffect.until.at)
 
-    /** [config] carrying these settings — what the controls are seeded from. */
-    fun appliedTo(config: EventConfig): EventConfig = config.copy(
-        direction = direction,
-        minPhotoDate = from,
-        maxPhotoDate = until,
-        saveToAlbum = saveToAlbum,
-    )
-
     companion object {
-        fun of(config: EventConfig) =
-            SettingChange(config.direction, config.minPhotoDate, config.maxPhotoDate, config.saveToAlbum)
+        /** The settings [joined] holds. */
+        fun of(joined: Membership) = joined.share.let {
+            SettingChange(it.direction, it.range.from, it.range.until, AlbumSwitch.isOn(it.album))
+        }
     }
 }
 
@@ -1913,12 +1911,12 @@ private fun PendingJoin?.settled(
     p: PendingJoin,
     detailed: JoinProgress.Detailed,
     commit: JoinCommit,
-    joined: EventConfig?,
+    joined: Membership?,
     refusal: DeviceRefusal?,
     attestFault: ServiceFault?,
 ): PendingJoin? = when {
     this?.eventId != p.eventId -> this
-    commit == JoinCommit.Committed || joined?.eventId == p.eventId -> null
+    commit == JoinCommit.Committed || joined?.let { it.event.id } == p.eventId -> null
     else -> p.copy(
         phase = failedPhase(commit, detailed.event, refusal),
         service = failedService(commit, refusal, attestFault),
@@ -1982,8 +1980,8 @@ private val RETRYABLE_STEPS =
     setOf(JoinPhase.Detailed.Step.Ready, JoinPhase.Detailed.Step.CommitFailed, JoinPhase.Detailed.Step.DeviceRefused)
 
 /** The membership and what its health is read from — observed read-models (see [StatusSources]). */
-private data class Membership(
-    val config: EventConfig?,
+private data class Observed(
+    val joined: Membership?,
     val permission: PhotoGrant,
     val sync: SharingProgressRead,
     val download: DownloadProgress,

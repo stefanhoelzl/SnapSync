@@ -1180,8 +1180,8 @@ the leave answers nothing but the membership itself. A failure the service cause
 `RenameResult.Failed`, an invite's `JoinDetails.Unanswered` with the wait an update suggested — so the screen tells it
 in its own words.
 
-**The old zones read it through a shim** (`MembershipProjection`, `PENDING_CLEANUPS.md`): an `EventConfig` flow over
-the repository, until each concept moves.
+**The screen reads the membership held** through `MembershipQuery.joined` — `null` while none is, or none can be
+read now — and the diagnostic dump reads the repository itself.
 
 ### Receiving
 

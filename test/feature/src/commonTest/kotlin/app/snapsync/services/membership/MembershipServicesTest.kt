@@ -3,20 +3,13 @@ package app.snapsync.services.membership
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.membership.MembershipRepository
-import app.snapsync.domain.event.DeletesAt
-import app.snapsync.domain.event.EventEnd
-import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.domain.membership.MembershipRead
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.feature.support.SharedStore
-import app.snapsync.format.TimestampText
 import app.snapsync.mock.fakeCrypto
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.EventConfig
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
@@ -26,78 +19,17 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 
 /**
- * The membership's services the old zones still hold (`PENDING_CLEANUPS.md`): the projection they read it through, the
- * join-in-progress a sweep of a failed leave's leftovers waits out, and the key a join adopts.
+ * The membership's services the old zones still hold (`PENDING_CLEANUPS.md`): the join-in-progress a sweep of a failed
+ * leave's leftovers waits out, and the key a join adopts.
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class MembershipServicesTest {
 
-    private val joined = EventConfig(
-        eventId = testEventId("E"),
-        name = "Party",
-        minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T12:00:00Z")),
-        startsAt = EventStart(TimestampText.parse("2026-07-06T12:00:00Z")),
-        endsAt = EventEnd(TimestampText.parse("2026-07-13T12:00:00Z")),
-        maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-13T12:00:00Z")),
-        deletesAt = DeletesAt(TimestampText.parse("2026-08-05T12:00:00Z")),
-    )
-
-    /** The membership [store] holds, projected for the old zones. */
-    private fun projection(store: SharedStore) = MembershipProjection(MembershipRepository(store.db))
-
     /** What a read of a store holding no membership proves. */
     private fun none(): ConfirmedNotJoined =
         (MembershipRepository(SharedStore().db).read() as MembershipRead.NotJoined).evidence
-
-    // ---- the projection ----
-
-    @Test
-    fun `the projection follows the membership and emits each change once`() = runTest {
-        val store = SharedStore()
-        val config = projection(store)
-        assertEquals(listOf(null), config.config.replayCache)
-        val seen = mutableListOf<EventConfig?>()
-        backgroundScope.launch { config.config.collect { seen += it } }
-        runCurrent()
-        config.reload() // a fresh read that still finds none: nothing new to emit
-        runCurrent()
-        store.persist(joined)
-        config.reload()
-        runCurrent()
-        assertEquals(listOf(null, joined), seen)
-    }
-
-    @Test
-    fun `a membership another process wrote is read fresh before the next reload`() {
-        val store = SharedStore()
-        val config = projection(store)
-        assertNull(config.config.value)
-        store.persist(joined)
-        assertNull(config.config.value, "the state is re-read only at a reload")
-        assertEquals(joined, config.joinedOrRead())
-        config.reload()
-        assertEquals(joined, config.joinedOrRead())
-    }
-
-    @Test
-    fun `a membership that cannot be read is none to the old zones`() {
-        val store = SharedStore().apply { membershipUnreadable() }
-        val config = projection(store)
-        assertNull(config.joinedOrRead())
-    }
-
-    @Test
-    fun `the active event is the joined one's, and none while not joined`() {
-        val store = SharedStore()
-        val config = projection(store)
-        assertNull(config.activeEventId(), "no membership: no event to scope a read to")
-        store.persist(joined)
-        config.reload()
-        assertEquals(joined.eventId, config.activeEventId())
-    }
 
     // ---- a join in progress ----
 

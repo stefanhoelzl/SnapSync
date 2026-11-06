@@ -15,7 +15,6 @@ import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.RowsRead
 import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.domain.album.AlbumChoice
-import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.ResourceRoleText
@@ -43,8 +42,6 @@ import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.membership.MembershipProjection
-import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -138,9 +135,6 @@ class RecordingFiles(
  * The shared database (`ledger.db`) over in-memory SQLite — where the membership, the ledger and the other shared records
  * are kept — with the reads and levers a test needs at the `Databases` port. Its legacy homes are empty, so every record
  * lives here from the first open, as on a fresh install.
- *
- * The membership's saves and clears are counted from the database's own change notices, so a test observes what reached
- * the store rather than what a service says it did.
  */
 class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
     val db: SharedDatabase = SharedDatabase(databases.port(), LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
@@ -151,29 +145,13 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
         LegacyRecords(inMemoryFiles(), inMemoryPreferences()),
     )
 
-    private var saves = 0
-    private var clears = 0
-
     init {
         db.use { }
-        // SQLDelight's own change notice: once per committed save or clear that reached the store — a clear of no row
-        // included — which a row-level trigger would not see.
-        driver().addListener("membership") {
-            if (persistedConfig() == null) {
-                clears++
-                onCleared()
-            } else {
-                saves++
-            }
-        }
     }
 
-    /** Called after each committed change that left no membership — how a test orders a clear among its steps. */
-    var onCleared: () -> Unit = {}
-
     /**
-     * The membership, persisted — what the config service seeds from at its first use. Not counted as a save, and
-     * written past the levers below: a test seeds the store it then locks or refuses.
+     * The membership, persisted — what the repository reads at its first use. Written past the levers below: a test
+     * seeds the store it then locks or refuses.
      */
     fun persist(config: EventConfig?) {
         val locked = databases.locked
@@ -187,19 +165,7 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
             }
         }
         databases.lock(locked)
-        saves = 0
-        clears = 0
     }
-
-    /** What the membership row holds now, or `null` when there is none. */
-    fun persistedConfig(): EventConfig? =
-        (MembershipRepository(inspected).read() as? MembershipRead.Joined)?.membership?.asConfig()
-
-    /** The membership's writes that reached the database since it was seeded. */
-    val configSaves: Int get() = saves
-
-    /** Whether a clear of the membership reached the database (a leave, a reset). */
-    val configCleared: Boolean get() = clears > 0
 
     /** Lever: the next membership save fails at the store, as a write SQLite cannot make does. */
     fun failSaves() = databases.fail(LEDGER_DB_NAME, "membership", WriteKind.INSERT)
@@ -209,25 +175,16 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
 
     /** Lever: every database is unreadable — a device locked since boot. */
     fun membershipUnreadable() = databases.lock()
-
-    private fun driver(): SqlDriver {
-        val opened = databases.port().open(LEDGER_DB_NAME, LedgerDatabase.Schema, readOnly = true)
-        return (opened as DbOpen.Opened).database.driver()
-    }
 }
 
 /** The shared database over [databases], its legacy homes empty — every record lives in the database from the start. */
 fun testShared(databases: Databases = inMemoryDatabases()): SharedDatabase =
     SharedDatabase(databases, LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
 
-/** The membership as the old zones read it, over the real repository of [store], seeded with [initial]. */
-fun configService(
-    initial: EventConfig? = null,
-    store: SharedStore = SharedStore(),
-    clock: Clock = testClock(),
-): MembershipProjection {
+/** The real membership repository over [store], seeded with [initial]. */
+fun membershipIn(initial: EventConfig? = null, store: SharedStore = SharedStore()): MembershipRepository {
     store.persist(initial)
-    return MembershipProjection(MembershipRepository(store.db))
+    return MembershipRepository(store.db)
 }
 
 /** [config] as the one membership row, written raw — how a test seeds what a join would have written. */

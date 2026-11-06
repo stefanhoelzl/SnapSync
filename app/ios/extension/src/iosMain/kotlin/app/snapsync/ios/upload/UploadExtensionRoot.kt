@@ -39,7 +39,7 @@ import kotlinx.coroutines.Dispatchers
  * `@main` principal class calls [processRawValue] from its `process()` callback.
  *
  * Config is sourced fresh each cycle by the shared entry gate: the runtime event id from the shared
- * App-Group config file ([MembershipProjection] over [IosFiles] — the file is the config's only home) combined
+ * App-Group membership store (the data layer's `MembershipRepository` over [IosFiles]) combined
  * with the compile-time upload host
  * ([bakedUploadBase], the plist `uploadBase`). When no event has been joined yet (the
  * extension woke before setup), the cycle is skipped as a clean success — no job, no ledger write,

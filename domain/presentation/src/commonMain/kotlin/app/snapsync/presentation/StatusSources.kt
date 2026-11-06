@@ -5,6 +5,7 @@ import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchVerdict
@@ -14,9 +15,9 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.VersionRefusal
-import app.snapsync.model.EventConfig
 import app.snapsync.model.Store
 import app.snapsync.query.RequestStatus
+import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.query.receiving.DownloadProgress
@@ -45,8 +46,11 @@ class StatusSources(
      * also raises iOS's photo-access dialog.
      */
     val permission: StateFlow<PhotoGrant>,
-    /** The persisted membership. Config presence is the reduction's top rung. */
-    val config: StateFlow<EventConfig?>,
+    /**
+     * The joined membership, `null` while none is held ([MembershipQuery.joined]): its presence is the reduction's top
+     * rung.
+     */
+    val membership: StateFlow<Membership?>,
     /**
      * The create-status read-model. Inert by default (always `Idle`) so a host that never creates
      * constructs unchanged; the iOS shell injects the instance the create use-case drives.

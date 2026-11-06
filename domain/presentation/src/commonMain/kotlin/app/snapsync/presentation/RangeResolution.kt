@@ -1,10 +1,10 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.EventRange
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
-import app.snapsync.model.EventConfig
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount
 import kotlinx.datetime.LocalDateTime
@@ -102,16 +102,20 @@ internal fun nowWithinWindow(now: Timestamp, startsAt: Timestamp?, endsAt: Times
  * "From now" pick is unrecoverable, and is just a custom start once "now" has moved on
  * (decision record `simplify-join-screen`, D1).
  */
-internal fun reconfigureForm(membership: EventConfig, toLocal: (Timestamp) -> LocalDateTime): RangeForm {
-    val fromAtFloor = membership.minPhotoDate.at == membership.startsAt.at
-    val untilAtCeiling = membership.maxPhotoDate.at == membership.endsAt.at
+internal fun reconfigureForm(
+    event: EventRange,
+    settings: SettingChange,
+    toLocal: (Timestamp) -> LocalDateTime,
+): RangeForm {
+    val fromAtFloor = settings.from.at == event.start.at
+    val untilAtCeiling = settings.until.at == event.end.at
     val whole = fromAtFloor && untilAtCeiling
     return RangeForm(
-        shareOn = membership.direction.includesUpload,
-        receiveOn = membership.direction.includesDownload,
-        saveToAlbum = membership.saveToAlbum,
+        shareOn = settings.direction.includesUpload,
+        receiveOn = settings.direction.includesDownload,
+        saveToAlbum = settings.saveToAlbum,
         preset = if (whole) RangeChoice.EVENT_START else RangeChoice.CUSTOM,
-        customFrom = if (whole || fromAtFloor) null else toLocal(membership.minPhotoDate.at),
-        customUntil = if (whole || untilAtCeiling) null else toLocal(membership.maxPhotoDate.at),
+        customFrom = if (whole || fromAtFloor) null else toLocal(settings.from.at),
+        customUntil = if (whole || untilAtCeiling) null else toLocal(settings.until.at),
     )
 }

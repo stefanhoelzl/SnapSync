@@ -13,6 +13,7 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling
@@ -24,7 +25,6 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.receiving.DownloadProgress
@@ -92,7 +92,7 @@ private val FAR_DELETION = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")
 
 // Config seam + store as one fake: save writes the cell, which is exactly how the real Keychain
 // adapter behaves. Defaults to present so the sync-state tests reach the joined layer.
-private val SAMPLE_CONFIG = EventConfig(
+private val SAMPLE_CONFIG = TestMembership(
     eventId = testEventId(EVENT_ID),
     name = "Anna's Birthday",
     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
@@ -108,7 +108,7 @@ private val SAMPLE_CONFIG = EventConfig(
 private fun joined(
     health: SyncHealth,
     pendingSwitch: PendingSwitch? = null,
-    config: EventConfig = SAMPLE_CONFIG,
+    config: TestMembership = SAMPLE_CONFIG,
     canChoosePhotos: Boolean = false,
     renameState: RenameState = RenameState.Idle,
     counts: SyncCounts? = null,
@@ -136,7 +136,7 @@ private fun progress(p: Pair<Int, Int>) = DirectionCount.Progress(p.first, p.sec
 
 /** The membership a commit provisions: the cutoff the member confirmed, under the loaded name. */
 private fun committed(cutoff: String, name: String = "Anna's Birthday") =
-    EventConfig(
+    TestMembership(
         testEventId(EVENT_ID),
         name,
         CaptureCutoff(TimestampText.parse(cutoff)),
@@ -187,7 +187,7 @@ private fun StatusContainerHost.confirmJoinAs(
 private fun syncing(
     up: Arrow,
     down: Arrow = Arrow.HIDDEN,
-    config: EventConfig = SAMPLE_CONFIG,
+    config: TestMembership = SAMPLE_CONFIG,
     counts: SyncCounts,
 ) = joined(SyncHealth.Syncing(up, down), config = config, counts = counts)
 
@@ -221,10 +221,10 @@ internal class FakePermissionSource(
     val permission = MutableStateFlow(initial)
 }
 
-internal class FakeConfig(initial: EventConfig? = SAMPLE_CONFIG) {
+internal class FakeConfig(initial: TestMembership? = SAMPLE_CONFIG) {
     private val flow = MutableStateFlow(initial)
-    val config: StateFlow<EventConfig?> = flow
-    fun save(config: EventConfig) {
+    val config: StateFlow<Membership?> = flow.held()
+    fun save(config: TestMembership) {
         flow.value = config
     }
     fun clear() {
@@ -432,7 +432,7 @@ class StatusContainerHostTest {
     /** An event that has not begun: its start is after the fixed NOW_CUTOFF (2026-07-09T12:00:00Z). */
     private val futureStart = EventStart(TimestampText.parse("2026-07-09T18:00:00Z"))
 
-    private fun notStartedConfig(startsAt: EventStart = futureStart) = EventConfig(
+    private fun notStartedConfig(startsAt: EventStart = futureStart) = TestMembership(
         eventId = testEventId(EVENT_ID),
         name = "Anna's Birthday",
         // The floor guarantees this shape: `minPhotoDate == max(chosen, startsAt) == startsAt` pre-start.
@@ -583,7 +583,7 @@ class StatusContainerHostTest {
     ): StatusContainerHost {
         val cfg =
             FakeConfig(
-                EventConfig(
+                TestMembership(
                     testEventId(EVENT_ID),
                     "Anna's Birthday",
                     CUTOFF,
@@ -794,7 +794,7 @@ class StatusContainerHostTest {
             create = { CreateResult.Created(testEventId(EVENT_ID), key = null) },
             commitJoin = { join ->
                 config.save(
-                    EventConfig(
+                    TestMembership(
                         join.event.id,
                         join.event.name.text,
                         minPhotoDate = join.from,
@@ -862,7 +862,10 @@ class StatusContainerHostTest {
             )
             cancelAndIgnoreRemainingItems()
         }
-        assertEquals(CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")), config.config.value?.minPhotoDate)
+        assertEquals(
+            CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
+            config.config.value?.share?.range?.from,
+        )
     }
 
     @Test
@@ -1144,7 +1147,7 @@ class StatusContainerHostTest {
             commitJoin = { join ->
                 enrolled += join.event.id
                 configFake.save(
-                    EventConfig(
+                    TestMembership(
                         join.event.id,
                         join.event.name.text,
                         CUTOFF,
@@ -1394,7 +1397,7 @@ class StatusContainerHostTest {
             commitJoin = { join ->
                 order += "join"
                 configFake.save(
-                    EventConfig(
+                    TestMembership(
                         join.event.id,
                         join.event.name.text,
                         CUTOFF,
@@ -1443,7 +1446,7 @@ class StatusContainerHostTest {
                 joinedDirection = join.direction
                 joinedAlbum = join.album
                 configFake.save(
-                    EventConfig(
+                    TestMembership(
                         join.event.id,
                         join.event.name.text,
                         CUTOFF,
@@ -1584,7 +1587,7 @@ class StatusContainerHostTest {
             commitJoin = { join ->
                 committedDirection = join.direction
                 configFake.save(
-                    EventConfig(
+                    TestMembership(
                         join.event.id,
                         join.event.name.text,
                         CUTOFF,
@@ -1609,7 +1612,7 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(Direction.DownloadOnly, committedDirection)
-        assertEquals(Direction.DownloadOnly, configFake.config.value?.direction)
+        assertEquals(Direction.DownloadOnly, configFake.config.value?.share?.direction)
     }
 
     @Test

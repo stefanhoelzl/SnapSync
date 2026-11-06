@@ -8,6 +8,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.MakesEventKey
+import app.snapsync.domain.event.MemberCounts
 import app.snapsync.domain.event.MintsIdentifiedKey
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLinkVerdict
@@ -21,8 +22,6 @@ import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
-import app.snapsync.model.MemberCounts
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Arrow
@@ -53,7 +52,7 @@ import kotlin.time.Instant
 private const val EVENT_ID = "44444444-4444-4444-8444-444444444444"
 
 /** An open membership whose event is under way at the fixed clock (2026-07-09T12:00Z). */
-private val MEMBERSHIP = EventConfig(
+private val MEMBERSHIP = TestMembership(
     eventId = testEventId(EVENT_ID),
     name = "Lake Weekend",
     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
@@ -82,18 +81,18 @@ class JoinedLayerTest {
 
     private fun joined(
         scope: CoroutineScope,
-        config: EventConfig = MEMBERSHIP,
+        config: TestMembership = MEMBERSHIP,
         snapshot: SharingProgressRead = SETTLED,
         download: DownloadProgress = DownloadProgress(0, 0),
         permission: PhotoGrant = PhotoGrant.FULL,
         commands: TestCommands = TestCommands(),
         inviteKey: EventKey? = null,
-        configFlow: MutableStateFlow<EventConfig?> = MutableStateFlow(config),
+        configFlow: MutableStateFlow<TestMembership?> = MutableStateFlow(config),
     ) = StatusContainerHost(
         StatusSources(
             FixedSync(snapshot),
             MutableStateFlow(permission),
-            configFlow,
+            configFlow.held(),
             requests = commands.requests.flows,
             download = MutableStateFlow(download),
             eventKey = EventKeyView(
@@ -145,7 +144,7 @@ class JoinedLayerTest {
 
     @Test
     fun `once nobody is left to wait for everyone has shared and a late guest turns it back`() = runTest {
-        val config = MutableStateFlow<EventConfig?>(ENDED.copy(members = MemberCounts(3, 3, waiting = 0)))
+        val config = MutableStateFlow<TestMembership?>(ENDED.copy(members = MemberCounts(3, 3, waiting = 0)))
         val host = joined(backgroundScope, configFlow = config)
         assertEquals(SharingNote.EveryoneShared, host.layer().sharingNote)
 
@@ -200,7 +199,7 @@ class JoinedLayerTest {
     @Test
     fun `a plain event's invite carries no key — even one read for it`() = runTest {
         // The key cell still holds a key once the membership names no encrypted event — the invite must drop it.
-        val config = MutableStateFlow<EventConfig?>(MEMBERSHIP.copy(keyId = "k1"))
+        val config = MutableStateFlow<TestMembership?>(MEMBERSHIP.copy(keyId = "k1"))
         val host = joined(backgroundScope, inviteKey = INVITE_KEY, configFlow = config)
         host.screen.first { (it.layer as? Layer.Joined)?.inviteUrl?.contains("#k=") == true }
 

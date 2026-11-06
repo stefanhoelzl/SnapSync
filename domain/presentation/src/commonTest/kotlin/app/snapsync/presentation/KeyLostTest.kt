@@ -19,7 +19,6 @@ import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
@@ -50,14 +49,14 @@ class KeyLostTest {
 
     private fun TestScope.host(
         presence: KeyPresence,
-        config: EventConfig = ENCRYPTED,
+        config: TestMembership = ENCRYPTED,
         permission: PhotoGrant = PhotoGrant.FULL,
         restored: MutableList<EventKey> = mutableListOf(),
     ) = StatusContainerHost(
         StatusSources(
             Sync(),
             MutableStateFlow(permission),
-            MutableStateFlow(config),
+            MutableStateFlow(config).held(),
             eventKey = EventKeyView(presence = MutableStateFlow<KeyPresence>(presence)),
             network = AlwaysOnline,
             mobileData = AlwaysAllowed,
@@ -169,7 +168,7 @@ class KeyLostTest {
             StatusSources(
                 Sync(),
                 MutableStateFlow(PhotoGrant.FULL),
-                MutableStateFlow(ENCRYPTED),
+                MutableStateFlow(ENCRYPTED).held(),
                 eventKey = EventKeyView(presence = presence),
                 network = AlwaysOnline,
                 mobileData = AlwaysAllowed,
@@ -213,7 +212,7 @@ class KeyLostTest {
 
         @OptIn(MintsIdentifiedKey::class)
         val HELD = IdentifiedKey(LINK_KEY, EventKeyId("0011223344556677"))
-        val ENCRYPTED = EventConfig(
+        val ENCRYPTED = TestMembership(
             testEventId(EVENT),
             "Party",
             CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),

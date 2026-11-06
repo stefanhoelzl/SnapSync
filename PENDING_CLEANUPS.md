@@ -366,25 +366,16 @@ also carries the stamp, and keeps it).
 **Unlock condition:** the concept that owns each caller has moved into the layers (`docs/patterns.md`). No release,
 version or op gates these — each phase deletes its own uses, and the last one deletes the shim.
 
-### The membership as the old zones read it (app)
-- **What:** the old zones still read the membership as an `EventConfig` flow, and still stop what a failed leave left
-  behind themselves.
-  - `domain/services/.../membership/MembershipProjection.kt`: `MembershipProjection` over the data layer's
-    `MembershipRepository` — `config` (a hand-written `StateFlow`, its opt-in pinned in `OptInPinsTest`), `read`,
-    `reload`, `joinedOrRead`, `activeEventId` — and `Membership.asConfig()`. It writes nothing. Its readers:
-    `ForegroundWork`'s stored-upload settle (4.4b's `SettleStoredUploads` takes the joined event from it) in
-    `domain/entrypoints/.../AppEntryPoints.kt` (4.9); `CollectDiagnosticDump` (4.10); presentation's `config` source
-    (4.9). The status total's (4.9) is gone: `CountOwnPhotos` reads the repository itself. Receiving's (4.5) and the
-    album's (4.7) are gone too: their triggers branch on
-    `MembershipQuery`; and the manifest's (4.4c): its publish and its end-of-wake settle read the membership the upload
-    gate read, and the publish's "over" marks it through the data layer's `markDeleted`.
+### A failed leave's leftovers, swept by the old zones (app)
+- **What:** the old zones still stop what a failed leave left behind themselves. (Their `EventConfig` flow over the
+  membership, `MembershipProjection`, is gone: the screen reads `MembershipQuery.joined` and the diagnostic dump the
+  repository, 4.9.)
   - `domain/services/.../membership/MembershipTransition.kt`: the join-in-progress guard a sweep of leftovers waits
     out, held by `SweepLeftovers` (`domain/entrypoints/.../MembershipEntryPoints.kt`) around the key's, the
     downloads' and the uploads' (`StopUploads`) leftover sweeps.
 - **Why:** phase 4.2 moved the membership into the layers; the concepts that read it move in their own phases.
 - **Remove:** each phase moves its readers onto `MembershipRead` (the query's `MembershipQuery`, or a use case's
-  answer) and its leftover sweep into a use case; the phase that removes the last reader deletes both files and this
-  entry.
+  answer) and its leftover sweep into a use case; the phase that removes the last one deletes the file and this entry.
 
 ### The old zones' throwing read of a stored id (app)
 - **What:** `held` (`domain/services/…/services/databases/StoredIds.kt`): an id column as the old zones read it — the

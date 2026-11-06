@@ -14,7 +14,6 @@ import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.TimestampText
 import app.snapsync.model.BuildLabel
-import app.snapsync.model.EventConfig
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.testids.testEventId
@@ -45,7 +44,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
-private val MEMBERSHIP = EventConfig(
+private val MEMBERSHIP = TestMembership(
     eventId = testEventId("11111111-1111-4111-8111-111111111111"),
     name = "Anna's Birthday",
     minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
@@ -69,7 +68,7 @@ private fun MenuTestSync(): StateFlow<SharingProgressRead> = MutableStateFlow(
 class StatusContainerHostMenuTest {
 
     private class World {
-        val config = MutableStateFlow<EventConfig?>(MEMBERSHIP)
+        val config = MutableStateFlow<TestMembership?>(MEMBERSHIP)
         val creation = MutableStateFlow<RequestStatus<CreateResult>>(Creating.Idle)
         val links = mutableListOf<String>()
         val reports = mutableListOf<String>()
@@ -109,7 +108,7 @@ class StatusContainerHostMenuTest {
                         StatusSources(
                             MenuTestSync(),
                             world.permission,
-                            world.config,
+                            world.config.held(),
                             creation = world.creation,
                             network = AlwaysOnline,
                             mobileData = choice,

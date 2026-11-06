@@ -11,18 +11,21 @@ import app.snapsync.data.sharing.RecordRead
 import app.snapsync.data.store.LegacySource
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.SharedRecordsReadiness
+import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.album.AlbumEntry
 import app.snapsync.domain.album.AlbumFill
 import app.snapsync.domain.album.EventAlbumId
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.membership.CheckedAt
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.sharing.PublishedDeclaration
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.format.EncryptionText
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.inMemoryFiles
@@ -34,7 +37,6 @@ import app.snapsync.ports.DbResult
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
-import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -71,9 +73,26 @@ class LegacyRecordsTest {
 
     private fun membershipOf(db: SharedDatabase) = MembershipRepository(db)
 
-    /** The membership [db] holds, in the old zones' shape — `null` unless it reads as joined. */
+    /** The membership [db] holds, in the legacy record's shape — `null` unless it reads as joined. */
     private fun joinedIn(db: SharedDatabase): EventConfig? =
-        (membershipOf(db).read() as? MembershipRead.Joined)?.membership?.asConfig()
+        (membershipOf(db).read() as? MembershipRead.Joined)?.membership?.let(::recordOf)
+
+    /** [joined] as the legacy record that would hold it: what the copy is compared against. */
+    private fun recordOf(joined: Membership): EventConfig = EventConfig(
+        eventId = joined.event.id,
+        name = joined.event.name.text,
+        minPhotoDate = joined.share.range.from,
+        startsAt = joined.event.range.start,
+        endsAt = joined.event.range.end,
+        maxPhotoDate = joined.share.range.until,
+        deletesAt = joined.event.deletesAt,
+        direction = joined.share.direction,
+        saveToAlbum = joined.share.album == AlbumChoice.SaveToAlbum,
+        members = joined.event.members?.let { MemberCounts(it.active, it.settled, it.waiting) },
+        openUntil = joined.event.openUntil,
+        deleted = joined is Membership.Deleted,
+        keyId = EncryptionText.of(joined.event.encryption),
+    )
 
     // ---- the whole copy -----------------------------------------------------------------------------------------
 

@@ -12,6 +12,8 @@ import app.snapsync.data.upload.RowTransition
 import app.snapsync.data.upload.RowTransitions
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.MemberCounts
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -24,7 +26,6 @@ import app.snapsync.format.UploadKeyText
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.EventConfig
-import app.snapsync.model.MemberCounts
 import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.Databases
 import app.snapsync.ports.FileArea
@@ -33,7 +34,6 @@ import app.snapsync.services.databases.CONFIG_FILE_NAME
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.databases.databaseAt
 import app.snapsync.services.databases.strings
-import app.snapsync.services.membership.asConfig
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -125,14 +125,14 @@ class LedgerMigrationTest {
 
         val read = MembershipRepository(appOpen(databases, inMemoryFiles())).read()
 
-        val config = assertIs<MembershipRead.Joined>(read).membership.asConfig()
-        assertEquals(testEventId(JOINED), config.eventId)
-        assertEquals(false, config.deleted)
-        assertNull(config.openUntil)
-        assertEquals(MemberCounts(active = 3, settled = 1, waiting = null), config.members)
+        val joined = assertIs<MembershipRead.Joined>(read).membership
+        assertEquals(testEventId(JOINED), joined.event.id)
+        assertIs<Membership.Active>(joined)
+        assertNull(joined.event.openUntil)
+        assertEquals(MemberCounts(active = 3, settled = 1, waiting = null), joined.event.members)
         assertEquals(
             2,
-            config.members?.waitingFor,
+            joined.event.members?.waitingFor,
             "counts recorded before the waiting one fall back to the difference",
         )
     }

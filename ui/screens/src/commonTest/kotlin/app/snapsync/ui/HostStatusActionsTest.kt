@@ -28,15 +28,13 @@ import app.snapsync.domain.event.EventRange
 import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.service.ServiceFault
-import app.snapsync.domain.sharing.CaptureCeiling
-import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.presentation.url
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -107,15 +105,8 @@ private const val OTHER_ID = "22222222-2222-4222-8222-222222222222"
 
 private const val STORE_URL = RIG_STORE_URL
 
-private val MEMBERSHIP = EventConfig(
-    eventId = testEventId(JOINED_ID),
-    name = "Anna's Birthday",
-    minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-04T18:00:00Z")),
-    startsAt = EventStart(TimestampText.parse("2026-07-04T18:00:00Z")),
-    endsAt = EventEnd(TimestampText.parse("2026-07-20T18:00:00Z")),
-    maxPhotoDate = CaptureCeiling(TimestampText.parse("2026-07-20T18:00:00Z")),
-    deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
-)
+private val MEMBERSHIP =
+    joinedTo(JOINED_ID, "Anna's Birthday", from = "2026-07-04T18:00:00Z", until = "2026-07-20T18:00:00Z")
 
 /** What the details load answers for [OTHER_ID]: an event that has started and runs past "now". */
 private val OTHER_EVENT = JoinDetails.Found(
@@ -156,7 +147,7 @@ private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(testEvent
 class HostStatusActionsTest {
 
     private fun rig(
-        config: EventConfig? = null,
+        config: Membership? = null,
         permission: PhotoGrant = PhotoGrant.FULL,
         refusal: VersionRefusal? = null,
         @Suppress("UNUSED_PARAMETER") diagnostics: Boolean = false,

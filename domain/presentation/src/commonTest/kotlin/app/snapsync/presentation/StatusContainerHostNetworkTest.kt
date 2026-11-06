@@ -18,7 +18,6 @@ import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.model.EventConfig
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.mobiledata.MobileDataQuery
@@ -71,7 +70,7 @@ class StatusContainerHostNetworkTest {
 
     private fun TestScope.host(
         network: FakeNetwork,
-        config: EventConfig? = STARTED,
+        config: TestMembership? = STARTED,
         permission: PhotoGrant = PhotoGrant.FULL,
         attested: Boolean = true,
         creation: RequestStatus<CreateResult> = Creating.Idle,
@@ -84,7 +83,7 @@ class StatusContainerHostNetworkTest {
             StatusSources(
                 Sync(SharingProgressRead.Read(progress)),
                 MutableStateFlow(permission),
-                MutableStateFlow(config),
+                MutableStateFlow(config).held(),
                 creation = MutableStateFlow(creation),
                 verification = DeviceVerification(MutableStateFlow(attested)),
                 network = network,
@@ -337,7 +336,7 @@ class StatusContainerHostNetworkTest {
     private companion object {
         const val EVENT = "11111111-1111-4111-8111-111111111111"
         val NOW: Instant = Instant.parse("2026-07-09T12:00:00Z")
-        val STARTED = EventConfig(
+        val STARTED = TestMembership(
             testEventId(EVENT),
             "Party",
             CaptureCutoff(TimestampText.parse("2026-07-06T00:00:00Z")),
@@ -345,7 +344,7 @@ class StatusContainerHostNetworkTest {
             endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
             deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
         )
-        val NOT_STARTED = EventConfig(
+        val NOT_STARTED = TestMembership(
             testEventId(EVENT),
             "Party",
             CaptureCutoff(TimestampText.parse("2026-07-10T00:00:00Z")),

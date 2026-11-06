@@ -15,17 +15,49 @@ import app.snapsync.domain.membership.SwitchFacts
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.query.ScreenLookup
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
 
 /** The membership as this process holds it — re-read at every entry. */
 class MembershipQuery(private val membership: MembershipRepository) {
     val state: StateFlow<MembershipRead> get() = membership.state
 
+    /**
+     * The membership held, or `null` while none is as far as this process can tell — not joined, or not readable now:
+     * what a screen shows either way. Distinct, and as current as [state] at every read; building it reads nothing.
+     */
+    val joined: StateFlow<Membership?> = JoinedFlow(membership)
+
     /** The active membership held, or `null` when none is — a deleted one, none at all, or one that cannot be read. */
     fun active(): Membership.Active? = when (val read = state.value) {
         is MembershipRead.Joined -> read.membership as? Membership.Active
         is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
     }
+}
+
+/**
+ * The membership's read as the membership held: re-derived at every read, emitted only when it changes. The store's
+ * state is reached only when read, since its first read opens the shared database.
+ */
+@OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+private class JoinedFlow(private val membership: MembershipRepository) : StateFlow<Membership?> {
+    override val value: Membership? get() = membership.state.value.held()
+    override val replayCache: List<Membership?> get() = listOf(value)
+
+    override suspend fun collect(collector: FlowCollector<Membership?>): Nothing {
+        var told: Any? = NothingTold
+        membership.state.collect { read ->
+            val held = read.held()
+            if (held != told) collector.emit(held)
+            told = held
+        }
+    }
+
+    private fun MembershipRead.held(): Membership? = (this as? MembershipRead.Joined)?.membership
+
+    /** What was told before anything was: unequal to every membership and to none. */
+    private object NothingTold
 }
 
 /**

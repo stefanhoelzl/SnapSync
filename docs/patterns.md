@@ -306,8 +306,9 @@ the format, the ports, the generated wire and the inbound log — never an old z
 - **The claim: ≤ 3 cyclomatic, ≤ 3 cognitive** per function (`config/detekt/data.yml`). A `when` whose every entry is
   one expression counts once (`_base.yml`): it selects over a fact's cases. A function that needs more is deciding.
 - **The old zones reach it one way while their concepts move** (MIGRATING). A shim that keeps an old zone's shape for
-  callers a later phase owns — the membership as an `EventConfig` flow (`MembershipProjection`) — lives in the old zone,
-  never in the layer, and is listed in `PENDING_CLEANUPS.md` with the phases that delete its callers.
+  callers a later phase owns — the guard a sweep of a failed leave's leftovers waits out (`MembershipTransition`) —
+  lives in the old zone, never in the layer, and is listed in `PENDING_CLEANUPS.md` with the phases that delete its
+  callers.
 
 Its suites run over the ports' mocks in `:test:data` (no core module may name a mock), credited to it; its pure
 translations are tested in its own `commonTest`.

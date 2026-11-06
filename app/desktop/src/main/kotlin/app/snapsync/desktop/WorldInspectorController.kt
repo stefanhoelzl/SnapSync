@@ -13,8 +13,6 @@ import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.sharing.AdmissionVerdict
 import app.snapsync.domain.sharing.CandidateSet
-import app.snapsync.domain.sharing.CaptureRange
-import app.snapsync.domain.sharing.CaptureRangeVerdict
 import app.snapsync.domain.sharing.SelectionInputs
 import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.domain.sharing.WalkBounds
@@ -461,15 +459,12 @@ class WorldInspectorController(
         // row badge cannot drift from what the cycle does. Echo is reported separately (an imported photo), so the
         // echo set is empty here; the album lookup is real, read only when the library is walked, as the app does.
         val reads = mocks.library.port()
-        val range = joined?.let {
-            (CaptureRange.of(it.minPhotoDate, it.maxPhotoDate, it.startsAt, it.endsAt) as? CaptureRangeVerdict.Ok)
-                ?.range?.sharedAt(Timestamp.of(mocks.clock.port().now()), it.startsAt)
-        }
+        val range = joined?.share?.range?.sharedAt(Timestamp.of(mocks.clock.port().now()), joined.event.range.start)
         val walked = mocks.library.grant.value == LibraryGrant.GRANTED
         val policy = range?.let {
             SelectionPolicy.of(
                 SelectionInputs(
-                    joined.direction,
+                    joined.share.direction,
                     it,
                     received = emptySet(),
                     inDeniedAlbums = if (walked) DenylistedAlbums(reads).members(it.from) else emptySet(),
@@ -512,7 +507,7 @@ class WorldInspectorController(
             )
         }
         return InspectorSnapshot(
-            joinedEventId = joined?.eventId?.value,
+            joinedEventId = joined?.event?.id?.value,
             galleryRows = galleryRows,
             backend = backend,
             jobs = jobs,

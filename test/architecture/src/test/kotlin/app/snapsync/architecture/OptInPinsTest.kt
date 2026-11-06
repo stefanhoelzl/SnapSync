@@ -151,9 +151,8 @@ class OptInPinsTest {
         "/domain/application/src/commonMain/kotlin/app/snapsync/application/membership/EnrollDevice.kt" to mapOf(
             "MintsEnrolled" to Pin(1, "the one enrolment the server admitted"),
         ),
-        "/domain/services/src/commonMain/kotlin/app/snapsync/services/membership/MembershipProjection.kt" to mapOf(
-            "ExperimentalForInheritanceCoroutinesApi" to
-                Pin(1, "a hand-written StateFlow over the membership, for the old zones (MIGRATING)"),
+        "/domain/query/src/commonMain/kotlin/app/snapsync/query/membership/MembershipLookups.kt" to mapOf(
+            "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "a hand-written StateFlow: the membership read as the one held"),
         ),
         "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/SelectionPolicy.kt" to mapOf(
             "MintsAdmittedAsset" to Pin(1, "the one admission of a read's candidates"),
