@@ -115,7 +115,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportReadiness` | `:domain:application` | `:domain:application` NotReady, Ready | no |
 | `ImportReport` | `:domain:domain` | `:domain:domain` Failed, Imported | no |
 | `ImportVerdict` | `:domain:domain` | `:domain:domain` Deferred, Imported, Unimportable | no |
-| `Inbound` | `:domain:inbound` | `:domain:host` LiveScreen; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
+| `Inbound` | `:domain:inbound` | `:domain:host` LiveScreen, ScreenIntents; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
 | `InterruptedImportVerdict` | `:domain:domain` | `:domain:domain` Clear, Leave, Settle | no |
 | `InviteLinkVerdict` | `:domain:domain` | `:domain:domain` Invite, KeyUnreadable, NotAnInvite | no |
 | `Items` | `:domain:ports` | — | no |
@@ -249,7 +249,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RowsRead` | `:domain:data` | `:domain:data` Read, Unavailable | no |
 | `Running` | `:domain:inbound` | `:domain:scheduling` Expirable; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:ports` | `:domain:ports` Refused, Scheduled, Unsupported | no |
-| `Screen` | `:domain:entrypoints` | — | no |
 | `SealOutcome` | `:domain:data` | `:domain:data` Failed, Sealed | no |
 | `SealVerdict` | `:domain:domain` | `:domain:domain` Plain, Sealed, Withheld | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore, RecordingSecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:domain:services` MapSecureStore; `:test:contracts` SecureStoreProxy; `:test:data` RecordingSecureStore | yes |

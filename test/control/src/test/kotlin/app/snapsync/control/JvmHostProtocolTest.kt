@@ -168,20 +168,21 @@ class JvmHostProtocolTest {
     }
 
     /**
-     * The app's runtime tells each entry point's work on the world stream (`docs/testing.md`, "How a test waits"): a tap
-     * and an operating-system delivery the channel plays are each delivered, answered and done — every one tagged with
-     * the act that made it, so a test waits on its own act's `done`.
+     * The app's runtime tells each entry point's work on the world stream (`docs/testing.md`, "How a test waits"): the
+     * command a tap fires and an operating-system delivery the channel plays are each delivered, answered and done —
+     * every one tagged with the act that made it, so a test waits on its own act's `done`. A tap itself is no entry
+     * point: what it starts is known by the commands it fires, and by the screen it changes.
      */
     @Test
     fun every_entry_point_s_work_reaches_the_stream_tagged_with_its_act() = behaviour {
         given { step("in front", act = { os.foreground() }, until = { settled { true } }) }
-        whenever { tap(UiIntent.MenuOpen) }
+        whenever { tap(UiIntent.MobileData(false)) }
         then {
             inOrder {
-                event<WorldEvent.Delivered> { it.entry == "OnTap" && it.about == "MenuOpen" && it.tag != null }
-                event<WorldEvent.Answered> { it.entry == "OnTap" && it.tag != null }
+                event<WorldEvent.Delivered> { it.entry == "OnMobileDataChanged" && it.tag != null }
+                event<WorldEvent.Answered> { it.entry == "OnMobileDataChanged" && it.tag != null }
                 event<WorldEvent.Done> {
-                    it.entry == "OnTap" && it.outcome == EntryOutcomeKind.COMPLETED && it.tag != null
+                    it.entry == "OnMobileDataChanged" && it.outcome == EntryOutcomeKind.COMPLETED && it.tag != null
                 }
             }
         }

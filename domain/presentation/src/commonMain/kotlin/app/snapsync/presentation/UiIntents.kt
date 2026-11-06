@@ -1,7 +1,11 @@
 package app.snapsync.presentation
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.presentation.range.RangeEdit
 import app.snapsync.ui.state.UiIntent
+
+private val log = Log("StatusContainerHost")
 
 /**
  * What a person did on the screen, handed over by the platform's UI (the `Ui` port's `onIntent` handler) — **the one
@@ -12,6 +16,8 @@ import app.snapsync.ui.state.UiIntent
  */
 @Suppress("CyclomaticComplexMethod") // one arm per case of a closed set: a table, not a decision tree
 fun StatusContainerHost.onIntent(intent: UiIntent) {
+    // The one line a tap writes: the intent's name alone, never what it carries (a name, a note, a link).
+    log.unlabelled.i("intent", "intent" of intent::class.simpleName)
     when (intent) {
         UiIntent.ConfirmCreate -> create.onConfirm()
         is UiIntent.CreateName -> create.onName(intent.name)
@@ -69,6 +75,3 @@ fun StatusContainerHost.onIntent(intent: UiIntent) {
         is UiIntent.SendDiagnostics -> onSendDiagnostics(intent.note, intent.screen)
     }
 }
-
-/** A tap, as the UI port's entry point hands it over: [intent]'s meaning, handled as [run] — the tap's work. */
-fun StatusContainerHost.onTap(intent: UiIntent, run: TapRun) = tapped(run) { onIntent(intent) }

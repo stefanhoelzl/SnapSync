@@ -7,7 +7,6 @@ import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.followNetworkReturns
 import app.snapsync.compose.inbound
 import app.snapsync.compose.snapSyncApp
-import app.snapsync.compose.taps
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.entrypoints.HostAssembly
 import app.snapsync.inbound.CompositionOnly
@@ -24,12 +23,12 @@ import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.StatusDiagnostics
 import app.snapsync.presentation.StatusSources
-import app.snapsync.presentation.TapRun
 import app.snapsync.presentation.UserCommand
 import app.snapsync.presentation.UserCommands
-import app.snapsync.presentation.onTap
+import app.snapsync.presentation.onIntent
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.membership.MembershipStatuses
+import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -142,13 +141,8 @@ fun snapSyncHost(
     // status host first — a person reached the app — and so does a live screen; nothing else builds it, so a cold
     // background start installs no permission-grant subscription.
     core.inbound(HostFirst(composed))
-    // A person's taps: each an entry point of its own, whose work is everything the intent table starts for it.
-    ports.ui.inbound(
-        UiHandlers(
-            core.taps { intent, context, joining -> composed.host.onTap(intent, TapRun(context, joining)) },
-            LiveScreen(composed),
-        ),
-    )
+    // A person's taps, handed to the status host's intent table; what one starts is the commands it fires.
+    ports.ui.inbound(UiHandlers(ScreenIntents(composed), LiveScreen(composed)))
     // Asked at every launch, a background one included: the answer arrives through the push handlers just registered,
     // and asking is how a rotated token is learned.
     ports.pushNotifications.register()
@@ -160,6 +154,15 @@ private class HostFirst(private val composed: ComposedApp) : HostAssembly {
     override fun assemble() {
         composed.host
     }
+}
+
+/**
+ * The user's door for every intent: a tap handed to the status host's intent table, on the thread that delivered it.
+ * What it means is the host's; what it starts is the commands it fires, each an entry point of its own.
+ */
+@OptIn(InboundImplementation::class)
+private class ScreenIntents(private val composed: ComposedApp) : Inbound<UiIntent, Unit> {
+    override fun deliver(arg: UiIntent) = composed.host.onIntent(arg)
 }
 
 /**

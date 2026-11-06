@@ -77,8 +77,6 @@ import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.links.LinkReading
 import app.snapsync.services.membership.MembershipProjection
 import app.snapsync.services.transfer.SessionDrains
-import kotlinx.coroutines.Job
-import kotlin.coroutines.CoroutineContext
 
 // ── What happens on each trigger of the app process ─────────────────────────────────────────────────────────────────
 //
@@ -349,21 +347,6 @@ class OnPushTokenFailure(runtime: Runtime) : InboundEntryPoint<PlatformError>(ru
 
     override fun Delivery.run(arg: PlatformError) =
         log.unlabelled.w("push registration failed — no silent pushes will arrive", "error" of arg.description)
-}
-
-/**
- * A person tapped the screen: what the tap means is the status host's, and everything its handling starts is the tap's
- * work, so its `done` waits for it. [about] names the intent on its `delivered`.
- */
-class OnTap<I : Any>(runtime: Runtime, private val screen: Screen<I>) : InboundEntryPoint<I>(runtime) {
-    override fun about(arg: I): String? = arg::class.simpleName
-
-    override fun Delivery.run(arg: I) = screen.tapped(arg, context, ::joining)
-}
-
-/** The status host's intent table, as a tap reaches it: the tap's [context] and its [joining], for what it starts. */
-interface Screen<I> {
-    fun tapped(intent: I, context: CoroutineContext, joining: (Job) -> Unit)
 }
 
 /** The app was opened with a link: read, and kept until a screen opens it. */
