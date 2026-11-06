@@ -666,9 +666,9 @@ abstract class StatusScreenTour {
         // The invite, shared and shown as a QR code that is tapped away above the sheet (the screen suites swipe it).
         onNodeWithText(str(Res.string.share_invite)).performClick()
         onNodeWithText(str(Res.string.show_qr)).performClick()
-        awaitShown { it.overlays.showingQr }
+        awaitShown { it.overlays.shownQr != null }
         onNodeWithContentDescription("Close sheet").performTouchInput { click(Offset(centerX, ABOVE_THE_SHEET_PX)) }
-        awaitShown { !it.overlays.showingQr }
+        awaitShown { it.overlays.shownQr == null }
         // The rename sheet, cancelled, then saved.
         onNodeWithContentDescription(str(Res.string.rename_event)).performClick()
         awaitShown { it.overlays.renaming }

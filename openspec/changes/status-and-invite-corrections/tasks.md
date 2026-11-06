@@ -29,8 +29,8 @@ before these commits, after the phase's move. Each scenario's test carries `@Ver
 
 ## 3. A shown QR code stays until it's closed
 
-- [ ] 3.1 Integration scenario "A shown QR code stays while the key cannot be read". Verify: FAILS before 3.2.
-- [ ] 3.2 The overlay captures the whole invite when the QR code opens and shows it until it's dismissed. A deleted
+- [x] 3.1 Integration scenario "A shown QR code stays while the key cannot be read". Verify: FAILS before 3.2.
+- [x] 3.2 The overlay captures the whole invite when the QR code opens and shows it until it's dismissed. A deleted
   event, a leave and a switch clear it; the share and QR actions still follow the key. Verify: 3.1 green, and
   `KeyLostTest`'s "a shown QR closes" becomes "stays".
 

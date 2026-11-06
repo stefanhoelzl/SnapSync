@@ -285,8 +285,8 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
     if (overlays.renaming && joined != null) {
         RenameSheet(joined.membership, joined.renameState, actions)
     }
-    val qrInvite = joined?.inviteUrl
-    if (overlays.showingQr && qrInvite != null) {
+    val qrInvite = overlays.shownQr
+    if (joined != null && qrInvite != null) {
         AppQrSheet(
             title = stringResource(Res.string.qr_sheet_title, joined.membership.name),
             content = qrInvite,

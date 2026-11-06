@@ -204,9 +204,9 @@ class HostStatusActionsTest {
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
             onNodeWithText(str(Res.string.show_qr)).performClick()
-            awaitState(rig) { it.overlays.showingQr }
+            awaitState(rig) { it.overlays.shownQr != null }
             onNodeWithText(str(Res.string.invite_caption)).performTouchInput { swipeDown() }
-            awaitState(rig) { !it.overlays.showingQr }
+            awaitState(rig) { it.overlays.shownQr == null }
             assertEquals(emptyList(), rig.fired)
         }
 
