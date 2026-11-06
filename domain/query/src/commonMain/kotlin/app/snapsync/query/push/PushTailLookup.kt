@@ -1,8 +1,8 @@
 package app.snapsync.query.push
 
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.EventId
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.push.MemberOf
 import app.snapsync.domain.push.PushTailVerdict
 import app.snapsync.inbound.Log

@@ -2,7 +2,6 @@ package app.snapsync.query.membership
 
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.event.EventDirectory
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.event.Event
@@ -11,6 +10,7 @@ import app.snapsync.domain.event.EventPhase
 import app.snapsync.domain.event.KeyVerdict
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.SwitchFacts
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.query.ScreenLookup

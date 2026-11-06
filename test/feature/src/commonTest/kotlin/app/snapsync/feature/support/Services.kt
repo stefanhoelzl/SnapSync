@@ -5,7 +5,6 @@ package app.snapsync.feature.support
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.data.identity.MintingDeviceIdentity
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.SharedDatabase
@@ -16,6 +15,7 @@ import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.RowsRead
 import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.domain.album.AlbumChoice
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.ResourceRoleText

@@ -32,7 +32,6 @@ import app.snapsync.application.upload.StopUploads
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.KeepOutcome
 import app.snapsync.data.gallery.GrantRead
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.domain.album.AlbumAsk
 import app.snapsync.domain.membership.CheckCadence
 import app.snapsync.domain.membership.ConfirmedNotJoined
@@ -40,6 +39,7 @@ import app.snapsync.domain.membership.Enrolled
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.SwitchVerdict

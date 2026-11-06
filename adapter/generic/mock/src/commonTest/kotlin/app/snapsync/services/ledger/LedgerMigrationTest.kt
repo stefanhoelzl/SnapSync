@@ -2,7 +2,6 @@ package app.snapsync.services.ledger
 
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.contracts.at
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.SharedDatabase
@@ -13,6 +12,7 @@ import app.snapsync.data.upload.RowTransition
 import app.snapsync.data.upload.RowTransitions
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.upload.DestinationPath

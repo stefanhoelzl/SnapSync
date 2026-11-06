@@ -3,10 +3,10 @@ package app.snapsync.application.upload
 import app.snapsync.application.EntryPointCall
 import app.snapsync.data.gallery.FullGrantRead
 import app.snapsync.data.gallery.GrantRead
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.upload.ExtensionRegistrar
 import app.snapsync.data.upload.OsUploader
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.upload.Registration
 import app.snapsync.domain.upload.UploaderArming
 import app.snapsync.domain.upload.UploaderChange

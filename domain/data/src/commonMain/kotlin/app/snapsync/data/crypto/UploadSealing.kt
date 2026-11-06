@@ -2,7 +2,6 @@ package app.snapsync.data.crypto
 
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
@@ -13,6 +12,7 @@ import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.SealVerdict
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.ports.FileArea
 
 /**

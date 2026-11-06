@@ -3,10 +3,10 @@ package app.snapsync.data.upload
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.upload.GateRead
 

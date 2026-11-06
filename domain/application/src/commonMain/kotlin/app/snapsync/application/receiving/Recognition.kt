@@ -4,7 +4,6 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.EventUnion
 import app.snapsync.data.receiving.HandlesRead
@@ -19,6 +18,7 @@ import app.snapsync.data.sharing.SelectionState
 import app.snapsync.data.store.StoreWrite
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.receiving.ForeignPhotos
 import app.snapsync.domain.receiving.Recognised
 import app.snapsync.domain.receiving.RecognitionMatch

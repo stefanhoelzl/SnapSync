@@ -1,13 +1,13 @@
 package app.snapsync.query.receiving
 
 import app.snapsync.data.foreground.AppForeground
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.receiving.DownloadCounts
 import app.snapsync.data.receiving.DownloadRead
 import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.store.StoreChanges
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.receiving.AwaitedPhotos
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow

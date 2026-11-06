@@ -1,7 +1,4 @@
-package app.snapsync.data.membership
-
-import app.snapsync.domain.membership.ConfirmedNotJoined
-import app.snapsync.domain.membership.Membership
+package app.snapsync.domain.membership
 
 /**
  * The one read of this device's membership. "Not joined" is only ever a store that answered with no membership; one

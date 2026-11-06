@@ -6,7 +6,6 @@ import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.membership.EVENT
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.OTHER
 import app.snapsync.data.membership.PendingLeaves
 import app.snapsync.data.membership.PendingLeavesRead
@@ -19,6 +18,7 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.KeptKey
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.MintsKeptKey
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.CaptureCeiling

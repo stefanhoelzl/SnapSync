@@ -2,7 +2,6 @@ package app.snapsync.application.wake
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.data.gallery.GrantRead
-import app.snapsync.data.membership.MembershipRead
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.time.WallClock
@@ -11,6 +10,7 @@ import app.snapsync.data.wake.WakeArming
 import app.snapsync.data.wake.WakeRequest
 import app.snapsync.domain.event.EventPhase
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.wake.CadenceFacts
 import app.snapsync.domain.wake.CadenceMembership
 import app.snapsync.domain.wake.EventRunning

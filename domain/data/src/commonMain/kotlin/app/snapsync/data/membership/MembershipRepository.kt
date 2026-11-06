@@ -6,6 +6,7 @@ import app.snapsync.domain.membership.ConfirmedDeletion
 import app.snapsync.domain.membership.Enrolled
 import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.Membership
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.Share
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
