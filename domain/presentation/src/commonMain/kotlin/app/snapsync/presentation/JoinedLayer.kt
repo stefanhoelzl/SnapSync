@@ -134,13 +134,17 @@ private fun sharedCount(progress: SharingProgress, direction: Direction): Direct
         DirectionCount.Progress(done = progress.shared, total = progress.total)
     }
 
-/** What is left to receive includes what the others declared and have not uploaded yet. */
+/**
+ * What is left to receive includes what the others declared and have not uploaded yet. Switched off with nothing still
+ * arriving, what arrived stays in the library, so the count keeps it.
+ */
 private fun receivedCount(download: DownloadProgress, direction: Direction): DirectionCount {
     val total = download.total + download.awaited
-    return if (!direction.includesDownload && total == 0) {
-        DirectionCount.Off
-    } else {
-        DirectionCount.Progress(done = minOf(download.downloaded, total), total = total)
+    return when {
+        direction.includesDownload || download.downloaded < total ->
+            DirectionCount.Progress(done = minOf(download.downloaded, total), total = total)
+        download.downloaded == 0 -> DirectionCount.Off
+        else -> DirectionCount.Kept(download.downloaded)
     }
 }
 
@@ -159,6 +163,7 @@ internal fun shownCounts(state: UiState): Map<String, String> {
 
 internal fun DirectionCount.shown(): String = when (this) {
     DirectionCount.Off -> "off"
+    is DirectionCount.Kept -> "off, $count kept"
     is DirectionCount.Progress -> "$done/$total"
 }
 

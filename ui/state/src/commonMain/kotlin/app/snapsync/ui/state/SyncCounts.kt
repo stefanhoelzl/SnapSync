@@ -17,12 +17,20 @@ data class SyncCounts(val shared: DirectionCount, val received: DirectionCount)
 @Serializable
 sealed interface DirectionCount {
     /**
-     * The member switched this direction off AND the device has no work in it. A switched-off direction that
+     * The member switched this direction off, the device has no work in it, and it brought nothing that stays. A switched-off direction that
      * nevertheless has work is a [Progress] — counted, never masked (the reason is on the arrows' derivation
      * in `StatusContainerHost`).
      */
     @Serializable
     data object Off : DirectionCount
+
+    /**
+     * The member switched this direction off, nothing in it is still moving, and [count] photos it brought stay: what
+     * arrived before receiving was switched off is kept in the library, and the line says so. Never for sharing, whose
+     * switching off withdraws what was not yet shared.
+     */
+    @Serializable
+    data class Kept(val count: Int) : DirectionCount
 
     /** [done] of [total] went through; complete when they meet. */
     @Serializable

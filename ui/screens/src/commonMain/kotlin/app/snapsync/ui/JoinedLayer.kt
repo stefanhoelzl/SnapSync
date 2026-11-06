@@ -27,6 +27,7 @@ import app.snapsync.ui.resources.Res
 import app.snapsync.ui.resources.counts_line
 import app.snapsync.ui.resources.counts_line_members
 import app.snapsync.ui.resources.counts_not_receiving
+import app.snapsync.ui.resources.counts_not_receiving_kept
 import app.snapsync.ui.resources.counts_not_sharing
 import app.snapsync.ui.resources.counts_received
 import app.snapsync.ui.resources.counts_received_progress
@@ -176,15 +177,18 @@ private fun CountsLine(counts: SyncCounts?, members: Int?, note: SharingNote?) {
         people?.let { AppStatusDetail(it) }
         return
     }
+    // Sharing never keeps: switching it off withdraws what was not yet shared, so its off words stand alone.
     val shared = counts.shared.label(
         Res.string.counts_shared,
         Res.string.counts_shared_progress,
         Res.string.counts_not_sharing,
+        kept = Res.string.counts_not_sharing,
     )
     val received = counts.received.label(
         Res.string.counts_received,
         Res.string.counts_received_progress,
         Res.string.counts_not_receiving,
+        kept = Res.string.counts_not_receiving_kept,
     )
     AppStatusDetail(
         if (people == null) {
@@ -201,10 +205,19 @@ private fun CountsLine(counts: SyncCounts?, members: Int?, note: SharingNote?) {
     }
 }
 
-/** `12/15 shared` while work remains, `15 shared` once complete, or what an off direction says. */
-internal fun DirectionCount.label(done: StringResource, progress: StringResource, off: StringResource): Phrase =
+/**
+ * `12/15 shared` while work remains, `15 shared` once complete, what an off direction says, or that it is off and what it
+ * brought stays.
+ */
+internal fun DirectionCount.label(
+    done: StringResource,
+    progress: StringResource,
+    off: StringResource,
+    kept: StringResource,
+): Phrase =
     when (this) {
         DirectionCount.Off -> Phrase.Of(off)
+        is DirectionCount.Kept -> Phrase.Of(kept, listOf(count))
         is DirectionCount.Progress ->
             if (complete) Phrase.Of(done, listOf(total)) else Phrase.Of(progress, listOf(this.done, total))
     }

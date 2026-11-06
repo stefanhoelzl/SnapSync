@@ -180,6 +180,7 @@
     <string name="counts_received_progress">%1$d/%2$d received</string>
     <string name="counts_received">%1$d received</string>
     <string name="counts_not_receiving">Not receiving</string>
+    <string name="counts_not_receiving_kept">Not receiving · %1$d received</string>
     <plurals name="waiting_members">
         <item quantity="one">Waiting for %1$d member</item>
         <item quantity="other">Waiting for %1$d members</item>

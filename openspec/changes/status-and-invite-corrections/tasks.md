@@ -20,12 +20,12 @@ before these commits, after the phase's move. Each scenario's test carries `@Ver
 
 ## 2. Receiving switched off keeps what arrived
 
-- [ ] 2.1 Integration scenario "Receiving switched off keeps what arrived": 40 received, receiving switched off,
+- [x] 2.1 Integration scenario "Receiving switched off keeps what arrived": 40 received, receiving switched off,
   nothing arriving. Verify: FAILS before 2.2 (the counts read "40 received").
-- [ ] 2.2 The received count is `Off` with the kept number once nothing is arriving, and the line reads "Not receiving
+- [x] 2.2 The received count is `Off` with the kept number once nothing is arriving, and the line reads "Not receiving
   · 40 received" in English and German. Photos still draining keep their progress. Verify: 2.1 green; unit tests for
   nothing ever received, still draining, and drained.
-- [ ] 2.3 The UI harness shows the line on the smallest screen without truncation. Verify: a captured screenshot.
+- [x] 2.3 The UI harness shows the line on the smallest screen without truncation. Verify: a captured screenshot.
 
 ## 3. A shown QR code stays until it's closed
 

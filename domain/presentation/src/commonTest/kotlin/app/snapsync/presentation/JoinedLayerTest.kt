@@ -235,6 +235,24 @@ class JoinedLayerTest {
         assertEquals(DirectionCount.Progress(done = 1, total = 3), host.layer().counts?.received)
     }
 
+    @Test
+    fun `receiving switched off once everything arrived keeps the count of what arrived`() = runTest {
+        val host = joined(
+            backgroundScope,
+            MEMBERSHIP.copy(direction = Direction.UploadOnly),
+            download = DownloadProgress(downloaded = 40, total = 40),
+        )
+
+        assertEquals(DirectionCount.Kept(40), host.layer().counts?.received)
+    }
+
+    @Test
+    fun `receiving switched off having received nothing is only off`() = runTest {
+        val host = joined(backgroundScope, MEMBERSHIP.copy(direction = Direction.UploadOnly))
+
+        assertEquals(DirectionCount.Off, host.layer().counts?.received)
+    }
+
     // ---- the others' declared photos (change `count-declared-photos`) --------------------------------
 
     @Test

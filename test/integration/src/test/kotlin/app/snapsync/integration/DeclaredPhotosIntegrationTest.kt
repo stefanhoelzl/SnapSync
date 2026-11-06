@@ -178,6 +178,36 @@ class DeclaredPhotosIntegrationTest {
         }
     }
 
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen counts the photos shared and received",
+        scenario = "Receiving switched off keeps what arrived",
+    )
+    fun switching_receiving_off_keeps_the_count_of_what_arrived() = behaviour {
+        val arrived = (1..40).map { "R$it" }
+        given {
+            joinedEvent()
+            downloadsPlanned(arrived)
+            // The downloads are planned in bounded batches: each finished batch plans the next.
+            step("the others' 40 photos arrived", act = { repeat(ARRIVAL_BATCHES) { arrivedAndCounted() } }, until = {
+                screen<Layer.Joined> { it.received == DirectionCount.Progress(done = 40, total = 40) }
+                settled { true }
+            })
+        }
+
+        // Receiving off stops what is still to come and keeps what came: nothing is arriving, so the count says
+        // receiving is off — and that the 40 photos are still here.
+        whenever {
+            reconfigure(Choices(direction = Direction.UploadOnly))
+            advance(SCREEN_REREAD)
+        }
+        then {
+            screen<Layer.Joined> { !it.membership.receives && it.received == DirectionCount.Kept(40) }
+            settled { true }
+        }
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     /**
@@ -208,5 +238,8 @@ class DeclaredPhotosIntegrationTest {
     private companion object {
         /** Past the joined screen's next read of the counts. */
         val SCREEN_REREAD = 5.seconds
+
+        /** Enough finished batches for 40 planned downloads to have all arrived. */
+        const val ARRIVAL_BATCHES = 10
     }
 }
