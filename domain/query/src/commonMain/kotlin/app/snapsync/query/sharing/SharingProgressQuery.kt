@@ -7,10 +7,13 @@ import app.snapsync.data.store.StoreChanges
 import app.snapsync.data.upload.ProgressRead
 import app.snapsync.data.upload.UploadProgress
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.upload.AssetProgress
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,6 +25,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
+import kotlin.time.TimeSource
 
 /**
  * **How far the member's own photos are shared**, as the joined screen shows it: the upload rows re-read each time the
@@ -31,6 +35,8 @@ import kotlinx.coroutines.flow.stateIn
  * reads nothing, and nothing is read before a screen asks. A read the store refuses keeps the last one. [scope] is the
  * process's, which the reads run on.
  */
+private val log = Log("SharingProgressQuery")
+
 class SharingProgressQuery(
     foreground: AppForeground,
     private val changes: StoreChanges,
@@ -60,13 +66,21 @@ class SharingProgressQuery(
         emitAll(combine(membership.state, changes.looks) { held, _ -> held }.map(::rowsOf))
     }
 
-    private fun rowsOf(held: MembershipRead): RowsLook = when (held) {
-        is MembershipRead.Joined -> when (val read = rows.progress(held.membership.event.id)) {
+    private suspend fun rowsOf(held: MembershipRead): RowsLook = when (held) {
+        is MembershipRead.Joined -> timed(held.membership.event.id)
+        // No membership held, or none readable: nothing of anyone's is counted — a counted zero, not an unread one.
+        is MembershipRead.NotJoined, is MembershipRead.Unavailable -> RowsLook.Read(emptyMap())
+    }
+
+    /** One read of [event]'s rows, its time logged: how long a commit's re-read takes of the lane. */
+    private suspend fun timed(event: EventId): RowsLook {
+        val started = TimeSource.Monotonic.markNow()
+        val look = when (val read = rows.progress(event)) {
             is ProgressRead.Read -> RowsLook.Read(read.photos)
             is ProgressRead.Unavailable -> RowsLook.Refused
         }
-        // No membership held, or none readable: nothing of anyone's is counted — a counted zero, not an unread one.
-        is MembershipRead.NotJoined, is MembershipRead.Unavailable -> RowsLook.Read(emptyMap())
+        log.i("upload rows read", "millis" of started.elapsedNow().inWholeMilliseconds, "photos" of look.photoCount())
+        return look
     }
 
     /** The rows held: the last read, or `null` before the first; a refused look keeps them. */
@@ -84,8 +98,15 @@ class SharingProgressQuery(
 
     /** One look at the upload rows: how far each photo they hold has got, or refused by the store. */
     private sealed interface RowsLook {
-        data class Read(val photos: Map<AssetId, AssetProgress>) : RowsLook
+        /** How many photos the look read, or `null` when the store refused it — as its log line says it. */
+        fun photoCount(): Int?
 
-        data object Refused : RowsLook
+        data class Read(val photos: Map<AssetId, AssetProgress>) : RowsLook {
+            override fun photoCount(): Int = photos.size
+        }
+
+        data object Refused : RowsLook {
+            override fun photoCount(): Int? = null
+        }
     }
 }
