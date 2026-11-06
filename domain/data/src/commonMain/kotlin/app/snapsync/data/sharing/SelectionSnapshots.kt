@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 
 /**
@@ -61,6 +62,12 @@ class SelectionSnapshots {
     suspend fun awaitAnswerable(access: PhotoAccess) = when (access) {
         PhotoAccess.LIMITED -> awaitRead()
         PhotoAccess.FULL, PhotoAccess.NONE -> Unit
+    }
+
+    /** Once, when a read under [access] can be answered ([awaitAnswerable]); never, if it never can. */
+    fun answerableOnce(access: PhotoAccess): Flow<Unit> = flow {
+        awaitAnswerable(access)
+        emit(Unit)
     }
 
     /** Wait until a selection has been read. Never returns if none ever is. */

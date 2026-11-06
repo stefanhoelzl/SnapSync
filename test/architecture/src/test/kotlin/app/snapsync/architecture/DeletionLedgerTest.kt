@@ -506,9 +506,12 @@ class DeletionLedgerTest {
             }
             val creation = """(class|interface|enum class|data class) (Creation""" + "Status|CreationFailure" + "Reason|Minted" +
                 "Event|Event" + "Creator|BackendEvent" + "Creation|ShareSet" + "Load|Opened" + "Links|Link" + "Opening|On" +
-                "Tap|Tap" + "Run|Tapping|Tapped" + "ContainerHost)\\b"
+                "Tap|Tap" + "Run|Tapping|Tapped" + "ContainerHost|OnPhotoGrant" + "Usable|OnInherited" + "Imports)\\b"
             declared(files, creation).forEach {
                 add("the create before its request in $it (a create is answered on its status — 4.9)")
+            }
+            declared(files, """fun AppCore\.on""" + "GrantChanged\\b").forEach {
+                add("a launched grant follower in $it (an entry point — 4.9)")
             }
             declared(files, """fun on""" + "OpenUrl\\b").forEach {
                 add("a raw link handed to the screen in $it (read at the boundary — 4.9)")

@@ -8,6 +8,7 @@ import app.snapsync.mock.LibraryAssets
 import app.snapsync.ports.SelectionSnapshot
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -101,6 +102,19 @@ class SelectionSnapshotsTest {
         runCurrent()
         assertTrue(answered)
         assertEquals(2, selection.selectedPhotos)
+    }
+
+    @Test
+    fun `a partial grant's selection is answerable once, when it is read`() = runTest {
+        val selection = SelectionSnapshots()
+        assertEquals(listOf(Unit), selection.answerableOnce(PhotoAccess.FULL).toList(), "nothing to wait for")
+        var answered = 0
+        launch { selection.answerableOnce(PhotoAccess.LIMITED).collect { answered++ } }
+        runCurrent()
+        assertEquals(0, answered, "a partial grant waits for its selection")
+        selection.published(flowOf(SelectionSnapshot(listOf(a))), beforePublish = {}).collect()
+        runCurrent()
+        assertEquals(1, answered)
     }
 
     @Test
