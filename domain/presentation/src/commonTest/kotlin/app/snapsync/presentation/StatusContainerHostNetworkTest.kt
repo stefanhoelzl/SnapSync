@@ -76,13 +76,13 @@ class StatusContainerHostNetworkTest {
         progress: SharingProgress = SharingProgress(shared = 0, total = 0, handedOver = 0),
         mobileData: Boolean = true,
     ) = TestCommands().let { commands ->
-        StatusContainerHost(
-            StatusSources(
+        testHost(
+            testQueries(
                 Sync(SharingProgressRead.Read(progress)),
                 MutableStateFlow(permission),
                 MutableStateFlow(config).held(),
                 creation = MutableStateFlow(creation),
-                verification = DeviceVerification(MutableStateFlow(attested)),
+                verification = testVerification(MutableStateFlow(attested)),
                 network = network,
                 mobileData = object : MobileDataQuery {
                     override fun current() = if (mobileData) MobileDataChoice.ALLOWED else MobileDataChoice.WIFI_ONLY
@@ -95,7 +95,6 @@ class StatusContainerHostNetworkTest {
             commands = commands.door,
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
             shareableCount = noQueries,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
     }

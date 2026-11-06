@@ -48,7 +48,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -308,16 +308,15 @@ private fun host(
     loadJoinDetails: suspend (String) -> JoinDetails = { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) },
     commitJoin: suspend (JoinChoice) -> JoinCommit = { _ -> JoinCommit.Failed() },
     leave: () -> Unit = {},
-    verification: DeviceVerification = DeviceVerification(),
-    onIntentError: (Throwable) -> Unit = {},
+    verification: DeviceVerification = testVerification(),
     commands: TestCommands = TestCommands(
         leave = leave,
         commitJoin = commitJoin,
         requestAccess = requester::request,
         openSettings = requester::openSettings,
     ),
-) = StatusContainerHost(
-    StatusSources(
+) = testHost(
+    testQueries(
         source,
         permission.permission,
         configFake.config,
@@ -332,7 +331,6 @@ private fun host(
     commands = commands.door,
     cutoffFormatter = fixedCutoffFormatter(),
     shareableCount = noQueries,
-    diagnostics = testDiagnostics(onIntentError = onIntentError),
     reduction = Dispatchers.Default,
 )
 
@@ -367,8 +365,8 @@ class StatusContainerHostTest {
     @Test
     fun `the container reduces on the lane the composition names`() = runTest {
         val lane = Dispatchers.Default.limitedParallelism(1)
-        val host = StatusContainerHost(
-            StatusSources(
+        val host = testHost(
+            testQueries(
                 FakeSyncStatusSource(SharingProgressRead.NotYetRead),
                 FakePermissionSource().permission,
                 FakeConfig().config,
@@ -381,7 +379,6 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = lane,
         )
         assertSame(lane, host.container.scope.coroutineContext[ContinuationInterceptor])
@@ -406,8 +403,8 @@ class StatusContainerHostTest {
                 null
             },
         ).let { commands ->
-            StatusContainerHost(
-                StatusSources(
+            testHost(
+                testQueries(
                     FakeSyncStatusSource(),
                     permission.permission,
                     config.config,
@@ -423,7 +420,6 @@ class StatusContainerHostTest {
                 cutoffFormatter = fixedCutoffFormatter(),
                 shareableCount = noQueries,
                 joinDetails = unanswered,
-                diagnostics = testDiagnostics(),
                 reduction = Dispatchers.Default,
             )
         }
@@ -510,8 +506,8 @@ class StatusContainerHostTest {
         // something unrelated happened to re-emit.
         val clock = MovableClock(NOW_CUTOFF.at)
         val config = FakeConfig(notStartedConfig())
-        val host = StatusContainerHost(
-            StatusSources(
+        val host = testHost(
+            testQueries(
                 FakeSyncStatusSource(snapshot(completed = 0, total = 0)),
                 FakePermissionSource(PhotoGrant.FULL).permission,
                 config.config,
@@ -524,7 +520,6 @@ class StatusContainerHostTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         host.testWithInternalState(this) {
@@ -597,8 +592,8 @@ class StatusContainerHostTest {
                 ),
             )
         return TestCommands().let { commands ->
-            StatusContainerHost(
-                StatusSources(
+            testHost(
+                testQueries(
                     source,
                     FakePermissionSource(PhotoGrant.FULL).permission,
                     cfg.config,
@@ -613,7 +608,6 @@ class StatusContainerHostTest {
                 shareableCount = noQueries,
                 commands = commands.door,
                 joinDetails = unanswered,
-                diagnostics = testDiagnostics(),
                 reduction = Dispatchers.Default,
             )
         }
@@ -812,8 +806,8 @@ class StatusContainerHostTest {
                 JoinCommit.Committed
             },
         ).let { commands ->
-            StatusContainerHost(
-                StatusSources(
+            testHost(
+                testQueries(
                     FakeSyncStatusSource(),
                     FakePermissionSource(PhotoGrant.FULL).permission,
                     config.config,
@@ -835,7 +829,6 @@ class StatusContainerHostTest {
                 },
                 cutoffFormatter = fixedCutoffFormatter(),
                 shareableCount = noQueries,
-                diagnostics = testDiagnostics(),
                 reduction = Dispatchers.Default,
             )
         }
@@ -877,8 +870,8 @@ class StatusContainerHostTest {
     fun `a failed create surfaces the inline error and opens no gate`() = runTest {
         val config = FakeConfig(null)
         val creationStatus = MutableStateFlow<RequestStatus<CreateResult>>(Creating.Idle)
-        val host = StatusContainerHost(
-            StatusSources(
+        val host = testHost(
+            testQueries(
                 FakeSyncStatusSource(),
                 FakePermissionSource(PhotoGrant.FULL).permission,
                 config.config,
@@ -892,7 +885,6 @@ class StatusContainerHostTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         host.testWithInternalState(this) {
@@ -1552,9 +1544,9 @@ class StatusContainerHostTest {
         // A `SNAPSYNC_EVENT_LINK` without `autoJoin=true` opens the interactive gate; a 404 there
         // parks on the NotFound dialog, which a headless run cannot see. The log line is the run's
         // only abort signal (found missing by device Session C: only the HTTP `→ 404` line appeared).
-        val logged = Channel<String>(Channel.UNLIMITED)
-        val containerHost = StatusContainerHost(
-            StatusSources(
+        val log = TestLog()
+        val containerHost = testHost(
+            testQueries(
                 FakeSyncStatusSource(SharingProgressRead.NotYetRead),
                 FakePermissionSource(PhotoGrant.FULL).permission,
                 FakeConfig(null).config,
@@ -1566,17 +1558,17 @@ class StatusContainerHostTest {
             joinDetails = joinDetails { JoinDetails.NotFound },
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
-            diagnostics = testDiagnostics(log = { logged.trySend(it) }),
             commands = TestCommands().door,
             reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
             runOnCreate()
             containerHost.onInvite(invited(testEventId(EVENT_ID), null))
-            assertEquals(
-                "join gate: details load did not succeed for $EVENT_ID (NotFound)",
-                logged.receive(),
-            )
+            val line = withTimeout(LIVENESS_TIMEOUT) {
+                while (log.lines.none { it.event == "details load did not succeed" }) delay(10)
+                log.lines.first { it.event == "details load did not succeed" }
+            }
+            assertEquals(testEventId(EVENT_ID), line.fields.first { it.name == "eventId" }.value)
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -1674,8 +1666,8 @@ class StatusContainerHostTest {
     fun `onLeaveEvent invokes the injected leave action`() = runTest {
         var leaves = 0
         val configFake = FakeConfig()
-        val containerHost = StatusContainerHost(
-            StatusSources(
+        val containerHost = testHost(
+            testQueries(
                 FakeSyncStatusSource(),
                 FakePermissionSource().permission,
                 configFake.config,
@@ -1688,7 +1680,6 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
@@ -1710,8 +1701,8 @@ class StatusContainerHostTest {
     @Test
     fun `invite url derives from config and round-trips to the same event`() = runTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
-        val host = StatusContainerHost(
-            StatusSources(
+        val host = testHost(
+            testQueries(
                 FakeSyncStatusSource(),
                 FakePermissionSource().permission,
                 configFake.config,
@@ -1724,7 +1715,6 @@ class StatusContainerHostTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         val invite = (host.screen.value.layer as Layer.Joined).inviteUrl!!
@@ -1734,8 +1724,8 @@ class StatusContainerHostTest {
     @Test
     fun `no configured event means no joined state to carry an invite url`() = runTest {
         val configFake = FakeConfig(null)
-        val host = StatusContainerHost(
-            StatusSources(
+        val host = testHost(
+            testQueries(
                 FakeSyncStatusSource(),
                 FakePermissionSource().permission,
                 configFake.config,
@@ -1748,7 +1738,6 @@ class StatusContainerHostTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         // The invite URL has no home outside the joined state now, so "no event" IS "no invite URL":
@@ -1787,8 +1776,8 @@ class StatusContainerHostTest {
     @Test
     fun `the joined state carries the persisted config the name comes from`() = runTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
-        val host = StatusContainerHost(
-            StatusSources(
+        val host = testHost(
+            testQueries(
                 FakeSyncStatusSource(),
                 FakePermissionSource().permission,
                 configFake.config,
@@ -1801,7 +1790,6 @@ class StatusContainerHostTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         // One name, one source: the heading, the rename prefill and the reconfigure header all read
@@ -1813,8 +1801,8 @@ class StatusContainerHostTest {
     fun `onShareInvite hands the invite url and the event's name to the injected share`() = runTest {
         val shared = mutableListOf<Pair<String, String>>()
         val configFake = FakeConfig(SAMPLE_CONFIG)
-        val containerHost = StatusContainerHost(
-            StatusSources(
+        val containerHost = testHost(
+            testQueries(
                 FakeSyncStatusSource(),
                 FakePermissionSource().permission,
                 configFake.config,
@@ -1827,7 +1815,6 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
@@ -1845,8 +1832,8 @@ class StatusContainerHostTest {
     fun `onShareInvite with no configured event does not share`() = runTest {
         val shared = mutableListOf<Pair<String, String>>()
         val configFake = FakeConfig(null)
-        val containerHost = StatusContainerHost(
-            StatusSources(
+        val containerHost = testHost(
+            testQueries(
                 FakeSyncStatusSource(),
                 FakePermissionSource().permission,
                 configFake.config,
@@ -1859,7 +1846,6 @@ class StatusContainerHostTest {
             cutoffFormatter = fixedCutoffFormatter(),
             shareableCount = noQueries,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         containerHost.testWithInternalState(this) {
@@ -2102,7 +2088,7 @@ class StatusContainerHostTest {
         // engine retries and loses nothing — but nothing ever arrives either, and nothing says so.
         val source = FakeSyncStatusSource()
         val attested = MutableStateFlow(true)
-        host(source, backgroundScope, verification = DeviceVerification(attested)).testWithInternalState(this) {
+        host(source, backgroundScope, verification = testVerification(attested)).testWithInternalState(this) {
             runOnCreate()
             source.progress = snapshot(pending = 5, completed = 0, total = 5)
             expectShown(syncing(up = Arrow.PULSING, counts = counts(0 to 5)))
@@ -2120,7 +2106,7 @@ class StatusContainerHostTest {
         // renews. The state exists to catch the case where that renewal keeps failing.
         val source = FakeSyncStatusSource()
         val attested = MutableStateFlow(false)
-        host(source, backgroundScope, verification = DeviceVerification(attested)).testWithInternalState(this) {
+        host(source, backgroundScope, verification = testVerification(attested)).testWithInternalState(this) {
             // The initial state is already Unattested (asserted by the test above), so nothing is emitted
             // until the flag flips — Orbit only re-emits on a CHANGE.
             runOnCreate()
@@ -2143,7 +2129,7 @@ class StatusContainerHostTest {
             source,
             backgroundScope,
             permission = permission,
-            verification = DeviceVerification(MutableStateFlow(false)),
+            verification = testVerification(MutableStateFlow(false)),
         )
             .testWithInternalState(this) {
                 // Starts Unattested (no token, granted permission); revoking access must OUTRANK it.
@@ -2352,7 +2338,7 @@ class StatusContainerHostJoinGateTest {
     fun `a throwing command neither stops later commands nor kills the scope`() = runTest {
         withContext(Dispatchers.Default) {
             val boom = IllegalStateException("boom")
-            val reported = CompletableDeferred<Throwable>()
+            val log = TestLog()
             val laterCommandRan = CompletableDeferred<Unit>()
             // The container's own scope, shaped like the composition's: supervised, off the test scheduler.
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -2361,8 +2347,8 @@ class StatusContainerHostJoinGateTest {
                     leave = { throw boom },
                     requestAccess = { laterCommandRan.complete(Unit) },
                 ).let { commands ->
-                    StatusContainerHost(
-                        StatusSources(
+                    testHost(
+                        testQueries(
                             FakeSyncStatusSource(),
                             FakePermissionSource().permission,
                             FakeConfig().config,
@@ -2375,7 +2361,6 @@ class StatusContainerHostJoinGateTest {
                         commands = commands.door,
                         cutoffFormatter = fixedCutoffFormatter(),
                         joinDetails = unanswered,
-                        diagnostics = testDiagnostics(onIntentError = { reported.complete(it) }),
                         shareableCount = noQueries,
                         reduction = Dispatchers.Default,
                     )
@@ -2386,7 +2371,7 @@ class StatusContainerHostJoinGateTest {
                 // nothing: an intent's `Job` is created when `orbit()` is called, so a pair dispatched
                 // together survives a cancellation arriving afterwards. The regression only shows up when
                 // the later command is issued after the earlier one has already thrown.
-                val throwable = withTimeout(LIVENESS_TIMEOUT) { reported.await() }
+                val throwable = withTimeout(LIVENESS_TIMEOUT) { log.awaitError() }.cause
                 assertEquals(boom, throwable, "the throwable must be reported, not swallowed")
 
                 host.access.onRequestPermission()
@@ -2488,8 +2473,8 @@ class StatusContainerHostJoinedFactsTest {
         // and the countdown still steps from hours to minutes to ended.
         val clock = MovableClock(NOW_CUTOFF.at)
         val running = SAMPLE_CONFIG.copy(endsAt = EventEnd(timestamp("2026-07-09T14:00:00Z")))
-        val host = StatusContainerHost(
-            StatusSources(
+        val host = testHost(
+            testQueries(
                 FakeSyncStatusSource(snapshot(completed = 3, total = 3)),
                 FakePermissionSource(PhotoGrant.FULL).permission,
                 FakeConfig(running).config,
@@ -2502,7 +2487,6 @@ class StatusContainerHostJoinedFactsTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         fun settled(timing: EventTiming) =
@@ -2526,8 +2510,8 @@ class StatusContainerHostJoinedFactsTest {
     @Test
     fun `the counts line carries both directions while syncing`() = runTest {
         val source = FakeSyncStatusSource(SharingProgressRead.NotYetRead)
-        StatusContainerHost(
-            StatusSources(
+        testHost(
+            testQueries(
                 source,
                 FakePermissionSource(PhotoGrant.FULL).permission,
                 FakeConfig().config,
@@ -2541,7 +2525,6 @@ class StatusContainerHostJoinedFactsTest {
             shareableCount = noQueries,
             commands = TestCommands().door,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         ).testWithInternalState(this) {
             runOnCreate()
@@ -2583,15 +2566,15 @@ class StatusContainerHostRefusalTest {
                 null
             },
         ).let { commands ->
-            StatusContainerHost(
-                StatusSources(
+            testHost(
+                testQueries(
                     FakeSyncStatusSource(),
                     permission.permission,
                     config.config,
                     eventKey = config.keys,
                     creation = created,
                     foreground = foreground,
-                    verification = DeviceVerification(refusal = refusal),
+                    verification = testVerification(refusal = refusal),
                     requests = commands.requests.flows,
                     network = AlwaysOnline,
                     mobileData = AlwaysAllowed,
@@ -2601,7 +2584,6 @@ class StatusContainerHostRefusalTest {
                 cutoffFormatter = fixedCutoffFormatter(),
                 shareableCount = noQueries,
                 joinDetails = unanswered,
-                diagnostics = testDiagnostics(),
                 reduction = Dispatchers.Default,
             )
         }
@@ -2657,7 +2639,7 @@ class StatusContainerHostRefusalTest {
             loadJoinDetails = { found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             // Refused, then — the service having stopped refusing — accepted on the Retry.
             commitJoin = { _ -> if (joins++ == 0) JoinCommit.Unverified else JoinCommit.Committed },
-            verification = DeviceVerification(refusal = MutableStateFlow(DeviceRefusal.DEVICE_MODIFIED)),
+            verification = testVerification(refusal = MutableStateFlow(DeviceRefusal.DEVICE_MODIFIED)),
         ).testWithInternalState(this) {
             runOnCreate()
             containerHost.onInvite(invited(testEventId(EVENT_ID), null))
@@ -2728,7 +2710,7 @@ class StatusContainerHostRefusalTest {
         host(
             source,
             backgroundScope,
-            verification = DeviceVerification(attested, refusal),
+            verification = testVerification(attested, refusal),
         ).testWithInternalState(this) {
             runOnCreate()
             source.progress = snapshot(pending = 5, completed = 0, total = 5)

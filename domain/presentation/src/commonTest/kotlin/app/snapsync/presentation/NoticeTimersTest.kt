@@ -66,8 +66,8 @@ class NoticeTimersTest {
         creation: RequestStatus<CreateResult> = Creating.Idle,
         report: suspend () -> ReportOutcome = { ReportOutcome.SENT },
     ) = TestCommands(sendDiagnostics = { _, _ -> report() }).let { commands ->
-        StatusContainerHost(
-            StatusSources(
+        testHost(
+            testQueries(
                 FixedSync(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(null),
@@ -81,7 +81,6 @@ class NoticeTimersTest {
             commands = commands.door,
             shareableCount = noQueries,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
     }

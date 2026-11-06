@@ -14,15 +14,14 @@ import app.snapsync.inbound.Inbound
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.ports.DateFormatting
 import app.snapsync.ports.UiHandlers
-import app.snapsync.presentation.BuildStanding
+import app.snapsync.presentation.BuildFacts
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.DeviceVerification
 import app.snapsync.presentation.EventKeyView
 import app.snapsync.presentation.PlatformCommands
 import app.snapsync.presentation.RequestStatusFlows
+import app.snapsync.presentation.ScreenQueries
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.StatusDiagnostics
-import app.snapsync.presentation.StatusSources
 import app.snapsync.presentation.UserCommand
 import app.snapsync.presentation.UserCommands
 import app.snapsync.presentation.onIntent
@@ -32,7 +31,6 @@ import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -102,7 +100,6 @@ fun snapSyncHost(
     // The process first — inside `snapSyncApp`, before anything else in the graph can fail.
     val core = snapSyncApp(scope, lane, ports)
     val process = core.process
-    val log = process.logger("app")
     core.installCompositionSubscriptions()
     val composed = ComposedApp(core, process, cutoffFormatter, ports.dateFormatting) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
@@ -110,25 +107,22 @@ fun snapSyncHost(
         // The network's return resumes the app's work while it is in front.
         core.followNetworkReturns()
         val host = StatusContainerHost(
-            statusSourcesOf(core, ports),
-            scope = scope,
-            reduction = reduction,
-            cutoffFormatter = cutoffFormatter,
-            commands = doorOf(core.commands),
+            queries = screenQueriesOf(core),
             shareableCount = core.shareableCount,
             joinDetails = core.joinDetails,
-            // Where a bug report goes on this build — the sheet says it.
-            reportDestination = process.reportDestination,
-            // Which build this is — the app menu's footer.
-            build = process.buildLabel,
-            // What the event album holds on this phone — read from the photo library.
-            albumContents = core.albumContents,
-            diagnostics = StatusDiagnostics(
-                log = { message -> log.i { message } },
-                // `Error`: the threshold at which a Kermit line becomes a crash-reporting event rather than a
-                // breadcrumb — a command that failed outright is exactly what should reach the operator.
-                onIntentError = { throwable -> log.e(throwable) { "user command failed" } },
+            commands = doorOf(core.commands),
+            facts = BuildFacts(
+                store = ports.process.build.store,
+                // Where a bug report goes on this build — the sheet says it.
+                reportDestination = process.reportDestination,
+                // Which build this is — the app menu's footer.
+                label = process.buildLabel,
+                // What the event album holds on this phone — read from the photo library.
+                albumContents = core.albumContents,
             ),
+            cutoffFormatter = cutoffFormatter,
+            scope = scope,
+            reduction = reduction,
         )
         // The platform's UI is shown every state the host reduces, from assembly on. `show` only hands the state over:
         // the adapter renders it on its own main thread.
@@ -206,22 +200,21 @@ private fun doorOf(commands: CoreCommands): UserCommands = UserCommands(
 )
 
 /**
- * Every read-model the status host reduces over, from the composed [core] and its [ports] — all of them, named
- * explicitly, so no host built from them can observe fewer than another.
+ * Everything the status host reads, from the composed [core] — all of it, named explicitly, so no host built from it
+ * can observe less than another.
  */
-private fun statusSourcesOf(core: AppCore, ports: AppPorts): StatusSources = StatusSources(
-    sync = core.sharingProgress,
-    permission = core.photoGrant.state,
+private fun screenQueriesOf(core: AppCore): ScreenQueries = ScreenQueries(
+    sharing = core.sharingProgress,
+    receiving = core.downloadProgress,
+    grant = core.photoGrant.state,
     membership = core.membership,
-    creation = core.creationStatus.status,
+    key = EventKeyView(core.keyQuery.presence, core.keyQuery),
     invites = core.invitesQuery.state,
+    creation = core.creationStatus.status,
     requests = requestFlowsOf(core.membershipStatuses, core.reportStatus),
-    download = core.downloadProgress,
     verification = DeviceVerification(core.attested, core.refusal, core.attestationFault, core.serviceFault),
-    pending = MutableStateFlow(null),
-    build = BuildStanding(refusal = core.versionRefusal, store = ports.process.build.store),
+    versionRefusal = core.versionRefusal,
     network = core.network.query,
     mobileData = core.mobileDataQuery,
     foreground = core.foregroundReturns,
-    eventKey = EventKeyView(core.keyQuery.presence, core.keyQuery),
 )

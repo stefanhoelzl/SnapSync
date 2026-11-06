@@ -117,7 +117,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ImportReport` | `:domain:domain` | `:domain:domain` Failed, Imported | no |
 | `ImportVerdict` | `:domain:domain` | `:domain:domain` Deferred, Imported, Unimportable | no |
 | `Inbound` | `:domain:inbound` | `:domain:host` LiveScreen, ScreenIntents; `:domain:scheduling` InboundEntryPoint; `:test:contracts` InboundProxy; `:test:launch-adapters` Ended | yes |
-| `IntentRunner` | `:domain:presentation` | — | no |
+| `IntentRunner` | `:domain:presentation` | `:domain:presentation` GateRunner | no |
 | `InterruptedImportVerdict` | `:domain:domain` | `:domain:domain` Clear, Leave, Settle | no |
 | `InviteLinkVerdict` | `:domain:domain` | `:domain:domain` Invite, KeyUnreadable, NotAnInvite | no |
 | `InviteRead` | `:domain:query` | `:domain:presentation` NoInvite; `:domain:query` EventKeyQuery | no |
@@ -151,7 +151,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `ListingRead` | `:domain:data` | `:domain:data` Listed, Unavailable, Unreadable | no |
 | `Located` | `:domain:data` | `:domain:data` At, Unreachable | no |
 | `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:contracts` LogSinkProxy; `:test:rig` RecordedLog | yes |
-| `LogWriter` | `:domain:inbound` | `:adapter:generic:mock` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:model` CapturingLogWriter; `:domain:scheduling` RecordingLog; `:domain:services` CapturingLogWriter, CrashLines, CrashLogWriter, SinkLines, SinkLogWriter; `:test:feature` CapturingLogWriter | yes |
+| `LogWriter` | `:domain:inbound` | `:adapter:generic:mock` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:model` CapturingLogWriter; `:domain:presentation` TestLog; `:domain:scheduling` RecordingLog; `:domain:services` CapturingLogWriter, CrashLines, CrashLogWriter, SinkLines, SinkLogWriter; `:test:feature` CapturingLogWriter | yes |
 | `MarkResult` | `:domain:data` | `:domain:data` Failed, Marked, Superseded | no |
 | `MarkedRead` | `:domain:data` | `:domain:data` Found, NotReadable | no |
 | `MarkerWrite` | `:domain:data` | `:domain:data` Applied, Failed, NoRow, Unknown | no |

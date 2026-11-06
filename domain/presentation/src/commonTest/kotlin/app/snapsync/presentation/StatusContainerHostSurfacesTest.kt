@@ -162,8 +162,8 @@ class StatusContainerHostSurfacesTest {
         joinDetails: ScreenLookup<InviteLink, JoinDetails>,
         reportDestination: ReportDestination,
         albumContents: AlbumContents,
-    ) = StatusContainerHost(
-        StatusSources(
+    ) = testHost(
+        testQueries(
             FakeSync(),
             MutableStateFlow(PhotoGrant.FULL),
             config.held(),
@@ -180,9 +180,7 @@ class StatusContainerHostSurfacesTest {
         ),
         shareableCount = shareableCount,
         joinDetails = joinDetails,
-        diagnostics = testDiagnostics(),
-        reportDestination = reportDestination,
-        albumContents = albumContents,
+        facts = testFacts(reportDestination = reportDestination, albumContents = albumContents),
         reduction = Dispatchers.Default,
     )
 

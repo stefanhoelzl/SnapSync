@@ -87,8 +87,8 @@ class GuardedIntentTest {
             )
             try {
                 body(
-                    StatusContainerHost(
-                        StatusSources(
+                    testHost(
+                        testQueries(
                             IdleSync(),
                             MutableStateFlow(PhotoGrant.FULL),
                             config.held(),
@@ -111,7 +111,6 @@ class GuardedIntentTest {
                             zone = TimeZone.UTC,
                         ),
                         shareableCount = noQueries,
-                        diagnostics = testDiagnostics(),
                         reduction = Dispatchers.Default,
                     ),
                 )

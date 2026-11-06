@@ -78,7 +78,7 @@ internal fun StateFlow<TestMembership?>.held(): StateFlow<Membership?> = Mapped(
  * while none is joined.
  */
 internal fun StateFlow<TestMembership?>.plainKeys(): EventKeyView =
-    EventKeyView(
+    testKeys(
         invite = object : InviteRead {
             override fun invite(): String? = value?.let { inviteText(it.eventId) }
         },

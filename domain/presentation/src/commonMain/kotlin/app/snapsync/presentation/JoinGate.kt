@@ -14,6 +14,8 @@ import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.ui.state.JoinPhase
@@ -54,7 +56,7 @@ internal class JoinGate(
     private val local = cells.local
     private val pending = cells.pending
     private val runner = cells.runner
-    private val log = cells.log
+    private val log = Log("JoinGate").unlabelled
     private var maintenanceReload: Job? = null
 
     /**
@@ -122,7 +124,7 @@ internal class JoinGate(
      * apart is what made `SNAPSYNC-25` take a day to characterise.
      */
     private fun ignoreRepeat(eventId: EventId, because: String) {
-        log("join gate: ignoring a repeated delivery of $eventId — $because")
+        log.i("repeated invite ignored", "eventId" of eventId, "because" of because)
     }
 
     /**
@@ -132,7 +134,7 @@ internal class JoinGate(
     private fun restoreKey(eventId: EventId, key: EventKey) {
         val request = cells.ids.next()
         commands.restoreKey.fire(KeyRestoreRequest(request, key))
-        log("join gate: the reopened invite of $eventId offers its key back ($request)")
+        log.i("reopened invite offers its key back", "eventId" of eventId, "request" of request)
     }
 
     /** Retry the details fetch after a transient load failure. */
@@ -221,7 +223,7 @@ internal class JoinGate(
      * left — what the member needs is the whole invite, from whoever shared it.
      */
     private fun startUnreadable(eventId: EventId) {
-        log("join gate: the invite to $eventId carries a key that cannot be read")
+        log.i("invite key unreadable", "eventId" of eventId)
         local.update { it.copy(form = ranges.freshForm, picking = null) }
         pending.value = PendingJoin(eventId, JoinProgress.WrongLink, key = null)
     }
@@ -258,7 +260,7 @@ internal class JoinGate(
         commands.switch.fire(SwitchRequest(id, loaded.invite))
         val verdict = requests.switch.answerTo(id)
         if (verdict == SwitchVerdict.Quiet && pending.value?.eventId == eventId) {
-            log("join gate: leaving the joined event for $eventId without asking — it loses nothing")
+            log.i("joined event left without asking", "for" of eventId)
             local.update { it.copy(overlays = Overlays()) } // every overlay belongs to the layer being left
             commands.leave.fire(Unit)
         }
@@ -273,7 +275,7 @@ internal class JoinGate(
         val load = joinDetails.ask(InviteLink(eventId, key))
         // The headless negative oracle: a gate parked on a failed details load shows a dialog nobody headless watches —
         // without this line, `debug.log` shows only the HTTP `404`.
-        if (load !is JoinDetails.Found) log("join gate: details load did not succeed for $eventId ($load)")
+        if (load !is JoinDetails.Found) log.w("details load did not succeed", "eventId" of eventId, "answer" of load)
         return loadedOf(load)
     }
 

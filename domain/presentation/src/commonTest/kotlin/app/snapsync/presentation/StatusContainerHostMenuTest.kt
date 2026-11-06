@@ -105,8 +105,8 @@ class StatusContainerHostMenuTest {
                     override val changes = changes.status
                 }
                 val host = base.door.let { commands ->
-                    StatusContainerHost(
-                        StatusSources(
+                    testHost(
+                        testQueries(
                             MenuTestSync(),
                             world.permission,
                             world.config.held(),
@@ -123,8 +123,7 @@ class StatusContainerHostMenuTest {
                         ),
                         shareableCount = noQueries,
                         joinDetails = unanswered,
-                        diagnostics = testDiagnostics(),
-                        build = BuildLabel("0.12", "2140"),
+                        facts = testFacts(build = BuildLabel("0.12", "2140")),
                         reduction = Dispatchers.Default,
                     )
                 }

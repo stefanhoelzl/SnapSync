@@ -37,14 +37,14 @@ class IntentInvalidProgramStateTest {
     fun `an invalid program state in a command reaches the last resort, never the intent error`() = runBlocking {
         val fatal = InvalidProgramState("the test's command is guaranteed never to fail")
         val lastResort = CompletableDeferred<Throwable>()
-        val reported = mutableListOf<Throwable>()
+        val log = TestLog()
         val before = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { _, e -> lastResort.complete(e) }
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val commands = TestCommands(leave = { throw fatal })
-            val host = StatusContainerHost(
-                StatusSources(
+            val host = testHost(
+                testQueries(
                     FakeSyncStatusSource(),
                     FakePermissionSource().permission,
                     FakeConfig().config,
@@ -56,13 +56,12 @@ class IntentInvalidProgramStateTest {
                 commands = commands.door,
                 cutoffFormatter = CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.UTC),
                 joinDetails = unanswered,
-                diagnostics = testDiagnostics(onIntentError = { reported += it }),
                 shareableCount = noQueries,
                 reduction = Dispatchers.Default,
             )
             host.onLeaveEvent()
             assertSame(fatal, withTimeout(10.seconds) { lastResort.await() })
-            assertEquals(emptyList(), reported, "never handled as an intent's error")
+            assertEquals(emptyList(), log.errors, "never handled as an intent's error")
         } finally {
             scope.cancel()
             Thread.setDefaultUncaughtExceptionHandler(before)

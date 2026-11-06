@@ -80,8 +80,8 @@ class CreateFormClockTest {
         creation: RequestStatus<CreateResult> = Creating.Idle,
         foreground: MutableStateFlow<ForegroundReturn> = MutableStateFlow(ForegroundReturn.NONE),
     ) = TestCommands().let { commands ->
-        StatusContainerHost(
-            StatusSources(
+        testHost(
+            testQueries(
                 MutableStateFlow(SharingProgressRead.NotYetRead),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(null),
@@ -96,7 +96,6 @@ class CreateFormClockTest {
             cutoffFormatter = CutoffFormatter(now = now, zone = TimeZone.UTC),
             shareableCount = noQueries,
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
     }

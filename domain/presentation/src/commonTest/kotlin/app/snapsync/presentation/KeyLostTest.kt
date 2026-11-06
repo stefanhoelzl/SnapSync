@@ -50,12 +50,12 @@ class KeyLostTest {
         config: TestMembership = ENCRYPTED,
         permission: PhotoGrant = PhotoGrant.FULL,
         restored: MutableList<EventKey> = mutableListOf(),
-    ) = StatusContainerHost(
-        StatusSources(
+    ) = testHost(
+        testQueries(
             Sync(),
             MutableStateFlow(permission),
             MutableStateFlow(config).held(),
-            eventKey = EventKeyView(presence = MutableStateFlow<KeyPresence>(presence)),
+            eventKey = testKeys(presence = MutableStateFlow<KeyPresence>(presence)),
             network = AlwaysOnline,
             mobileData = AlwaysAllowed,
         ),
@@ -69,7 +69,6 @@ class KeyLostTest {
         }.door,
         cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
         joinDetails = unanswered,
-        diagnostics = testDiagnostics(),
         reduction = Dispatchers.Default,
     )
 
@@ -162,13 +161,13 @@ class KeyLostTest {
     fun `no invite is offered without its key and a shown QR closes`() = runTest {
         val shared = mutableListOf<String>()
         val presence = MutableStateFlow<KeyPresence>(KeyPresence.Held(HELD))
-        val host = StatusContainerHost(
-            StatusSources(
+        val host = testHost(
+            testQueries(
                 Sync(),
                 MutableStateFlow(PhotoGrant.FULL),
                 MutableStateFlow(ENCRYPTED).held(),
                 // The invite as the query reads it: whole while the key is held, none without it.
-                eventKey = EventKeyView(
+                eventKey = testKeys(
                     presence = presence,
                     invite = object : InviteRead {
                         override fun invite(): String? = (presence.value as? KeyPresence.Held)?.let {
@@ -184,7 +183,6 @@ class KeyLostTest {
             commands = sharingCommands { url -> shared += url }.door,
             cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
             joinDetails = unanswered,
-            diagnostics = testDiagnostics(),
             reduction = Dispatchers.Default,
         )
         driving(host) {
