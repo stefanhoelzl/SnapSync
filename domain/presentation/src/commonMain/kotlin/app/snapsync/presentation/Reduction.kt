@@ -85,11 +85,16 @@ private fun joinedFrom(
 }
 
 /**
- * The counts line rides ONLY on the two health rungs that read the numbers; every rung above them means the numbers
- * are unknown (not read yet), zero (no access collapses the gallery total) or beside the point (not started,
- * unverified) — and the one status line is what the member should read.
+ * The counts line, once the counts are read. On a live event it rides ONLY on the two health rungs that read the
+ * numbers; every rung above them means the numbers are unknown (not read yet), zero (no access collapses the gallery
+ * total) or beside the point (not started, unverified) — and the one status line is what the member should read. A
+ * deleted event's counts are what it came to, so they follow the snapshot whatever the line says.
  */
 private fun countsLine(observed: Observed, health: SyncHealth, joined: Membership): SyncCounts? =
     (observed.sync as? SharingProgressRead.Read)
-        ?.takeIf { health is SyncHealth.InSync || health is SyncHealth.Syncing }
+        ?.takeIf { observed.download.read && countsShown(health, joined) }
         ?.let { syncCounts(it.progress, observed.download, joined.share.direction) }
+
+/** Whether the counts line shows beside [health]: always for a deleted event, else only beside the counted rungs. */
+private fun countsShown(health: SyncHealth, joined: Membership): Boolean =
+    joined is Membership.Deleted || health is SyncHealth.InSync || health is SyncHealth.Syncing
