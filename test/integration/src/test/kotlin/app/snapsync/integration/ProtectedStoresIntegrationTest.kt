@@ -11,6 +11,7 @@ import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
@@ -76,7 +77,7 @@ class ProtectedStoresIntegrationTest {
             )
         }
 
-        whenever { tap(UiIntent.MobileData(on = false)) }
+        whenever { tap(UiIntent.MobileData(to = SwitchTo.OFF)) }
         then {
             event<WorldEvent.PreferencesFaulted> { it.item == PreferenceItem.MOBILE_DATA && it.kind == StoreFault.WRITE }
             event<WorldEvent.UiChanged> { it.ui.mobileData.on && it.ui.mobileData.notSaved }

@@ -20,6 +20,7 @@ import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.SharingNote
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.TimeLeft
@@ -392,7 +393,7 @@ class StatusLineIntegrationTest {
             step("only the app uploads", act = { devControls.pin(app = true, extension = false) }, until = {})
             joinedEvent()
             step("mobile data off, on mobile data", act = {
-                tap(UiIntent.MobileData(false))
+                tap(UiIntent.MobileData(SwitchTo.OFF))
                 network.set(NetworkState.RESTRICTED)
             }, until = { settled { true } })
             step("P1 waiting for Wi-Fi", act = {

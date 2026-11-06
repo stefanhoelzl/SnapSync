@@ -35,6 +35,7 @@ import app.snapsync.ui.state.PendingSwitch
 import app.snapsync.ui.state.RefusalCause
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.TimeLeft
@@ -175,9 +176,9 @@ private fun StatusContainerHost.confirmJoinAs(
     direction: Direction = Direction.Both,
     saveToAlbum: Boolean = false,
 ) {
-    form.onShareOn(direction.includesUpload)
-    form.onReceiveOn(direction.includesDownload)
-    form.onSaveToAlbum(saveToAlbum)
+    form.onShareOn(switchTo(direction.includesUpload))
+    form.onReceiveOn(switchTo(direction.includesDownload))
+    form.onSaveToAlbum(switchTo(saveToAlbum))
     onConfirmJoin()
 }
 
@@ -2178,11 +2179,11 @@ class StatusContainerHostJoinGateTest {
             runOnCreate()
             containerHost.onInvite(invited(testEventId(EVENT_ID), null))
             skipItems(1)
-            containerHost.form.onShareOn(false)
-            containerHost.form.onReceiveOn(false)
+            containerHost.form.onShareOn(SwitchTo.OFF)
+            containerHost.form.onReceiveOn(SwitchTo.OFF)
             containerHost.onConfirmJoin()
             // A later intent lands only after the confirm ran (intents run in order), so this proves it did nothing.
-            containerHost.form.onShareOn(true)
+            containerHost.form.onShareOn(SwitchTo.ON)
             do { val s = awaitShown() } while ((s.layer as? Layer.JoiningEvent)?.range?.shareOn != true)
             cancelAndIgnoreRemainingItems()
         }

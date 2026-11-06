@@ -12,6 +12,7 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
@@ -35,7 +36,11 @@ class MobileDataIntegrationTest {
 
     /** The app menu's switch: the device's choice, applied as it is flipped. */
     private suspend fun Given.mobileData(on: Boolean) =
-        step("mobile data ${if (on) "on" else "off"}", act = { tap(UiIntent.MobileData(on)) }, until = {
+        step("mobile data ${if (on) "on" else "off"}", act = {
+            tap(
+                UiIntent.MobileData(if (on) SwitchTo.ON else SwitchTo.OFF),
+            )
+        }, until = {
             event<WorldEvent.UiChanged> { it.ui.mobileData.on == on }
             settled { true }
         })
@@ -352,7 +357,7 @@ class MobileDataIntegrationTest {
         }
 
         whenever {
-            tap(UiIntent.MobileData(false))
+            tap(UiIntent.MobileData(SwitchTo.OFF))
             shareFromForeground("P1")
             uploadSession.complete()
             advance(5.seconds)
@@ -374,7 +379,7 @@ class MobileDataIntegrationTest {
         given { waitingInBothDirections() }
 
         whenever {
-            tap(UiIntent.MobileData(true))
+            tap(UiIntent.MobileData(SwitchTo.ON))
             shareFromForeground("P2")
             publicBackend.foreignDevice(DEV_F, listOf("FA", "FB"))
             os.foreground()
@@ -417,7 +422,7 @@ class MobileDataIntegrationTest {
             })
         }
 
-        whenever { tap(UiIntent.MobileData(true)) }
+        whenever { tap(UiIntent.MobileData(SwitchTo.ON)) }
         then {
             event<WorldEvent.SessionTransferCreated> { it.key == primaryKey("P2") }
             never<WorldEvent.Acted> { it.name == "os.foreground" }

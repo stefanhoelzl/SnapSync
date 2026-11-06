@@ -7,6 +7,7 @@ import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.time.Duration.Companion.days
@@ -157,7 +158,7 @@ class HeartbeatCadenceIntegrationTest {
 
     /** The app menu's switch turned off, and whatever it changed done. */
     private suspend fun Given.mobileDataOff() =
-        step("mobile data off", act = { tap(UiIntent.MobileData(false)) }, until = {
+        step("mobile data off", act = { tap(UiIntent.MobileData(SwitchTo.OFF)) }, until = {
             event<WorldEvent.UiChanged> { !it.ui.mobileData.on }
             settled { true }
         })

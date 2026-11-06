@@ -170,7 +170,7 @@ sealed interface UiIntent {
     /** The app menu's mobile-data switch: the device's choice, applied as it is flipped. */
     @Serializable
     @SerialName("MobileData")
-    data class MobileData(val on: Boolean) : UiIntent
+    data class MobileData(val to: SwitchTo) : UiIntent
 
     /** One of the app menu's links, opened outside the app. */
     @Serializable
@@ -209,15 +209,15 @@ sealed interface UiIntent {
 
     @Serializable
     @SerialName("ShareOn")
-    data class ShareOn(val on: Boolean) : UiIntent
+    data class ShareOn(val to: SwitchTo) : UiIntent
 
     @Serializable
     @SerialName("ReceiveOn")
-    data class ReceiveOn(val on: Boolean) : UiIntent
+    data class ReceiveOn(val to: SwitchTo) : UiIntent
 
     @Serializable
     @SerialName("SaveToAlbum")
-    data class SaveToAlbum(val on: Boolean) : UiIntent
+    data class SaveToAlbum(val to: SwitchTo) : UiIntent
 
     @Serializable
     @SerialName("RangePreset")

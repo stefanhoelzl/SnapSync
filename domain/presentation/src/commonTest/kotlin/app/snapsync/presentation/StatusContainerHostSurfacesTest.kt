@@ -35,6 +35,7 @@ import app.snapsync.ui.state.RangeView
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiState
 import app.snapsync.ui.state.step
 import kotlinx.coroutines.CompletableDeferred
@@ -326,7 +327,7 @@ class StatusContainerHostSurfacesTest {
                 while (host.screen.value.reconfigureCount() != ShareCount.Unavailable) delay(10)
             }
             // Still alive: a later intent lands.
-            host.form.onSaveToAlbum(true)
+            host.form.onSaveToAlbum(SwitchTo.ON)
             host.stateWhere("the album edit") {
                 ((it.layer as? Layer.Joined)?.surface as? JoinedSurface.Reconfigure)?.range?.saveToAlbum == true
             }
@@ -382,7 +383,7 @@ class StatusContainerHostSurfacesTest {
         ) { host ->
             host.surfaces.onOpenReconfigure()
             host.stateWhere("the count") { it.reconfigureCount() == ShareCount.Ready(3) }
-            host.form.onShareOn(false)
+            host.form.onShareOn(SwitchTo.OFF)
             host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
             host.settings.onConfirmStopSharing()
             host.stateWhere("sharing off") { it.settings()?.range?.shareOn == false }
@@ -531,7 +532,7 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onSaveToAlbum(true)
+            host.form.onSaveToAlbum(SwitchTo.ON)
             awaitReconfigures(spy, 1)
             val sent = spy.reconfigures.single()
             assertEquals(
@@ -558,9 +559,9 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy, config = config) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onReceiveOn(false)
-            host.form.onReceiveOn(true)
-            host.form.onReceiveOn(false)
+            host.form.onReceiveOn(SwitchTo.OFF)
+            host.form.onReceiveOn(SwitchTo.ON)
+            host.form.onReceiveOn(SwitchTo.OFF)
             awaitReconfigures(spy, 3)
             assertEquals(
                 listOf(Direction.UploadOnly, Direction.Both, Direction.UploadOnly),
@@ -577,8 +578,8 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy, config = MutableStateFlow(CONFIG.copy(direction = Direction.DownloadOnly))) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onShareOn(true)
-            host.form.onReceiveOn(false)
+            host.form.onShareOn(SwitchTo.ON)
+            host.form.onReceiveOn(SwitchTo.OFF)
             awaitReconfigures(spy, 2)
             // Built on the stale read, the second would be "share nothing, receive nothing".
             assertEquals(listOf(Direction.Both, Direction.UploadOnly), spy.reconfigures.map { it.direction })
@@ -591,9 +592,9 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onShareOn(true)
-            host.form.onSaveToAlbum(CONFIG.saveToAlbum)
-            host.form.onReceiveOn(false)
+            host.form.onShareOn(SwitchTo.ON)
+            host.form.onSaveToAlbum(switchTo(CONFIG.saveToAlbum))
+            host.form.onReceiveOn(SwitchTo.OFF)
             awaitReconfigures(spy, 1)
             assertEquals(
                 listOf(Direction.UploadOnly),
@@ -610,7 +611,7 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onSaveToAlbum(true)
+            host.form.onSaveToAlbum(SwitchTo.ON)
             val failed = host.stateWhere("the failed change") { it.settings()?.saveFailed == true }
             assertEquals(false, failed.settings()?.range?.saveToAlbum, "the control shows the setting still in effect")
             assertEquals(1, spy.reconfigures.size)
@@ -635,7 +636,7 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onShareOn(false)
+            host.form.onShareOn(SwitchTo.OFF)
             val asking = host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
             assertEquals(true, asking.settings()?.range?.shareOn, "sharing stays on until the member confirms")
             assertTrue(spy.reconfigures.isEmpty(), "a withdrawal applied before it was confirmed")
@@ -655,13 +656,13 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onShareOn(false)
+            host.form.onShareOn(SwitchTo.OFF)
             host.stateWhere("the question") { it.settings()?.askingToStopSharing == true }
             host.settings.onKeepSharing()
             val kept = host.stateWhere("the question gone") { it.settings()?.askingToStopSharing == false }
             assertEquals(true, kept.settings()?.range?.shareOn)
             // A later change proves the dropped one never ran: it is the only reconfigure.
-            host.form.onSaveToAlbum(!CONFIG.saveToAlbum)
+            host.form.onSaveToAlbum(switchTo(!CONFIG.saveToAlbum))
             awaitReconfigures(spy, 1)
             assertEquals(Direction.Both, spy.reconfigures.single().direction)
         }
@@ -709,7 +710,7 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy, config = MutableStateFlow(CONFIG.copy(direction = Direction.DownloadOnly))) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onReceiveOn(false)
+            host.form.onReceiveOn(SwitchTo.OFF)
             awaitReconfigures(spy, 1)
             assertEquals(Direction.Neither, spy.reconfigures.single().direction)
         }
@@ -721,7 +722,7 @@ class StatusContainerHostSurfacesTest {
         return onHost(spy) { host ->
             host.surfaces.onOpenReconfigure()
             host.reconfigureForm()
-            host.form.onSaveToAlbum(true)
+            host.form.onSaveToAlbum(SwitchTo.ON)
             host.stateWhere("the settings closed") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
         }
     }
@@ -740,7 +741,7 @@ class StatusContainerHostSurfacesTest {
             val form = host.reconfigureForm()
             assertEquals(AlbumHolds.RECEIVED, form.albumHolds, "the settings know the album is a folder")
             assertEquals(false, form.saveToAlbum, "the stored choice is shown as it was saved")
-            host.form.onSaveToAlbum(true)
+            host.form.onSaveToAlbum(SwitchTo.ON)
             awaitReconfigures(spy, 1)
             assertEquals(AlbumChoice.SaveToAlbum, spy.reconfigures.single().album)
             val after = host.stateWhere("the album on") { it.settings()?.range?.saveToAlbum == true }
@@ -756,8 +757,8 @@ class StatusContainerHostSurfacesTest {
     fun `with the settings closed a form edit reaches no use-case`() {
         val spy = Spy()
         return onHost(spy) { host ->
-            host.form.onSaveToAlbum(true)
-            host.form.onShareOn(false)
+            host.form.onSaveToAlbum(SwitchTo.ON)
+            host.form.onShareOn(SwitchTo.OFF)
             host.stateWhere("the joined status") { (it.layer as? Layer.Joined)?.surface == JoinedSurface.Status }
             delay(50)
             assertTrue(spy.reconfigures.isEmpty())

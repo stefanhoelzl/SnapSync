@@ -13,6 +13,7 @@ import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.offersMenu
@@ -133,7 +134,7 @@ class AppExperienceIntegrationTest {
             })
         }
 
-        whenever { tap(UiIntent.MobileData(false)) }
+        whenever { tap(UiIntent.MobileData(SwitchTo.OFF)) }
         then { event<WorldEvent.UiChanged> { !it.ui.mobileData.on && it.ui.overlays.menuOpen } }
     }
 

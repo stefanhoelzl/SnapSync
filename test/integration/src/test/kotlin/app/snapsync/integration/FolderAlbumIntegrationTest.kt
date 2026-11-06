@@ -12,6 +12,7 @@ import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeView
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 
@@ -240,7 +241,7 @@ class FolderAlbumIntegrationTest {
         }
 
         // The settings' note is the screen's words for a folder album turned on: what it gathers, what stays.
-        whenever { tap(UiIntent.SaveToAlbum(true)) }
+        whenever { tap(UiIntent.SaveToAlbum(SwitchTo.ON)) }
         then { settingsSurface { it.saveToAlbum && it.albumHolds == AlbumHolds.RECEIVED } }
     }
 

@@ -6,6 +6,7 @@ import app.snapsync.levers.ScreenLevers
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.datetime.LocalDateTime
@@ -110,10 +111,10 @@ object Taps {
     fun choices(choices: Choices, zone: TimeZone): List<UiIntent> = buildList {
         choices.range?.let { add(UiIntent.RangePreset(it)) }
         choices.direction?.let {
-            add(UiIntent.ShareOn(it.includesUpload))
-            add(UiIntent.ReceiveOn(it.includesDownload))
+            add(UiIntent.ShareOn(switchTo(it.includesUpload)))
+            add(UiIntent.ReceiveOn(switchTo(it.includesDownload)))
         }
-        choices.saveToAlbum?.let { add(UiIntent.SaveToAlbum(it)) }
+        choices.saveToAlbum?.let { add(UiIntent.SaveToAlbum(switchTo(it))) }
         val from = choices.cutoff?.let { Instant.parse(it).toLocalDateTime(zone) }
         val until = choices.until?.let { Instant.parse(it).toLocalDateTime(zone) }
         if (from != null || until != null) {
@@ -159,3 +160,6 @@ fun RigClient.person(zone: TimeZone = TimeZone.currentSystemDefault()): Person =
 
 /** How long a [RigClient.person] waits for the screen a tap leads to: a bound on a hung host, never a pace. */
 val SCREEN_WAIT: Duration = 10.seconds
+
+/** A switch flipped to [on], as a person's choice says it. */
+private fun switchTo(on: Boolean): SwitchTo = if (on) SwitchTo.ON else SwitchTo.OFF

@@ -13,6 +13,7 @@ import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeChoice
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
@@ -39,7 +40,7 @@ class EventSettingsIntegrationTest {
             settingsOpen()
         }
 
-        whenever { tap(UiIntent.ShareOn(false)) }
+        whenever { tap(UiIntent.ShareOn(SwitchTo.OFF)) }
         then {
             screen<Layer.Joined> { joined -> joined.settings()?.let { it.askingToStopSharing && it.range.shareOn } == true }
             neverScreen<Layer.Joined> { !it.membership.shares }
@@ -78,7 +79,7 @@ class EventSettingsIntegrationTest {
         given {
             joinedEvent()
             settingsOpen()
-            step("asked whether to stop sharing", act = { tap(UiIntent.ShareOn(false)) }, until = {
+            step("asked whether to stop sharing", act = { tap(UiIntent.ShareOn(SwitchTo.OFF)) }, until = {
                 screen<Layer.Joined> { it.settings()?.askingToStopSharing == true }
             })
         }
@@ -123,7 +124,7 @@ class EventSettingsIntegrationTest {
             settingsOpen()
         }
 
-        whenever { tap(UiIntent.SaveToAlbum(true)) }
+        whenever { tap(UiIntent.SaveToAlbum(SwitchTo.ON)) }
         then {
             screen<Layer.Joined> { joined ->
                 joined.settings()?.range?.let { it.saveToAlbum && it.albumHolds == AlbumHolds.SHARED_AND_RECEIVED } == true
@@ -217,7 +218,7 @@ class EventSettingsIntegrationTest {
         }
 
         whenever {
-            tap(UiIntent.SaveToAlbum(true))
+            tap(UiIntent.SaveToAlbum(SwitchTo.ON))
             tap(UiIntent.CancelReconfigure)
         }
         then { screen<Layer.Joined> { it.surface == JoinedSurface.Status && it.membership.savesToAlbum } }
@@ -267,7 +268,7 @@ class EventSettingsIntegrationTest {
         }
 
         whenever {
-            tap(UiIntent.ReceiveOn(false), UiIntent.ReceiveOn(true), UiIntent.ReceiveOn(false))
+            tap(UiIntent.ReceiveOn(SwitchTo.OFF), UiIntent.ReceiveOn(SwitchTo.ON), UiIntent.ReceiveOn(SwitchTo.OFF))
             tap(UiIntent.CancelReconfigure)
         }
         then {
