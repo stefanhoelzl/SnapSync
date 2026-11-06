@@ -17,6 +17,7 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -105,11 +106,11 @@ class SettingsQueueTest {
         host.surfaces.onOpenReconfigure()
         runCurrent()
 
-        host.form.onReceiveOn(false)
+        host.form.onReceiveOn(SwitchTo.OFF)
         runCurrent()
         assertIs<IllegalStateException>(world.errors.single())
 
-        host.form.onSaveToAlbum(true)
+        host.form.onSaveToAlbum(SwitchTo.ON)
         runCurrent()
 
         assertEquals(2, world.reconfigured.size, "the queue stopped after a throwing act")
@@ -137,7 +138,7 @@ class SettingsQueueTest {
         host.surfaces.onOpenReconfigure()
         runCurrent()
 
-        host.form.onSaveToAlbum(true)
+        host.form.onSaveToAlbum(SwitchTo.ON)
         world.config.value = null
         runCurrent()
 
@@ -151,7 +152,7 @@ class SettingsQueueTest {
         val host = host(world, backgroundScope)
         host.surfaces.onOpenReconfigure()
         runCurrent()
-        host.form.onShareOn(false)
+        host.form.onShareOn(SwitchTo.OFF)
         runCurrent()
 
         host.onIntent(UiIntent.KeepSharing)
@@ -167,7 +168,7 @@ class SettingsQueueTest {
         val host = host(world, backgroundScope)
         host.surfaces.onOpenReconfigure()
         runCurrent()
-        host.form.onShareOn(false)
+        host.form.onShareOn(SwitchTo.OFF)
         runCurrent()
 
         world.config.value = null

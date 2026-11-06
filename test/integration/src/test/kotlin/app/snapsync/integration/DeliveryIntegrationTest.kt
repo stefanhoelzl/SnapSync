@@ -9,6 +9,7 @@ import app.snapsync.levers.TransferEnd
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 
@@ -56,7 +57,7 @@ class DeliveryIntegrationTest {
         given {
             appUploadsOnly()
             joinedEvent()
-            step("mobile data off", act = { tap(UiIntent.MobileData(false)) }, until = { settled { true } })
+            step("mobile data off", act = { tap(UiIntent.MobileData(SwitchTo.OFF)) }, until = { settled { true } })
             step("in the pocket, on mobile data", act = {
                 os.background()
                 network.set(NetworkState.RESTRICTED)

@@ -34,6 +34,7 @@ import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.Dispatchers
@@ -218,10 +219,11 @@ class EntryMockContractBindingsTest {
                 ScreenMessage.entries.first(),
             ),
             UiIntent.ReportBugDismiss, UiIntent.MenuOpen, UiIntent.MenuDismiss, UiIntent.MenuReportBug,
-            UiIntent.MobileData(true), UiIntent.OpenLink(AppLink.entries.first()), UiIntent.ReportNoticeDismiss,
+            UiIntent.MobileData(SwitchTo.ON), UiIntent.OpenLink(AppLink.entries.first()), UiIntent.ReportNoticeDismiss,
             UiIntent.OpenReconfigure, UiIntent.CancelReconfigure, UiIntent.RenameEvent("event", "name"),
-            UiIntent.RenameStatusConsumed, UiIntent.ConfirmStopSharing, UiIntent.KeepSharing, UiIntent.ShareOn(true),
-            UiIntent.ReceiveOn(true), UiIntent.SaveToAlbum(true), UiIntent.RangePreset(RangeChoice.entries.first()),
+            UiIntent.RenameStatusConsumed, UiIntent.ConfirmStopSharing, UiIntent.KeepSharing,
+            UiIntent.ShareOn(SwitchTo.ON), UiIntent.ReceiveOn(SwitchTo.ON), UiIntent.SaveToAlbum(SwitchTo.ON),
+            UiIntent.RangePreset(RangeChoice.entries.first()),
             UiIntent.RetryLoad, UiIntent.ConfirmJoin, UiIntent.ConfirmSwitch, UiIntent.RetryJoin, UiIntent.CancelJoin,
             UiIntent.CancelSwitch, UiIntent.SendDiagnostics("note", "screen"), UiIntent.KeepOpenFor(1),
             UiIntent.KeepOpenDismiss,

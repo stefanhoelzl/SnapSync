@@ -5,6 +5,7 @@ import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.ui.state.SwitchTo
 import kotlin.time.Instant
 
 /** The instant [text] names (ISO-8601), as the screen's facts carry it. */
@@ -22,3 +23,6 @@ internal fun invited(
 /** The invite text a test hands the screen for [event]: the screen shows and shares it as given. */
 internal fun inviteText(event: EventId, key: EventKey? = null): String =
     "invite:${event.value}" + if (key == null) "" else "#key-${key.hashCode()}"
+
+/** A switch flipped to [on], as a test states it. */
+internal fun switchTo(on: Boolean): SwitchTo = if (on) SwitchTo.ON else SwitchTo.OFF

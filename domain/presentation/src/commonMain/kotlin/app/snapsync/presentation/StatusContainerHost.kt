@@ -76,6 +76,7 @@ import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ShareCount
 import app.snapsync.ui.state.SharingNote
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
@@ -752,11 +753,11 @@ class StatusContainerHost(
          * switch shows the device's choice, which only a save moves — so a flip that could not be saved leaves it where
          * it was, and the menu says so (decision record `changes/archive/2026-10-07-mobile-data-per-device`, D3).
          */
-        fun onMobileData(on: Boolean) = intent {
+        fun onMobileData(to: SwitchTo) = intent {
             local.update { it.copy(mobileDataNotSaved = false) }
             val id = ids.next()
             commands.setMobileData.fire(
-                MobileDataRequest(id, if (on) MobileDataChoice.ALLOWED else MobileDataChoice.WIFI_ONLY),
+                MobileDataRequest(id, to.mobileData()),
             )
             val outcome = mobileDataQuery.changes.answerTo(id)
             mobileData.value = outcome.inEffect == MobileDataChoice.ALLOWED
@@ -1001,7 +1002,8 @@ class StatusContainerHost(
         }
 
         // At the join gate each edit drafts the form; with the event's settings open it applies at once.
-        fun onShareOn(on: Boolean) = formIntent {
+        fun onShareOn(to: SwitchTo) = formIntent {
+            val on = to.isOn
             val open = settings.openMembership()
             if (open != null) {
                 settings.change(open) { now, _ ->
@@ -1012,7 +1014,8 @@ class StatusContainerHost(
             }
         }
 
-        fun onReceiveOn(on: Boolean) = formIntent {
+        fun onReceiveOn(to: SwitchTo) = formIntent {
+            val on = to.isOn
             val open = settings.openMembership()
             if (open != null) {
                 settings.change(open) { now, _ -> now.copy(direction = directionOf(now.direction.includesUpload, on)) }
@@ -1021,7 +1024,8 @@ class StatusContainerHost(
             }
         }
 
-        fun onSaveToAlbum(on: Boolean) = formIntent {
+        fun onSaveToAlbum(to: SwitchTo) = formIntent {
+            val on = to.isOn
             val open = settings.openMembership()
             if (open != null) {
                 settings.change(open) { now, _ -> now.copy(saveToAlbum = on) }

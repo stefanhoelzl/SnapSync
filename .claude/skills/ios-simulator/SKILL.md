@@ -401,9 +401,9 @@ EOF
 $R world events | jq -cn 'first(inputs | select(.type == "ui" and (.ui.layer.type | endswith("JoiningEvent"))))'
 # JOIN: share only, no album, over the event's own dates
 $R run - <<'EOF'
-screen tap --intent '{"type":"ShareOn","on":true}'
-screen tap --intent '{"type":"ReceiveOn","on":false}'
-screen tap --intent '{"type":"SaveToAlbum","on":false}'
+screen tap --intent '{"type":"ShareOn","to":"ON"}'
+screen tap --intent '{"type":"ReceiveOn","to":"OFF"}'
+screen tap --intent '{"type":"SaveToAlbum","to":"OFF"}'
 screen tap --intent '{"type":"ConfirmJoin"}'
 EOF
 ```

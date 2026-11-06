@@ -2,6 +2,7 @@ package app.snapsync.ui
 
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.RangeGestures
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 
 /**
@@ -79,9 +80,9 @@ private fun statusActions(dispatch: (UiIntent) -> Unit, range: RangeGestures) = 
             onConfirm = { dispatch(UiIntent.RangePickerConfirm) },
             onDismiss = { dispatch(UiIntent.RangePickerDismiss) },
         ),
-        onShareOn = { dispatch(UiIntent.ShareOn(it)) },
-        onReceiveOn = { dispatch(UiIntent.ReceiveOn(it)) },
-        onSaveToAlbum = { dispatch(UiIntent.SaveToAlbum(it)) },
+        onShareOn = { dispatch(UiIntent.ShareOn(switchTo(it))) },
+        onReceiveOn = { dispatch(UiIntent.ReceiveOn(switchTo(it))) },
+        onSaveToAlbum = { dispatch(UiIntent.SaveToAlbum(switchTo(it))) },
     ),
     menu = MenuActions(
         onSendDiagnostics = { note, screen -> dispatch(UiIntent.SendDiagnostics(note, screen)) },
@@ -90,7 +91,7 @@ private fun statusActions(dispatch: (UiIntent) -> Unit, range: RangeGestures) = 
         onReportBug = { dispatch(UiIntent.MenuReportBug) },
         onOpenLink = { dispatch(UiIntent.OpenLink(it)) },
         onReportNoticeDismiss = { dispatch(UiIntent.ReportNoticeDismiss) },
-        onMobileData = { dispatch(UiIntent.MobileData(it)) },
+        onMobileData = { dispatch(UiIntent.MobileData(switchTo(it))) },
     ),
 )
 
@@ -106,3 +107,6 @@ private fun surfaceActions(dispatch: (UiIntent) -> Unit) = SurfaceActions(
     onReportBugDismiss = { dispatch(UiIntent.ReportBugDismiss) },
     onReportRefusal = { dispatch(UiIntent.ReportRefusal(it)) },
 )
+
+/** A Compose switch's position as the intent carries it: the one place a switch is a Boolean. */
+private fun switchTo(on: Boolean): SwitchTo = if (on) SwitchTo.ON else SwitchTo.OFF

@@ -342,9 +342,9 @@ EOF
 $R --url $B world events | jq -cn 'first(inputs | select(.type == "ui" and (.ui.layer.type | endswith("JoiningEvent"))))'
                                            # waits for the join gate (see "Waiting on what happens", below)
 $R run - <<'EOF'
-screen tap --intent '{"type":"ShareOn","on":true}'
-screen tap --intent '{"type":"ReceiveOn","on":false}'
-screen tap --intent '{"type":"SaveToAlbum","on":false}'
+screen tap --intent '{"type":"ShareOn","to":"ON"}'
+screen tap --intent '{"type":"ReceiveOn","to":"OFF"}'
+screen tap --intent '{"type":"SaveToAlbum","to":"OFF"}'
 screen tap --intent '{"type":"ConfirmJoin"}'
 EOF
 
@@ -356,7 +356,7 @@ $R screen tap --intent '{"type":"LeaveEvent"}'
 
 # ANY OTHER TAP: its UiIntent (ui/state's UiIntent.kt; each case's serial name is its type), e.g.
 # {"type":"RenameEvent","eventId":"…","name":"…"}, {"type":"ConfirmSwitch"}, {"type":"RetryLoad"}, {"type":"RetryJoin"},
-# {"type":"MobileData","on":false}  (the device's choice, as the menu's switch flips it; UiState.mobileData reads it),
+# {"type":"MobileData","to":"OFF"}  (the device's choice, as the menu's switch flips it; UiState.mobileData reads it),
 # {"type":"SendDiagnostics","note":"…","screen":"rig"}  (a rig build carries no DSN: it SAVES Documents/diagnostic-report.json).
 # A tap that hands the person to the platform's own UI — {"type":"ShareInvite"}, {"type":"OpenSettings"},
 # {"type":"ChoosePhotos"}, {"type":"OpenLink","link":"PRIVACY_POLICY"}, {"type":"RequestPermission"} — is a real tap on a

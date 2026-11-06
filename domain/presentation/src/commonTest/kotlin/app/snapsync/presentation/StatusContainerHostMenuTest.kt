@@ -23,6 +23,7 @@ import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.Overlays
 import app.snapsync.ui.state.ReportNotice
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CoroutineScope
@@ -161,13 +162,13 @@ class StatusContainerHostMenuTest {
     fun `the menu's mobile-data switch applies as it is flipped and the menu stays open`() = onHost { host, world ->
         host.onIntent(UiIntent.MenuOpen)
         host.stateWhere("menu open, mobile data on") { it.overlays.menuOpen && it.mobileData.on }
-        host.onIntent(UiIntent.MobileData(false))
+        host.onIntent(UiIntent.MobileData(SwitchTo.OFF))
         host.stateWhere(
             "switched off, menu still open",
         ) { it.overlays.menuOpen && !it.mobileData.on && !it.mobileData.notSaved }
         assertEquals(MobileDataChoice.WIFI_ONLY, world.mobileData, "the device's choice was saved")
 
-        host.onIntent(UiIntent.MobileData(true))
+        host.onIntent(UiIntent.MobileData(SwitchTo.ON))
         host.stateWhere("switched back on") { it.overlays.menuOpen && it.mobileData.on }
         assertEquals(MobileDataChoice.ALLOWED, world.mobileData)
     }
@@ -177,7 +178,7 @@ class StatusContainerHostMenuTest {
         val world = World().apply { saves = false }
         onHost(world) { host, _ ->
             host.onIntent(UiIntent.MenuOpen)
-            host.onIntent(UiIntent.MobileData(false))
+            host.onIntent(UiIntent.MobileData(SwitchTo.OFF))
             host.stateWhere(
                 "not saved, switch still on",
             ) { it.overlays.menuOpen && it.mobileData.on && it.mobileData.notSaved }

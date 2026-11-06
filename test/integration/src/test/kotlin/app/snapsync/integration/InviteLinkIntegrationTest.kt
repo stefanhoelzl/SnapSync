@@ -12,6 +12,7 @@ import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -209,7 +210,7 @@ class InviteLinkIntegrationTest {
             step("the invite opened", act = { openLink(inviteLink(event)) }, until = {
                 screen<Layer.JoiningEvent> { (it.phase as? JoinPhase.Detailed)?.step == READY }
             })
-            step("receiving switched off on it", act = { tap(UiIntent.ReceiveOn(false)) }, until = {
+            step("receiving switched off on it", act = { tap(UiIntent.ReceiveOn(SwitchTo.OFF)) }, until = {
                 screen<Layer.JoiningEvent> { it.range()?.receiveOn == false }
                 settled { true }
             })

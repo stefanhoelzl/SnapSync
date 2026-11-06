@@ -111,7 +111,7 @@ class UiIntentVocabularyTest {
                 UiIntent.MenuOpen,
                 UiIntent.MenuDismiss,
                 UiIntent.MenuReportBug,
-                UiIntent.MobileData(on = true),
+                UiIntent.MobileData(to = SwitchTo.ON),
                 UiIntent.OpenLink(AppLink.WEBSITE),
                 UiIntent.ReportNoticeDismiss,
                 UiIntent.OpenReconfigure,
@@ -120,9 +120,9 @@ class UiIntentVocabularyTest {
                 UiIntent.RenameStatusConsumed,
                 UiIntent.ConfirmStopSharing,
                 UiIntent.KeepSharing,
-                UiIntent.ShareOn(on = true),
-                UiIntent.ReceiveOn(on = true),
-                UiIntent.SaveToAlbum(on = true),
+                UiIntent.ShareOn(to = SwitchTo.ON),
+                UiIntent.ReceiveOn(to = SwitchTo.ON),
+                UiIntent.SaveToAlbum(to = SwitchTo.ON),
                 UiIntent.RangePreset(RangeChoice.EVENT_START),
                 UiIntent.RetryLoad,
                 UiIntent.ConfirmJoin,
@@ -142,12 +142,12 @@ class UiIntentVocabularyTest {
             { UiIntent.ReportRefusal(ScreenMessage.DEVICE_UNVERIFIABLE) },
             UiIntent.ReportRefusal(ScreenMessage.DEVICE_MODIFIED),
         )
-        assertValueEquality({ UiIntent.MobileData(on = true) }, UiIntent.MobileData(on = false))
+        assertValueEquality({ UiIntent.MobileData(to = SwitchTo.ON) }, UiIntent.MobileData(to = SwitchTo.OFF))
         assertValueEquality({ UiIntent.OpenLink(AppLink.WEBSITE) }, UiIntent.OpenLink(AppLink.PRIVACY_POLICY))
         assertValueEquality({ UiIntent.RenameEvent("event", "Picnic") }, UiIntent.RenameEvent("event", "Party"))
-        assertValueEquality({ UiIntent.ShareOn(on = true) }, UiIntent.ShareOn(on = false))
-        assertValueEquality({ UiIntent.ReceiveOn(on = true) }, UiIntent.ReceiveOn(on = false))
-        assertValueEquality({ UiIntent.SaveToAlbum(on = true) }, UiIntent.SaveToAlbum(on = false))
+        assertValueEquality({ UiIntent.ShareOn(to = SwitchTo.ON) }, UiIntent.ShareOn(to = SwitchTo.OFF))
+        assertValueEquality({ UiIntent.ReceiveOn(to = SwitchTo.ON) }, UiIntent.ReceiveOn(to = SwitchTo.OFF))
+        assertValueEquality({ UiIntent.SaveToAlbum(to = SwitchTo.ON) }, UiIntent.SaveToAlbum(to = SwitchTo.OFF))
         assertValueEquality(
             { UiIntent.RangePreset(RangeChoice.EVENT_START) },
             UiIntent.RangePreset(RangeChoice.FROM_NOW),

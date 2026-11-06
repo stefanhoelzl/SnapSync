@@ -14,6 +14,7 @@ import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.RangeView
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -96,7 +97,7 @@ class JoinScreenIntegrationTest {
     fun both_switches_off_disable_join_and_a_join_is_refused() = behaviour {
         given { createdEvent() }
 
-        whenever { tap(UiIntent.ShareOn(false), UiIntent.ReceiveOn(false)) }
+        whenever { tap(UiIntent.ShareOn(SwitchTo.OFF), UiIntent.ReceiveOn(SwitchTo.OFF)) }
         then {
             screen<Layer.JoiningEvent> { joining ->
                 joining.range()?.let { !it.commitEnabled && !it.shareOn && !it.receiveOn } == true

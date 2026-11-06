@@ -38,6 +38,7 @@ import app.snapsync.rig.UPLOAD_TRANSFER_CHANNEL
 import app.snapsync.rig.WorldEvents
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.NetworkNotice
+import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.runBlocking
@@ -176,7 +177,7 @@ class JvmHostProtocolTest {
     @Test
     fun every_entry_point_s_work_reaches_the_stream_tagged_with_its_act() = behaviour {
         given { step("in front", act = { os.foreground() }, until = { settled { true } }) }
-        whenever { tap(UiIntent.MobileData(false)) }
+        whenever { tap(UiIntent.MobileData(SwitchTo.OFF)) }
         then {
             inOrder {
                 event<WorldEvent.Delivered> { it.entry == "OnMobileDataChanged" && it.tag != null }
@@ -354,7 +355,7 @@ class JvmHostProtocolTest {
      */
     @Test
     fun the_mobile_data_choice_is_the_devices_and_driven_from_the_menu() = onHost { client ->
-        client.person().tap(UiIntent.MobileData(false))
+        client.person().tap(UiIntent.MobileData(SwitchTo.OFF))
         client.awaitScreen("mobile data off") { !it.mobileData.on }
 
         client.person().createEvent("Data", "2026-05-25T00:00:00", "2026-06-20T00:00:00")
@@ -363,7 +364,7 @@ class JvmHostProtocolTest {
         val joined = client.awaitScreen("the joined screen") { it.layer is Layer.Joined }
         assertEquals(false, joined.mobileData.on, "the joined event follows the device's choice")
 
-        client.person().tap(UiIntent.MobileData(true))
+        client.person().tap(UiIntent.MobileData(SwitchTo.ON))
         client.awaitScreen("mobile data on") { it.mobileData.on }
     }
 
