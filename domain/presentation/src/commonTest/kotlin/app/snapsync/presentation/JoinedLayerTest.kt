@@ -144,6 +144,19 @@ class JoinedLayerTest {
     // ---- members, the deleted event, the back-dated line --------------------------------------------
 
     @Test
+    fun `a deleted event's counts are what it came to, whatever its line says — once they are counted`() = runTest {
+        val over = ENDED.copy(deleted = true)
+        val received = DownloadProgress(downloaded = 2, total = 3)
+        // No library access is a line of its own, which on a live event hides the counts.
+        val counted = joined(backgroundScope, over, permission = PhotoGrant.REFUSED, download = received).layer()
+        assertEquals(DirectionCount.Progress(done = 4, total = 4), counted.counts?.shared)
+        assertEquals(DirectionCount.Progress(done = 2, total = 3), counted.counts?.received)
+
+        val uncounted = joined(backgroundScope, over, download = DownloadProgress.UNREAD).layer()
+        assertNull(uncounted.counts, "no count this process never read")
+    }
+
+    @Test
     fun `the member count is the event's present members and none once its photos are deleted`() = runTest {
         assertEquals(4, joined(backgroundScope, MEMBERSHIP.copy(members = MemberCounts(4, 0))).layer().members)
         assertNull(joined(backgroundScope, MEMBERSHIP).layer().members, "not read yet")
