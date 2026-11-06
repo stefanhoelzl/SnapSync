@@ -335,7 +335,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `an opened link’s gate edits its form and Join commits the choice`() = rigTest(rig()) { rig ->
-        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+        rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
         awaitState(rig, ready)
 
         // Each range edit, so a preset crossed with a custom pick lands in the wrong field. The quick choices are on
@@ -373,7 +373,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `Cancel discards the pending join without committing`() = rigTest(rig()) { rig ->
-        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+        rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
         awaitState(rig, ready)
         onNodeWithText(str(Res.string.cancel)).performClick()
         awaitState(rig) { it.layer is Layer.CreateEvent }
@@ -383,7 +383,7 @@ class HostStatusActionsTest {
     @Test
     fun `a never-asked guest’s Join and allow photos requests access and commits`() =
         rigTest(rig(permission = PhotoGrant.UNDECIDED)) { rig ->
-            rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+            rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
             awaitState(rig, ready)
             // The explanation is on request, and reading it raises nothing.
             onNodeWithContentDescription(str(Res.string.join_access_info)).performClick()
@@ -400,7 +400,7 @@ class HostStatusActionsTest {
         rigTest(
             rig(details = { if (++loads == 1) JoinDetails.Unanswered(ServiceFault.UNREACHABLE) else OTHER_EVENT }),
         ) { rig ->
-            rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+            rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
             awaitState(rig) { it.joining?.phase == JoinPhase.LoadFailed }
             onNodeWithText(str(Res.string.retry)).performClick()
             awaitState(rig, ready)
@@ -410,7 +410,7 @@ class HostStatusActionsTest {
 
     @Test
     fun `Retry after a failed commit commits again`() = rigTest(rig()) { rig ->
-        rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+        rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
         awaitState(rig, ready)
         onNodeWithText(str(Res.string.join_button)).performClick()
         awaitState(rig) { (it.joining?.phase as? JoinPhase.Detailed)?.step == JoinPhase.Detailed.Step.CommitFailed }
@@ -423,13 +423,13 @@ class HostStatusActionsTest {
     @Test
     fun `the switch confirmation’s Cancel keeps the membership and Switch leaves it`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
-            rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+            rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
             awaitState(rig) { it.joined?.pendingSwitch != null }
             onNodeWithText(str(Res.string.cancel)).performClick()
             awaitState(rig) { it.joined != null && it.joined?.pendingSwitch == null }
             assertEquals(emptyList(), rig.fired)
 
-            rig.host.onInvite(InviteLinkText.parse(linkTo(OTHER_ID)))
+            rig.invites.value = InviteLinkText.parse(linkTo(OTHER_ID))
             awaitState(rig) { it.joined?.pendingSwitch != null }
             onNodeWithText(str(Res.string.switch_confirm)).performClick()
             awaitFired(rig, "leave")

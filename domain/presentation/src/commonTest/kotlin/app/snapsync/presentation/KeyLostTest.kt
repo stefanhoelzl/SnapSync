@@ -20,6 +20,7 @@ import app.snapsync.query.encryption.InviteRead
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.SyncHealth
+import app.snapsync.ui.state.UiIntent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -192,7 +193,7 @@ class KeyLostTest {
                 joined().inviteUrl,
                 "the whole invite",
             )
-            host.surfaces.onQrOpen()
+            host.onIntent(UiIntent.QrOpen)
             runCurrent()
             presence.value = KeyPresence.Unknown
             runCurrent()

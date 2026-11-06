@@ -13,6 +13,7 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
+import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -175,7 +176,7 @@ class GuardedIntentTest {
         onHost(spy, MutableStateFlow(CONFIG), rename = { _, _ -> RenameResult.Renamed }) { host ->
             host.onRenameEvent(CONFIG.eventId.value, "Lake week")
             host.stateWhere("the rename answered") { (it.layer as? Layer.Joined)?.renameState == RenameState.Succeeded }
-            host.surfaces.onRenameOpen()
+            host.onIntent(UiIntent.RenameOpen)
             val reopened = host.stateWhere("the rename sheet") { it.overlays.renaming }
             assertEquals(RenameState.Idle, assertIs<Layer.Joined>(reopened.layer).renameState)
         }

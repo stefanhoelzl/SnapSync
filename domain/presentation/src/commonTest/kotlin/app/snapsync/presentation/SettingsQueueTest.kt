@@ -87,7 +87,7 @@ class SettingsQueueTest {
         val world = World().apply { config.value = null }
         val host = host(world, backgroundScope)
 
-        host.surfaces.onOpenReconfigure()
+        host.onIntent(UiIntent.OpenReconfigure)
         runCurrent()
         world.config.value = MEMBERSHIP
 
@@ -101,10 +101,10 @@ class SettingsQueueTest {
     fun `a change whose membership ended before its turn applies nothing`() = runTest {
         val world = World()
         val host = host(world, backgroundScope)
-        host.surfaces.onOpenReconfigure()
+        host.onIntent(UiIntent.OpenReconfigure)
         runCurrent()
 
-        host.form.onSaveToAlbum(SwitchTo.ON)
+        host.onIntent(UiIntent.SaveToAlbum(SwitchTo.ON))
         world.config.value = null
         runCurrent()
 
@@ -116,9 +116,9 @@ class SettingsQueueTest {
     fun `stop sharing tapped after keep sharing applies nothing`() = runTest {
         val world = World()
         val host = host(world, backgroundScope)
-        host.surfaces.onOpenReconfigure()
+        host.onIntent(UiIntent.OpenReconfigure)
         runCurrent()
-        host.form.onShareOn(SwitchTo.OFF)
+        host.onIntent(UiIntent.ShareOn(SwitchTo.OFF))
         runCurrent()
 
         host.onIntent(UiIntent.KeepSharing)
@@ -132,13 +132,13 @@ class SettingsQueueTest {
     fun `stop sharing after the membership ended applies nothing`() = runTest {
         val world = World()
         val host = host(world, backgroundScope)
-        host.surfaces.onOpenReconfigure()
+        host.onIntent(UiIntent.OpenReconfigure)
         runCurrent()
-        host.form.onShareOn(SwitchTo.OFF)
+        host.onIntent(UiIntent.ShareOn(SwitchTo.OFF))
         runCurrent()
 
         world.config.value = null
-        host.settings.onConfirmStopSharing()
+        host.onIntent(UiIntent.ConfirmStopSharing)
         runCurrent()
 
         assertTrue(world.reconfigured.isEmpty())
@@ -149,7 +149,7 @@ class SettingsQueueTest {
     fun `settings left open when the event's photos are deleted give way to the status`() = runTest {
         val world = World()
         val host = host(world, backgroundScope)
-        host.surfaces.onOpenReconfigure()
+        host.onIntent(UiIntent.OpenReconfigure)
         runCurrent()
         host.screen.first { (it.layer as? Layer.Joined)?.surface is JoinedSurface.Reconfigure }
 

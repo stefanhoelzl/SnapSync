@@ -155,36 +155,48 @@ class StatusContainerHost(
     )
 
     /** The event's settings, applied as they change ([SettingsChanges]). */
-    val settings: SettingsChanges =
+    internal val settings: SettingsChanges =
         SettingsChanges(cells, membership, commands, requests, cutoffFormatter, albumContents, scope)
 
     /** The member's edits to the participation form ([FormEdits]). */
-    val form: FormEdits = FormEdits(cells, membership, settings, ranges)
+    internal val form: FormEdits = FormEdits(cells, membership, settings, ranges)
 
     /** The conversions from the domain into what the screen shows (see [Display]). */
     private val display = Display(cutoffFormatter, ::resolveRange)
 
     /** The create form's own taps ([CreateFlow]). */
-    val create: CreateFlow = CreateFlow(cells, display, cutoffFormatter, commands, creationStatus, gate)
+    internal val create: CreateFlow = CreateFlow(cells, display, cutoffFormatter, commands, creationStatus, gate)
 
     /** The range calendars ([RangePicker]). */
-    val picker: RangePicker = RangePicker(cells, display, cutoffFormatter, form)
+    internal val picker: RangePicker = RangePicker(cells, display, cutoffFormatter, form)
 
     /** The three photo-access taps ([AccessAsks]). */
-    val access: AccessAsks = AccessAsks(runner, commands)
+    internal val access: AccessAsks = AccessAsks(runner, commands)
 
     /** A bug report and the word on what became of it ([ReportFlow]). */
     private val report = ReportFlow(cells, commands, requests, scope)
 
     /** What is drawn over — or instead of — the current layer ([SurfaceCommands]). */
-    val surfaces: SurfaceCommands = SurfaceCommands(cells, commands, mobileDataQuery, mobileData, settings, report)
+    internal val surfaces: SurfaceCommands = SurfaceCommands(
+        cells,
+        commands,
+        mobileDataQuery,
+        mobileData,
+        settings,
+        report,
+    )
 
     /** Create a new event ([CreateFlow.onCreateEvent]). */
-    fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: OpenUntil? = null) =
+    internal fun onCreateEvent(
+        name: String,
+        startsAt: LocalDateTime,
+        endsAt: LocalDateTime,
+        openUntil: OpenUntil? = null,
+    ) =
         create.onCreateEvent(name, startsAt, endsAt, openUntil)
 
     /** Send the diagnostic dump with the member's note, from the surface named [screen][ReportFlow.send]. */
-    val onSendDiagnostics: (String, String) -> Unit = { note, screen -> report.send(note, screen) }
+    internal val onSendDiagnostics: (String, String) -> Unit = { note, screen -> report.send(note, screen) }
 
     /** The non-idempotent commands claimed while their intent runs — see [guardedIntent]. */
     private val inFlight = MutableStateFlow<Set<Guarded>>(emptySet())
@@ -429,7 +441,7 @@ class StatusContainerHost(
      * its own private ledger on its next cycle). The config going `null` makes the reduction fall back
      * to the setup gate — no new `UiState` and no reduction branch here.
      */
-    fun onLeaveEvent() = intent {
+    internal fun onLeaveEvent() = intent {
         // Every overlay belongs to the membership being left, so none of them survives it. Resetting the
         // CELL (rather than only hiding them) is what stops a later rejoin from reopening a dialog the
         // member dismissed by leaving.
@@ -445,7 +457,7 @@ class StatusContainerHost(
      */
     // The invite URL is read off the state the reduction already derived, so the shared link is
     // byte-identical to the QR being rendered rather than a second derivation that could drift.
-    fun onShareInvite() = intent {
+    internal fun onShareInvite() = intent {
         (state.ui.layer as? Layer.Joined)?.let { joined ->
             joined.inviteUrl?.let { commands.platform.share.fire(ShareRequest(it, joined.membership.name)) }
         }
@@ -459,7 +471,7 @@ class StatusContainerHost(
      * renders no button, and reading it here means the container cannot be asked to open one the state
      * does not hold.
      */
-    fun onOpenAppStore() = intent {
+    internal fun onOpenAppStore() = intent {
         state.shown.store?.let { commands.platform.openLink.fire(AppLinkRequest.StorePage(it)) }
     }
 
@@ -471,7 +483,7 @@ class StatusContainerHost(
      * read-model. Unlike [onReconfigure], this writes the SHARED event, but it crosses the same one door. One rename
      * at a time: the guard is held until this one is answered.
      */
-    fun onRenameEvent(eventId: String, name: String) = guardedIntent(Guarded.Rename) {
+    internal fun onRenameEvent(eventId: String, name: String) = guardedIntent(Guarded.Rename) {
         // The screen hands back the id it was shown; one that names no event renames nothing.
         val event = EventId.parse(eventId) ?: return@guardedIntent
         val id = ids.next()
@@ -481,28 +493,28 @@ class StatusContainerHost(
     }
 
     /** The screen has consumed the rename's answer: the next rename starts from none. */
-    fun onRenameStatusConsumed() = intent { local.update { it.copy(renameRequest = null) } }
+    internal fun onRenameStatusConsumed() = intent { local.update { it.copy(renameRequest = null) } }
 
     /** An invite the app was opened with, read at the boundary ([JoinGate.onInvite]). */
-    fun onInvite(read: InviteLinkVerdict): Job = gate.onInvite(read)
+    internal fun onInvite(read: InviteLinkVerdict): Job = gate.onInvite(read)
 
     /** Retry the details fetch after a transient load failure. */
-    fun onRetryLoad(): Job = gate.onRetryLoad()
+    internal fun onRetryLoad(): Job = gate.onRetryLoad()
 
     /** Confirm a first join ([JoinGate.onConfirmJoin]). */
-    fun onConfirmJoin(): Job = gate.onConfirmJoin()
+    internal fun onConfirmJoin(): Job = gate.onConfirmJoin()
 
     /** Confirm a switch: the leave, and nothing else ([JoinGate.onConfirmSwitch]). */
-    fun onConfirmSwitch() = gate.onConfirmSwitch()
+    internal fun onConfirmSwitch() = gate.onConfirmSwitch()
 
     /** Retry a failed commit. */
-    fun onRetryJoin(): Job = gate.onRetryJoin()
+    internal fun onRetryJoin(): Job = gate.onRetryJoin()
 
     /** Discard the pending join. */
-    fun onCancelJoin(): Job = gate.onCancelJoin()
+    internal fun onCancelJoin(): Job = gate.onCancelJoin()
 
     /** Dismiss the switch confirmation before its leave. */
-    fun onCancelSwitch(): Job = gate.onCancelSwitch()
+    internal fun onCancelSwitch(): Job = gate.onCancelSwitch()
 
     /**
      * Run [run] as an intent unless [command] is already in flight — a non-idempotent command is in flight before it

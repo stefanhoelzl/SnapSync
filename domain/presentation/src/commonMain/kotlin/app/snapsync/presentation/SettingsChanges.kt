@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
  * The event's settings, applied as they change: the queue every settings act runs through, what the next change builds
  * on, and the answers to the withdrawal question.
  */
-class SettingsChanges internal constructor(
+internal class SettingsChanges(
     private val cells: ScreenCells,
     private val membership: StateFlow<Membership?>,
     private val commands: UserCommands,
