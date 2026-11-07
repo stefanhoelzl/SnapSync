@@ -157,7 +157,8 @@ Its payload lives in `data.contexts`, not in a stacktrace:
 | context   | what it holds |
 |-----------|---------------|
 | `note`    | `text`: what the operator wrote — the same text as the issue title, verbatim |
-| `state`   | app version + build, OS, device model, upload tier, permission, membership (real event id), baked upload base, reporter environment |
+| `snapsync` | SnapSync's own ids, in full: `event` (`none` while in none), `device` (or `failed (<reason>)`), `process` |
+| `state`   | app version + build, OS, device model, uploaders carried, the upload facts, `photo_permission` (`NOT_DETERMINED`\|`DENIED`\|`LIMITED`\|`FULL`), the membership (name, direction, window, album — its id is in `snapsync`), the device's state, baked upload base, reporter environment; a fact that could not be read is `failed (<reason>)` |
 | `ledger`  | five counts: `photos_pending` / `photos_completed` (photos, not rows) and `downloads_imported` / `downloads_assets` / `downloads_in_flight` |
 | `app_log` | `text`: the tail of the app process's `debug.log` |
 | `ext_log` | `text`: the tail of the extension's `ext-debug.log` |
@@ -373,11 +374,16 @@ wrong, say so and let the operator reopen it in the web UI.
 
 ## Notes & gotchas
 
-- **Privacy by construction:** every UUID-shaped token is scrubbed before an **automatically
-  captured** event leaves the device (an eventId IS the upload capability). So a crash event will
-  NOT contain real event/device ids — do not expect to correlate them back to a specific
-  membership. **Diagnostic dumps are the deliberate exception** and DO carry real ids (see 2b):
-  they are operator-triggered and confirmed, and are worthless without them.
+- **Ids ride in full; keys never do.** Since 4.10 nothing is scrubbed: every event — crash, failed line,
+  metric crossing, bug report — carries SnapSync's ids in its `snapsync` context (`event`, `device`,
+  `process`) once its process has described itself at start, apart from Bugsink's own `event_id`, so a
+  failure correlates straight to its event and device. An encrypted event's key never reaches a line by type (`InviteText`, `EventKey`): a logged
+  invite reads `‹invite›` or names its event with the key masked. Events from builds before 4.10 had
+  every UUID scrubbed out and carry no `snapsync` context.
+- **A failed line is titled by its event and grouped by it.** An `Error` line arrives as
+  `ReportedFailure: <event>` (with a cause chained, its type, value and stack intact) or as the bare
+  event, fingerprinted `[tag, event]` — so one failure is one issue however its ids differ. The line
+  itself, fields and all, is in the `snapsync_log` context.
 - **Token scope:** the injected token is `org:ci` (broad — it *could* mutate). This skill's
   narrow write surface — resolve only, on confirmation (§4) — is enforced by what it issues,
   not by the token. If a narrower credential is wanted, mint a Bugsink token scoped to reads

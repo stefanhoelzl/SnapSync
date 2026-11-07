@@ -147,8 +147,8 @@ app (re-measured on iOS 18, build 683: zero hits on all three app-delegate conti
 `:test:architecture` guard pins the scene delegate AND the modifier (`EventLinkDeliveryTest`).
 
 **The authoritative on-device check is `debug.log`, not the screen** (spec `sync-status`): read the
-`LinkReading` `delivered` lines (each names its `hook` and what it `opens`). A **cold** delivery is one sharing a
-timestamp with `=== app process start ===`; a **warm** one has no preceding process start. A multi-second gap after a
+`LinkReading` `delivered` lines (each names its `hook`, what it came `from` and what it `opens` — an invite with its key masked, never the link). A **cold** delivery is one sharing a
+timestamp with the `[Info/process] === process start === process=app.snapsync …` line; a **warm** one has no preceding process start. A multi-second gap after a
 launch means a *second* scan delivered warm — misreading that gap is how "cold works" was concluded
 wrongly the first time. Both cases must appear, exactly once each. Apple's TN3155 exposes approval state
 via `swcutil` inside a **sysdiagnose** (`swcutil_show.txt` → `Site/Fmwk Approval: approved`), fetchable

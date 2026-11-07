@@ -15,11 +15,9 @@ plugins {
 // THE COMPILE BOUNDARY IS THE READ-MODEL RULE. The wire types stay in `:test:rig`'s `commonMain` — the device
 // build needs them without a client — and the rig declares its own module dependencies `implementation()`, so
 // nothing it depends on reaches here. `RigState` embeds the real `UiState` (in `model/`), so this module declares
-// `:domain:model`, `:domain:presentation` and `:domain:feature` itself — each explicitly, since the core's zones
-// export nothing transitively. Nothing on this compile path exports `ports/`, `flow/`, `compose/` or the host, so a
-// client or test naming one fails to compile. Within `feature/`, the read-model import gate (`docs/architecture.md`,
-// "The zone gates") confines this module's references to the `readmodel` packages. The
-// compile boundary and that gate together are the whole rule.
+// `:domain:model` and `:domain:presentation` itself — each explicitly, since the core's zones export nothing
+// transitively. Nothing on this compile path exports `ports/`, `flow/`, `compose/` or the host, so a client or test
+// naming one fails to compile: the compile boundary is the whole rule.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
 }

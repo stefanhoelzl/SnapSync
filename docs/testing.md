@@ -93,23 +93,21 @@ Non-`commonTest` source sets that exist today:
 Where a target is genuinely skipped, the build file that declares the source set **says which coverage
 is lost and why**.
 
-### Feature tests compose real services over port mocks
+### Service-backed suites compose real services over port mocks
 
-Features see services only — `:domain:feature` does not depend on `ports/` — so a feature test that needs a service is
-built the way production builds it: the **real** service over the ports' in-memory mocks from `:adapter:generic:mock`
+A suite that needs a service is built the way production builds it: the **real** service over the ports' in-memory mocks from `:adapter:generic:mock`
 (`inMemoryDatabases()`, `inMemoryFiles()`, `inMemoryPreferences()`, `inMemorySecureStore()`, the gallery and access
 mocks). There are no doubles of the services: what a test observes or forces, it observes or forces **at the port** —
 the rows in the in-memory database, the files in an area, a refusal the mock answers on demand
 (`inMemoryDatabases(mapOf(name to DbOpen.OldSchema))`), a `Files` decorator that fails a write.
 
-Those tests live in **`:test:feature`** (JVM and the iOS simulator), the one module that sees feature, services, ports
-and the mocks together; its `support/` package holds the shared setups (`configService`, `TestLedger`, `testIdentity`,
-`RecordingFiles`, …). A feature test that touches no port and no service stays in `:domain:feature`'s own
-`commonTest`, and so does one that needs a feature `internal`. A service's own tests live in `:domain:services`
+Those suites live in **`:test:feature`** (JVM and the iOS simulator), which sees the services, the layers, the ports
+and the mocks together — the bug report's assembly over real reads (`AssembleBugReportTest`) among them; its
+`support/` package holds the shared setups (`configService`, `TestLedger`, `testIdentity`, `RecordingFiles`, …). The
+features it was named for are gone (the last became a use case in 4.10). A service's own tests live in `:domain:services`
 (over hand-written port doubles) or, where they need the mocks, in `:adapter:generic:mock`'s `commonTest` — which also
 holds the composition's process tests and the mocks' own contract bindings, because the mocks are `internal` and only their own module's
-tests can build one in a chosen state. **A feature's tests may be split across `:domain:feature` and `:test:feature`.
-Look in both.**
+tests can build one in a chosen state.
 
 **The data layer's suites** live in **`:test:data`** for the same reason (JVM and the iOS simulator, `commonTest`
 only): `:domain:data` may name no mock, and its repositories and the backend's protocol are tested over the real ones —
@@ -316,7 +314,7 @@ Where bindings live: beside their implementations.
   iPhone, each clause holding a platform to its own facts and to answering the other's unsupported. The simulator has
   no battery, so its battery reads failed — the contract holds the battery only to its range. That `IosDeviceConditions`
   leaves `UIDevice`'s battery monitoring as it found it is unobservable through the port and is stated on the adapter;
-  how a report renders each fact, and a read that stalls, run on the JVM (`CollectDiagnosticDumpTest`).
+  how a report renders each fact, and a read that stalls, run on the JVM (`AssembleBugReportTest`).
 - A transfer held to unrestricted networks (capability `mobile-data`): `TransferSession`'s and `Download`'s
   `A_TRANSFER_HELD_TO_UNRESTRICTED_NETWORKS_WAITS_FOR_ONE` run live on `ANDROID_EMU` (metered Wi-Fi, via the shared
   `MeteredWifi` entry) and over the transfer mocks; `AndroidWorkContractTest` pins that an unrestricted wake waits out a
@@ -1240,7 +1238,7 @@ test process's own and revoking one kills it, so `NO_GRANT` clauses stay the iOS
 are iOS's too (Android files no photo into an album — `GRANTED_SEEDED_ALBUMS_WRITABLE`). The mocks'
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
 
-The client compiles against `model/`, presentation and `feature/`, never `ports/`, `entrypoints/`, `compose/` or
+The client compiles against `model/` and presentation, never `ports/`, `entrypoints/`, `compose/` or
 the host. **That compile boundary is the read-model rule.** Decision record:
 `changes/archive/2026-09-23-add-rig-jvm-host`.
 

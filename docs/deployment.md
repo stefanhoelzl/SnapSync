@@ -636,15 +636,19 @@ never reaches the internal track (below).
 
 - **What reports** (capability `privacy-security`): production builds report crashes and `Error`/`Assert`-severity
   lines (lower severities ride as breadcrumbs), in **both** iOS processes, through the `CrashReporter` port that
-  `snapSyncProcess` starts as every composition's first act. Every UUID-shaped token is scrubbed before sending (an
-  event id IS the upload capability). The SDK's random per-install `user.id` is the one deliberate exception; do not
-  "fix" it into the scrub. Triage is the `/bugsink` skill.
+  `snapSyncProcess` starts as every composition's first act. Ids ride **in full** (the operator already holds every
+  event's unencrypted data; an encrypted event's key never reaches a line, by type — `InviteText`, `EventKey`), and
+  SnapSync's own ids — `event`, `device`, `process` — ride in every report's `snapsync` section, apart from the SDK's
+  own `event_id`; the SDK's random per-install `user.id` counts the installs a problem affects. A failed line is
+  titled by its event (`ReportedFailure: <event>`, or the event alone with no cause), grouped by its tag and event
+  (the fingerprint), never by an id. Triage is the `/bugsink` skill.
 - **The diagnostic dump**: double-tap the "SnapSync" label at the top of any screen → a confirm dialog → one dump
-  reaches Bugsink: state, counts and the tail of BOTH processes' logs (~700 KB), sent **verbatim**, ids intact. It is
+  reaches Bugsink: the `snapsync` ids, state, counts and the tail of BOTH processes' logs (~700 KB), sent
+  **verbatim**. A fact or a log that could not be read is written `failed (<reason>)`, never left blank. It is
   deliberately invisible: no button, no semantics. On a build with no DSN the sheet says so, and **Save** keeps the
   report on the phone instead: `diagnostic-report.json` in the app's Documents, replaced by each report and pulled
-  like `debug.log`. To exercise the sending path, dispatch the branch (§5). Dumps group as one issue
-  (`diagnostic dump`).
+  like `debug.log`. To exercise the sending path, dispatch the branch (§5). Each report is its own issue, titled
+  `Bug Report: <what the member wrote>`.
 - **The DSN lives in `Deployment.plist`, never `Deployment.xcconfig`**: in an xcconfig `//` opens a comment, which
   silently truncated the DSN to `https:` and shipped four mute TestFlight builds (644–673). `ios-build` reads all four
   deployment values back out of the app **and** the `.appex` after archiving, so a truncated value or a resource that

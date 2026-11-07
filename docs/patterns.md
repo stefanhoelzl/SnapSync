@@ -236,10 +236,17 @@ log.i("top-up planned", "needing" of needing.size, "admitted" of plan.rows.size)
 - The text sinks render `[OnSilentPush] [Info/PlanTopUp] top-up planned needing=5 admitted=3`; the crash
   channel keeps the trigger as its `entry_point` tag.
 
-The old zones' Kermit lines keep their prefix through a **bridge**: the runtime's lane writes each task's trigger
-into a per-thread slot, the `ThreadLabel` port (a `ThreadLocal` on the JVM and Android, a thread-local global on iOS),
-and the Kermit writer reads it. Each old line moves to `Log` when phase 4 moves its code. Both writers are installed
-once per process by `snapSyncProcess` (`ProcessLogWriters.install`, which calls `Log.install`).
+- An event is a **literal** (`EventNameLiteralTest`): what varies is a field, so a line reads — and a failure report
+  groups — by what happened, never by the values it happened with. Every line rides the crash channel as a
+  breadcrumb, and an `Error` or `Assert` line is a report too, titled by its event and grouped by its tag and event
+  (`CrashShaping`).
+- The levels are `LogLevel`'s, and every line reaches each of the process's sinks once (`SinkLines`) and the crash
+  channel once (`CrashLines`), both installed by `snapSyncProcess` (`ProcessLogging`, which calls `Log.install`).
+
+The old zones' Kermit lines reach the same writers through a **bridge**, `KermitBridge`, Kermit's only writer, which
+forwards each to `Log` at its level. The runtime's lane writes each task's trigger into a per-thread slot, the
+`ThreadLabel` port (a `ThreadLocal` on the JVM and Android, a thread-local global on iOS), and the writers read it.
+Each old line moves to `Log` when phase 4 moves its code.
 
 ---
 
@@ -436,8 +443,11 @@ the composition lane and nothing but the hand-off runs on the tapping thread.
 ## 14. Secret types and rendering
 
 A value that must never reach the crash channel is a **secret type** whose `toString` is masked: an event's key, a
-bearer token (`BearerToken`, trust's, equal by its secret), and an invite link with only its key masked (the rest of
-the link stays readable). Each arrives with its concept. **Device, event and asset ids render in full** (`privacy-security`: crash reports may carry device,
+bearer token (`BearerToken`, trust's, equal by its secret), an invite link with only its key masked (the rest of
+the link stays readable), and an invite's text as the member shares it (`InviteText`, and the screen's own
+`ShownInvite`) — printed whole as `‹invite›`, read only by the QR code and the share sheet, each opt-in pinned. Each
+arrives with its concept. **Nothing is scrubbed:** a secret leaves no line by its type, so no text is searched for
+one on its way out. **Device, event and asset ids render in full** (`privacy-security`: crash reports may carry device,
 event and photo ids — never an event key), so `EventId`, `DeviceId` and `AssetId` render as the id itself.
 
 A secret whose bytes the core must handle — the event key (`EventKey`, encryption's) — guards them twice more. Reading
