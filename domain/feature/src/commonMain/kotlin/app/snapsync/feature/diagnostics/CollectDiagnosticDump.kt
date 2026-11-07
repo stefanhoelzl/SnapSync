@@ -196,29 +196,28 @@ class CollectDiagnosticDump(
      * outstanding resource is pending), while the log speaks of resource **rows**. Unlabelled, that
      * disagreement reads as a bug at 2am.
      */
-    private suspend fun ledgerSection(): Map<String, String> {
-        val photos = ownProgress()
+    private fun ledgerSection(): Map<String, String> = buildMap {
         // Both sides read in one round-trip each, so a dump reports one state of each store rather than a
-        // composite of several — the disagreement this section's KDoc warns reads as a bug at 2am.
-        val downloadCounts = when (val read = downloads.census()) {
-            is DownloadRead.Ok -> read.value
-            is DownloadRead.Unavailable -> error("the download store cannot be read: ${read.detail}")
+        // composite of several — the disagreement this section's KDoc warns reads as a bug at 2am. A store that cannot
+        // be read writes its counts as failed: never zero, which is a real answer, and never the end of the report.
+        val photos = ownProgress()
+        put("photos_pending", photos) { all -> all.count { it != AssetProgress.DONE }.toString() }
+        put("photos_completed", photos) { all -> all.count { it == AssetProgress.DONE }.toString() }
+        val counts = when (val read = downloads.census()) {
+            is DownloadRead.Ok -> Fact.Known(read.value)
+            is DownloadRead.Unavailable -> Fact.Failed("the download store cannot be read: ${read.detail}")
         }
-        return mapOf(
-            "photos_pending" to photos.count { it != AssetProgress.DONE }.toString(),
-            "photos_completed" to photos.count { it == AssetProgress.DONE }.toString(),
-            "downloads_imported" to downloadCounts.imported.toString(),
-            "downloads_assets" to downloadCounts.stillArriving.toString(),
-            "downloads_in_flight" to downloadCounts.inFlight.toString(),
-        )
+        put("downloads_imported", counts) { it.imported.toString() }
+        put("downloads_assets", counts) { it.stillArriving.toString() }
+        put("downloads_in_flight", counts) { it.inFlight.toString() }
     }
 
-    /** Per photo of the joined event, how far it has got — none while nothing is joined or readable. */
-    private fun ownProgress(): Collection<AssetProgress> {
-        val event = joined()?.event?.id ?: return emptyList()
+    /** Per photo of the joined event, how far it has got — none while nothing is joined; failed when unreadable. */
+    private fun ownProgress(): Fact<Collection<AssetProgress>> {
+        val event = joined()?.event?.id ?: return Fact.Known(emptyList())
         return when (val read = progress.progress(event)) {
-            is ProgressRead.Read -> read.photos.values
-            is ProgressRead.Unavailable -> emptyList()
+            is ProgressRead.Read -> Fact.Known(read.photos.values)
+            is ProgressRead.Unavailable -> Fact.Failed("the upload ledger cannot be read: ${read.detail}")
         }
     }
 

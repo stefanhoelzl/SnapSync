@@ -49,7 +49,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -505,16 +504,24 @@ class CollectDiagnosticDumpTest {
         assertEquals("1", dump.ledger["photos_pending"])
         assertEquals("1", dump.ledger["photos_completed"])
 
-        // Rows that cannot be read count none, and the dump is still collected.
+        // Rows that cannot be read are counted failed, never as none, and the dump is still collected.
         val locked = TestLedger(inMemoryDatabases(mapOf(LEDGER_DB_NAME to DbOpen.Failed("locked"))))
         val unread = collector(config = joined, ledger = locked).collect(NOTE, SCREEN)
-        assertEquals("0", unread.ledger["photos_pending"])
+        assertEquals("failed (the upload ledger cannot be read: locked)", unread.ledger["photos_pending"])
+        assertEquals("failed (the upload ledger cannot be read: locked)", unread.ledger["photos_completed"])
     }
 
     @Test
     fun `a download store that cannot be read is never reported as nothing received`() = runTest {
         val locked = receivingCounts(inMemoryDatabases(mapOf(DOWNLOADS_DB_NAME to DbOpen.Failed("locked"))))
-        assertFailsWith<IllegalStateException> { collector(downloads = locked).collect(NOTE, SCREEN) }
+        val dump = collector(downloads = locked).collect(NOTE, SCREEN)
+        listOf("downloads_imported", "downloads_assets", "downloads_in_flight").forEach { count ->
+            assertEquals(
+                "failed (the download store cannot be read: locked)",
+                dump.ledger[count],
+                "$count is failed, and the report is still collected",
+            )
+        }
     }
 
     @Test
