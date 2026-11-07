@@ -28,8 +28,8 @@ import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
 import app.snapsync.inbound.Completion
-import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.LinkDelivery
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeChoice

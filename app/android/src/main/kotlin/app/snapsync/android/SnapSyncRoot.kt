@@ -34,11 +34,11 @@ import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppDevicePorts
-import app.snapsync.compose.NoProcessMetrics
-import app.snapsync.compose.ProcessPorts
+import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.http.KtorHttpTransport
+import app.snapsync.metrics.NoProcessMetrics
 import app.snapsync.model.PlatformEntry
 import app.snapsync.model.uncaughtInRootScope
 import app.snapsync.presentation.CutoffFormatter
@@ -54,7 +54,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 /**
- * **The Android composition root** (`docs/architecture.md`, "One shared composition"): ONE per process, built in
+ * **The Android composition root** (`docs/architecture.md`, "The composition layer"): ONE per process, built in
  * `Application.onCreate` — the shared host composition (`snapSyncHost`, whose first act sets the process up) over the
  * ports this build's adapter set hands back ([platformAdapters]) and nothing else. Android runs the activity,
  * the workers and the push service in this one process, so they are all entry ports on this one

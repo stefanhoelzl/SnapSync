@@ -1,6 +1,6 @@
 package app.snapsync.extension
 
-import app.snapsync.model.ProcessingAnswer
+import app.snapsync.ports.ProcessingAnswer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

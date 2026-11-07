@@ -72,7 +72,7 @@ internal fun AppCore.commandsFor(reports: RequestStatuses<ReportOutcome>): CoreC
         sendDiagnostics = OnSendDiagnosticsTapped(
             runtime,
             assembleBugReport,
-            SendBugReport(process.crash, SavedReport(process.files)),
+            SendBugReport(started.crash, SavedReport(process.files)),
             reports,
         ),
         setMobileData = work.mobileDataChanged,

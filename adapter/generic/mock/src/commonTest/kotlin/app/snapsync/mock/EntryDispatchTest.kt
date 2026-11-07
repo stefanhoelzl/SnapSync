@@ -7,12 +7,12 @@ import app.snapsync.contracts.backgroundOf
 import app.snapsync.contracts.inboundOf
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.LifecycleHandlers
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.TransferHandlers

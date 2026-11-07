@@ -52,7 +52,7 @@ internal class AppWork(private val core: AppCore) {
     /** The top-up: the one sequence that creates the app's upload jobs. */
     internal val topUp: TopUp by lazy {
         val layers = uploads.layers
-        TopUp(layers.gate, layers.contribute, layers.plan, layers.create(uploads.tier), layers.album)
+        TopUp(layers.gate, layers.contribute, layers.plan, uploads.createJobs, layers.album)
     }
 
     /** The walk → publish: a wake's under a full grant, a selection change's, and the end of a wake's settle. */

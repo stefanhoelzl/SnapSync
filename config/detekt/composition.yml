@@ -1,0 +1,15 @@
+# The `composition` tier (`DetektTiersPlugin`): the composition layer, `:domain:composition:*` (`docs/architecture.md`,
+# "The composition layer").
+#
+# A CLAIM, not debt, like `entrypoints.yml`: these numbers were written with the code. The layer is wiring only — graph
+# classes of `val`s built by constructor calls and one straight-line composing function per process
+# (`CompositionIsWiringTest`) — so no function here branches at all: a cyclomatic complexity of 1 and a cognitive one of
+# 0 are the whole of it. A function that needs more holds a decision, and a decision is the layers'.
+complexity:
+  CyclomaticComplexMethod:
+    threshold: 2
+  CognitiveComplexMethod:
+    threshold: 1
+  LongParameterList:
+    # A SIZE measure, not a decision: the upload graph takes each piece a process builds its own way (`UploadGraph`).
+    constructorThreshold: 17

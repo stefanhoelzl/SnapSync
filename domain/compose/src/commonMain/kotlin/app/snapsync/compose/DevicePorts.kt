@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
@@ -10,16 +11,13 @@ import app.snapsync.ports.DevControls
 import app.snapsync.ports.DeviceConditions
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Download
-import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.Files
 import app.snapsync.ports.Gallery
-import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.Links
 import app.snapsync.ports.NetworkMonitor
-import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
@@ -120,46 +118,5 @@ class AppDevicePorts(
         network = network.value,
         deviceConditions = deviceConditions.value,
         dateFormatting = dateFormatting.value,
-    )
-}
-
-/**
- * **The upload extension's ports onto the device's systems** — [AppDevicePorts]' twin for the extension process, which
- * has no screen, no lifecycle and no transfer session of its own: it reads the library, creates jobs on the OS's
- * upload-job queue, and reaches the backend.
- */
-class ExtensionDevicePorts(
-    val clock: Lazy<Clock>,
-    /** The platform's cryptographic primitives. */
-    val crypto: Lazy<Crypto>,
-    val crashReporter: Lazy<CrashReporter>,
-    val files: Lazy<Files>,
-    val databases: Lazy<Databases>,
-    val preferences: Lazy<Preferences>,
-    val secureStore: Lazy<SecureStore>,
-    /** The platform's own stable device id, where it has one (none on iOS). */
-    val platformDeviceId: Lazy<PlatformDeviceId>,
-    /** The upload extension's photo library: reads and album adds only. */
-    val galleryReader: Lazy<GalleryReader>,
-    /** The OS's upload-job queue the upload cycle creates its jobs on. */
-    val uploadQueue: Lazy<OsUploadQueue>,
-    val http: Lazy<HttpTransport>,
-) {
-    /**
-     * The extension process's [ExtensionPorts] over these ports, its own [process] ports and the operating system's
-     * [host] of it — the one place an extension root's ports become the composition's.
-     */
-    fun extensionPorts(process: ProcessPorts, host: ExtensionHost): ExtensionPorts = ExtensionPorts(
-        process = process,
-        // The App-Group databases: the ledger, shared with the app (either process may open it read-write and migrate
-        // it), and the app's download store, opened READ-ONLY as the echo-suppression view.
-        databases = databases.value,
-        preferences = preferences.value,
-        secureStore = secureStore.value,
-        platformDeviceId = platformDeviceId.value,
-        gallery = galleryReader.value,
-        uploadQueue = uploadQueue.value,
-        http = http.value,
-        host = host,
     )
 }

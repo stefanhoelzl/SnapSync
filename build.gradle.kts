@@ -78,11 +78,11 @@ subprojects {
 // `alsoCoveredBy` — tests a placement rule put elsewhere:
 //  - `:adapter:generic:mock` and `:test:feature` hold the zones' service- and mock-driven suites (`docs/testing.md`,
 //    "Feature tests compose real services over port mocks"), which a `:domain:*` build file may not name;
-//  - `:test:integration` covers the WIRING — `:domain:compose`, `:domain:host`, `:app:jvm` — and the entry points:
-//    "One shared composition" says the wiring graph is not unit-tested and IS smoke-tested by the integration surface,
-//    and the entry points order each trigger's steps and decide nothing (`docs/patterns.md`, "Entry points"), while the
-//    integration surface delivers every trigger from the operating system's side. It covers no other module's unit
-//    measurement: a thick integration suite cannot stand in for a thin unit suite.
+//  - `:test:integration` covers the WIRING — `:domain:compose`, the composition layer, `:domain:host`, `:app:jvm` —
+//    and the entry points: "The composition layer" says the wiring graph is not unit-tested and IS smoke-tested by
+//    the integration surface, and the entry points order each trigger's steps and decide nothing (`docs/patterns.md`,
+//    "Entry points"), while the integration surface delivers every trigger from the operating system's side. It
+//    covers no other module's unit measurement: a thick integration suite cannot stand in for a thin unit suite.
 //
 // `integration(…)` is what `:test:integration` ALONE covers of the module, judged right after the suite by its
 // `integrationCoverage` task; it credits no module. A target left out is `integrationGoal`; a lower one is an
@@ -133,7 +133,10 @@ coverage {
         // → 46/20 when the bug report moved to the layers (4.10): the device conditions' vocabulary, the report's
         // environment and its facts, which the suite covered, left for the domain. No test was lost. Measured
         // 46.08 / 20.74 %.
-        integration(instructions = 46, branches = 20)
+        // → 45/20 in phase 4.11 (extension composition): the extension's processing answer, which every invocation
+        // the suite plays covered, left for the ports as the `ExtensionHost` port's vocabulary. No test was lost.
+        // Measured 45.38 %.
+        integration(instructions = 45, branches = 20)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -292,6 +295,17 @@ coverage {
     }
     ":domain:host" {
         unit(alsoCoveredBy = listOf(":test:integration"))
+        integration(instructions = 100, branches = 100)
+    }
+    // The composition layer: wiring, not unit-tested by law ("The composition layer") — smoke-tested by the integration
+    // surface, which composes both processes over the JVM root, and driven by the mocks' suites: the process's start
+    // (`ProcessCompositionTest`) and the upload extension over its entry port (`ExtensionEntryTest`).
+    ":domain:composition:process" {
+        unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
+        integration(instructions = 100, branches = 100)
+    }
+    ":domain:composition:extension" {
+        unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
         integration(instructions = 100, branches = 100)
     }
     ":domain:presentation" {

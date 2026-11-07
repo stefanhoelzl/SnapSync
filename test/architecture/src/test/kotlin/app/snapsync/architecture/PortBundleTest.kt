@@ -2,9 +2,9 @@ package app.snapsync.architecture
 
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.compose.AppPorts
-import app.snapsync.compose.ExtensionDevicePorts
-import app.snapsync.compose.ExtensionPorts
-import app.snapsync.compose.ProcessPorts
+import app.snapsync.composition.extension.ExtensionDevicePorts
+import app.snapsync.composition.extension.ExtensionPorts
+import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.ports.Port
 import java.io.File
 import java.lang.reflect.ParameterizedType
@@ -14,7 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **A composition bundle holds ports and nothing else** (`docs/architecture.md`, "One shared composition"; law "Ports
+ * **A composition bundle holds ports and nothing else** (`docs/architecture.md`, "The composition layer"; law "Ports
  * are the I/O boundary named for the need").
  *
  * The roots hand their compositions ports — [AppPorts], [ExtensionPorts], [ProcessPorts], [AppDevicePorts],
@@ -94,7 +94,7 @@ class PortBundleTest {
     fun `the gate parsed every bundle (non-vacuity floor)`() {
         val floors = mapOf(
             AppPorts::class.java to 20,
-            ExtensionPorts::class.java to 9,
+            ExtensionPorts::class.java to 8,
             ProcessPorts::class.java to 7,
             AppDevicePorts::class.java to 20,
             ExtensionDevicePorts::class.java to 10,

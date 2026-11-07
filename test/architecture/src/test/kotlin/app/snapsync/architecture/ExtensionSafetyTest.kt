@@ -156,4 +156,61 @@ class ExtensionSafetyTest {
                 "framework, add it to `permitted` with the reason:\n  " + violations.joinToString("\n  "),
         )
     }
+
+    /**
+     * **Nothing the shipped extension links opts into `@AppProcessOnly`** (`docs/architecture.md`, "The composition
+     * layer"). The app-only pieces — the identity that mints, the credential that attests, the download store's
+     * read-write file, the album's creator, the walk memo — carry the marker on their constructors, so building one
+     * takes an opt-in; the extension's restrictions hold by type only while no module it links can take one.
+     * `OptInPinsTest` pins each opt-in per file, where a pin is one reviewed line; this holds per binary, with no
+     * allowlist: an opt-in anywhere in the extension's shipped closure is the extension building an app-only piece.
+     *
+     * The closure is the SHIPPED one ([ShippedLinks]): a test source set's or a rig build's edge reaches no shipped
+     * appex, and the rig is test equipment.
+     */
+    @Test
+    fun `nothing the shipped extension links opts into an app-only piece`() {
+        val modules = ShippedLinks.closure(listOf(extensionModule))
+        assertTrue(
+            ":domain:composition:extension" in modules,
+            "the shipped extension's closure $modules misses its own composition — the walk is broken",
+        )
+        val files = modules.flatMap { productionSources(it) }
+        assertTrue(files.size >= MIN_SCANNED, "scanned only ${files.size} shipped extension sources — the scope moved")
+        val optingIn = files.filter { APP_PROCESS_ONLY_OPT_IN.containsMatchIn(it.readText()) }
+            .map { it.toRelativeString(repoRoot) }
+        assertTrue(
+            optingIn.isEmpty(),
+            "a module the shipped extension links opts into @AppProcessOnly — the extension could build an app-only " +
+                "piece (a minting identity, an attesting credential, the download store's writer). Move the opt-in " +
+                "to the app's composition, or the module out of the extension's closure:\n  " +
+                optingIn.joinToString("\n  "),
+        )
+    }
+
+    @Test
+    fun `the app-only scan sees an opt-in`() {
+        val app = File(repoRoot, "domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppServices.kt")
+        assertTrue(
+            APP_PROCESS_ONLY_OPT_IN.containsMatchIn(app.readText()),
+            "the app's services opt into @AppProcessOnly, and the scan does not see it — the pattern is broken",
+        )
+    }
+
+    /** [module]'s hand-written production Kotlin: every source set but a test's and the rig's. */
+    private fun productionSources(module: String): List<File> {
+        val src = File(moduleDir(module), "src")
+        if (!src.isDirectory) return emptyList()
+        return src.listFiles().orEmpty()
+            .filter { it.isDirectory && !it.name.endsWith("Test") && it.name != "rig" }
+            .flatMap { set -> set.walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }
+    }
+
+    private companion object {
+        /** An opt-in of the marker, at a declaration or a file: `@OptIn(AppProcessOnly::class)`, alone or listed. */
+        val APP_PROCESS_ONLY_OPT_IN = Regex("""@(file:)?OptIn\([^)]*\bAppProcessOnly::class""")
+
+        /** The shipped extension's sources number in the hundreds; fewer means the closure walk lost modules. */
+        const val MIN_SCANNED = 100
+    }
 }

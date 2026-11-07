@@ -1,9 +1,11 @@
 package app.snapsync.compose
 
+import app.snapsync.application.upload.CreateJobs
 import app.snapsync.application.upload.ReconcileUploader
 import app.snapsync.application.upload.RecordFinishedUpload
 import app.snapsync.application.upload.SettleStoredUploads
 import app.snapsync.application.upload.StopUploads
+import app.snapsync.composition.process.UploadGraph
 import app.snapsync.data.upload.AppUploaderAdmission
 import app.snapsync.data.upload.DeviceListing
 import app.snapsync.data.upload.ExtensionRegistrar
@@ -18,9 +20,10 @@ import app.snapsync.data.upload.UploadExport
 import app.snapsync.data.upload.UploadProgress
 import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.data.upload.UploadStandings
+import app.snapsync.domain.upload.UploadHost
 
 /**
- * **The app's own uploader** — the upload's layers over the app's services ([UploadLayers]), its transfer the app's
+ * **The app's own uploader** — the upload's layers over the app's services ([UploadGraph]), its transfer the app's
  * own session ([SessionTier]: a background `URLSession`, Android's uploads), and the use cases its entry points take.
  * Built on first use: a background relaunch must not open the shared database at composition.
  */
@@ -31,31 +34,34 @@ internal class AppUploader(private val core: AppCore) {
     /** The app's admission: the grant's read plan — and the rig's switch, on in every shipped build. */
     val admission: AppUploaderAdmission by lazy { AppUploaderAdmission(core.ownPhotos, core.uploaderSwitches) }
 
-    val services: UploadServices by lazy {
-        UploadServices(
+    /** The upload's layers over the app's own pieces — the identity that mints, the credential that attests. */
+    val layers: UploadGraph by lazy {
+        UploadGraph(
             records = app.sharedDatabase,
             membership = app.membership,
-            mobileData = app.mobileData,
-            deviceIdentity = app.deviceIdentity,
-            host = ports.process.build.uploadHost,
-            gallery = ports.gallery,
+            identity = app.deviceIdentity,
+            host = UploadHost.of(ports.process.build.uploadHost),
             photos = core.ownPhotos,
             admission = admission,
-            manifestRecord = app.manifestRecord,
-            clock = app.wallClock,
             // Echo suppression and recognition: the app's received photos, over its read-write store.
             received = core.receiving.received,
             placeOwn = core.album.placeOwn,
+            manifestRecord = app.manifestRecord,
+            clock = app.wallClock,
             // The token the app's credential keeps, the same copy every request it authenticates reads.
             credentials = app.credentials,
             credential = core.attestation,
             exchange = core.exchange,
             gateway = core.backend.gateway,
             keys = app.eventKeyStore,
+            cipher = app.fileCipher,
         )
     }
 
-    val layers: UploadLayers by lazy { UploadLayers(core.process, services) }
+    /** Job creation through the app's own session. */
+    val createJobs: CreateJobs by lazy {
+        CreateJobs(layers.rows, tier, layers.resources, layers.walkRecord, layers.recent)
+    }
 
     private val staged: StagedFiles by lazy { StagedFiles(core.process.files) }
     private val create: SessionCreate by lazy { SessionCreate(ports.uploadSession, app.mobileData, layers.record) }

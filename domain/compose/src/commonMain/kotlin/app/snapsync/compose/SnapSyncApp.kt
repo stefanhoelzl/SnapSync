@@ -6,9 +6,13 @@ import app.snapsync.application.membership.LoadShareSet
 import app.snapsync.application.process.RecordFootprint
 import app.snapsync.application.report.AssembleBugReport
 import app.snapsync.application.trust.RefreshAttestation
+import app.snapsync.composition.process.ProcessGraph
+import app.snapsync.composition.process.ProcessPorts
+import app.snapsync.composition.process.startProcess
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.Observers
+import app.snapsync.data.crash.CrashChannel
 import app.snapsync.data.crash.ReportedIdsRead
 import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.event.EventCreation
@@ -19,6 +23,7 @@ import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.links.LinkReading
 import app.snapsync.data.links.OpenedInvites
 import app.snapsync.data.process.FootprintReading
+import app.snapsync.data.process.StartedProcess
 import app.snapsync.data.service.ServiceConditions
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
@@ -35,6 +40,8 @@ import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
+import app.snapsync.domain.report.BuildLabel
+import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.SharingProgressRead
@@ -46,6 +53,7 @@ import app.snapsync.entrypoints.OnMembershipChanged
 import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
 import app.snapsync.model.GalleryAccess
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
@@ -65,6 +73,7 @@ import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.Port
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.ProcessInfo
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SystemUi
@@ -96,7 +105,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * **The app process's ports** — everything the app-graph composition consumes, and nothing but ports ([Port]; spec
- * `docs/architecture.md`, "One shared composition"). The root constructs its platform adapters and supplies them here;
+ * `docs/architecture.md`, "The composition layer"). The root constructs its platform adapters and supplies them here;
  * [snapSyncHost][app.snapsync.compose] composes the process ([ProcessPorts] first — its crash reporting before
  * anything else), then the services over these ports ([AppServices]), then the feature graph.
  *
@@ -204,12 +213,24 @@ class AppCore internal constructor(
      * XPC behind a `suspend` signature is exactly that shape) then runs to completion there.
      */
     internal val coreLane: CoroutineDispatcher,
-    /** What the process set up before this core existed — its crash reporting already started. */
-    val process: ProcessServices,
+    /** What every process builds first ([ProcessGraph]): its files, clock, crypto, build and crash channel. */
+    val process: ProcessGraph,
+    /** The proof that this process's crash reporting started before this core existed — and its started channel. */
+    val started: StartedProcess,
     internal val ports: AppPorts,
 ) {
     /** The process scope — the runtime's. */
     internal val scope: CoroutineScope get() = runtime.scope
+
+    /** What a delivered process-metric report does — the handler [startProcess] registered. */
+    val onMetricReport: Inbound<ProcessMetricPayload, Unit> get() = process.onMetricReport
+
+    /** Where a bug report goes on this build — the started channel's [CrashChannel.destination]. */
+    val reportDestination: ReportDestination get() = started.crash.destination
+
+    /** Which build this is, as the app menu shows it. */
+    val buildLabel: BuildLabel
+        get() = BuildLabel(version = process.build.appVersion, buildNumber = process.build.buildNumber)
 
     /** The state whose changes start work, each handed to its entry point. */
     internal val observation: Observation = Observation(runtime)
@@ -518,7 +539,7 @@ class AppCore internal constructor(
                 runtime,
                 DescribeReporter(
                     ReportedIdsRead(services.membership, services.deviceIdentity, process.build),
-                    process.crash,
+                    started.crash,
                 ),
             ),
         )
@@ -553,11 +574,11 @@ class AppCore internal constructor(
 }
 
 /**
- * The ONE app-graph composition (`docs/architecture.md`, "One shared composition"): the host zone calls this for every
+ * The ONE app-graph composition (`docs/architecture.md`, "The composition layer"): the host zone calls this for every
  * root — the phone's, the JVM's, the rig's — so a wiring difference between binaries is impossible rather than
  * undetected. Manual DI (decision D6 of `establish-target-architecture`): plain constructors, no framework.
  *
- * Its FIRST act is the process's (`snapSyncProcess` over [AppPorts.process]): crash reporting starts before anything
+ * Its FIRST act is the process's (`startProcess` over [AppPorts.process]): crash reporting starts before anything
  * else in the graph can fail, and no root can compose an app in a process that has not set it up — no root calls it.
  * [lane] is the composition lane [scope] runs on, named by the root ([AppCore.coreLane]).
  */
@@ -567,5 +588,6 @@ fun snapSyncApp(scope: CoroutineScope, lane: CoroutineDispatcher, ports: AppPort
         lane,
         RuntimePorts(ports.backgroundTime, ports.process.threadLabel, ports.process.entryEvents),
     )
-    return AppCore(runtime, lane, snapSyncProcess(ports.process, runtime), ports)
+    val process = ProcessGraph(ports.process, runtime)
+    return AppCore(runtime, lane, process, startProcess(ports.process, process), ports)
 }

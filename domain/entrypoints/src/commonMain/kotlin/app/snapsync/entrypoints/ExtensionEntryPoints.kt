@@ -22,7 +22,7 @@ import app.snapsync.domain.upload.ExtensionAnswer
 import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.inbound.Log
-import app.snapsync.model.ProcessingAnswer
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.scheduling.AnsweredEntryPoint
 import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.InboundEntryPoint

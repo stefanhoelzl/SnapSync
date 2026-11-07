@@ -1,6 +1,6 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.compose.ExtensionDevicePorts
+import app.snapsync.composition.extension.ExtensionDevicePorts
 import app.snapsync.extension.IosExtensionHost
 import app.snapsync.ports.ExtensionHost
 

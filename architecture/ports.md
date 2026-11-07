@@ -200,7 +200,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Presented` | `:domain:application` | `:domain:application` Judged, Withheld | no |
 | `PreviewRead` | `:domain:data` | `:domain:data` Counted, NotReadable | no |
 | `ProcessInfo` | `:domain:ports` | `:adapter:android` AndroidProcessInfo; `:adapter:generic:mock` InMemoryProcessInfo; `:adapter:ios:app-only` IosProcessInfo; `:test:contracts` ProcessInfoProxy; `:test:data` Reading | yes |
-| `ProcessMetrics` | `:domain:ports` | `:adapter:generic:mock` Face, HeldReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:domain:compose` NoProcessMetrics; `:test:contracts` ProcessMetricsProxy | no |
+| `ProcessMetrics` | `:domain:ports` | `:adapter:generic:app` NoProcessMetrics; `:adapter:generic:mock` Face, HeldReports, NoReports; `:adapter:ios:app-only` MetricKitProcessMetrics; `:test:contracts` ProcessMetricsProxy | no |
 | `ProgressRead` | `:domain:data` | `:domain:data` Read, Unavailable | no |
 | `ProveResult` | `:domain:ports` | `:domain:ports` Ok | no |
 | `PublishOutcome` | `:domain:application` | `:domain:application` EventOver, KeptSettled, NotPublished, Published, Unchanged | no |

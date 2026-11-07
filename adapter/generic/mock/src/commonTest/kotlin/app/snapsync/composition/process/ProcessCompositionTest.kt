@@ -1,4 +1,4 @@
-package app.snapsync.compose
+package app.snapsync.composition.process
 
 import app.snapsync.domain.crash.CrashEvent
 import app.snapsync.domain.crash.CrashOptions
@@ -41,7 +41,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * What `snapSyncProcess` sets up (capability `privacy-security`), over the honest in-memory reporter: the channel
+ * What a process's start sets up (`ProcessGraph` + `startProcess`; capability `privacy-security`), over the honest in-memory reporter: the channel
  * started as the process's first act where the build reports, and nothing at all where it does not; the log routed
  * into it; the process metrics listened to only with a live handler, and accounted for over the started channel.
  */
@@ -107,7 +107,7 @@ class ProcessCompositionTest {
     private fun ports(
         reporter: CrashReporter = inMemoryCrashReporter(started, dumps, events),
         dsn: String? = DSN,
-        metrics: ProcessMetrics = NoProcessMetrics,
+        metrics: ProcessMetrics = HeldReports(emptyList()),
         sinks: List<LogSink> = emptyList(),
         build: BuildInfoMock = BuildInfoMock(dsn = dsn),
     ) = ProcessPorts(
@@ -123,6 +123,10 @@ class ProcessCompositionTest {
     )
 
     /** The process's runtime, as its composition builds it: nothing here holds background time. */
+    /** The process's graph, started as every composition starts it. */
+    private fun startedProcess(ports: ProcessPorts, runtime: Runtime): ProcessGraph =
+        ProcessGraph(ports, runtime).also { startProcess(ports, it) }
+
     private fun runtime() = Runtime(
         null,
         Dispatchers.Unconfined,
@@ -137,7 +141,7 @@ class ProcessCompositionTest {
             buildNumber = "2512",
             processId = null,
         )
-        snapSyncProcess(ports(sinks = listOf(sink), build = build), runtime())
+        startedProcess(ports(sinks = listOf(sink), build = build), runtime())
         assertEquals(
             listOf(
                 "[Info/process] === process start === process=ios build=1.4(2512)",
@@ -150,9 +154,9 @@ class ProcessCompositionTest {
 
     @Test
     fun a_build_that_reports_starts_the_channel_first_and_routes_the_log_into_it() {
-        val process = snapSyncProcess(ports(sinks = listOf(sink)), runtime())
+        val process = startedProcess(ports(sinks = listOf(sink)), runtime())
         assertTrue(started.value, "reporting starts as the process's first act")
-        assertEquals(ReportDestination.DEVELOPER, process.reportDestination, "a report is sent where it reports")
+        assertEquals(ReportDestination.DEVELOPER, process.crash.destination, "a report is sent where it reports")
         Log("ExtensionPass").unlabelled.e("could not settle the presented jobs")
         assertEquals(
             listOf("could not settle the presented jobs"),
@@ -164,7 +168,7 @@ class ProcessCompositionTest {
     @Test
     fun the_upload_extension_s_process_reports_an_error_it_logs() {
         // The extension composes the same process wiring as the app: an Error line it writes is a report.
-        snapSyncProcess(ports(sinks = listOf(sink), build = BuildInfoMock(dsn = DSN, processId = EXTENSION)), runtime())
+        startedProcess(ports(sinks = listOf(sink), build = BuildInfoMock(dsn = DSN, processId = EXTENSION)), runtime())
         Log("ExtensionPass").unlabelled.e("could not settle the presented jobs")
         assertTrue(started.value, "the extension's process reports")
         assertEquals(listOf("could not settle the presented jobs"), events.value.map { it.message })
@@ -172,16 +176,16 @@ class ProcessCompositionTest {
 
     @Test
     fun a_build_that_reports_nowhere_starts_nothing_and_routes_no_line_into_a_channel() {
-        val process = snapSyncProcess(ports(dsn = null, sinks = listOf(sink)), runtime())
+        val process = startedProcess(ports(dsn = null, sinks = listOf(sink)), runtime())
         assertFalse(started.value, "no destination, no channel — and no connection ever opened")
-        assertEquals(ReportDestination.THIS_DEVICE, process.reportDestination, "a report is kept on the phone")
+        assertEquals(ReportDestination.THIS_DEVICE, process.crash.destination, "a report is kept on the phone")
         assertNull(process.crash.lines, "a build that reports nowhere never constructs the crash writer")
     }
 
     @Test
     fun a_held_report_is_handled_by_a_live_handler_the_moment_the_process_listens() {
         val metrics = HeldReports(listOf(metricPayloadOf(mapOf("timeStampBegin" to "x"))))
-        snapSyncProcess(ports(metrics = metrics), runtime())
+        startedProcess(ports(metrics = metrics), runtime())
         assertEquals(1, metrics.listens, "listened to exactly once")
         assertTrue(started.value, "and the report found the channel already running")
     }
@@ -190,8 +194,8 @@ class ProcessCompositionTest {
     fun a_crossing_is_sent_once_filed_under_the_build_the_report_describes_and_rides_with_its_reasons() {
         // SNAPSYNC-61: a dev build's foreground kill, delivered a day later by a TestFlight launch.
         val reporter = Recording()
-        val process = snapSyncProcess(ports(reporter = reporter), runtime())
-        process.processMetrics.deliver(
+        val process = startedProcess(ports(reporter = reporter), runtime())
+        process.onMetricReport.deliver(
             metricPayloadOf(
                 mapOf(
                     "applicationExitMetrics.foregroundExitData.cumulativeMemoryResourceLimitExitCount" to "1",
@@ -216,7 +220,7 @@ class ProcessCompositionTest {
     @Test
     fun a_crossing_on_a_build_that_reports_nowhere_sends_nothing() {
         val reporter = Recording()
-        snapSyncProcess(ports(reporter = reporter, dsn = null), runtime()).processMetrics.deliver(
+        startedProcess(ports(reporter = reporter, dsn = null), runtime()).onMetricReport.deliver(
             metricPayloadOf(
                 mapOf("applicationExitMetrics.foregroundExitData.cumulativeMemoryResourceLimitExitCount" to "1"),
             ),
@@ -227,10 +231,10 @@ class ProcessCompositionTest {
     @Test
     fun a_report_carries_the_footprints_the_app_recorded_before_it_was_last_suspended() {
         val reporter = Recording()
-        snapSyncProcess(ports(reporter = reporter), runtime()).footprints
+        startedProcess(ports(reporter = reporter), runtime()).footprints
             .record("entering background", MemoryFootprint(83_574_000))
         // The report arrives in a LATER process, which reads what the earlier one kept.
-        snapSyncProcess(ports(reporter = reporter), runtime()).processMetrics.deliver(
+        startedProcess(ports(reporter = reporter), runtime()).onMetricReport.deliver(
             metricPayloadOf(
                 mapOf("applicationExitMetrics.backgroundExitData.cumulativeMemoryPressureExitCount" to "1"),
             ),
@@ -244,7 +248,7 @@ class ProcessCompositionTest {
     @Test
     fun a_report_with_nothing_recorded_carries_only_itself() {
         val reporter = Recording()
-        snapSyncProcess(ports(reporter = reporter), runtime()).processMetrics
+        startedProcess(ports(reporter = reporter), runtime()).onMetricReport
             .deliver(metricPayloadOf(mapOf("timeStampBegin" to "x")))
         assertEquals(mapOf("timeStampBegin" to "x"), reporter.contexts[CrashSections.PROCESS_METRICS])
         assertEquals(emptyList(), reporter.captured, "a quiet report reaches no one")

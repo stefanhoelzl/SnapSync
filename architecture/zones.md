@@ -20,6 +20,8 @@ flowchart LR
   subgraph domain
     domain_application[":domain:application"]
     domain_compose[":domain:compose"]
+    domain_composition_extension[":domain:composition:extension"]
+    domain_composition_process[":domain:composition:process"]
     domain_data[":domain:data"]
     domain_domain[":domain:domain"]
     domain_entrypoints[":domain:entrypoints"]
@@ -71,8 +73,11 @@ flowchart LR
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
   adapter_generic_mock --> domain_compose
+  adapter_generic_mock --> domain_composition_extension
+  adapter_generic_mock --> domain_composition_process
   adapter_generic_mock --> domain_data
   adapter_generic_mock --> domain_domain
+  adapter_generic_mock --> domain_entrypoints
   adapter_generic_mock --> domain_format
   adapter_generic_mock --> domain_inbound
   adapter_generic_mock --> domain_model
@@ -129,6 +134,7 @@ flowchart LR
   domain_application --> domain_format
   domain_application --> domain_inbound
   domain_compose --> domain_application
+  domain_compose --> domain_composition_process
   domain_compose --> domain_data
   domain_compose --> domain_domain
   domain_compose --> domain_entrypoints
@@ -140,6 +146,21 @@ flowchart LR
   domain_compose --> domain_scheduling
   domain_compose --> domain_services
   domain_compose --> ui_state
+  domain_composition_extension --> domain_application
+  domain_composition_extension --> domain_composition_process
+  domain_composition_extension --> domain_data
+  domain_composition_extension --> domain_domain
+  domain_composition_extension --> domain_entrypoints
+  domain_composition_extension --> domain_inbound
+  domain_composition_extension --> domain_ports
+  domain_composition_extension --> domain_scheduling
+  domain_composition_process --> domain_application
+  domain_composition_process --> domain_data
+  domain_composition_process --> domain_domain
+  domain_composition_process --> domain_entrypoints
+  domain_composition_process --> domain_inbound
+  domain_composition_process --> domain_ports
+  domain_composition_process --> domain_scheduling
   domain_data --> domain_domain
   domain_data --> domain_format
   domain_data --> domain_inbound
@@ -156,6 +177,7 @@ flowchart LR
   domain_entrypoints --> domain_services
   domain_format --> domain_domain
   domain_host --> domain_compose
+  domain_host --> domain_composition_process
   domain_host --> domain_domain
   domain_host --> domain_entrypoints
   domain_host --> domain_inbound

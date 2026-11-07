@@ -89,6 +89,8 @@ kotlin {
             // `BackendReach` speaks the device API as `api/openapi.yaml` declares it: the generated routes and DTOs.
             implementation(project(":domain:wire"))
             implementation(project(":domain:compose"))
+            implementation(project(":domain:composition:process"))
+            implementation(project(":domain:composition:extension"))
             // The device-log writer the rig re-points at the extension's log for an invoked cycle.
             implementation(project(":domain:services"))
             implementation(project(":domain:data"))

@@ -70,7 +70,7 @@ class JvmHostProtocolTest {
 
     /**
      * The host a test drives is the phone's: its status host observes the version refusal, which the JVM host once
-     * left out when it assembled its own (`docs/architecture.md`, "One shared composition").
+     * left out when it assembled its own (`docs/architecture.md`, "The composition layer").
      */
     @Test
     fun a_refused_build_reaches_the_update_required_screen() = onHost { client ->

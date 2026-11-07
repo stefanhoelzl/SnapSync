@@ -85,10 +85,15 @@ kotlin {
             implementation(project(":test:contracts"))
             // The storage services' fake-driven tests: the services over the storage mocks (`docs/testing.md`).
             implementation(project(":domain:services"))
-            // The process services hand the root a Kermit writer to install (`ProcessServices.logWriters`).
+            // The process's log writers these tests install and read back (`ProcessLogging`).
             implementation(libs.kermit)
-            // A process's composition takes its runtime (`snapSyncProcess`, `ExtensionEntryTest`).
+            // A process's composition takes its runtime (`ProcessGraph`, `ExtensionEntryTest`).
             implementation(project(":domain:scheduling"))
+            // The compositions these fakes drive: the process's start and the upload extension's graph.
+            implementation(project(":domain:composition:process"))
+            implementation(project(":domain:composition:extension"))
+            // The handler a process's start registers, which these tests deliver a report through (`OnMetricReport`).
+            implementation(project(":domain:entrypoints"))
         }
     }
 }

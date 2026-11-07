@@ -1,5 +1,6 @@
 package app.snapsync.compose
 
+import app.snapsync.composition.process.ProcessGraph
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.crypto.FileCipher
@@ -21,14 +22,14 @@ import app.snapsync.services.membership.MembershipTransition
 
 /**
  * **The app process's services**, built here over [ports] and the [process] — never by a root (`docs/architecture.md`,
- * "One shared composition"). A root hands its composition ports and nothing else, so what a store holds, when it opens
+ * "The composition layer"). A root hands its composition ports and nothing else, so what a store holds, when it opens
  * and which role an identity plays is decided once, here, for every root: the phone's, the JVM's and the rig's.
  *
  * Every member is `by lazy`: nothing opens a database, reads the Keychain or resolves the device identity at
  * composition, so a locked background launch composes as before. The app's own uploader reads these same instances
  * (`appUploader`), so the ledger, the membership and the manifest record it writes are the ones this graph reads.
  */
-internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
+internal class AppServices(val ports: AppPorts, val process: ProcessGraph) {
 
     /**
      * The membership — every trigger re-reads it before acting ([MembershipRepository.reload]), because cross-process

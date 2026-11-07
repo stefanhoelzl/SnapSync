@@ -1,11 +1,10 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.compose.ComposedExtension
-import app.snapsync.compose.ExtensionDevicePorts
-import app.snapsync.compose.ExtensionPorts
-import app.snapsync.compose.NoProcessMetrics
-import app.snapsync.compose.ProcessPorts
-import app.snapsync.compose.snapSyncExtension
+import app.snapsync.composition.extension.ExtensionDevicePorts
+import app.snapsync.composition.extension.ExtensionGraph
+import app.snapsync.composition.extension.ExtensionPorts
+import app.snapsync.composition.extension.composeExtension
+import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.crypto.IosCrypto
@@ -15,7 +14,6 @@ import app.snapsync.extension.IosExtensionHost
 import app.snapsync.files.IosFiles
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.http.KtorHttpTransport
-import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.keychain.platformSecureStore
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosThreadLabel
@@ -24,6 +22,7 @@ import app.snapsync.logging.extensionLogDestination
 import app.snapsync.logging.neverBlockOnStdio
 import app.snapsync.logging.removeStaleExtensionDocumentsLog
 import app.snapsync.membership.darwinHttpClient
+import app.snapsync.metrics.NoProcessMetrics
 import app.snapsync.model.PlatformEntry
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.sentry.SentryCrashReporter
@@ -34,8 +33,8 @@ import kotlinx.coroutines.Dispatchers
 /**
  * The extension process's composition root — WIRING ONLY: it constructs this process's adapters
  * (the App-Group databases and files, the PhotoKit library reader and upload-job queue, the shared protected store,
- * the generic HTTP backend) and hands them as [ExtensionPorts] to the SHARED composition
- * [snapSyncExtension] (`:domain` `compose/`), which builds the services and assembles the upload cycle. The Swift
+ * the generic HTTP backend) and hands them as [ExtensionPorts] to its composition
+ * [composeExtension] (`:domain:composition:extension`), which builds its graph and registers its handlers. The Swift
  * `@main` principal class calls [processRawValue] from its `process()` callback.
  *
  * Config is sourced fresh each cycle by the shared entry gate: the runtime event id from the shared
@@ -45,9 +44,8 @@ import kotlinx.coroutines.Dispatchers
  * extension woke before setup), the cycle is skipped as a clean success — no job, no ledger write,
  * no crash.
  *
- * The composed cycle and platform are process-lifetime singletons (the extension is the single
- * ledger record-writer on its tier); the engine, which depends on config, is built per cycle
- * inside `uploadCore`.
+ * The composed graph and platform are process-lifetime singletons (the extension is the single
+ * ledger record-writer on its tier); every store it holds opens on first use, never at composition.
  */
 object UploadExtensionRoot {
 
@@ -84,7 +82,6 @@ object UploadExtensionRoot {
         // This process's protected small-value store, every item addressed by its slot (chosen by compilation target).
         secureStore = lazy { platformSecureStore() },
         // iOS offers no stable platform id an app may read; this process only ever reads the id the app minted.
-        platformDeviceId = lazyOf(NoPlatformDeviceId()),
         // The extension's gallery: reads and album adds only — no access request, no change token, no memo.
         galleryReader = lazy { IosGalleryReader() },
         // The upload-job queue, thin: the shared composition's upload service records terminal outcomes into the
@@ -111,15 +108,15 @@ object UploadExtensionRoot {
     private val host: IosExtensionHost = IosExtensionHost(log)
 
     /**
-     * The extension, composed over its ports and nothing else (`snapSyncExtension`, `:domain` `compose/`): the process
-     * first — its log writers and boot banner, its ONE crash reporter started before any other wiring can fail — then
-     * its services (the READ_ONLY identity, the read-only suppression view, the credential that only drops a rejected
+     * The extension, composed over its ports and nothing else (`composeExtension`, `:domain:composition:extension`):
+     * the process first — its log writers, its ONE crash reporter started before any other wiring can fail, its banner —
+     * then its graph (the read-only identity, the read-only suppression view, the credential that only drops a rejected
      * token) and the ONE registration on its entry port, at this process's start and before the operating system's
-     * first `process()`. Registering builds nothing: the cycle is assembled on the first invocation.
+     * first `process()`. Building opens nothing: every store opens on the first invocation that reads it.
      *
      * No process metrics: MetricKit hands reports out roughly daily, and this process lives for one invocation.
      */
-    internal val composed: ComposedExtension = snapSyncExtension(
+    internal val composed: ExtensionGraph = composeExtension(
         device.extensionPorts(
             process = ProcessPorts(
                 crashReporter = device.crashReporter.value,

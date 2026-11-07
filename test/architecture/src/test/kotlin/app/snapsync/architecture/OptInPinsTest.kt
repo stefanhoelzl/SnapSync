@@ -36,15 +36,13 @@ class OptInPinsTest {
             ),
             "AppProcessOnly" to Pin(1, "the app's own photos walk behind the memo; the extension walks afresh"),
         ),
-        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt" to mapOf(
-            "CompositionOnly" to Pin(
-                1,
-                "every process's first act: the log's writers, the metrics handlers and the crash reporter's handlers",
+        "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt" to mapOf(
+            "CompositionOnly" to Pin(1, "every process's first act: its start, then its metrics handlers registered"),
+        ),
+        "/domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
+            "ExtensionComposition.kt" to mapOf(
+                "CompositionOnly" to Pin(1, "the extension's composition: its one entry port, registered"),
             ),
-        ),
-        "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt" to mapOf(
-            "CompositionOnly" to Pin(1, "the extension's composition: its one entry port, registered"),
-        ),
         "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/membership/DeletionVerdict.kt" to mapOf(
             "MintsConfirmedDeletion" to Pin(
                 2,
