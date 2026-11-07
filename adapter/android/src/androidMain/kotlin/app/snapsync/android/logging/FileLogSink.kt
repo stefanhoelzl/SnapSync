@@ -2,10 +2,10 @@ package app.snapsync.android.logging
 
 import android.content.Context
 import app.snapsync.android.storage.AndroidFiles
-import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.utcLogStamp
+import app.snapsync.format.DeviceLogText
+import app.snapsync.inbound.LogLevel
+import app.snapsync.logging.LogStamp
 import app.snapsync.ports.LogSink
-import co.touchlab.kermit.Severity
 import java.io.File
 import java.io.IOException
 import java.nio.ByteBuffer
@@ -20,7 +20,7 @@ import java.nio.file.Files as Nio
  * verbatim log — the one a bug report carries. Logcat ([LogcatSink]) is read only over a debugging connection and
  * cannot be read back by the app, so without this file a dump's `app_log` is empty.
  *
- * The Android twin of the iOS writer, byte for byte in what it writes: each line stamped ([utcLogStamp]) and written
+ * The Android twin of the iOS writer, byte for byte in what it writes: each line stamped ([LogStamp.of]) and written
  * as ONE append, so threads never tear a line; rolled to a `.1` sibling (replacing any prior one) once the file has
  * reached [maxBytes]. The channel is held open and the size tracked in memory from one read at open, as on iOS. A file
  * removed from outside is noticed by a re-check at most once per [RECHECK_INTERVAL_MS] and recreated; a failed write
@@ -45,9 +45,9 @@ class FileLogSink internal constructor(
     private var size: Long = 0
     private var lastCheckMs: Long = 0
 
-    override fun write(severity: Severity, tag: String, line: String) {
+    override fun write(level: LogLevel, tag: String, line: String) {
         val now = clock.now().toEpochMilliseconds()
-        val bytes = "${utcLogStamp(now)} $line\n".encodeToByteArray()
+        val bytes = "${LogStamp.of(now)} $line\n".encodeToByteArray()
         synchronized(lock) { appendLocked(bytes, now) }
     }
 
@@ -117,9 +117,9 @@ class FileLogSink internal constructor(
         /** How often, at most, the file's existence is re-checked to notice a log removed from outside. */
         internal const val RECHECK_INTERVAL_MS = 1_000L
 
-        /** The app's log: [APP_LOG_FILE_NAME] in the private area, where the dump's log-tail read looks for it. */
+        /** The app's log: [DeviceLogText.APP_LOG] in the private area, where the dump's log-tail read looks for it. */
         fun forApp(context: Context): FileLogSink = FileLogSink(
-            File(AndroidFiles.privateArea(context), APP_LOG_FILE_NAME),
+            File(AndroidFiles.privateArea(context), DeviceLogText.APP_LOG),
         )
     }
 }

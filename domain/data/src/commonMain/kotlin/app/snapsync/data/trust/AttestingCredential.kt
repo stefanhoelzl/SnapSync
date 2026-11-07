@@ -175,7 +175,7 @@ internal class TokenObtainer(
     private suspend fun accepted(token: BearerToken, what: String): RefreshRead = when (store.setToken(token)) {
         WriteOutcome.Ok -> RefreshRead.Obtained.also {
             status.accepted()
-            log.i(what)
+            log.i("a token kept", "how" of what)
         }
         is WriteOutcome.Failed -> nothing("the new token could not be kept")
     }
@@ -184,7 +184,7 @@ internal class TokenObtainer(
     private fun faultOf(issuance: TokenIssuance): ServiceFault? = (issuance as? TokenIssuance.NoAnswer)?.fault
 
     private suspend fun nothing(why: String, fault: ServiceFault? = null): RefreshRead =
-        RefreshRead.NotObtained(refusal = null, fault = fault).also { log.w(why) }
+        RefreshRead.NotObtained(refusal = null, fault = fault).also { log.w("no token this time", "why" of why) }
 }
 
 /** What one refresh came to. */

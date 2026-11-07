@@ -150,8 +150,8 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Listed` | `:domain:data` | `:domain:data` Files, Unreadable | no |
 | `ListingRead` | `:domain:data` | `:domain:data` Listed, Unavailable, Unreadable | no |
 | `Located` | `:domain:data` | `:domain:data` At, Unreachable | no |
-| `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:generic:mock` Recording; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:contracts` LogSinkProxy; `:test:rig` RecordedLog | yes |
-| `LogWriter` | `:domain:inbound` | `:adapter:generic:mock` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:model` CapturingLogWriter; `:domain:presentation` TestLog; `:domain:scheduling` RecordingLog; `:domain:services` CapturingLogWriter, CrashLines, CrashLogWriter, SinkLines, SinkLogWriter; `:test:feature` CapturingLogWriter | yes |
+| `LogSink` | `:domain:ports` | `:adapter:android` FileLogSink, LogcatSink; `:adapter:generic:mock` Discarding; `:adapter:ios:ext-safe` FileLogSink, PublicNSLogSink; `:test:contracts` LogSinkProxy; `:test:data` Recorded; `:test:rig` RecordedLog | yes |
+| `LogWriter` | `:domain:inbound` | `:adapter:generic:mock` CapturingLogWriter; `:adapter:ios:app-only` Capturing; `:app:desktop` ConsoleLogWriter; `:domain:data` SinkLines; `:domain:model` CapturingLogWriter; `:domain:presentation` TestLog; `:domain:scheduling` RecordingLog; `:domain:services` CapturingLogWriter, CrashLines; `:test:feature` CapturingLogWriter; `:test:rig` ExtensionLog | yes |
 | `MarkResult` | `:domain:data` | `:domain:data` Failed, Marked, Superseded | no |
 | `MarkedRead` | `:domain:data` | `:domain:data` Found, NotReadable | no |
 | `MarkerWrite` | `:domain:data` | `:domain:data` Applied, Failed, NoRow, Unknown | no |
@@ -284,7 +284,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `SwitchVerdict` | `:domain:domain` | `:domain:domain` Ask, Quiet, Stay | no |
 | `SystemUi` | `:domain:ports` | `:adapter:android` AndroidSystemUi; `:adapter:generic:mock` Face; `:adapter:ios:app-only` IosSystemUi; `:domain:services` Ui; `:test:contracts` SystemUiProxy | no |
 | `Target` | `:domain:data` | `:domain:data` To, Withheld | no |
-| `ThreadLabel` | `:domain:ports` | `:adapter:android` AndroidThreadLabel; `:adapter:generic:app` JvmThreadLabel; `:adapter:generic:mock` Labelled, ThreadLabelMock; `:adapter:generic:sentry` Unlabelled; `:adapter:ios:ext-safe` IosThreadLabel; `:domain:scheduling` FakeThreadLabel, Unlabelled; `:test:contracts` ThreadLabelProxy; `:test:rig` CheckedThreadLabel | yes |
+| `ThreadLabel` | `:domain:ports` | `:adapter:android` AndroidThreadLabel; `:adapter:generic:app` JvmThreadLabel; `:adapter:generic:mock` ThreadLabelMock; `:adapter:generic:sentry` Unlabelled; `:adapter:ios:ext-safe` IosThreadLabel; `:domain:scheduling` FakeThreadLabel, Unlabelled; `:test:contracts` ThreadLabelProxy; `:test:rig` CheckedThreadLabel | yes |
 | `TokenIssuance` | `:domain:domain` | `:domain:domain` ChallengeStale, Minted, NoAnswer, NotAttested, ProofFailed, Refused | no |
 | `TransferHandle` | `:domain:ports` | `:adapter:android` Live; `:adapter:generic:mock` Live; `:test:data` Handle | yes |
 | `TransferSession` | `:domain:ports` | `:adapter:android` AndroidUpload; `:adapter:generic:mock` Face, NetworkedSession; `:adapter:ios:app-only` IosUrlSessionUploadPlatform; `:test:contracts` TransferSessionProxy; `:test:data` RecordingSession | yes |

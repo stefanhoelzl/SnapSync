@@ -2,9 +2,9 @@
 
 package app.snapsync.scheduling
 
+import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.Trigger
 import app.snapsync.ports.EntryEvent
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -90,7 +90,7 @@ class EntryEventsTest {
         OnWork(world) { detached { error("boom") } }.handle(Unit, CountingCompletion())
         runCurrent()
         assertEquals("done OnWork FAILED", world.entries.seen().last())
-        assertEquals(Severity.Warn, world.log.lines.last().severity)
+        assertEquals(LogLevel.WARN, world.log.lines.last().level)
         OnWork(world) { error("boom") }.handle(Unit, CountingCompletion())
         runCurrent()
         assertEquals("done OnWork FAILED", world.entries.seen().last())

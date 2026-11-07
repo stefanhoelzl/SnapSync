@@ -106,6 +106,7 @@ flowchart LR
   adapter_ios_ext_safe --> domain_data
   adapter_ios_ext_safe --> domain_domain
   adapter_ios_ext_safe --> domain_feature
+  adapter_ios_ext_safe --> domain_format
   adapter_ios_ext_safe --> domain_inbound
   adapter_ios_ext_safe --> domain_model
   adapter_ios_ext_safe --> domain_ports

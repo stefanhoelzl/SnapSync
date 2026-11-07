@@ -1,7 +1,6 @@
 package app.snapsync.logging
 
-import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.EXTENSION_LOG_FILE_NAME
+import app.snapsync.format.DeviceLogText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,8 +32,8 @@ class LogDestinationsTest {
      */
     @Test
     fun `the log file names are the ones the runbook pulls`() {
-        assertEquals("debug.log", APP_LOG_FILE_NAME)
-        assertEquals("ext-debug.log", EXTENSION_LOG_FILE_NAME)
+        assertEquals("debug.log", DeviceLogText.APP_LOG)
+        assertEquals("ext-debug.log", DeviceLogText.EXTENSION_LOG)
     }
 
     @Test
@@ -42,7 +41,7 @@ class LogDestinationsTest {
         val destination = appLogDestination()
 
         val path = assertNotNull(destination.path, "a process can always reach its own container")
-        assertTrue(path.endsWith("/Documents/$APP_LOG_FILE_NAME"), "unexpected app destination: $path")
+        assertTrue(path.endsWith("/Documents/$DeviceLogText.APP_LOG"), "unexpected app destination: $path")
         assertFalse(destination.fellBackToDocuments, "the app's own Documents is its home, not a fallback")
     }
 

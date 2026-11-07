@@ -2,9 +2,9 @@ package app.snapsync.android.logging
 
 import app.snapsync.android.storage.AndroidFiles
 import app.snapsync.android.storage.newTempDirectory
-import app.snapsync.model.APP_LOG_FILE_NAME
+import app.snapsync.format.DeviceLogText
+import app.snapsync.inbound.LogLevel
 import app.snapsync.services.logs.LogTailService
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.concurrent.thread
@@ -24,7 +24,7 @@ import kotlin.time.Instant
  */
 class FileLogSinkTest {
 
-    private fun logFile(): File = File(newTempDirectory(), APP_LOG_FILE_NAME)
+    private fun logFile(): File = File(newTempDirectory(), DeviceLogText.APP_LOG)
 
     private fun File.lines(): List<String> = readText().trimEnd('\n').split('\n')
 
@@ -32,8 +32,8 @@ class FileLogSinkTest {
     fun `a line is stamped and ends with a newline so two appends never run together`() {
         val file = logFile()
         val sink = FileLogSink(file)
-        sink.write(Severity.Info, "t", "[Info/t] first")
-        sink.write(Severity.Info, "t", "[Info/t] second")
+        sink.write(LogLevel.INFO, "t", "[Info/t] first")
+        sink.write(LogLevel.INFO, "t", "[Info/t] second")
 
         val lines = file.lines()
         assertEquals(2, lines.size, "two writes must be two lines")
@@ -44,8 +44,8 @@ class FileLogSinkTest {
 
     @Test
     fun `a log file and its directory are created on first write`() {
-        val file = File(File(newTempDirectory(), "private"), APP_LOG_FILE_NAME)
-        FileLogSink(file).write(Severity.Info, "t", "x")
+        val file = File(File(newTempDirectory(), "private"), DeviceLogText.APP_LOG)
+        FileLogSink(file).write(LogLevel.INFO, "t", "x")
         assertTrue(file.exists())
     }
 
@@ -53,7 +53,7 @@ class FileLogSinkTest {
     fun `an existing log is appended to rather than replaced`() {
         val file = logFile()
         file.writeText("from the last process\n")
-        FileLogSink(file).write(Severity.Info, "t", "from this one")
+        FileLogSink(file).write(LogLevel.INFO, "t", "from this one")
 
         val lines = file.lines()
         assertEquals("from the last process", lines[0])
@@ -65,11 +65,11 @@ class FileLogSinkTest {
         val file = logFile()
         val sibling = File(file.path + ".1")
         val sink = FileLogSink(file, maxBytes = SMALL_CEILING)
-        repeat(LINES_PAST_CEILING) { sink.write(Severity.Info, "t", "first generation $it ".padEnd(LINE_WIDTH, '.')) }
+        repeat(LINES_PAST_CEILING) { sink.write(LogLevel.INFO, "t", "first generation $it ".padEnd(LINE_WIDTH, '.')) }
         assertTrue(sibling.exists(), "past the ceiling the log must roll")
         assertFalse(file.readText().contains("first generation 0"), "the live log restarts fresh after a roll")
 
-        repeat(LINES_PAST_CEILING) { sink.write(Severity.Info, "t", "second generation $it ".padEnd(LINE_WIDTH, '.')) }
+        repeat(LINES_PAST_CEILING) { sink.write(LogLevel.INFO, "t", "second generation $it ".padEnd(LINE_WIDTH, '.')) }
         assertTrue(sibling.readText().contains("second generation"), "a later roll replaces the sibling")
         assertFalse(sibling.readText().contains("first generation 0"), "siblings never accumulate")
     }
@@ -78,7 +78,7 @@ class FileLogSinkTest {
     fun `a log still under the ceiling does not roll`() {
         val file = logFile()
         val sink = FileLogSink(file, maxBytes = WHOLE_BUDGET.toLong())
-        repeat(FEW_LINES) { sink.write(Severity.Info, "t", "line $it") }
+        repeat(FEW_LINES) { sink.write(LogLevel.INFO, "t", "line $it") }
         assertFalse(File(file.path + ".1").exists())
         assertEquals(FEW_LINES, file.lines().size)
     }
@@ -87,7 +87,7 @@ class FileLogSinkTest {
     fun `a log left past the ceiling by a previous process rolls on the first line`() {
         val file = logFile()
         file.writeText("x".repeat(SMALL_CEILING.toInt() + LINE_WIDTH) + "\n")
-        FileLogSink(file, maxBytes = SMALL_CEILING).write(Severity.Info, "t", "fresh")
+        FileLogSink(file, maxBytes = SMALL_CEILING).write(LogLevel.INFO, "t", "fresh")
 
         assertTrue(File(file.path + ".1").exists())
         assertEquals(1, file.lines().size)
@@ -101,11 +101,11 @@ class FileLogSinkTest {
             override fun now() = now
         }
         val sink = FileLogSink(file, FileLogSink.DEFAULT_MAX_BYTES, clock)
-        sink.write(Severity.Info, "t", "before")
+        sink.write(LogLevel.INFO, "t", "before")
         assertTrue(file.delete())
 
         now += (FileLogSink.RECHECK_INTERVAL_MS + 1).milliseconds
-        sink.write(Severity.Info, "t", "after")
+        sink.write(LogLevel.INFO, "t", "after")
 
         assertTrue(file.exists(), "a removed log must be recreated, not written into an unlinked file")
         assertTrue(file.readText().contains("after"))
@@ -119,7 +119,7 @@ class FileLogSinkTest {
             thread {
                 repeat(
                     LINES_PER_THREAD,
-                ) { sink.write(Severity.Info, "t", "thread $t line $it ".padEnd(WIDE_LINE, '#')) }
+                ) { sink.write(LogLevel.INFO, "t", "thread $t line $it ".padEnd(WIDE_LINE, '#')) }
             }
         }
         threads.forEach { it.join() }
@@ -134,7 +134,7 @@ class FileLogSinkTest {
     fun `the app log a dump reads is the one the sink writes`() = runTest {
         val shared = newTempDirectory()
         val private = newTempDirectory()
-        val sink = FileLogSink(File(private, APP_LOG_FILE_NAME))
+        val sink = FileLogSink(File(private, DeviceLogText.APP_LOG))
         sink.write(Severity.Warn, "CreateEvent", "[Warn/CreateEvent] create failed")
 
         val tail = LogTailService(AndroidFiles(sharedRoot = shared, privateRoot = private))

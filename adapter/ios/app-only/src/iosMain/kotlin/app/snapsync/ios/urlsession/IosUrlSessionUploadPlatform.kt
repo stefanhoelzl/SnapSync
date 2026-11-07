@@ -3,6 +3,8 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ios.upload.uploadUrlRequest
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
@@ -92,7 +94,9 @@ class IosUrlSessionUploadPlatform internal constructor(
         val registered = handlers.load()
         if (registered == null) {
             // Never silent: without handlers there is no one to hold the handler; answering it at once costs nothing.
-            log.e { "upload session events arrived before the composition registered — released at once" }
+            Log(
+                log.tag,
+            ).unlabelled.e("upload session events arrived before the composition registered — released at once")
             SessionCompletion(completion, api).complete()
         } else {
             registered.onBackgroundEvents.handle(SessionRelaunch(drains.now), SessionCompletion(completion, api))
@@ -148,7 +152,10 @@ class IosUrlSessionUploadPlatform internal constructor(
             is TaskCompletion.Record -> {
                 val registered = handlers.load()
                 if (registered == null) {
-                    log.e { "upload ${outcome.key} ended before the composition listened — its outcome is not recorded" }
+                    Log(log.tag).unlabelled.e(
+                        "an upload ended before the composition listened — its outcome is not recorded",
+                        "key" of outcome.key,
+                    )
                 } else {
                     registered.onFinished.deliver(FinishedTransfer(outcome.key, outcome.error))
                 }

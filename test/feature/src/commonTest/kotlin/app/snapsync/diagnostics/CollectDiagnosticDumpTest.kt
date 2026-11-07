@@ -21,18 +21,17 @@ import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.galleryAccess
 import app.snapsync.feature.support.membershipIn
 import app.snapsync.feature.support.receivingCounts
+import app.snapsync.format.DeviceLogText
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.DeviceConditionsMock
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryNetworkMonitor
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.model.APP_LOG_FILE_NAME
 import app.snapsync.model.AppFacts
 import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DeviceConditionsReading
 import app.snapsync.model.DiagnosticEnvironment
-import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Fact
 import app.snapsync.model.StandbyBucket
@@ -97,10 +96,10 @@ class CollectDiagnosticDumpTest {
         logs = LogTailService(
             inMemoryFiles(
                 shared = listOfNotNull(
-                    extLog?.let { EXTENSION_LOG_FILE_NAME to it.encodeToByteArray() },
+                    extLog?.let { DeviceLogText.EXTENSION_LOG to it.encodeToByteArray() },
                 ).toMap(mutableMapOf()),
                 private = listOfNotNull(
-                    appLog?.let { APP_LOG_FILE_NAME to it.encodeToByteArray() },
+                    appLog?.let { DeviceLogText.APP_LOG to it.encodeToByteArray() },
                 ).toMap(mutableMapOf()),
             ),
         ),

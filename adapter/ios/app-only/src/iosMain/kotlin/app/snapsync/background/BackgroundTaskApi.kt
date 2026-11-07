@@ -2,6 +2,8 @@
 
 package app.snapsync.background
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
@@ -54,7 +56,9 @@ internal object SystemBackgroundTaskApi : BackgroundTaskApi {
                         SystemLaunchedTask(task),
                     )
                 } else {
-                    log.e { "the system launched $identifier with no task" }
+                    Log(
+                        log.tag,
+                    ).unlabelled.e("the system launched a background task without its task", "identifier" of identifier)
                 }
             }
         }

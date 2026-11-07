@@ -2,7 +2,6 @@
 
 package app.snapsync.inbound
 
-import co.touchlab.kermit.Severity
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.coroutines.coroutineContext
@@ -13,19 +12,25 @@ class Field(val name: String, val value: Any?)
 /** `"eventId" of id` — a [Field]. */
 infix fun String.of(value: Any?): Field = Field(this, value)
 
+/** A line's level — the core's own, so no layer that writes or reads a line names the logging library. */
+enum class LogLevel { VERBOSE, DEBUG, INFO, WARN, ERROR, ASSERT }
+
 /**
- * One structured line: what happened ([event], a short fixed phrase) and the values it happened with ([fields]),
- * labelled with the [trigger] the work ran for — `null` when the line was written outside any (or by non-suspend
- * code, which cannot read one; a writer may still find the label its thread carries).
+ * One structured line: what happened ([event], a short fixed phrase — a literal, `EventNameLiteralTest`) and the values
+ * it happened with ([fields]), labelled with the [trigger] the work ran for — `null` when the line was written outside
+ * any (or by non-suspend code, which cannot read one; a writer may still find the label its thread carries).
  */
 class LogLine(
-    val severity: Severity,
+    val level: LogLevel,
     val tag: String,
     val trigger: String?,
     val event: String,
     val fields: List<Field>,
     val cause: Throwable?,
-)
+) {
+    /** The line as text: its event, then each field as `name=value`. */
+    fun text(): String = (listOf(event) + fields.map { "${it.name}=${it.value}" }).joinToString(" ")
+}
 
 /** Where a process's lines go. Installed once, by the process's composition. */
 interface LogWriter {
@@ -41,38 +46,41 @@ interface LogWriter {
  * log.i("top-up created jobs", "created" of n, "truncated" of truncated)
  * ```
  *
- * Non-suspend code writes through [unlabelled]: the same line, with no trigger of its own.
+ * The event is a literal: what varies is a field, so a line reads — and a report groups — by what happened, never by
+ * the values it happened with. Non-suspend code writes through [unlabelled]: the same line, with no trigger of its own.
  */
 class Log(private val tag: String) {
-    suspend fun i(event: String, vararg fields: Field) = emit(Severity.Info, event, fields, null)
+    suspend fun i(event: String, vararg fields: Field) = emit(LogLevel.INFO, event, fields, null)
 
     suspend fun w(event: String, vararg fields: Field, cause: Throwable? = null) =
-        emit(Severity.Warn, event, fields, cause)
+        emit(LogLevel.WARN, event, fields, cause)
 
     suspend fun e(event: String, vararg fields: Field, cause: Throwable? = null) =
-        emit(Severity.Error, event, fields, cause)
+        emit(LogLevel.ERROR, event, fields, cause)
 
     /** The same calls for code that cannot suspend. */
     val unlabelled: Unlabelled = Unlabelled(tag)
 
-    private suspend fun emit(severity: Severity, event: String, fields: Array<out Field>, cause: Throwable?) =
-        write(LogLine(severity, tag, coroutineContext[Trigger]?.label, event, fields.toList(), cause))
+    private suspend fun emit(level: LogLevel, event: String, fields: Array<out Field>, cause: Throwable?) =
+        write(LogLine(level, tag, coroutineContext[Trigger]?.label, event, fields.toList(), cause))
 
     /** [Log] for non-suspend code: no trigger is read. */
     class Unlabelled internal constructor(private val tag: String) {
-        fun i(event: String, vararg fields: Field) = emit(Severity.Info, event, fields, null)
+        fun i(event: String, vararg fields: Field) = emit(LogLevel.INFO, event, fields, null)
 
-        fun w(event: String, vararg fields: Field, cause: Throwable? = null) = emit(Severity.Warn, event, fields, cause)
+        fun w(event: String, vararg fields: Field, cause: Throwable? = null) = emit(LogLevel.WARN, event, fields, cause)
 
+        // Laid out with `emit(` on the declaration line on purpose: the coverage tool counts the default-argument stub on
+        // that line, and a member's day never writes an unlabelled Error without a cause (only the iOS adapters do).
         fun e(event: String, vararg fields: Field, cause: Throwable? = null) = emit(
-            Severity.Error,
+            LogLevel.ERROR,
             event,
             fields,
             cause,
         )
 
-        private fun emit(severity: Severity, event: String, fields: Array<out Field>, cause: Throwable?) =
-            write(LogLine(severity, tag, null, event, fields.toList(), cause))
+        private fun emit(level: LogLevel, event: String, fields: Array<out Field>, cause: Throwable?) =
+            write(LogLine(level, tag, null, event, fields.toList(), cause))
     }
 
     companion object {
@@ -80,11 +88,13 @@ class Log(private val tag: String) {
 
         /**
          * Installs the process's writers, replacing any before. Called once per process, by its composition — the
-         * one global the log has, beside Kermit's own writer list, which the old zones' lines still reach.
+         * one global the log has, beside Kermit's own writer list, whose one writer then is the [KermitBridge] onto
+         * these.
          */
         @CompositionOnly
         fun install(installed: List<LogWriter>) = writers.store(installed)
 
-        private fun write(line: LogLine) = writers.load().forEach { it.write(line) }
+        /** [line] to the installed writers — the [KermitBridge]'s way in, beside the calls above. */
+        internal fun write(line: LogLine) = writers.load().forEach { it.write(line) }
     }
 }

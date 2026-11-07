@@ -13,6 +13,7 @@ import app.snapsync.feature.support.testIdentity
 import app.snapsync.feature.support.unreadableIdentity
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.LogLine
 import app.snapsync.inbound.LogWriter
 import app.snapsync.levers.WriteKind
@@ -23,7 +24,6 @@ import app.snapsync.ports.HttpResult
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -41,7 +41,7 @@ class LoadShareSetTest {
 
     /** The severities of the load's log lines. */
     private class Recorder {
-        val severities = mutableListOf<Severity>()
+        val severities = mutableListOf<LogLevel>()
     }
 
     /** The load, its lines recorded into [recorder] while it runs. */
@@ -50,8 +50,8 @@ class LoadShareSetTest {
             Log.install(
                 listOf(object : LogWriter {
                     override fun write(line: LogLine) {
-                        val told = line.tag == "LoadShareSet" && line.severity != Severity.Info
-                        if (told) recorder.severities += line.severity
+                        val told = line.tag == "LoadShareSet" && line.level != LogLevel.INFO
+                        if (told) recorder.severities += line.level
                     }
                 }),
             )
@@ -137,7 +137,7 @@ class LoadShareSetTest {
             .load(testEventId(eventId))
 
         assertEquals(
-            listOf(Severity.Warn, Severity.Error),
+            listOf(LogLevel.WARN, LogLevel.ERROR),
             recorder.severities,
             "the listing's failure, then the purge's",
         )
@@ -152,7 +152,7 @@ class LoadShareSetTest {
             .load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
-        assertEquals(listOf(Severity.Warn), recorder.severities)
+        assertEquals(listOf(LogLevel.WARN), recorder.severities)
     }
 
     @Test
@@ -164,7 +164,7 @@ class LoadShareSetTest {
             .load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
-        assertEquals(listOf(Severity.Error), recorder.severities)
+        assertEquals(listOf(LogLevel.ERROR), recorder.severities)
     }
 
     @Test
@@ -175,7 +175,7 @@ class LoadShareSetTest {
         load(ScriptedBackend { awaitCancellation() }, ledger, recorder = recorder).load(testEventId(eventId))
 
         assertKeptOnlyTheJoinedEvent(ledger)
-        assertEquals(listOf(Severity.Warn), recorder.severities)
+        assertEquals(listOf(LogLevel.WARN), recorder.severities)
     }
 
     @Test
@@ -193,7 +193,7 @@ class LoadShareSetTest {
         load(listing("""[{"assetId":"A","role":"primary","filename":"A.HEIC"}]"""), ledger, recorder = recorder)
             .load(testEventId(eventId))
 
-        assertEquals(listOf(Severity.Error), recorder.severities, "the load returns, having said why it seeded nothing")
+        assertEquals(listOf(LogLevel.ERROR), recorder.severities, "the load returns, having said why it seeded nothing")
         assertTrue(ledger.eventsHeld().isEmpty())
     }
 

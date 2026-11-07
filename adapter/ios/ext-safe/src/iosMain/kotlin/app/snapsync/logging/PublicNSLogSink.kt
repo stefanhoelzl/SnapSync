@@ -1,7 +1,7 @@
 package app.snapsync.logging
 
+import app.snapsync.inbound.LogLevel
 import app.snapsync.ports.LogSink
-import co.touchlab.kermit.Severity
 import platform.Foundation.NSLog
 
 /**
@@ -15,7 +15,7 @@ import platform.Foundation.NSLog
  * line, entry-point prefix included.
  */
 class PublicNSLogSink : LogSink {
-    override fun write(severity: Severity, tag: String, line: String) = NSLog(publicNSLogFormatString(line))
+    override fun write(level: LogLevel, tag: String, line: String) = NSLog(publicNSLogFormatString(line))
 }
 
 /**

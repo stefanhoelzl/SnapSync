@@ -18,6 +18,7 @@ import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.LogLine
 import app.snapsync.inbound.LogWriter
 import app.snapsync.query.RequestStatus
@@ -28,7 +29,6 @@ import app.snapsync.query.membership.MembershipShown
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.query.network.NetworkStatusQuery
 import app.snapsync.query.receiving.DownloadProgress
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -135,10 +135,10 @@ internal class TestLog : LogWriter {
     val lines: List<LogLine> get() = written.value
 
     /** The lines written so far at `Error`: what an intent that failed outright leaves. */
-    val errors: List<LogLine> get() = lines.filter { it.severity == Severity.Error }
+    val errors: List<LogLine> get() = lines.filter { it.level == LogLevel.ERROR }
 
     /** The first line written at `Error`, once one is. */
-    suspend fun awaitError(): LogLine = written.map { lines -> lines.firstOrNull { it.severity == Severity.Error } }
+    suspend fun awaitError(): LogLine = written.map { lines -> lines.firstOrNull { it.level == LogLevel.ERROR } }
         .filterNotNull()
         .first()
 }

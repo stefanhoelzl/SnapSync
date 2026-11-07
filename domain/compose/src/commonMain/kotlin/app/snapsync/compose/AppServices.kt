@@ -19,7 +19,6 @@ import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.membership.MembershipTransition
-import co.touchlab.kermit.Logger
 
 /**
  * **The app process's services**, built here over [ports] and the [process] — never by a root (`docs/architecture.md`,
@@ -31,9 +30,6 @@ import co.touchlab.kermit.Logger
  * (`appUploader`), so the ledger, the membership and the manifest record it writes are the ones this graph reads.
  */
 internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
-
-    /** The composition's own log lines, over this process's writers. */
-    val log: Logger = process.logger("app")
 
     /**
      * The membership — every trigger re-reads it before acting ([MembershipRepository.reload]), because cross-process
@@ -56,7 +52,7 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * open ([LegacyRecords]; a shim, `PENDING_CLEANUPS.md`).
      */
     val sharedDatabase: SharedDatabase by lazy {
-        SharedDatabase(ports.databases, LegacyRecords(process.files, ports.preferences, log))
+        SharedDatabase(ports.databases, LegacyRecords(process.files, ports.preferences))
     }
 
     /**

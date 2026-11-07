@@ -37,7 +37,10 @@ class OptInPinsTest {
             "AppProcessOnly" to Pin(1, "the app's own photos walk behind the memo; the extension walks afresh"),
         ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt" to mapOf(
-            "CompositionOnly" to Pin(1, "every process's first act: the metrics handlers and the crash reporter's handlers"),
+            "CompositionOnly" to Pin(
+                1,
+                "every process's first act: the log's writers, the metrics handlers and the crash reporter's handlers",
+            ),
         ),
         "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt" to mapOf(
             "CompositionOnly" to Pin(1, "the extension's composition: its one entry port, registered"),
@@ -167,9 +170,6 @@ class OptInPinsTest {
                 2,
                 "the screen's live state, and its intents (`ScreenIntents`): the user's door for every tap",
             ),
-        ),
-        "/domain/services/src/commonMain/kotlin/app/snapsync/services/logs/ProcessLogWriters.kt" to mapOf(
-            "CompositionOnly" to Pin(1, "installing the structured log's writers, once per process"),
         ),
         "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to mapOf(
             "InternalCoroutinesApi" to Pin(

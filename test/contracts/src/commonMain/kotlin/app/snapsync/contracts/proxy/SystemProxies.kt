@@ -1,6 +1,7 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
+import app.snapsync.inbound.LogLevel
 import app.snapsync.model.DateFormats
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
@@ -13,7 +14,6 @@ import app.snapsync.ports.NetworkMonitor
 import app.snapsync.ports.ProcessInfo
 import app.snapsync.ports.SystemUi
 import app.snapsync.ports.ThreadLabel
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.flow.onEach
 
 /** [BuildInfo] as its clause's [CallLog] sees it: every fact read is an answer. */
@@ -79,9 +79,9 @@ fun LogSink.recorded(log: CallLog): LogSink = LogSinkProxy(log.wraps(this), log)
 internal class LogSinkProxy(private val inner: LogSink, log: CallLog) : LogSink {
     private val r = log.recorder("LogSink")
 
-    override fun write(severity: Severity, tag: String, line: String) = r.returns(
+    override fun write(level: LogLevel, tag: String, line: String) = r.returns(
         "write",
-        inner.write(severity, tag, line),
+        inner.write(level, tag, line),
     )
 }
 

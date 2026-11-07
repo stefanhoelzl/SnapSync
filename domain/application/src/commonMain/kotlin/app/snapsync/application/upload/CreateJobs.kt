@@ -105,7 +105,7 @@ class CreateJobs(
     }
 
     private suspend fun skipped(row: UploadRow.Discovered, why: String): CreateAnswer? =
-        null.also { log.i("$why — not creating", "key" of row.key) }
+        null.also { log.i("not creating", "why" of why, "key" of row.key) }
 
     private suspend fun logged(row: UploadRow.Discovered, answer: CreateAnswer) = when (answer) {
         CreateAnswer.Full -> log.w("job limit reached — deferring the rest", "key" of row.key)

@@ -1,8 +1,7 @@
 package app.snapsync.logging
 
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.EXTENSION_LOG_FILE_NAME
+import app.snapsync.format.DeviceLogText
 import app.snapsync.objc.checkedObjC
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDocumentDirectory
@@ -13,11 +12,11 @@ import platform.Foundation.NSUserDomainMask
 /*
  * Where each process writes its device log.
  *
- * The **app** writes its own `Documents/`[APP_LOG_FILE_NAME], exactly as it always has — a process can
+ * The **app** writes its own `Documents/`[DeviceLogText.APP_LOG], exactly as it always has — a process can
  * always read its own container, so relocating it would buy no capability while breaking every
  * `pymobiledevice3 apps pull app.snapsync Documents/debug.log` in the runbook.
  *
- * The **extension** writes [EXTENSION_LOG_FILE_NAME] into the **shared App Group** container. That is
+ * The **extension** writes [DeviceLogText.EXTENSION_LOG] into the **shared App Group** container. That is
  * the one read the old placement made impossible: the two processes have separate sandboxes, so the
  * app cannot read the extension's `Documents/`, and the app is the process that assembles a
  * diagnostic dump. The file names are `model/`'s, shared with the log-tail service that reads them.
@@ -57,25 +56,25 @@ fun appGroupDirectory(): String? =
         .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)
         ?.path
 
-/** The app process's log destination: its own `Documents/`[APP_LOG_FILE_NAME]. */
+/** The app process's log destination: its own `Documents/`[DeviceLogText.APP_LOG]. */
 fun appLogDestination(): LogDestination =
-    LogDestination(documentsDirectory()?.let { "$it/$APP_LOG_FILE_NAME" }, fellBackToDocuments = false)
+    LogDestination(documentsDirectory()?.let { "$it/$DeviceLogText.APP_LOG" }, fellBackToDocuments = false)
 
 /**
- * The extension process's log destination: [EXTENSION_LOG_FILE_NAME] in the App Group, falling back
- * to its own `Documents/`[APP_LOG_FILE_NAME] when the container is unavailable.
+ * The extension process's log destination: [DeviceLogText.EXTENSION_LOG] in the App Group, falling back
+ * to its own `Documents/`[DeviceLogText.APP_LOG] when the container is unavailable.
  *
  * The fallback is deliberate: the alternative — a writer that resolves to nothing — produces no log
  * at all, which is indistinguishable from a process that never ran.
  */
 fun extensionLogDestination(): LogDestination {
     val group = appGroupDirectory()
-    if (group != null) return LogDestination("$group/$EXTENSION_LOG_FILE_NAME", fellBackToDocuments = false)
-    return LogDestination(documentsDirectory()?.let { "$it/$APP_LOG_FILE_NAME" }, fellBackToDocuments = true)
+    if (group != null) return LogDestination("$group/$DeviceLogText.EXTENSION_LOG", fellBackToDocuments = false)
+    return LogDestination(documentsDirectory()?.let { "$it/$DeviceLogText.APP_LOG" }, fellBackToDocuments = true)
 }
 
 /**
- * Remove the extension's pre-relocation `Documents/`[APP_LOG_FILE_NAME] (and its rolled sibling), once.
+ * Remove the extension's pre-relocation `Documents/`[DeviceLogText.APP_LOG] (and its rolled sibling), once.
  *
  * Idempotent by construction — after the removal there is nothing to remove. It matters because that
  * path keeps *succeeding* for `pymobiledevice3 apps pull app.snapsync.BackgroundUpload
@@ -90,6 +89,6 @@ fun removeStaleExtensionDocumentsLog(destination: LogDestination) {
     val docs = documentsDirectory() ?: return
     val mgr = NSFileManager.defaultManager
     // Results dropped deliberately: this runs while the logger is being set up, and either file may be absent.
-    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/$APP_LOG_FILE_NAME", error = it) }
-    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/$APP_LOG_FILE_NAME.1", error = it) }
+    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/$DeviceLogText.APP_LOG", error = it) }
+    checkedObjC("removeItemAtPath") { mgr.removeItemAtPath("$docs/$DeviceLogText.APP_LOG.1", error = it) }
 }

@@ -66,7 +66,7 @@ class UploadExport(
     }
 
     private suspend fun failed(key: String, written: String, step: String, detail: String): Exported {
-        log.w("$step the staged upload failed — not creating", "key" of key, "detail" of detail)
+        log.w("the staged upload failed — not creating", "step" of step, "key" of key, "detail" of detail)
         files.delete(FileArea.SHARED, written)
         staged.release(key)
         return Exported.FAILED

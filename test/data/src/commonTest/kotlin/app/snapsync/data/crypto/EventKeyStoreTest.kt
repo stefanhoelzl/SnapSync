@@ -12,6 +12,7 @@ import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.format.EventKeyText
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.LogLine
 import app.snapsync.inbound.LogWriter
 import app.snapsync.mock.DevControlsMock
@@ -20,7 +21,6 @@ import app.snapsync.ports.Crypto
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.StoredProtection
 import app.snapsync.testids.testEventId
-import co.touchlab.kermit.Severity
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -57,7 +57,7 @@ class EventKeyStoreTest {
     @AfterTest
     fun stop() = Log.install(emptyList())
 
-    private fun warnings() = lines.filter { it.tag == "EventKeyStore" && it.severity == Severity.Warn }
+    private fun warnings() = lines.filter { it.tag == "EventKeyStore" && it.level == LogLevel.WARN }
 
     private val ids = EventKeyIds(fakeCrypto())
     private val secure = RecordingSecureStore()

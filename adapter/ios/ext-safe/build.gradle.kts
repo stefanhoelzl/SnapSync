@@ -68,6 +68,8 @@ kotlin {
             api(project(":domain:domain"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
+            // The device log's file names; the stamp is `:adapter:generic:app`'s.
+            implementation(project(":domain:format"))
             api(project(":domain:feature"))
             // The Ktor core types darwinHttpClient() returns.
             api(project(":adapter:generic:app"))

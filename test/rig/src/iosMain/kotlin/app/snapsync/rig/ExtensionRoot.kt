@@ -1,5 +1,8 @@
 package app.snapsync.rig
 
+import app.snapsync.data.logs.SinkLines
+import app.snapsync.inbound.LogLevel
+import app.snapsync.inbound.LogLine
 import app.snapsync.levers.ExtensionAnswer
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.UploadJobLevers
@@ -7,8 +10,9 @@ import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosThreadLabel
 import app.snapsync.logging.PublicNSLogSink
 import app.snapsync.logging.extensionLogDestination
-import app.snapsync.services.logs.SinkLogWriter
+import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.newSingleThreadContext
@@ -72,7 +76,9 @@ internal suspend fun runExtensionCycle(process: () -> Int, log: Logger = Logger.
             // object was already initialised and nothing re-pointed the writers. Setting them per call makes every
             // invoked cycle land where an extension's cycle lands.
             Logger.setLogWriters(
-                SinkLogWriter(listOf(PublicNSLogSink(), FileLogSink(extensionLogDestination().path)), IosThreadLabel),
+                ExtensionLog(
+                    SinkLines(listOf(PublicNSLogSink(), FileLogSink(extensionLogDestination().path)), IosThreadLabel),
+                ),
             )
             process()
         } finally {
@@ -128,4 +134,19 @@ internal fun processingResultName(raw: Int): String = when (raw) {
     1 -> "processing"
     2 -> "completed"
     else -> "unknown($raw)"
+}
+
+/** The cycle's Kermit lines, written to the extension's own log as the extension process writes them. */
+private class ExtensionLog(private val lines: SinkLines) : LogWriter() {
+    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) =
+        lines.write(LogLine(severity.level(), tag, null, message, emptyList(), throwable))
+
+    private fun Severity.level(): LogLevel = when (this) {
+        Severity.Verbose -> LogLevel.VERBOSE
+        Severity.Debug -> LogLevel.DEBUG
+        Severity.Info -> LogLevel.INFO
+        Severity.Warn -> LogLevel.WARN
+        Severity.Error -> LogLevel.ERROR
+        Severity.Assert -> LogLevel.ASSERT
+    }
 }
