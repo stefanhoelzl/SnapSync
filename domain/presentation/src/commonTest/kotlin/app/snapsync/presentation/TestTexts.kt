@@ -4,7 +4,12 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.MintsInviteText
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.ui.state.MintsShownInvite
+import app.snapsync.ui.state.ShownInvite
 import app.snapsync.ui.state.SwitchTo
 import kotlin.time.Instant
 
@@ -21,8 +26,14 @@ internal fun invited(
 ): InviteLinkVerdict = InviteLinkVerdict.Invite(InviteLink(event, key))
 
 /** The invite text a test hands the screen for [event]: the screen shows and shares it as given. */
-internal fun inviteText(event: EventId, key: EventKey? = null): String =
-    "invite:${event.value}" + if (key == null) "" else "#key-${key.hashCode()}"
+@OptIn(MintsInviteText::class)
+internal fun inviteText(event: EventId, key: EventKey? = null): InviteText = InviteText(
+    "invite:${event.value}" + if (key == null) "" else "#key-${key.hashCode()}",
+)
 
 /** A switch flipped to [on], as a test states it. */
 internal fun switchTo(on: Boolean): SwitchTo = if (on) SwitchTo.ON else SwitchTo.OFF
+
+/** The invite the screen shows for [event], as [inviteText] hands it over. */
+@OptIn(MintsShownInvite::class, RendersInvite::class)
+internal fun shownInvite(event: EventId, key: EventKey? = null): ShownInvite = ShownInvite(inviteText(event, key).raw)

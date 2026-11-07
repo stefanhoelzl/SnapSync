@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalTestApi::class)
+@file:OptIn(MintsShownInvite::class, ExperimentalTestApi::class)
 
 package app.snapsync.ui
 
@@ -158,6 +158,7 @@ import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinedEvent
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.MintsShownInvite
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.Overlays
 import app.snapsync.ui.state.PendingSwitch
@@ -167,6 +168,7 @@ import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.SharingNote
+import app.snapsync.ui.state.ShownInvite
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.TimeLeft
@@ -181,7 +183,7 @@ import kotlin.test.assertTrue
 import app.snapsync.ui.components.resources.Res as ComponentRes
 
 // A representative invite link — any string renders a QR; the encoding is pinned in capability:config.
-private const val SAMPLE_INVITE = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiMSJ9"
+private val SAMPLE_INVITE = ShownInvite("https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiMSJ9")
 
 // A representative joined membership for the reconfigure-surface tests: event started, the full window
 // `[startsAt, endsAt]` at both bounds (floor + ceiling), bidirectional, no album — so a no-edit Save
@@ -245,7 +247,7 @@ private fun joined(
     timing: EventTiming = EventTiming.Running(TimeLeft.Days(4)),
     counts: SyncCounts? = null,
     membership: JoinedEvent = MEMBERSHIP,
-    inviteUrl: String? = SAMPLE_INVITE,
+    inviteUrl: ShownInvite? = SAMPLE_INVITE,
     renameState: RenameState = RenameState.Idle,
     deleted: Boolean = false,
     members: Int? = null,

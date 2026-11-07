@@ -5,6 +5,7 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
+import app.snapsync.domain.invite.InviteText
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.ShareChoice
@@ -50,7 +51,7 @@ class CreateRequest(
 )
 
 /** The platform's share sheet asked for, carrying [text], titled [title] where the platform shows a title. */
-class ShareRequest(val text: String, val title: String)
+class ShareRequest(val text: InviteText, val title: String)
 
 /** A page outside the app the member asked to open: this build's store page, or a page of the app's own site. */
 sealed interface AppLinkRequest {

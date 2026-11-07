@@ -19,6 +19,7 @@ import app.snapsync.application.upload.SettleStoredUploads
 import app.snapsync.application.wake.RearmHeartbeat
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.foreground.AppForeground
+import app.snapsync.data.links.LinkReading
 import app.snapsync.data.links.OpenedInvites
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
@@ -79,7 +80,6 @@ import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Steps
 import app.snapsync.scheduling.orIfCut
-import app.snapsync.services.links.LinkReading
 import app.snapsync.services.transfer.SessionDrains
 
 // ── What happens on each trigger of the app process ─────────────────────────────────────────────────────────────────

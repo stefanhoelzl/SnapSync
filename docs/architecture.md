@@ -237,7 +237,7 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | `Download` | `onCompleted(CompletedDownload)` | `Inbound` | `OnDownloadCompleted`: frees the window slot | the session's delegate queue |
 | `Lifecycle` | `onForeground(completion)` | `Background` | `OnForeground`, host-first: records the return, asks the push service for the token again, assembles the host, runs the foreground's own work (`ForegroundWork`) and then the wake's work, all under the process's background time | the main thread (UIKit's notification) |
 | `Lifecycle` | `onBackground()` | `Inbound` | `OnBackground`: records the departure, stops the foreground's watches, records the memory footprint | the main thread |
-| `Links` | `onLink(LinkDelivery)` | `Inbound` | `OnLink`: services' `LinkReading` over the sealed `LinkDelivery`, kept as the opened invite (`OpenedInvites`, read by `OpenedInvitesQuery`) — a `Link` is opened whole, an `InstallReferrer` carrying an invite opens that invite and one carrying none opens nothing, a `NotALink` or `NoUrl` is logged by name; the status screen opens the waiting invite once it starts, and tells it opened (`OnInviteOpened`) | the scene delegate's or SwiftUI's thread (main); the activity's on Android |
+| `Links` | `onLink(LinkDelivery)` | `Inbound` | `OnLink`: data's `LinkReading` over the sealed `LinkDelivery`, kept as the opened invite (`OpenedInvites`, read by `OpenedInvitesQuery`) — a `Link` is opened whole, an `InstallReferrer` carrying an invite opens that invite and one carrying none opens nothing, a `NotALink` or `NoUrl` is logged by name; the status screen opens the waiting invite once it starts, and tells it opened (`OnInviteOpened`) | the scene delegate's or SwiftUI's thread (main); the activity's on Android |
 | `PushNotifications` | `onToken(PushToken)`, `onTokenFailure(PlatformError)` | `Inbound` | `OnPushToken` (the token reaches the source the push registration observes), `OnPushTokenFailure` (logged) — no host | the application delegate (main) |
 | `PushNotifications` | `onMessage(PushMessage, completion)` | `Background` | `OnSilentPush`: the prelude, the push's own receive, and — for the active event only — the wake's work, detached; the completion is answered after the push's own work — no host | the application delegate (main) |
 | `Ui` | `onIntent(intent)`, `onLive()` | `Inbound` | the container's intent table (a presentation intent); `onLive` is host-first, synchronous and idempotent — it assembles the host and answers its current state before the screen's first frame | the main thread |
@@ -1630,8 +1630,9 @@ segments  AES-256-GCM, 64 KiB ciphertext each (the first shorter by the     │ 
   the delegate queue; only a fully authenticated file is staged. One that does not open is discarded and downloaded
   again by the next plan, and its fourth consecutive failure (`OpenFailures`) is reported once at `Error` (the
   crash channel).
-- **No key reaches a log or a report**: `redactEventKeys` runs wherever the UUID scrub runs, on the diagnostic dump
-  too, and on the logged link.
+- **No key reaches a log or a report** by type, not by scrub: an event key prints masked (`EventKey`), an invite's
+  text prints masked (`InviteText`, `ShownInvite` — only what shows or shares it reads it, `OptInPinsTest`), and
+  `LinkReading` logs what a link opened, never its text.
 - **The event page** (`site/src/lib/event-key.ts`, over the edge's own `api/src/encrypted-file.ts`) reads the key
   from its address's `#k=`, checks it against the event's `keyId` before fetching anything, and opens each file of
   the zip in the browser; without the whole invite it says so and offers nothing. The page is served with a

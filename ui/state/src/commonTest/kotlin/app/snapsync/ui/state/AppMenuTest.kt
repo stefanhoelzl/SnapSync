@@ -1,3 +1,5 @@
+@file:OptIn(MintsShownInvite::class)
+
 package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
@@ -60,7 +62,7 @@ class AppMenuTest {
         )
         val joined = Layer.Joined(
             membership = membership,
-            inviteUrl = "https://snapsync.app/join#v=3&d=x",
+            inviteUrl = ShownInvite("https://snapsync.app/join#v=3&d=x"),
             health = SyncHealth.InSync,
             today = LocalDate(2026, 7, 6),
         )

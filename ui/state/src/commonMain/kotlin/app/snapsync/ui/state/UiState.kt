@@ -98,7 +98,7 @@ data class Overlays(
      * The invite whose QR code is shown over the joined screen — captured whole when the member asked for it, and
      * shown until they close it; `null` while none is shown.
      */
-    val shownQr: String? = null,
+    val shownQr: ShownInvite? = null,
     /**
      * The diagnostic-dump sheet, opened from the app menu's "Report a problem" or by the hidden double-tap on the
      * app-name label. Reachable from every layer, which is why this bundle is not layer-scoped.
@@ -255,7 +255,7 @@ sealed interface Layer {
          * (lost, or locked since the phone started) — an invite is never offered without its key, so neither the share
          * action nor the QR code is.
          */
-        val inviteUrl: String?,
+        val inviteUrl: ShownInvite?,
         val health: SyncHealth,
         /** The device's today — how the dates line words a range ("today, …") — reduced from the host's clock. */
         val today: LocalDate,

@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalTestApi::class)
+@file:OptIn(RendersInvite::class, ExperimentalTestApi::class)
 
 package app.snapsync.ui
 
@@ -35,6 +35,8 @@ import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.SettingsResult
@@ -186,7 +188,7 @@ internal class ContainerRig(
             key = EventKeyView(
                 presence = MutableStateFlow(KeyPresence.NotNeeded),
                 invite = object : InviteRead {
-                    override fun invite(): String? =
+                    override fun invite(): InviteText? =
                         this@ContainerRig.config.value?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
                 },
             ),
@@ -237,7 +239,7 @@ internal class ContainerRig(
                 answered(r.id, statuses.join, JoinCommit.Failed())
             },
             platform = PlatformCommands(
-                share = command { r: ShareRequest -> record("share:${r.text}") },
+                share = command { r: ShareRequest -> record("share:${r.text.raw}") },
                 requestAccess = command { _: Unit -> record("requestAccess") },
                 openSettings = command { _: Unit -> record("openSettings") },
                 openLink = command { r: AppLinkRequest -> record("openLink:${r.opened()}") },

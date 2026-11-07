@@ -1,3 +1,5 @@
+@file:OptIn(ShowsInvite::class)
+
 package app.snapsync.journeys
 
 import app.snapsync.client.RigClient
@@ -19,6 +21,7 @@ import app.snapsync.levers.ScreenLevers
 import app.snapsync.levers.SeedKind
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.ShowsInvite
 import app.snapsync.ui.state.UiIntent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -186,7 +189,7 @@ class Journeys {
      * arrive in A's library through the real download and PhotoKit import.
      */
     private suspend fun receive(a: RigClient, member: Member) {
-        val invite = (a.state().ui.layer as? Layer.Joined)?.inviteUrl ?: fail("A's joined screen carries no invite link")
+        val invite = (a.state().ui.layer as? Layer.Joined)?.inviteUrl?.raw ?: fail("A's joined screen carries no invite link")
         val link = when (val read = InviteLinkText.parse(invite)) {
             is InviteLinkVerdict.Invite -> read.link
             is InviteLinkVerdict.KeyUnreadable, InviteLinkVerdict.NotAnInvite ->

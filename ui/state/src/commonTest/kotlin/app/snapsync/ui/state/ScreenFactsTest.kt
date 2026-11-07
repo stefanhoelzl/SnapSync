@@ -1,3 +1,5 @@
+@file:OptIn(MintsShownInvite::class)
+
 package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
@@ -29,7 +31,7 @@ class ScreenFactsTest {
                 receives = true,
                 savesToAlbum = false,
             ),
-            "https://snapsync.app/e",
+            ShownInvite("https://snapsync.app/e"),
             SyncHealth.InSync,
             today = LocalDate(2026, 7, 6),
         )

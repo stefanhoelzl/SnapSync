@@ -15,6 +15,7 @@ import app.snapsync.data.foreground.AppForeground
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.gallery.photoAccess
+import app.snapsync.data.links.LinkReading
 import app.snapsync.data.links.OpenedInvites
 import app.snapsync.data.process.FootprintReading
 import app.snapsync.data.service.ServiceConditions
@@ -87,7 +88,6 @@ import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
 import app.snapsync.services.gallery.GalleryAccessState
-import app.snapsync.services.links.LinkReading
 import app.snapsync.services.transfer.SessionDrains
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState

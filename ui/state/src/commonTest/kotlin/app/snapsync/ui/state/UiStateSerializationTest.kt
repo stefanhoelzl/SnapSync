@@ -1,3 +1,5 @@
+@file:OptIn(MintsShownInvite::class)
+
 package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
@@ -162,12 +164,17 @@ class UiStateSerializationTest {
     }
 
     @Test
+    fun a_joined_layer_offering_no_invite_round_trips() = roundTrip(
+        UiState(Layer.Joined(membership = membership, inviteUrl = null, health = SyncHealth.InSync, today = today)),
+    )
+
+    @Test
     fun the_joined_layer_round_trips_with_its_overlays() {
         roundTrip(
             UiState(
                 Layer.Joined(
                     membership = membership,
-                    inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
+                    inviteUrl = ShownInvite("https://snapsync.stho.net/join#v=3&d=x"),
                     health = SyncHealth.InSync,
                     today = today,
                     timing = EventTiming.Upcoming(TimeLeft.Hours(5)),
@@ -180,7 +187,7 @@ class UiStateSerializationTest {
             UiState(
                 Layer.Joined(
                     membership = membership,
-                    inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
+                    inviteUrl = ShownInvite("https://snapsync.stho.net/join#v=3&d=x"),
                     health = SyncHealth.NeedsAccess(canAsk = false),
                     today = today,
                     timing = EventTiming.Ended,
@@ -231,7 +238,7 @@ class UiStateSerializationTest {
             UiState(
                 Layer.Joined(
                     membership = membership,
-                    inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
+                    inviteUrl = ShownInvite("https://snapsync.stho.net/join#v=3&d=x"),
                     health = SyncHealth.Syncing(upload = Arrow.PULSING, download = Arrow.STATIC),
                     today = today,
                     pendingSwitch = PendingSwitch("F", phase(JoinPhase.Detailed.Step.CommitFailed)),
@@ -261,7 +268,7 @@ class UiStateSerializationTest {
                     UiState(
                         Layer.Joined(
                             membership = membership,
-                            inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
+                            inviteUrl = ShownInvite("https://snapsync.stho.net/join#v=3&d=x"),
                             health = health,
                             today = today,
                             renameState = rename,

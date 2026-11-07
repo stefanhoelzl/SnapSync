@@ -1,3 +1,5 @@
+@file:OptIn(RendersInvite::class)
+
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.CreateResult
@@ -16,6 +18,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
@@ -208,7 +211,7 @@ internal class TestCommands(
             requests.answer(r.id, requests.statuses.join, JoinCommit.Failed()) { commitJoin(r.choice) }
         },
         platform = PlatformCommands(
-            share = command { r: ShareRequest -> share(r.text, r.title) },
+            share = command { r: ShareRequest -> share(r.text.raw, r.title) },
             requestAccess = command { _: Unit -> requestAccess() },
             openSettings = command { _: Unit -> openSettings() },
             openLink = command { r: AppLinkRequest -> openLink(r.named()) },

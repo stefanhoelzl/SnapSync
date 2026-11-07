@@ -128,7 +128,9 @@ coverage {
         // format (4.10): the crash vocabulary, the process-metric rules, the footprints and the report's budget, which
         // the suite covered, left; what stays is the old zones' vocabulary no member's day reaches. No test was lost.
         // Measured 53.32 / 22.95 %.
-        integration(instructions = 53, branches = 22)
+        // → 52/22 when an invite's key left the logs by type (4.10): `redactEventKeys`, which the suite ran on every
+        // logged link, went — `LinkReading` logs what a link opened instead. No test was lost. Measured 52.87 %.
+        integration(instructions = 52, branches = 22)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -325,7 +327,10 @@ coverage {
         // → 94/72 in phase 4.9 (status and presentation): the joined layer's and the switch's new optional facts
         // (`accessFix`, `PendingSwitch.service`) add their generated serializers' default branches, which the suite
         // never decodes. No test was lost. Measured 72.93 %.
-        integration(instructions = 94, branches = 72)
+        // → 93/72 when the shown invite became a secret type (4.10): its masked print, which exists so that a logged
+        // screen state carries no key, is never reached by a member's day — by design. No test was lost. Measured
+        // 93.76 %.
+        integration(instructions = 93, branches = 72)
     }
     // `:ui:screens`' Compose tests render the real screens, and with them these components.
     ":ui:components" {

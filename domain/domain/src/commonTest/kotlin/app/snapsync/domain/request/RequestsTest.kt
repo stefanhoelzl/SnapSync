@@ -6,6 +6,9 @@ import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.anEvent
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.MintsInviteText
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.ShareChoice
@@ -22,7 +25,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /** A request carries what the member asked for, under the id its answer is read by. */
-@OptIn(MakesEventKey::class)
+@OptIn(MakesEventKey::class, MintsInviteText::class, RendersInvite::class)
 class RequestsTest {
     private val id = RequestId(7)
     private val event = anEvent()
@@ -52,8 +55,8 @@ class RequestsTest {
 
     @Test
     fun `the platform's and the report's requests carry what was asked`() {
-        val share = ShareRequest("https://snapsync.app/join", "Party")
-        assertEquals("https://snapsync.app/join" to "Party", share.text to share.title)
+        val share = ShareRequest(InviteText("https://snapsync.app/join"), "Party")
+        assertEquals("https://snapsync.app/join" to "Party", share.text.raw to share.title)
         val store = Store("App Store", "https://apps.apple.com/app")
         assertEquals(store, AppLinkRequest.StorePage(store).store)
         assertEquals(OwnPage.PRIVACY_POLICY, AppLinkRequest.SitePage(OwnPage.PRIVACY_POLICY).page)

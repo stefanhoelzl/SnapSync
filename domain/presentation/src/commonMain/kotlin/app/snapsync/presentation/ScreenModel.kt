@@ -8,6 +8,7 @@ import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.report.ReportOutcome
+import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
@@ -48,16 +49,18 @@ data class ScreenModel(val ui: UiState, val shown: Shown)
  * [store] is the build's store page, while the update notice shows: the screen only
  * names the store, and "open the store" opens this. [range] is the range the showing participation surface resolves —
  * what its calendar opens on — and [countedRange] the same while the count row shows, whose photos it counts;
- * each `null` when no surface shows it.
+ * each `null` when no surface shows it. [share] is what the joined layer's share shares: the very invite its QR
+ * code shows, so the two can never differ.
  */
 data class Shown(
     val store: Store? = null,
     val range: ResolvedRange? = null,
     val countedRange: ResolvedRange? = null,
+    val share: ShareRequest? = null,
 )
 
-/** One reduction's layer, and the range its surface resolved — `null` when it shows none. */
-internal class Reduced(val layer: Layer, val range: ResolvedRange? = null)
+/** One reduction's layer, the range its surface resolved, and what its share shares — each `null` when it has none. */
+internal class Reduced(val layer: Layer, val range: ResolvedRange? = null, val share: ShareRequest? = null)
 
 /**
  * The conversions from the domain into what the screen shows: every moment into the device's zone, through the one

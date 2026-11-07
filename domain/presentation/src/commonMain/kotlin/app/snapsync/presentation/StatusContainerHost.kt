@@ -13,7 +13,6 @@ import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.RenameRequest
-import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
@@ -437,7 +436,12 @@ class StatusContainerHost(
         val counted = reduced.range?.takeIf { local.form.shareOn }
         return ScreenModel(
             ui,
-            Shown(store = store.takeIf { refused != null }, range = reduced.range, countedRange = counted),
+            Shown(
+                store = store.takeIf { refused != null },
+                range = reduced.range,
+                countedRange = counted,
+                share = reduced.share,
+            ),
         )
     }
 
@@ -461,13 +465,9 @@ class StatusContainerHost(
      * unaffected (the system share UI is presented over the screen, not part of it). Inert when no
      * event is configured (no URL) or no real share is bound (the no-op default).
      */
-    // The invite URL is read off the state the reduction already derived, so the shared link is
-    // byte-identical to the QR being rendered rather than a second derivation that could drift.
-    internal fun onShareInvite() = intent {
-        (state.ui.layer as? Layer.Joined)?.let { joined ->
-            joined.inviteUrl?.let { commands.platform.share.fire(ShareRequest(it, joined.membership.name)) }
-        }
-    }
+    // The invite is read off what the reduction already derived for the QR code, so the shared link is byte-identical
+    // to the one being rendered rather than a second derivation that could drift.
+    internal fun onShareInvite() = intent { state.shown.share?.let(commands.platform.share::fire) }
 
     /**
      * Open the build's store page from the update-required screen.

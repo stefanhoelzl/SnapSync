@@ -3,6 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.KeyPresence
+import app.snapsync.domain.invite.InviteText
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.network.NetworkAccess
@@ -47,7 +48,7 @@ internal data class Observed(
     /** How SnapSync's service failed the latest request, if it is failing. */
     val serviceFault: ServiceFault? = null,
     /** The joined event's invite as the member shares it, read beside the membership ([EventKeyView.invite]). */
-    val invite: String? = null,
+    val invite: InviteText? = null,
 ) {
     /** The membership held, `null` while none is — or while none can be read. */
     val joined: Membership? get() = membership.held

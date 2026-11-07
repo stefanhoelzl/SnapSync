@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalTestApi::class)
+@file:OptIn(MintsShownInvite::class, ExperimentalTestApi::class)
 
 package app.snapsync.ui
 
@@ -92,12 +92,14 @@ import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.MintsShownInvite
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.PendingSwitch
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.ShownInvite
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
 import kotlinx.datetime.LocalDate
@@ -1153,7 +1155,7 @@ private fun joinedWith(health: SyncHealth, pendingSwitch: PendingSwitch? = null,
     UiState(
         Layer.Joined(
             membership = SWITCH_MEMBERSHIP.copy(name = name),
-            inviteUrl = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiRTEifQ",
+            inviteUrl = ShownInvite("https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiRTEifQ"),
             health = health,
             today = LocalDate(2026, 7, 6),
             pendingSwitch = pendingSwitch,

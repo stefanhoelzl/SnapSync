@@ -1,3 +1,5 @@
+@file:OptIn(ShowsInvite::class)
+
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
@@ -9,6 +11,7 @@ import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.ShowsInvite
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 
@@ -32,12 +35,12 @@ class HandOffIntegrationTest {
         given {
             createdEvent()
             step("joined", act = { confirmJoin() }, until = {
-                joined = screen<Layer.Joined> { it.inviteUrl?.contains("#k=") == true }
+                joined = screen<Layer.Joined> { it.inviteUrl?.raw?.contains("#k=") == true }
             })
         }
 
         whenever { tap(UiIntent.ShareInvite) }
-        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl } }
+        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl?.raw } }
     }
 
     @Test

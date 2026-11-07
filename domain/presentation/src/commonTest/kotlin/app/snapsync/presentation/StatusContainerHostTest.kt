@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+@file:OptIn(RendersInvite::class, kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 
 package app.snapsync.presentation
 
@@ -11,6 +11,7 @@ import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
 import app.snapsync.domain.request.CreateRequest
@@ -120,7 +121,7 @@ private fun joined(
 ) = UiState(
     Layer.Joined(
         membership = config.shown(),
-        inviteUrl = inviteText(config.eventId),
+        inviteUrl = shownInvite(config.eventId),
         health = health,
         today = TODAY,
         pendingSwitch = pendingSwitch,
@@ -1766,7 +1767,7 @@ class StatusContainerHostTest {
             reduction = Dispatchers.Default,
         )
         val invite = (host.screen.value.layer as Layer.Joined).inviteUrl!!
-        assertEquals(inviteText(testEventId(EVENT_ID)), invite)
+        assertEquals(shownInvite(testEventId(EVENT_ID)), invite)
     }
 
     @Test
@@ -1872,7 +1873,7 @@ class StatusContainerHostTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf(inviteText(testEventId(EVENT_ID)) to SAMPLE_CONFIG.name),
+            listOf(inviteText(testEventId(EVENT_ID)).raw to SAMPLE_CONFIG.name),
             shared,
         )
     }

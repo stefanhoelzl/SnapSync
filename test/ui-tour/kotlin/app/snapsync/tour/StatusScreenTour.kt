@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalTestApi::class)
+@file:OptIn(ExperimentalTestApi::class, RendersInvite::class)
 
 package app.snapsync.tour
 
@@ -46,6 +46,8 @@ import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.InviteFact
 import app.snapsync.domain.membership.JoinChoice
 import app.snapsync.domain.membership.JoinCommit
@@ -229,7 +231,7 @@ private val OTHER_EVENT = JoinDetails.Found(
 
 private val CUTOFF = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC)
 
-private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(EventId.parse(eventId)!!, null))
+private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(EventId.parse(eventId)!!, null)).raw
 
 // A test reads the words the screen shows; production never blocks on a resource.
 private fun str(res: StringResource, vararg args: Any): String = runBlocking { getString(res, *args) }
@@ -345,7 +347,7 @@ abstract class StatusScreenTour {
                 key = EventKeyView(
                     presence = MutableStateFlow(KeyPresence.NotNeeded),
                     invite = object : InviteRead {
-                        override fun invite(): String? =
+                        override fun invite(): InviteText? =
                             this@Rig.config.value.held?.let { InviteLinkText.format(InviteLink(it.event.id, null)) }
                     },
                 ),
