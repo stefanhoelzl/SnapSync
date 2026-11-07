@@ -178,6 +178,7 @@ flowchart LR
   domain_presentation --> domain_domain
   domain_presentation --> domain_inbound
   domain_presentation --> domain_query
+  domain_presentation --> test_verifies
   domain_presentation --> ui_state
   domain_query --> domain_data
   domain_query --> domain_domain

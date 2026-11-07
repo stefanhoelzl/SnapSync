@@ -133,7 +133,8 @@ class ModuleSetTest {
         // Since the split it asserts two further things the module graph cannot state about itself: that
         // each zone declares only the edge its law permits (so `ports` cannot reach `feature`), and that
         // it declares it with `implementation()` — an `api()` edge would republish the zone to every
-        // downstream consumer, dissolving the boundary the split exists to create.
+        // downstream consumer, dissolving the boundary the split exists to create. The one edge outside a zone's law is
+        // its tests' `:test:verifies`, inside `commonTest.dependencies`: an annotation that depends on nothing.
         // MIGRATING (`docs/architecture.md`, "The core and its zones"): the old zones depend on the domain layer while
         // their types move into it — never the reverse — and phase 5 deletes them with their edges.
         val permitted = mapOf(
@@ -200,9 +201,13 @@ class ModuleSetTest {
             val build = File(repoRoot, "domain/$zone/build.gradle.kts")
             assertTrue(build.isFile, "domain/$zone/build.gradle.kts is missing — the core moved")
             val text = build.readText()
+            val tests = commonTestBlock(text)
             Regex("""(\w+)\(project\(\s*"([^"]+)"\s*\)\)""").findAll(text).mapNotNull { m ->
                 val (configuration, target) = m.destructured
                 when {
+                    // A test claims the scenario its zone decides (`@Verifies`). `:test:verifies` depends on nothing,
+                    // so it hands the zone no platform, and only the zone's tests see it.
+                    target == VERIFIES && m.range.first in tests && configuration == "implementation" -> null
                     target !in allowed ->
                         ":domain:$zone declares project(\"$target\"), which is not a permitted zone edge. " +
                             "A core module may depend only on ${allowed.ifEmpty { "nothing" }} — an edge out " +
@@ -220,6 +225,21 @@ class ModuleSetTest {
     }
 
     private companion object {
+        const val VERIFIES = ":test:verifies"
+
+        /** The character range of [build]'s `commonTest.dependencies { … }` block, or an empty range if it has none. */
+        fun commonTestBlock(build: String): IntRange {
+            val open = Regex("""commonTest\.dependencies\s*\{""").find(build) ?: return IntRange.EMPTY
+            var depth = 0
+            for (i in open.range.last until build.length) {
+                when (build[i]) {
+                    '{' -> depth++
+                    '}' -> if (--depth == 0) return open.range.last..i
+                }
+            }
+            return IntRange.EMPTY
+        }
+
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
             // The core's zones and the host (`docs/architecture.md`, "Zones inside the core").
