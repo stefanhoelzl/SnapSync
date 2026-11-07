@@ -1,3 +1,5 @@
+@file:OptIn(ShowsInvite::class)
+
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
@@ -9,6 +11,7 @@ import app.snapsync.levers.KeychainItem
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.ShowsInvite
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
@@ -37,8 +40,8 @@ class EncryptedEventIntegrationTest {
 
         lateinit var joined: Seen<Layer.Joined>
         whenever { confirmJoin() }
-        then { joined = screen<Layer.Joined> { it.inviteUrl?.contains("#k=") == true } }
-        val invite = joined.value.inviteUrl!!
+        then { joined = screen<Layer.Joined> { it.inviteUrl?.raw?.contains("#k=") == true } }
+        val invite = joined.value.inviteUrl!!.raw
         assertTrue(invite.startsWith("$LINK_ORIGIN/join/$event#k="), invite)
         assertEquals(43, invite.substringAfter("#k=").length, "a 32-byte key, base64url")
     }
@@ -54,7 +57,7 @@ class EncryptedEventIntegrationTest {
         lateinit var joined: Seen<Layer.Joined>
         whenever { confirmJoin() }
         then { joined = screen<Layer.Joined> { it.inviteUrl != null } }
-        val invite = joined.value.inviteUrl!!
+        val invite = joined.value.inviteUrl!!.raw
         assertTrue(invite.startsWith("$LINK_ORIGIN/join#v=3&d="), invite)
     }
 
@@ -112,7 +115,7 @@ class EncryptedEventIntegrationTest {
     fun an_invite_without_the_key_never_joins_an_encrypted_event() = behaviour {
         val (event, invite) = given {
             val event = createdEvent()
-            val invite = joinedWithItsInvite().inviteUrl!!
+            val invite = joinedWithItsInvite().inviteUrl!!.raw
             step("left", act = { tap(UiIntent.LeaveEvent) }, until = {
                 screen<Layer.CreateEvent>()
                 settled { true }
@@ -201,7 +204,7 @@ class EncryptedEventIntegrationTest {
     )
     fun a_lost_key_stops_both_directions_and_the_reopened_invite_resumes_them() = behaviour {
         val (event, before) = given { createdEvent() to joinedWithItsInvite() }
-        val invite = before.inviteUrl!!
+        val invite = before.inviteUrl!!.raw
 
         // The phone was restored onto a new device: the membership came back, the key did not.
         whenever {
@@ -253,7 +256,7 @@ class EncryptedEventIntegrationTest {
         lateinit var resumed: Seen<Layer.Joined>
         whenever { openLink(invite) }
         then {
-            resumed = screen<Layer.Joined> { it.health != SyncHealth.KeyLost && it.inviteUrl == invite }
+            resumed = screen<Layer.Joined> { it.health != SyncHealth.KeyLost && it.inviteUrl?.raw == invite }
             neverScreen<Layer.JoiningEvent>() // no join screen
             neverScreen<Layer.Joined> { it.pendingSwitch != null }
             event<WorldEvent.SessionTransferCreated>()
@@ -274,7 +277,7 @@ class EncryptedEventIntegrationTest {
     private suspend fun Given.joinedWithItsInvite(): Layer.Joined {
         lateinit var joined: Seen<Layer.Joined>
         step("joined", act = { confirmJoin() }, until = {
-            joined = screen<Layer.Joined> { it.inviteUrl?.contains("#k=") == true }
+            joined = screen<Layer.Joined> { it.inviteUrl?.raw?.contains("#k=") == true }
             settled { true }
         })
         return joined.value

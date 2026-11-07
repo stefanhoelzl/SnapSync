@@ -6,6 +6,7 @@ import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.KeyFact
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.InviteText
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.format.InviteLinkText
 import kotlinx.coroutines.CoroutineScope
@@ -29,7 +30,7 @@ class EventKeyQuery(
     val presence: StateFlow<KeyPresence> = combine(membership.state, keys.state, ::presenceOf)
         .stateIn(scope, SharingStarted.Eagerly, presenceOf(membership.state.value, keys.state.value))
 
-    override fun invite(): String? = inviteOf(membership.state.value, keys.state.value)
+    override fun invite(): InviteText? = inviteOf(membership.state.value, keys.state.value)
 }
 
 /**
@@ -38,12 +39,12 @@ class EventKeyQuery(
  * at the moment it is asked, so it always belongs to the membership read beside it.
  */
 interface InviteRead {
-    fun invite(): String?
+    fun invite(): InviteText?
 }
 
 private fun presenceOf(read: MembershipRead, fact: KeyFact): KeyPresence = KeyPresence.of(read.held(), fact)
 
-private fun inviteOf(read: MembershipRead, fact: KeyFact): String? = read.held()?.let { joined ->
+private fun inviteOf(read: MembershipRead, fact: KeyFact): InviteText? = read.held()?.let { joined ->
     when (joined.event.encryption) {
         Encryption.Plain -> InviteLinkText.format(InviteLink(joined.event.id, null))
         is Encryption.Encrypted -> (KeyPresence.of(joined, fact) as? KeyPresence.Held)

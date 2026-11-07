@@ -1,3 +1,5 @@
+@file:OptIn(RendersInvite::class)
+
 package app.snapsync.integration
 
 import app.snapsync.control.Verifies
@@ -6,6 +8,7 @@ import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.behaviour
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.format.EventKeyText
 import app.snapsync.format.InviteLinkText
 import app.snapsync.testids.testEventId
@@ -117,7 +120,7 @@ class InstallReferrerIntegrationTest {
     private suspend fun Given.referrerOf(event: String): String {
         val invite = inviteFor(event)
         val key = (InviteLinkText.parse(invite) as InviteLinkVerdict.Invite).link.key
-        val payload = InviteLinkText.format(InviteLink(testEventId(event), null)).substringAfter('#')
+        val payload = InviteLinkText.format(InviteLink(testEventId(event), null)).raw.substringAfter('#')
         return key?.let { "$payload&k=${EventKeyText.encode(it)}" } ?: payload
     }
 

@@ -1,3 +1,5 @@
+@file:OptIn(MintsShownInvite::class)
+
 package app.snapsync.ui
 
 import app.snapsync.ui.resources.Res
@@ -56,12 +58,14 @@ import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.MintsShownInvite
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.PendingSwitch
 import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.ServiceNotice
 import app.snapsync.ui.state.ShareCount
+import app.snapsync.ui.state.ShownInvite
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.TimeLeft
 import app.snapsync.ui.state.UiState
@@ -269,7 +273,7 @@ class ScreenWordsTest {
     fun `the report names the surface with the join phase where there is one and the screen-local surfaces`() {
         val joined = Layer.Joined(
             membership = membership,
-            inviteUrl = "https://x/join#k",
+            inviteUrl = ShownInvite("https://x/join#k"),
             health = SyncHealth.InSync,
             today = LocalDate(2026, 7, 6),
         )

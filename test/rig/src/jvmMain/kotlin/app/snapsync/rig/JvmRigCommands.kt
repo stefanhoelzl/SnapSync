@@ -4,6 +4,7 @@ import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.format.InviteLinkText
 import app.snapsync.mock.MockedSystem
@@ -63,6 +64,8 @@ internal fun jvmRefusals(
  * its library is the mock's, its upload-job queue the mock's own operator plays, and it composes no launch-time adapters
  * and runs no contract in-process.
  */
+// The rig hands the operator the invite whole: another rig joins with it.
+@OptIn(RendersInvite::class)
 internal fun jvmHostServices(rig: JvmRig, hooks: RigHooks): List<HostService<*>> = listOf(
     rig.world.screenService(rig.lane, ui = null, shown = { rig.mocks.screen.shown.value }),
     hostService(
@@ -85,7 +88,7 @@ internal fun jvmHostServices(rig: JvmRig, hooks: RigHooks): List<HostService<*>>
         // This world recorded every key the app drew and the event each keyed create made, so the invite carries it.
         invite = honoured { event ->
             val id = EventId.parse(event) ?: throw IllegalArgumentException("'$event' is not an event id")
-            InviteLinkText.format(InviteLink(id, rig.mocks.eventKeys.eventKeyOf(event)))
+            InviteLinkText.format(InviteLink(id, rig.mocks.eventKeys.eventKeyOf(event))).raw
         },
         disk = refusing(
             "the JVM host's files are the mocked disk's, which a test reads through the app's own outcomes",

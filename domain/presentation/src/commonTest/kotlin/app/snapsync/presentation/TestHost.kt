@@ -7,6 +7,7 @@ import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.InviteText
 import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.domain.service.ServiceFault
@@ -90,7 +91,7 @@ internal fun testKeys(
 
 /** No invite to share. */
 private object NoInvite : InviteRead {
-    override fun invite(): String? = null
+    override fun invite(): InviteText? = null
 }
 
 /** The build's constants as a test states them: the distributed build's, unless the test is about them. */

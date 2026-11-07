@@ -1,3 +1,5 @@
+@file:OptIn(ShowsInvite::class)
+
 package app.snapsync.integration
 
 import app.snapsync.control.Choices
@@ -12,6 +14,7 @@ import app.snapsync.ui.state.JoinPhase
 import app.snapsync.ui.state.JoinStage
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ShowsInvite
 import app.snapsync.ui.state.SwitchTo
 import app.snapsync.ui.state.UiIntent
 import kotlinx.serialization.json.Json
@@ -116,7 +119,7 @@ class InviteLinkIntegrationTest {
         given {
             createdEvent()
             step("joined", act = { confirmJoin() }, until = {
-                joined = screen<Layer.Joined> { it.inviteUrl?.contains("#k=") == true }
+                joined = screen<Layer.Joined> { it.inviteUrl?.raw?.contains("#k=") == true }
                 settled { true }
             })
         }
@@ -125,7 +128,7 @@ class InviteLinkIntegrationTest {
         whenever { tap(UiIntent.SendDiagnostics("photos stopped arriving", "Joined")) }
         then { received = event<WorldEvent.DumpReceived>() }
 
-        val key = joined.value.inviteUrl!!.substringAfter("#k=")
+        val key = joined.value.inviteUrl!!.raw.substringAfter("#k=")
         val dump = received.value.dump
         val carried = listOf(dump.note, dump.appLog, dump.extensionLog) + dump.state.values + dump.ledger.values
         assertEquals(emptyList(), carried.filter { key in it }, "the key appears nowhere in the report")
@@ -386,7 +389,7 @@ class InviteLinkIntegrationTest {
         }
 
         whenever { tap(UiIntent.ShareInvite) }
-        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl } }
+        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl?.raw } }
     }
 
     @Test
@@ -454,7 +457,7 @@ class InviteLinkIntegrationTest {
         }
 
         whenever { tap(UiIntent.ShareInvite) }
-        then { event<WorldEvent.Shared> { it.title == "Anna's 40th" && it.text == joined.value.inviteUrl } }
+        then { event<WorldEvent.Shared> { it.title == "Anna's 40th" && it.text == joined.value.inviteUrl?.raw } }
     }
 
     @Test
@@ -471,7 +474,7 @@ class InviteLinkIntegrationTest {
         then { joined = screen<Layer.Joined> { it.inviteUrl != null && !it.deleted } }
 
         whenever { tap(UiIntent.ShareInvite) }
-        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl } }
+        then { event<WorldEvent.Shared> { it.text == joined.value.inviteUrl?.raw } }
     }
 
     @Test

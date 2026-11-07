@@ -1,3 +1,5 @@
+@file:OptIn(MintsShownInvite::class)
+
 package app.snapsync.ui.state
 
 import kotlinx.datetime.LocalDate
@@ -74,7 +76,7 @@ class UiStateFieldContractTest {
             Overlays(
                 confirmingLeave = true,
                 renaming = true,
-                shownQr = "https://snapsync.stho.net/join#v=3&d=x",
+                shownQr = ShownInvite("https://snapsync.stho.net/join#v=3&d=x"),
                 reportingBug = true,
                 reportSeed = ScreenMessage.DEVICE_UNVERIFIABLE,
                 menuOpen = true,
@@ -155,7 +157,7 @@ class UiStateFieldContractTest {
             Layer.Joined.serializer(),
             Layer.Joined(
                 membership = membership,
-                inviteUrl = "https://snapsync.app/e/1",
+                inviteUrl = ShownInvite("https://snapsync.app/e/1"),
                 health = SyncHealth.InSync,
                 today = at.date,
                 pendingSwitch = PendingSwitch("other", JoinPhase.Loading),

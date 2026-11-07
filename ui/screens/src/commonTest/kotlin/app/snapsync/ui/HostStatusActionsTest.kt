@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalTestApi::class)
+@file:OptIn(RendersInvite::class, ShowsInvite::class, ExperimentalTestApi::class)
 
 package app.snapsync.ui
 
@@ -33,6 +33,7 @@ import app.snapsync.domain.event.EventRange
 import app.snapsync.domain.event.EventRangeVerdict
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.request.OwnPage
@@ -96,6 +97,7 @@ import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ReportNotice
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ShowsInvite
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.cancel
@@ -137,7 +139,7 @@ private val OTHER_EVENT = JoinDetails.Found(
     completed = false,
 )
 
-private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(testEventId(eventId), null))
+private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(testEventId(eventId), null)).raw
 
 /**
  * The status screen's ONE tap → intent table, [statusActions], clicked through the real screen over a real
@@ -206,7 +208,7 @@ class HostStatusActionsTest {
             awaitState(rig) { it.joined != null }
             val invite = rig.state.joined!!.inviteUrl
             onNodeWithText(str(Res.string.share_invite)).performClick()
-            awaitFired(rig, "share:$invite")
+            awaitFired(rig, "share:${invite?.raw}")
         }
 
     @Test
@@ -270,12 +272,12 @@ class HostStatusActionsTest {
         var drawn: List<Boolean> = emptyList()
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined?.inviteUrl != null }
-            invite = checkNotNull(rig.state.joined?.inviteUrl)
+            invite = checkNotNull(rig.state.joined?.inviteUrl).raw
             onNodeWithText(str(Res.string.share_invite)).performClick()
             awaitFired(rig, "share:$invite")
             onNodeWithText(str(Res.string.show_qr)).performClick()
             awaitState(rig) { it.overlays.shownQr != null }
-            assertEquals(invite, rig.state.overlays.shownQr)
+            assertEquals(invite, rig.state.overlays.shownQr?.raw)
             drawn = qrModules(caption)
         }
         val same = agreement(drawn, qrModulesOf(invite, caption))

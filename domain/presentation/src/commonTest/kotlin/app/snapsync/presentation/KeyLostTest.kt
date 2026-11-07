@@ -10,6 +10,7 @@ import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.event.MintsIdentifiedKey
+import app.snapsync.domain.invite.InviteText
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
@@ -170,7 +171,7 @@ class KeyLostTest {
                 eventKey = testKeys(
                     presence = presence,
                     invite = object : InviteRead {
-                        override fun invite(): String? = (presence.value as? KeyPresence.Held)?.let {
+                        override fun invite(): InviteText? = (presence.value as? KeyPresence.Held)?.let {
                             inviteText(testEventId(EVENT), it.key.key)
                         }
                     },
@@ -188,7 +189,7 @@ class KeyLostTest {
         driving(host) {
             val joined = { host.screen.value.layer as Layer.Joined }
             assertEquals(
-                inviteText(testEventId(EVENT), LINK_KEY),
+                shownInvite(testEventId(EVENT), LINK_KEY),
                 joined().inviteUrl,
                 "the whole invite",
             )
@@ -198,7 +199,7 @@ class KeyLostTest {
             runCurrent()
             assertNull(joined().inviteUrl, "an encrypted event's invite is never offered without its key")
             assertEquals(
-                inviteText(testEventId(EVENT), LINK_KEY),
+                shownInvite(testEventId(EVENT), LINK_KEY),
                 host.screen.value.overlays.shownQr,
                 "a shown QR, captured whole, stays",
             )

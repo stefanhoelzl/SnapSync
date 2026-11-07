@@ -1,4 +1,4 @@
-@file:OptIn(CompositionOnly::class)
+@file:OptIn(CompositionOnly::class, RendersInvite::class)
 
 package app.snapsync.android.link
 
@@ -8,6 +8,7 @@ import app.snapsync.android.storage.context
 import app.snapsync.contracts.inboundOf
 import app.snapsync.control.Verifies
 import app.snapsync.domain.invite.InviteLink
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.format.InviteLinkText
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.ports.LinkDelivery
@@ -26,7 +27,8 @@ import kotlin.test.assertTrue
  * reachable before the listing is public; the seam leaves only that library's own behaviour untested.
  */
 class AndroidInstallReferrerTest {
-    private val invite = InviteLinkText.format(InviteLink(testEventId("11111111-1111-4111-8111-111111111111"), null))
+    private val invite =
+        InviteLinkText.format(InviteLink(testEventId("11111111-1111-4111-8111-111111111111"), null)).raw
     private val delivered = mutableListOf<LinkDelivery>()
     private val links = AndroidLinks(
         Logger.withTag("test"),

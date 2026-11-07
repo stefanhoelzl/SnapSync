@@ -1,3 +1,5 @@
+@file:OptIn(RendersInvite::class)
+
 package app.snapsync.format
 
 import app.snapsync.domain.event.EventId
@@ -5,6 +7,7 @@ import app.snapsync.domain.event.EventKey
 import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.RendersInvite
 import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,7 +45,7 @@ class InviteLinkTextTest {
 
     @Test
     fun `a plain event's invite is the fragment form every build reads, and reads back`() {
-        val text = InviteLinkText.format(plain)
+        val text = InviteLinkText.format(plain).raw
         assertTrue(text.startsWith("$LINK_ORIGIN/join#v=3&d="), text)
         assertEquals(plain, invite(text))
         assertEquals(plain, invite("  $text\n"))
@@ -95,7 +98,7 @@ class InviteLinkTextTest {
 
     @Test
     fun `an encrypted event's invite is the path form carrying its key, and reads back`() {
-        val text = InviteLinkText.format(keyed)
+        val text = InviteLinkText.format(keyed).raw
         assertEquals("$LINK_ORIGIN/join/$id#k=$keyText", text)
         assertEquals(keyed, invite(text))
     }
@@ -141,10 +144,10 @@ class InviteLinkTextTest {
 
     @Test
     fun `an install referrer carrying an invite opens it, an encrypted one with its key`() {
-        assertEquals(plain, InviteLinkText.fromInstallReferrer(fragmentOf(InviteLinkText.format(plain))))
+        assertEquals(plain, InviteLinkText.fromInstallReferrer(fragmentOf(InviteLinkText.format(plain).raw)))
         assertEquals(
             keyed,
-            InviteLinkText.fromInstallReferrer("${fragmentOf(InviteLinkText.format(plain))}&k=$keyText"),
+            InviteLinkText.fromInstallReferrer("${fragmentOf(InviteLinkText.format(plain).raw)}&k=$keyText"),
         )
     }
 
@@ -161,8 +164,8 @@ class InviteLinkTextTest {
             "garbage",
             "v=2&d=${absent("""{"eventId":"$id"}""")}",
             "v=3&d=not-base64!",
-            fragmentOf(InviteLinkText.format(plain)).replace("&", "%26"),
-            "${fragmentOf(InviteLinkText.format(plain))}&k=${keyText.dropLast(3)}",
+            fragmentOf(InviteLinkText.format(plain).raw).replace("&", "%26"),
+            "${fragmentOf(InviteLinkText.format(plain).raw)}&k=${keyText.dropLast(3)}",
         )) {
             assertNull(InviteLinkText.fromInstallReferrer(referrer), referrer)
         }

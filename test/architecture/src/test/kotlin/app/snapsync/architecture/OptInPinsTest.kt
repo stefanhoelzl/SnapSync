@@ -101,6 +101,7 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/TapEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(2, "the create's and the bug report's runs: the event minted, the dump collected and sent"),
+            "RendersInvite" to Pin(1, "the share tap hands the invite whole to the platform's share sheet"),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/UploadEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
@@ -120,6 +121,16 @@ class OptInPinsTest {
         "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to mapOf(
             "KeyMaterial" to Pin(1, "a key's text: its bytes, spelled"),
             "MakesEventKey" to Pin(1, "a key's text, read back as the key"),
+        ),
+        "/domain/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to mapOf(
+            "MintsInviteText" to Pin(1, "the one form that spells an invite, its key included"),
+        ),
+        "/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/JoinedLayer.kt" to mapOf(
+            "RendersInvite" to Pin(1, "the joined screen's invite, read once to become what the screen shows"),
+            "MintsShownInvite" to Pin(1, "the one reduction that makes the invite the screen shows"),
+        ),
+        "/ui/screens/src/commonMain/kotlin/app/snapsync/ui/StatusScreen.kt" to mapOf(
+            "ShowsInvite" to Pin(1, "the QR sheet draws the invite whole"),
         ),
         "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyIds.kt" to mapOf(
             "KeyMaterial" to Pin(1, "a key's id is derived from its bytes"),

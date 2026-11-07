@@ -1,8 +1,11 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.MemberCounts
+import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.report.DiagnosticKeys
+import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
@@ -13,10 +16,12 @@ import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.JoinedSurface
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.MintsShownInvite
 import app.snapsync.ui.state.PendingSwitch
 import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.SharingNote
+import app.snapsync.ui.state.ShownInvite
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
@@ -41,14 +46,14 @@ internal fun joinedLayer(
     transient: ScreenMessage?,
     choices: Choices,
     display: Display,
-    invite: String?,
+    invite: InviteText?,
 ): Reduced {
     val range = settingsRange(joined, reconfiguring, choices.form, display)
     val layer = Layer.Joined(
         membership = display.event(joined),
         // Derived once, in the query (`EventKeyQuery.invite`), and read HERE only (decision record `event-invite-qr`, D3's
         // surviving half): one derivation feeds both the rendered QR and the share action, so they cannot drift.
-        inviteUrl = invite,
+        inviteUrl = invite?.let(::shown),
         health = health,
         today = facts.today,
         pendingSwitch = pendingSwitch,
@@ -68,8 +73,12 @@ internal fun joinedLayer(
         notice = transient,
         surface = if (range != null) surfaceOf(range, permission, choices, reconfiguring) else JoinedSurface.Status,
     )
-    return Reduced(layer, range)
+    return Reduced(layer, range, invite?.let { ShareRequest(it, layer.membership.name) })
 }
+
+/** The invite as the screen shows it: the same text, the screen's own secret type. */
+@OptIn(RendersInvite::class, MintsShownInvite::class)
+private fun shown(invite: InviteText): ShownInvite = ShownInvite(invite.raw)
 
 /**
  * The settings surface's range, resolved against the MEMBERSHIP's own window while it is open, else `null`. A deleted

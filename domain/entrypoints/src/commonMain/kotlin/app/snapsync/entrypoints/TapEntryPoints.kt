@@ -4,6 +4,7 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.application.event.CreateEvent
 import app.snapsync.application.report.SendBugReport
 import app.snapsync.domain.event.CreateResult
+import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.domain.request.CreateRequest
@@ -48,8 +49,10 @@ class OnCreateTapped(
 /** The member shared the invite: the platform's share sheet. */
 class OnShareTapped(runtime: Runtime, private val surfaces: SystemSurfaces) :
     BackgroundEntryPoint<ShareRequest>(runtime) {
+    // The one place the invite's text leaves the core: into the platform's share sheet, which shows it to the member.
+    @OptIn(RendersInvite::class)
     override suspend fun run(arg: ShareRequest, on: Run) = on.steps {
-        required { surfaces.share(arg.text, arg.title) }
+        required { surfaces.share(arg.text.raw, arg.title) }
     }
 }
 

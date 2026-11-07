@@ -69,6 +69,7 @@ import app.snapsync.ui.state.RenameState
 import app.snapsync.ui.state.ReportNotice
 import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.ScreenMessage
+import app.snapsync.ui.state.ShowsInvite
 import app.snapsync.ui.state.UiState
 import app.snapsync.ui.state.offersMenu
 import org.jetbrains.compose.resources.stringResource
@@ -265,6 +266,8 @@ private fun statusChrome(state: UiState): StatusChrome {
  * over whatever the dispatcher rendered rather than inside it. Keeping them together also keeps
  * [StatusScreen] readable as what it is, a dispatcher: state in, one surface out.
  */
+// The QR code is the one place the screen reads the invite's text: it draws it.
+@OptIn(ShowsInvite::class)
 @Composable
 private fun StatusOverlays(state: UiState, actions: StatusActions) {
     val joined = state.layer as? Layer.Joined
@@ -289,7 +292,7 @@ private fun StatusOverlays(state: UiState, actions: StatusActions) {
     if (joined != null && qrInvite != null) {
         AppQrSheet(
             title = stringResource(Res.string.qr_sheet_title, joined.membership.name),
-            content = qrInvite,
+            content = qrInvite.raw,
             caption = stringResource(Res.string.invite_caption),
             onDismiss = actions.joined.onQrDismiss,
         )

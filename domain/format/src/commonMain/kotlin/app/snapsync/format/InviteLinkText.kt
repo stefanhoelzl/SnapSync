@@ -3,6 +3,8 @@ package app.snapsync.format
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.invite.InviteText
+import app.snapsync.domain.invite.MintsInviteText
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -45,7 +47,10 @@ object InviteLinkText {
     private val decoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT_OPTIONAL)
 
     /** [link] as the app shares it: an encrypted event's in the path form with its key, a plain one's in the fragment form. */
-    fun format(link: InviteLink): String = when (val key = link.key) {
+    @OptIn(MintsInviteText::class)
+    fun format(link: InviteLink): InviteText = InviteText(text(link))
+
+    private fun text(link: InviteLink): String = when (val key = link.key) {
         null -> {
             val payload = buildJsonObject { put(EVENT_ID, link.event.toString()) }.toString()
             "${FRAGMENT_PREFIX}v=$VERSION&d=${encoder.encode(payload.encodeToByteArray())}"

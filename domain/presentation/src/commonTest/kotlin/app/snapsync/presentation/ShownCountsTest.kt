@@ -1,3 +1,5 @@
+@file:OptIn(MintsShownInvite::class)
+
 package app.snapsync.presentation
 
 import app.snapsync.domain.event.DeletesAt
@@ -8,6 +10,8 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
+import app.snapsync.ui.state.MintsShownInvite
+import app.snapsync.ui.state.ShownInvite
 import app.snapsync.ui.state.SyncCounts
 import app.snapsync.ui.state.SyncHealth
 import app.snapsync.ui.state.UiState
@@ -52,7 +56,7 @@ class ShownCountsTest {
                 endsAt = EventEnd(timestamp("2099-12-31T00:00:00Z")),
                 deletesAt = DeletesAt(timestamp("2099-12-31T00:00:00Z")),
             ).shown(),
-            inviteUrl = "https://snapsync.stho.net/e/x",
+            inviteUrl = ShownInvite("https://snapsync.stho.net/e/x"),
             health = SyncHealth.InSync,
             today = LocalDate(2026, 7, 9),
             counts = counts,
