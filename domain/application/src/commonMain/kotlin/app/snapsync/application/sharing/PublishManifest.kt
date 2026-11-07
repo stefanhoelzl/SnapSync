@@ -130,7 +130,7 @@ class PublishManifest(
     }
 
     private suspend fun notPublished(why: String, detail: Any?): PublishOutcome =
-        PublishOutcome.NotPublished.also { log.w("$why — no manifest this pass", "detail" of detail) }
+        PublishOutcome.NotPublished.also { log.w("no manifest this pass", "why" of why, "detail" of detail) }
 
     /** One publish: its run and policy, and what it declares with the range standing at [phase]. */
     private class Attempt(

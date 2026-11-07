@@ -2,7 +2,6 @@
 
 package app.snapsync.inbound
 
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlin.test.AfterTest
@@ -37,7 +36,7 @@ class LogTest {
         }
         val line = lines.single()
         assertEquals("OnHeartbeat+OnSilentPush", line.trigger)
-        assertEquals(Severity.Info, line.severity)
+        assertEquals(LogLevel.INFO, line.level)
         assertEquals("Tag", line.tag)
         assertEquals("tail ran", line.event)
         assertEquals(listOf("units" to 3), line.fields.map { it.name to it.value })
@@ -50,7 +49,7 @@ class LogTest {
         log.e("failed", "id" of "e1", cause = cause)
         log.w("warned without a cause")
         log.e("failed without a cause")
-        assertEquals(listOf(Severity.Warn, Severity.Error, Severity.Warn, Severity.Error), lines.map { it.severity })
+        assertEquals(listOf(LogLevel.WARN, LogLevel.ERROR, LogLevel.WARN, LogLevel.ERROR), lines.map { it.level })
         assertNull(lines[0].trigger)
         assertSame(cause, lines[1].cause)
     }
@@ -61,9 +60,11 @@ class LogTest {
         log.unlabelled.i("one", "a" of 1)
         log.unlabelled.w("two", cause = cause)
         log.unlabelled.e("three", cause = cause)
-        assertEquals(listOf("one", "two", "three"), lines.map { it.event })
-        assertEquals(listOf(Severity.Info, Severity.Warn, Severity.Error), lines.map { it.severity })
-        assertEquals(listOf(null, null, null), lines.map { it.trigger })
+        log.unlabelled.e("four")
+        assertEquals(listOf("one", "two", "three", "four"), lines.map { it.event })
+        assertEquals(listOf(LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.ERROR), lines.map { it.level })
+        assertEquals(listOf(null, null, null, null), lines.map { it.trigger })
+        assertEquals(null, lines.last().cause)
     }
 
     @Test
@@ -72,5 +73,12 @@ class LogTest {
     @Test
     fun `a trigger names each entry point once`() {
         assertEquals("A+B", (Trigger.of("A") + Trigger.of("B") + Trigger.of("A")).toString())
+    }
+
+    @Test
+    fun `a line's text is its event, then each field as name=value`() {
+        val line =
+            LogLine(LogLevel.INFO, "Tag", null, "top-up planned", listOf("needing" of 5, "admitted" of null), null)
+        assertEquals("top-up planned needing=5 admitted=null", line.text())
     }
 }

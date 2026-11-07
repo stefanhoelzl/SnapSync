@@ -25,6 +25,10 @@ kotlin {
             implementation(project(":adapter:generic:motionphoto"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
+            // The device log's file names.
+            implementation(project(":domain:format"))
+            // The stamp the device-log file sink starts each line with, shared with the iOS one.
+            implementation(project(":adapter:generic:app"))
             // The screen's vocabulary the Ui port is bound to here (`Ui<UiState, UiIntent>`); never presentation.
             implementation(project(":ui:state"))
             implementation(project(":ui:screens"))

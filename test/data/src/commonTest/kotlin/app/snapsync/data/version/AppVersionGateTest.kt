@@ -4,9 +4,9 @@ import app.snapsync.domain.trust.BackendAnswer
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.LogLine
 import app.snapsync.inbound.LogWriter
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -36,7 +36,7 @@ class AppVersionGateTest {
     @AfterTest
     fun stop() = Log.install(emptyList())
 
-    private fun errors() = lines.count { it.tag == "AppVersionGate" && it.severity >= Severity.Error }
+    private fun errors() = lines.count { it.tag == "AppVersionGate" && it.level >= LogLevel.ERROR }
 
     @Test
     fun a_fresh_gate_is_not_refused() {
@@ -92,7 +92,7 @@ class AppVersionGateTest {
         gate.observe(BackendAnswer.TooOld("0.4"))
         gate.observe(BackendAnswer.Served)
         gate.observe(BackendAnswer.Served)
-        assertEquals(1, lines.count { it.severity == Severity.Info })
+        assertEquals(1, lines.count { it.level == LogLevel.INFO })
     }
 
     @Test

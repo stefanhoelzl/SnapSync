@@ -1,9 +1,14 @@
 package app.snapsync.compose
 
+import app.snapsync.data.logs.SinkLines
 import app.snapsync.domain.report.BuildLabel
+import app.snapsync.domain.report.ProcessName
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.entrypoints.OnMetricReport
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.ProcessLogging
+import app.snapsync.inbound.of
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashHandlers
@@ -19,11 +24,6 @@ import app.snapsync.scheduling.Runtime
 import app.snapsync.services.crash.CrashReporting
 import app.snapsync.services.crash.FootprintTrail
 import app.snapsync.services.crash.ProcessAccount
-import app.snapsync.services.logs.ProcessLogWriters
-import app.snapsync.services.logs.SinkLines
-import app.snapsync.services.logs.SinkLogWriter
-import app.snapsync.services.logs.bootBanner
-import co.touchlab.kermit.Logger
 
 /**
  * The ports every process has exactly one of, whatever it composes afterwards (`docs/architecture.md`, "One
@@ -38,9 +38,9 @@ class ProcessPorts(
     /**
      * Where this process's log lines are written — the device-log file and the platform's log on iOS.
      *
-     * **A process that supplies sinks owns Kermit's global writer list**, and [snapSyncProcess] installs its writers
-     * there. A process that supplies none leaves it alone: a JVM hosts many "processes" in one VM, where that list is
-     * VM-global, and a composition there must not take it over.
+     * **A process that supplies sinks owns the logging globals**, and [snapSyncProcess] installs its writers
+     * there. A process that supplies none leaves them alone: a JVM hosts many "processes" in one VM, where they
+     * are VM-global, and a composition there must not take them over.
      */
     val logSinks: List<LogSink>,
     /** This process's files, by area. One instance: every file-backed service is built over it. */
@@ -88,17 +88,9 @@ class ProcessServices internal constructor(
     val crypto: Crypto,
     /** The process's one per-thread log label. */
     val threadLabel: ThreadLabel,
-    /**
-     * The process's Kermit writers: every line to the [ProcessPorts.logSinks], and — where the build reports — into the
-     * crash channel. Installed by [snapSyncProcess] where the process owns the global logger ([ProcessLogWriters]).
-     */
-    private val logging: ProcessLogWriters,
     /** What the running build is — see [ProcessPorts.build]. */
     val build: BuildInfo,
 ) {
-    /** A logger over THIS process's writers, for the composition's own lines — see [ProcessLogWriters.logger]. */
-    fun logger(tag: String): Logger = logging.logger(tag)
-
     /** Where a bug report goes on this build — [CrashReporting.reportDestination]. */
     val reportDestination: ReportDestination get() = crash.reportDestination
 
@@ -114,11 +106,16 @@ class ProcessServices internal constructor(
  * composition, which cannot then be built in a process whose crash reporting has not started.
  *
  * In order, each for a reason:
- * 1. The log writers, where this process owns the global logger — so nothing below logs into the void — and the
- *    boot banner, so it is the process's first line.
+ * 1. The log's writers, where this process owns the logging globals (`docs/architecture.md`, "One shared
+ *    composition"): **a process that supplies log sinks owns them** — [Log]'s writers and Kermit's, whose one writer is
+ *    the [KermitBridge] onto [Log]'s — so nothing below logs into the void. A process that supplies none leaves them
+ *    alone: a JVM hosts many "processes" in one VM, where both are VM-global, and a composition there must not take
+ *    them over.
  * 2. Crash reporting starts, as the process's first act that can fail: it must be live before any other wiring can
  *    fail, and it reads only this build's own configuration, so it is safe on a locked background launch.
- * 3. The process metrics are listened to — only now, because listening is a commitment: a provider may hand a held
+ * 3. The boot banner — the process and its build, then the backend it talks to — so it is the process's first line
+ *    and, the channel running, the first breadcrumb of anything it reports.
+ * 4. The process metrics are listened to — only now, because listening is a commitment: a provider may hand a held
  *    report over exactly once, so the handler must already be live (it is: [ProcessAccount] over the started
  *    channel, whose log writer is already installed).
  */
@@ -126,20 +123,41 @@ class ProcessServices internal constructor(
 fun snapSyncProcess(ports: ProcessPorts, runtime: Runtime): ProcessServices {
     val crash = CrashReporting(ports.crashReporter, ports.build, ports.threadLabel, ports.files)
     ports.crashReporter.listen(CrashHandlers(onEvent = crash::shapeEvent, onBreadcrumb = crash::shapeCrumb))
-    val logging = ProcessLogWriters(
-        listOfNotNull(SinkLogWriter(ports.logSinks, ports.threadLabel), crash.logWriter),
+    ProcessLogging(
         listOfNotNull(SinkLines(ports.logSinks, ports.threadLabel), crash.lines),
-        ports.logSinks,
-    )
-    logging.install()
+        ports.logSinks.size,
+    ).install()
+    crash.start()
+    bootBanner(ports.build)
     val footprints = FootprintTrail(ports.files, ports.clock)
     val services = ProcessServices(
-        crash, ProcessAccount(crash, footprints), footprints, ports.files, ports.clock, ports.crypto,
-        ports.threadLabel, logging, ports.build,
+        crash,
+        ProcessAccount(crash, footprints),
+        footprints,
+        ports.files,
+        ports.clock,
+        ports.crypto,
+        ports.threadLabel,
+        ports.build,
     )
-    val boot = services.logger("process")
-    ports.build.bootBanner().forEach { line -> boot.i { line } }
-    crash.start()
     ports.processMetrics.inbound(MetricHandlers(onReport = OnMetricReport(runtime, services.processAccount)))
     return services
 }
+
+/**
+ * The process's first lines: the process and its build, so a reader who concatenates the app's and the extension's
+ * logs can tell runs apart — a process with no id of its own (a test executable) by its platform; then the backend this
+ * build talks to, the one fact that makes an otherwise-silent failure legible (a build pointed at another backend
+ * without a device reset uploads nothing, its ledger saying everything is done).
+ */
+private fun bootBanner(build: BuildInfo) {
+    val boot = Log("process").unlabelled
+    boot.i(
+        "=== process start ===",
+        "process" of ProcessName.of(build.processId, build.platform.tag),
+        "build" of build.label(),
+    )
+    boot.i("upload base", "host" of build.uploadHost)
+}
+
+private fun BuildInfo.label(): String = "$appVersion($buildNumber)"

@@ -9,11 +9,11 @@ import app.snapsync.domain.album.ImportAlbumVerdict
 import app.snapsync.domain.receiving.TransferFacts
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.wake.StagedImports
+import app.snapsync.inbound.LogLevel
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.LibraryAssets
 import app.snapsync.ports.ImportOutcome
 import app.snapsync.ports.PlatformAssetId
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -86,7 +86,7 @@ class ImportingTest {
 
         val lines = linesOf("ImportNextStaged") { assertEquals(1, drained()) }
 
-        assertTrue(lines.any { it.severity == Severity.Error }, "a photo that never arrives is an error")
+        assertTrue(lines.any { it.level == LogLevel.ERROR }, "a photo that never arrives is an error")
         assertEquals(StagedImports.NONE, r.counts.stagedImports())
     }
 

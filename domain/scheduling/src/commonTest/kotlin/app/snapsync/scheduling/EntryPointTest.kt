@@ -2,8 +2,8 @@
 
 package app.snapsync.scheduling
 
+import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.Trigger
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -72,7 +72,7 @@ class EntryPointTest {
         runCurrent()
         assertEquals(1, completion.answers)
         val line = world.log.lines.single { it.event == "run failed" }
-        assertEquals(Severity.Error, line.severity)
+        assertEquals(LogLevel.ERROR, line.level)
     }
 
     @Test
@@ -179,7 +179,7 @@ class EntryPointTest {
             ),
             world.entries.seen(),
         )
-        assertEquals(Severity.Warn, world.log.lines.last().severity, "a failed delivery's done is a warning")
+        assertEquals(LogLevel.WARN, world.log.lines.last().level, "a failed delivery's done is a warning")
     }
 
     @Test
@@ -194,7 +194,7 @@ class EntryPointTest {
             }
             assertEquals("OnAsk:4", OnAsk(fail = false).answer(2))
             assertEquals("FAILED", OnAsk(fail = true).answer(2))
-            assertEquals(Severity.Error, world.log.lines.single { it.event == "delivery failed" }.severity)
+            assertEquals(LogLevel.ERROR, world.log.lines.single { it.event == "delivery failed" }.level)
             assertEquals(
                 listOf(
                     "delivered OnAsk",

@@ -8,6 +8,7 @@ import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.receiving.StagedPath
+import app.snapsync.format.DeviceLogText
 import app.snapsync.levers.DeviceLevers
 import app.snapsync.levers.FilesLevers
 import app.snapsync.levers.KeychainItem
@@ -21,8 +22,6 @@ import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.LibraryAssets
-import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.EXTENSION_LOG_FILE_NAME
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.FileArea
@@ -40,8 +39,8 @@ import app.snapsync.services.crash.FootprintTrail
  */
 internal class DeviceFiles(private val disk: FileSystemMock) : FilesLevers {
     override suspend fun appendLog(process: LogProcess, text: String) = when (process) {
-        LogProcess.APP -> disk.append(FileArea.PRIVATE, APP_LOG_FILE_NAME, text)
-        LogProcess.EXTENSION -> disk.append(FileArea.SHARED, EXTENSION_LOG_FILE_NAME, text)
+        LogProcess.APP -> disk.append(FileArea.PRIVATE, DeviceLogText.APP_LOG, text)
+        LogProcess.EXTENSION -> disk.append(FileArea.SHARED, DeviceLogText.EXTENSION_LOG, text)
     }
 
     override suspend fun stagedFiles(): Int = disk.stagedFiles()
@@ -166,5 +165,5 @@ internal fun FileSystemMock.stagedFiles(): Int = paths(
 ).count { it.startsWith("${StagedPath.ROOT}/") }
 
 private val DIAGNOSTICS: Set<String> =
-    listOf(APP_LOG_FILE_NAME, EXTENSION_LOG_FILE_NAME).flatMap { listOf(it, "$it.1") }.toSet() +
+    listOf(DeviceLogText.APP_LOG, DeviceLogText.EXTENSION_LOG).flatMap { listOf(it, "$it.1") }.toSet() +
         FootprintTrail.PATH + SAVED_DIAGNOSTIC_REPORT_PATH

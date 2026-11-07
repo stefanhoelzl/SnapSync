@@ -29,8 +29,13 @@ class RecordWalk(private val walk: WalkRecord, private val recent: RecentWalk) {
     }
 
     private suspend fun logged(what: String, count: Int, written: StoreWrite) = when (written) {
-        StoreWrite.Written -> log.i("walk rows $what", "rows" of count)
-        is StoreWrite.Failed -> log.w("walk rows not $what", "rows" of count, "detail" of written.detail)
+        StoreWrite.Written -> log.i("walk rows written", "what" of what, "rows" of count)
+        is StoreWrite.Failed -> log.w(
+            "walk rows not written",
+            "what" of what,
+            "rows" of count,
+            "detail" of written.detail,
+        )
     }
 }
 

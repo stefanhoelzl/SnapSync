@@ -112,6 +112,7 @@ edge :adapter:ios:ext-safe :domain:compose
 edge :adapter:ios:ext-safe :domain:data
 edge :adapter:ios:ext-safe :domain:domain
 edge :adapter:ios:ext-safe :domain:feature
+edge :adapter:ios:ext-safe :domain:format
 edge :adapter:ios:ext-safe :domain:inbound
 edge :adapter:ios:ext-safe :domain:model
 edge :adapter:ios:ext-safe :domain:ports

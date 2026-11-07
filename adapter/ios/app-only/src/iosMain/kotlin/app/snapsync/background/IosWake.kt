@@ -4,7 +4,9 @@ package app.snapsync.background
 
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
+import app.snapsync.inbound.of
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
 import app.snapsync.objc.objcBoundary
@@ -85,7 +87,11 @@ class IosWake internal constructor(
 
     /** Never silent: an unregistered task is a heartbeat the OS can never run, and nothing else would say so. */
     private fun registered(identifier: String, accepted: Boolean) {
-        if (!accepted) log.e { "BGTask $identifier was not registered — is it in Info.plist?" }
+        if (!accepted) {
+            Log(
+                log.tag,
+            ).unlabelled.e("a background task was not registered — is it in Info.plist?", "identifier" of identifier)
+        }
     }
 
     override suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult =
@@ -124,7 +130,10 @@ class IosWake internal constructor(
                 null
             }
             registered == null -> {
-                log.e { "background task '$identifier' launched before the composition registered — completed at once" }
+                Log(log.tag).unlabelled.e(
+                    "a background task launched before the composition registered — completed at once",
+                    "identifier" of identifier,
+                )
                 completion.complete()
                 null
             }

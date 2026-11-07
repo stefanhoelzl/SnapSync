@@ -1,8 +1,8 @@
 package app.snapsync.android.logging
 
 import android.util.Log
+import app.snapsync.inbound.LogLevel
 import app.snapsync.ports.LogSink
-import co.touchlab.kermit.Severity
 
 /**
  * The platform log: every line into logcat under one tag, at its own priority, so
@@ -10,20 +10,20 @@ import co.touchlab.kermit.Severity
  * connection; the process's own log file, the one a bug report carries, is [FileLogSink]'s.
  */
 class LogcatSink : LogSink {
-    override fun write(severity: Severity, tag: String, line: String) {
-        Log.println(priorityOf(severity), TAG, line)
+    override fun write(level: LogLevel, tag: String, line: String) {
+        Log.println(priorityOf(level), TAG, line)
     }
 
     private companion object {
         const val TAG = "SnapSync"
 
-        fun priorityOf(severity: Severity): Int = when (severity) {
-            Severity.Verbose -> Log.VERBOSE
-            Severity.Debug -> Log.DEBUG
-            Severity.Info -> Log.INFO
-            Severity.Warn -> Log.WARN
-            Severity.Error -> Log.ERROR
-            Severity.Assert -> Log.ASSERT
+        fun priorityOf(level: LogLevel): Int = when (level) {
+            LogLevel.VERBOSE -> Log.VERBOSE
+            LogLevel.DEBUG -> Log.DEBUG
+            LogLevel.INFO -> Log.INFO
+            LogLevel.WARN -> Log.WARN
+            LogLevel.ERROR -> Log.ERROR
+            LogLevel.ASSERT -> Log.ASSERT
         }
     }
 }

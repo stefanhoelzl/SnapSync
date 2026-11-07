@@ -14,6 +14,7 @@ import app.snapsync.domain.event.KeyToKeep
 import app.snapsync.domain.membership.Membership
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.LogLine
 import app.snapsync.inbound.LogWriter
 import app.snapsync.mock.DatabasesMock
@@ -24,7 +25,6 @@ import app.snapsync.ports.SecureStoreRead
 import app.snapsync.testids.testAssetId
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -61,7 +61,7 @@ class DownloadOpeningTest {
     @AfterTest
     fun stop() = Log.install(emptyList())
 
-    private fun logged(severity: Severity) = lines.count { it.tag == "DownloadOpening" && it.severity == severity }
+    private fun logged(level: LogLevel) = lines.count { it.tag == "DownloadOpening" && it.level == level }
 
     private val device = Device()
     private val crypto = fakeCrypto()
@@ -127,13 +127,13 @@ class DownloadOpeningTest {
         joined(Encryption.Encrypted(key.id))
         keys.keep(KeyToKeep.Key(key), testEventId(EVENT))
         repeat(6) { assertEquals(OpenAnswer.NotOpened, open(landed(), role = ResourceRole.LIVE)) }
-        assertEquals(1, logged(Severity.Error), "the fourth failure in a row, once")
+        assertEquals(1, logged(LogLevel.ERROR), "the fourth failure in a row, once")
         val why = lines.flatMap { it.fields }.filter { it.name == "why" }.map { it.value.toString() }
         assertTrue(
             why.isNotEmpty() && why.all { "authenticate" in it },
             "opened as another resource, it is damaged: $why",
         )
-        assertEquals(5, logged(Severity.Warn))
+        assertEquals(5, logged(LogLevel.WARN))
         assertEquals(OpenAnswer.Opened, open(landed()), "a file that opens ends the count")
     }
 
@@ -145,7 +145,7 @@ class DownloadOpeningTest {
         assertEquals(OpenAnswer.NotOpened, open(landed()), "no key kept")
         assertEquals(
             listOf(0, 2),
-            listOf(logged(Severity.Error), logged(Severity.Warn)),
+            listOf(logged(LogLevel.ERROR), logged(LogLevel.WARN)),
             "a lost key is warned, uncounted",
         )
         secure.answers[EncryptionSlots.EVENT_KEY] = SecureStoreRead.Unavailable("locked")

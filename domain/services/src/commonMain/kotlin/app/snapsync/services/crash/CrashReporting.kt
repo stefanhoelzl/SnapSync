@@ -1,7 +1,9 @@
 package app.snapsync.services.crash
 
 import app.snapsync.domain.report.ReportDestination
+import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.LogLine
+import app.snapsync.inbound.LogWriter
 import app.snapsync.model.CrashEvent
 import app.snapsync.model.CrashOptions
 import app.snapsync.model.Crumb
@@ -28,8 +30,6 @@ import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.ThreadLabel
-import app.snapsync.services.logs.message
-import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
 
 /**
@@ -43,8 +43,8 @@ import co.touchlab.kermit.Severity
  *   handed to the adapter as [CrashOptions], so the adapter reads nothing of the platform itself.
  * - **What leaves** is the pure rules in `model/Crash.kt`: [shapeEvent] and [shapeCrumb] are what the composition
  *   registers as the port's handlers.
- * - **What a log line becomes** is [loggedCrash], through [logWriter] — which the ROOT installs, because Kermit's
- *   writer list is a process global and only a root owns the process (a JVM world composes many in one).
+ * - **What a log line becomes** is [loggedCrash], through [lines] — which the process composition installs: the
+ *   log's writer list is a process global, owned only by a process that supplies sinks (a JVM world composes many).
  */
 class CrashReporting(
     private val reporter: CrashReporter,
@@ -71,10 +71,7 @@ class CrashReporting(
      * The logging seam into the channel, or `null` for a build that reports nowhere — so such a build never constructs
      * one. Every line becomes a breadcrumb, and an `Error`/`Assert` line an event too.
      */
-    val logWriter: LogWriter? = if (dsn != null) CrashLogWriter(reporter, label) else null
-
-    /** The same, for the structured log's lines. */
-    val lines: app.snapsync.inbound.LogWriter? = if (dsn != null) CrashLines(reporter, label) else null
+    val lines: LogWriter? = if (dsn != null) CrashLines(reporter, label) else null
 
     /**
      * Start the channel — the process's first act. Idempotent, and a complete no-op without a destination. Reads
@@ -151,18 +148,20 @@ class CrashReporting(
     }
 }
 
-/** The logging seam onto the channel: [loggedCrash] decides what each line becomes. */
-internal class CrashLogWriter(private val reporter: CrashReporter, private val label: ThreadLabel) : LogWriter() {
-    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) =
-        reporter.report(loggedCrash(severity, message, tag, throwable, label.current()))
-}
-
-/** The seam for a structured line: the same rule, its trigger — or the thread's — as the line's entry point. */
-internal class CrashLines(private val reporter: CrashReporter, private val label: ThreadLabel) :
-    app.snapsync.inbound.LogWriter {
+/** The seam for a line: [loggedCrash] decides what it becomes, its trigger — or the thread's — as its entry point. */
+internal class CrashLines(private val reporter: CrashReporter, private val label: ThreadLabel) : LogWriter {
     override fun write(line: LogLine) = reporter.report(
-        loggedCrash(line.severity, line.message(), line.tag, line.cause, line.trigger ?: label.current()),
+        loggedCrash(line.level.severity(), line.text(), line.tag, line.cause, line.trigger ?: label.current()),
     )
+
+    private fun LogLevel.severity(): Severity = when (this) {
+        LogLevel.VERBOSE -> Severity.Verbose
+        LogLevel.DEBUG -> Severity.Debug
+        LogLevel.INFO -> Severity.Info
+        LogLevel.WARN -> Severity.Warn
+        LogLevel.ERROR -> Severity.Error
+        LogLevel.ASSERT -> Severity.Assert
+    }
 }
 
 private fun CrashReporter.report(logged: LoggedCrash) {

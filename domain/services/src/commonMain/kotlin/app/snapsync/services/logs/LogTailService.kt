@@ -1,7 +1,6 @@
 package app.snapsync.services.logs
 
-import app.snapsync.model.APP_LOG_FILE_NAME
-import app.snapsync.model.EXTENSION_LOG_FILE_NAME
+import app.snapsync.format.DeviceLogText
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
@@ -31,8 +30,8 @@ class LogTailService(private val files: Files) {
     suspend fun tail(process: Process, maxBytes: Int): String? {
         if (maxBytes <= 0) return null
         val (area, name) = when (process) {
-            Process.APP -> FileArea.PRIVATE to APP_LOG_FILE_NAME
-            Process.EXTENSION -> FileArea.SHARED to EXTENSION_LOG_FILE_NAME
+            Process.APP -> FileArea.PRIVATE to DeviceLogText.APP_LOG
+            Process.EXTENSION -> FileArea.SHARED to DeviceLogText.EXTENSION_LOG
         }
         val read = files.readTail(area, name, maxBytes)
         if (read !is FileResult.Ok) return null

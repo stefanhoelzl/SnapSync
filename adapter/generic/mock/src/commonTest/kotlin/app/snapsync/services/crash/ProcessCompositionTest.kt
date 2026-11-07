@@ -95,6 +95,44 @@ class ProcessCompositionTest {
 
     @OptIn(CompositionOnly::class)
     @Test
+    fun a_process_s_first_lines_name_it_its_build_and_the_backend_it_talks_to() {
+        val written = mutableListOf<String>()
+        val sink = object : LogSink {
+            override fun write(level: app.snapsync.inbound.LogLevel, tag: String, line: String) {
+                written += line
+            }
+        }
+        val build = BuildInfoMock(
+            dsn = null,
+            declaredVersion = app.snapsync.mock.DeclaredVersion("1.4"),
+            buildNumber = "2512",
+            processId = null,
+        )
+        try {
+            snapSyncProcess(
+                ports(inMemoryCrashReporter(), NoProcessMetrics, null).copyWith(listOf(sink), build),
+                runtime(),
+            )
+            assertEquals(
+                listOf(
+                    "[Info/process] === process start === process=ios build=1.4(2512)",
+                    "[Info/process] upload base host=${build.port().uploadHost}",
+                ),
+                written.take(2),
+                "a process with no id of its own is named by its platform",
+            )
+        } finally {
+            Log.install(emptyList())
+            Logger.setLogWriters(platformLogWriter())
+        }
+    }
+
+    private fun ProcessPorts.copyWith(sinks: List<LogSink>, build: BuildInfoMock) = ProcessPorts(
+        crashReporter, processMetrics, sinks, files, clock, crypto, threadLabel, entryEvents, build.port(),
+    )
+
+    @OptIn(CompositionOnly::class)
+    @Test
     fun the_upload_extension_s_process_reports_an_error_it_logs() {
         // The extension composes the same process wiring as the app: an Error line it writes is a report, under its own
         // process. It owns the logging globals (it supplies sinks), so they are handed back afterwards.
@@ -102,7 +140,7 @@ class ProcessCompositionTest {
         val extension = ProcessPorts(
             crashReporter = inMemoryCrashReporter(started, dumps, events),
             processMetrics = NoProcessMetrics,
-            logSinks = listOf(LogSink { _, _, _ -> }),
+            logSinks = listOf(Discarding),
             files = inMemoryFiles(private = privateFiles),
             clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(0)),
             crypto = fakeCrypto(),
@@ -132,7 +170,7 @@ class ProcessCompositionTest {
         assertTrue(started.value, "reporting starts as the process's first act")
         assertTrue(process.crash.isConfigured)
         assertEquals(ReportDestination.DEVELOPER, process.crash.reportDestination, "a report is sent where it reports")
-        assertNotNull(process.crash.logWriter, "the log is routed into the crash channel")
+        assertNotNull(process.crash.lines, "the log is routed into the crash channel")
     }
 
     @Test
@@ -142,7 +180,7 @@ class ProcessCompositionTest {
         assertFalse(process.crash.isConfigured)
         assertEquals(ReportDestination.THIS_DEVICE, process.crash.reportDestination, "a report is kept on the phone")
         assertNull(
-            process.crash.logWriter,
+            process.crash.lines,
             "only the sinks' writer: a build that reports nowhere never constructs the crash one",
         )
     }
@@ -229,10 +267,12 @@ class ProcessCompositionTest {
                 BuildInfoMock(dsn = "https://key@ingest/1").port(),
                 ThreadLabelMock().apply { swap("process") },
                 inMemoryFiles(),
-            ).logWriter,
+            ).lines,
         )
-        writer.log(co.touchlab.kermit.Severity.Info, "enumerated 3", "gallery", null)
-        writer.log(co.touchlab.kermit.Severity.Error, "reconcile($id) failed", "engine", null)
+        writer.write(LogLine(app.snapsync.inbound.LogLevel.INFO, "gallery", null, "enumerated 3", emptyList(), null))
+        writer.write(
+            LogLine(app.snapsync.inbound.LogLevel.ERROR, "engine", null, "reconcile($id) failed", emptyList(), null),
+        )
         assertEquals(
             listOf("[process] enumerated 3", "[process] reconcile(‹uuid›) failed"),
             reporter.crumbs.map { it.message },
@@ -240,6 +280,25 @@ class ProcessCompositionTest {
         val event = reporter.events.single()
         assertEquals("reconcile(‹uuid›) failed", event.message)
         assertEquals("process", event.tags["entry_point"])
+    }
+
+    @Test
+    fun every_level_is_a_breadcrumb_and_only_an_error_or_an_assert_an_event() {
+        val reporter = Recording()
+        val lines = assertNotNull(
+            CrashReporting(
+                reporter,
+                BuildInfoMock(dsn = "https://key@ingest/1").port(),
+                ThreadLabelMock(),
+                inMemoryFiles(),
+            )
+                .lines,
+        )
+        app.snapsync.inbound.LogLevel.entries.forEach { level ->
+            lines.write(LogLine(level, "engine", null, level.name, emptyList(), null))
+        }
+        assertEquals(6, reporter.crumbs.size, "every line rides the next event")
+        assertEquals(listOf("ERROR", "ASSERT"), reporter.events.map { it.message })
     }
 
     @Test
@@ -254,9 +313,9 @@ class ProcessCompositionTest {
             ).lines,
         )
         lines.write(
-            LogLine(co.touchlab.kermit.Severity.Error, "engine", "OnSilentPush", "run failed", emptyList(), null),
+            LogLine(app.snapsync.inbound.LogLevel.ERROR, "engine", "OnSilentPush", "run failed", emptyList(), null),
         )
-        lines.write(LogLine(co.touchlab.kermit.Severity.Error, "engine", null, "run failed", emptyList(), null))
+        lines.write(LogLine(app.snapsync.inbound.LogLevel.ERROR, "engine", null, "run failed", emptyList(), null))
         assertEquals(listOf("OnSilentPush", "OnForeground"), reporter.events.map { it.tags["entry_point"] })
     }
 
@@ -371,14 +430,14 @@ class ProcessCompositionTest {
         assertFalse(started.value)
         crash.describeProcess(ProcessMetricReport(emptyMap()))
         assertTrue(started.value, "an account that outran the composition must not reach an unstarted channel")
-        assertNotNull(crash.logWriter)
+        assertNotNull(crash.lines)
         assertNull(
             CrashReporting(
                 inMemoryCrashReporter(),
                 BuildInfoMock().port(),
                 ThreadLabelMock(),
                 inMemoryFiles(),
-            ).logWriter,
+            ).lines,
         )
     }
 
@@ -448,4 +507,9 @@ class ProcessCompositionTest {
         assertNull(reporter.options, "no destination, no channel")
         assertTrue(reporter.contexts.isEmpty(), "and no context set on it: ${reporter.contexts}")
     }
+}
+
+/** A sink that keeps nothing: what makes a process own the logging globals, where nothing reads its lines. */
+private object Discarding : LogSink {
+    override fun write(level: app.snapsync.inbound.LogLevel, tag: String, line: String) = Unit
 }

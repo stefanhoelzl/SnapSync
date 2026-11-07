@@ -3,6 +3,8 @@
 package app.snapsync.download
 
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ios.upload.applyTransferNetwork
 import app.snapsync.ios.urlsession.DrainCount
 import app.snapsync.ios.urlsession.SessionCompletion
@@ -138,7 +140,9 @@ class IosDownload internal constructor(
     fun handleEvents(completion: () -> Unit) {
         val registered = handlers.load()
         if (registered == null) {
-            log.e { "download session events arrived before the composition registered — released at once" }
+            Log(
+                log.tag,
+            ).unlabelled.e("download session events arrived before the composition registered — released at once")
             SessionCompletion(completion, api).complete()
         } else {
             registered.onBackgroundEvents.handle(SessionRelaunch(drains.now), SessionCompletion(completion, api))
@@ -151,7 +155,10 @@ class IosDownload internal constructor(
         val tag = task.tag ?: return
         update { it + tag }
         handlers.load()?.onFinished?.deliver(FinishedDownload(tag, facts, temp))
-            ?: log.e { "download $tag finished before the composition listened — its bytes are downloaded again later" }
+            ?: Log(log.tag).unlabelled.e(
+                "a download finished before the composition listened — its bytes are downloaded again later",
+                "tag" of tag,
+            )
     }
 
     private fun onComplete(task: DownloadTask, error: NSError?) {

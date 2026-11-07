@@ -1,9 +1,8 @@
 package app.snapsync.logging
 
-import app.snapsync.model.utcLogStamp
+import app.snapsync.inbound.LogLevel
 import app.snapsync.objc.checkedObjC
 import app.snapsync.ports.LogSink
-import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
@@ -35,7 +34,7 @@ import kotlin.time.Clock
  * is what D1's "parameter-free" was about; it needs a path, and the composition roots choose it.
  *
  * Each line arrives formatted (`model/logLineBody`, entry-point prefix included); this sink puts the stamp
- * ([utcLogStamp]) in front and writes it as a single atomic
+ * ([LogStamp.of]) in front and writes it as a single atomic
  * `O_APPEND` `write()` (D2 read-side, D7) so concurrent-thread writes never tear a line. The file is
  * bounded by rolling to a `.1` sibling past [maxBytes] (D7).
  *
@@ -43,7 +42,7 @@ import kotlin.time.Clock
  * foreground and ~5.0 ms in a background (darwinbg) wake, and a wake logs 27 (median) to 1,620 lines: every
  * line paid a `stat` (the roll check), a `fileExists`, an `open`, the `write` and a `close`, plus an `NSDate`
  * and its `description` for the stamp. Now the descriptor is opened once (and after each roll), the file's
- * size is tracked in memory from ONE `fstat` at open, and the stamp is arithmetic ([utcLogStamp]) — the
+ * size is tracked in memory from ONE `fstat` at open, and the stamp is arithmetic ([LogStamp.of]) — the
  * bytes written are identical, and so is the roll: the size is checked against [maxBytes] before each
  * line, exactly as the per-line `stat` did.
  *
@@ -77,10 +76,10 @@ class FileLogSink internal constructor(
     private var inode: ULong = 0u
     private var lastCheckMs: Long = 0
 
-    override fun write(severity: Severity, tag: String, line: String) {
+    override fun write(level: LogLevel, tag: String, line: String) {
         val p = path ?: return
         val now = clock.now().toEpochMilliseconds()
-        val bytes = "${utcLogStamp(now)} $line\n".encodeToByteArray()
+        val bytes = "${LogStamp.of(now)} $line\n".encodeToByteArray()
         lock.lock()
         try {
             appendLocked(p, bytes, now)

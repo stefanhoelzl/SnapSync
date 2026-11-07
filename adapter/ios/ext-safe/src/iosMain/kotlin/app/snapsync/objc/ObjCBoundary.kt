@@ -3,6 +3,8 @@
 package app.snapsync.objc
 
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CPointer
@@ -50,7 +52,11 @@ inline fun <R> objcBoundary(log: Logger, name: String, fallback: R, block: () ->
     } catch (fatal: InvalidProgramState) {
         endProcess(fatal)
     } catch (t: Throwable) {
-        log.e(t) { "$name: a throw reached the Objective-C boundary — contained, returning the fallback" }
+        Log(log.tag).unlabelled.e(
+            "a throw reached the Objective-C boundary — contained, returning the fallback",
+            "at" of name,
+            cause = t,
+        )
         fallback
     }
 

@@ -1,13 +1,12 @@
 package app.snapsync.logging
 
-import app.snapsync.model.logLineBody
-import app.snapsync.model.utcLogStamp
+import app.snapsync.format.DeviceLogText
+import app.snapsync.inbound.LogLevel
 import app.snapsync.testsupport.fileExists
 import app.snapsync.testsupport.readTextFile
 import app.snapsync.testsupport.removeDirectory
 import app.snapsync.testsupport.withTempDirectory
 import app.snapsync.testsupport.writeTextFile
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -43,7 +42,7 @@ class FileLogSinkTest {
     fun `a line carries its severity and tag and message`() {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
-            log(path).log(Severity.Info, "enumerated 3 resources", "gallery", null)
+            log(path).log(LogLevel.INFO, "enumerated 3 resources", "gallery", null)
 
             val text = readTextFile(path).orEmpty()
             assertTrue("[Info/gallery] enumerated 3 resources" in text, "unexpected line: $text")
@@ -55,8 +54,8 @@ class FileLogSinkTest {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
             val writer = log(path)
-            writer.log(Severity.Info, "first", "tag", null)
-            writer.log(Severity.Info, "second", "tag", null)
+            writer.log(LogLevel.INFO, "first", "tag", null)
+            writer.log(LogLevel.INFO, "second", "tag", null)
 
             val lines = readTextFile(path).orEmpty().trimEnd('\n').split('\n')
             assertEquals(2, lines.size, "two writes must be two lines")
@@ -73,7 +72,7 @@ class FileLogSinkTest {
     fun `the stamp carries milliseconds ahead of the zone`() {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
-            log(path).log(Severity.Info, "x", "t", null)
+            log(path).log(LogLevel.INFO, "x", "t", null)
 
             val line = readTextFile(path).orEmpty()
             val stamp = Regex("""^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \+\d{4} """)
@@ -90,7 +89,7 @@ class FileLogSinkTest {
             // Many writes: a run that never observed a sub-100ms millisecond would prove nothing, so
             // this leans on volume rather than on controlling the clock, which the writer does not
             // take as a parameter.
-            repeat(200) { writer.log(Severity.Info, "x", "t", null) }
+            repeat(200) { writer.log(LogLevel.INFO, "x", "t", null) }
 
             readTextFile(path).orEmpty().trimEnd('\n').split('\n').forEach { line ->
                 val millis = line.substringAfter('.').substringBefore(' ')
@@ -105,7 +104,7 @@ class FileLogSinkTest {
             val path = "$dir/debug.log"
             val replaced = IosThreadLabel.swap("OnSilentPush")
             try {
-                log(path).log(Severity.Warn, "reconcile failed", "download", null)
+                log(path).log(LogLevel.WARN, "reconcile failed", "download", null)
             } finally {
                 IosThreadLabel.swap(replaced)
             }
@@ -122,7 +121,7 @@ class FileLogSinkTest {
     fun `a throwable rides on the line it belongs to`() {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
-            log(path).log(Severity.Error, "upload failed", "engine", IllegalStateException("boom"))
+            log(path).log(LogLevel.ERROR, "upload failed", "engine", IllegalStateException("boom"))
 
             val text = readTextFile(path).orEmpty()
             assertTrue("upload failed | " in text, "the throwable must follow its own message: $text")
@@ -142,9 +141,9 @@ class FileLogSinkTest {
             val path = "$dir/debug.log"
             val writer = log(path, maxBytes = 64)
 
-            writer.log(Severity.Info, "one", "t", null)
-            writer.log(Severity.Info, "two", "t", null) // now past 64 bytes
-            writer.log(Severity.Info, "three", "t", null) // this one rolls first
+            writer.log(LogLevel.INFO, "one", "t", null)
+            writer.log(LogLevel.INFO, "two", "t", null) // now past 64 bytes
+            writer.log(LogLevel.INFO, "three", "t", null) // this one rolls first
 
             val rolled = readTextFile("$path.1").orEmpty()
             val current = readTextFile(path).orEmpty()
@@ -165,7 +164,7 @@ class FileLogSinkTest {
             val writer = log(path, maxBytes = 64)
 
             listOf("one", "two", "three", "four", "five").forEach {
-                writer.log(Severity.Info, it, "t", null)
+                writer.log(LogLevel.INFO, it, "t", null)
             }
 
             val rolled = readTextFile("$path.1").orEmpty()
@@ -179,8 +178,8 @@ class FileLogSinkTest {
         withTempDirectory { dir ->
             val path = "$dir/debug.log"
             val writer = log(path, maxBytes = 10L * 1024 * 1024)
-            writer.log(Severity.Info, "one", "t", null)
-            writer.log(Severity.Info, "two", "t", null)
+            writer.log(LogLevel.INFO, "one", "t", null)
+            writer.log(LogLevel.INFO, "two", "t", null)
 
             assertFalse(fileExists("$path.1"), "rolling early throws away the evidence a dump is for")
             val text = readTextFile(path).orEmpty()
@@ -189,7 +188,7 @@ class FileLogSinkTest {
     }
 
     /**
-     * The stamp's identity with Foundation — the one check [utcLogStamp]'s platform-free test cannot make.
+     * The stamp's identity with Foundation — the one check [LogStamp.of]'s platform-free test cannot make.
      *
      * The writer used to build the stamp from `NSDate.description` (`yyyy-MM-dd HH:mm:ss +0000`, UTC) with
      * the milliseconds spliced in ahead of the zone. It is now arithmetic, which is cheaper per line and
@@ -207,7 +206,7 @@ class FileLogSinkTest {
             val zone = desc.lastIndexOf(' ')
             val ms = (millis % 1000).toString().padStart(3, '0')
             val expected = desc.substring(0, zone) + "." + ms + desc.substring(zone)
-            assertEquals(expected, utcLogStamp(millis), "epochMillis=$millis")
+            assertEquals(expected, LogStamp.of(millis), "epochMillis=$millis")
         }
     }
 
@@ -223,7 +222,7 @@ class FileLogSinkTest {
             val path = "$dir/debug.log"
             writeTextFile(path, "x".repeat(100) + "\n")
 
-            log(path, maxBytes = 64).log(Severity.Info, "fresh", "t", null)
+            log(path, maxBytes = 64).log(LogLevel.INFO, "fresh", "t", null)
 
             assertTrue("x".repeat(100) in readTextFile("$path.1").orEmpty(), "the old content is the rolled sibling")
             val current = readTextFile(path).orEmpty()
@@ -238,7 +237,7 @@ class FileLogSinkTest {
             val path = "$dir/debug.log"
             writeTextFile(path, "earlier run\n")
 
-            log(path).log(Severity.Info, "this run", "t", null)
+            log(path).log(LogLevel.INFO, "this run", "t", null)
 
             val text = readTextFile(path).orEmpty()
             assertTrue(text.startsWith("earlier run\n") && "this run" in text, "unexpected log: $text")
@@ -258,11 +257,11 @@ class FileLogSinkTest {
                 override fun now() = kotlin.time.Instant.fromEpochMilliseconds(now)
             }
             val writer = FileLogSink(path, 10L * 1024 * 1024, clock)
-            writer.log(Severity.Info, "before", "t", null)
+            writer.log(LogLevel.INFO, "before", "t", null)
             removeDirectory(path) // removes a plain file just the same
 
             now += 1_000
-            writer.log(Severity.Info, "after", "t", null)
+            writer.log(LogLevel.INFO, "after", "t", null)
 
             val text = readTextFile(path).orEmpty()
             assertTrue("after" in text, "the line after the removal must reach a file someone can read: $text")
@@ -279,7 +278,7 @@ class FileLogSinkTest {
             runBlocking {
                 (0 until 4).map { n ->
                     launch(Dispatchers.Default) {
-                        repeat(100) { writer.log(Severity.Info, "worker-$n line-$it end", "t", null) }
+                        repeat(100) { writer.log(LogLevel.INFO, "worker-$n line-$it end", "t", null) }
                     }
                 }.joinAll()
             }
@@ -300,7 +299,7 @@ class FileLogSinkTest {
      */
     @Test
     fun `a writer with no path writes nothing and raises nothing`() {
-        log(path = null).log(Severity.Error, "message", "tag", IllegalStateException("boom"))
+        log(path = null).log(LogLevel.ERROR, "message", "tag", IllegalStateException("boom"))
     }
 
     @Test
@@ -309,13 +308,16 @@ class FileLogSinkTest {
             val path = "$dir/nested-name.log"
             assertNull(readTextFile(path))
 
-            log(path).log(Severity.Info, "first line", "t", null)
+            log(path).log(LogLevel.INFO, "first line", "t", null)
 
             assertTrue(fileExists(path), "the first line of a fresh install must not be lost")
         }
     }
 }
 
-/** One line as the process's log writer hands it to the sink: formatted by `model/logLineBody`, no entry claimed. */
-internal fun FileLogSink.log(severity: Severity, message: String, tag: String, throwable: Throwable?) =
-    write(severity, tag, logLineBody(IosThreadLabel.current(), severity.name, tag, message, throwable))
+/** One line as the process's log writer hands it to the sink: its body (`DeviceLogText.body`), no trigger claimed. */
+internal fun FileLogSink.log(level: LogLevel, message: String, tag: String, throwable: Throwable?) =
+    write(level, tag, DeviceLogText.body(IosThreadLabel.current(), level.word(), tag, message, throwable))
+
+/** A level as the device log writes it: `Info`, `Warn`, `Error`. */
+private fun LogLevel.word(): String = name.lowercase().replaceFirstChar { it.uppercase() }

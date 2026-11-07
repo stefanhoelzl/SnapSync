@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
+import app.snapsync.inbound.LogLevel
 import app.snapsync.ports.LogSink
-import co.touchlab.kermit.Severity
 import kotlin.test.assertTrue
 
 /** Where a sink's lines go, as far as a clause can read them. */
@@ -28,8 +28,8 @@ object LogSinkContract : Contract<LogSinkState, WrittenLog>("LogSink") {
         ) { log ->
             val first = "event 0b5c2e1a-0000-4000-8000-000000000001 joined"
             val second = "the second line, after the first"
-            log.sink.write(Severity.Info, "contract", first)
-            log.sink.write(Severity.Warn, "contract", second)
+            log.sink.write(LogLevel.INFO, "contract", first)
+            log.sink.write(LogLevel.WARN, "contract", second)
             val written = log.read()
             assertTrue(first in written, "a line is written whole, ids intact: $written")
             assertTrue(written.indexOf(second) > written.indexOf(first), "in the order it was handed")
