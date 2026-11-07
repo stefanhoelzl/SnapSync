@@ -8,6 +8,7 @@ import app.snapsync.levers.Footprint
 import app.snapsync.levers.MetricReportKind
 import app.snapsync.levers.ReceivedEvent
 import app.snapsync.levers.WorldEvent
+import app.snapsync.rig.HostReporting
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -67,6 +68,20 @@ class ProcessMetricReportIntegrationTest {
         whenever { processMetrics.deliver(MetricReportKind.QUIET) }
         then { never<WorldEvent.EventReceived>() }
     }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "Automatic failure reports are minimal and anonymous",
+        scenario = "A development build",
+    )
+    fun a_build_that_reports_nowhere_reports_a_run_the_system_ended_to_no_one() =
+        behaviour(reporting = HostReporting.NOWHERE) {
+            given { encryptedEventInBackground() }
+
+            whenever { processMetrics.deliver(MetricReportKind.ENDED_ABNORMALLY) }
+            then { never<WorldEvent.EventReceived>() }
+        }
 
     /**
      * Joined to an encrypted event, then sent to the background with a known footprint, which the app records as it

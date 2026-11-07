@@ -83,6 +83,9 @@ class JvmRigHost private constructor(
          * [serving] is where the world's event streams start: from the host's first event, which `behaviour { … }` reads
          * whole, or — as a device host serves them — from where the latest act began, for a caller that waits the way it
          * waits on a device (`RigClient.awaitScreen`).
+         *
+         * [reporting] is which build the host plays: a distributed one, reporting to the reporter mock, or one that reports
+         * nowhere — every dev, sideload and simulator build.
          */
         suspend fun start(
             backend: String = "mock",
@@ -90,7 +93,8 @@ class JvmRigHost private constructor(
             time: LoopTime = LoopTime.REAL,
             startAt: Instant? = null,
             serving: WorldEvents.Serving = WorldEvents.Serving.FROM_THE_START,
-        ): JvmRigHost = start(RigBackend.named(backend), port, time, startAt, serving)
+            reporting: HostReporting = HostReporting.TO_THE_OPERATOR,
+        ): JvmRigHost = start(RigBackend.named(backend), port, time, startAt, serving, reporting)
 
         internal suspend fun start(
             backend: RigBackend,
@@ -98,11 +102,12 @@ class JvmRigHost private constructor(
             time: LoopTime,
             startAt: Instant?,
             serving: WorldEvents.Serving = WorldEvents.Serving.FROM_THE_START,
+            reporting: HostReporting = HostReporting.TO_THE_OPERATOR,
         ): JvmRigHost {
             val threads = HostThreads.open(time, startAt, backend, serving)
             val scope = CoroutineScope(SupervisorJob() + threads.composition)
             val rig = threads.loop.outside("composing the app") {
-                withContext(threads.composition) { compose(scope, backend, threads) }
+                withContext(threads.composition) { compose(scope, backend, threads, reporting) }
             }
             val bound = CompletableDeferred<Int>()
             val server = RigServer(
@@ -134,7 +139,12 @@ class JvmRigHost private constructor(
         private class BindFailed(port: Int, cause: Throwable) :
             IllegalStateException("the JVM rig host failed to bind loopback:$port — see the `[rig]` log line", cause)
 
-        private fun compose(scope: CoroutineScope, backend: RigBackend, threads: HostThreads): JvmRig {
+        private fun compose(
+            scope: CoroutineScope,
+            backend: RigBackend,
+            threads: HostThreads,
+            reporting: HostReporting,
+        ): JvmRig {
             val mocks = threads.mocks
             val version = DeclaredVersion(SERVED_VERSION)
             val store = StorePage(Store(APP_STORE, APP_STORE_URL))
@@ -142,7 +152,10 @@ class JvmRigHost private constructor(
             val build = BuildInfoMock(
                 uploadHost = backend.base,
                 declaredVersion = version,
-                dsn = DSN,
+                dsn = when (reporting) {
+                    HostReporting.TO_THE_OPERATOR -> DSN
+                    HostReporting.NOWHERE -> null
+                },
                 store = store,
                 pushEnvironment = "sandbox",
             )
@@ -301,4 +314,13 @@ internal class JvmExtensionHost(private val rig: JvmRig) : ExtensionHostLevers {
     }
 
     override suspend fun terminate() = rig.mocks.extensionHost.terminate()
+}
+
+/** Which build a host plays, as far as reporting goes. */
+enum class HostReporting {
+    /** A distributed build: it carries a reporting destination, the reporter mock's. */
+    TO_THE_OPERATOR,
+
+    /** A dev, sideload or simulator build: no destination, so nothing starts and a bug report is kept on the device. */
+    NOWHERE,
 }

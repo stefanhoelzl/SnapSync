@@ -5,6 +5,7 @@ import app.snapsync.compose.ProcessPorts
 import app.snapsync.compose.snapSyncProcess
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.inbound.LogLine
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.EntryEventsMock
@@ -21,11 +22,14 @@ import app.snapsync.model.DumpResult
 import app.snapsync.model.NON_REDACTED_TAG
 import app.snapsync.model.ProcessMetricReport
 import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
+import app.snapsync.ports.LogSink
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.platformLogWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -45,6 +49,11 @@ import kotlin.test.assertTrue
 class ProcessCompositionTest {
 
     private val id = "550e8400-e29b-41d4-a716-446655440000"
+
+    private companion object {
+        /** The upload extension's bundle id: its process tag. */
+        const val EXTENSION_PROCESS = "app.snapsync.BackgroundUpload"
+    }
     private val started = MutableStateFlow(false)
     private val dumps = MutableStateFlow<List<CrashEvent>>(emptyList())
     private val privateFiles = mutableMapOf<String, ByteArray>()
@@ -83,6 +92,39 @@ class ProcessCompositionTest {
     )
 
     private fun dump() = DiagnosticDump("stuck on $id", mapOf("screen" to "Joined"), emptyMap(), "app\n", "ext\n")
+
+    @OptIn(CompositionOnly::class)
+    @Test
+    fun the_upload_extension_s_process_reports_an_error_it_logs() {
+        // The extension composes the same process wiring as the app: an Error line it writes is a report, under its own
+        // process. It owns the logging globals (it supplies sinks), so they are handed back afterwards.
+        val events = MutableStateFlow<List<CrashEvent>>(emptyList())
+        val extension = ProcessPorts(
+            crashReporter = inMemoryCrashReporter(started, dumps, events),
+            processMetrics = NoProcessMetrics,
+            logSinks = listOf(LogSink { _, _, _ -> }),
+            files = inMemoryFiles(private = privateFiles),
+            clock = fixedClock(kotlin.time.Instant.fromEpochSeconds(0)),
+            crypto = fakeCrypto(),
+            threadLabel = ThreadLabelMock(),
+            entryEvents = EntryEventsMock().port(),
+            build = BuildInfoMock(dsn = "https://key@ingest/1", processId = EXTENSION_PROCESS).port(),
+        )
+        try {
+            snapSyncProcess(extension, runtime())
+            Log("ExtensionPass").unlabelled.e("could not settle the presented jobs")
+
+            assertTrue(started.value, "the extension's process reports")
+            assertEquals(
+                listOf("could not settle the presented jobs"),
+                events.value.map { it.message },
+                "its Error line is one report",
+            )
+        } finally {
+            Log.install(emptyList())
+            Logger.setLogWriters(platformLogWriter())
+        }
+    }
 
     @Test
     fun a_build_that_reports_starts_the_channel_first_and_routes_the_log_into_it() {
