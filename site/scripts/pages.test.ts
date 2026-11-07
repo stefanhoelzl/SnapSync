@@ -174,6 +174,37 @@ Deno.test("every Google Play link opens in a tab of its own", () => {
   opensSeparately("https://play.google.com/");
 });
 
+/** Whether [href] leaves the site: an email address, or a web address on another host than the site's own. */
+function leavesSite(href: string): boolean {
+  if (href.startsWith("mailto:")) return true;
+  if (!/^https?:\/\//.test(href)) return false;
+  return new URL(href).host !== deployment.domain;
+}
+
+// @Verifies(spec = "web-site", requirement = "Links to other sites never replace the SnapSync page", scenario = "Following any other link off the site")
+// The page's part: every link that leaves the site — not only the kinds named today — asks for a tab of its own.
+Deno.test("every link off the site opens in a tab of its own", () => {
+  const seen: string[] = [];
+  for (const [path, html] of pages()) {
+    for (const a of links(html).filter((a) => leavesSite(a.get("href") ?? ""))) {
+      const href = a.get("href")!;
+      seen.push(href);
+      assertEquals(a.get("target"), "_blank", `${path}: ${href}`);
+      assert((a.get("rel") ?? "").includes("noopener"), `${path}: ${href}`);
+    }
+  }
+  for (const kind of [
+    "https://github.com/stefanhoelzl/SnapSync/issues",
+    "mailto:",
+    "https://www.apple.com/legal/",
+  ]) {
+    assert(
+      seen.some((href) => href.startsWith(kind)),
+      `no ${kind} link on any page: ${seen}`,
+    );
+  }
+});
+
 // @Verifies(spec = "privacy-security", requirement = "The web pages track no one", scenario = "A visitor loads the landing page")
 // The page's part: it runs no script and loads nothing from another site. The api sets no cookie (landing.test.ts).
 // @Verifies(spec = "web-site", requirement = "The landing page works without JavaScript and by keyboard", scenario = "JavaScript is off")
