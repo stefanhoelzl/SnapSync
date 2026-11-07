@@ -143,7 +143,8 @@ internal object AcceptedUnclaimed {
             "Automatic failure reports are minimal and anonymous",
             "The app freezes and the system closes it",
             PLATFORM,
-            "Google Play detects and reports a frozen app itself; the app sends nothing for it",
+            "Google Play detects a frozen app itself, and the reporting SDK reports it from the phone (its freeze " +
+                "detection is switched on in the Sentry adapter's options); no test of ours freezes an Android app",
         ),
 
         // ── PROCESS ───────────────────────────────────────────────────────────────────────────────────────────

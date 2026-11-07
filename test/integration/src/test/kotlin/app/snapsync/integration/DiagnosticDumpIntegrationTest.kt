@@ -10,10 +10,12 @@ import app.snapsync.levers.LogProcess
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
 import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
+import app.snapsync.rig.HostReporting
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.DirectionCount
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.ReportNotice
+import app.snapsync.ui.state.ReportTarget
 import app.snapsync.ui.state.UiIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -278,6 +280,69 @@ class DiagnosticDumpIntegrationTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A build that cannot report keeps the report on the phone",
+    )
+    fun a_build_that_reports_nowhere_keeps_the_report_and_says_so() = behaviour(reporting = HostReporting.NOWHERE) {
+        lateinit var opened: Seen<WorldEvent.UiChanged>
+        given {
+            joinedEvent()
+            step("the sheet opened", act = { tap(UiIntent.ReportBugOpen) }, until = {
+                opened = event<WorldEvent.UiChanged> { it.ui.overlays.reportingBug }
+            })
+        }
+        assertEquals(ReportTarget.THIS_DEVICE, opened.value.ui.reportDestination, "the sheet says where it goes")
+
+        whenever { sendDiagnostics(NOTE) }
+        then {
+            event<WorldEvent.UiChanged> { it.ui.overlays.reportNotice == ReportNotice.SAVED }
+            never<WorldEvent.DumpReceived>()
+            never<WorldEvent.EventReceived>()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "The report can be neither sent nor saved",
+    )
+    fun a_report_that_can_be_neither_sent_nor_saved_says_so() = behaviour(reporting = HostReporting.NOWHERE) {
+        // The phone refuses every file — an iPhone not unlocked since it restarted — so the report cannot be kept.
+        given {
+            joinedEvent()
+            step("its files refused", act = { device.lock() }, until = {})
+        }
+
+        whenever { sendDiagnostics(NOTE) }
+        then {
+            event<WorldEvent.UiChanged> { it.ui.overlays.reportNotice == ReportNotice.NOT_SENT }
+            never<WorldEvent.DumpReceived>()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A report holds nothing beyond the app and the device's state",
+    )
+    fun a_report_holds_only_the_app_s_and_the_device_s_state() = behaviour {
+        given { joinedEvent() }
+
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then { received = event<WorldEvent.DumpReceived>() }
+
+        val dump = received.value.dump
+        val unexpected = dump.state.keys - REPORTED_STATE
+        assertTrue(unexpected.isEmpty(), "the state holds only the app's and the device's facts, not: $unexpected")
+        assertEquals(REPORTED_LEDGER, dump.ledger.keys, "the ledger holds its five counts")
+    }
+
+    @Test
     @Verifies(spec = "app-experience", requirement = "The app menu is one tap away on every screen")
     fun the_screen_names_the_running_build() = behaviour {
         // The app menu's footer reads the build the composition was handed, not a guess.
@@ -291,5 +356,31 @@ class DiagnosticDumpIntegrationTest {
     private companion object {
         /** Longer than the app shows a report's word for. */
         val NOTICE_SHOWN = 5.seconds
+
+        /**
+         * Every fact a report's state may hold — this app's own state and the device's settings and conditions. A new
+         * key is tested against the requirement's bound before it joins this list: never a photo or what it shows,
+         * another app's data, a location beyond the time zone, a contact, the free storage or the device's name.
+         */
+        val REPORTED_STATE = setOf(
+            "screen", DiagnosticKeys.SHOWN_SHARED, DiagnosticKeys.SHOWN_RECEIVED,
+            "app_version", "build", "os", "device", "uploaders_carried", "extension_registrable", "app_admission",
+            "upload_base", "reporter_environment", "photo_permission",
+            "joined", "event_id", "event_name", "direction", "shares_from", "shares_until", "save_to_album",
+            DiagnosticKeys.NETWORK, DiagnosticKeys.MOBILE_DATA, DiagnosticKeys.POWER_SAVING,
+            DiagnosticKeys.BACKGROUND_REFRESH, DiagnosticKeys.STANDBY_BUCKET, DiagnosticKeys.BATTERY_OPTIMIZATION_EXEMPT,
+            DiagnosticKeys.BATTERY_PERCENT, DiagnosticKeys.BATTERY_CHARGING, DiagnosticKeys.THERMAL,
+            DiagnosticKeys.DEVICE_ID, DiagnosticKeys.TIME_ZONE, DiagnosticKeys.MEMORY_FOOTPRINT_MB,
+            DiagnosticKeys.SELECTION_PHOTOS,
+        )
+
+        /** The ledger's counts: photos, not rows, for what is shared; the download store's three for what arrives. */
+        val REPORTED_LEDGER = setOf(
+            "photos_pending",
+            "photos_completed",
+            "downloads_imported",
+            "downloads_assets",
+            "downloads_in_flight",
+        )
     }
 }

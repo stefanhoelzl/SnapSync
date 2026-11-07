@@ -33,6 +33,7 @@ import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.WakeLevers
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
+import app.snapsync.rig.HostReporting
 import app.snapsync.rig.JvmRigHost
 import app.snapsync.rig.time.LoopTime
 import app.snapsync.ui.state.UiState
@@ -50,15 +51,25 @@ import kotlin.time.Instant
 
 /**
  * **One behaviour of the app, as a test states it** (`docs/testing.md`, "How a test waits"): a fresh JVM host over mocks
- * on mocked time starting at [startAt], the world's events streamed from its start, and an ordered chain of [given]
+ * on mocked time starting at [startAt], playing the build [reporting] names, the world's events streamed from its start, and an ordered chain of [given]
  * steps and [whenever]/[then] pairs — each `then` judged against the events from its own act on.
  *
  * A test waits in exactly one way: on the event it cares about. There is no poll, no timeout to pass and no read of the
  * app's own state; a negative holds once the app has settled. The one bound is the guard: a behaviour that has not
  * finished in [GUARD] fails with why the app is not settled — a hung harness, never a slow app.
  */
-fun behaviour(backend: String = "mock", startAt: String = NOW, body: suspend Behaviour.() -> Unit): Unit = runBlocking {
-    val host = JvmRigHost.start(backend, time = LoopTime.MOCKED, startAt = Instant.parse(startAt))
+fun behaviour(
+    backend: String = "mock",
+    startAt: String = NOW,
+    reporting: HostReporting = HostReporting.TO_THE_OPERATOR,
+    body: suspend Behaviour.() -> Unit,
+): Unit = runBlocking {
+    val host = JvmRigHost.start(
+        backend,
+        time = LoopTime.MOCKED,
+        startAt = Instant.parse(startAt),
+        reporting = reporting,
+    )
     try {
         RigClient("http://127.0.0.1:${host.port}").use { client ->
             val world = client.levers(WorldLevers)

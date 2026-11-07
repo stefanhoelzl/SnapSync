@@ -216,6 +216,11 @@ class DiagnosticDumpGestureTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A build that cannot report keeps the report on the phone",
+    )
     fun `a build that reports nowhere says the report stays on this device and saves it`() = runComposeUiTest {
         // Every dev, sideload and simulator build: the sheet must not suggest a destination the build does not
         // have — it says where the report goes, and its button reads Save (capability `privacy-security`).
@@ -278,6 +283,11 @@ class DiagnosticDumpGestureTest {
     }
 
     @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "The hidden way still opens the sheet",
+    )
     fun `the affordance exists on the joined surface too`() = runComposeUiTest {
         // A stuck sync is exactly when a report is wanted, and the label is the one element every state
         // renders — that is why the gesture lives on it.
