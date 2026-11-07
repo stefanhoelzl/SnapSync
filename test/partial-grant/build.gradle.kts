@@ -23,5 +23,9 @@ kotlin {
             // The run's bindings call the platform's own test levers (the shell's grant).
             implementation(libs.androidx.test.runner)
         }
+        getByName("androidDeviceTest").dependencies {
+            // `@Verifies`: the scenario a selected-photos grant decides is claimed by the device test that shows it.
+            implementation(project(":test:verifies"))
+        }
     }
 }

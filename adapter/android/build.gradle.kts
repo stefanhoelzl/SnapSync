@@ -57,6 +57,8 @@ kotlin {
         getByName("androidDeviceTest").kotlin.srcDir("../../test/ui-tour/kotlin")
         getByName("androidDeviceTest").dependencies {
             implementation(project(":test:contracts"))
+            // `@Verifies`: a scenario this adapter decides is claimed by the device test that shows it.
+            implementation(project(":test:verifies"))
             // The `HttpTransport` contract binds `KtorHttpTransport` over this module's client (`androidHttpClient`).
             implementation(project(":adapter:generic:app"))
             // The storage services' contracts run through the services over these adapters.

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import app.snapsync.android.storage.context
 import app.snapsync.contracts.inboundOf
+import app.snapsync.control.Verifies
 import app.snapsync.domain.invite.InviteLink
 import app.snapsync.format.InviteLinkText
 import app.snapsync.inbound.CompositionOnly
@@ -53,7 +54,20 @@ class AndroidInstallReferrerTest {
     /** The referrers delivered, raw — whether one carries an invite is the core's. */
     private fun referrers() = delivered.map { (it as LinkDelivery.InstallReferrer).referrer }
 
+    // This reader's part: the referrer Play carried through the tester steps reaches the core; that it opens the join
+    // screen is the core's (`InstallReferrerIntegrationTest`).
     @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Without the app, the invite leads to a store and back",
+        scenario = "Becoming a tester from an invite's page opens the join screen",
+    )
+    // Play answers the same referrer at every start for 90 days: delivering it once is this reader's decision alone.
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Without the app, the invite leads to a store and back",
+        scenario = "The carried invite opens only once",
+    )
     fun `a referrer is delivered raw once`() {
         val referrer = invite.substringAfter('#')
         start(ReferrerAnswer.Referrer(referrer))

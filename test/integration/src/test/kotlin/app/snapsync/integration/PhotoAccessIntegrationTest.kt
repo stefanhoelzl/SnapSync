@@ -94,6 +94,13 @@ class PhotoAccessIntegrationTest {
         requirement = "Limited access is a working membership whose scope is the selection",
         scenario = "Selected photos share through the ordinary rules",
     )
+    // The core's part: a limited member shares only the selected photos in range. That Android 14's choice reads as a
+    // limited grant over the selection, wherever stored, is `SelectedPhotosTest`'s (`:test:partial-grant`).
+    @Verifies(
+        spec = "photo-access",
+        requirement = "Limited access is a working membership whose scope is the selection",
+        scenario = "Android 14 offers a selection",
+    )
     fun only_the_selected_photos_inside_the_range_leave_the_device() = behaviour {
         given {
             limitedMember()
@@ -453,6 +460,13 @@ class PhotoAccessIntegrationTest {
         spec = "sync-status",
         requirement = "Only missing access and a blocked network make the status line tappable",
         scenario = "Previously refused",
+    )
+    // The core's part: a refused member's tap opens Settings. That Android's adapter asks nothing again is
+    // `RefusedAccessTest`'s (`:test:no-grant`).
+    @Verifies(
+        spec = "photo-access",
+        requirement = "The system's access dialog is raised only by a deliberate tap",
+        scenario = "A refused Android member is not asked twice",
     )
     fun a_refused_member_tapping_the_access_line_is_taken_to_settings_and_asked_nothing() = behaviour {
         given {

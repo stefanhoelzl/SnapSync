@@ -64,6 +64,7 @@ edge :adapter:android :domain:presentation
 edge :adapter:android :domain:query
 edge :adapter:android :domain:services
 edge :adapter:android :test:contracts
+edge :adapter:android :test:verifies
 edge :adapter:android :ui:components
 edge :adapter:android :ui:screens
 edge :adapter:android :ui:state
@@ -90,6 +91,7 @@ edge :adapter:generic:mock :domain:wire
 edge :adapter:generic:mock :test:contracts
 edge :adapter:generic:mock :test:levers
 edge :adapter:generic:mock :ui:state
+edge :adapter:generic:motionphoto :test:verifies
 edge :adapter:generic:sentry :adapter:generic:app
 edge :adapter:generic:sentry :adapter:ios:ext-safe
 edge :adapter:generic:sentry :domain:model
@@ -104,6 +106,7 @@ edge :adapter:ios:app-only :domain:model
 edge :adapter:ios:app-only :domain:ports
 edge :adapter:ios:app-only :domain:services
 edge :adapter:ios:app-only :test:contracts
+edge :adapter:ios:app-only :test:verifies
 edge :adapter:ios:ext-safe :adapter:generic:app
 edge :adapter:ios:ext-safe :domain:compose
 edge :adapter:ios:ext-safe :domain:data
@@ -114,6 +117,7 @@ edge :adapter:ios:ext-safe :domain:model
 edge :adapter:ios:ext-safe :domain:ports
 edge :adapter:ios:ext-safe :domain:services
 edge :adapter:ios:ext-safe :test:contracts
+edge :adapter:ios:ext-safe :test:verifies
 edge :adapter:ios:ui :adapter:ios:app-only
 edge :adapter:ios:ui :adapter:ios:ext-safe
 edge :adapter:ios:ui :domain:feature
@@ -124,6 +128,7 @@ edge :adapter:ios:ui :domain:ports
 edge :adapter:ios:ui :domain:presentation
 edge :adapter:ios:ui :domain:query
 edge :adapter:ios:ui :test:contracts
+edge :adapter:ios:ui :test:verifies
 edge :adapter:ios:ui :ui:components
 edge :adapter:ios:ui :ui:screens
 edge :adapter:ios:ui :ui:state
@@ -355,10 +360,12 @@ edge :test:no-grant :adapter:android
 edge :test:no-grant :domain:model
 edge :test:no-grant :domain:ports
 edge :test:no-grant :test:contracts
+edge :test:no-grant :test:verifies
 edge :test:partial-grant :adapter:android
 edge :test:partial-grant :domain:model
 edge :test:partial-grant :domain:ports
 edge :test:partial-grant :test:contracts
+edge :test:partial-grant :test:verifies
 edge :test:rig :adapter:android
 edge :test:rig :adapter:generic:app
 edge :test:rig :adapter:generic:mock

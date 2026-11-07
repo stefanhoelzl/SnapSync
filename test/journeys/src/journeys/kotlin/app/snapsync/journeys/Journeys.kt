@@ -110,6 +110,13 @@ class Journeys {
         requirement = "Only the original is uploaded, complete",
         scenario = "An Android motion photo travels as one file",
     )
+    // Each run boots a fresh simulator, signed into no iCloud account, or a fresh `google_apis` emulator, signed into
+    // no Google account: A's own photos reach the union there. Nothing in the app reads an account.
+    @Verifies(
+        spec = "delivery",
+        requirement = "Only the original is uploaded, complete",
+        scenario = "No iCloud account",
+    )
     fun aMemberCreatesSharesAndReceivesAnotherMembersPhotos() = runBlocking {
         RigClient(appA).use { a ->
             // Never drive an app baked for another backend: that is the shared production one, and these journeys

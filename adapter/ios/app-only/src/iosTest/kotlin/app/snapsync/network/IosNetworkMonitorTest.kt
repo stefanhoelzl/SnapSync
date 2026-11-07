@@ -2,6 +2,7 @@
 
 package app.snapsync.network
 
+import app.snapsync.control.Verifies
 import app.snapsync.ports.NetworkAccess
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.flow.first
@@ -31,13 +32,32 @@ class IosNetworkMonitorTest {
         reason,
     )
 
+    // This adapter's part: a Wi-Fi that is neither expensive nor constrained reads unrestricted. That the screen then shows
+    // no notice is the core's.
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The app says when it cannot reach the network",
+        scenario = "Mobile data off but on Wi-Fi",
+    )
     fun `a satisfied path is online and so is a satisfiable one`() {
         assertEquals(NetworkAccess.Online(restricted = false), networkAccessOf(reading(nw_path_status_satisfied)))
         assertEquals(NetworkAccess.Online(restricted = false), networkAccessOf(reading(nw_path_status_satisfiable)))
     }
 
+    // This adapter's part is the mapping: an expensive path (a hotspot) and a constrained one (Low Data Mode) are
+    // mobile data. That iOS marks a hotspot expensive and a Low Data Mode Wi-Fi constrained is the platform's.
     @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "A hotspot counts as mobile data",
+    )
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "Low Data Mode counts as mobile data",
+    )
     fun `an expensive or constrained path is online and restricted`() {
         // Capability `mobile-data`: cellular or a hotspot (expensive), Low Data Mode (constrained), or both.
         val online = nw_path_status_satisfied

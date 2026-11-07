@@ -16,6 +16,8 @@ kotlin {
     sourceSets {
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // `@Verifies`: a scenario this codec decides is claimed by the test that shows it.
+            implementation(project(":test:verifies"))
         }
     }
 }

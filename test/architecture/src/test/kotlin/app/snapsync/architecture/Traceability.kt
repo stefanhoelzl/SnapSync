@@ -8,7 +8,7 @@ import kotlin.test.assertTrue
  * `verifiesReport` task read.
  *
  * Specs are linked to code through tests only: a test carries `@Verifies(spec, requirement[, scenario])`
- * (`:test:control`'s `Verifies`), and production code cites no spec. Both sides are read as TEXT. The
+ * (`:test:verifies`'s `Verifies`), and production code cites no spec. Both sides are read as TEXT. The
  * journeys source set is on no classpath this module has, and the annotation is `SOURCE`-retained.
  *
  * The Deno suites (`api/test`, `site/scripts`) claim what the api and the web pages decide, with the same

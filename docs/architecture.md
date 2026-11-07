@@ -344,8 +344,10 @@ These pin one feature's structural rule that no type can state:
 The specs (`openspec/specs/`) say what a user observes; the code is laid out by its own laws, not by the specs'
 cut. They are linked in one direction only: a test that verifies a requirement says so with
 `@Verifies(spec = "…", requirement = "…"[, scenario = "…"])` (`:test:verifies`), keyed on the spec's directory
-and the requirement's title. The Deno suites (`api/test`, `site/scripts/*.test.ts`) write the same annotation as a
-one-line comment directly above a `Deno.test`, `// @Verifies(spec = "…", requirement = "…", scenario = "…")`, and claim
+and the requirement's title. What an adapter or the platform decides is claimed by a named test beside the adapter (a
+device test, a contract binding's own test, or a journey) — never by a whole-contract run, which proves every clause at
+once, and never by a mock's binding, which proves only the mock. The Deno suites (`api/test`, `site/scripts/*.test.ts`)
+write the same annotation as a one-line comment directly above a `Deno.test`, `// @Verifies(spec = "…", requirement = "…", scenario = "…")`, and claim
 what the api or a web page decides. A suite claims a scenario only where its own code decides the outcome; a scenario
 split between the api and the app carries one claim per deciding place, each saying in a line which part it proves.
 Scenarios left unclaimed on purpose (a platform's or a store's outcome, an accepted "may" gap, a release obligation)

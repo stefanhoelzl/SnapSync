@@ -1,5 +1,6 @@
 package app.snapsync.scene
 
+import app.snapsync.control.Verifies
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -18,7 +19,14 @@ import kotlin.test.assertEquals
  */
 class SceneModeTest {
 
+    // The shell's part: a process the OS woke in the background composes no screen it could later present blank. What
+    // iOS does to the scene over hours in the background is the platform's.
     @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "The app keeps its place across backgrounding",
+        scenario = "Returning after hours in the background",
+    )
     fun `a process woken into the background composes nothing`() {
         assertEquals(
             SceneMode.Deferred,

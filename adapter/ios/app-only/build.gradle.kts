@@ -59,6 +59,8 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // `@Verifies`: a scenario this adapter decides is claimed by the test that shows it.
+            implementation(project(":test:verifies"))
             // The contract bindings of this module's adapters (`docs/architecture.md`): the photo-library
             // contracts over the grant-aware composition production calls.
             implementation(project(":test:contracts"))
