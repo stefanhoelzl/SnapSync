@@ -211,4 +211,53 @@ class SingleFlightTest {
         assertIs<Pass.Cut>(a.await())
         assertIs<Pass.Cut>(b.await())
     }
+
+    /** An asked sequence whose passes wait for the test to [release] them, recording what each was asked. */
+    private class Asked(yields: Boolean = false) : AskedSequence<String, Unit>("asked", yields) {
+        val passes = mutableListOf<String>()
+        var gate = CompletableDeferred<Unit>()
+
+        override suspend fun pass(asked: String, on: Run) {
+            passes += asked
+            gate.await()
+        }
+
+        fun release() {
+            gate.complete(Unit)
+            gate = CompletableDeferred()
+        }
+    }
+
+    private fun TestScope.ask(world: World, sequence: Asked, ask: String) =
+        CoroutineScope(coroutineContext + SupervisorJob()).async {
+            Run(world.runtime, Trigger.of(ask)).steps { run(sequence, ask) }
+        }
+
+    @Test
+    fun `a pass is for what the first request it covers asked`() = runTest {
+        val world = World(this)
+        val asked = Asked()
+        val first = ask(world, asked, "push")
+        runCurrent()
+        val joiners = listOf("grant", "wake").map { ask(world, asked, it) }
+        runCurrent()
+        asked.release()
+        runCurrent()
+        asked.release()
+        (joiners + first).forEach { assertIs<Pass.Completed<*>>(it.await()) }
+        assertEquals(listOf("push", "grant"), asked.passes)
+    }
+
+    @Test
+    fun `a pass a running one yielded to is for what the yielded one was`() = runTest {
+        val world = World(this)
+        val asked = Asked(yields = true)
+        val stalled = ask(world, asked, "push")
+        runCurrent()
+        val joiner = ask(world, asked, "grant")
+        runCurrent()
+        asked.release()
+        listOf(stalled, joiner).forEach { assertIs<Pass.Completed<*>>(it.await()) }
+        assertEquals(listOf("push", "push"), asked.passes)
+    }
 }

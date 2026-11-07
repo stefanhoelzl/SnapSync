@@ -28,11 +28,11 @@ import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.model.GalleryAccess
 import app.snapsync.query.membership.MembershipQuery
+import app.snapsync.scheduling.AskedSequence
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Concurrent
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
-import app.snapsync.scheduling.Sequence
 
 // ── Receiving, as the triggers order it ──────────────────────────────────────────────────────────────────────────────
 
@@ -86,20 +86,22 @@ class PhotoCheck(
 
 /**
  * A recognition pass of the joined membership's received photos, when one is due for [ask]'s reason — single-flight
- * across the process, so the grant, a selection and a drain never read the library twice at once.
+ * across the process, so the grant, a selection and a drain never read the library twice at once. Each request names
+ * why the app is reading — the push, the wake, the grant that asked — and the pass's union read tells the backend the
+ * first request's, which the backend records for the operator: a push wake's read never says it was given access.
  */
 class Recognition(
     private val membership: MembershipBranch,
     private val needed: RecognitionNeeded,
     private val recognize: RecognizeReceivedPhotos,
     private val ask: RecognitionAsk,
-) : Sequence<Unit>("recognition-${ask.name.lowercase()}") {
+) : AskedSequence<UnionTrigger, Unit>("recognition-${ask.name.lowercase()}") {
     @OptIn(EntryPointCall::class)
-    override suspend fun pass(on: Run) = on.steps {
+    override suspend fun pass(asked: UnionTrigger, on: Run) = on.steps {
         membership(membership, Freshness.Cached) {
             active { joined ->
                 when (required { needed(joined, ask) }) {
-                    true -> isolated("recognise") { recognize(joined, UnionTrigger.GRANT) }
+                    true -> isolated("recognise") { recognize(joined, asked) }
                     false -> Unit
                 }
             }
@@ -111,7 +113,8 @@ class Recognition(
  * Import what other members sent and is staged here: once the joined membership's received photos are recognised, one
  * photo at a time, each import outliving the pass — the platform cannot stop one once submitted. Yields to a join: an
  * import can wait on a library transaction that never reports, and a new request must not wait behind it — the stalled
- * import runs on, claimed, and the next pass imports the rest.
+ * import runs on, claimed, and the next pass imports the rest. Each request names why the app is reading, which the
+ * recognition's union read tells the backend.
  */
 class ImportReceived(
     private val membership: MembershipBranch,
@@ -120,10 +123,10 @@ class ImportReceived(
     private val albumForImport: AlbumForImport,
     private val markFilled: MarkAlbumFilled,
     private val importNext: ImportNextStaged,
-) : Sequence<Unit>("import-received", yieldsToJoin = true) {
+) : AskedSequence<UnionTrigger, Unit>("import-received", yieldsToJoin = true) {
     @OptIn(EntryPointCall::class)
-    override suspend fun pass(on: Run) = on.steps {
-        run(recognition)
+    override suspend fun pass(asked: UnionTrigger, on: Run) = on.steps {
+        run(recognition, asked)
         membership(membership, Freshness.Cached) {
             active { joined ->
                 when (val readiness = required { ready(joined) }) {
@@ -242,7 +245,7 @@ class OnGrantChanged(
     @OptIn(EntryPointCall::class)
     override suspend fun run(arg: GalleryAccess, on: Run) = on.steps {
         isolated("uploads") { uploaders.deliver(UploaderChange.GRANT_CHANGED) }
-        run(recognition)
+        run(recognition, UnionTrigger.GRANT)
         isolated("total") { count() }
     }
 }
@@ -261,7 +264,7 @@ class OnSelectionAnswerable(
     override suspend fun run(arg: Unit, on: Run) {
         on.steps {
             isolated("settle") { settle() }
-            run(importReceived)
+            run(importReceived, UnionTrigger.GRANT) // the grant became readable: the photo access it gives
         }
     }
 }

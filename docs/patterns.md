@@ -176,12 +176,17 @@ on a device, keeps nothing either: its events reach only its own log (`ext-debug
 
 ## 4. Sequences and single flight
 
-Work several triggers may ask for at once is a `Sequence` (`ImportReceived`, `TopUp`, `WalkAndPublish`, `UploadOwn`), run single-flight
+Work several triggers may ask for at once is a `Sequence` (`TopUp`, `WalkAndPublish`, `UploadOwn`) — or an
+`AskedSequence` (`ImportReceived`, `Recognition`) when each request names a value the pass needs — run single-flight
 by its key across the process:
 
 - At most one pass runs per key. A request while one runs **joins**: exactly one more pass runs once the running
   one ends, however many joined, and every joiner gets that pass's result. The pass's trigger names every joiner
   (`[OnHeartbeat+OnSilentPush]`).
+- An `AskedSequence`'s request is `run(sequence, ask)`, and its pass is for what the FIRST request it covers asked —
+  a pass a running one yielded to, the yielded pass's first. `Recognition`'s ask is why the app reads the union,
+  which its read tells the backend (`privacy-security`, "The service records who reads an event's photo list"): a
+  push wake's import says `push`, not `grant`.
 - A pass runs in the process scope, never in a waiter's. A waiter whose time is up **withdraws** without cancelling
   a pass others still wait for; a pass is cancelled only once every waiter has gone, and a waiter gets its own
   cancellation, never another's.

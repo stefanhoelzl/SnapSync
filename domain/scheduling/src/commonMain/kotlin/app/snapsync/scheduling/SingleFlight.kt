@@ -24,10 +24,10 @@ internal class SingleFlight(private val runtime: Runtime) {
     private val lock = Mutex()
     private val flights = HashMap<String, Flight>()
 
-    /** Requests a pass of [sequence] and awaits the one that covers this request. */
-    suspend fun <R> run(sequence: Sequence<R>): Pass<R> {
+    /** Requests a pass of [sequence], asking it [ask], and awaits the one that covers this request. */
+    suspend fun <R> run(sequence: SingleFlighted<R>, ask: Any? = null): Pass<R> {
         val trigger = currentCoroutineContext()[Trigger]
-        val slot = lock.withLock { admit(sequence, trigger) }
+        val slot = lock.withLock { admit(sequence, trigger, ask) }
         try {
             @Suppress("UNCHECKED_CAST")
             return slot.outcome.await() as Pass<R>
@@ -38,11 +38,11 @@ internal class SingleFlight(private val runtime: Runtime) {
     }
 
     /** Under [lock]: the slot this request waits on — the pass after the running one. */
-    private fun admit(sequence: Sequence<*>, trigger: Trigger?): Slot {
+    private fun admit(sequence: SingleFlighted<*>, trigger: Trigger?, ask: Any?): Slot {
         val flight = flights.getOrPut(sequence.key) { Flight(sequence).also { drive(it) } }
         val slot = flight.waiting()
         if (sequence.yieldsToJoin) flight.yieldTo(slot)
-        slot.join(trigger)
+        slot.join(trigger, ask)
         return slot
     }
 
@@ -64,7 +64,7 @@ internal class SingleFlight(private val runtime: Runtime) {
     }
 
     /** One key's state: the pass running and the one asked for after it. Read and written under [lock]. */
-    private inner class Flight(val sequence: Sequence<*>) {
+    private inner class Flight(val sequence: SingleFlighted<*>) {
         private var running: Slot? = null
         var next: Slot? = null
 
@@ -101,11 +101,14 @@ internal class SingleFlight(private val runtime: Runtime) {
     /** One pass, as its waiters see it. Its work is created with it, and started only when its turn comes. */
     private inner class Slot(private val flight: Flight) {
         private val triggers = LinkedHashSet<String>()
+
+        /** What the first request this pass covers asked — a yielded pass's request asked before this one's. */
+        private var asked: Any? = null
         private var waiters = 0
         val outcome = CompletableDeferred<Pass<Any?>>()
         val pass: Deferred<Any?> = runtime.scope.async(start = CoroutineStart.LAZY) {
             val trigger = triggers.map(Trigger::of).reduceOrNull(Trigger::plus) ?: Trigger.of(flight.sequence.key)
-            withContext(trigger) { flight.sequence.pass(Run(runtime, trigger)) }
+            withContext(trigger) { flight.sequence.passFor(asked, Run(runtime, trigger)) }
         }
 
         /** Slots whose pass yielded to this one: answered with this one's outcome. */
@@ -118,9 +121,10 @@ internal class SingleFlight(private val runtime: Runtime) {
             else -> successor.live()
         }
 
-        fun join(trigger: Trigger?) {
+        fun join(trigger: Trigger?, ask: Any?) {
             waiters++
             trigger?.let { triggers += it.names }
+            if (asked == null) asked = ask
         }
 
         fun absorb(yielded: Slot) {
@@ -128,6 +132,7 @@ internal class SingleFlight(private val runtime: Runtime) {
             absorbed += yielded
             waiters += yielded.waiters
             triggers += yielded.triggers
+            yielded.asked?.let { asked = it }
         }
 
         /** One waiter stopped waiting. A pass nobody waits for any more is not run, or stops. */
