@@ -1,12 +1,12 @@
 package app.snapsync.sentry
 
-import app.snapsync.model.CrashEvent
-import app.snapsync.model.CrashLevel
-import app.snapsync.model.CrashOptions
-import app.snapsync.model.Crumb
-import app.snapsync.model.DumpHandOff
-import app.snapsync.model.DumpResult
-import app.snapsync.ports.CrashHandlers
+import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.crash.CrashLevel
+import app.snapsync.domain.crash.CrashOptions
+import app.snapsync.domain.crash.CrashShaping
+import app.snapsync.domain.crash.Crumb
+import app.snapsync.domain.report.DumpHandOff
+import app.snapsync.domain.report.DumpResult
 import app.snapsync.ports.CrashReporter
 import io.sentry.kotlin.multiplatform.Scope
 import io.sentry.kotlin.multiplatform.Sentry
@@ -16,22 +16,21 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 
 /**
  * The Sentry seat of the [CrashReporter] port on BOTH platforms: a translation between
- * the core's crash vocabulary (`model/Crash.kt`) and the Sentry KMP SDK's, and nothing more. One copy, because this is
+ * the core's crash vocabulary (`domain/crash`) and the Sentry KMP SDK's, and nothing more. One copy, because this is
  * where "nothing unshaped leaves" is enforced.
  *
  * **It decides nothing, and reads nothing of the platform.** Whether this build reports (the DSN), what the build is
- * (release, environment, build number, platform, process), what is redacted and capped, which event is exempt, what a
- * log line becomes — all of that is `:domain:services`' `CrashReporting`, handed in as [CrashOptions] and registered
- * as the port's [CrashHandlers], run from the SDK's `beforeSend`/`beforeBreadcrumb`. What stays here is what only the
- * SDK's seat can know:
+ * (release, environment, build number, platform, process), what a report may leave as, what a log line becomes — all of
+ * that is the domain's (`Reporting`, `LineReport`), handed in as [CrashOptions] and the [CrashShaping] run from the
+ * SDK's `beforeSend`/`beforeBreadcrumb`. What stays here is what only the SDK's seat can know:
  *
  * - **`release` is set explicitly**, because the KMP layer assigns the native release unconditionally from its own
  *   options: leaving it unset *clears* the platform SDK's default and the event ships with no release.
- * - **`dist` is set only when the options carry one** — `null` on iOS on purpose (`model/`'s `crashDist`).
+ * - **`dist` is set only when the options carry one** — `null` on iOS on purpose (`ReportingBuild.reporting`).
  * - **The options' tags go on the global scope**, which both native SDKs persist into fatal events, so a crash
  *   delivered on a later launch carries the process that crashed.
- * - Off: the SDK's failed-HTTP-request capture (request URLs embed eventIds; the logging seam already reports those
- *   failures, scrubbed), default PII, and on Android screenshot and view-hierarchy attachments. The tap and gesture
+ * - Off: the SDK's failed-HTTP-request capture (the logging seam already reports those failures, titled
+ *   by what failed), default PII, and on Android screenshot and view-hierarchy attachments. The tap and gesture
  *   breadcrumbs and the SDK's own auto-start are off in this module's Android manifest, which sentry-android reads at
  *   init. ANR reporting stays on: an app frozen until the system closes it is reported. The
  *   SDK's random per-install `user.id` is the one deliberate identifier (it powers affected-device counts, linked to
@@ -42,25 +41,16 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
  * init would reset its scope. One instance per process is the composition's rule (`snapSyncProcess`); the flag
  * keeps the port's contract true regardless.
  *
- * **Nothing unshaped leaves.** An event or breadcrumb that reaches the SDK's hooks before [listen] registered the
- * handlers is dropped rather than sent as it is.
- *
  * **What is asserted, and what is only believed.** `CrashReporterContract` (`:test:contracts`) runs this class, over
  * the real SDK, against a loopback ingest, on the iOS simulator test executable and on the Android emulator. One claim
  * has no host and stays a belief: that the global-scope tags ride a crash delivered on a LATER launch after a real
- * process death — a reading of sentry-cocoa's source (`changes/archive/2026-07-29-add-release-and-process-to-crash-reports`)
- * on iOS, and on Android the cache-and-restart clause `RESTART_CACHED_EVENT_KEEPS_ITS_BUILD` rather than a crash.
+ * process death — a reading of sentry-cocoa's source
+ * (`changes/archive/2026-07-29-add-release-and-process-to-crash-reports`) on iOS, and on Android the cache-and-restart
+ * clause `RESTART_CACHED_EVENT_KEEPS_ITS_BUILD` rather than a crash.
  */
 class SentryCrashReporter : CrashReporter {
 
-    /** Where events and breadcrumbs are shaped on their way out — written once, by [listen]. */
-    private var handlers: CrashHandlers? = null
-
-    override fun listen(handlers: CrashHandlers) {
-        this.handlers = handlers
-    }
-
-    override fun start(options: CrashOptions) {
+    override fun start(options: CrashOptions, shaping: CrashShaping) {
         if (processStarted) return
         processStarted = true
         Sentry.init { sdk ->
@@ -69,9 +59,10 @@ class SentryCrashReporter : CrashReporter {
             // Only when present: an empty-string release is worse than none, because it creates a release record that
             // looks real. The build number is NOT folded in — it rides as `dist`, the SDK's own release/dist split.
             options.release?.let { sdk.release = it }
-            // ⚠️ Only when the options carry one. sentry-cocoa applies the dist option UNCONDITIONALLY at send time, and a
-            // crash is delivered on a LATER launch — possibly after the device updated — so on iOS a dist set here would
-            // overwrite the build number the crash report recorded when it actually crashed. `crashDist` decides.
+            // ⚠️ Only when the options carry one. sentry-cocoa applies the dist option UNCONDITIONALLY at send time,
+            // and a crash is delivered on a LATER launch — possibly after the device updated — so on iOS a dist set
+            // here would overwrite the build number the crash report recorded when it actually crashed. `ReportingBuild.reporting`
+            // decides.
             options.dist?.let { sdk.dist = it }
             sdk.sendDefaultPii = false
             // No release-health sessions: one per launch, sent whether or not anything failed — a record of how the
@@ -83,8 +74,9 @@ class SentryCrashReporter : CrashReporter {
             sdk.attachViewHierarchy = false
             sdk.isAnrEnabled = true
             sdk.maxBreadcrumbs = options.maxBreadcrumbs
-            sdk.beforeBreadcrumb = { crumb -> handlers?.onBreadcrumb?.invoke(crumb.toCrumb())?.let(crumb::shapedAs) }
-            sdk.beforeSend = { event -> handlers?.onEvent?.invoke(event.toCrashEvent())?.let(event::shapedAs) }
+            // Every event and breadcrumb leaves as the shaping says, the SDK's automatic breadcrumbs included.
+            sdk.beforeBreadcrumb = { crumb -> crumb.shapedAs(shaping.crumb(crumb.toCrumb())) }
+            sdk.beforeSend = { event -> event.shapedAs(shaping.event(event.toCrashEvent())) }
         }
         // Which platform and process is reporting, on the global scope the native SDKs persist into fatal events.
         if (options.tags.isNotEmpty()) {
@@ -159,26 +151,27 @@ internal fun SentryEvent.toCrashEvent(): CrashEvent = CrashEvent(
     message = message?.message,
     formatted = message?.formatted,
     params = message?.params,
-    exceptionValues = exceptions.map { it.value },
     breadcrumbs = breadcrumbs.map { it.toCrumb() },
     tags = tags.toMap(),
+    fingerprint = fingerprint.toList(),
     release = release,
     dist = dist,
 )
 
 /**
- * Write back what the handler shaped. Exceptions and breadcrumbs are matched by position (see [CrashEvent]).
+ * Write back what the shaping returned. Breadcrumbs are matched by position (see [CrashEvent]); the exceptions and the
+ * contexts are not written back, because sentry-kmp copies neither onto the native event (`applyKmpEvent`, 0.27.0).
  *
- * Release and build number are written back as the handler returned them, which wins on both platforms: `beforeSend`
- * runs after each native SDK applied its options, and sentry-kmp copies a changed release and dist onto the native
- * event (`applyKmpEvent`, read at 0.27.0 — the contract's `WIRE_HANDLERS_SHAPE_WHAT_LEAVES` asserts it on the wire).
+ * Release, build number and fingerprint are written back as the shaping returned them, which wins on both platforms:
+ * `beforeSend` runs after each native SDK applied its options, and sentry-kmp copies them onto the native event
+ * (`applyKmpEvent`, read at 0.27.0 — the contract's `WIRE_THE_SHAPING_IS_WHAT_LEAVES` asserts it on the wire).
  */
 internal fun SentryEvent.shapedAs(shaped: CrashEvent): SentryEvent {
     message = message?.copy(message = shaped.message, formatted = shaped.formatted, params = shaped.params)
     tags = shaped.tags.toMutableMap()
     release = shaped.release
     dist = shaped.dist
-    exceptions = exceptions.zip(shaped.exceptionValues) { e, value -> e.copy(value = value) }.toMutableList()
+    fingerprint = shaped.fingerprint.toMutableList()
     breadcrumbs.zip(shaped.breadcrumbs).forEach { (crumb, into) -> crumb.shapedAs(into) }
     return this
 }

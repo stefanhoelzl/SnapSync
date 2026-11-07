@@ -1,6 +1,7 @@
 package app.snapsync.compose
 
 import app.snapsync.application.album.PlaceOwnPhotos
+import app.snapsync.application.crash.DescribeReporter
 import app.snapsync.application.upload.SettlePresentedJobs
 import app.snapsync.data.album.AlbumFiling
 import app.snapsync.data.album.AlbumMap
@@ -8,6 +9,7 @@ import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.VersionIgnored
+import app.snapsync.data.crash.ReportedIdsRead
 import app.snapsync.data.crypto.EventKeyIds
 import app.snapsync.data.crypto.EventKeyStore
 import app.snapsync.data.identity.DeviceIdentity
@@ -125,11 +127,10 @@ fun snapSyncExtension(
         answerOn = answerOn,
     )
     val process = snapSyncProcess(ports.process, runtime)
-    // The device token, read from the shared protected store the app writes. Held in
-    // memory between re-reads ([CachedCredentialStore]): every request reads it, and a store read each time was
-    // measurable.
-    // Re-read at every invocation — the app renews into the shared item, which this copy cannot see — so the copy's
-    // staleness is bounded to one invocation.
+    // The device token, read from the shared protected store the app writes. Held in memory between re-reads
+    // ([CachedCredentialStore]): every request reads it, and a store read each time was measurable. Re-read at every
+    // invocation — the app renews into the shared item, which this copy cannot see — so the copy's staleness is bounded
+    // to one invocation.
     val attestStore = CachedCredentialStore(SecureCredentialStore(ports.secureStore))
     val services = extensionServices(process, ports, attestStore)
     ports.host.inbound(
@@ -139,6 +140,10 @@ fun snapSyncExtension(
                 attestStore,
                 services.membership,
                 services.keys,
+                DescribeReporter(
+                    ReportedIdsRead(services.membership, services.deviceIdentity, process.build),
+                    process.crash,
+                ),
                 extensionPass(process, ports, services),
             ),
             OnTerminate(runtime),

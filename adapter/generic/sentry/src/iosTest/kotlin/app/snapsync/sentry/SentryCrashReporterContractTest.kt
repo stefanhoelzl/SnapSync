@@ -13,7 +13,7 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.CrashOptions
+import app.snapsync.domain.crash.CrashOptions
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
 import platform.Foundation.NSCachesDirectory

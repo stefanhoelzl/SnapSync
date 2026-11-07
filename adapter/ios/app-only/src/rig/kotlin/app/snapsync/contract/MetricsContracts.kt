@@ -15,12 +15,12 @@ import app.snapsync.contracts.ProcessMetricsState
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.proxy.recorded
+import app.snapsync.domain.process.ProcessMetricRules
 import app.snapsync.logging.documentsDirectory
 import app.snapsync.metrics.MetricKitApi
 import app.snapsync.metrics.MetricKitProcessMetrics
 import app.snapsync.metrics.MetricQueue
 import app.snapsync.metrics.SystemMetricKitApi
-import app.snapsync.model.CALL_STACK_SEGMENTS
 import app.snapsync.ports.ProcessMetrics
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -65,7 +65,8 @@ private fun String.parseQueue() = MetricQueue(
 private fun json(value: Any?): String = when (value) {
     null -> "null"
     is Map<*, *> -> value.entries.joinToString(",", "{", "}") { (k, v) ->
-        quote(k.toString()) + ":" + if (k.toString() in CALL_STACK_SEGMENTS) quote("<masked>") else json(v)
+        val masked = k.toString() in ProcessMetricRules.CALL_STACK_SEGMENTS
+        quote(k.toString()) + ":" + if (masked) quote("<masked>") else json(v)
     }
     is List<*> -> value.joinToString(",", "[", "]") { json(it) }
     else -> quote(value.toString())

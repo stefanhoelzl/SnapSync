@@ -1,7 +1,7 @@
 package app.snapsync.feature.diagnostics
 
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.model.Fact
+import app.snapsync.domain.report.Fact
 
 /** The device id as a report writes it: the id, or why there is none. Never a mint — see `MintingDeviceIdentity.current`. */
 fun DeviceIdRead.asFact(): Fact<String> = when (this) {

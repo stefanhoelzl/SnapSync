@@ -1,12 +1,12 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.report.DiagnosticKeys
+import app.snapsync.domain.report.Fact
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DeviceConditionsView
 import app.snapsync.model.BackgroundRefresh
 import app.snapsync.model.Charging
 import app.snapsync.model.DeviceConditionsReading
-import app.snapsync.model.Fact
 import app.snapsync.model.StandbyBucket
 import app.snapsync.model.Thermal
 import app.snapsync.ports.DeviceConditions
@@ -15,8 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * The device's power, battery, thermal and background-allowance state as the operating system reports it to the app.
- * Opens as an unremarkable iPhone: power saving off, background refresh available, 80 % on battery, nominal, and the two
- * Android-only facts unsupported.
+ * Opens as an unremarkable iPhone: power saving off, background refresh available, 80 % on battery, nominal, and the
+ * two Android-only facts unsupported.
  */
 class DeviceConditionsMock(reading: DeviceConditionsReading = TYPICAL) {
     internal val cell = MutableStateFlow(reading)

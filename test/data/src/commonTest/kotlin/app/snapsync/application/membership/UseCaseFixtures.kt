@@ -34,6 +34,8 @@ internal class Device {
 
 internal class FixedIdentity(var read: DeviceIdRead) : DeviceIdentity {
     override fun id(): DeviceIdRead = read
+
+    override fun current(): DeviceIdRead = read
 }
 
 /** The key ids, derived for real over a fake platform's primitives. */

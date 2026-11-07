@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.Platform
+import app.snapsync.domain.report.Platform
 import app.snapsync.ports.BuildInfo
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

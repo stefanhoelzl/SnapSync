@@ -1,6 +1,6 @@
 package app.snapsync.ports
 
-import app.snapsync.model.MemoryFootprint
+import app.snapsync.domain.process.MemoryFootprint
 
 /**
  * What the operating system says about this process right now — ONE external system,

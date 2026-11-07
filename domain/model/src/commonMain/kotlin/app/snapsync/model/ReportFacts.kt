@@ -1,5 +1,8 @@
 package app.snapsync.model
 
+import app.snapsync.domain.process.MemoryFootprint
+import app.snapsync.domain.report.Fact
+
 /**
  * The bug report's reading of facts the app composition holds — pure, so the composition hands them over without
  * deciding anything.

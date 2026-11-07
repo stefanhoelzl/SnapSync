@@ -13,8 +13,8 @@ import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.CrashEvent
-import app.snapsync.model.CrashOptions
+import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.crash.CrashOptions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 
@@ -63,6 +63,9 @@ class CrashReporterContractBindingTest {
                             hasException = dump.throwable != null,
                             release = dump.release,
                             dist = dump.dist,
+                            exceptionValues = generateSequence(dump.throwable) { it.cause }.mapNotNull { it.message }
+                                .toList(),
+                            fingerprint = dump.fingerprint,
                         )
                     }
                     if (!until(events)) throw WaitExpired(0)

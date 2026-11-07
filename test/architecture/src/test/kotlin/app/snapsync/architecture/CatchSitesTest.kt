@@ -125,11 +125,13 @@ class CatchSitesTest {
             // Moved from EventCompletion with its read of the manifest record (phase 4.2): a record that does not decode
             // is no settled share. Its own phase (4.4c) answers the decode as a value.
             "/domain/model/src/commonMain/kotlin/app/snapsync/model/ConfigFile.kt" to 2,
-            "/domain/model/src/commonMain/kotlin/app/snapsync/model/Footprint.kt" to 1,
             // The invite link's codec moved from model with its catches (phase 4.2): a library's parse failure, read
             // as "no invite".
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to 1,
             "/domain/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to 2,
+            // The memory trail's codec moved from model with its catch (phase 4.10): a library's parse failure, read as
+            // "no trail".
+            "/domain/format/src/commonMain/kotlin/app/snapsync/format/FootprintTrailText.kt" to 1,
             "/domain/services/src/commonMain/kotlin/app/snapsync/services/databases/LegacyRecords.kt" to 5,
             "/domain/wire/src/commonMain/kotlin/app/snapsync/wire/runtime/Wire.kt" to 1,
         )

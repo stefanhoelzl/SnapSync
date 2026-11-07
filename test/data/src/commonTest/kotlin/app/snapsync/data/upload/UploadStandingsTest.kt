@@ -1,5 +1,6 @@
 package app.snapsync.data.upload
 
+import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
@@ -9,7 +10,6 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.upload.ResumePoint
@@ -31,11 +31,7 @@ class UploadStandingsTest {
     private val device = testDeviceId("D1")
     private val key = UploadKey.of(AssetId.parse("A1")!!, ResourceRole.PRIMARY, "IMG.MOV")
 
-    private class Identity(var read: DeviceIdRead) : DeviceIdentity {
-        override fun id(): DeviceIdRead = read
-    }
-
-    private val identity = Identity(DeviceIdRead.Ok(device, DeviceIdRead.Via.READ))
+    private val identity = FixedIdentity(DeviceIdRead.Ok(device, DeviceIdRead.Via.READ))
     private val transport = ScriptedTransport()
     private val standings = UploadStandings(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), identity)
 

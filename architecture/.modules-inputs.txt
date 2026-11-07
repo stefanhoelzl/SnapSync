@@ -94,6 +94,7 @@ edge :adapter:generic:mock :ui:state
 edge :adapter:generic:motionphoto :test:verifies
 edge :adapter:generic:sentry :adapter:generic:app
 edge :adapter:generic:sentry :adapter:ios:ext-safe
+edge :adapter:generic:sentry :domain:domain
 edge :adapter:generic:sentry :domain:model
 edge :adapter:generic:sentry :domain:ports
 edge :adapter:generic:sentry :domain:scheduling

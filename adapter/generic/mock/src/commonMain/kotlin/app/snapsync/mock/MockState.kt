@@ -5,13 +5,13 @@ package app.snapsync.mock
 import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
+import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.crash.CrashLevel
+import app.snapsync.domain.crash.Crumb
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.UnionFetch
-import app.snapsync.model.CrashEvent
-import app.snapsync.model.CrashLevel
-import app.snapsync.model.Crumb
 import app.snapsync.model.DeviceFile
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.GalleryAsset
@@ -44,14 +44,15 @@ import kotlin.time.Instant
 
 /**
  * **What a mocked system keeps, as text** (`docs/testing.md`, "Launch-time adapters") — the durable state each mock
- * of a [MockDevice] holds, encoded one system at a time so a process restores only the systems its adapter choice mocks.
+ * of a [MockDevice] holds, encoded one system at a time so a process restores only the systems its adapter choice
+ * mocks.
  *
  * Durable means what the real system keeps across the app's process — the backend's events, the library's photos, the
  * operating system's queued jobs — and nothing a process holds: registered handlers, open observers, background-time
  * holds (a dead process's never end), a held-open deferred. Those start empty in every process, as on a device.
  *
- * The databases are not here: a persisted adapter choice's databases are FILES ([app.snapsync.mock.DatabasesMock]'s directory),
- * which persist themselves and are shared across processes as files are.
+ * The databases are not here: a persisted adapter choice's databases are FILES ([app.snapsync.mock.DatabasesMock]'s
+ * directory), which persist themselves and are shared across processes as files are.
  */
 object MockState {
     /** [system]'s durable state on [device], or `null` for a system that keeps none. */
@@ -243,8 +244,9 @@ private class SlotDto(
 @Serializable
 private class KeychainDto(val slots: List<SlotDto>) {
     /**
-     * Back into [items], each at the slot the app addresses it by — the slots are the app's own (`TrustSlots`, `EncryptionSlots`), so a
-     * stored item names one of them; an item that names none is one no build of the app would read, and stays behind.
+     * Back into [items], each at the slot the app addresses it by — the slots are the app's own (`TrustSlots`,
+     * `EncryptionSlots`), so a stored item names one of them; an item that names none is one no build of the app would
+     * read, and stays behind.
      */
     fun into(items: MutableMap<SecureSlot, SecureStoreRead.Found>) {
         slots.forEach { dto ->
@@ -367,7 +369,7 @@ private class CrashDto(
     val message: String?,
     val formatted: String?,
     val params: List<String>?,
-    val exceptionValues: List<String?>,
+    val fingerprint: List<String>,
     val breadcrumbs: List<CrumbDto>,
     val tags: Map<String, String>,
     val contexts: Map<String, Map<String, String>>,
@@ -377,7 +379,7 @@ private class CrashDto(
         message = message,
         formatted = formatted,
         params = params,
-        exceptionValues = exceptionValues,
+        fingerprint = fingerprint,
         breadcrumbs = breadcrumbs.map { Crumb(CrashLevel.valueOf(it.level), it.message, it.category, it.data) },
         tags = tags,
         contexts = contexts,
@@ -388,7 +390,7 @@ private class CrashDto(
             event.message,
             event.formatted,
             event.params,
-            event.exceptionValues,
+            event.fingerprint,
             event.breadcrumbs.map { CrumbDto(it.level.name, it.message, it.category, it.data) },
             event.tags,
             event.contexts,

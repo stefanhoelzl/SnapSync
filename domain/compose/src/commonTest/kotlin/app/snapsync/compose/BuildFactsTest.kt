@@ -1,7 +1,7 @@
 package app.snapsync.compose
 
+import app.snapsync.domain.report.Platform
 import app.snapsync.domain.version.Store
-import app.snapsync.model.Platform
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.RegistrationAnswer

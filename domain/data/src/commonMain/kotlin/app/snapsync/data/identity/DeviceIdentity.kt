@@ -24,6 +24,12 @@ import kotlin.uuid.Uuid
  */
 interface DeviceIdentity {
     fun id(): DeviceIdRead
+
+    /**
+     * The id this install already has, **never minting or writing one** — for a reader that must not create an
+     * identity as a side effect (a report): this process's resolution when it has one, else the slot as it stands.
+     */
+    fun current(): DeviceIdRead
 }
 
 /** What resolving the device id found. */
@@ -83,6 +89,8 @@ private fun spelled(text: String, via: DeviceIdRead.Via, otherwise: String): Dev
 
 /** The upload extension's identity: the shared slot, read; absence is [DeviceIdRead.Absent], never minted over. */
 class StoredDeviceIdentity(private val store: SecureStore) : ResolvedOnce() {
+    override fun current(): DeviceIdRead = kept() ?: stored(store, DeviceIdRead.Via.READ)
+
     override fun resolveOnce(): DeviceIdRead = stored(store, DeviceIdRead.Via.READ).also(::logged)
 }
 
@@ -96,11 +104,7 @@ class MintingDeviceIdentity @AppProcessOnly constructor(
     private val platformDeviceId: PlatformDeviceId,
 ) : ResolvedOnce() {
 
-    /**
-     * The id this install already has, **never minting or writing one** — for a reader that must not create an
-     * identity as a side effect (a bug report): this process's resolution when it has one, else the slot as it stands.
-     */
-    fun current(): DeviceIdRead = kept() ?: stored(store, DeviceIdRead.Via.READ)
+    override fun current(): DeviceIdRead = kept() ?: stored(store, DeviceIdRead.Via.READ)
 
     override fun resolveOnce(): DeviceIdRead = when (val read = stored(store, DeviceIdRead.Via.READ)) {
         is DeviceIdRead.Ok, is DeviceIdRead.Unavailable -> read

@@ -13,17 +13,15 @@ import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.domain.network.NetworkAccess
+import app.snapsync.domain.report.DiagnosticDump
 import app.snapsync.domain.report.DiagnosticKeys
+import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.format.TimestampText
 import app.snapsync.model.AppFacts
-import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
-import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.model.DeviceConditionsReading
-import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.DiagnosticEnvironment
-import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.services.device.DeviceConditionsReadings
@@ -46,7 +44,8 @@ import kotlin.time.Duration.Companion.seconds
  * and the device's settings and conditions — never a photo or what it shows, another app's data, a location beyond
  * the time zone, contacts, free storage or the device's name. A new field is tested against that bound. (It replaced
  * the older "a dump reads no data the app does not already read", which kept out exactly the device conditions that
- * explain a background upload that never ran; decision record `changes/archive/2026-10-05-device-state-in-bug-reports`.)
+ * explain a background upload that never ran; decision record
+ * `changes/archive/2026-10-05-device-state-in-bug-reports`.)
  *
  * **Every device fact is best-effort.** Each read runs under [readTimeout]; one that throws or stalls is written
  * `failed (<reason>)` and the report goes on. A fact the platform does not have is left out.
@@ -81,7 +80,7 @@ class CollectDiagnosticDump(
     private val uploadFacts: () -> Map<String, String>,
     /** The latest refused attestation's facts, if any — carried only by a report opened from "Report this". */
     private val refusalFacts: () -> RefusalFacts?,
-    private val budgetBytes: Int = DIAGNOSTIC_LOG_BUDGET_BYTES,
+    private val budgetBytes: Int = DiagnosticDump.LOG_BUDGET_BYTES,
     /** How long one device read may take before it is written as failed. The slowest is a hop onto the main thread. */
     private val readTimeout: Duration = DEFAULT_READ_TIMEOUT,
 ) {
@@ -269,7 +268,7 @@ class CollectDiagnosticDump(
         when (fact) {
             is Fact.Known -> put(key, label(fact.value))
             Fact.Unsupported -> Unit
-            is Fact.Failed -> put(key, "failed (${fact.reason.take(DIAGNOSTIC_FAILURE_REASON_CHARS)})")
+            is Fact.Failed -> put(key, fact.shown)
         }
     }
 

@@ -1,6 +1,7 @@
 package app.snapsync.application.push
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
@@ -8,7 +9,6 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.push.PushEndpointPublisher
 import app.snapsync.data.push.PushRegistrationRecord
 import app.snapsync.data.push.PushTokens
@@ -35,10 +35,6 @@ import kotlin.test.assertEquals
 @OptIn(EntryPointCall::class)
 class RegisterPushTest {
 
-    private class Identity(var read: DeviceIdRead) : DeviceIdentity {
-        override fun id(): DeviceIdRead = read
-    }
-
     private object Service : PushNotifications {
         override val kind: String = "apns"
 
@@ -50,8 +46,8 @@ class RegisterPushTest {
 
     private val transport = ScriptedTransport { ok(201) }
     private val values = mutableMapOf<String, String>()
-    private val identity = Identity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
-    private val publisherIdentity = Identity(identity.read)
+    private val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
+    private val publisherIdentity = FixedIdentity(identity.read)
     private val tokens = PushTokens(Service, BuildInfoMock().port(), identity)
 
     private fun register(preferences: Preferences = inMemoryPreferences(values)) = RegisterPush(

@@ -65,11 +65,13 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                13,
+                16,
                 "the wake's prelude, a finished download's staging and record, a completed one's free, the key's " +
                     "restore, the membership's read tried again, the push token's and credential's registration, the " +
                     "mobile-data change, the wake's re-arm, a finished upload's record and the foreground's stored-upload " +
-                    "settle call their use cases, and a selection change counts the status total",
+                    "settle call their use cases, a selection change counts the status total, a process-metric report " +
+                    "is accounted for, the background records the footprint, and a membership change describes the " +
+                    "reporter",
             ),
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ReceivingEntryPoints.kt" to mapOf(
@@ -110,9 +112,9 @@ class OptInPinsTest {
         ),
         "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ExtensionEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
-                6,
+                7,
                 "the extension's one pass — its gate, the queue's settle, the walk, the top-up — calls the upload " +
-                    "use cases",
+                    "use cases, and each invocation first describes the reporter",
             ),
         ),
         "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to mapOf(

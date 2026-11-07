@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package app.snapsync.data.membership
 
 import app.snapsync.data.store.SharedDatabase
@@ -22,6 +24,9 @@ import app.snapsync.format.TimestampText
 import app.snapsync.levers.WriteKind
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.testids.testEventId
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -55,6 +60,20 @@ class MembershipRepositoryTest {
         assertEquals(emptyList(), device.opened, "building it opened nothing")
         assertIs<MembershipRead.NotJoined>(repository.read())
         assertIs<MembershipRead.NotJoined>(repository.state.value)
+    }
+
+    @Test
+    fun `following its changes reads nothing until the state is first used, then follows it`() = runTest {
+        val seen = mutableListOf<MembershipRead>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { repository.changes.collect { seen += it } }
+        assertEquals(emptyList(), device.opened, "following the changes opened nothing")
+        assertEquals(emptyList(), seen)
+
+        assertIs<MembershipRead.NotJoined>(repository.state.value)
+        assertIs<MembershipRead.NotJoined>(seen.single(), "the state, once used, is followed")
+        repository.enter(enrolled())
+        repository.reload()
+        assertIs<MembershipRead.Joined>(seen.last(), "and every change after it")
     }
 
     @Test

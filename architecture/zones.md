@@ -88,6 +88,7 @@ flowchart LR
   adapter_generic_motionphoto --> test_verifies
   adapter_generic_sentry --> adapter_generic_app
   adapter_generic_sentry --> adapter_ios_ext_safe
+  adapter_generic_sentry --> domain_domain
   adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
   adapter_generic_sentry --> domain_scheduling

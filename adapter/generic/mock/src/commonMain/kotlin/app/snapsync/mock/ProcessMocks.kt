@@ -1,5 +1,7 @@
 package app.snapsync.mock
 
+import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.process.MemoryFootprint
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.ClockLevers
 import app.snapsync.levers.CrashReporterLevers
@@ -10,12 +12,11 @@ import app.snapsync.levers.ProcessInfoView
 import app.snapsync.levers.ProcessMetricsLevers
 import app.snapsync.levers.ReceivedDump
 import app.snapsync.levers.ReceivedEvent
+import app.snapsync.levers.ReceivedException
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.SystemUiRecord
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.CrashEvent
 import app.snapsync.model.Handoff
-import app.snapsync.model.MemoryFootprint
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
@@ -87,8 +88,15 @@ class CrashReporterOperator internal constructor(private val mock: CrashReporter
 }
 
 /** An automatic event as the reporter's backend shows it. */
-internal fun receivedEvent(event: CrashEvent): ReceivedEvent =
-    ReceivedEvent(message = event.message.orEmpty(), tags = event.tags, contexts = event.contexts)
+internal fun receivedEvent(event: CrashEvent): ReceivedEvent = ReceivedEvent(
+    message = event.message.orEmpty(),
+    tags = event.tags,
+    contexts = event.contexts,
+    exceptions = generateSequence(event.throwable) { it.cause }
+        .map { ReceivedException(it::class.simpleName.orEmpty(), it.message) }
+        .toList(),
+    fingerprint = event.fingerprint,
+)
 
 /** A dump as the reporter's backend shows it: its sections, as the app put them in. */
 internal fun received(dump: CrashEvent): ReceivedDump {

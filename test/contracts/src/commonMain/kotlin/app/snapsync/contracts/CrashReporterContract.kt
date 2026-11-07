@@ -1,27 +1,16 @@
-@file:OptIn(ExperimentalAtomicApi::class)
-
 package app.snapsync.contracts
 
-import app.snapsync.model.BREADCRUMB_TEXT_BYTES
-import app.snapsync.model.CrashEvent
-import app.snapsync.model.CrashLevel
-import app.snapsync.model.CrashOptions
-import app.snapsync.model.Crumb
-import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
-import app.snapsync.model.DiagnosticDump
-import app.snapsync.model.DumpResult
-import app.snapsync.model.MAX_BREADCRUMBS
-import app.snapsync.model.PLATFORM_TAG
-import app.snapsync.model.PROCESS_TAG
-import app.snapsync.model.describedBuildStamped
-import app.snapsync.model.diagnosticDumpEvent
-import app.snapsync.model.scrubbedCrumb
-import app.snapsync.model.scrubbedEvent
-import app.snapsync.ports.CrashHandlers
+import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.crash.CrashLevel
+import app.snapsync.domain.crash.CrashOptions
+import app.snapsync.domain.crash.CrashShaping
+import app.snapsync.domain.crash.CrashTags
+import app.snapsync.domain.crash.Crumb
+import app.snapsync.domain.crash.EventBounds
+import app.snapsync.domain.crash.ReportedFailure
+import app.snapsync.domain.report.DiagnosticDump
+import app.snapsync.domain.report.DumpResult
 import app.snapsync.ports.CrashReporter
-import kotlin.concurrent.atomics.AtomicReference
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.concurrent.atomics.update
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
@@ -38,18 +27,19 @@ enum class CrashReporterState {
 
     /**
      * The same system as [STARTED]; clauses read what the reporter's backend **received** of the port's calls — one
-     * event per capture, its message, tags and exception, the latest context of each name riding it, nothing for a
-     * dropped one, a dump as the handler shaped it. A binding reaches it by reproducing those observables, so a double
-     * that records what the port was handed, in order, is licensed here by the same clauses the real channel passes;
-     * what only the SDK and the adapter do on the way out is [ON_THE_WIRE]'s.
+     * event per capture, its message, tags and exception, the latest context of each name riding it, the shaping's
+     * filing and grouping of an event, a dump as it was sent. A binding reaches it by reproducing those observables, so
+     * a double that records what the port was handed, in order, is licensed here by the same clauses the real channel
+     * passes; what only the SDK and the adapter do on the way out is [ON_THE_WIRE]'s.
      */
     RECEIVED,
 
     /**
-     * The same system as [STARTED]; clauses read what actually **left the process** that only the reporting SDK and
-     * the adapter decide. Only a binding that drives the real channel reaches it: breadcrumbs riding the next event,
-     * the handlers applied on the way out, the build facts, the SDK's own install id and the size an event arrives at
-     * are the SDK's and the adapter's, and a double that imitated them would be licensed only by imitating.
+     * The same system as [STARTED]; clauses read what actually **left the process** that only the reporting SDK and the
+     * adapter decide. Only a binding that drives the real channel reaches it: breadcrumbs riding the next event, the
+     * shaping applied on the way out — to the SDK's own breadcrumbs too — the build facts, the SDK's own install id and
+     * the size an event arrives at are the SDK's and the adapter's, and a double that imitated them would be licensed
+     * only by imitating.
      */
     ON_THE_WIRE,
 
@@ -62,10 +52,10 @@ enum class CrashReporterState {
     ACROSS_A_RESTART,
 
     /**
-     * As [ON_THE_WIRE], in the process that starts after the app's processes ENDED on an uncaught
-     * `InvalidProgramState` ([CrashReporterSubject.death]) — the next launch, for real: the channel was never started in
-     * this process before the clause starts it, so what it delivers is what the dead processes left. Only a binding that
-     * can run and end processes of the app around one that runs the clause reaches it.
+     * As [ON_THE_WIRE], in the process that starts after the app's processes ENDED on an uncaught `InvalidProgramState`
+     * ([CrashReporterSubject.death]) — the next launch, for real: the channel was never started in this process before
+     * the clause starts it, so what it delivers is what the dead processes left. Only a binding that can run and end
+     * processes of the app around one that runs the clause reaches it.
      */
     AFTER_A_PROCESS_DEATH,
 }
@@ -87,7 +77,7 @@ enum class FatalRoute {
 
 /**
  * The app's processes, as far as a clause in [CrashReporterState.AFTER_A_PROCESS_DEATH] can end them: each [endOn] runs
- * one with the channel started against the clause's destination under the production handlers, until an
+ * one with the channel started against the clause's destination under the production shaping, until an
  * `InvalidProgramState` whose `because` is [becauseOf] its route reaches that route — and returns once that process has
  * ended.
  */
@@ -123,6 +113,8 @@ class DeliveredEvent(
     val dist: String? = null,
     /** The text of each exception the event carries, as transmitted — a thrown exception's message. */
     val exceptionValues: List<String> = emptyList(),
+    /** What the event groups under, as transmitted — empty for the backend's own grouping. */
+    val fingerprint: List<String> = emptyList(),
 )
 
 /**
@@ -132,7 +124,7 @@ class DeliveredEvent(
 fun interface CrashRestart {
     /**
      * Closes the channel, keeping its undelivered reports, makes the destination reachable, and answers a fresh
-     * reporter for this process — not yet listened to or started.
+     * reporter for this process — not yet started.
      */
     fun relaunch(): CrashReporter
 }
@@ -153,8 +145,8 @@ interface CrashObservation {
 }
 
 /**
- * What a clause is handed: the port under contract — NOT yet listened to, since each clause registers the handlers it
- * needs — the options that start it against the binding's destination, and the handle it observes outcomes through.
+ * What a clause is handed: the port under contract — NOT yet started — the options that start it against the binding's
+ * destination, and the handle it observes outcomes through.
  */
 class CrashReporterSubject(
     val reporter: CrashReporter,
@@ -173,22 +165,23 @@ class CrashReporterSubject(
  * - Nothing runs until `start`: before it, every member changes nothing, and a dump answers `NotSent`.
  * - `start` is idempotent: a second start that re-initialised the channel would lose its scope.
  * - A captured event is one event; a breadcrumb is not an event and rides the next one.
- * - Every event and breadcrumb passes the registered handlers on the way out: what they return is what leaves — an
- *   event's release, build number and tags included — and `null` leaves nothing.
+ * - Every event and breadcrumb leaves as the shaping it was started with shapes it — an event's release, build number,
+ *   tags and fingerprint included.
+ * - A failure captured as a `ReportedFailure` leaves titled by its line, the failure it reports chained beneath it.
  * - An event's tags and its exception ride it.
  * - The build facts `start` is given — release, environment, build number, and the platform and process tags — ride
  *   every event.
  * - A build number `start` is given is the one a report was CAPTURED under, even when it is delivered after a
  *   relaunch as another build — which is why a platform whose SDK re-stamps at send (iOS) is given none.
  * - The latest context supersedes the earlier one on every later event.
- * - The SDK's own per-install id rides every event — the one identifier nothing scrubs.
- * - Under the production handlers (`model/Crash.kt`): an automatic event leaves redacted, the operator's dump leaves
- *   verbatim, and the worst-case dump — full log budget, a full set of over-long breadcrumbs — still arrives below
- *   the ingest's maximum size, so a refused one never blocks the queue.
+ * - The SDK's own per-install id rides every event.
+ * - Under the production shaping (`CrashShaping.STANDARD`): an event and its breadcrumbs leave their ids in full, a
+ *   report leaves verbatim, and the worst-case report — full log budget, a full set of over-long breadcrumbs — still
+ *   arrives below the ingest's maximum size, so a refused one never blocks the queue.
  *
  * - A process that ends on an uncaught `InvalidProgramState` — whatever road it took there — leaves a crash report the
- *   next start delivers, its `because` intact through the production handlers ([CrashReporterState.AFTER_A_PROCESS_DEATH]:
- *   a real process death and a real next launch).
+ *   next start delivers, its `because` intact through the production shaping
+ *   ([CrashReporterState.AFTER_A_PROCESS_DEATH]: a real process death and a real next launch).
  *
  * **Not a clause**: that a CONTEXT set before such a death rides its report — the death clause asserts the report and
  * its guarantee, and [CrashReporterState.ACROSS_A_RESTART]'s clauses what a channel restart keeps.
@@ -206,14 +199,8 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         return "$hex-${hex.take(4)}-4${hex.drop(1).take(3)}-8${hex.drop(4).take(3)}-$hex${hex.take(4)}"
     }
 
-    /** Handlers that let everything through as it is — for the clauses about the channel, not about shaping. */
-    val PASS_THROUGH = CrashHandlers(onEvent = { it }, onBreadcrumb = { it })
-
-    /** The handlers production registers (`CrashReporting`): the pure rules of `model/Crash.kt`. */
-    val PRODUCTION = CrashHandlers(
-        onEvent = { scrubbedEvent(describedBuildStamped(it)) },
-        onBreadcrumb = ::scrubbedCrumb,
-    )
+    /** The shaping production starts every channel with — the only one there is. */
+    private val SHAPING = CrashShaping.STANDARD
 
     /**
      * The guarantee a process ended on [route] names — one literal per route, as every `InvalidProgramState`'s is, so
@@ -234,9 +221,10 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
     )
 
     /**
-     * The largest dump the app can compose: log tails filling [DIAGNOSTIC_LOG_BUDGET_BYTES] between them, a 100-char
-     * non-ASCII event name (the backend's `MAX_EVENT_NAME_LENGTH`) and a long note. The log lines are escape-heavy
-     * (quotes and backslashes, as request and path lines carry), so JSON escaping is measured rather than assumed.
+     * The largest report the app can compose: log tails filling [DiagnosticDump.LOG_BUDGET_BYTES] between them, a
+     * 100-char non-ASCII event name (the backend's `MAX_EVENT_NAME_LENGTH`) and a long note. The log lines are
+     * escape-heavy (quotes and backslashes, as request and path lines carry), so JSON escaping is measured rather than
+     * assumed.
      */
     fun worstCaseDumpFor(clauseId: String): DiagnosticDump {
         val line = "12:00:00.000 [process] GET https://edge/events/\"a\"/devices?x=\"\\\" → 200 in 12 ms\n"
@@ -248,17 +236,14 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             note = "$clauseId: " + "the upload never finished and nothing on screen said why. ".repeat(4),
             state = mapOf("clause" to clauseId, "event_name" to "ü".repeat(100)),
             ledger = mapOf("pending" to "1"),
-            appLog = tail(DIAGNOSTIC_LOG_BUDGET_BYTES / 2),
-            extensionLog = tail(DIAGNOSTIC_LOG_BUDGET_BYTES / 2),
+            appLog = tail(DiagnosticDump.LOG_BUDGET_BYTES / 2),
+            extensionLog = tail(DiagnosticDump.LOG_BUDGET_BYTES / 2),
         )
     }
 
     private fun sentinel(clauseId: String) = "sentinel $clauseId"
 
-    private fun CrashReporterSubject.startListening(handlers: CrashHandlers = PASS_THROUGH) {
-        reporter.listen(handlers)
-        reporter.start(options)
-    }
+    private fun CrashReporterSubject.start(options: CrashOptions = this.options) = reporter.start(options, SHAPING)
 
     /** Captures the sentinel, waits for it, and answers everything delivered strictly before it. */
     private fun CrashReporterSubject.deliveredBefore(sentinel: String): List<DeliveredEvent> {
@@ -272,6 +257,32 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         return observe.delivered { events -> events.any { it.message == sentinel } }.first { it.message == sentinel }
     }
 
+    /** The first delivered event whose message starts with [prefix]. */
+    private fun CrashReporterSubject.firstStartingWith(prefix: String): DeliveredEvent =
+        observe.delivered { e -> e.any { it.message?.startsWith(prefix) == true } }
+            .first { it.message?.startsWith(prefix) == true }
+
+    /** An event naming the build it describes and what it groups under, as a process-metric crossing does. */
+    private fun described(message: String) = CrashEvent(
+        message = message,
+        tags = mapOf(
+            CrashTags.DESCRIBED_RELEASE to "described-release",
+            CrashTags.DESCRIBED_BUILD to "described-build",
+            CrashTags.FINGERPRINT to "contract: $message",
+            "kept" to "1",
+        ),
+    )
+
+    private fun assertFiledAndGrouped(event: DeliveredEvent, message: String) {
+        assertEquals("described-release", event.release, "the release it describes wins over the options'")
+        assertEquals("described-build", event.dist, "and so does the build number")
+        assertEquals(listOf("contract: $message"), event.fingerprint, "it groups under what it was captured with")
+        assertEquals("1", event.tags["kept"], "an ordinary tag rides it: ${event.tags}")
+        listOf(CrashTags.DESCRIBED_RELEASE, CrashTags.DESCRIBED_BUILD, CrashTags.FINGERPRINT).forEach {
+            assertFalse(it in event.tags, "a tag that only carries a filing never leaves as one: ${event.tags}")
+        }
+    }
+
     override val clauses = clauses {
 
         // ---- NOT_STARTED: inert on every member ----------------------------------------------------------------
@@ -281,7 +292,6 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             CrashReporterState.NOT_STARTED,
             covers = cells {
                 on<CrashReporter> {
-                    answers(CrashReporter::listen).returns()
                     answers(CrashReporter::capture).returns()
                     answers(CrashReporter::breadcrumb).returns()
                     answers(CrashReporter::setContext).returns()
@@ -289,12 +299,11 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 }
             },
         ) { s ->
-            s.reporter.listen(PASS_THROUGH)
             s.reporter.capture(CrashEvent(message = "NOT_STARTED_IS_INERT"))
             s.reporter.breadcrumb(Crumb(CrashLevel.INFO, "NOT_STARTED_IS_INERT"))
             s.reporter.setContext("clause", mapOf("id" to "NOT_STARTED_IS_INERT"))
             assertIs<DumpResult.NotSent>(
-                s.reporter.sendDump(diagnosticDumpEvent(dumpFor("NOT_STARTED_IS_INERT"))),
+                s.reporter.sendDump(dumpFor("NOT_STARTED_IS_INERT").event()),
                 "a dump before start says it was not sent",
             )
             assertFalse(s.observe.channelRunning(), "nothing but start runs the channel")
@@ -309,34 +318,9 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 on<CrashReporter>().answers(CrashReporter::start).returns()
             },
         ) { s ->
-            s.startListening()
-            s.reporter.start(s.options)
+            s.start()
+            s.start()
             assertTrue(s.observe.channelRunning(), "a start runs the channel, and a second keeps it running")
-        }
-
-        clause(
-            "STARTED_THE_HANDLERS_SHAPE_EVERY_EVENT_AND_CRUMB",
-            CrashReporterState.STARTED,
-            covers = cells {
-                on<CrashReporter> {
-                    calls(CrashHandlers::onEvent, CrashEvent::class)
-                    calls(CrashHandlers::onBreadcrumb, Crumb::class)
-                }
-            },
-        ) { s ->
-            val id = "STARTED_THE_HANDLERS_SHAPE_EVERY_EVENT_AND_CRUMB"
-            val events = AtomicReference<List<String?>>(emptyList())
-            val crumbs = AtomicReference<List<String?>>(emptyList())
-            s.startListening(
-                CrashHandlers(
-                    // A captured message's text reaches the handler as the SDK's formatted text (`CrashEvent.formatted`).
-                    onEvent = { event -> event.also { events.update { seen -> seen + (it.formatted ?: it.message) } } },
-                    onBreadcrumb = { crumb -> crumb.also { crumbs.update { seen -> seen + it.message } } },
-                ),
-            )
-            s.reporter.breadcrumb(Crumb(CrashLevel.INFO, id))
-            s.reporter.capture(CrashEvent(message = id))
-            awaitWithin { id in crumbs.load() && id in events.load() }
         }
 
         clause(
@@ -346,10 +330,10 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 on<CrashReporter>().answers(CrashReporter::sendDump).with(DumpResult.Queued::class)
             },
         ) { s ->
-            s.startListening()
+            s.start()
             assertEquals(
                 DumpResult.Queued,
-                s.reporter.sendDump(diagnosticDumpEvent(dumpFor("STARTED_DUMP_IS_QUEUED"))),
+                s.reporter.sendDump(dumpFor("STARTED_DUMP_IS_QUEUED").event()),
                 "a running channel takes the dump — which does not say it left the device",
             )
         }
@@ -364,14 +348,30 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             },
         ) { s ->
             val line = "RECEIVED_CAPTURE_IS_ONE_EVENT failed"
-            s.startListening()
-            s.reporter.start(s.options)
+            s.start()
+            s.start()
             s.reporter.capture(CrashEvent(message = line))
             assertEquals(
                 1,
                 s.deliveredBefore(sentinel("RECEIVED_CAPTURE_IS_ONE_EVENT")).count { it.message == line },
                 "one capture is one event — a second start must not double anything",
             )
+        }
+
+        clause(
+            "RECEIVED_THE_SHAPING_FILES_AND_GROUPS_THE_EVENT",
+            CrashReporterState.RECEIVED,
+            covers = cells {
+                on<CrashReporter> {
+                    answers(CrashReporter::start).returns()
+                    answers(CrashReporter::capture).returns()
+                }
+            },
+        ) { s ->
+            val message = "RECEIVED_THE_SHAPING_FILES_AND_GROUPS_THE_EVENT"
+            s.start()
+            s.reporter.capture(described(message))
+            assertFiledAndGrouped(s.firstStartingWith(message), message)
         }
 
         clause(
@@ -382,7 +382,7 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             },
         ) { s ->
             val line = "WIRE_BREADCRUMB_IS_NOT_AN_EVENT retrying"
-            s.startListening()
+            s.start()
             s.reporter.breadcrumb(Crumb(CrashLevel.WARNING, line, "engine"))
             val sentinel = sentinel("WIRE_BREADCRUMB_IS_NOT_AN_EVENT")
             assertTrue(s.deliveredBefore(sentinel).isEmpty(), "a breadcrumb alone transmits nothing")
@@ -394,75 +394,48 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         }
 
         clause(
-            "WIRE_HANDLERS_SHAPE_WHAT_LEAVES",
+            "WIRE_THE_SHAPING_IS_WHAT_LEAVES",
             CrashReporterState.ON_THE_WIRE,
             covers = cells {
                 on<CrashReporter> {
-                    answers(CrashReporter::listen).returns()
-                    calls(CrashHandlers::onEvent, CrashEvent::class)
-                    calls(CrashHandlers::onBreadcrumb, Crumb::class)
+                    answers(CrashReporter::start).returns()
                     answers(CrashReporter::capture).returns()
                     answers(CrashReporter::breadcrumb).returns()
                 }
             },
         ) { s ->
-            s.startListening(
-                CrashHandlers(
-                    // Both fields: a captured message's text reaches the handler as the SDK's rendering, `formatted`.
-                    onEvent = { e ->
-                        e.copy(
-                            message = e.message?.let { "$it (shaped)" },
-                            formatted = e.formatted?.let { "$it (shaped)" },
-                            // What files a report under the build it describes rather than the one sending it.
-                            release = "shaped-release",
-                            dist = "shaped-dist",
-                            tags = e.tags - "shaped.away",
-                        )
-                    },
-                    onBreadcrumb = { c -> c.copy(message = c.message?.let { "shaped: $it" }) },
-                ),
+            val message = "WIRE_THE_SHAPING_IS_WHAT_LEAVES"
+            s.start()
+            s.reporter.breadcrumb(
+                Crumb(CrashLevel.INFO, "$message crumb " + "x".repeat(2 * EventBounds.BREADCRUMB_TEXT_BYTES)),
             )
-            s.reporter.breadcrumb(Crumb(CrashLevel.INFO, "WIRE_HANDLERS_SHAPE_WHAT_LEAVES crumb"))
-            s.reporter.capture(
-                CrashEvent(message = "WIRE_HANDLERS_SHAPE_WHAT_LEAVES", tags = mapOf("shaped.away" to "x")),
-            )
-            val event = s.observe.delivered { e -> e.any { it.message?.startsWith("WIRE_HANDLERS") == true } }
-                .first { it.message?.startsWith("WIRE_HANDLERS") == true }
-            assertEquals(
-                "WIRE_HANDLERS_SHAPE_WHAT_LEAVES (shaped)",
-                event.message,
-                "the event leaves as the handler shaped it",
-            )
+            s.reporter.capture(described(message))
+            val event = s.firstStartingWith(message)
+            assertFiledAndGrouped(event, message)
+            val crumb = event.breadcrumbs.single { it.startsWith("$message crumb") }
             assertTrue(
-                event.breadcrumbs.any { it.startsWith("shaped: WIRE_HANDLERS_SHAPE_WHAT_LEAVES crumb") },
-                "and so does its breadcrumb: ${event.breadcrumbs}",
+                crumb.encodeToByteArray().size <= EventBounds.BREADCRUMB_TEXT_BYTES && "…[+" in crumb,
+                "and its breadcrumb arrives capped, saying it was cut: '$crumb'",
             )
-            assertEquals("shaped-release", event.release, "the release the handler names wins over the options'")
-            assertEquals("shaped-dist", event.dist, "and so does the build number")
-            assertFalse("shaped.away" in event.tags, "a tag the handler removed does not leave: ${event.tags}")
         }
 
         clause(
-            "RECEIVED_A_DROPPED_EVENT_LEAVES_NOTHING",
-            CrashReporterState.RECEIVED,
+            "WIRE_A_REPORTED_FAILURE_LEAVES_TITLED_BY_ITS_LINE",
+            CrashReporterState.ON_THE_WIRE,
             covers = cells {
-                on<CrashReporter> {
-                    answers(CrashReporter::listen).returns()
-                    calls(CrashHandlers::onEvent, CrashEvent::class)
-                }
+                on<CrashReporter>().answers(CrashReporter::capture).returns()
             },
         ) { s ->
-            val dropped = "RECEIVED_A_DROPPED_EVENT_LEAVES_NOTHING drop me"
-            s.startListening(
-                CrashHandlers(
-                    onEvent = { e -> e.takeIf { (it.formatted ?: it.message) != dropped } },
-                    onBreadcrumb = { it },
-                ),
-            )
-            s.reporter.capture(CrashEvent(message = dropped))
+            val event = "WIRE_A_REPORTED_FAILURE_LEAVES_TITLED_BY_ITS_LINE could not open the database"
+            val cause = "database version 15 newer than config version 13"
+            s.start()
+            s.reporter.capture(CrashEvent(throwable = ReportedFailure(event, IllegalStateException(cause))))
+            val delivered = s.observe.delivered { e -> e.any { event in it.exceptionValues } }
+                .first { event in it.exceptionValues }
+            assertTrue(delivered.hasException, "a reported failure carries its stack")
             assertTrue(
-                s.deliveredBefore(sentinel("RECEIVED_A_DROPPED_EVENT_LEAVES_NOTHING")).none { it.message == dropped },
-                "a handler's null leaves nothing",
+                cause in delivered.exceptionValues,
+                "the failure it reports rides beneath it, its own text intact: ${delivered.exceptionValues}",
             )
         }
 
@@ -473,7 +446,7 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 on<CrashReporter>().answers(CrashReporter::capture).returns()
             },
         ) { s ->
-            s.startListening()
+            s.start()
             s.reporter.capture(
                 CrashEvent(
                     throwable = IllegalStateException("RECEIVED_TAGS_AND_EXCEPTION_RIDE_THE_EVENT"),
@@ -495,21 +468,24 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 on<CrashReporter>().answers(CrashReporter::start).returns()
             },
         ) { s ->
-            val facts = CrashOptions(
-                dsn = s.options.dsn,
-                release = "9.9.contract",
-                environment = "contract",
-                dist = "990",
-                tags = mapOf(PLATFORM_TAG to "contract-platform", PROCESS_TAG to "app.snapsync.contract"),
+            s.start(
+                CrashOptions(
+                    dsn = s.options.dsn,
+                    release = "9.9.contract",
+                    environment = "contract",
+                    dist = "990",
+                    tags = mapOf(
+                        CrashTags.PLATFORM to "contract-platform",
+                        CrashTags.PROCESS to "app.snapsync.contract",
+                    ),
+                ),
             )
-            s.reporter.listen(PASS_THROUGH)
-            s.reporter.start(facts)
             val event = s.sentinelEvent(sentinel("WIRE_BUILD_FACTS_RIDE_THE_EVENT"))
             assertEquals("9.9.contract", event.release, "the release it was started with")
             assertEquals("contract", event.environment, "the environment it was started with")
             assertEquals("990", event.dist, "the build number it was started with")
-            assertEquals("contract-platform", event.tags[PLATFORM_TAG], "the platform tag: ${event.tags}")
-            assertEquals("app.snapsync.contract", event.tags[PROCESS_TAG], "the process tag: ${event.tags}")
+            assertEquals("contract-platform", event.tags[CrashTags.PLATFORM], "the platform tag: ${event.tags}")
+            assertEquals("app.snapsync.contract", event.tags[CrashTags.PROCESS], "the process tag: ${event.tags}")
         }
 
         // ---- AFTER_A_PROCESS_DEATH: what the next launch delivers -----------------------------------------------
@@ -518,16 +494,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             "DEATH_INVALID_PROGRAM_STATE_IS_DELIVERED_ON_THE_NEXT_START",
             CrashReporterState.AFTER_A_PROCESS_DEATH,
             covers = cells {
-                on<CrashReporter> {
-                    answers(CrashReporter::listen).returns()
-                    answers(CrashReporter::start).returns()
-                }
+                on<CrashReporter>().answers(CrashReporter::start).returns()
             },
         ) { s ->
             val death = assertNotNull(s.death, "the state hands the app's processes")
             assertTrue(death.routes.isNotEmpty(), "a host's processes take at least one road to the end")
             death.routes.forEach { death.endOn(it) }
-            s.startListening(PRODUCTION)
+            s.start()
             val expected = death.routes.map(::becauseOf)
             val events = s.observe.delivered { delivered ->
                 expected.all { because -> delivered.any { because in it.exceptionValues } }
@@ -554,12 +527,10 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             },
         ) { s ->
             val line = "RESTART_CACHED_EVENT_KEEPS_ITS_BUILD captured as build 1"
-            s.reporter.listen(PASS_THROUGH)
-            s.reporter.start(CrashOptions(dsn = s.options.dsn, release = "9.9.contract", dist = "1"))
+            s.start(CrashOptions(dsn = s.options.dsn, release = "9.9.contract", dist = "1"))
             s.reporter.capture(CrashEvent(message = line))
             val relaunched = assertNotNull(s.restart, "the state hands a restart").relaunch()
-            relaunched.listen(PASS_THROUGH)
-            relaunched.start(CrashOptions(dsn = s.options.dsn, release = "9.9.contract", dist = "2"))
+            relaunched.start(CrashOptions(dsn = s.options.dsn, release = "9.9.contract", dist = "2"), SHAPING)
             val event = s.observe.delivered { e -> e.any { it.message == line } }.first { it.message == line }
             assertEquals(
                 "1",
@@ -576,15 +547,12 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 on<CrashReporter>().answers(CrashReporter::capture).returns()
             },
         ) { s ->
-            s.startListening(PRODUCTION)
+            s.start()
             val installId = assertNotNull(
                 s.sentinelEvent(sentinel("WIRE_INSTALL_ID_IS_KEPT")).installId,
                 "an event carries the SDK's per-install id — it powers affected-device counts",
             )
-            assertTrue(
-                INSTALL_ID_SHAPED.matches(installId),
-                "and it is the one identifier the production scrub lets through, intact: '$installId'",
-            )
+            assertTrue(INSTALL_ID_SHAPED.matches(installId), "and it arrives intact: '$installId'")
         }
 
         clause(
@@ -594,7 +562,7 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 on<CrashReporter>().answers(CrashReporter::setContext).returns()
             },
         ) { s ->
-            s.startListening()
+            s.start()
             s.reporter.setContext("process_metrics", mapOf("generation" to "first", "only-in-first" to "1"))
             s.reporter.setContext("process_metrics", mapOf("generation" to "second", "only-in-second" to "1"))
             assertEquals(
@@ -605,26 +573,22 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         }
 
         clause(
-            "WIRE_AUTOMATIC_EVENTS_ARE_SCRUBBED",
+            "WIRE_AN_EVENT_LEAVES_ITS_IDS_IN_FULL",
             CrashReporterState.ON_THE_WIRE,
             covers = cells {
                 on<CrashReporter> {
-                    calls(CrashHandlers::onEvent, CrashEvent::class)
-                    calls(CrashHandlers::onBreadcrumb, Crumb::class)
                     answers(CrashReporter::capture).returns()
                     answers(CrashReporter::breadcrumb).returns()
                 }
             },
         ) { s ->
-            val id = uuidFor("WIRE_AUTOMATIC_EVENTS_ARE_SCRUBBED")
-            s.startListening(PRODUCTION)
+            val id = uuidFor("WIRE_AN_EVENT_LEAVES_ITS_IDS_IN_FULL")
+            s.start()
             s.reporter.breadcrumb(Crumb(CrashLevel.INFO, "enumerating $id"))
             s.reporter.capture(CrashEvent(message = "reconcile($id) failed"))
-            val event = s.observe.delivered { e -> e.any { it.message?.startsWith("reconcile(") == true } }
-                .first { it.message?.startsWith("reconcile(") == true }
-            assertFalse(id in event.message.orEmpty(), "an eventId IS the upload capability: '${event.message}'")
-            assertTrue(event.breadcrumbs.any { it.contains("enumerating") }, "the breadcrumb arrived")
-            assertTrue(event.breadcrumbs.none { id in it }, "and carries no identifier either: ${event.breadcrumbs}")
+            val event = s.firstStartingWith("reconcile(")
+            assertEquals("reconcile($id) failed", event.message, "the ids SnapSync exchanges with its service ride it")
+            assertTrue(event.breadcrumbs.any { "enumerating $id" in it }, "and its breadcrumbs: ${event.breadcrumbs}")
         }
 
         clause(
@@ -635,16 +599,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             },
         ) { s ->
             val dump = dumpFor("RECEIVED_DUMP_IS_DELIVERED_VERBATIM")
-            s.startListening(PRODUCTION)
-            s.reporter.sendDump(diagnosticDumpEvent(dump))
+            s.start()
+            s.reporter.sendDump(dump.event())
             val delivered = s.observe.delivered { e -> e.any { it.contexts.containsKey("note") } }
                 .filter { it.contexts.containsKey("note") }
             assertEquals(1, delivered.size, "one dump sent, one delivered")
             val message = assertNotNull(delivered.single().message)
-            assertTrue(
-                dump.note in message,
-                "the operator's note — and the id it quotes — arrives unredacted: '$message'",
-            )
+            assertTrue(dump.note in message, "the user's note — and the id it quotes — arrives as written: '$message'")
             assertEquals(dump.state, delivered.single().contexts["state"], "and its sections ride as contexts")
         }
 
@@ -658,14 +619,14 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
                 }
             },
         ) { s ->
-            s.startListening(PRODUCTION)
+            s.start()
             // A full set of breadcrumbs, each far over the cap: the breadcrumb row of the whole-event sum at its worst.
-            repeat(MAX_BREADCRUMBS) { i ->
+            repeat(EventBounds.MAX_BREADCRUMBS) { i ->
                 s.reporter.breadcrumb(
                     Crumb(CrashLevel.WARNING, "WIRE_WORST_CASE_DUMP_ARRIVES crumb $i " + "\"q\\".repeat(2_000)),
                 )
             }
-            s.reporter.sendDump(diagnosticDumpEvent(worstCaseDumpFor("WIRE_WORST_CASE_DUMP_ARRIVES")))
+            s.reporter.sendDump(worstCaseDumpFor("WIRE_WORST_CASE_DUMP_ARRIVES").event())
             // The sentinel is sent after the dump. An ingest refusal would leave the dump at the head of the queue, so
             // the sentinel would never arrive either: this is the "nothing is left stuck" half.
             val before = s.deliveredBefore(sentinel("WIRE_WORST_CASE_DUMP_ARRIVES"))
@@ -674,15 +635,15 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
             val crumbs = dump.breadcrumbs.filter { "WIRE_WORST_CASE_DUMP_ARRIVES crumb" in it }
             assertTrue(crumbs.isNotEmpty(), "the over-long lines rode the dump as breadcrumbs")
             assertTrue(
-                crumbs.all { it.encodeToByteArray().size <= BREADCRUMB_TEXT_BYTES && "…[+" in it },
+                crumbs.all { it.encodeToByteArray().size <= EventBounds.BREADCRUMB_TEXT_BYTES && "…[+" in it },
                 "each over-long breadcrumb arrives capped and says it was cut",
             )
         }
     }
 
     /**
-     * A random 128-bit id as a reporting SDK writes it: sentry-cocoa as a UUID, sentry-android as the same 32 hex digits
-     * without the dashes (measured on the emulator, sentry-android 8.41.0). A scrubbed one would read `‹uuid›`.
+     * A random 128-bit id as a reporting SDK writes it: sentry-cocoa as a UUID, sentry-android as the same 32 hex
+     * digits without the dashes (measured on the emulator, sentry-android 8.41.0).
      */
     private val INSTALL_ID_SHAPED = Regex(
         "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32}",

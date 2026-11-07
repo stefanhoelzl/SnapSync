@@ -60,21 +60,21 @@ import platform.Foundation.writeToFile
  * answers the same [platformAdapters] with the production set — and adds the `:test:rig` dependency, ONLY under
  * `-Psnapsync.rig=true`. A production build contains none of it: not a stub, not an inert branch, not a flag.
  *
- * The set differs from production in the launch-time adapters (`docs/testing.md`, "Launch-time adapters"): the ports the
- * app composes over are [real] with every system the adapters file mocks swapped for its mock ([rigLaunch], which reads it),
- * and an adapter choice the process refuses composes nothing. Besides, the UI is decorated ([RigUi] — the channel's `screen.tap`
- * reach the core as the intents a tap produces, through the same handlers) and the development controls are the
- * channel's ([RigDevControls] — the uploader switch, invite-link hints honoured). The `os` service delivers
- * through the platform's own adapters ([IosEntryDriver]) — or a mocked system's operator face.
+ * The set differs from production in the launch-time adapters (`docs/testing.md`, "Launch-time adapters"): the ports
+ * the app composes over are [real] with every system the adapters file mocks swapped for its mock ([rigLaunch], which
+ * reads it), and an adapter choice the process refuses composes nothing. Besides, the UI is decorated ([RigUi] — the
+ * channel's `screen.tap` reach the core as the intents a tap produces, through the same handlers) and the development
+ * controls are the channel's ([RigDevControls] — the uploader switch, invite-link hints honoured). The `os` service
+ * delivers through the platform's own adapters ([IosEntryDriver]) — or a mocked system's operator face.
  *
  * Being compiled INTO `:app:ios` is what lets this file reach the root's adapters without widening anything to
  * `public` — and it means this directory is in the shell gate's scanned roots (`appShellSources`), so this file may
  * hold **no decisions**. Every default, cast, fallback and rendering lives in `:test:rig`, where it is ordinary code.
  *
- * ## Nothing is forced here
- * This is called while `SnapSyncRoot` initializes — before its process services exist — so it builds only the launch
- * and leaves the channel's server to start once the root is up ([startWhenReady]); `SnapSyncRoot.app` and `.host` are
- * passed as **thunks**, and the first request that needs the graph finds it composed.
+ * ## Nothing is forced here This is called while `SnapSyncRoot` initializes — before its process services exist — so it
+ * builds only the launch and leaves the channel's server to start once the root is up ([startWhenReady]);
+ * `SnapSyncRoot.app` and `.host` are passed as **thunks**, and the first request that needs the graph finds it
+ * composed.
  */
 internal fun platformAdapters(real: AppDevicePorts): PlatformAdapters {
     // Before the composition's first relaunch is routed: a contract run spanning launches picks up where it was.
@@ -119,15 +119,15 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     transferBinding = transferSessionBinding,
     deviceLog = LogTailService(IosFiles())::tail,
     // The host's own services are built in `:test:rig`, not here. Same reason every default and cast already lives
-    // there: this file is compiled INTO `:app:ios` and is scanned by the shell gate, which permits no decisions.
-    // The typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it —
+    // there: this file is compiled INTO `:app:ios` and is scanned by the shell gate, which permits no decisions. The
+    // typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it —
     // and this host's own, each method classified by the host: the gallery, the contracts, the played upload-job queue.
     servicesOf = rigServices(
         launch,
         core = { SnapSyncRoot.app },
         host = { SnapSyncRoot.host },
         photoAccess = SnapSyncRoot.permission,
-        handleReport = SnapSyncRoot.process.processAccount::handle,
+        handleReport = SnapSyncRoot.process.processMetrics::deliver,
         // A thunk, never a method reference: see `hostServices` below.
         processExtension = { UploadExtensionRoot.processRawValue() },
         osServices = hostServices(launch),
@@ -166,8 +166,8 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
  *
  * THUNKS, never method references. `UploadExtensionRoot` is an `object` whose `init` calls `Logger.setLogWriters(…)`,
  * and a bound method reference FORCES that object where it is written — here, at boot. Measured 2026-08-26: with
- * `::processRawValue` the extension's boot banner appeared at hook-construction time and `SnapSyncRoot`'s own `onLaunch`
- * lines then landed in `ext-debug.log`, because the app's log destination had already been replaced before
+ * `::processRawValue` the extension's boot banner appeared at hook-construction time and `SnapSyncRoot`'s own
+ * `onLaunch` lines then landed in `ext-debug.log`, because the app's log destination had already been replaced before
  * `SnapSyncRoot` initialised. A lambda body is not evaluated until it is called, so the root is forced by the first
  * request that needs it — the same rule this file follows for `SnapSyncRoot.app` and `.host`.
  */
@@ -194,10 +194,10 @@ private fun writeTextFile(path: String?, text: String) {
  * The iOS operating system, driven: each `os` delivery goes through the same adapter method the Swift shell's callback
  * reaches, on the same (main) lane, so a rig-driven delivery is indistinguishable in `debug.log` from an OS-driven one.
  *
- * Not every `@PlatformEntry` member has a delivery: the launch (`onLaunch`, which the app's own launch already ran), the
- * cold Universal Link (`onLaunchActivity`, which no in-process call can recreate — its warm twin `continueLink` reaches
- * the same join path), the launch-shape query `onSceneActive`, and the scene-delegate observers, which record whether the
- * PLATFORM called them — a rig call would manufacture the very fact they exist to capture.
+ * Not every `@PlatformEntry` member has a delivery: the launch (`onLaunch`, which the app's own launch already ran),
+ * the cold Universal Link (`onLaunchActivity`, which no in-process call can recreate — its warm twin `continueLink`
+ * reaches the same join path), the launch-shape query `onSceneActive`, and the scene-delegate observers, which record
+ * whether the PLATFORM called them — a rig call would manufacture the very fact they exist to capture.
  */
 private object IosEntryDriver : EntryDriver {
     override fun foreground() = SnapSyncRoot.lifecycle.deliverForeground()

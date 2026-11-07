@@ -1,15 +1,15 @@
 package app.snapsync.mock
 
+import app.snapsync.domain.report.Platform
 import app.snapsync.domain.version.Store
-import app.snapsync.model.Platform
 import app.snapsync.ports.BuildInfo
 import kotlin.concurrent.Volatile
 
 /**
  * What the running build IS, as a mock (`docs/testing.md`, "Mocks"): the constants a device's bundle carries. Its
- * levers are [declaredVersion] — a cell the caller holds, so an operator plays a member updating the app in place — read
- * per use, as the backend mock reads the same cell per request; and [store], the build's store page, read per use too
- * (the app takes it once, at launch), so an operator plays a build listed in another store, or in none. Everything
+ * levers are [declaredVersion] — a cell the caller holds, so an operator plays a member updating the app in place —
+ * read per use, as the backend mock reads the same cell per request; and [store], the build's store page, read per use
+ * too (the app takes it once, at launch), so an operator plays a build listed in another store, or in none. Everything
  * else is fixed at construction: an off-device build knows no device, so its facts read `unknown` unless given them.
  */
 class BuildInfoMock(

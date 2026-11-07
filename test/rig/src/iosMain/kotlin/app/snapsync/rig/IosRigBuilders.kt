@@ -3,13 +3,13 @@ package app.snapsync.rig
 import app.snapsync.compose.AppCore
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.contracts.InAppContract
+import app.snapsync.domain.process.ProcessMetricReport
+import app.snapsync.domain.process.ProcessMetricRules
 import app.snapsync.levers.GalleryView
 import app.snapsync.levers.MetricReport
 import app.snapsync.levers.WipeWindow
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.metricPayloadOf
-import app.snapsync.model.ProcessMetricReport
-import app.snapsync.model.processMetricEmissions
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.ProcessMetricPayload
@@ -78,15 +78,17 @@ fun rigServices(
                         "an event's key leaves the creating phone only inside its invite: read it from the joined screen's " +
                             "share link",
                     ),
-                    // What the app's files take on the real disk, per container — the App Group is not pullable over USB.
+                    // What the app's files take on the real disk, per container — the App Group is not pullable over
+                    // USB.
                     disk = honoured { depth, largest -> diskCensus(depth, largest) },
                     // A synthetic process-metric report through the app's OWN handler. Real reports arrive on the OS's
-                    // cadence — roughly daily, and only after a period has closed — so without this the only way to exercise
-                    // the three channels is to wait a day. The report is an open key/value bag by design, so a synthetic one
-                    // needs no MetricKit types: it feeds the same rule and the same channels the OS feeds.
+                    // cadence — roughly daily, and only after a period has closed — so without this the only way to
+                    // exercise the three channels is to wait a day. The report is an open key/value bag by design, so a
+                    // synthetic one needs no MetricKit types: it feeds the same rule and the same channels the OS
+                    // feeds.
                     processMetrics = honoured { fields ->
                         handleReport(metricPayloadOf(fields))
-                        MetricReport(fields.size, processMetricEmissions(ProcessMetricReport(fields)).mapNotNull { it.reason })
+                        MetricReport(fields.size, ProcessMetricRules.account(ProcessMetricReport(fields)).crossings.map { it.key })
                     },
                 ),
                 photoKitGallery(launch, core, photoAccess),
@@ -183,8 +185,8 @@ private fun appEntries(launch: RigLaunch, real: EntryDriver): EntryDriver =
 
 /**
  * The services this host implements itself: the operating system's deliveries — each through the system that makes it,
- * on main, as Swift calls the app root's entry points — and the extension root's invocations ([process] and [terminate],
- * thunks over the REAL `UploadExtensionRoot` members).
+ * on main, as Swift calls the app root's entry points — and the extension root's invocations ([process] and
+ * [terminate], thunks over the REAL `UploadExtensionRoot` members).
  */
 fun iosHostServices(launch: RigLaunch, real: EntryDriver, process: () -> Int, terminate: () -> Unit): HostServices =
     HostServices(

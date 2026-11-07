@@ -1,16 +1,16 @@
 package app.snapsync.mock
 
 import app.snapsync.data.trust.TrustSlots
+import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.crash.CrashLevel
+import app.snapsync.domain.crash.CrashOptions
+import app.snapsync.domain.crash.CrashShaping
+import app.snapsync.domain.crash.Crumb
 import app.snapsync.levers.AttestationRefusal
 import app.snapsync.levers.LibraryPhotoKind
 import app.snapsync.levers.PhotoGrant
 import app.snapsync.levers.SentPush
 import app.snapsync.levers.StoredDeviceConfig
-import app.snapsync.model.CrashEvent
-import app.snapsync.model.CrashLevel
-import app.snapsync.model.CrashOptions
-import app.snapsync.model.Crumb
-import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.NetworkAccess
@@ -211,8 +211,7 @@ class MockStateTest {
         device.keychain.port().write(SLOT, "v")
         device.enclave.port(available = true).prove("challenge", null)
         device.crashReporter.port().apply {
-            listen(CrashHandlers(onEvent = { it }, onBreadcrumb = { it }))
-            start(CrashOptions("dsn"))
+            start(CrashOptions("dsn"), CrashShaping.STANDARD)
             sendDump(
                 CrashEvent(
                     message = "dump",
@@ -269,7 +268,7 @@ class MockStateTest {
     }
 
     private val CONDITIONS = DeviceConditionsMock.TYPICAL.copy(
-        powerSaving = app.snapsync.model.Fact.Known(true),
-        thermal = app.snapsync.model.Fact.Failed("thermal: no answer"),
+        powerSaving = app.snapsync.domain.report.Fact.Known(true),
+        thermal = app.snapsync.domain.report.Fact.Failed("thermal: no answer"),
     )
 }

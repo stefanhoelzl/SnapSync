@@ -1,5 +1,6 @@
 package app.snapsync.data.push
 
+import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.ScriptedCredential
 import app.snapsync.data.backend.ScriptedTransport
@@ -8,7 +9,6 @@ import app.snapsync.data.backend.exchangeOver
 import app.snapsync.data.backend.ok
 import app.snapsync.data.backend.text
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.ports.HttpResult
 import app.snapsync.testids.testDeviceId
 import kotlinx.coroutines.test.runTest
@@ -20,12 +20,8 @@ import kotlin.test.assertTrue
 /** A registration as the backend answers it: recorded, or anything else — never a throw. */
 class PushEndpointPublisherTest {
 
-    private class Identity(var read: DeviceIdRead) : DeviceIdentity {
-        override fun id(): DeviceIdRead = read
-    }
-
     private val transport = ScriptedTransport()
-    private val identity = Identity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
+    private val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
     private val publisher =
         PushEndpointPublisher(BackendGateway(exchangeOver(transport), ScriptedCredential("T1")), identity)
 

@@ -11,8 +11,12 @@ import app.snapsync.domain.membership.Share
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.ports.DbResult
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flow
 
 /**
  * **This device's membership** (`docs/architecture.md`, "Storage") — the `membership` row of the shared database, and
@@ -31,10 +35,18 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class MembershipRepository(private val db: SharedDatabase) {
 
-    private val held = lazy { MutableStateFlow(read()) }
+    private val seeded = MutableStateFlow<StateFlow<MembershipRead>?>(null)
+
+    private val held = lazy { MutableStateFlow(read()).also { seeded.value = it } }
 
     /** The membership as last read conclusively — [MembershipRead.Unavailable] only until a read was. */
     val state: StateFlow<MembershipRead> get() = held.value
+
+    /**
+     * [state] as it changes, from its first use on — following it never seeds it, so a composition that follows it
+     * opens no database: a locked background launch reads nothing until its work does.
+     */
+    val changes: Flow<MembershipRead> = flow { seeded.filterNotNull().collect { emitAll(it) } }
 
     /** The membership as the store holds it now. Never raises. */
     fun read(): MembershipRead = when (val read = db.execute { it.membershipRead() }) {

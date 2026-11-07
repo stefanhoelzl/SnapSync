@@ -1,7 +1,7 @@
 package app.snapsync.feature.diagnostics
 
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.model.Fact
+import app.snapsync.domain.report.Fact
 import app.snapsync.testids.testDeviceId
 import kotlin.test.Test
 import kotlin.test.assertEquals

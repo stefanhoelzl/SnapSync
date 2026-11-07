@@ -1,7 +1,7 @@
 package app.snapsync.contracts
 
+import app.snapsync.domain.report.Fact
 import app.snapsync.model.DeviceConditionsReading
-import app.snapsync.model.Fact
 import app.snapsync.ports.DeviceConditions
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
