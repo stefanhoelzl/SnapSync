@@ -257,6 +257,34 @@ class HostStatusActionsTest {
         onNodeWithText(str(Res.string.mobile_data_on_note)).assertDoesNotExist()
     }
 
+    // Both parts, over the real container: the link Share hands over is the one the QR sheet is opened with, and the code
+    // the sheet draws is that link's (compared with the code drawn for it alone, and told apart from another link's).
+    @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The joined screen offers the invite until the event's photos are deleted",
+        scenario = "The QR code and the shared link are the same invite",
+    )
+    fun `the QR code drawn is the link that share hands over`() {
+        val caption = str(Res.string.invite_caption)
+        var invite = ""
+        var drawn: List<Boolean> = emptyList()
+        rigTest(rig(config = MEMBERSHIP)) { rig ->
+            awaitState(rig) { it.joined?.inviteUrl != null }
+            invite = checkNotNull(rig.state.joined?.inviteUrl)
+            onNodeWithText(str(Res.string.share_invite)).performClick()
+            awaitFired(rig, "share:$invite")
+            onNodeWithText(str(Res.string.show_qr)).performClick()
+            awaitState(rig) { it.overlays.shownQr != null }
+            assertEquals(invite, rig.state.overlays.shownQr)
+            drawn = qrModules(caption)
+        }
+        val same = agreement(drawn, qrModulesOf(invite, caption))
+        val other = agreement(drawn, qrModulesOf("$invite-other", caption))
+        assertTrue(same > 0.98, "the drawn code agrees with the shared link's on only ${same * 100} % of its pixels")
+        assertTrue(other < 0.9, "the comparison cannot tell another link's code apart (${other * 100} %)")
+    }
+
     @Test
     fun `the pen opens the rename sheet — Cancel dismisses it — and Save renames`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->

@@ -1,5 +1,6 @@
 package app.snapsync.ui.components
 
+import app.snapsync.control.Verifies
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.Test
@@ -41,7 +42,14 @@ class AppDateRangeLabelTest {
         )
     }
 
+    // The label's part of the scenario: a single day collapses to the day and its times. The screen puts the time left
+    // beside it (`StatusScreenTest`).
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen shows how long the event lasts",
+        scenario = "A same-day event shows its times",
+    )
     fun `a same-day event shows its times and says today when it is today`() {
         assertEquals("Today 18:00 – 23:00", label(LocalDateTime(2026, 7, 13, 18, 0), LocalDateTime(2026, 7, 13, 23, 0)))
         assertEquals(
@@ -51,6 +59,16 @@ class AppDateRangeLabelTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen shows how long the event lasts",
+        scenario = "An end at midnight shows the day it falls on",
+    )
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen shows how long the event lasts",
+        scenario = "An event ending at the next midnight spans two days",
+    )
     fun `an end at midnight shows the day it falls on`() {
         // The range reads as chosen: an end at "Tue 00:00" is Tuesday.
         assertEquals(

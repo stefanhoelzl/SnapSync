@@ -276,6 +276,22 @@ private const val RANGE = "Mon 6 Jul – Fri 10 Jul"
 private val SE2_WIDTH = 375.dp
 private val SE2_HEIGHT = 667.dp
 
+/** Every status the joined screen can show, one of each kind. */
+private val EVERY_HEALTH: List<SyncHealth> = listOf(
+    SyncHealth.Loading,
+    SyncHealth.Inactive,
+    SyncHealth.KeyLost,
+    SyncHealth.InSync,
+    SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN),
+    SyncHealth.NeedsAccess(canAsk = true),
+    SyncHealth.NeedsAccess(canAsk = false),
+    SyncHealth.NoNetwork(NetworkNotice.OFFLINE),
+    SyncHealth.NoNetwork(NetworkNotice.BLOCKED),
+    SyncHealth.NotStarted,
+    SyncHealth.Unattested(),
+    SyncHealth.ServiceFailing(ServiceNotice.UNREACHABLE),
+)
+
 /** A caption whose `%1$s` holds its [link]'s words, the way the explanation row renders it. */
 private fun caption(res: StringResource, link: StringResource, vararg rest: Any): String = str(res, str(link), *rest)
 
@@ -611,7 +627,14 @@ class StatusScreenTest {
         assertEquals(1, settingsOpens)
     }
 
+    // The screen's part of "Offline": the offline line is drawn with no tap action. That the device reads as offline
+    // is the presentation's reduction (`SyncHealth.NoNetwork(OFFLINE)`).
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Only missing access and a blocked network make the status line tappable",
+        scenario = "Offline",
+    )
     fun `the offline status line offers nothing`() = runComposeUiTest {
         var settingsOpens = 0
         setContent {
@@ -807,7 +830,19 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The joined screen offers the invite until the event's photos are deleted",
+        scenario = "The QR code reads as an invitation",
+    )
+    @Verifies(
+        spec = "invite-link",
+        requirement = "The joined screen offers the invite until the event's photos are deleted",
+        scenario = "The caption addresses the member",
+    )
     fun `the QR sheet renders when the state says it is up`() = runComposeUiTest {
+        // The sheet is titled as joining this event, never as the share action, and its caption is the one addressed to
+        // the member holding the phone.
         val state = inSync.copy(overlays = inSync.overlays.copy(shownQr = SAMPLE_INVITE))
         setContent { TestStatusScreen(state) }
         val name = (state.layer as Layer.Joined).membership.name
@@ -1492,6 +1527,11 @@ class StatusScreenTest {
     // ---- how it works (capability `sync-status`) ----
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "A sharing and receiving member",
+    )
     fun `a sharing and receiving member is told what happens to both sides and what to do when photos stall`() =
         runComposeUiTest {
             setContent {
@@ -1515,12 +1555,22 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "No album",
+    )
     fun `without an album the group's photos land beside the member's own`() = runComposeUiTest {
         setContent { TestStatusScreen(inSync) }
         onNodeWithText(str(Res.string.explain_receive_no_album)).assertExists()
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "Sharing switched off",
+    )
     fun `sharing switched off says so and its link opens the event's settings`() = runComposeUiTest {
         var opened = 0
         setContent {
@@ -1539,6 +1589,11 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "Receiving switched off",
+    )
     fun `receiving switched off says so and its link opens the event's settings`() = runComposeUiTest {
         var opened = 0
         setContent {
@@ -1555,6 +1610,11 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "No photo access",
+    )
     fun `without access nothing is shared or received and the link asks exactly as the status line does`() =
         runComposeUiTest {
             var asked = 0
@@ -1602,6 +1662,11 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "No photo access",
+    )
     fun `a refused grant's link goes to the phone's Settings`() = runComposeUiTest {
         var settings = 0
         setContent {
@@ -1617,6 +1682,11 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "Limited access",
+    )
     fun `limited access names the selection and offers both ways to widen it`() = runComposeUiTest {
         setContent { TestStatusScreen(joined(SyncHealth.InSync, canChoosePhotos = true)) }
         onNodeWithText(str(Res.string.explain_share_limited_title)).assertExists()
@@ -1633,6 +1703,11 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen is whole until the event is deleted",
+        scenario = "The actions stay in reach on a small phone",
+    )
     fun `on the smallest phone the footer stays on screen while the content scrolls`() = runComposeUiTest {
         // An SE2's screen in points, with the tallest joined screen: the no-access rows and a notice-free status.
         setContent {
@@ -1652,6 +1727,105 @@ class StatusScreenTest {
             assertTrue(bottom <= SE2_HEIGHT, "${str(label)} ends at $bottom, below the screen")
         }
         onNodeWithText(str(Res.string.explain_hint_title)).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "Before the start and after the end",
+    )
+    fun `before the start and after the end the explanation names the same range`() = runComposeUiTest {
+        var timing by mutableStateOf<EventTiming>(EventTiming.Upcoming(TimeLeft.Days(2)))
+        setContent { TestStatusScreen(joined(SyncHealth.NotStarted, timing = timing)) }
+        onNodeWithText(str(Res.string.explain_share_caption, RANGE)).assertExists()
+        timing = EventTiming.Ended
+        waitForIdle()
+        onNodeWithText(str(Res.string.explain_share_caption, RANGE)).assertExists()
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen explains how the event works for this member",
+        scenario = "The remedy is always there",
+    )
+    fun `every status keeps the remedy for photos that are not arriving`() = runComposeUiTest {
+        var health by mutableStateOf<SyncHealth>(SyncHealth.InSync)
+        setContent { TestStatusScreen(joined(health)) }
+        for (value in EVERY_HEALTH) {
+            health = value
+            waitForIdle()
+            onNodeWithText(str(Res.string.explain_hint_title)).assertExists()
+            onNodeWithText(str(Res.string.explain_hint_caption)).assertExists()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen is whole until the event is deleted",
+        scenario = "No access still shows everything",
+    )
+    fun `without photo access every part of the joined screen is there and the line asks for access`() =
+        runComposeUiTest {
+            setContent {
+                TestStatusScreen(withAccessFix(joined(SyncHealth.NeedsAccess(canAsk = false)), AccessFix.SETTINGS))
+            }
+            onNodeWithText(MEMBERSHIP.name).assertExists()
+            onNodeWithText(str(Res.string.joined_statement)).assertExists()
+            onNodeWithText(
+                RANGE + " · " + str(Res.string.timing_ends_in, plural(Res.plurals.duration_days, 4, 4)),
+            ).assertExists()
+            onNodeWithText(str(ComponentRes.string.status_allow_access_settings)).assertExists()
+            onNodeWithText(str(Res.string.explain_share_blocked_title)).assertExists()
+            onNodeWithText(str(Res.string.explain_hint_title)).assertExists()
+            onNodeWithText(str(Res.string.share_invite)).assertExists()
+            onNodeWithText(str(Res.string.show_qr)).assertExists()
+            onNodeWithText(str(Res.string.footer_settings)).assertExists()
+            onNodeWithText(str(Res.string.leave_event)).assertExists()
+            onNodeWithContentDescription(str(Res.string.rename_event)).assertExists()
+        }
+
+    // The screen's part: the joined statement is one sentence, drawn from a membership that carries no role, so the
+    // creator and a guest read the same words. That the creator's own join lands on the same joined layer is the core's.
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen is whole until the event is deleted",
+        scenario = "Host and guest are told the same",
+    )
+    fun `the joined statement is the same sentence for every member`() = runComposeUiTest {
+        var membership by mutableStateOf(MEMBERSHIP)
+        setContent { TestStatusScreen(joined(SyncHealth.InSync, membership = membership)) }
+        onNodeWithText(str(Res.string.joined_statement)).assertExists()
+        membership = MEMBERSHIP.copy(eventId = "E2", shares = false, savesToAlbum = true)
+        waitForIdle()
+        onNodeWithText(str(Res.string.joined_statement)).assertExists()
+    }
+
+    // The label's part (that a single day collapses to its times) is `AppDateRangeLabelTest`'s; this is the screen's:
+    // the dates line puts them beside how long until the event ends.
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The joined screen shows how long the event lasts",
+        scenario = "A same-day event shows its times",
+    )
+    fun `a same-day event running today shows its times and how long until it ends`() = runComposeUiTest {
+        val party = MEMBERSHIP.copy(
+            startsAt = LocalDateTime(2026, 7, 6, 18, 0),
+            endsAt = LocalDateTime(2026, 7, 6, 23, 0),
+        )
+        setContent {
+            TestStatusScreen(
+                joined(SyncHealth.InSync, membership = party, timing = EventTiming.Running(TimeLeft.Hours(3))),
+            )
+        }
+        onNodeWithText(
+            str(ComponentRes.string.date_range_today, "18:00", "23:00") + " · " +
+                str(Res.string.timing_ends_in, plural(Res.plurals.duration_hours, 3, 3)),
+        ).assertExists()
     }
 
     // ---- the screens' remaining choices ----
