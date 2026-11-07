@@ -1488,6 +1488,11 @@ class StatusScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+        scenario = "A deleted event cannot be renamed",
+    )
     fun `a deleted event is shown as over and offers only Leave which does not ask`() = runComposeUiTest {
         var leaves = 0
         var asked = 0

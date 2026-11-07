@@ -32,8 +32,16 @@ class CreateDraftTest {
         draft(name, EventRange(from, endDay, until, endPending = false))
 
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "A name alone does not allow Create")
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "A same-day event needs only its end time")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "A name alone does not allow Create",
+    )
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "A same-day event needs only its end time",
+    )
     fun `Create is offered only for a named draft whose end follows its start within the event window`() {
         assertEquals(
             LocalDateTime(2026, 7, 6, 13, 0),
@@ -50,9 +58,21 @@ class CreateDraftTest {
     // The form's part of these: which step it names, and the duration once complete. How the line reads is the
     // screen's (`CreateFlowTest`).
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The next missing step is named from the start")
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "A name alone does not allow Create")
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "Setting the end time completes the range")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "The next missing step is named from the start",
+    )
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "A name alone does not allow Create",
+    )
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "Setting the end time completes the range",
+    )
     fun `the form names the next missing step — then the event's duration`() {
         assertEquals(CreateStep.Name, display.create(draft("", EventRange(from))).nextStep)
         assertEquals(CreateStep.EndTime, display.create(draft("Party", EventRange(from))).nextStep)
@@ -64,7 +84,11 @@ class CreateDraftTest {
 
     // The form's part: a range of five days lasts 5 days. Saying so beside what the range shares is the screen's.
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The duration and the consequence are stated")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "The duration and the consequence are stated",
+    )
     fun `a range spanning five days lasts five days`() {
         assertEquals(
             CreateStep.Complete(CoarseDuration.Days(5)),
@@ -73,7 +97,11 @@ class CreateDraftTest {
     }
 
     @Test
-    @Verifies(spec = "create-event", requirement = CLOCK, scenario = "A choice in the range freezes the start")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The start follows the clock until the host chooses the range",
+        scenario = "A choice in the range freezes the start",
+    )
     fun `an untouched draft follows the clock and a chosen range does not`() {
         val later = LocalDateTime(2026, 7, 6, 12, 10)
         val fresh = CreateDraft.fresh(CreateDraftSession(), from)
@@ -85,7 +113,7 @@ class CreateDraftTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = CLOCK,
+        requirement = "The start follows the clock until the host chooses the range",
         scenario = "A start that moved past midnight takes the last day with it",
     )
     fun `an untouched start that crosses midnight takes the last day to the new day`() {
@@ -97,7 +125,11 @@ class CreateDraftTest {
     }
 
     @Test
-    @Verifies(spec = "create-event", requirement = CLOCK, scenario = "A frozen start survives a short absence")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The start follows the clock until the host chooses the range",
+        scenario = "A frozen start survives a short absence",
+    )
     fun `a start the host set stays through a short absence with the rest of the range`() {
         val set = CreateDraft.fresh(SHOWN, from)
             .choose(EventRange(LocalDateTime(2026, 7, 6, 15, 0), LocalDate(2026, 7, 8), LocalTime(21, 0), false))
@@ -106,7 +138,11 @@ class CreateDraftTest {
     }
 
     @Test
-    @Verifies(spec = "create-event", requirement = ABSENCE, scenario = "Coming back sooner keeps the draft")
+    @Verifies(
+        spec = "create-event",
+        requirement = "A long absence starts a fresh draft",
+        scenario = "Coming back sooner keeps the draft",
+    )
     fun `a return after 14 minutes keeps the name and the range as the host left them`() {
         val left = entered()
         val back = left.afterReturn(SHOWN.activation + 1, 14.minutes, LocalDateTime(2026, 7, 6, 18, 19))
@@ -114,7 +150,11 @@ class CreateDraftTest {
     }
 
     @Test
-    @Verifies(spec = "create-event", requirement = ABSENCE, scenario = "Coming back after 15 minutes starts over")
+    @Verifies(
+        spec = "create-event",
+        requirement = "A long absence starts a fresh draft",
+        scenario = "Coming back after 15 minutes starts over",
+    )
     fun `a return after 15 minutes starts over with an empty name and the start at now`() {
         val back = entered().afterReturn(SHOWN.activation + 1, 15.minutes, LocalDateTime(2026, 7, 6, 18, 20))
         assertEquals("", back.name)
@@ -131,9 +171,6 @@ class CreateDraftTest {
         .choose(EventRange(LocalDateTime(2026, 7, 6, 18, 4), LocalDate(2026, 7, 8), LocalTime(21, 0), false))
 
     private companion object {
-        const val RANGE = "The host chooses the event's date range and its end time"
-        const val CLOCK = "The start follows the clock until the host chooses the range"
-        const val ABSENCE = "A long absence starts a fresh draft"
 
         val SHOWN = CreateDraftSession(activation = 1, epoch = 0)
     }

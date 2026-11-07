@@ -53,7 +53,11 @@ class DiagnosticDumpGestureTest {
     private val placeholder = "What went wrong, and what were you doing?"
 
     @Test
-    @Verifies(spec = "privacy-security", requirement = REPORT, scenario = "The hidden way still opens the sheet")
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "The hidden way still opens the sheet",
+    )
     fun `double-tapping the app name asks for the bug-report sheet`() = runComposeUiTest {
         var opened = 0
         setContent {
@@ -80,7 +84,11 @@ class DiagnosticDumpGestureTest {
     }
 
     @Test
-    @Verifies(spec = "privacy-security", requirement = REPORT, scenario = "The hidden way still opens the sheet")
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "The hidden way still opens the sheet",
+    )
     fun `double-tapping the app name on the joined screen asks for the sheet too`() = runComposeUiTest {
         var opened = 0
         setContent {
@@ -97,7 +105,11 @@ class DiagnosticDumpGestureTest {
     }
 
     @Test
-    @Verifies(spec = "privacy-security", requirement = REPORT, scenario = "An empty description")
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "An empty description",
+    )
     fun `sending is refused until something is written`() = runComposeUiTest {
         // The description is required, and the refusal is a disabled action rather than an error
         // message: an invalid submit is unreachable, so nothing needs to explain it.
@@ -117,7 +129,11 @@ class DiagnosticDumpGestureTest {
     }
 
     @Test
-    @Verifies(spec = "privacy-security", requirement = REPORT, scenario = "An empty description")
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "An empty description",
+    )
     fun `whitespace alone is not a description`() = runComposeUiTest {
         var sent = 0
         setContent {
@@ -180,7 +196,11 @@ class DiagnosticDumpGestureTest {
     }
 
     @Test
-    @Verifies(spec = "privacy-security", requirement = REPORT, scenario = "An empty description")
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "An empty description",
+    )
     fun `a build that reports nowhere cannot save an empty or blank description either`() = runComposeUiTest {
         val saved = mutableListOf<String>()
         setContent {
@@ -282,8 +302,6 @@ private val SWITCH_MEMBERSHIP = joinedEvent(
     startsAt = LocalDateTime(2026, 7, 6, 12, 0),
     endsAt = LocalDateTime(2026, 7, 10, 12, 0),
 )
-
-private const val REPORT = "A detailed bug report leaves the phone only when the user sends one"
 
 private fun joinedWith(health: SyncHealth, pendingSwitch: PendingSwitch? = null, name: String = "Anna's Birthday") =
     UiState(

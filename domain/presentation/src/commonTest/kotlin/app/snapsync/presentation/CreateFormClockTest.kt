@@ -34,10 +34,14 @@ import kotlin.time.Instant
 class CreateFormClockTest {
 
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The start is preset to now")
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "The start is preset to now",
+    )
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "The last day starts as today, but not the end time",
     )
     fun `the create form opens with its start at now to the minute, its last day today and no end time`() = runTest {
@@ -53,8 +57,16 @@ class CreateFormClockTest {
     }
 
     @Test
-    @Verifies(spec = "create-event", requirement = ABSENCE, scenario = "Coming back after 15 minutes starts over")
-    @Verifies(spec = "create-event", requirement = ABSENCE, scenario = "Coming back sooner keeps the draft")
+    @Verifies(
+        spec = "create-event",
+        requirement = "A long absence starts a fresh draft",
+        scenario = "Coming back after 15 minutes starts over",
+    )
+    @Verifies(
+        spec = "create-event",
+        requirement = "A long absence starts a fresh draft",
+        scenario = "Coming back sooner keeps the draft",
+    )
     fun `each return to the foreground keeps the draft and only a long absence starts a fresh one`() = runTest {
         // Capability `create-event`, "A long absence starts a fresh draft".
         val foreground = MutableStateFlow(ForegroundReturn.NONE)
@@ -80,7 +92,11 @@ class CreateFormClockTest {
     }
 
     @Test
-    @Verifies(spec = "create-event", requirement = CLOCK, scenario = "A choice in the range freezes the start")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The start follows the clock until the host chooses the range",
+        scenario = "A choice in the range freezes the start",
+    )
     fun `an untouched create range follows the clock minute by minute and a chosen one stays`() = runTest {
         var now = NOON
         host(backgroundScope, { now }).testWithInternalState(this) {
@@ -125,9 +141,6 @@ class CreateFormClockTest {
     }
 
     private companion object {
-        const val RANGE = "The host chooses the event's date range and its end time"
-        const val CLOCK = "The start follows the clock until the host chooses the range"
-        const val ABSENCE = "A long absence starts a fresh draft"
 
         val NOON: Instant = Instant.parse("2026-07-09T12:00:00Z")
     }
