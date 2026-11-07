@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import app.snapsync.android.network.DataSaverStatus
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.BeforeListen
@@ -32,6 +33,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -68,15 +70,27 @@ import java.util.concurrent.atomic.AtomicInteger
  *   fresh presign; DownloadManager's own retry goes back to it (measured, decision record `changes/incremental-union`
  *   D2), so a 403 reaches here only when even a fresh presign was refused.
  * - **[cancelAll]** removes every row; DownloadManager broadcasts nothing for a removal, so each is reported here.
+ * - **Parked under Data Saver**. DownloadManager applies Data Saver to metered networks only,
+ *   so on an unmetered Wi-Fi it would run a transfer held to unrestricted networks. While Data Saver holds this app
+ *   ([DataSaverStatus]), such a transfer is not enqueued but parked in this adapter's own preferences — surviving the
+ *   process as a DownloadManager row would — and enqueued unchanged once Data Saver no longer holds it: while the
+ *   process lives, at the change ([DataSaverStatus.watch]); after a process death, at the next [inbound], which every
+ *   wake and every opening brings. To the core a parked transfer is one started and not yet finished. One already
+ *   enqueued when Data Saver is switched on may still finish.
  */
 class AndroidDownload(
     context: Context,
     private val log: Logger = Logger.withTag("download"),
+    private val dataSaver: DataSaverStatus = DataSaverStatus(context),
+    parkedName: String = PARKED,
 ) : Download {
 
     private val appContext = context.applicationContext
     private val manager: DownloadManager = appContext.getSystemService(DownloadManager::class.java)
     private val lock = Any()
+    private val parked = appContext.getSharedPreferences(parkedName, Context.MODE_PRIVATE)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val watching = AtomicBoolean(false)
 
     private val handlers = HandlerSlot<DownloadHandlers>("Download", BeforeListen.Dropped)
 
@@ -86,17 +100,59 @@ class AndroidDownload(
         registration.value = this
         val recovered = deliverFinished(null)
         if (recovered > 0) log.i { "delivered $recovered transfer(s) a previous process left finished" }
+        releaseParked()
+        if (watching.compareAndSet(false, true)) {
+            scope.launch { dataSaver.watch().collect { inForce -> if (!inForce) releaseParked() } }
+        }
     }
 
-    override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult = runCatchingCancellable {
-        manager.enqueue(request(url, headers, tag, restarts = 0, network))
-    }.fold(
-        onSuccess = { StartResult.Started },
-        onFailure = {
-            log.w(it) { "$tag: DownloadManager refused the request" }
-            StartResult.NotStarted
-        },
-    )
+    override fun start(url: String, headers: Map<String, String>, tag: String, network: TransferNetwork): StartResult {
+        val transfer = Parked(url, headers, tag, network)
+        val started = if (network == TransferNetwork.UNRESTRICTED_ONLY && dataSaver.inForce()) {
+            park(transfer)
+        } else {
+            enqueue(transfer)
+        }
+        return if (started) StartResult.Started else StartResult.NotStarted
+    }
+
+    /** [transfer] handed to DownloadManager; false, logged, when it refuses the request. */
+    private fun enqueue(transfer: Parked): Boolean = runCatchingCancellable {
+        manager.enqueue(request(transfer.url, transfer.headers, transfer.tag, restarts = 0, transfer.network))
+    }.onFailure { log.w(it) { "${transfer.tag}: DownloadManager refused the request" } }.isSuccess
+
+    /** [transfer] kept in the parked store; false, logged, when the store did not take it. */
+    private fun park(transfer: Parked): Boolean {
+        val kept = synchronized(PARKED_LOCK) {
+            parked.edit().putString(UUID.randomUUID().toString(), transfer.encode()).commit()
+        }
+        if (kept) {
+            log.i { "${transfer.tag}: Data Saver holds this app — parked until it does not" }
+        } else {
+            log.w { "${transfer.tag}: the parked store did not take the transfer" }
+        }
+        return kept
+    }
+
+    /**
+     * Enqueue every parked transfer, unchanged, unless Data Saver still holds this app. A transfer DownloadManager
+     * refuses fails through `onCompleted`, so the next reconcile plans it again. Answers how many were released.
+     * Under one lock for the process: the parked store is the process's, and two adapters releasing it at the same
+     * change would enqueue each transfer twice (measured: the relaunch test of `AndroidDownloadContractTest`).
+     */
+    internal fun releaseParked(): Int = synchronized(PARKED_LOCK) {
+        if (dataSaver.inForce()) return 0
+        val held = parked.all.mapNotNull { (key, value) -> (value as? String)?.let { key to Parked.decode(it) } }
+        for ((key, transfer) in held) {
+            if (!enqueue(transfer)) {
+                handlers.orNull("a refused parked transfer")?.onCompleted
+                    ?.deliver(CompletedDownload(transfer.tag, "DownloadManager refused the request"))
+            }
+            parked.edit().remove(key).commit()
+        }
+        if (held.isNotEmpty()) log.i { "released ${held.size} parked transfer(s): Data Saver no longer holds this app" }
+        held.size
+    }
 
     /**
      * [url] with [headers] into a fresh destination, tagged [tag]; the title carries how often the transfer was
@@ -106,8 +162,8 @@ class AndroidDownload(
      * Under [TransferNetwork.UNRESTRICTED_ONLY] DownloadManager holds the transfer off every
      * metered network — cellular, a hotspot, a metered Wi-Fi — in its own persisted queue, and runs it once the phone is
      * on an unmetered one, process alive or not (measured on the API 36 emulator, 2026-10-03: held on metered Wi-Fi and
-     * cellular, finished within ~6 s of unmetered Wi-Fi). Data Saver needs nothing here: it applies to metered networks
-     * only, and DownloadManager already honours it there.
+     * cellular, finished within ~6 s of unmetered Wi-Fi). DownloadManager honours Data Saver on metered networks only;
+     * on an unmetered one [start] parks the transfer instead (the class KDoc).
      */
     private fun request(
         url: String,
@@ -136,10 +192,14 @@ class AndroidDownload(
 
     private fun cancel(): Int {
         val cancelled = synchronized(lock) {
+            val parkedTags = synchronized(PARKED_LOCK) {
+                parked.all.values.mapNotNull { (it as? String)?.let(Parked::decode)?.tag }
+                    .also { parked.edit().clear().commit() }
+            }
             rows(
                 null,
             ) { cursor -> cursor.long(DownloadManager.COLUMN_ID) to cursor.string(DownloadManager.COLUMN_DESCRIPTION) }
-                .onEach { (id, _) -> manager.remove(id) }
+                .onEach { (id, _) -> manager.remove(id) } + parkedTags.map { null to it }
         }
         // DownloadManager says nothing about a removal, so every cancelled transfer is reported here, as the port promises.
         cancelled.forEach { (_, tag) ->
@@ -294,7 +354,41 @@ class AndroidDownload(
             TransferOutcome(HTTP_OK, if (onDisk < received) maxOf(total, received) else total, onDisk)
     }
 
+    /** A transfer held back while Data Saver holds this app: what [start] was asked, stored as one JSON string. */
+    private class Parked(
+        val url: String,
+        val headers: Map<String, String>,
+        val tag: String,
+        val network: TransferNetwork,
+    ) {
+        fun encode(): String = JSONObject()
+            .put("url", url)
+            .put("tag", tag)
+            .put("network", network.name)
+            .put("headers", JSONObject(headers))
+            .toString()
+
+        companion object {
+            fun decode(json: String): Parked {
+                val o = JSONObject(json)
+                val headers = o.getJSONObject("headers")
+                return Parked(
+                    url = o.getString("url"),
+                    headers = headers.keys().asSequence().associateWith(headers::getString),
+                    tag = o.getString("tag"),
+                    network = TransferNetwork.valueOf(o.getString("network")),
+                )
+            }
+        }
+    }
+
     internal companion object {
+        /** The preferences the parked transfers are kept in. */
+        const val PARKED = "download.parked"
+
+        /** Guards the parked store across every adapter in the process. */
+        private val PARKED_LOCK = Any()
+
         /** The subdirectory of the app's external files dir the transfers land in. */
         const val DIRECTORY = "downloads"
         const val HTTP_OK = 200

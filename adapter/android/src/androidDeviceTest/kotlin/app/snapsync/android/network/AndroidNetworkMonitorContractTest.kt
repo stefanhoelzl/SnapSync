@@ -19,12 +19,17 @@ import app.snapsync.contracts.verify
 import app.snapsync.control.Verifies
 import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * [NetworkMonitorContract] against the real [AndroidNetworkMonitor] on the emulator, each state entered through the
@@ -58,8 +63,132 @@ class AndroidNetworkMonitorContractTest {
         }
     }
 
+    /** RESTRICTED entered the second way Android has: Data Saver on, on the emulator's unmetered Wi-Fi. */
+    private val dataSaverBinding = object : Binding<NetworkState, NetworkMonitor> {
+        override val host = Host.ANDROID_EMU
+        override val kind = BindingKind.Live
+        override val adapter = AndroidNetworkMonitor::class
+        override val reaches = setOf(NetworkState.RESTRICTED)
+
+        override fun create(state: NetworkState, clauseId: String, log: CallLog): Entered<NetworkMonitor> {
+            if (state !in reaches) return Entered.Unreachable("this binding enters RESTRICTED through Data Saver only")
+            enterDataSaverOnWifi()
+            return Entered.Ready(AndroidNetworkMonitor(context).recorded(log), dispose = ::liftDataSaver)
+        }
+    }
+
     @Test
     fun `the default-network callback satisfies the NetworkMonitor contract`() = verify(NetworkMonitorContract, binding)
+
+    @Test
+    fun `the default-network callback satisfies the NetworkMonitor contract under Data Saver`() =
+        verify(NetworkMonitorContract, dataSaverBinding)
+
+    // Android's part of the scenario: Data Saver, which on an unmetered Wi-Fi changes no capability, reads restricted.
+    // iPhone's Low Data Mode is `IosNetworkMonitorTest`'s.
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "Low Data Mode counts as mobile data",
+    )
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "Data Saver holds photos on an ordinary Wi-Fi",
+    )
+    fun `Data Saver on an unmetered Wi-Fi is restricted and switching it off is told at once`(): Unit = runBlocking {
+        try {
+            enterDataSaverOnWifi()
+            val readings = Channel<NetworkAccess>(Channel.UNLIMITED)
+            val monitor = AndroidNetworkMonitor(context)
+            val collection = launch(Dispatchers.Default) { monitor.watch().collect(readings::send) }
+            try {
+                assertEquals(NetworkAccess.Online(restricted = true), next(readings), "Data Saver holds the Wi-Fi")
+                DataSaver.lift()
+                // Heard on a running collection, with no activity in this process: the registered receiver.
+                assertEquals(NetworkAccess.Online(restricted = false), next(readings), "Data Saver off")
+            } finally {
+                collection.cancel()
+            }
+        } finally {
+            liftDataSaver()
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "SnapSync allowed unrestricted data",
+    )
+    fun `Data Saver holds nothing once SnapSync is allowed unrestricted data`(): Unit = runBlocking {
+        try {
+            restoreOnline()
+            awaitWifiDefault()
+            DataSaver.enterExempted()
+            assertEquals(NetworkAccess.Online(restricted = false), firstReading())
+        } finally {
+            liftDataSaver()
+        }
+    }
+
+    /**
+     * A carrier network the carrier currently does not charge for is still mobile data: Android schedules every held
+     * transfer by `NOT_METERED` alone ([AndroidNetworkMonitor]'s KDoc), so the monitor does too. No emulator network can
+     * be made temporarily unmetered, and an app cannot build capabilities, so the mapping is read over a lookup.
+     */
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "Mobile data the carrier does not charge for",
+    )
+    fun `a temporarily unmetered carrier network is metered`() {
+        val temporarilyFree = setOf(
+            NetworkCapabilities.NET_CAPABILITY_INTERNET,
+            NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED,
+        )
+        assertTrue(meteredBy(temporarilyFree::contains), "temporarily unmetered is metered")
+        val unmetered = setOf(
+            NetworkCapabilities.NET_CAPABILITY_INTERNET,
+            NetworkCapabilities.NET_CAPABILITY_NOT_METERED,
+        )
+        assertFalse(meteredBy(unmetered::contains), "an unmetered network is not")
+    }
+
+    private fun enterDataSaverOnWifi() {
+        restoreOnline()
+        awaitWifiDefault()
+        DataSaver.enter()
+    }
+
+    private fun liftDataSaver() {
+        DataSaver.lift()
+        restoreOnline()
+    }
+
+    private suspend fun firstReading(): NetworkAccess =
+        withTimeout(READING_MILLIS) { AndroidNetworkMonitor(context).watch().first() }
+
+    private suspend fun next(readings: Channel<NetworkAccess>): NetworkAccess =
+        withTimeout(READING_MILLIS) { readings.receive() }
+
+    /**
+     * Waits until the emulator's Wi-Fi is the default network. Lifting a metered override reconnects the Wi-Fi as a new
+     * network, with cellular the default for a few seconds in between (measured 2026-11-07).
+     */
+    private fun awaitWifiDefault() {
+        val deadline = System.currentTimeMillis() + SETTLE_MILLIS
+        while (connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true
+        ) {
+            check(System.currentTimeMillis() < deadline) {
+                "the emulator's Wi-Fi was not the default network within ${SETTLE_MILLIS}ms (${EmulatorNetwork.describe()})"
+            }
+            Thread.sleep(POLL_MILLIS)
+        }
+    }
 
     /**
      * The platform facts [AndroidNetworkMonitor] reads absence by, pinned outright. The contract catches an adapter that
@@ -95,7 +224,7 @@ class AndroidNetworkMonitorContractTest {
     fun `a metered Wi-Fi — what a phone’s hotspot reads as — is restricted`(): Unit = runBlocking {
         try {
             enter(NetworkState.RESTRICTED)
-            assertWifiIsDefault()
+            awaitWifiDefault()
             assertEquals(NetworkAccess.Online(restricted = true), firstReading())
         } finally {
             restoreOnline()
@@ -112,30 +241,10 @@ class AndroidNetworkMonitorContractTest {
     fun `an unmetered Wi-Fi is online and unrestricted`(): Unit = runBlocking {
         try {
             enter(NetworkState.ONLINE)
-            assertWifiIsDefault()
+            awaitWifiDefault()
             assertEquals(NetworkAccess.Online(restricted = false), firstReading())
         } finally {
             restoreOnline()
-        }
-    }
-
-    private suspend fun firstReading(): NetworkAccess =
-        withTimeout(READING_MILLIS) { AndroidNetworkMonitor(context).watch().first() }
-
-    /**
-     * Waits until the emulator's Wi-Fi is the default network. Lifting a metered override reconnects the Wi-Fi as a new
-     * network, with cellular the default for a few seconds in between (measured 2026-11-07), so the entry alone does not
-     * guarantee it.
-     */
-    private fun assertWifiIsDefault() {
-        val deadline = System.currentTimeMillis() + SETTLE_MILLIS
-        while (connectivity.getNetworkCapabilities(connectivity.activeNetwork)
-                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true
-        ) {
-            check(System.currentTimeMillis() < deadline) {
-                "the emulator's Wi-Fi was not the default network within ${SETTLE_MILLIS}ms (${EmulatorNetwork.describe()})"
-            }
-            Thread.sleep(POLL_MILLIS)
         }
     }
 
