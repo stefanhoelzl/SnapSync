@@ -35,7 +35,11 @@ class CreateFormClockTest {
 
     @Test
     @Verifies(spec = "create-event", requirement = RANGE, scenario = "The start is preset to now")
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The last day starts as today, but not the end time")
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "The last day starts as today, but not the end time",
+    )
     fun `the create form opens with its start at now to the minute, its last day today and no end time`() = runTest {
         host(backgroundScope, { Instant.parse("2026-07-09T18:04:37Z") }).testWithInternalState(this) {
             runOnCreate()

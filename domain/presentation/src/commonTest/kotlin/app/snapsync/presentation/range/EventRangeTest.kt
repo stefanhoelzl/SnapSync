@@ -61,7 +61,11 @@ class EventRangeTest {
     private val fresh = EventRange(from = START)
 
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The last day starts as today, but not the end time")
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "The last day starts as today, but not the end time",
+    )
     fun `a fresh range ends today with the end time blank`() {
         assertEquals(TODAY, fresh.endDay)
         assertNull(fresh.untilTime)

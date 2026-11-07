@@ -14,9 +14,11 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -24,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.v2.runComposeUiTest
+import app.snapsync.control.Verifies
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.RangeChoiceActions
 import app.snapsync.ui.components.resources.network_blocked
@@ -886,6 +889,11 @@ class JoinScreenTest {
     }
 
     @Test
+    @Verifies(
+        spec = "join-event",
+        requirement = "Photo access is explained before the system ever asks",
+        scenario = "The explanation is available on request",
+    )
     fun `the info opens the explanation and closing it confirms nothing`() = runComposeUiTest {
         var confirmed = 0
         setScreen {
@@ -903,6 +911,27 @@ class JoinScreenTest {
         onNodeWithText(str(Res.string.join_access_dismiss)).performClick()
         onNodeWithText(str(Res.string.join_access_sheet_title)).assertDoesNotExist()
         assertEquals(0, confirmed)
+    }
+
+    // The screen's part: the join screen, its access explanation included, has no field to type into, so it can ask
+    // for no name, email, phone number or password. The system's own permission prompts are the platform's.
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "No account and no personal identity",
+        scenario = "Joining asks for nothing personal",
+    )
+    fun `the join screen asks for nothing typed — no name, no email, no number, no password`() = runComposeUiTest {
+        var state by mutableStateOf(asking())
+        setScreen { TestStatusScreen(state) }
+        onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        onNodeWithContentDescription(str(Res.string.join_access_info)).performClick()
+        onNodeWithText(str(Res.string.join_access_sheet_title)).assertExists()
+        onAllNodes(hasSetTextAction()).assertCountEquals(0)
+        onNodeWithText(str(Res.string.join_access_dismiss)).performClick()
+        state = joining(ready())
+        waitForIdle()
+        onAllNodes(hasSetTextAction()).assertCountEquals(0)
     }
 
     @Test

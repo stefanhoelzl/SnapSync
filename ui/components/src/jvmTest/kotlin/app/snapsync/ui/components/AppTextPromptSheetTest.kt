@@ -1,17 +1,24 @@
+@file:OptIn(ExperimentalTestApi::class)
+
 package app.snapsync.ui.components
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.v2.runDesktopComposeUiTest
 import app.snapsync.control.Verifies
 import org.junit.Rule
 import kotlin.test.Test
@@ -124,8 +131,33 @@ class AppTextPromptSheetTest {
         assertEquals("Party", saved)
     }
 
+    // Our part of "The keyboard does not cover confirm": in what the keyboard leaves of a phone's height, both actions
+    // stay on the screen and work. That the keyboard reports its height as an inset is the operating system's.
+    @Test
+    @Verifies(
+        spec = "app-experience",
+        requirement = "Text entry sheets stay usable while typing",
+        scenario = "The keyboard does not cover confirm",
+    )
+    fun `in the height a keyboard leaves both actions stay on screen and work while typing`() =
+        runDesktopComposeUiTest(width = 375, height = 340) {
+            var saved: String? = null
+            setContent { Sheet(busy = false, onConfirm = { saved = it }) }
+            onNode(hasSetTextAction()).performTextReplacement("Party 2")
+            onNodeWithText(CANCEL).assertIsDisplayed()
+            onNodeWithText("Save").assertIsDisplayed().assertIsEnabled().performClick()
+            assertEquals("Party 2", saved)
+            onNodeWithText(CANCEL).performClick()
+            assertEquals(1, dismissed)
+        }
+
     private fun setSheet(busy: Boolean, submitUnchanged: Boolean = false, onConfirm: (String) -> Unit = {}) {
-        rule.setContent {
+        rule.setContent { Sheet(busy, submitUnchanged, onConfirm) }
+    }
+
+    @Composable
+    private fun Sheet(busy: Boolean, submitUnchanged: Boolean = false, onConfirm: (String) -> Unit = {}) {
+        run {
             AppTheme(platformDates) {
                 AppTextPromptSheet(
                     copy = DialogCopy(

@@ -4,20 +4,25 @@ package app.snapsync.ui
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import app.snapsync.control.Verifies
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Encryption
 import app.snapsync.domain.event.Event
@@ -39,6 +44,7 @@ import app.snapsync.format.TimestampText
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.components.resources.menu
+import app.snapsync.ui.components.resources.menu_close
 import app.snapsync.ui.components.resources.network_blocked
 import app.snapsync.ui.components.resources.share_range_custom
 import app.snapsync.ui.components.resources.share_range_event_start
@@ -62,10 +68,12 @@ import app.snapsync.ui.resources.leave_cancel
 import app.snapsync.ui.resources.leave_confirm
 import app.snapsync.ui.resources.leave_event
 import app.snapsync.ui.resources.menu_privacy
+import app.snapsync.ui.resources.menu_version
 import app.snapsync.ui.resources.menu_website
 import app.snapsync.ui.resources.message_app_not_genuine
 import app.snapsync.ui.resources.message_device_unverifiable
 import app.snapsync.ui.resources.message_report_this
+import app.snapsync.ui.resources.mobile_data_on_note
 import app.snapsync.ui.resources.mobile_data_toggle
 import app.snapsync.ui.resources.receive_toggle
 import app.snapsync.ui.resources.rename_event
@@ -93,11 +101,14 @@ import app.snapsync.ui.state.UiState
 import kotlinx.coroutines.cancel
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /** The event the joined tests are members of. */
+private const val MENU = "The app menu is one tap away on every screen"
+
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
 
 /** A second event, for the join gate and the switch. */
@@ -209,6 +220,42 @@ class HostStatusActionsTest {
             awaitState(rig) { it.overlays.shownQr == null }
             assertEquals(emptyList(), rig.fired)
         }
+
+    // The screen's part: the rename sheet opens on the current name, and neither it nor spaces may be saved. The
+    // sheet's own rule is `AppTextPromptSheetTest`'s.
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Any member renames the event for everyone until its photos are deleted",
+        scenario = "An unchanged or empty name cannot be submitted",
+    )
+    fun `the rename sheet cannot save the current name or only spaces`() =
+        rigTest(rig(config = MEMBERSHIP)) { rig ->
+            awaitState(rig) { it.joined != null }
+            onNodeWithContentDescription(str(Res.string.rename_event)).performClick()
+            awaitState(rig) { it.overlays.renaming }
+            onNode(hasSetTextAction() and hasText("Anna's Birthday")).assertExists()
+            onNodeWithText(str(Res.string.save)).assertIsNotEnabled()
+            onNode(hasSetTextAction()).performTextReplacement("   ")
+            waitForIdle()
+            onNodeWithText(str(Res.string.save)).assertIsNotEnabled()
+            assertTrue(rig.fired.none { it.startsWith("rename") })
+        }
+
+    @Test
+    @Verifies(
+        spec = "manage-membership",
+        requirement = "Event settings change as they are made, without leaving, until the event's photos are deleted",
+        scenario = "Settings hold no mobile-data choice",
+    )
+    fun `the event settings offer no mobile-data choice`() = rigTest(rig(config = MEMBERSHIP)) { rig ->
+        awaitState(rig) { it.joined != null }
+        onNodeWithText(str(Res.string.footer_settings)).performClick()
+        awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
+        onNodeWithText(str(Res.string.share_toggle)).assertExists()
+        onNodeWithText(str(Res.string.mobile_data_toggle)).assertDoesNotExist()
+        onNodeWithText(str(Res.string.mobile_data_on_note)).assertDoesNotExist()
+    }
 
     @Test
     fun `the pen opens the rename sheet — Cancel dismisses it — and Save renames`() =
@@ -468,6 +515,70 @@ class HostStatusActionsTest {
         onNodeWithText(str(Res.string.menu_website)).performClick()
         awaitFired(rig, "openLink:${OwnPage.WEBSITE.name}")
     }
+
+    @Test
+    @Verifies(spec = "app-experience", requirement = MENU, scenario = "Opening the menu while joined")
+    fun `a joined member's menu holds the mobile-data switch and its note, the report, both links and the build`() =
+        rigTest(rig(config = MEMBERSHIP)) { rig ->
+            awaitState(rig) { it.joined != null }
+            onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
+            awaitState(rig) { it.overlays.menuOpen }
+            val build = rig.state.build
+            listOf(
+                str(Res.string.mobile_data_toggle),
+                str(Res.string.mobile_data_on_note),
+                str(Res.string.report_problem),
+                str(Res.string.menu_website),
+                str(Res.string.menu_privacy),
+                str(Res.string.menu_version, build.version, build.buildNumber),
+            ).forEach { onNodeWithText(it).assertExists() }
+        }
+
+    @Test
+    @Verifies(spec = "app-experience", requirement = MENU, scenario = "Editing event settings")
+    fun `a tap where the menu button is while the settings are open closes them and opens no menu`() =
+        rigTest(rig(config = MEMBERSHIP)) { rig ->
+            awaitState(rig) { it.joined != null }
+            val button = onNodeWithContentDescription(str(ComponentRes.string.menu)).getUnclippedBoundsInRoot()
+            onNodeWithText(str(Res.string.footer_settings)).performClick()
+            awaitState(rig) { it.joined?.surface is JoinedSurface.Reconfigure }
+            // The settings' scrim covers the joined screen; the tap lands on it where the menu button sits beneath.
+            val scrim = onNodeWithContentDescription("Close sheet")
+            val over = scrim.getUnclippedBoundsInRoot()
+            scrim.performTouchInput {
+                val x = (button.left + button.right) / 2 - over.left
+                val y = (button.top + button.bottom) / 2 - over.top
+                click(Offset(x.toPx(), y.toPx()))
+            }
+            awaitState(rig) { it.joined != null && it.joined?.surface !is JoinedSurface.Reconfigure }
+            assertFalse(rig.state.overlays.menuOpen, "the tap closed the settings and opened no menu")
+        }
+
+    @Test
+    @Verifies(spec = "app-experience", requirement = MENU, scenario = "Closing the menu")
+    fun `a tap outside the open menu closes it and leaves the screen as it was`() =
+        rigTest(rig(config = MEMBERSHIP)) { rig ->
+            awaitState(rig) { it.joined != null }
+            val before = rig.state
+            onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
+            awaitState(rig) { it.overlays.menuOpen }
+            onRoot().performTouchInput { click(Offset(width - 5f, centerY)) }
+            awaitState(rig) { !it.overlays.menuOpen }
+            assertEquals(before.layer to before.overlays, rig.state.layer to rig.state.overlays)
+        }
+
+    @Test
+    @Verifies(spec = "app-experience", requirement = MENU, scenario = "Closing the menu with its close button")
+    fun `the menu's close button closes it and leaves the screen as it was`() =
+        rigTest(rig(config = MEMBERSHIP)) { rig ->
+            awaitState(rig) { it.joined != null }
+            val before = rig.state
+            onNodeWithContentDescription(str(ComponentRes.string.menu)).performClick()
+            awaitState(rig) { it.overlays.menuOpen }
+            onNodeWithContentDescription(str(ComponentRes.string.menu_close)).performClick()
+            awaitState(rig) { !it.overlays.menuOpen }
+            assertEquals(before.layer to before.overlays, rig.state.layer to rig.state.overlays)
+        }
 
     @Test
     fun `the menu's mobile-data switch reaches the command and leaves the menu open`() = rigTest(rig()) { rig ->
