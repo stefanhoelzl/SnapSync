@@ -4,6 +4,7 @@ import app.snapsync.application.crash.DescribeReporter
 import app.snapsync.application.event.CreateEvent
 import app.snapsync.application.membership.LoadShareSet
 import app.snapsync.application.process.RecordFootprint
+import app.snapsync.application.report.AssembleBugReport
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
@@ -34,7 +35,6 @@ import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
-import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.SharingProgressRead
@@ -44,11 +44,9 @@ import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnCredentialChanged
 import app.snapsync.entrypoints.OnMembershipChanged
 import app.snapsync.entrypoints.OnSelectionChanged
-import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.model.GalleryAccess
-import app.snapsync.model.selectionPhotos
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Databases
@@ -443,12 +441,8 @@ class AppCore internal constructor(
     /** What the member can ask for, as the core's entry points — see [commandsFor]. */
     val commands: CoreCommands by lazy { commandsFor(reportStatus) }
 
-    /** The diagnostic dump assembly — see [diagnosticDumpFor]. */
-    internal val collectDiagnosticDump: CollectDiagnosticDump by lazy { diagnosticDumpFor() }
-
-    /** How many photos a partial grant's selection holds, for a bug report — the selection cell is this core's. */
-    internal fun selectionPhotosNow(): Fact<Int> =
-        selectionPhotos(galleryAccess.grant.value, selection.selectedPhotos)
+    /** The bug report's assembly — see [assembleBugReportFor]. */
+    internal val assembleBugReport: AssembleBugReport by lazy { assembleBugReportFor() }
 
     /**
      * Install the **port-state-transition subscriptions** on the permission StateFlow (spec

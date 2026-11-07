@@ -130,7 +130,10 @@ coverage {
         // Measured 53.32 / 22.95 %.
         // → 52/22 when an invite's key left the logs by type (4.10): `redactEventKeys`, which the suite ran on every
         // logged link, went — `LinkReading` logs what a link opened instead. No test was lost. Measured 52.87 %.
-        integration(instructions = 52, branches = 22)
+        // → 46/20 when the bug report moved to the layers (4.10): the device conditions' vocabulary, the report's
+        // environment and its facts, which the suite covered, left for the domain. No test was lost. Measured
+        // 46.08 / 20.74 %.
+        integration(instructions = 46, branches = 20)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -168,28 +171,6 @@ coverage {
         )
         unit()
         integration(instructions = 82, branches = 71)
-    }
-    ":domain:feature" {
-        unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        // 90/73 → 91/74 with the update test (`AppUpdateIntegrationTest`): the upload gate's pause for legacy records.
-        // Held with the locked phone and the refusing Keychain (`unavailable-keychain-and-preferences`).
-        // → 93/79 in phase 31, once the polling tests waited on outcome events instead.
-        // Branches → 78 in phase 4.4a (selection): the cycle's read that could not be made, and a key resolve that
-        // cannot look, are the cycle's unit suite's (`UploadCycleTest`); a member's day reads. Measured 78.19 %.
-        // Branches → 78 in phase 4.8 (small concepts): the network watch and the heartbeat's cadence and re-arm moved
-        // to the layers, taking their covered branches with them; no branch left here lost coverage. Measured 78.84 %.
-        // Instructions → 93 in phase 4.5 (receiving): the download controller, its arm and the adoption — which the
-        // suite covered — moved to the layers; what stays is the same code measured without them. Measured 93.11 %.
-        // → 90/74 in phase 4.4b (uploads), landed after 4.5: the upload cycle, its gate and its writer — which the
-        // suite covered — moved to the data and application layers and the entry points; what stays is the same
-        // code measured without them. Measured 90.07 / 74.89 %.
-        // → 89/70 in phase 4.4c (manifest): the publish, its producer and the end of a wake's settle, which the suite
-        // covered, moved to the layers and the entry points. No test was lost. Measured 89.82 / 70.49 %.
-        // → 88/65 in phase 4.9 (status): the poller, the refresh and the status sources, which the suite covered, moved
-        // to the change feed's queries and the total's use case. No test was lost. Measured 88.84 / 65.06 %.
-        // → 87/58 with the command door (4.9): the create use case, which the suite covered with every answer, moved
-        // to the application layer. No test was lost. Measured 87.70 / 58.20 %.
-        integration(instructions = 87, branches = 58)
     }
     // The data layer's suites, and the application layer's use cases over it, run over the ports' mocks in `:test:data`
     // (`docs/testing.md`, "The data layer's suites"), a module a `:domain:*` build file may not name.

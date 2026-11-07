@@ -1,5 +1,6 @@
 package app.snapsync.data.crash
 
+import app.snapsync.data.report.NO_IDS
 import app.snapsync.domain.crash.CrashLevel
 import app.snapsync.domain.crash.CrashSections
 import app.snapsync.domain.crash.CrashShaping
@@ -107,7 +108,7 @@ class CrashChannelTest {
 
     @Test
     fun `a report is handed over as its one event`() = runTest {
-        val dump = DiagnosticDump("it froze", mapOf("screen" to "Joined"), emptyMap(), "a\n", "e\n")
+        val dump = DiagnosticDump("it froze", NO_IDS, mapOf("screen" to "Joined"), emptyMap(), "a\n", "e\n")
         assertEquals(DumpResult.Queued, channel().send(dump))
         assertEquals(dump.event(), reporter.dumps.single())
         assertNotNull(reporter.options)

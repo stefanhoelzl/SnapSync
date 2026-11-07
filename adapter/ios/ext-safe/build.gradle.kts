@@ -70,7 +70,6 @@ kotlin {
             api(project(":domain:inbound"))
             // The device log's file names; the stamp is `:adapter:generic:app`'s.
             implementation(project(":domain:format"))
-            api(project(":domain:feature"))
             // The Ktor core types darwinHttpClient() returns.
             api(project(":adapter:generic:app"))
             // (The interim :capability:album and :domain:gallery edges died at migration step 6:

@@ -19,7 +19,6 @@ module :domain:compose
 module :domain:data
 module :domain:domain
 module :domain:entrypoints
-module :domain:feature
 module :domain:format
 module :domain:host
 module :domain:inbound
@@ -54,8 +53,8 @@ module :ui:screens
 module :ui:state
 edge :adapter:android :adapter:generic:app
 edge :adapter:android :adapter:generic:motionphoto
+edge :adapter:android :domain:data
 edge :adapter:android :domain:domain
-edge :adapter:android :domain:feature
 edge :adapter:android :domain:format
 edge :adapter:android :domain:inbound
 edge :adapter:android :domain:model
@@ -80,7 +79,6 @@ edge :adapter:generic:app :test:edge
 edge :adapter:generic:mock :domain:compose
 edge :adapter:generic:mock :domain:data
 edge :adapter:generic:mock :domain:domain
-edge :adapter:generic:mock :domain:feature
 edge :adapter:generic:mock :domain:format
 edge :adapter:generic:mock :domain:inbound
 edge :adapter:generic:mock :domain:model
@@ -112,7 +110,6 @@ edge :adapter:ios:ext-safe :adapter:generic:app
 edge :adapter:ios:ext-safe :domain:compose
 edge :adapter:ios:ext-safe :domain:data
 edge :adapter:ios:ext-safe :domain:domain
-edge :adapter:ios:ext-safe :domain:feature
 edge :adapter:ios:ext-safe :domain:format
 edge :adapter:ios:ext-safe :domain:inbound
 edge :adapter:ios:ext-safe :domain:model
@@ -122,7 +119,6 @@ edge :adapter:ios:ext-safe :test:contracts
 edge :adapter:ios:ext-safe :test:verifies
 edge :adapter:ios:ui :adapter:ios:app-only
 edge :adapter:ios:ui :adapter:ios:ext-safe
-edge :adapter:ios:ui :domain:feature
 edge :adapter:ios:ui :domain:format
 edge :adapter:ios:ui :domain:inbound
 edge :adapter:ios:ui :domain:model
@@ -138,7 +134,6 @@ edge :app:android :adapter:android
 edge :app:android :adapter:generic:app
 edge :app:android :adapter:generic:sentry
 edge :app:android :domain:compose
-edge :app:android :domain:feature
 edge :app:android :domain:host
 edge :app:android :domain:inbound
 edge :app:android :domain:model
@@ -151,7 +146,6 @@ edge :app:desktop :adapter:generic:app
 edge :app:desktop :app:jvm
 edge :app:desktop :domain:data
 edge :app:desktop :domain:domain
-edge :app:desktop :domain:feature
 edge :app:desktop :domain:model
 edge :app:desktop :domain:ports
 edge :app:desktop :domain:presentation
@@ -167,7 +161,6 @@ edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
 edge :app:ios :adapter:ios:ui
 edge :app:ios :domain:compose
-edge :app:ios :domain:feature
 edge :app:ios :domain:host
 edge :app:ios :domain:inbound
 edge :app:ios :domain:model
@@ -181,7 +174,6 @@ edge :app:ios:extension :adapter:generic:app
 edge :app:ios:extension :adapter:generic:sentry
 edge :app:ios:extension :adapter:ios:ext-safe
 edge :app:ios:extension :domain:compose
-edge :app:ios:extension :domain:feature
 edge :app:ios:extension :domain:inbound
 edge :app:ios:extension :domain:model
 edge :app:ios:extension :domain:ports
@@ -189,7 +181,6 @@ edge :app:ios:extension :domain:services
 edge :app:jvm :adapter:generic:app
 edge :app:jvm :adapter:generic:mock
 edge :app:jvm :domain:compose
-edge :app:jvm :domain:feature
 edge :app:jvm :domain:host
 edge :app:jvm :domain:model
 edge :app:jvm :domain:ports
@@ -198,12 +189,12 @@ edge :app:jvm :domain:services
 edge :app:jvm :ui:state
 edge :domain:application :domain:data
 edge :domain:application :domain:domain
+edge :domain:application :domain:format
 edge :domain:application :domain:inbound
 edge :domain:compose :domain:application
 edge :domain:compose :domain:data
 edge :domain:compose :domain:domain
 edge :domain:compose :domain:entrypoints
-edge :domain:compose :domain:feature
 edge :domain:compose :domain:format
 edge :domain:compose :domain:inbound
 edge :domain:compose :domain:model
@@ -220,24 +211,16 @@ edge :domain:data :domain:wire
 edge :domain:entrypoints :domain:application
 edge :domain:entrypoints :domain:data
 edge :domain:entrypoints :domain:domain
-edge :domain:entrypoints :domain:feature
 edge :domain:entrypoints :domain:inbound
 edge :domain:entrypoints :domain:model
 edge :domain:entrypoints :domain:ports
 edge :domain:entrypoints :domain:query
 edge :domain:entrypoints :domain:scheduling
 edge :domain:entrypoints :domain:services
-edge :domain:feature :domain:data
-edge :domain:feature :domain:domain
-edge :domain:feature :domain:format
-edge :domain:feature :domain:model
-edge :domain:feature :domain:scheduling
-edge :domain:feature :domain:services
 edge :domain:format :domain:domain
 edge :domain:host :domain:compose
 edge :domain:host :domain:domain
 edge :domain:host :domain:entrypoints
-edge :domain:host :domain:feature
 edge :domain:host :domain:inbound
 edge :domain:host :domain:model
 edge :domain:host :domain:ports
@@ -274,7 +257,6 @@ edge :test:architecture :adapter:generic:mock
 edge :test:architecture :domain:application
 edge :test:architecture :domain:data
 edge :test:architecture :domain:domain
-edge :test:architecture :domain:feature
 edge :test:architecture :domain:format
 edge :test:architecture :domain:model
 edge :test:architecture :domain:ports
@@ -300,7 +282,6 @@ edge :test:contracts :domain:services
 edge :test:contracts :domain:wire
 edge :test:contracts :ui:state
 edge :test:control :domain:domain
-edge :test:control :domain:feature
 edge :test:control :domain:model
 edge :test:control :domain:presentation
 edge :test:control :test:client
@@ -324,7 +305,6 @@ edge :test:feature :adapter:generic:mock
 edge :test:feature :domain:application
 edge :test:feature :domain:data
 edge :test:feature :domain:domain
-edge :test:feature :domain:feature
 edge :test:feature :domain:format
 edge :test:feature :domain:inbound
 edge :test:feature :domain:model
@@ -333,7 +313,6 @@ edge :test:feature :domain:scheduling
 edge :test:feature :domain:services
 edge :test:harness-driver :app:desktop
 edge :test:integration :domain:domain
-edge :test:integration :domain:feature
 edge :test:integration :domain:format
 edge :test:integration :domain:model
 edge :test:integration :domain:presentation
@@ -341,7 +320,6 @@ edge :test:integration :test:control
 edge :test:integration :ui:state
 edge :test:journeys :adapter:generic:app
 edge :test:journeys :domain:domain
-edge :test:journeys :domain:feature
 edge :test:journeys :domain:format
 edge :test:journeys :domain:model
 edge :test:journeys :domain:ports
@@ -378,7 +356,6 @@ edge :test:rig :app:jvm
 edge :test:rig :domain:compose
 edge :test:rig :domain:data
 edge :test:rig :domain:domain
-edge :test:rig :domain:feature
 edge :test:rig :domain:format
 edge :test:rig :domain:inbound
 edge :test:rig :domain:model
@@ -397,7 +374,6 @@ edge :ui:components :test:verifies
 edge :ui:components :ui:state
 edge :ui:screens :adapter:generic:app
 edge :ui:screens :domain:domain
-edge :ui:screens :domain:feature
 edge :ui:screens :domain:format
 edge :ui:screens :domain:model
 edge :ui:screens :domain:presentation

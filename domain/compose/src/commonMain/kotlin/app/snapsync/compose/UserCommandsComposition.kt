@@ -71,7 +71,7 @@ internal fun AppCore.commandsFor(reports: RequestStatuses<ReportOutcome>): CoreC
         switch = work.inviteForOtherEvent,
         sendDiagnostics = OnSendDiagnosticsTapped(
             runtime,
-            collectDiagnosticDump,
+            assembleBugReport,
             SendBugReport(process.crash, SavedReport(process.files)),
             reports,
         ),

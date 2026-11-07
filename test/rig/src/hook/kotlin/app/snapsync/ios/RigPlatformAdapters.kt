@@ -29,6 +29,7 @@ import app.snapsync.model.uploadersCarried
 import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigLaunch
 import app.snapsync.rig.RigServer
+import app.snapsync.rig.deviceLogText
 import app.snapsync.rig.iosHostServices
 import app.snapsync.rig.iosRefusals
 import app.snapsync.rig.noMembershipRefusal
@@ -39,7 +40,6 @@ import app.snapsync.rig.rigPort
 import app.snapsync.rig.rigPortFilePath
 import app.snapsync.rig.rigServices
 import app.snapsync.rig.startWhenReady
-import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
@@ -117,7 +117,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
     // A compile-time fact, read rather than derived: the adapter that CHOSE the binding is the one that
     // reports it, so the rig cannot disagree with the transport about what this build does.
     transferBinding = transferSessionBinding,
-    deviceLog = LogTailService(IosFiles())::tail,
+    deviceLog = deviceLogText(IosFiles()),
     // The host's own services are built in `:test:rig`, not here. Same reason every default and cast already lives
     // there: this file is compiled INTO `:app:ios` and is scanned by the shell gate, which permits no decisions. The
     // typed services, over the kRPC route — each refused, with its reason, where the adapter choice cannot serve it —

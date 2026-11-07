@@ -1,9 +1,11 @@
 package app.snapsync.domain.report
 
 import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.crash.CrashSections
+import app.snapsync.domain.crash.ReportedIds
 
 /**
- * One bug report the user confirmed: five labelled sections, sent as a single event ([event]) where the build reports
+ * One bug report the user confirmed: six labelled sections, sent as a single event ([event]) where the build reports
  * and kept on the device where it does not.
  *
  * Deliberately plain strings and string maps: the transport renders them as structured sections. Everything rides
@@ -17,9 +19,11 @@ class DiagnosticDump(
      * it — so two reports about different problems read as different problems.
      */
     val note: String,
+    /** The ids SnapSync knows — the event, the device, the process — in their own section, apart from the SDK's. */
+    val ids: ReportedIds,
     /** Build, OS, device, membership, tier, permission, backend — the facts a log tail may not hold. */
     val state: Map<String, String>,
-    /** Upload and download counts. Five; no row lists (see `CollectDiagnosticDump`). */
+    /** Upload and download counts. Five; no row lists (see `AssembleBugReport`). */
     val ledger: Map<String, String>,
     /** The app process's log tail, line-aligned. Empty when unreadable. */
     val appLog: String,
@@ -36,6 +40,7 @@ class DiagnosticDump(
     /** The sections by name, as the report carries them: sent as an event's contexts, or kept as one file. */
     fun sections(): Map<String, Map<String, String>> = mapOf(
         "note" to mapOf("text" to note),
+        CrashSections.SNAPSYNC to ids.section(),
         "state" to state,
         "ledger" to ledger,
         "app_log" to mapOf("text" to appLog),
@@ -81,7 +86,7 @@ class DiagnosticDump(
          * | **total**, against 1,048,576 | **≈ 952,000** |
          *
          * ¹ each device fact at worst `failed (<reason>)`, the reason cut to [Fact.FAILURE_REASON_CHARS]; the worst
-         * case is pinned by `CollectDiagnosticDumpTest`.
+         * case is pinned by `AssembleBugReportTest`.
          *
          * The `CrashReporter` contract's worst-case clause sends this event to an ingest that refuses anything over the
          * ceiling, so an SDK upgrade that grows its share fails a clause rather than a device. Measured 2026-09-23

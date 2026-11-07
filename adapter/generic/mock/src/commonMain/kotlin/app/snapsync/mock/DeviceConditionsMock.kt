@@ -1,14 +1,14 @@
 package app.snapsync.mock
 
+import app.snapsync.domain.report.BackgroundRefresh
+import app.snapsync.domain.report.Charging
+import app.snapsync.domain.report.DeviceConditionsReading
 import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.report.Fact
+import app.snapsync.domain.report.StandbyBucket
+import app.snapsync.domain.report.Thermal
 import app.snapsync.levers.DeviceConditionsLevers
 import app.snapsync.levers.DeviceConditionsView
-import app.snapsync.model.BackgroundRefresh
-import app.snapsync.model.Charging
-import app.snapsync.model.DeviceConditionsReading
-import app.snapsync.model.StandbyBucket
-import app.snapsync.model.Thermal
 import app.snapsync.ports.DeviceConditions
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow

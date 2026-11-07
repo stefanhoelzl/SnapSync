@@ -144,7 +144,6 @@ kotlin {
             // `KtorHttpTransport` over CIO — the `deno` backend's transport.
             implementation(project(":adapter:generic:app"))
             implementation(project(":test:edge"))
-            implementation(project(":domain:feature"))
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.cio)
         }

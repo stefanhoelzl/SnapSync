@@ -13,6 +13,8 @@ kotlin {
             implementation(project(":domain:data"))
             // The structured log: an outcome a use case decided is written where it is decided.
             implementation(project(":domain:inbound"))
+            // A timestamp's text: a bug report spells the membership's window with it.
+            implementation(project(":domain:format"))
         }
     }
 }

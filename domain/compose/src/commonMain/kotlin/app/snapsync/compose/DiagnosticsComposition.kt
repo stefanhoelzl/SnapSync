@@ -1,65 +1,64 @@
 package app.snapsync.compose
 
+import app.snapsync.application.report.AssembleBugReport
+import app.snapsync.application.report.DeviceFacts
+import app.snapsync.application.report.ReportLedger
+import app.snapsync.application.report.ReportLogs
+import app.snapsync.application.report.ReportState
+import app.snapsync.data.crash.ReportedIdsRead
+import app.snapsync.data.logs.DeviceLogTails
 import app.snapsync.data.network.NetworkReadings
-import app.snapsync.domain.report.Fact
-import app.snapsync.feature.diagnostics.CollectDiagnosticDump
-import app.snapsync.feature.diagnostics.asFact
-import app.snapsync.model.AppFacts
-import app.snapsync.model.DiagnosticEnvironment
-import app.snapsync.model.inMegabytes
+import app.snapsync.data.process.FootprintReading
+import app.snapsync.data.report.DeviceConditionsRead
+import app.snapsync.domain.report.BuildLabel
+import app.snapsync.domain.report.ReportedEnvironment
 import app.snapsync.model.uploadersCarried
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.ExtensionRegistry
-import app.snapsync.services.device.DeviceConditionsReadings
 
 /**
- * The diagnostic dump assembly — reads only: this graph's state and the device's,
-
- * never written to. Built on first use by [AppCore.collectDiagnosticDump], so an unconfigured build (which never fires
- * the command) never builds it.
+ * The bug report's assembly — reads only: this graph's state and the device's, never written to. Built on first use
+ * by [AppCore.assembleBugReport], so a build whose member never reports never builds it.
  *
  * Its own file rather than `AppCore`'s body for the reason [AppNetwork] gives: `AppCore` is measured, and the `compose`
  * tier's `LargeClass` ceiling is what keeps it from absorbing every composition in the graph.
  */
-internal fun AppCore.diagnosticDumpFor(): CollectDiagnosticDump = CollectDiagnosticDump(
-    environment = diagnosticEnvironment(ports.process.build, ports.extensionRegistry),
-    logs = services.deviceLogs,
-    progress = appUploader.progress,
-    downloads = receiving.counts,
-    membership = services.membership,
-    permission = galleryAccess,
-    network = NetworkReadings(ports.network),
-    mobileData = services.mobileData,
-    conditions = DeviceConditionsReadings(ports.deviceConditions),
-    appFacts = {
-        AppFacts(
-            // Never minted: a report must not create the identity it reports.
-            deviceId = services.deviceIdentity.current().asFact(),
-            timeZone = Fact.Known(ports.process.clock.timeZone().id),
-            memoryFootprintMb = ports.processInfo.memoryFootprint().inMegabytes(),
-            selectionPhotos = selectionPhotosNow(),
-        )
-    },
-    uploadFacts = {
-        mapOf(
-            "extension_registrable" to osUploader.admission().name,
-            "app_admission" to appUploader.admission.admission().name,
-        )
-    },
-    refusalFacts = { attestationStatus.refusalFacts() },
+internal fun AppCore.assembleBugReportFor(): AssembleBugReport = AssembleBugReport(
+    ids = ReportedIdsRead(services.membership, services.deviceIdentity, ports.process.build),
+    state = ReportState(
+        environment = reportedEnvironment(ports.process.build, ports.extensionRegistry),
+        membership = services.membership,
+        grant = grant,
+        osUploader = osUploader,
+        appAdmission = appUploader.admission,
+        refusal = attestationStatus,
+    ),
+    ledger = ReportLedger(appUploader.progress, receiving.counts, services.membership),
+    device = DeviceFacts(
+        network = NetworkReadings(ports.network),
+        mobileData = services.mobileData,
+        conditions = DeviceConditionsRead(
+            ports.deviceConditions,
+            ports.process.clock,
+            FootprintReading(ports.processInfo),
+        ),
+        selection = selection,
+        grant = grant,
+    ),
+    // An off-device composition holds no log files, so a report assembled there is honestly empty, not fabricated.
+    logs = ReportLogs(DeviceLogTails(process.files)),
 )
 
 /**
- * The build, OS and device a dump's state section names: the build's own facts, and which uploaders this OS carries —
- * the app's always, the upload extension's where the OS has the mechanism.
+ * The build, OS and device a report's state section names: the build's own facts, and which uploaders this OS carries
+ * — the app's always, the upload extension's where the OS has the mechanism.
  */
-internal fun diagnosticEnvironment(build: BuildInfo, registry: ExtensionRegistry): DiagnosticEnvironment =
-    DiagnosticEnvironment(
-        appVersion = build.appVersion,
-        buildNumber = build.buildNumber,
+internal fun reportedEnvironment(build: BuildInfo, registry: ExtensionRegistry): ReportedEnvironment =
+    ReportedEnvironment(
+        build = BuildLabel(build.appVersion, build.buildNumber),
         osVersion = build.osVersion,
         deviceModel = build.deviceModel,
-        uploadTier = uploadersCarried(registry.supported),
+        uploaders = uploadersCarried(registry.supported),
         uploadBase = build.uploadHost,
         reporterEnvironment = build.reporterEnvironment,
     )

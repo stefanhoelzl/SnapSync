@@ -42,7 +42,6 @@ kotlin {
             api(project(":domain:ports"))
             // The inbound kinds the event ports deliver through, and the completion handles.
             api(project(":domain:inbound"))
-            api(project(":domain:feature"))
             // A rig build's launch adapters hand a root back its `DevicePorts`, some swapped for mocks
             // (`:test:launch-adapters`).
             api(project(":domain:compose"))

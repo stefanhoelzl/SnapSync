@@ -30,7 +30,7 @@ import kotlin.jvm.JvmInline
  * found. An outdated verdict is discarded; the later refresh publishes its own.
  */
 @OptIn(ExperimentalAtomicApi::class)
-class AttestationStatus {
+class AttestationStatus : RefusalRead {
     private val attestedCell = MutableStateFlow(true)
     private val refusalCell = MutableStateFlow<DeviceRefusal?>(null)
     private val faultCell = MutableStateFlow<ServiceFault?>(null)
@@ -63,7 +63,7 @@ class AttestationStatus {
     val tokenChanged: Flow<Unit> = changes
 
     /** The latest refused attestation's facts, for a report sent from "Report this", or `null` once one succeeded. */
-    fun refusalFacts(): RefusalFacts? = facts
+    override fun refusalFacts(): RefusalFacts? = facts
 
     /** A refresh begins: the previous verdict is gone, and this refresh's [RefreshTicket] may settle. */
     internal fun attempting(): RefreshTicket {
@@ -102,6 +102,11 @@ class AttestationStatus {
 /** Which refresh is publishing: the order refreshes began in. */
 @JvmInline
 internal value class RefreshTicket(val number: Long)
+
+/** The latest refused attestation's facts, as a bug report reads them — `null` while none is recorded. */
+interface RefusalRead {
+    fun refusalFacts(): RefusalFacts?
+}
 
 /**
  * What the app knows about the latest refused attestation, for a report the user sends from "Report this": the

@@ -666,7 +666,6 @@ byte-deterministic (code-point sort, `\n`, UTF-8, no timestamps or absolute path
 | `modules.md` (+ `.modules-inputs.txt` sidecar) | module graph from the Gradle model's **build** configurations. `kover*` is excluded, and the file header says so |
 | `zones.md` | zone/feature graph (derived from `build.gradle.kts` text, so never declare a report-aggregation edge in a scanned module's build script; the root build is the place) |
 | `ports.md` | port × adapter matrix, including a fake-and-contract column |
-| `features.md` | feature cards |
 | `di.md` | DI wiring graphs and the binary × port matrix |
 
 - There are no per-trigger diagrams: the trigger flows and their transcriber went with `flow/`. What happens on

@@ -160,7 +160,6 @@ dependencies {
     implementation(project(":domain:model"))
     implementation(project(":domain:ports"))
     implementation(project(":domain:inbound"))
-    implementation(project(":domain:feature"))
     implementation(project(":domain:compose"))
     implementation(project(":domain:services"))
     implementation(project(":domain:presentation"))

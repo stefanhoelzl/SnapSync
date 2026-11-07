@@ -38,7 +38,6 @@ dependencies {
     api(project(":domain:domain"))
     api(project(":ui:state"))
     api(project(":domain:presentation"))
-    api(project(":domain:feature"))
     api(libs.ktor.client.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coroutines.core)

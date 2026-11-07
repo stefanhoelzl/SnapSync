@@ -1,5 +1,6 @@
 package app.snapsync.data.gallery
 
+import app.snapsync.domain.report.GrantStanding
 import app.snapsync.domain.sharing.PhotoAccess
 import app.snapsync.domain.upload.FullGrant
 import app.snapsync.domain.upload.MintsFullGrant
@@ -12,6 +13,14 @@ import kotlinx.coroutines.flow.StateFlow
  */
 class GrantRead(private val grant: StateFlow<LibraryGrant>) {
     fun access(): PhotoAccess = grant.value.photoAccess()
+
+    /** The grant as a bug report names it: not asked yet, refused, partial or whole. */
+    fun standing(): GrantStanding = when (grant.value) {
+        LibraryGrant.NOT_DETERMINED -> GrantStanding.NOT_DETERMINED
+        LibraryGrant.DENIED -> GrantStanding.DENIED
+        LibraryGrant.LIMITED -> GrantStanding.LIMITED
+        LibraryGrant.GRANTED -> GrantStanding.FULL
+    }
 
     /** Whether the grant is full right now — the one mint of [FullGrant], read afresh at each ask. */
     @OptIn(MintsFullGrant::class)

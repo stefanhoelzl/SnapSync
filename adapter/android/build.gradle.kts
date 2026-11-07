@@ -67,6 +67,8 @@ kotlin {
             implementation(project(":adapter:generic:app"))
             // The storage services' contracts run through the services over these adapters.
             implementation(project(":domain:services"))
+            // The log sink's test reads its file back through the data layer's log tails, as a bug report does.
+            implementation(project(":domain:data"))
             implementation(libs.kotlinx.datetime)
             // The tour spells the dates it sets (`TimestampText`).
             implementation(project(":domain:format"))
@@ -77,7 +79,6 @@ kotlin {
             implementation(project(":domain:presentation"))
             // The membership's request statuses the tour's commands answer on.
             implementation(project(":domain:query"))
-            implementation(project(":domain:feature"))
             implementation(project(":ui:state"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:components"))

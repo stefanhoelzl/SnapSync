@@ -2,9 +2,11 @@ package app.snapsync.android.logging
 
 import app.snapsync.android.storage.AndroidFiles
 import app.snapsync.android.storage.newTempDirectory
+import app.snapsync.data.logs.DeviceLogTails
+import app.snapsync.data.logs.LoggingProcess
+import app.snapsync.domain.report.Fact
 import app.snapsync.format.DeviceLogText
 import app.snapsync.inbound.LogLevel
-import app.snapsync.services.logs.LogTailService
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.concurrent.thread
@@ -135,15 +137,15 @@ class FileLogSinkTest {
         val shared = newTempDirectory()
         val private = newTempDirectory()
         val sink = FileLogSink(File(private, DeviceLogText.APP_LOG))
-        sink.write(Severity.Warn, "CreateEvent", "[Warn/CreateEvent] create failed")
+        sink.write(LogLevel.WARN, "CreateEvent", "[Warn/CreateEvent] create failed")
 
-        val tail = LogTailService(AndroidFiles(sharedRoot = shared, privateRoot = private))
-            .tail(LogTailService.Process.APP, WHOLE_BUDGET)
-        assertTrue(tail.orEmpty().contains("[Warn/CreateEvent] create failed"), "the dump would miss it: $tail")
-        assertEquals(
-            null,
-            LogTailService(AndroidFiles(shared, private)).tail(LogTailService.Process.EXTENSION, WHOLE_BUDGET),
+        val tails = DeviceLogTails(AndroidFiles(sharedRoot = shared, privateRoot = private))
+        val tail = tails.tail(LoggingProcess.APP, WHOLE_BUDGET)
+        assertTrue(
+            (tail as? Fact.Known)?.value.orEmpty().contains("[Warn/CreateEvent] create failed"),
+            "the report would miss it: $tail",
         )
+        assertEquals(Fact.Unsupported, tails.tail(LoggingProcess.EXTENSION, WHOLE_BUDGET))
     }
 
     private companion object {

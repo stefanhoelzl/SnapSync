@@ -49,7 +49,6 @@ dependencies {
     "journeysImplementation"(project(":domain:wire"))
     "journeysImplementation"(project(":ui:state"))
     "journeysImplementation"(project(":domain:presentation"))
-    "journeysImplementation"(project(":domain:feature"))
     "journeysImplementation"(libs.kotlinx.datetime)
     "journeysImplementation"(kotlin("test-junit"))
     "journeysImplementation"(libs.ktor.client.cio)

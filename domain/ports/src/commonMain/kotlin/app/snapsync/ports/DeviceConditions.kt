@@ -1,6 +1,6 @@
 package app.snapsync.ports
 
-import app.snapsync.model.DeviceConditionsReading
+import app.snapsync.domain.report.DeviceConditionsReading
 
 /**
  * The device's power, battery, thermal and background-allowance state, as the operating system reports it to this app

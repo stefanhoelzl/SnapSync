@@ -43,9 +43,9 @@ import kotlin.test.assertTrue
  *  - **It reads a declaration, not a call graph.** A pinned lambda whose body is later rewritten to
  *    reach out of the process still passes: the pin's reason goes stale silently, because nothing here
  *    re-derives it. The reason is a receipt for a judgement, not a proof of one.
- *  - **It is scoped to constructors in `feature/` and `compose/`** — the bundles, and every class the core
- *    builds (`harden-seam-bug-classes` widened it from the bundles alone, where features taking a lambda
- *    for a port read went unseen). A platform touch smuggled in as a field of some *other* type — a data
+ *  - **It is scoped to constructors in `compose/`** — the bundles, and every class the composition builds
+ *    (`harden-seam-bug-classes` widened it from the bundles alone, where features taking a lambda for a port read
+ *    went unseen; the features went in 4.10). A platform touch smuggled in as a field of some *other* type — a data
  *    class carrying a lambda, say — is not function-typed at this level and is not seen. The bundle set
  *    itself is pinned (below) so a *further* bundle cannot appear unnoticed — `UploadRecordPorts` arrived
  *    that way and is listed with an empty inventory, which is a statement rather than an omission.
@@ -100,24 +100,14 @@ class CompositionSeamTest {
     )
 
     /**
-     * Every OTHER class the core builds (`feature/` and `compose/`): `Class.param` → its binding, and why that
+     * Every OTHER class the composition builds (`compose/`): `Class.param` → its binding, and why that
      * binding is a callback into the core rather than a platform touch. Discovered, not listed — a new
-     * function-typed constructor parameter anywhere in those zones fails until it is pinned here.
+     * function-typed constructor parameter anywhere in that zone fails until it is pinned here.
      *
-     * The recurring shape is feature-blindness: a feature may not name a sibling feature (law "Zones inside the
-     * core"), so `compose/` hands it the sibling as a lambda. Such a lambda reaches the platform, if at all,
-     * only through the sibling's own ports.
+     * DELIBERATELY EMPTY since the bug report's facts became typed reads (4.10): the shape it used to hold — a
+     * feature handed a sibling as a lambda, since features could not name each other — went with the features.
      */
-    private val constructorPins: Map<String, String> = mapOf(
-        "CollectDiagnosticDump.uploadFacts" to
-            "two strings computed from this core's own upload resolution (registrable, admission) for the dump",
-        "CollectDiagnosticDump.appFacts" to
-            "the bug report's facts only this core holds — the device id (never minted), the clock's zone, the process " +
-            "footprint and the selection snapshot's size — each a direct read mapped to a Fact by model/",
-        "CollectDiagnosticDump.refusalFacts" to
-            "the latest refused attestation's facts the credential's status holds in memory (AttestationStatus." +
-            "refusalFacts) — read for a report offered from \"Report this\" (capability `privacy-security`)",
-    )
+    private val constructorPins: Map<String, String> = emptyMap()
 
     // ---- scanning ---------------------------------------------------------------------------------
 
@@ -198,9 +188,9 @@ class CompositionSeamTest {
         )
     }
 
-    /** Every function-typed constructor parameter of a non-bundle class declared in `feature/` or `compose/`. */
+    /** Every function-typed constructor parameter of a non-bundle class declared in `compose/`. */
     private fun constructorInventory(): Map<String, String> {
-        val files = ZoneGates.requireZone("composition-seam", "feature") + ZoneGates.requireZone("composition-seam", "compose")
+        val files = ZoneGates.requireZone("composition-seam", "compose")
         return files.flatMap { file ->
             KotlinDecls.constructorParams(ZoneGates.stripComments(file.readText()))
                 .filter { it.owner !in bundles && isFunctionType(it.type) }
@@ -209,7 +199,7 @@ class CompositionSeamTest {
     }
 
     @Test
-    fun `every function-typed constructor parameter in feature and compose is pinned, exactly`() {
+    fun `every function-typed constructor parameter in compose is pinned, exactly`() {
         val found = constructorInventory()
         val unpinned = (found.keys - constructorPins.keys).sorted().map { "  + $it  (${found.getValue(it)})" }
         val stale = (constructorPins.keys - found.keys).sorted().map { "  - $it — pinned but no longer declared" }
@@ -236,12 +226,10 @@ class CompositionSeamTest {
         // the selection through `OwnAlbumPhotos` now. 4 since the status moved (4.9): the ledger counts' read, the poll's
         // group and the refresh's download line and contribution went with the poller and the refresh — the screen's
         // counts follow the stores' change feed. 3 with the command door (4.9): a create is answered on its status, so
-        // the minted event's hook (CreateEvent.onMinted) went. Lower it only with a removal like those, never to pass.
-        assertTrue(
-            found.size >= 3,
-            "composition seam gate: the constructor scan found only ${found.size} function-typed parameters in " +
-                "feature/ and compose/ — the scan is broken and this gate is passing on nothing",
-        )
+        // the minted event's hook (CreateEvent.onMinted) went. None since the bug report moved (4.10): its upload facts,
+        // app facts and refusal facts are typed reads now, and with them the last function-typed parameter went — and with
+        // it this count's floor. The scan is held non-vacuous by the bundles it must parse (`the gate actually parsed every
+        // composition bundle`) and by the parser's own sample (`the constructor parser finds function types`).
     }
 
     /**

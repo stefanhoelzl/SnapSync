@@ -131,7 +131,7 @@ class ModuleSetTest {
         // green build.
         //
         // Since the split it asserts two further things the module graph cannot state about itself: that
-        // each zone declares only the edge its law permits (so `ports` cannot reach `feature`), and that
+        // each zone declares only the edge its law permits (so `ports` cannot reach `services`), and that
         // it declares it with `implementation()` — an `api()` edge would republish the zone to every
         // downstream consumer, dissolving the boundary the split exists to create. The one edge outside a zone's law is
         // its tests' `:test:verifies`, inside `commonTest.dependencies`: an annotation that depends on nothing.
@@ -157,7 +157,7 @@ class ModuleSetTest {
             // generated wire — translating, never deciding — labelling its lines with the structured log.
             "data" to setOf(":domain:domain", ":domain:ports", ":domain:wire", ":domain:inbound", ":domain:format"),
             // The application layer: use cases over data and the domain's verdicts, writing the structured log.
-            "application" to setOf(":domain:domain", ":domain:data", ":domain:inbound"),
+            "application" to setOf(":domain:domain", ":domain:data", ":domain:inbound", ":domain:format"),
             // The query layer: what the screen reads — the membership, the join's and switch's lookups, and the
             // request-keyed statuses — over data and the domain, writing nothing; the invite in its link's text.
             "query" to setOf(":domain:domain", ":domain:data", ":domain:inbound", ":domain:format"),
@@ -167,22 +167,15 @@ class ModuleSetTest {
                 ":domain:model", ":domain:domain", ":domain:ports", ":domain:inbound", ":domain:wire", ":domain:data",
                 ":domain:format",
             ),
-            // Features see services, never ports: with no `ports` edge a port type does not resolve in the zone. The
-            // runtime for the work that outlives its caller (`outliving`) and a sequence's pass.
-            // MIGRATING: the device identity and the refusal's facts the features read are data's since trust moved.
-            "feature" to setOf(
-                ":domain:model", ":domain:domain", ":domain:services", ":domain:scheduling", ":domain:data", ":domain:format",
-            ),
-            // The entry points order the work of each trigger. MIGRATING: their steps still call the features and
-            // services directly, until phase 4 moves the work under sequences.
+            // The entry points order the work of each trigger. MIGRATING: their steps still call the services
+            // directly, until phase 4 moves the work under sequences.
             "entrypoints" to setOf(
                 ":domain:inbound", ":domain:scheduling", ":domain:model", ":domain:domain", ":domain:ports",
-                ":domain:feature", ":domain:services", ":domain:application", ":domain:data", ":domain:query",
+                ":domain:services", ":domain:application", ":domain:data", ":domain:query",
             ),
             // `:ui:state` because the app's `Ui` port is bound to the screen's vocabulary in `AppPorts`.
             "compose" to setOf(
-                ":domain:model", ":domain:domain", ":domain:ports", ":domain:services", ":domain:feature",
-                ":domain:inbound",
+                ":domain:model", ":domain:domain", ":domain:ports", ":domain:services", ":domain:inbound",
                 ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:data", ":domain:application",
                 ":domain:format", ":domain:query",
             ),
@@ -192,7 +185,7 @@ class ModuleSetTest {
             "presentation" to setOf(":domain:domain", ":domain:query", ":domain:inbound", ":ui:state"),
             // The shared host composition: the one zone that sees both the composition zone and presentation.
             "host" to setOf(
-                ":domain:model", ":domain:domain", ":domain:ports", ":domain:feature", ":domain:compose",
+                ":domain:model", ":domain:domain", ":domain:ports", ":domain:compose",
                 ":domain:presentation",
                 ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:query",
             ),
@@ -244,7 +237,7 @@ class ModuleSetTest {
         val WITHHOLDING = setOf(
             // The core's zones and the host (`docs/architecture.md`, "Zones inside the core").
             ":domain:model", ":domain:domain", ":domain:format", ":domain:wire", ":domain:ports", ":domain:services",
-            ":domain:feature", ":domain:presentation", ":domain:compose", ":domain:host",
+            ":domain:presentation", ":domain:compose", ":domain:host",
             // The layers the core's work runs on (`docs/patterns.md`): the deliveries, the runtime, the entry points.
             ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":domain:data", ":domain:application",
             ":domain:query",

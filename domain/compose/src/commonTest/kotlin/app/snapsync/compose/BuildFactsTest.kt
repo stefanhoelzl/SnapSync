@@ -34,7 +34,7 @@ class BuildFactsTest {
 
     @Test
     fun `a dump names the build and the uploaders the OS carries`() {
-        val carried = diagnosticEnvironment(build("app.snapsync"), registry(supported = true))
+        val carried = reportedEnvironment(build("app.snapsync"), registry(supported = true))
         assertEquals(
             listOf(
                 "1.4",
@@ -46,9 +46,17 @@ class BuildFactsTest {
                 "production",
             ),
             with(carried) {
-                listOf(appVersion, buildNumber, osVersion, deviceModel, uploadTier, uploadBase, reporterEnvironment)
+                listOf(
+                    build.version,
+                    build.buildNumber,
+                    osVersion,
+                    deviceModel,
+                    uploaders,
+                    uploadBase,
+                    reporterEnvironment,
+                )
             },
         )
-        assertEquals("app", diagnosticEnvironment(build("app.snapsync"), registry(supported = false)).uploadTier)
+        assertEquals("app", reportedEnvironment(build("app.snapsync"), registry(supported = false)).uploaders)
     }
 }
