@@ -54,6 +54,9 @@ class Steps internal constructor(
     /** A pass of [sequence], single-flight across the process. */
     suspend fun <R> run(sequence: Sequence<R>): Pass<R> = runtime.flights.run(sequence)
 
+    /** A pass of [sequence], single-flight across the process, asking it [ask]: the pass that covers it gets it. */
+    suspend fun <Q : Any, R> run(sequence: AskedSequence<Q, R>, ask: Q): Pass<R> = runtime.flights.run(sequence, ask)
+
     /**
      * Calls [next] until it answers `false` — a drain, one item at a time. Each call OUTLIVES this run: when the run is
      * cancelled — the operating system's time is up, or its pass yielded to a join — the call in flight runs on to its

@@ -261,9 +261,14 @@ class OnDownloadFinished(
     }
 }
 
-/** A received photo was staged in a running process: it is imported, and nothing else is due for it. */
+/**
+ * A received photo was staged in a running process: it is imported, and nothing else is due for it. A recognition this
+ * import still needs is a background read of the operating system's download, with no push behind it.
+ */
 class OnDownloadStaged(private val runtime: Runtime, private val importReceived: ImportReceived) {
-    suspend fun requested() = runtime.detached("OnDownloadStaged") { on -> on.steps { run(importReceived) } }
+    suspend fun requested() = runtime.detached("OnDownloadStaged") { on ->
+        on.steps { run(importReceived, UnionTrigger.WAKE) }
+    }
 }
 
 /** A download ended — finished, failed or cancelled: its slot is free, and the next queued transfer starts. */
@@ -415,7 +420,7 @@ class OnSelectionChanged(
 ) : BackgroundEntryPoint<Unit>(runtime) {
     @OptIn(EntryPointCall::class)
     override suspend fun run(arg: Unit, on: Run) = on.steps {
-        run(recognition)
+        run(recognition, UnionTrigger.GRANT) // a partial grant's selection is the photo access it gives
         isolated("total") { count() }
         run(walkAndPublish)
         required { wake.full(WakeKind.SELECTION_CHANGE, on) }
@@ -552,7 +557,7 @@ class WakeWork(
         ensure("re-arm") { rearm(leftOf(uploads), downloads.stagedImports()) }
         ensure("footprint") { footprints("after the ${kind.name.lowercase()} wake") }
         concurrently {
-            child("import received") { run(importReceived) }
+            child("import received") { run(importReceived, kind.reads) }
             child("upload own") { uploads = run(uploadOwn) }
         }
         isolated("end of wake") { end.run(kind, on) }
@@ -574,18 +579,24 @@ class WakeWork(
  * What a wake was for, as its end reads it (decision record `changes/timely-background-receiving`, D4–D5).
  * [checksPhotos]: the end runs the bounded photo check — every wake but a membership transition's, which read the union
  * in its own work. [boundsEventRead]: the end's read of the event's state is bounded to once an hour — every wake but
- * one whose own reason is to ask the event now (a push, an opening, a returned network, a join).
+ * one whose own reason is to ask the event now (a push, an opening, a returned network, a join). [reads]: why the
+ * wake's own union reads say the app read — a recognition its import still needs tells the backend this.
  */
-enum class WakeKind(val checksPhotos: Boolean, val boundsEventRead: Boolean) {
-    ARM(checksPhotos = false, boundsEventRead = false),
-    FOREGROUND(checksPhotos = true, boundsEventRead = false),
-    NETWORK(checksPhotos = true, boundsEventRead = false),
-    MOBILE_DATA(checksPhotos = true, boundsEventRead = true),
-    SILENT_PUSH(checksPhotos = true, boundsEventRead = false),
-    SELECTION_CHANGE(checksPhotos = true, boundsEventRead = true),
-    SCHEDULED(checksPhotos = true, boundsEventRead = true),
-    UPLOAD_SESSION(checksPhotos = true, boundsEventRead = true),
-    DOWNLOAD_SESSION(checksPhotos = true, boundsEventRead = true),
+enum class WakeKind(val checksPhotos: Boolean, val boundsEventRead: Boolean, val reads: UnionTrigger) {
+    /** A membership transition — a join, mostly; its own work recognised already, so its wake rarely reads. */
+    ARM(checksPhotos = false, boundsEventRead = false, reads = UnionTrigger.JOIN),
+    FOREGROUND(checksPhotos = true, boundsEventRead = false, reads = UnionTrigger.FOREGROUND),
+
+    /** The network came back while the app was in front. */
+    NETWORK(checksPhotos = true, boundsEventRead = false, reads = UnionTrigger.FOREGROUND),
+    MOBILE_DATA(checksPhotos = true, boundsEventRead = true, reads = UnionTrigger.RECONFIGURE),
+    SILENT_PUSH(checksPhotos = true, boundsEventRead = false, reads = UnionTrigger.PUSH),
+
+    /** A partial grant's selection changed: the photo access it gives. */
+    SELECTION_CHANGE(checksPhotos = true, boundsEventRead = true, reads = UnionTrigger.GRANT),
+    SCHEDULED(checksPhotos = true, boundsEventRead = true, reads = UnionTrigger.WAKE),
+    UPLOAD_SESSION(checksPhotos = true, boundsEventRead = true, reads = UnionTrigger.WAKE),
+    DOWNLOAD_SESSION(checksPhotos = true, boundsEventRead = true, reads = UnionTrigger.WAKE),
 }
 
 /**
