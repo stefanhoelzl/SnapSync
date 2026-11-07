@@ -27,10 +27,10 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -140,7 +140,11 @@ class CreateFlowTest {
     // The screen's part of the presets: the end shown as not yet set. The presets themselves are the form's
     // (`CreateFormClockTest`).
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The last day starts as today, but not the end time")
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "The last day starts as today, but not the end time",
+    )
     fun `the start is preset to now and the last day to today with its time blank`() = createTest { _ ->
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
         onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).assertExists()
