@@ -33,6 +33,13 @@ class WithdrawalIntegrationTest {
         requirement = "Deleting or no longer sharing a photo withdraws it",
         scenario = "A deleted photo is withdrawn",
     )
+    // The core's part: a photo the gallery no longer reads is withdrawn, the others kept. That a photo moved out of DCIM
+    // reads as gone is the Android gallery's (`AndroidSharedFoldersTest`).
+    @Verifies(
+        spec = "photo-sharing",
+        requirement = "Deleting or no longer sharing a photo withdraws it",
+        scenario = "Moving a photo out of DCIM withdraws it",
+    )
     fun a_deleted_photo_leaves_what_the_event_offers() = behaviour {
         given {
             extensionUploadsOnly()

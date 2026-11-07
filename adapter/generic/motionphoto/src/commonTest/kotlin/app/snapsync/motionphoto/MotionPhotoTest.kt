@@ -1,5 +1,6 @@
 package app.snapsync.motionphoto
 
+import app.snapsync.control.Verifies
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -197,7 +198,15 @@ class MotionPhotoTest {
         assertEquals(file.size - 64 until file.size, locateMotionVideo("""GCamera:MicroVideoOffset="72"""", file))
     }
 
+    // The recognising part: a moving photo whose video cannot be found is no motion photo, so the iPhone import takes
+    // it as its still, the original imported once as it is (`LivePhotoImportContract`'s
+    // A_FILE_THAT_ONLY_LOOKS_LIKE_A_MOTION_PHOTO_IMPORTS_AS_ITS_STILL, run on the simulator app).
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos arrive in full fidelity",
+        scenario = "A motion photo iPhone does not recognise arrives as its still",
+    )
     fun an_implausible_or_foreign_trailer_is_no_motion_photo() {
         val file = jpeg() + mp4(bytes = 64)
         assertNull(locateMotionVideo("<x:xmpmeta/>", file), "no motion XMP")

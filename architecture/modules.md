@@ -72,6 +72,7 @@ flowchart LR
   adapter_android --> domain_query
   adapter_android --> domain_services
   adapter_android --> test_contracts
+  adapter_android --> test_verifies
   adapter_android --> ui_components
   adapter_android --> ui_screens
   adapter_android --> ui_state
@@ -98,6 +99,7 @@ flowchart LR
   adapter_generic_mock --> test_contracts
   adapter_generic_mock --> test_levers
   adapter_generic_mock --> ui_state
+  adapter_generic_motionphoto --> test_verifies
   adapter_generic_sentry --> adapter_generic_app
   adapter_generic_sentry --> adapter_ios_ext_safe
   adapter_generic_sentry --> domain_model
@@ -112,6 +114,7 @@ flowchart LR
   adapter_ios_app_only --> domain_ports
   adapter_ios_app_only --> domain_services
   adapter_ios_app_only --> test_contracts
+  adapter_ios_app_only --> test_verifies
   adapter_ios_ext_safe --> adapter_generic_app
   adapter_ios_ext_safe --> domain_compose
   adapter_ios_ext_safe --> domain_data
@@ -122,6 +125,7 @@ flowchart LR
   adapter_ios_ext_safe --> domain_ports
   adapter_ios_ext_safe --> domain_services
   adapter_ios_ext_safe --> test_contracts
+  adapter_ios_ext_safe --> test_verifies
   adapter_ios_ui --> adapter_ios_app_only
   adapter_ios_ui --> adapter_ios_ext_safe
   adapter_ios_ui --> domain_feature
@@ -132,6 +136,7 @@ flowchart LR
   adapter_ios_ui --> domain_presentation
   adapter_ios_ui --> domain_query
   adapter_ios_ui --> test_contracts
+  adapter_ios_ui --> test_verifies
   adapter_ios_ui --> ui_components
   adapter_ios_ui --> ui_screens
   adapter_ios_ui --> ui_state
@@ -363,10 +368,12 @@ flowchart LR
   test_no_grant --> domain_model
   test_no_grant --> domain_ports
   test_no_grant --> test_contracts
+  test_no_grant --> test_verifies
   test_partial_grant --> adapter_android
   test_partial_grant --> domain_model
   test_partial_grant --> domain_ports
   test_partial_grant --> test_contracts
+  test_partial_grant --> test_verifies
   test_rig --> adapter_android
   test_rig --> adapter_generic_app
   test_rig --> adapter_generic_mock

@@ -16,7 +16,12 @@ import app.snapsync.contracts.NetworkMonitorContract
 import app.snapsync.contracts.NetworkState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.control.Verifies
+import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -77,6 +82,64 @@ class AndroidNetworkMonitorContractTest {
     }
 
     /**
+     * A phone's personal hotspot tells the phones joining it that it is metered, and Android marks that Wi-Fi metered,
+     * as it marks a Wi-Fi a person switched to metered. This adapter's part is the mapping: a metered Wi-Fi is mobile
+     * data. That a hotspot reads metered is the platform's.
+     */
+    @Test
+    @Verifies(
+        spec = "mobile-data",
+        requirement = "With mobile data off, photos wait for an unrestricted Wi-Fi",
+        scenario = "A hotspot counts as mobile data",
+    )
+    fun `a metered Wi-Fi — what a phone’s hotspot reads as — is restricted`(): Unit = runBlocking {
+        try {
+            enter(NetworkState.RESTRICTED)
+            assertWifiIsDefault()
+            assertEquals(NetworkAccess.Online(restricted = true), firstReading())
+        } finally {
+            restoreOnline()
+        }
+    }
+
+    /** The adapter's part: an unmetered Wi-Fi reads unrestricted. That the screen then shows no notice is the core's. */
+    @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "The app says when it cannot reach the network",
+        scenario = "Mobile data off but on Wi-Fi",
+    )
+    fun `an unmetered Wi-Fi is online and unrestricted`(): Unit = runBlocking {
+        try {
+            enter(NetworkState.ONLINE)
+            assertWifiIsDefault()
+            assertEquals(NetworkAccess.Online(restricted = false), firstReading())
+        } finally {
+            restoreOnline()
+        }
+    }
+
+    private suspend fun firstReading(): NetworkAccess =
+        withTimeout(READING_MILLIS) { AndroidNetworkMonitor(context).watch().first() }
+
+    /**
+     * Waits until the emulator's Wi-Fi is the default network. Lifting a metered override reconnects the Wi-Fi as a new
+     * network, with cellular the default for a few seconds in between (measured 2026-11-07), so the entry alone does not
+     * guarantee it.
+     */
+    private fun assertWifiIsDefault() {
+        val deadline = System.currentTimeMillis() + SETTLE_MILLIS
+        while (connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+                ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true
+        ) {
+            check(System.currentTimeMillis() < deadline) {
+                "the emulator's Wi-Fi was not the default network within ${SETTLE_MILLIS}ms (${EmulatorNetwork.describe()})"
+            }
+            Thread.sleep(POLL_MILLIS)
+        }
+    }
+
+    /**
      * Puts the emulator in [state]. An entry that fails part-way restores the online device before it throws: a device
      * left in airplane mode would fail every later device test of the run that needs the network.
      */
@@ -118,6 +181,7 @@ class AndroidNetworkMonitorContractTest {
         val context: Context get() = InstrumentationRegistry.getInstrumentation().targetContext
         val connectivity: ConnectivityManager get() = context.getSystemService(ConnectivityManager::class.java)
         const val SETTLE_MILLIS = 30_000L
+        const val READING_MILLIS = 10_000L
         const val POLL_MILLIS = 100L
 
         fun shell(command: String): String {

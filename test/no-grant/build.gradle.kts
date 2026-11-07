@@ -23,5 +23,11 @@ kotlin {
             // The run's bindings call the platform's own test levers (the shell's grant).
             implementation(libs.androidx.test.runner)
         }
+        getByName("androidDeviceTest").dependencies {
+            // `@Verifies`: the scenario a refused grant decides is claimed by the device test that shows it.
+            implementation(project(":test:verifies"))
+            // The `ComponentActivity` a request is made in front of, declared in this artifact's manifest.
+            implementation(libs.androidx.compose.ui.test.manifest)
+        }
     }
 }

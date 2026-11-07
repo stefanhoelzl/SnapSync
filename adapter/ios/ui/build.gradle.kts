@@ -29,6 +29,8 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // `@Verifies`: a scenario this adapter decides is claimed by the test that shows it.
+            implementation(project(":test:verifies"))
             // The Lifecycle adapter's contract binding (`docs/architecture.md`).
             implementation(project(":test:contracts"))
             implementation(libs.kermit)

@@ -30,6 +30,13 @@ class InstallReferrerIntegrationTest {
         requirement = "Without the app, the invite leads to a store and back",
         scenario = "Installing from Google Play opens the join screen",
     )
+    // The core's part: the referrer a tester's install delivers opens its join screen. The once-per-install delivery is
+    // the Android reader's (`AndroidInstallReferrerTest`).
+    @Verifies(
+        spec = "invite-link",
+        requirement = "Without the app, the invite leads to a store and back",
+        scenario = "Becoming a tester from an invite's page opens the join screen",
+    )
     fun a_referrer_carrying_an_invite_opens_its_join_screen() = behaviour {
         val (event, referrer) = given {
             step("events are created plain", act = { devControls.encryptNewEvents(false) }, until = {})

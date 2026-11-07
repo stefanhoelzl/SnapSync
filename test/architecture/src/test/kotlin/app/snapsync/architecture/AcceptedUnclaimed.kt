@@ -131,6 +131,21 @@ internal object AcceptedUnclaimed {
             "focus, scrolling and what is announced are the browser's and the screen reader's",
         ),
 
+        Entry(
+            "privacy-security",
+            "Only a genuine SnapSync app can change an event",
+            "A genuine Android phone joins",
+            PLATFORM,
+            "a real phone's hardware attestation is its maker's; the emulator attests only in software",
+        ),
+        Entry(
+            "privacy-security",
+            "Automatic failure reports are minimal and anonymous",
+            "The app freezes and the system closes it",
+            PLATFORM,
+            "Google Play detects and reports a frozen app itself; the app sends nothing for it",
+        ),
+
         // ── PROCESS ───────────────────────────────────────────────────────────────────────────────────────────
         Entry(
             "privacy-security",

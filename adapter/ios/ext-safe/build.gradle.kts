@@ -81,6 +81,8 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // `@Verifies`: a scenario this adapter decides is claimed by the test that shows it.
+            implementation(project(":test:verifies"))
             // The Keychain and App-Group store bindings of `SecureStoreContract` (capability
             // `docs/architecture.md`). Bound here because the seam and `AppGroupFileSecureStore` are `internal`.
             implementation(project(":test:contracts"))

@@ -29,6 +29,7 @@ import app.snapsync.contracts.StagedImport
 import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.control.Verifies
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.motionphoto.jpegXmp
 import app.snapsync.motionphoto.locateMotionVideo
@@ -192,7 +193,20 @@ class AndroidImportContractTest {
         }
     }
 
+    // The receiving phone's own form is this import's alone; every other member and the download get the sender's HEIC
+    // because nothing else re-encodes it.
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos arrive in full fidelity",
+        scenario = "A HEIC Live Photo is saved on Android as a JPEG",
+    )
+    // The receiving part: the re-encode keeps the location. The sharing part is `AndroidSharedFoldersTest`'s.
+    @Verifies(
+        spec = "delivery",
+        requirement = "Only the original is uploaded, complete",
+        scenario = "The capture location travels with the photo",
+    )
     fun `a HEIC Live Photo arrives as ONE JPEG motion photo carrying its video unchanged`(): Unit = runBlocking {
         val ref = ref("live")
         val mov = fixture("iphone.mov")
@@ -274,6 +288,11 @@ class AndroidImportContractTest {
     }
 
     @Test
+    @Verifies(
+        spec = "receiving-photos",
+        requirement = "Received photos arrive in full fidelity",
+        scenario = "A Live Photo reaches Android as its still",
+    )
     fun `a Live Photo whose still cannot carry the motion arrives as its still exactly once`(): Unit = runBlocking {
         // A still that already describes a motion photo cannot be given a second one: the conversion answers "no" before
         // anything is inserted, and the still is imported exactly as before.

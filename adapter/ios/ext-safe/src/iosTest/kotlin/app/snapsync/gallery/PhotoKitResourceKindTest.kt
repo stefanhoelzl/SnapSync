@@ -1,5 +1,6 @@
 package app.snapsync.gallery
 
+import app.snapsync.control.Verifies
 import app.snapsync.ports.ResourceKind
 import platform.Photos.PHAssetResourceTypeAdjustmentBasePhoto
 import platform.Photos.PHAssetResourceTypeAdjustmentData
@@ -34,7 +35,14 @@ class PhotoKitResourceKindTest {
         assertNull(photoKitResourceKind(PHAssetResourceTypeAudio), "an audio-only item is no photo")
     }
 
+    // A filter is an edit: Photos keeps the original and renders the filtered full-size photo beside it. Reading only the
+    // original is this table's decision.
     @Test
+    @Verifies(
+        spec = "delivery",
+        requirement = "Only the original is uploaded, complete",
+        scenario = "An edit is not shared",
+    )
     fun `edit artifacts and raw alternates are dropped`() {
         val dropped = listOf(
             PHAssetResourceTypeAlternatePhoto, // RAW
