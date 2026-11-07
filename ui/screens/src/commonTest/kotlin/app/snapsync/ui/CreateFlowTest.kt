@@ -22,9 +22,12 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -64,6 +67,7 @@ import app.snapsync.ui.resources.create_name_placeholder
 import app.snapsync.ui.resources.create_step_end_time
 import app.snapsync.ui.resources.create_step_name
 import app.snapsync.ui.resources.create_title
+import app.snapsync.ui.resources.create_window_note
 import app.snapsync.ui.resources.duration_days
 import app.snapsync.ui.resources.duration_hours
 import app.snapsync.ui.resources.leave_event
@@ -133,7 +137,10 @@ class CreateFlowTest {
         }
     }
 
+    // The screen's part of the presets: the end shown as not yet set. The presets themselves are the form's
+    // (`CreateFormClockTest`).
     @Test
+    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The last day starts as today, but not the end time")
     fun `the start is preset to now and the last day to today with its time blank`() = createTest { _ ->
         onNodeWithText("6 Jul 2026, 12:00").assertExists()
         onNodeWithText(str(ComponentRes.string.range_end_pick_time, "6 Jul 2026")).assertExists()
@@ -149,7 +156,16 @@ class CreateFlowTest {
             awaitState(rig) { it.overlays.reportingBug }
         }
 
+    // The screen's part: Create disabled and the line's words. Which step comes next is the form's (`CreateDraftTest`).
     @Test
+    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The next missing step is named from the start")
+    @Verifies(spec = "create-event", requirement = RANGE, scenario = "A name alone does not allow Create")
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "Choosing a later last day does not fill in the end time",
+    )
+    @Verifies(spec = "create-event", requirement = RANGE, scenario = "Setting the end time completes the range")
     fun `the line above Create names the next missing step`() = createTest { rig ->
         onNodeWithText(str(Res.string.create_step_name)).assertExists()
         onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
@@ -166,6 +182,54 @@ class CreateFlowTest {
         setUntilHour(rig, "13")
         onNodeWithText(str(Res.string.create_lasts, plural(Res.plurals.duration_days, 2, 2))).assertExists()
         onNodeWithText(str(Res.string.create_button)).assertIsEnabled()
+    }
+
+    // The screen's part: with the end's hour alone it still asks for the end time and keeps Create disabled.
+    @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "Choosing only the end's hour does not set the end time",
+    )
+    fun `an end hour alone still asks for the end time and Create stays disabled`() = createTest { rig ->
+        typeName(rig, "My Party")
+        onNodeWithContentDescription(str(ComponentRes.string.wheel_end_hour), useUnmergedTree = true).performScrollTo()
+        onNode(
+            hasText("13") and hasAnyAncestor(hasContentDescription(str(ComponentRes.string.wheel_end_hour))),
+            useUnmergedTree = true,
+        ).performClick()
+        awaitState(rig) { it.create?.form?.picker?.untilHour == 13 }
+        onNodeWithText(str(Res.string.create_step_end_time)).assertExists()
+        onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
+    }
+
+    // The screen's part: the duration said together with what the range shares. The five days are the form's
+    // (`CreateDraftTest`).
+    @Test
+    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The duration and the consequence are stated")
+    fun `a five-day range reads that it lasts 5 days beside what its dates share`() = createTest { rig ->
+        typeName(rig, "My Party")
+        pickDay(rig, "Saturday, 11 July 2026", day = 11)
+        setUntilHour(rig, "13")
+        onNodeWithText(str(Res.string.create_lasts, plural(Res.plurals.duration_days, 5, 5))).assertExists()
+        onNodeWithText(str(Res.string.create_window_note, 30)).assertExists()
+    }
+
+    @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The front screen offers to start an event",
+        scenario = "The create screen frames sharing, not backup",
+    )
+    fun `the create screen speaks of sharing and never of backing up`() = createTest { _ ->
+        onNodeWithText(str(Res.string.create_window_note, 30)).assertExists()
+        // Not copy: a guard that no word on the screen offers to back up the library.
+        val backup = Regex("""back\s*-?\s*up""", RegexOption.IGNORE_CASE)
+        val words = onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .flatMap { node -> node.config[SemanticsProperties.Text].map { it.text } }
+        assertTrue(words.isNotEmpty(), "the create screen shows words")
+        assertTrue(words.none { backup.containsMatchIn(it) }, "a word on the create screen speaks of backup: $words")
     }
 
     @Test
@@ -408,6 +472,11 @@ class CreateFlowTest {
     }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The event name is required and at most 100 characters",
+        scenario = "The name stops at 100 characters",
+    )
     fun `the name field caps at 100 characters`() = createTest { _ ->
         val field = onNode(hasSetTextAction())
         field.performTextInput("a".repeat(100))
@@ -519,6 +588,8 @@ class CreateFlowTest {
     }
 
     private companion object {
+        const val RANGE = "The host chooses the event's date range and its end time"
+
         /** No keyboard override: the test platform's own. */
         val KEEP: SoftwareKeyboardController = CountingKeyboard()
 
