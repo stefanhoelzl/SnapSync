@@ -1,4 +1,4 @@
-package app.snapsync.compose
+package app.snapsync.metrics
 
 import app.snapsync.contracts.Binding
 import app.snapsync.contracts.BindingKind

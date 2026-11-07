@@ -174,10 +174,23 @@ class ModuleSetTest {
                 ":domain:services", ":domain:application", ":domain:data", ":domain:query",
             ),
             // `:ui:state` because the app's `Ui` port is bound to the screen's vocabulary in `AppPorts`.
+            // MIGRATING: the app's composition builds the composition layer's shared half until phase 5 moves it there.
             "compose" to setOf(
                 ":domain:model", ":domain:domain", ":domain:ports", ":domain:services", ":domain:inbound",
                 ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:data", ":domain:application",
-                ":domain:format", ":domain:query",
+                ":domain:format", ":domain:query", ":domain:composition:process",
+            ),
+            // The composition layer (`docs/architecture.md`, "The composition layer"), wiring only. Its shared half: what
+            // every process wires — every layer below presentation, and no old zone.
+            "composition/process" to setOf(
+                ":domain:domain", ":domain:inbound", ":domain:ports", ":domain:scheduling", ":domain:data",
+                ":domain:application", ":domain:entrypoints",
+            ),
+            // The upload extension's half: the shared half and the same layers — never presentation, the query layer or
+            // the screen's vocabulary, which the extension does not link.
+            "composition/extension" to setOf(
+                ":domain:composition:process", ":domain:domain", ":domain:inbound", ":domain:ports",
+                ":domain:scheduling", ":domain:data", ":domain:application", ":domain:entrypoints",
             ),
             // The UI-state reduction: the domain's vocabulary, the query layer it reads, the inbound kinds its command door
             // fires (`UserCommand`), and the screen's vocabulary it reduces into. `:ui:state` references nothing
@@ -188,11 +201,14 @@ class ModuleSetTest {
                 ":domain:model", ":domain:domain", ":domain:ports", ":domain:compose",
                 ":domain:presentation",
                 ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:query",
+                // MIGRATING: the process ports the app's ports carry, whose build the host's facts read.
+                ":domain:composition:process",
             ),
         )
         val problems = permitted.flatMap { (zone, allowed) ->
             val build = File(repoRoot, "domain/$zone/build.gradle.kts")
             assertTrue(build.isFile, "domain/$zone/build.gradle.kts is missing — the core moved")
+            val module = ":domain:" + zone.replace("/", ":")
             val text = build.readText()
             val tests = commonTestBlock(text)
             Regex("""(\w+)\(project\(\s*"([^"]+)"\s*\)\)""").findAll(text).mapNotNull { m ->
@@ -202,12 +218,12 @@ class ModuleSetTest {
                     // so it hands the zone no platform, and only the zone's tests see it.
                     target == VERIFIES && m.range.first in tests && configuration == "implementation" -> null
                     target !in allowed ->
-                        ":domain:$zone declares project(\"$target\"), which is not a permitted zone edge. " +
+                        "$module declares project(\"$target\"), which is not a permitted zone edge. " +
                             "A core module may depend only on ${allowed.ifEmpty { "nothing" }} — an edge out " +
                             "of the core hands it a platform, and the platform-free compile error " +
                             "silently stops holding."
                     configuration != "implementation" ->
-                        ":domain:$zone declares $configuration(project(\"$target\")) — zone edges SHALL use " +
+                        "$module declares $configuration(project(\"$target\")) — zone edges SHALL use " +
                             "implementation(), or the zone is republished to every downstream consumer and " +
                             "the boundary dissolves transitively."
                     else -> null
@@ -241,6 +257,8 @@ class ModuleSetTest {
             // The layers the core's work runs on (`docs/patterns.md`): the deliveries, the runtime, the entry points.
             ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":domain:data", ":domain:application",
             ":domain:query",
+            // The composition layer: the extension's half withholds everything the app composes from the extension.
+            ":domain:composition:process", ":domain:composition:extension",
             // `:ui:state` withholds the domain from the screens: they see the screen's vocabulary, and no domain
             // type resolves there.
             ":ui:state", ":ui:screens", ":ui:components",

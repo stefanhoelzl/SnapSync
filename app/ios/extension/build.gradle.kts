@@ -47,8 +47,10 @@ kotlin {
             api(project(":domain:model"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
-            api(project(":domain:compose"))
-            // The JVM-covered upload layers (the data tier, the use cases and their entry points).
+            // The extension's own composition (`docs/architecture.md`, "The composition layer") and the process ports
+            // it is built over — the root links no other composition, and no old zone (`ExtensionSafetyTest`).
+            api(project(":domain:composition:extension"))
+            api(project(":domain:composition:process"))
             // The extension-safe iOS adapters implement their ports and UploadExtensionRoot composes them.
             // The extension framework's contents are decided by linkage (migration step 4): the
             // extension-safe iOS adapters (:adapter:ios:ext-safe — the discovery walk + cursor store,
@@ -63,10 +65,6 @@ kotlin {
             // launch-time adapters") — only under the same switch as its source directory, never in a shipped
             // extension (`MockContainmentTest`).
             if (rigEnabled) implementation(project(":test:launch-adapters"))
-            // The storage services the root builds over the thin storage adapters (`docs/architecture.md`).
-            implementation(project(":domain:services"))
-            // The event-notify sender: a bodyless POST to
-
             // Ktor core for the synchronous in-cycle device.json PUT (the Darwin client comes from
             // :adapter:ios:ext-safe); the byte uploads are the OS's job, not Ktor's.
             implementation(libs.ktor.client.core)

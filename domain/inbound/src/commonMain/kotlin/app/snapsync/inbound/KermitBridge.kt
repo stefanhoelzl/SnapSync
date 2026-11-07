@@ -21,7 +21,7 @@ class KermitBridge : KermitWriter() {
 
 /**
  * A process's logging globals — [Log]'s writers, and Kermit's, whose one writer then is the [KermitBridge] onto them —
- * and whether the process owns them (`docs/architecture.md`, "One shared composition"): **a process that supplies log
+ * and whether the process owns them (`docs/architecture.md`, "The composition layer"): **a process that supplies log
  * sinks owns them**. One that supplies none ([sinks] `0`) leaves both alone: a JVM hosts many "processes" in one VM,
  * where they are VM-global, and a composition there must not take them over.
  */

@@ -1,5 +1,5 @@
 // `:app:android` — the Android app's composition root, what `:app:ios` is to the phone: an `Application` that composes
-// the app once, in its one process (`snapSyncProcess`, then `snapSyncHost` — `SnapSyncRoot`), and the activity that
+// the app once, in its one process (`startProcess`, then `snapSyncHost` — `SnapSyncRoot`), and the activity that
 // pulls the screen. Wiring only, gated as a shell (`detektAppShell`, `KotlinShellGuardTest`); no test source set.
 //
 // A build WITHOUT `-Psnapsync.rig=true` composes every real Android adapter (`src/prod`), with no crash reporter until
@@ -161,6 +161,7 @@ dependencies {
     implementation(project(":domain:ports"))
     implementation(project(":domain:inbound"))
     implementation(project(":domain:compose"))
+    implementation(project(":domain:composition:process"))
     implementation(project(":domain:services"))
     implementation(project(":domain:presentation"))
     // The shared host composition: the core and the status host over it (`snapSyncHost`).

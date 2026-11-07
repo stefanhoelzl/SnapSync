@@ -718,7 +718,7 @@ build the same classes over caller-held cells.
 ### The JVM root (`:app:jvm`)
 
 `JvmApp` composes the app on the JVM exactly as `SnapSyncRoot` does on the phone — `snapSyncHost` over `AppPorts`, ports
-and nothing else — and the upload extension beside it exactly as `UploadExtensionRoot` does (`snapSyncExtension` over
+and nothing else — and the upload extension beside it exactly as `UploadExtensionRoot` does (`composeExtension` over
 `ExtensionPorts`), over the adapters **its caller** chooses for each launch, from a durable state the caller keeps:
 `JvmApp(scope, durable) { durable -> adapters }`. `JvmMocks` is that durable state as one mock per external system, and
 `JvmMocks.adapters(build, attests, http, logSinks)` its launch's adapters (`build` is a `BuildInfoMock`, its declared version a cell the caller holds, which every request declares); a

@@ -72,6 +72,7 @@ kotlin {
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
             api(project(":domain:compose"))
+            api(project(":domain:composition:process"))
             // The shared host composition: the core and the status host over it (`snapSyncHost`).
             implementation(project(":domain:host"))
             implementation(project(":ui:screens"))

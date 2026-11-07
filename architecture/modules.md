@@ -24,6 +24,8 @@ flowchart LR
   app_jvm[":app:jvm"]
   domain_application[":domain:application"]
   domain_compose[":domain:compose"]
+  domain_composition_extension[":domain:composition:extension"]
+  domain_composition_process[":domain:composition:process"]
   domain_data[":domain:data"]
   domain_domain[":domain:domain"]
   domain_entrypoints[":domain:entrypoints"]
@@ -85,8 +87,11 @@ flowchart LR
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
   adapter_generic_mock --> domain_compose
+  adapter_generic_mock --> domain_composition_extension
+  adapter_generic_mock --> domain_composition_process
   adapter_generic_mock --> domain_data
   adapter_generic_mock --> domain_domain
+  adapter_generic_mock --> domain_entrypoints
   adapter_generic_mock --> domain_format
   adapter_generic_mock --> domain_inbound
   adapter_generic_mock --> domain_model
@@ -142,6 +147,7 @@ flowchart LR
   app_android --> adapter_generic_app
   app_android --> adapter_generic_sentry
   app_android --> domain_compose
+  app_android --> domain_composition_process
   app_android --> domain_host
   app_android --> domain_inbound
   app_android --> domain_model
@@ -169,6 +175,7 @@ flowchart LR
   app_ios --> adapter_ios_ext_safe
   app_ios --> adapter_ios_ui
   app_ios --> domain_compose
+  app_ios --> domain_composition_process
   app_ios --> domain_host
   app_ios --> domain_inbound
   app_ios --> domain_model
@@ -181,14 +188,16 @@ flowchart LR
   app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_generic_sentry
   app_ios_extension --> adapter_ios_ext_safe
-  app_ios_extension --> domain_compose
+  app_ios_extension --> domain_composition_extension
+  app_ios_extension --> domain_composition_process
   app_ios_extension --> domain_inbound
   app_ios_extension --> domain_model
   app_ios_extension --> domain_ports
-  app_ios_extension --> domain_services
   app_jvm --> adapter_generic_app
   app_jvm --> adapter_generic_mock
   app_jvm --> domain_compose
+  app_jvm --> domain_composition_extension
+  app_jvm --> domain_composition_process
   app_jvm --> domain_host
   app_jvm --> domain_model
   app_jvm --> domain_ports
@@ -200,6 +209,7 @@ flowchart LR
   domain_application --> domain_format
   domain_application --> domain_inbound
   domain_compose --> domain_application
+  domain_compose --> domain_composition_process
   domain_compose --> domain_data
   domain_compose --> domain_domain
   domain_compose --> domain_entrypoints
@@ -211,6 +221,21 @@ flowchart LR
   domain_compose --> domain_scheduling
   domain_compose --> domain_services
   domain_compose --> ui_state
+  domain_composition_extension --> domain_application
+  domain_composition_extension --> domain_composition_process
+  domain_composition_extension --> domain_data
+  domain_composition_extension --> domain_domain
+  domain_composition_extension --> domain_entrypoints
+  domain_composition_extension --> domain_inbound
+  domain_composition_extension --> domain_ports
+  domain_composition_extension --> domain_scheduling
+  domain_composition_process --> domain_application
+  domain_composition_process --> domain_data
+  domain_composition_process --> domain_domain
+  domain_composition_process --> domain_entrypoints
+  domain_composition_process --> domain_inbound
+  domain_composition_process --> domain_ports
+  domain_composition_process --> domain_scheduling
   domain_data --> domain_domain
   domain_data --> domain_format
   domain_data --> domain_inbound
@@ -227,6 +252,7 @@ flowchart LR
   domain_entrypoints --> domain_services
   domain_format --> domain_domain
   domain_host --> domain_compose
+  domain_host --> domain_composition_process
   domain_host --> domain_domain
   domain_host --> domain_entrypoints
   domain_host --> domain_inbound
@@ -263,6 +289,8 @@ flowchart LR
   test_architecture --> adapter_generic_app
   test_architecture --> adapter_generic_mock
   test_architecture --> domain_application
+  test_architecture --> domain_composition_extension
+  test_architecture --> domain_composition_process
   test_architecture --> domain_data
   test_architecture --> domain_domain
   test_architecture --> domain_format
@@ -339,6 +367,8 @@ flowchart LR
   test_journeys --> ui_state
   test_launch_adapters --> adapter_generic_mock
   test_launch_adapters --> domain_compose
+  test_launch_adapters --> domain_composition_extension
+  test_launch_adapters --> domain_composition_process
   test_launch_adapters --> domain_inbound
   test_launch_adapters --> domain_model
   test_launch_adapters --> domain_ports
@@ -362,6 +392,8 @@ flowchart LR
   test_rig --> adapter_ios_ext_safe
   test_rig --> app_jvm
   test_rig --> domain_compose
+  test_rig --> domain_composition_extension
+  test_rig --> domain_composition_process
   test_rig --> domain_data
   test_rig --> domain_domain
   test_rig --> domain_format

@@ -4,7 +4,7 @@ plugins {
     id("snapsync.targets")
 }
 
-// The core's host zone (`docs/architecture.md`, "Zones inside the core"; "One shared composition"):
+// The core's host zone (`docs/architecture.md`, "Zones inside the core"; "The composition layer"):
 // `snapSyncHost` composes the core (`snapSyncApp`) AND the status host over it, with the host-assembly
 // subscriptions. Every root that runs the live app calls it — the iOS shell, and the world (so the control
 // channel's JVM host and every world test driving the entry ports) — so the host a test drives
@@ -18,7 +18,7 @@ plugins {
 // `feature/`, only the `readmodel` packages may be named (the read-model import gate).
 //
 // Wiring only: no conditional (it is scanned as an app shell by detektAppShell), and no test source set — it is
-// exercised end to end by every protocol-driven test, which is where "One shared composition" says the wiring
+// exercised end to end by every protocol-driven test, which is where "The composition layer" says the wiring
 // graph is tested.
 kotlin {
     sourceSets {
@@ -28,6 +28,8 @@ kotlin {
             implementation(project(":domain:query"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:compose"))
+            // The process ports the app's ports carry ([AppPorts.process]): the build the host's facts read.
+            implementation(project(":domain:composition:process"))
             implementation(project(":domain:presentation"))
             // The UI deliveries and the host assembly the foreground entry point asks for.
             implementation(project(":domain:inbound"))

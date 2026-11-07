@@ -46,7 +46,7 @@ Roots found:
 | `IosUrlSessionUploadPlatform` | x | x | |
 | `KtorHttpTransport` | x | x | x |
 | `MetricKitProcessMetrics` | x | x | |
-| `NoPlatformDeviceId` | x | x | x |
+| `NoPlatformDeviceId` | x | x | |
 | `PhotoLibraryPermission` | x | x | |
 | `ProcessPorts` | x | x | x |
 | `PublicNSLogSink` | x | x | x |

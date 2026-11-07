@@ -23,7 +23,7 @@ for both modules and catches iOS-only Kotlin breakage without a Mac.
   `debug.log` and lets the app live.
 - `SnapSyncRoot` owns a process-lifetime `SupervisorJob`, not `rememberCoroutineScope` (which dies with the view).
 - **Ledger writers belong to code, not to a process.** The upload rows' writers (`WalkRecord`, `RowTransitions`,
-  `JobRecord`, `UploadRowsReset`) are built only in the shared composition (`compose/UploadCore.kt`'s `UploadLayers`,
+  `JobRecord`, `UploadRowsReset`) are built only in the compositions (`composition:process`'s `UploadGraph`,
   `compose/AppUploader.kt`); `:app:ios` constructs none.
 - Keep every new entry point wrapped as the existing ones are, or its downstream log lines lose the
   `[<Trigger>]` prefix.

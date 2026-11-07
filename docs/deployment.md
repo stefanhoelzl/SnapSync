@@ -636,7 +636,7 @@ never reaches the internal track (below).
 
 - **What reports** (capability `privacy-security`): production builds report crashes and `Error`/`Assert`-severity
   lines (lower severities ride as breadcrumbs), in **both** iOS processes, through the `CrashReporter` port that
-  `snapSyncProcess` starts as every composition's first act. Ids ride **in full** (the operator already holds every
+  `startProcess` starts as every composition's first act. Ids ride **in full** (the operator already holds every
   event's unencrypted data; an encrypted event's key never reaches a line, by type — `InviteText`, `EventKey`), and
   SnapSync's own ids — `event`, `device`, `process` — ride in every report's `snapsync` section, apart from the SDK's
   own `event_id`; the SDK's random per-install `user.id` counts the installs a problem affects. A failed line is

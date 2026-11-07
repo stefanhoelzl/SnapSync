@@ -3,7 +3,6 @@ package app.snapsync.host
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.CoreCommands
-import app.snapsync.compose.ProcessServices
 import app.snapsync.compose.followNetworkReturns
 import app.snapsync.compose.inbound
 import app.snapsync.compose.snapSyncApp
@@ -13,6 +12,7 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.ports.DateFormatting
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.UiHandlers
 import app.snapsync.presentation.BuildFacts
 import app.snapsync.presentation.CutoffFormatter
@@ -48,10 +48,11 @@ import kotlinx.coroutines.launch
 class ComposedApp internal constructor(
     val core: AppCore,
     /**
-     * What the process set up as the composition's first act — its crash reporting, its metrics handler, its log
-     * writers. Exposed for the control channel, which drives a synthetic process-metric report through THIS instance.
+     * What a delivered process-metric report does — the handler the process's first act registered. Exposed for the
+     * control channel, which drives a synthetic report through THIS instance, so the path the OS drives is the one a
+     * test drives.
      */
-    val process: ProcessServices,
+    val onMetricReport: Inbound<ProcessMetricPayload, Unit>,
     /** The one cutoff formatter the status host and the screen rendering it share. */
     val cutoffFormatter: CutoffFormatter,
     /** The platform's date formatting the screen renders through ([AppPorts.dateFormatting]). */
@@ -99,9 +100,8 @@ fun snapSyncHost(
 ): ComposedApp {
     // The process first — inside `snapSyncApp`, before anything else in the graph can fail.
     val core = snapSyncApp(scope, lane, ports)
-    val process = core.process
     core.installCompositionSubscriptions()
-    val composed = ComposedApp(core, process, cutoffFormatter, ports.dateFormatting) {
+    val composed = ComposedApp(core, core.onMetricReport, cutoffFormatter, ports.dateFormatting) {
         // Host assembly: the permission-grant collectors install ONLY from here (see [ComposedApp]).
         core.installPermissionSubscriptions()
         // The network's return resumes the app's work while it is in front.
@@ -114,9 +114,9 @@ fun snapSyncHost(
             facts = BuildFacts(
                 store = ports.process.build.store,
                 // Where a bug report goes on this build — the sheet says it.
-                reportDestination = process.reportDestination,
+                reportDestination = core.reportDestination,
                 // Which build this is — the app menu's footer.
-                label = process.buildLabel,
+                label = core.buildLabel,
                 // What the event album holds on this phone — read from the photo library.
                 albumContents = core.albumContents,
             ),

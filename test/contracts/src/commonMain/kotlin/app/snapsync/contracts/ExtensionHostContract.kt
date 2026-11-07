@@ -3,9 +3,9 @@
 package app.snapsync.contracts
 
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
+import app.snapsync.ports.ProcessingAnswer
 import kotlin.test.assertEquals
 
 /** Whether the upload extension can be invoked. */

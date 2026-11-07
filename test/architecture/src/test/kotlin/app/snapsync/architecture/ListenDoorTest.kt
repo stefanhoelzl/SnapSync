@@ -10,13 +10,13 @@ import kotlin.test.assertTrue
  * tells the core is always one of the composition's entry points — never a callback some root or adapter wired up
  * for itself:
  *
- *  - a `*Handlers` bundle is constructed only in `compose/` (production source), whose handlers are the entry points
- *    — and in the host zone for the handlers that need the status host to exist first (`UiHandlers`: an intent is
+ *  - a `*Handlers` bundle is constructed only in the compositions (production source), whose handlers are the entry
+ *    points — and in the host zone for the handlers that need the status host to exist first (`UiHandlers`: an intent is
  *    the container's);
  *  - `inbound` is called only from `compose/`'s registration (`AppCore.inbound`, which the host calls once it is
- *    assembled) and the host zone, once per adapter — and from `snapSyncProcess` for the per-process event port
+ *    assembled) and the host zone, once per adapter — and from `startProcess` for the per-process event port
  *    (`ProcessMetrics`), which every root sets up before it composes anything, and from
- *    `snapSyncExtension` for the upload extension's `ExtensionHost`: that process has no host zone at all.
+ *    `composeExtension` for the upload extension's `ExtensionHost`: that process has no host zone at all.
  *
  * Both are pinned exact-in-set and non-vacuous: a gate that finds no construction site or no registration would be
  * passing on nothing. Test equipment (contract bindings, the rig, the world) is not production and registers its
@@ -41,8 +41,9 @@ class ListenDoorTest {
             setOf(
                 // The app's entry points, each the handler of the delivery it is named for.
                 "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppInbound.kt",
-                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt",
-                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
+                "/domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
+                    "ExtensionComposition.kt",
+                "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt",
                 // The UI handlers: they reach the status host, which only the host zone may build.
                 "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt",
             ),
@@ -62,9 +63,10 @@ class ListenDoorTest {
                 "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/AppInbound.kt",
                 "/domain/host/src/commonMain/kotlin/app/snapsync/host/ComposedApp.kt",
                 // The per-process event ports: set up by every root before any composition (the extension has no host).
-                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
+                "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt",
                 // The upload extension's one entry port, registered by its own composition — it has no host zone.
-                "/domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt",
+                "/domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
+                    "ExtensionComposition.kt",
             ),
             sites,
             "an event port registered outside the composition escapes the one registration per adapter",

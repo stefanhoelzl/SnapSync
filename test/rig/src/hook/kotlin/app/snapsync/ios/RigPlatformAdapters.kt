@@ -127,7 +127,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
         core = { SnapSyncRoot.app },
         host = { SnapSyncRoot.host },
         photoAccess = SnapSyncRoot.permission,
-        handleReport = SnapSyncRoot.process.processMetrics::deliver,
+        handleReport = SnapSyncRoot.onMetricReport::deliver,
         // A thunk, never a method reference: see `hostServices` below.
         processExtension = { UploadExtensionRoot.processRawValue() },
         osServices = hostServices(launch),

@@ -6,8 +6,7 @@ import app.snapsync.background.IosWake
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.compose.AppPorts
-import app.snapsync.compose.ProcessPorts
-import app.snapsync.compose.ProcessServices
+import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.osCarriesOsDrivenUpload
 import app.snapsync.crypto.IosCrypto
@@ -22,6 +21,7 @@ import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.identity.NoPlatformDeviceId
+import app.snapsync.inbound.Inbound
 import app.snapsync.ios.qos.newUserInitiatedLane
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
@@ -40,6 +40,7 @@ import app.snapsync.model.uncaughtInRootScope
 import app.snapsync.network.IosNetworkMonitor
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.ports.ExtensionRegistry
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
@@ -71,7 +72,7 @@ import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
  * scope recreation (multi-window, reset/logout) is ever needed.
  *
  * Assembly is lazy so it runs once on first view creation, and it goes through the SHARED
- * composition (`snapSyncApp`, `docs/architecture.md` "One shared composition"): this root
+ * composition (`snapSyncApp`, `docs/architecture.md` "The composition layer"): this root
  * constructs the platform adapters and hands them as [AppPorts]; the feature graph — status
  * sources, attestation, join/leave/create, downloads, the upload arm — is composed in `:domain`'s
  * `compose/` zone as [app]. `permission` and `config` are each passed as both their ports (one
@@ -112,7 +113,7 @@ object SnapSyncRoot {
      *     it would be a day of attribution nobody gets back.
      *  2. Delivery is **one-shot**: reports wait indefinitely while nothing listens, then are handed over exactly
      *     once. Listening without a live handler therefore DISCARDS a report the OS was holding safely — worse
-     *     than not listening at all. `snapSyncProcess` builds the handler before it listens.
+     *     than not listening at all. `startProcess` builds the handler before it listens.
      *
      * Read by nobody but the composition on purpose: **the field IS the retention.** The adapter holds the OS
      * subscriber, and MetricKit is not documented to keep a strong reference to it — so a collected adapter would
@@ -123,7 +124,7 @@ object SnapSyncRoot {
 
     private val log = Logger.withTag("SnapSyncRoot")
 
-    // ── The OS fact → upload-mechanism PRESENCE (`docs/architecture.md`, "One shared composition") ──
+    // ── The OS fact → upload-mechanism PRESENCE (`docs/architecture.md`, "The composition layer") ──
 
     // `internal` (not `private`) for the same single reason as [app]: the rig's contributed hook reports
     // this OS fact on `host.state()`, and reading the value the app actually resolved is the only
@@ -279,7 +280,7 @@ object SnapSyncRoot {
     /**
      * This process's per-process ports: its crash reporter, its log sinks and boot banner, its process metrics, its
      * files, its clock and its entry-point seam, and what the build is. The composition sets the process up from them
-     * as its FIRST act (`snapSyncProcess`, inside `snapSyncHost`) — its crash reporting before any other wiring can fail.
+     * as its FIRST act (`startProcess`, inside `snapSyncHost`) — its crash reporting before any other wiring can fail.
      */
     private val processPorts: ProcessPorts by lazy {
         ProcessPorts(
@@ -300,12 +301,12 @@ object SnapSyncRoot {
     }
 
     /**
-     * What the composition set up as its first act. `internal`, not `private`, for one reader: the rig's contributed
-     * hook drives a synthetic process-metric report through [ProcessServices.processAccount], THIS instance —
+     * What a delivered process-metric report does. `internal`, not `private`, for one reader: the rig's contributed
+     * hook drives a synthetic process-metric report through THIS instance —
      * exercising a copy would prove only that the copy works. `internal` is module-wide and is not exported to the
      * `SnapSyncKit` ObjC header.
      */
-    internal val process: ProcessServices get() = composed.process
+    internal val onMetricReport: Inbound<ProcessMetricPayload, Unit> get() = composed.onMetricReport
 
     // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
     // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an
@@ -318,7 +319,7 @@ object SnapSyncRoot {
     private val scope = CoroutineScope(SupervisorJob() + compositionLane + uncaughtInRootScope(log))
 
     /**
-     * The composed app graph (`docs/architecture.md`, "One shared composition"): this root
+     * The composed app graph (`docs/architecture.md`, "The composition layer"): this root
      * constructs the platform adapters and coordination lambdas as [AppPorts]; `snapSyncApp`
      * composes the features. Every [AppCore] property is `by lazy`, so first-touch construction
      * timing matches the lazy web that used to live here — nothing resolves the device identity or
@@ -331,8 +332,8 @@ object SnapSyncRoot {
     internal val app: AppCore get() = composed.core
 
     /**
-     * The core AND the status host over it, from the shared host composition (`docs/architecture.md`, "One
-     * shared composition"): this root supplies ports and nothing else. `by lazy`, and cheap to force — every
+     * The core AND the status host over it, from the shared host composition (`docs/architecture.md`, "The
+     * composition layer"): this root supplies ports and nothing else. `by lazy`, and cheap to force — every
      * [AppCore] property is itself `by lazy`, and host assembly happens only when [host] is first touched.
      */
     private val composed: ComposedApp by lazy {

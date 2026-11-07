@@ -3,7 +3,7 @@
 package app.snapsync.launchadapters
 
 import app.snapsync.compose.AppDevicePorts
-import app.snapsync.compose.ExtensionDevicePorts
+import app.snapsync.composition.extension.ExtensionDevicePorts
 import app.snapsync.inbound.Answered
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
@@ -12,7 +12,6 @@ import app.snapsync.mock.ExtensionHostMock
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
-import app.snapsync.model.ProcessingAnswer
 import app.snapsync.ports.Clock
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.FileArea
@@ -20,6 +19,7 @@ import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.NetworkAccess
 import app.snapsync.ports.NetworkMonitor
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.ports.SystemUi
 import app.snapsync.ports.Ui
 import app.snapsync.ui.state.UiIntent
@@ -287,7 +287,7 @@ class LaunchAdaptersTest {
     private fun extensionDevice() = ExtensionDevicePorts(
         clock = unbuilt("clock"), crypto = unbuilt("crypto"), crashReporter = unbuilt("crashReporter"),
         files = unbuilt("files"), databases = unbuilt("databases"), preferences = unbuilt("preferences"),
-        secureStore = unbuilt("secureStore"), platformDeviceId = unbuilt("platformDeviceId"),
+        secureStore = unbuilt("secureStore"),
         galleryReader = unbuilt("galleryReader"), uploadQueue = unbuilt("uploadQueue"), http = unbuilt("http"),
     )
 

@@ -210,6 +210,22 @@ class DeletionLedgerTest {
     }
 
     /**
+     * The upload extension's composition before the composition layer (4.11): `compose/`'s `snapSyncExtension` and the
+     * `ComposedExtension` it returned, its `extensionBackend`, the process setup as one function (`snapSyncProcess`)
+     * and the `ProcessServices` it handed out, and the upload's lazily built layers over a bag of services
+     * (`UploadLayers`, `UploadServices`). The extension is `ExtensionGraph` over `composeExtension` now, the process's
+     * start `StartProcess` minting a `StartedProcess`, and the upload's layers one `UploadGraph` both processes build.
+     */
+    @Test
+    fun `the extension's old composition stays dead`() {
+        val files = sources()
+        val retired = """\b(fun snapSync""" + "Extension|class Composed" + "Extension|fun extension" + "Backend|" +
+            "fun snapSync" + "Process|class Process" + "Services|class Upload" + "Layers|class Upload" + "Services)\\b"
+        val resurrections = declared(files, retired).map { "the extension's old composition in $it (the layer — 4.11)" }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The control protocol's string commands (3g-a): the `/os/<root>/<member>` entry routes and their trigger groups, the
      * `/device` verbs and their lever table, the operating system's record as one untyped grab-bag, and the client's
      * calls of them. Each became a typed service — `os`, `played-os`, `extension-host`, and a value read on the service

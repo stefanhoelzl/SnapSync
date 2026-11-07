@@ -63,6 +63,9 @@ dependencies {
     testImplementation(project(":domain:ports"))
     testImplementation(project(":domain:services"))
     testImplementation(project(":adapter:generic:mock"))
+    // The composition layer's bundles `PortBundleTest` reads by reflection.
+    testImplementation(project(":domain:composition:process"))
+    testImplementation(project(":domain:composition:extension"))
     // LeverFacesTest holds every migrated operator face to its typed interface, through the interfaces' descriptors.
     testImplementation(project(":test:levers"))
     // GatedPathPinTest drives the client's REAL ungated-path predicate against the backend's closed list.

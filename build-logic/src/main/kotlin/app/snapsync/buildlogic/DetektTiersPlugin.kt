@@ -88,12 +88,13 @@ class DetektTiersPlugin : Plugin<Project> {
         root.registerTier("detektApplicationTier", "application", srcDirs("application")) { exclude(excludeTests) }
         root.registerTier("detektQueryTier", "query", srcDirs("query")) { exclude(excludeTests) }
         root.registerTier("detektPresentationTier", "presentation", srcDirs("presentation")) { exclude(excludeTests) }
+        root.registerTier("detektCompositionTier", "composition", srcDirs("composition")) { exclude(excludeTests) }
         root.registerTier("detektHarnessTier", "harness", srcDirs("harness")) {
             exclude(excludeTests)
             // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2.
             exclude("**/test/rig/src/hook/**", "**/test/rig/src/ext-hook/**")
         }
-        // A path sub-scope of the core, carved out of `core` ("One shared composition").
+        // A path sub-scope of the core, carved out of `core` ("The composition layer").
         root.registerTier("detektComposeTier", "compose", srcDirs("core")) {
             include("**/app/snapsync/compose/**")
             exclude(excludeTests)
@@ -188,7 +189,7 @@ class DetektTiersPlugin : Plugin<Project> {
             "app/ios/extension/src",
             // The shared host composition (`snapSyncHost`): wiring every root calls, holding no decision.
             "domain/host/src",
-            // The shared composition (`snapSyncApp`, `snapSyncExtension`, `uploadCycle`): it constructs and connects.
+            // The app's composition (`snapSyncApp`): it constructs and connects.
             "domain/compose/src",
             // The JVM root (`JvmApp`): the same composition as the iOS root, for the JVM test equipment.
             "app/jvm/src",
@@ -246,6 +247,9 @@ class DetektTiersPlugin : Plugin<Project> {
             ":domain:application" to "application",
             ":domain:query" to "query",
             ":domain:presentation" to "presentation",
+            // The composition layer: wiring only, so its decision measures are a claim too (`config/detekt/composition.yml`).
+            ":domain:composition:process" to "composition",
+            ":domain:composition:extension" to "composition",
 
             // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
             // STRUCTURALLY — a screen that renders six states has six branches by construction.

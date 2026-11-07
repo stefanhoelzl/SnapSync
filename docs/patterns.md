@@ -40,8 +40,9 @@ base. So every delivery reaches the core through code that labels, times and con
 
 **Only a composition wires one.** A handler bundle's constructor, `EventPort.inbound(…)`, `Observation.follow` and
 `Log.install` are `@CompositionOnly`. The app's ports are wired in one function, `AppCore.inbound(host)`
-(`compose/AppInbound.kt`), which the host calls once the host can be assembled; the process's in `snapSyncProcess`;
-the extension's in `snapSyncExtension`.
+(`compose/AppInbound.kt`), which the host calls once the host can be assembled; the process's in `startProcess`
+(`composition/process`), after `StartProcess.run()` — itself `@CompositionOnly`, so only a composition starts a
+process; the extension's in `composeExtension` (`composition/extension`).
 
 ---
 
@@ -246,7 +247,7 @@ log.i("top-up planned", "needing" of needing.size, "admitted" of plan.rows.size)
   breadcrumb, and an `Error` or `Assert` line is a report too, titled by its event and grouped by its tag and event
   (`CrashShaping`).
 - The levels are `LogLevel`'s, and every line reaches each of the process's sinks once (`SinkLines`) and the crash
-  channel once (`CrashLines`), both installed by `snapSyncProcess` (`ProcessLogging`, which calls `Log.install`).
+  channel once (`CrashLines`), both installed by the process's start (`StartProcess`, through `ProcessLogging`, which calls `Log.install`).
 
 The old zones' Kermit lines reach the same writers through a **bridge**, `KermitBridge`, Kermit's only writer, which
 forwards each to `Log` at its level. The runtime's lane writes each task's trigger into a per-thread slot, the
@@ -509,7 +510,29 @@ return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encod
 
 ---
 
-## 16. What holds these rules
+## 16. Composition is wiring
+
+The composition layer (`:domain:composition:*`, `docs/architecture.md` "The composition layer") says which instance
+goes where, and nothing else:
+
+- **A graph class holds only `val`s, each built by a constructor call** — `ProcessGraph`, `UploadGraph`,
+  `ExtensionGraph`. A companion factory (`UploadHost.of`), a collection builder (`listOfNotNull`) and a property read
+  are wiring too: none branches. No `if`, `when`, loop, `try`, `?:`, `lazy`, lambda or member function.
+- **A constructor never touches a port.** A store opens on first use (`OwnedDatabase`), an identity resolves on its
+  first read — so a graph built eagerly opens nothing, and nothing is deferred with `lazy` to make it so.
+- **What must happen in order is a class below the composition**, not a function in it: the process's start is
+  `StartProcess` (data's), tested for its order, and its `run()` is `@CompositionOnly` and mints the `StartedProcess`
+  every later graph takes — the order held by a type, not by a comment.
+- **A process's restrictions are its graph's declared types.** What both processes build is one graph typed by the
+  general interface (`UploadGraph` takes a `DeviceIdentity`); the extension's graph declares the restricted type it
+  passes (`StoredDeviceIdentity`), and an app-only piece (`@AppProcessOnly`) is not buildable from anything the
+  extension links.
+- **Each process has one composing function** (`startProcess`, `composeExtension`): straight-line, it builds the
+  graphs and registers the handlers (`@CompositionOnly`).
+
+---
+
+## 17. What holds these rules
 
 | rule | gate |
 |---|---|
@@ -533,6 +556,8 @@ return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encod
 | Only the app makes or gathers an event album; the extension only places own photos | `@AppProcessOnly` on `AlbumCreation`, `EnsureEventAlbum`, `PlaceReceivedPhotos`, `AlbumGatherPass` and `OnPhotoAccessChanged`, one opt-in site (`AlbumComposition.kt`) + `OptInPinsTest` |
 | A format is written once, at the boundary | `TimestampText`, the `AsString` serializers, the column adapters — review; a missing serializer or adapter is a compile error |
 | A handler bundle is built and registered only by a composition | `ListenDoorTest` |
+| The composition layer is wiring: graph classes of `val`s built by constructor calls, no branch, `lazy` or lambda, one composing function per process | `CompositionIsWiringTest` + the `composition` tier (`config/detekt/composition.yml`) — a claim |
+| Nothing the shipped upload extension links opts into `@AppProcessOnly` | `ExtensionSafetyTest` |
 | No OS completion handler is stored in a field | `OsHandlerContainmentTest` |
 | A background entry point never names the membership's teardown | `BackgroundTeardownTest` |
 | `inbound`, `scheduling`, `entrypoints`, `domain`, `data` and `application` have no uncovered line | `coverageZero` (the entry points credited by the integration surface, data and application by `:test:data`) |

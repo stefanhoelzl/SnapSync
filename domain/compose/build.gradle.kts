@@ -23,6 +23,8 @@ kotlin {
             implementation(project(":domain:format"))
             implementation(project(":domain:ports"))
             implementation(project(":domain:services"))
+            // The composition layer's shared half: the process graph and the upload graph, which the app composes too.
+            implementation(project(":domain:composition:process"))
             // MIGRATING: the layers phase 4 moves the work into — composed here like everything else.
             implementation(project(":domain:data"))
             implementation(project(":domain:application"))

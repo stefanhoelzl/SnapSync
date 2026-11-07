@@ -1,4 +1,4 @@
-package app.snapsync.model
+package app.snapsync.ports
 
 /**
  * What the operating system is told an invocation came to — iOS 26.1's `PHBackgroundResourceUploadProcessingResult`,

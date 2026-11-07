@@ -1,5 +1,6 @@
-package app.snapsync.compose
+package app.snapsync.composition.extension
 
+import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.data.identity.MintingDeviceIdentity
 import app.snapsync.data.receiving.DownloadDatabaseFile
 import app.snapsync.data.receiving.ReceivedPhotos
@@ -17,6 +18,7 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.format.TimestampText
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.BackendMock
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.EntryEventsMock
@@ -35,6 +37,8 @@ import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
+import app.snapsync.ports.MetricHandlers
+import app.snapsync.ports.ProcessMetrics
 import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Routes
@@ -46,7 +50,7 @@ import kotlin.test.assertIs
 import kotlin.time.Instant
 
 /**
- * The upload extension's entry port, over the handlers its composition registers (`snapSyncExtension`): the in-memory
+ * The upload extension's entry port, over the handlers its composition registers (`composeExtension`): the in-memory
  * device token is re-read at **every** operating-system invocation (capability `privacy-security`).
  *
  * The app renews into the protected item both processes share, and the extension's copy cannot see that; the re-read at
@@ -60,7 +64,7 @@ class ExtensionEntryTest {
     @Test
     fun a_token_the_app_renewed_between_invocations_is_the_one_the_next_invocation_sends() = runTest {
         val host = ExtensionHostMock()
-        snapSyncExtension(extensionPorts(host), lane = Dispatchers.Default, answerOn = null)
+        composeExtension(extensionPorts(host), lane = Dispatchers.Default, answerOn = null)
         joinedWithAToken("token-before")
 
         host.process(Dispatchers.Default)
@@ -143,7 +147,7 @@ class ExtensionEntryTest {
     private fun extensionPorts(host: ExtensionHostMock) = ExtensionPorts(
         process = ProcessPorts(
             crashReporter = inMemoryCrashReporter(),
-            processMetrics = NoProcessMetrics,
+            processMetrics = NoReports,
             logSinks = emptyList(),
             files = files,
             clock = clock,
@@ -155,7 +159,6 @@ class ExtensionEntryTest {
         databases = databases,
         preferences = inMemoryPreferences(),
         secureStore = secureStore,
-        platformDeviceId = { null },
         gallery = library.port(),
         uploadQueue = UploadQueueMock(
             UploadNetwork { _, _, _ -> error("no upload is expected") },
@@ -169,3 +172,9 @@ class ExtensionEntryTest {
 /** [statements]' answer on this shared database, set up to succeed. */
 private fun <T> SharedDatabase.use(statements: (LedgerDatabase) -> T): T =
     assertIs<DbResult.Ok<T>>(execute(statements)).value
+
+/** The extension has no process-metrics provider: nothing is ever delivered. */
+private object NoReports : ProcessMetrics {
+    @CompositionOnly
+    override fun inbound(handlers: MetricHandlers) = Unit
+}

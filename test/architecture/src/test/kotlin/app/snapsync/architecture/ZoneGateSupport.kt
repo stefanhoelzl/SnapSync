@@ -31,7 +31,7 @@ internal object ZoneGates {
     /** The core's zones and layers and the host, each its own Gradle module under `domain/`. */
     val zoneTokens = listOf(
         "model", "domain", "inbound", "ports", "scheduling", "services", "entrypoints", "presentation",
-        "compose", "host", "data", "application", "format", "query",
+        "compose", "host", "data", "application", "format", "query", "composition/process", "composition/extension",
     )
 
     /** The core's tree root. Each zone is its own module beneath it: `domain/<zone>/`. */

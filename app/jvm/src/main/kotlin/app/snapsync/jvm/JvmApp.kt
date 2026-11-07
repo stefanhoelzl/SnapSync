@@ -1,14 +1,14 @@
 package app.snapsync.jvm
 
 import app.snapsync.compose.AppDevicePorts
-import app.snapsync.compose.ExtensionDevicePorts
-import app.snapsync.compose.NoProcessMetrics
-import app.snapsync.compose.ProcessPorts
-import app.snapsync.compose.snapSyncExtension
+import app.snapsync.composition.extension.ExtensionDevicePorts
+import app.snapsync.composition.extension.composeExtension
+import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.dates.JvmDateFormatting
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.identity.NoPlatformDeviceId
+import app.snapsync.metrics.NoProcessMetrics
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.Files
@@ -25,7 +25,7 @@ import kotlinx.coroutines.cancelAndJoin
  * **The JVM root** (`docs/testing.md`, "The JVM root"): the app composed on the JVM exactly as `SnapSyncRoot` composes
  * it on the phone — the shared host composition (`snapSyncHost`, whose first act is the process's) over ports and
  * nothing else — and the upload extension composed beside it exactly as its own root composes it
- * (`snapSyncExtension`), over the adapters [adapters] builds from [durable] for each launch.
+ * (`composeExtension`), over the adapters [adapters] builds from [durable] for each launch.
  *
  * [durable] is whatever survives a process: the caller's choice, usually [JvmMocks]. [relaunch] is process death and a
  * cold launch — every collector and in-flight launch of the running app ends, and a new app is composed over a fresh
@@ -124,7 +124,6 @@ class JvmApp<D>(
             databases = lazyOf(ports.device.extension.databases),
             preferences = lazyOf(ports.device.preferences),
             secureStore = lazyOf(ports.device.secureStore),
-            platformDeviceId = lazyOf(NoPlatformDeviceId()),
             galleryReader = lazyOf(ports.systems.cycleGallery),
             uploadQueue = lazyOf(ports.systems.uploadQueue),
             http = lazyOf(ports.systems.http),
@@ -151,7 +150,7 @@ class JvmApp<D>(
 
         // The extension registers on the OS's extension host at its process's start, as its root does.
         init {
-            snapSyncExtension(
+            composeExtension(
                 extensionDevice.extensionPorts(
                     // The extension's own log is not read back on this host; it touches no global writer list.
                     processPorts(

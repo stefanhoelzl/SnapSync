@@ -43,8 +43,8 @@ import kotlin.test.assertTrue
  *  - **It reads a declaration, not a call graph.** A pinned lambda whose body is later rewritten to
  *    reach out of the process still passes: the pin's reason goes stale silently, because nothing here
  *    re-derives it. The reason is a receipt for a judgement, not a proof of one.
- *  - **It is scoped to constructors in `compose/`** — the bundles, and every class the composition builds
- *    (`harden-seam-bug-classes` widened it from the bundles alone, where features taking a lambda for a port read
+ *  - **It is scoped to constructors in the compositions** (`compose/` and the composition layer) — the bundles, and
+ *    every class the composition builds (`harden-seam-bug-classes` widened it from the bundles alone, where features taking a lambda for a port read
  *    went unseen; the features went in 4.10). A platform touch smuggled in as a field of some *other* type — a data
  *    class carrying a lambda, say — is not function-typed at this level and is not seen. The bundle set
  *    itself is pinned (below) so a *further* bundle cannot appear unnoticed — `UploadRecordPorts` arrived
@@ -55,13 +55,13 @@ import kotlin.test.assertTrue
  */
 class CompositionSeamTest {
 
-    /** The composition bundles (law "One shared composition") → the `compose/` file declaring each. */
+    /** The composition bundles (law "The composition layer") → the file declaring each, in `compose/` or the layer. */
     private val bundles = mapOf(
         "AppPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/SnapSyncApp.kt",
-        "ExtensionPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ExtensionCore.kt",
-        "ProcessPorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/ProcessComposition.kt",
+        "ExtensionPorts" to "$EXTENSION/ExtensionPorts.kt",
+        "ProcessPorts" to "$PROCESS/ProcessPorts.kt",
         "AppDevicePorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/DevicePorts.kt",
-        "ExtensionDevicePorts" to "domain/compose/src/commonMain/kotlin/app/snapsync/compose/DevicePorts.kt",
+        "ExtensionDevicePorts" to "$EXTENSION/ExtensionPorts.kt",
     )
 
     /**
@@ -115,7 +115,7 @@ class CompositionSeamTest {
 
     /** Every `class <Name>Ports(` declared in `compose/` — the bundle set itself, pinned below. */
     private fun declaredBundles(): Set<String> {
-        val files = ZoneGates.requireZone("composition-seam", "compose")
+        val files = COMPOSITIONS.flatMap { ZoneGates.requireZone("composition-seam", it) }
         return files.flatMap { file ->
             Regex("""\bclass\s+(\w*Ports)\s*\(""").findAll(ZoneGates.stripComments(file.readText()))
                 .map { it.groupValues[1] }
@@ -190,7 +190,7 @@ class CompositionSeamTest {
 
     /** Every function-typed constructor parameter of a non-bundle class declared in `compose/`. */
     private fun constructorInventory(): Map<String, String> {
-        val files = ZoneGates.requireZone("composition-seam", "compose")
+        val files = COMPOSITIONS.flatMap { ZoneGates.requireZone("composition-seam", it) }
         return files.flatMap { file ->
             KotlinDecls.constructorParams(ZoneGates.stripComments(file.readText()))
                 .filter { it.owner !in bundles && isFunctionType(it.type) }
@@ -242,7 +242,7 @@ class CompositionSeamTest {
     fun `the gate actually parsed every composition bundle (non-vacuity floor)`() {
         val floors = mapOf(
             "AppPorts" to 20,
-            "ExtensionPorts" to 9,
+            "ExtensionPorts" to 8,
             "ProcessPorts" to 7,
             "AppDevicePorts" to 20,
             "ExtensionDevicePorts" to 10,
@@ -333,5 +333,14 @@ class CompositionSeamTest {
         listOf("clock", "lane", "log", "counts").forEach {
             assertTrue(!isFunctionType(decls.getValue(it)), "`${decls[it]}` is not a function type and was flagged")
         }
+    }
+
+    private companion object {
+        /** Where the composition is built: the app's (`compose/`, until phase 5) and the composition layer's. */
+        val COMPOSITIONS = listOf("compose", "composition/process", "composition/extension")
+
+        const val PROCESS = "domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process"
+
+        const val EXTENSION = "domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension"
     }
 }

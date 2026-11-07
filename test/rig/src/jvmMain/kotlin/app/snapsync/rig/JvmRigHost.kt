@@ -11,8 +11,8 @@ import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.DeclaredVersion
 import app.snapsync.mock.StorePage
-import app.snapsync.model.ProcessingAnswer
 import app.snapsync.model.uploadersCarried
+import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.rig.time.LoopTime
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope

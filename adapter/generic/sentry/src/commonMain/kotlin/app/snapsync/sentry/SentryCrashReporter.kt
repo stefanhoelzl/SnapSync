@@ -38,7 +38,7 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
  *   usage record). Bugsink ingests errors only, so tracing stays unset and replay stays at its off default.
  *
  * **Idempotent across the whole process**, not just this instance: the SDK hub is process-global, and a second
- * init would reset its scope. One instance per process is the composition's rule (`snapSyncProcess`); the flag
+ * init would reset its scope. One instance per process is the composition's rule (`startProcess`); the flag
  * keeps the port's contract true regardless.
  *
  * **What is asserted, and what is only believed.** `CrashReporterContract` (`:test:contracts`) runs this class, over

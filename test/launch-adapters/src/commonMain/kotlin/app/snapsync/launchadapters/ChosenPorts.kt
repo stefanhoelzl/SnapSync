@@ -1,7 +1,7 @@
 package app.snapsync.launchadapters
 
 import app.snapsync.compose.AppDevicePorts
-import app.snapsync.compose.ExtensionDevicePorts
+import app.snapsync.composition.extension.ExtensionDevicePorts
 import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockedSystem
 
@@ -72,7 +72,6 @@ fun chosenExtensionPorts(real: ExtensionDevicePorts, choice: AdapterChoice, devi
         databases = pick(MockedSystem.DATABASES, real.databases) { device.databases.port() },
         preferences = pick(MockedSystem.PREFERENCES, real.preferences) { device.preferences.port() },
         secureStore = pick(MockedSystem.KEYCHAIN, real.secureStore) { device.keychain.port() },
-        platformDeviceId = real.platformDeviceId,
         galleryReader = pick(MockedSystem.LIBRARY, real.galleryReader) { device.library.port() },
         uploadQueue = pick(MockedSystem.UPLOAD_QUEUE, real.uploadQueue) { device.uploadQueue.port() },
         http = pick(MockedSystem.BACKEND, real.http) { device.backend.port(device.declaredVersion) },
