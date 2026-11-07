@@ -283,6 +283,54 @@ class DiagnosticDumpIntegrationTest {
     @Verifies(
         spec = "privacy-security",
         requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A device fact cannot be read",
+    )
+    fun an_unreadable_download_store_marks_its_counts_failed_and_the_report_still_goes() = behaviour {
+        given {
+            joinedEvent()
+            step("the download store unreadable", act = { databases.unreadable("downloads.db", on = true) }, until = {})
+        }
+
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then {
+            received = event<WorldEvent.DumpReceived>()
+            event<WorldEvent.UiChanged> { it.ui.overlays.reportNotice == ReportNotice.SENT }
+        }
+
+        val ledger = received.value.dump.ledger
+        listOf("downloads_imported", "downloads_assets", "downloads_in_flight").forEach { count ->
+            assertTrue(ledger[count].orEmpty().startsWith("failed ("), "$count is marked failed, never zero: $ledger")
+        }
+        assertEquals("0", ledger["photos_pending"], "the readable store's counts are still read: $ledger")
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
+        scenario = "A device fact cannot be read",
+    )
+    fun an_unreadable_upload_ledger_marks_the_photo_counts_failed_not_zero() = behaviour {
+        given {
+            camUploaded()
+            step("the upload ledger unreadable", act = { databases.unreadable("ledger.db", on = true) }, until = {})
+        }
+
+        lateinit var received: Seen<WorldEvent.DumpReceived>
+        whenever { sendDiagnostics(NOTE) }
+        then { received = event<WorldEvent.DumpReceived>() }
+
+        val ledger = received.value.dump.ledger
+        listOf("photos_pending", "photos_completed").forEach { count ->
+            assertTrue(ledger[count].orEmpty().startsWith("failed ("), "$count is marked failed, never zero: $ledger")
+        }
+    }
+
+    @Test
+    @Verifies(
+        spec = "privacy-security",
+        requirement = "A detailed bug report leaves the phone only when the user sends one",
         scenario = "A build that cannot report keeps the report on the phone",
     )
     fun a_build_that_reports_nowhere_keeps_the_report_and_says_so() = behaviour(reporting = HostReporting.NOWHERE) {
