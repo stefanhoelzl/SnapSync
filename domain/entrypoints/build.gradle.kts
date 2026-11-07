@@ -18,9 +18,8 @@ kotlin {
             implementation(project(":domain:query"))
             // The deliveries' arguments are the ports' vocabulary; no port is called from here.
             implementation(project(":domain:ports"))
-            // MIGRATING (`ModuleSetTest`'s permitted edges say so): the steps call today's features and services until
-            // phase 4 moves them underneath, and each edge goes when nothing here needs it any more.
-            implementation(project(":domain:feature"))
+            // MIGRATING (`ModuleSetTest`'s permitted edges say so): the steps call today's services until phase 4 moves
+            // them underneath, and the edge goes when nothing here needs it any more.
             implementation(project(":domain:services"))
             // MIGRATING: the use cases its steps call, and the credential store the extension re-reads at every
             // invocation (until 4.11 composes the extension's own entry).

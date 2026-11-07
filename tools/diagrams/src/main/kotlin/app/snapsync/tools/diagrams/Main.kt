@@ -12,7 +12,6 @@ fun generateSourceDiagrams(root: File): Map<String, String> {
     return buildMap {
         put("architecture/zones.md", zonesMarkdown(root))
         put("architecture/ports.md", portsMarkdown(root, sources))
-        put("architecture/features.md", featuresMarkdown(root, sources))
         put("architecture/di.md", diMarkdown(sources))
     }
 }

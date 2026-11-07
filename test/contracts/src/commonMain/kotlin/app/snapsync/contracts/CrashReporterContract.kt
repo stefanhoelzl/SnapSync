@@ -8,8 +8,11 @@ import app.snapsync.domain.crash.CrashTags
 import app.snapsync.domain.crash.Crumb
 import app.snapsync.domain.crash.EventBounds
 import app.snapsync.domain.crash.ReportedFailure
+import app.snapsync.domain.crash.ReportedIds
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.report.DiagnosticDump
 import app.snapsync.domain.report.DumpResult
+import app.snapsync.domain.report.Fact
 import app.snapsync.ports.CrashReporter
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -214,6 +217,7 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
 
     fun dumpFor(clauseId: String): DiagnosticDump = DiagnosticDump(
         note = "$clauseId: upload of ${uuidFor(clauseId)} never finished",
+        ids = ReportedIds(EventId.parse(uuidFor(clauseId)), Fact.Unsupported, "app.snapsync"),
         state = mapOf("clause" to clauseId),
         ledger = mapOf("pending" to "1"),
         appLog = "$clauseId app log\n",
@@ -234,6 +238,13 @@ object CrashReporterContract : Contract<CrashReporterState, CrashReporterSubject
         }
         return DiagnosticDump(
             note = "$clauseId: " + "the upload never finished and nothing on screen said why. ".repeat(4),
+            // The ids at their longest: an event, a device that could not be read (its reason at its bound), and the
+            // extension's process name.
+            ids = ReportedIds(
+                EventId.parse(uuidFor(clauseId)),
+                Fact.Failed("r".repeat(Fact.FAILURE_REASON_CHARS)),
+                "app.snapsync.BackgroundUpload",
+            ),
             state = mapOf("clause" to clauseId, "event_name" to "ü".repeat(100)),
             ledger = mapOf("pending" to "1"),
             appLog = tail(DiagnosticDump.LOG_BUDGET_BYTES / 2),

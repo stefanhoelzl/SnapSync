@@ -62,7 +62,7 @@ internal expect suspend fun beginUnscriptedCycle()
  * Kermit's writer list is process-global and BOTH composition roots set it in their `init`, so touching the
  * extension root redirects the app's own log into `ext-debug.log` and would silence the app's log for the rest of the
  * process. Snapshot and restore around the call. The cycle's own lines still land in `ext-debug.log`, which is where
- * they belong — `LogTailService` already serves that file as the extension process's log.
+ * they belong — `DeviceLogTails` already serves that file as the extension process's log.
  */
 internal suspend fun runExtensionCycle(process: () -> Int, log: Logger = Logger.withTag("rig")): Int =
     withContext(extensionLane) {

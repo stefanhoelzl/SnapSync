@@ -129,7 +129,11 @@ class DiagnosticDumpIntegrationTest {
         assertEquals("rare", state[DiagnosticKeys.STANDBY_BUCKET])
         assertEquals("failed (no thermal service)", state[DiagnosticKeys.THERMAL])
         assertFalse(DiagnosticKeys.BACKGROUND_REFRESH in state, "a fact the platform lacks is left out: $state")
-        assertTrue(state[DiagnosticKeys.DEVICE_ID].orEmpty().isNotBlank(), "the device id the app resolved: $state")
+        val ids = received.value.dump.snapsync
+        assertTrue(
+            ids["device"].orEmpty().isNotBlank(),
+            "the device id the app resolved, in SnapSync's own section: $ids",
+        )
         assertTrue(DiagnosticKeys.TIME_ZONE in state, "the device's zone: $state")
     }
 
@@ -195,7 +199,7 @@ class DiagnosticDumpIntegrationTest {
             eventId in dump.appLog,
             "the event id was redacted out of the dump's log — the exemption is undone: ${dump.appLog}",
         )
-        assertEquals(eventId, dump.state["event_id"])
+        assertEquals(eventId, dump.snapsync["event"], "the event, in SnapSync's own section")
     }
 
     @Test
@@ -387,6 +391,7 @@ class DiagnosticDumpIntegrationTest {
         val unexpected = dump.state.keys - REPORTED_STATE
         assertTrue(unexpected.isEmpty(), "the state holds only the app's and the device's facts, not: $unexpected")
         assertEquals(REPORTED_LEDGER, dump.ledger.keys, "the ledger holds its five counts")
+        assertEquals(setOf("event", "device", "process"), dump.snapsync.keys, "SnapSync's own section holds its ids")
     }
 
     @Test
@@ -413,11 +418,11 @@ class DiagnosticDumpIntegrationTest {
             "screen", DiagnosticKeys.SHOWN_SHARED, DiagnosticKeys.SHOWN_RECEIVED,
             "app_version", "build", "os", "device", "uploaders_carried", "extension_registrable", "app_admission",
             "upload_base", "reporter_environment", "photo_permission",
-            "joined", "event_id", "event_name", "direction", "shares_from", "shares_until", "save_to_album",
+            "joined", "event_name", "direction", "shares_from", "shares_until", "save_to_album",
             DiagnosticKeys.NETWORK, DiagnosticKeys.MOBILE_DATA, DiagnosticKeys.POWER_SAVING,
             DiagnosticKeys.BACKGROUND_REFRESH, DiagnosticKeys.STANDBY_BUCKET, DiagnosticKeys.BATTERY_OPTIMIZATION_EXEMPT,
             DiagnosticKeys.BATTERY_PERCENT, DiagnosticKeys.BATTERY_CHARGING, DiagnosticKeys.THERMAL,
-            DiagnosticKeys.DEVICE_ID, DiagnosticKeys.TIME_ZONE, DiagnosticKeys.MEMORY_FOOTPRINT_MB,
+            DiagnosticKeys.TIME_ZONE, DiagnosticKeys.MEMORY_FOOTPRINT_MB,
             DiagnosticKeys.SELECTION_PHOTOS,
         )
 

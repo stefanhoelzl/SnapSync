@@ -30,7 +30,7 @@ internal object ZoneGates {
 
     /** The core's zones and layers and the host, each its own Gradle module under `domain/`. */
     val zoneTokens = listOf(
-        "model", "domain", "inbound", "ports", "scheduling", "services", "feature", "entrypoints", "presentation",
+        "model", "domain", "inbound", "ports", "scheduling", "services", "entrypoints", "presentation",
         "compose", "host", "data", "application", "format", "query",
     )
 
@@ -194,20 +194,6 @@ internal object ZoneGates {
         }
         return out.toString()
     }
-
-    /** The feature a reference or path names: the segment after the first `feature` segment. */
-    fun featureOf(segments: List<String>): String? {
-        // LAST occurrence, not the first: since the split, a feature file's path carries `feature`
-        // twice — once as the Gradle module (`domain/feature/`) and once as the package
-        // (`app/snapsync/feature/<name>/`). Taking the first yielded `src` as the feature name, so
-        // every feature looked like a sibling of every other.
-        val idx = segments.lastIndexOf("feature")
-        return if (idx != -1 && idx + 1 < segments.size) segments[idx + 1] else null
-    }
-
-    fun featureOfRef(ref: String): String? = featureOf(ref.split('.'))
-
-    fun featureOfFile(file: File): String? = featureOf(file.toRelativeString(repoRoot).replace('\\', '/').split('/'))
 
     fun violation(file: File, line: Int, ref: String, law: String): String =
         "${file.toRelativeString(repoRoot)}:$line references $ref — $law"

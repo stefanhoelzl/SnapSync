@@ -25,7 +25,6 @@ dependencies {
     implementation(project(":ui:state"))
     implementation(project(":domain:ports"))
     implementation(project(":domain:services"))
-    implementation(project(":domain:feature"))
     implementation(project(":adapter:generic:app"))
     implementation(libs.ktor.client.core)
     implementation(libs.coroutines.core)

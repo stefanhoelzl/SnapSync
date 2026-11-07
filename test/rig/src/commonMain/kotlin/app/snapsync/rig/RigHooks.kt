@@ -1,7 +1,10 @@
 package app.snapsync.rig
 
+import app.snapsync.data.logs.DeviceLogTails
+import app.snapsync.data.logs.LoggingProcess
+import app.snapsync.domain.report.Fact
 import app.snapsync.levers.OsExtensionView
-import app.snapsync.services.logs.LogTailService
+import app.snapsync.ports.Files
 
 /**
  * What the host shell hands the rig: launch-time **facts** as data, platform **verbs** as lambdas.
@@ -44,7 +47,7 @@ class RigHooks(
      */
     private val transferBinding: String,
     /** The device logs' tail, supplied by the shell because `AppCore` does not expose its ports. */
-    val deviceLog: suspend (process: LogTailService.Process, maxBytes: Int) -> String?,
+    val deviceLog: suspend (process: LoggingProcess, maxBytes: Int) -> String?,
     /**
      * The OS's view of the upload-job extension registration, or `null` where the OS has no such selector.
      *
@@ -198,3 +201,12 @@ fun rigPortFilePath(documentsDirectory: String?): String? =
  * its own port undiscoverable on the next run — loudly, since the reader finds nothing.
  */
 const val RIG_PORT_FILE_NAME: String = "rig.port"
+
+/**
+ * A device's log tails as [RigHooks.deviceLog] hands them over: the tail's text, `null` where there is none or it could
+ * not be read — the protocol the rig has always spoken.
+ */
+fun deviceLogText(files: Files): suspend (LoggingProcess, Int) -> String? {
+    val tails = DeviceLogTails(files)
+    return { process, maxBytes -> (tails.tail(process, maxBytes) as? Fact.Known)?.value }
+}

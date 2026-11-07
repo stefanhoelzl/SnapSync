@@ -5,6 +5,7 @@ import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.CONTRACT_TIMEOUT
 import app.snapsync.contracts.InAppContract
 import app.snapsync.contracts.currentHost
+import app.snapsync.data.logs.LoggingProcess
 import app.snapsync.levers.AdaptersLevers
 import app.snapsync.levers.AdaptersWritten
 import app.snapsync.levers.ContractLevers
@@ -30,7 +31,6 @@ import app.snapsync.levers.UploadJobLevers
 import app.snapsync.levers.WipeOutcome
 import app.snapsync.levers.WipeScope
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.services.logs.LogTailService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -224,10 +224,10 @@ fun uploadJobService(
 )
 
 /** The tail a [DeviceLog] names. */
-private val DeviceLog.tail: LogTailService.Process
+private val DeviceLog.tail: LoggingProcess
     get() = when (this) {
-        DeviceLog.APP -> LogTailService.Process.APP
-        DeviceLog.EXTENSION -> LogTailService.Process.EXTENSION
+        DeviceLog.APP -> LoggingProcess.APP
+        DeviceLog.EXTENSION -> LoggingProcess.EXTENSION
     }
 
 /** ~200 KB: comfortably more than a single cycle's lines, well under the port's 10 MB roll cap. */

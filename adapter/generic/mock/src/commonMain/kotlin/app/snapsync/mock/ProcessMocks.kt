@@ -1,6 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.crash.CrashSections
 import app.snapsync.domain.process.MemoryFootprint
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.ClockLevers
@@ -105,6 +106,7 @@ internal fun received(dump: CrashEvent): ReceivedDump {
     val extensionLog = section("ext_log")["text"].orEmpty()
     return ReceivedDump(
         note = section("note")["text"].orEmpty(),
+        snapsync = section(CrashSections.SNAPSYNC),
         state = section("state"),
         ledger = section("ledger"),
         appLog = appLog,

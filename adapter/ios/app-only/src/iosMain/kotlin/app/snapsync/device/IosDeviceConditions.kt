@@ -1,10 +1,10 @@
 package app.snapsync.device
 
+import app.snapsync.domain.report.BackgroundRefresh
+import app.snapsync.domain.report.Charging
+import app.snapsync.domain.report.DeviceConditionsReading
 import app.snapsync.domain.report.Fact
-import app.snapsync.model.BackgroundRefresh
-import app.snapsync.model.Charging
-import app.snapsync.model.DeviceConditionsReading
-import app.snapsync.model.Thermal
+import app.snapsync.domain.report.Thermal
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceConditions
 import kotlinx.coroutines.Dispatchers

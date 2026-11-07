@@ -27,7 +27,6 @@ kotlin {
             implementation(project(":domain:domain"))
             implementation(project(":domain:query"))
             implementation(project(":domain:ports"))
-            implementation(project(":domain:feature"))
             implementation(project(":domain:compose"))
             implementation(project(":domain:presentation"))
             // The UI deliveries and the host assembly the foreground entry point asks for.

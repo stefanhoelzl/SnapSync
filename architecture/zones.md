@@ -23,7 +23,6 @@ flowchart LR
     domain_data[":domain:data"]
     domain_domain[":domain:domain"]
     domain_entrypoints[":domain:entrypoints"]
-    domain_feature[":domain:feature"]
     domain_format[":domain:format"]
     domain_host[":domain:host"]
     domain_inbound[":domain:inbound"]
@@ -48,8 +47,8 @@ flowchart LR
   end
   adapter_android --> adapter_generic_app
   adapter_android --> adapter_generic_motionphoto
+  adapter_android --> domain_data
   adapter_android --> domain_domain
-  adapter_android --> domain_feature
   adapter_android --> domain_format
   adapter_android --> domain_inbound
   adapter_android --> domain_model
@@ -74,7 +73,6 @@ flowchart LR
   adapter_generic_mock --> domain_compose
   adapter_generic_mock --> domain_data
   adapter_generic_mock --> domain_domain
-  adapter_generic_mock --> domain_feature
   adapter_generic_mock --> domain_format
   adapter_generic_mock --> domain_inbound
   adapter_generic_mock --> domain_model
@@ -106,7 +104,6 @@ flowchart LR
   adapter_ios_ext_safe --> domain_compose
   adapter_ios_ext_safe --> domain_data
   adapter_ios_ext_safe --> domain_domain
-  adapter_ios_ext_safe --> domain_feature
   adapter_ios_ext_safe --> domain_format
   adapter_ios_ext_safe --> domain_inbound
   adapter_ios_ext_safe --> domain_model
@@ -116,7 +113,6 @@ flowchart LR
   adapter_ios_ext_safe --> test_verifies
   adapter_ios_ui --> adapter_ios_app_only
   adapter_ios_ui --> adapter_ios_ext_safe
-  adapter_ios_ui --> domain_feature
   adapter_ios_ui --> domain_format
   adapter_ios_ui --> domain_inbound
   adapter_ios_ui --> domain_model
@@ -130,12 +126,12 @@ flowchart LR
   adapter_ios_ui --> ui_state
   domain_application --> domain_data
   domain_application --> domain_domain
+  domain_application --> domain_format
   domain_application --> domain_inbound
   domain_compose --> domain_application
   domain_compose --> domain_data
   domain_compose --> domain_domain
   domain_compose --> domain_entrypoints
-  domain_compose --> domain_feature
   domain_compose --> domain_format
   domain_compose --> domain_inbound
   domain_compose --> domain_model
@@ -152,24 +148,16 @@ flowchart LR
   domain_entrypoints --> domain_application
   domain_entrypoints --> domain_data
   domain_entrypoints --> domain_domain
-  domain_entrypoints --> domain_feature
   domain_entrypoints --> domain_inbound
   domain_entrypoints --> domain_model
   domain_entrypoints --> domain_ports
   domain_entrypoints --> domain_query
   domain_entrypoints --> domain_scheduling
   domain_entrypoints --> domain_services
-  domain_feature --> domain_data
-  domain_feature --> domain_domain
-  domain_feature --> domain_format
-  domain_feature --> domain_model
-  domain_feature --> domain_scheduling
-  domain_feature --> domain_services
   domain_format --> domain_domain
   domain_host --> domain_compose
   domain_host --> domain_domain
   domain_host --> domain_entrypoints
-  domain_host --> domain_feature
   domain_host --> domain_inbound
   domain_host --> domain_model
   domain_host --> domain_ports
@@ -206,7 +194,6 @@ flowchart LR
   ui_components --> ui_state
   ui_screens --> adapter_generic_app
   ui_screens --> domain_domain
-  ui_screens --> domain_feature
   ui_screens --> domain_format
   ui_screens --> domain_model
   ui_screens --> domain_presentation

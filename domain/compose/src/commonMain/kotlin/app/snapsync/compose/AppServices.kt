@@ -17,7 +17,6 @@ import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.SecureCredentialStore
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.logs.LogTailService
 import app.snapsync.services.membership.MembershipTransition
 
 /**
@@ -111,11 +110,4 @@ internal class AppServices(val ports: AppPorts, val process: ProcessServices) {
      * delivers the unchanged token publishes nothing.
      */
     val pushRecord: PushRegistrationRecord by lazy { PushRegistrationRecord(ports.preferences, process.files) }
-
-    /**
-     * The device logs a dump reads back, over the process's files: an off-device
-
-     * composition holds no log files, so a dump assembled there is honestly empty rather than fabricated.
-     */
-    val deviceLogs: LogTailService by lazy { LogTailService(process.files) }
 }

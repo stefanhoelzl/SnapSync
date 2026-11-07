@@ -13,7 +13,6 @@ object DiagnosticKeys {
     const val BATTERY_PERCENT = "battery_percent"
     const val BATTERY_CHARGING = "battery_charging"
     const val THERMAL = "thermal"
-    const val DEVICE_ID = "device_id"
     const val TIME_ZONE = "time_zone"
     const val MEMORY_FOOTPRINT_MB = "memory_footprint_mb"
     const val SELECTION_PHOTOS = "selection_photos"

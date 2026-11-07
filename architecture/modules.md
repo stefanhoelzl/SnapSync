@@ -27,7 +27,6 @@ flowchart LR
   domain_data[":domain:data"]
   domain_domain[":domain:domain"]
   domain_entrypoints[":domain:entrypoints"]
-  domain_feature[":domain:feature"]
   domain_format[":domain:format"]
   domain_host[":domain:host"]
   domain_inbound[":domain:inbound"]
@@ -62,8 +61,8 @@ flowchart LR
   ui_state[":ui:state"]
   adapter_android --> adapter_generic_app
   adapter_android --> adapter_generic_motionphoto
+  adapter_android --> domain_data
   adapter_android --> domain_domain
-  adapter_android --> domain_feature
   adapter_android --> domain_format
   adapter_android --> domain_inbound
   adapter_android --> domain_model
@@ -88,7 +87,6 @@ flowchart LR
   adapter_generic_mock --> domain_compose
   adapter_generic_mock --> domain_data
   adapter_generic_mock --> domain_domain
-  adapter_generic_mock --> domain_feature
   adapter_generic_mock --> domain_format
   adapter_generic_mock --> domain_inbound
   adapter_generic_mock --> domain_model
@@ -120,7 +118,6 @@ flowchart LR
   adapter_ios_ext_safe --> domain_compose
   adapter_ios_ext_safe --> domain_data
   adapter_ios_ext_safe --> domain_domain
-  adapter_ios_ext_safe --> domain_feature
   adapter_ios_ext_safe --> domain_format
   adapter_ios_ext_safe --> domain_inbound
   adapter_ios_ext_safe --> domain_model
@@ -130,7 +127,6 @@ flowchart LR
   adapter_ios_ext_safe --> test_verifies
   adapter_ios_ui --> adapter_ios_app_only
   adapter_ios_ui --> adapter_ios_ext_safe
-  adapter_ios_ui --> domain_feature
   adapter_ios_ui --> domain_format
   adapter_ios_ui --> domain_inbound
   adapter_ios_ui --> domain_model
@@ -146,7 +142,6 @@ flowchart LR
   app_android --> adapter_generic_app
   app_android --> adapter_generic_sentry
   app_android --> domain_compose
-  app_android --> domain_feature
   app_android --> domain_host
   app_android --> domain_inbound
   app_android --> domain_model
@@ -159,7 +154,6 @@ flowchart LR
   app_desktop --> app_jvm
   app_desktop --> domain_data
   app_desktop --> domain_domain
-  app_desktop --> domain_feature
   app_desktop --> domain_model
   app_desktop --> domain_ports
   app_desktop --> domain_presentation
@@ -175,7 +169,6 @@ flowchart LR
   app_ios --> adapter_ios_ext_safe
   app_ios --> adapter_ios_ui
   app_ios --> domain_compose
-  app_ios --> domain_feature
   app_ios --> domain_host
   app_ios --> domain_inbound
   app_ios --> domain_model
@@ -189,7 +182,6 @@ flowchart LR
   app_ios_extension --> adapter_generic_sentry
   app_ios_extension --> adapter_ios_ext_safe
   app_ios_extension --> domain_compose
-  app_ios_extension --> domain_feature
   app_ios_extension --> domain_inbound
   app_ios_extension --> domain_model
   app_ios_extension --> domain_ports
@@ -197,7 +189,6 @@ flowchart LR
   app_jvm --> adapter_generic_app
   app_jvm --> adapter_generic_mock
   app_jvm --> domain_compose
-  app_jvm --> domain_feature
   app_jvm --> domain_host
   app_jvm --> domain_model
   app_jvm --> domain_ports
@@ -206,12 +197,12 @@ flowchart LR
   app_jvm --> ui_state
   domain_application --> domain_data
   domain_application --> domain_domain
+  domain_application --> domain_format
   domain_application --> domain_inbound
   domain_compose --> domain_application
   domain_compose --> domain_data
   domain_compose --> domain_domain
   domain_compose --> domain_entrypoints
-  domain_compose --> domain_feature
   domain_compose --> domain_format
   domain_compose --> domain_inbound
   domain_compose --> domain_model
@@ -228,24 +219,16 @@ flowchart LR
   domain_entrypoints --> domain_application
   domain_entrypoints --> domain_data
   domain_entrypoints --> domain_domain
-  domain_entrypoints --> domain_feature
   domain_entrypoints --> domain_inbound
   domain_entrypoints --> domain_model
   domain_entrypoints --> domain_ports
   domain_entrypoints --> domain_query
   domain_entrypoints --> domain_scheduling
   domain_entrypoints --> domain_services
-  domain_feature --> domain_data
-  domain_feature --> domain_domain
-  domain_feature --> domain_format
-  domain_feature --> domain_model
-  domain_feature --> domain_scheduling
-  domain_feature --> domain_services
   domain_format --> domain_domain
   domain_host --> domain_compose
   domain_host --> domain_domain
   domain_host --> domain_entrypoints
-  domain_host --> domain_feature
   domain_host --> domain_inbound
   domain_host --> domain_model
   domain_host --> domain_ports
@@ -282,7 +265,6 @@ flowchart LR
   test_architecture --> domain_application
   test_architecture --> domain_data
   test_architecture --> domain_domain
-  test_architecture --> domain_feature
   test_architecture --> domain_format
   test_architecture --> domain_model
   test_architecture --> domain_ports
@@ -308,7 +290,6 @@ flowchart LR
   test_contracts --> domain_wire
   test_contracts --> ui_state
   test_control --> domain_domain
-  test_control --> domain_feature
   test_control --> domain_model
   test_control --> domain_presentation
   test_control --> test_client
@@ -332,7 +313,6 @@ flowchart LR
   test_feature --> domain_application
   test_feature --> domain_data
   test_feature --> domain_domain
-  test_feature --> domain_feature
   test_feature --> domain_format
   test_feature --> domain_inbound
   test_feature --> domain_model
@@ -341,7 +321,6 @@ flowchart LR
   test_feature --> domain_services
   test_harness_driver --> app_desktop
   test_integration --> domain_domain
-  test_integration --> domain_feature
   test_integration --> domain_format
   test_integration --> domain_model
   test_integration --> domain_presentation
@@ -349,7 +328,6 @@ flowchart LR
   test_integration --> ui_state
   test_journeys --> adapter_generic_app
   test_journeys --> domain_domain
-  test_journeys --> domain_feature
   test_journeys --> domain_format
   test_journeys --> domain_model
   test_journeys --> domain_ports
@@ -386,7 +364,6 @@ flowchart LR
   test_rig --> domain_compose
   test_rig --> domain_data
   test_rig --> domain_domain
-  test_rig --> domain_feature
   test_rig --> domain_format
   test_rig --> domain_inbound
   test_rig --> domain_model
@@ -405,7 +382,6 @@ flowchart LR
   ui_components --> ui_state
   ui_screens --> adapter_generic_app
   ui_screens --> domain_domain
-  ui_screens --> domain_feature
   ui_screens --> domain_format
   ui_screens --> domain_model
   ui_screens --> domain_presentation

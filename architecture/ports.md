@@ -166,7 +166,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `MobileDataQuery` | `:domain:query` | `:domain:presentation` AlwaysAllowed; `:domain:query` MobileDataLookup | no |
 | `NetworkAccess` | `:domain:domain` | `:domain:domain` Blocked, Offline, Online; `:domain:ports` Blocked, Offline, Online | no |
 | `NetworkAccess` | `:domain:ports` | `:domain:domain` Blocked, Offline, Online; `:domain:ports` Blocked, Offline, Online | no |
-| `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor; `:test:contracts` NetworkMonitorProxy | yes |
+| `NetworkMonitor` | `:domain:ports` | `:adapter:android` AndroidNetworkMonitor; `:adapter:generic:mock` InMemoryNetworkMonitor; `:adapter:ios:app-only` IosNetworkMonitor; `:test:contracts` NetworkMonitorProxy; `:test:feature` Silent | yes |
 | `NetworkStatusQuery` | `:domain:query` | `:domain:presentation` AlwaysOnline, FakeNetwork; `:domain:query` NetworkStatusLookup | yes |
 | `NewAlbum` | `:domain:data` | `:domain:data` Created, NotCreated | no |
 | `NewEventKey` | `:domain:data` | `:domain:data` Encrypted, Plain | no |
@@ -226,6 +226,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `RecordedRule` | `:domain:domain` | `:domain:domain` DenyAll, InRange, NotEcho, NotInDenylistedAlbum | no |
 | `RefreshOutcome` | `:domain:application` | `:domain:application` Current, Deleted, Fresh, Inconclusive, NotObtained, Obtained, Superseded | no |
 | `RefreshOutcome` | `:domain:application` | `:domain:application` Current, Deleted, Fresh, Inconclusive, NotObtained, Obtained, Superseded | no |
+| `RefusalRead` | `:domain:data` | `:domain:data` AttestationStatus | no |
 | `Refused` | `:domain:ports` | `:domain:ports` Failed, NotAvailable, UnknownKey | no |
 | `RegistrationAnswer` | `:domain:ports` | `:domain:ports` Answered, Unsupported | no |
 | `RegistrationOutcome` | `:domain:model` | `:domain:model` Applied, DisableRefusedByGrant, EnableRefusedByGrant, Failed, NothingToDisable, Unsupported | no |

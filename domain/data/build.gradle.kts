@@ -21,6 +21,8 @@ kotlin {
             api(libs.sqldelight.runtime)
             // The read-model cells it keeps (`StateFlow`) and the lock a refresh serializes on.
             api(libs.coroutines.core)
+            // The device's time zone a bug report names (`DeviceConditionsRead`): the clock answers it as a `TimeZone`.
+            implementation(libs.kotlinx.datetime)
         }
     }
 }

@@ -17,7 +17,6 @@ dependencies {
     api(project(":domain:model"))
     api(project(":domain:domain"))
     api(project(":domain:ports"))
-    api(project(":domain:feature"))
     // The screen pane and the mirror take the screen's `CutoffFormatter`.
     implementation(project(":domain:presentation"))
     implementation(project(":ui:state"))

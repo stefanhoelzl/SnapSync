@@ -2,6 +2,7 @@
 
 package app.snapsync.rig
 
+import app.snapsync.data.logs.LoggingProcess
 import app.snapsync.domain.version.Store
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmMocks
@@ -13,7 +14,6 @@ import app.snapsync.mock.StorePage
 import app.snapsync.model.ProcessingAnswer
 import app.snapsync.model.uploadersCarried
 import app.snapsync.rig.time.LoopTime
-import app.snapsync.services.logs.LogTailService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -215,8 +215,8 @@ class JvmRigHost private constructor(
                 world = HostWorld(servedWorld(JvmWorld(rig.threads), refusal = null), rig.threads.acts),
                 deviceLog = { process, maxBytes ->
                     when (process) {
-                        LogTailService.Process.APP -> rig.log.lines.joinToString("\n").takeLast(maxBytes)
-                        LogTailService.Process.EXTENSION -> null
+                        LoggingProcess.APP -> rig.log.lines.joinToString("\n").takeLast(maxBytes)
+                        LoggingProcess.EXTENSION -> null
                     }
                 },
                 osExtensionEnabled = { null },

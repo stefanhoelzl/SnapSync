@@ -2,6 +2,7 @@ package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.event.CreateEvent
+import app.snapsync.application.report.AssembleBugReport
 import app.snapsync.application.report.SendBugReport
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.invite.RendersInvite
@@ -11,7 +12,6 @@ import app.snapsync.domain.request.CreateRequest
 import app.snapsync.domain.request.ReportRequest
 import app.snapsync.domain.request.ShareRequest
 import app.snapsync.domain.service.ServiceFault
-import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
 import app.snapsync.query.RequestStatusSink
@@ -96,7 +96,7 @@ class OnChoosePhotosTapped(runtime: Runtime, private val asks: PhotoAccessAsks) 
  */
 class OnSendDiagnosticsTapped(
     runtime: Runtime,
-    private val dump: CollectDiagnosticDump,
+    private val assemble: AssembleBugReport,
     private val send: SendBugReport,
     private val statuses: RequestStatusSink<ReportOutcome>,
 ) : BackgroundEntryPoint<ReportRequest>(runtime) {
@@ -106,9 +106,9 @@ class OnSendDiagnosticsTapped(
     override suspend fun run(arg: ReportRequest, on: Run) = on.steps {
         statuses.begun(arg.id)
         ensure("answer") { statuses.settle(arg.id, ReportOutcome.NOT_SENT) }
-        val report = required { dump.collect(arg.note, arg.context) }
+        val report = required { assemble(arg.note, arg.context) }
         val result = required { send(report) }
-        log.i("diagnostic dump", "result" of result, "screen" of arg.context.screen)
+        log.i("bug report", "result" of result, "screen" of arg.context.screen)
         required { statuses.done(arg.id, result.outcome) }
     }
 }

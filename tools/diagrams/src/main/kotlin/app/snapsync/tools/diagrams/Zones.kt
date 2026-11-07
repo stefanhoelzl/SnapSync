@@ -5,9 +5,7 @@ import java.io.File
 /**
  * The zone/feature graph: every module under `adapter/`, `domain/` and `ui/` (a directory walk, so
  * the scope tracks restructures automatically), with the edges each module declares via
- * `project(...)` in its `build.gradle.kts`. The finer structure inside `:domain` — the five zone
- * packages and the feature packages — is the feature cards' subject; this graph shows the module
- * skeleton those packages live in.
+ * `project(...)` in its `build.gradle.kts`: the module skeleton, each core zone and layer its own module.
  */
 fun zonesMarkdown(root: File): String {
     val zones = listOf("adapter", "domain", "ui")

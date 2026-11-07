@@ -226,7 +226,6 @@ class DetektTiersPlugin : Plugin<Project> {
             ":domain:format" to "core",
             ":domain:ports" to "core",
             ":domain:services" to "core",
-            ":domain:feature" to "core",
             ":domain:compose" to "core",
             ":adapter:generic:app" to "core",
             ":adapter:generic:mock" to "core",

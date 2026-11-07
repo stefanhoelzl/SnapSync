@@ -32,7 +32,6 @@ dependencies {
     testImplementation(project(":domain:format"))
     testImplementation(project(":ui:state"))
     testImplementation(project(":domain:presentation"))
-    testImplementation(project(":domain:feature"))
     testImplementation(libs.kotlinx.datetime)
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.core)

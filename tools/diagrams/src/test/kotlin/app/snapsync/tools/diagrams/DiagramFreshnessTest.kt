@@ -61,7 +61,6 @@ class DiagramFreshnessTest {
         val first = generateSourceDiagrams(root)
         assertTrue("architecture/zones.md" in first, "zones generator produced nothing")
         assertTrue("architecture/ports.md" in first, "ports generator produced nothing")
-        assertTrue("architecture/features.md" in first, "feature-cards generator produced nothing")
         assertTrue("architecture/di.md" in first, "DI generator produced nothing")
         // Determinism within one process is necessary (not sufficient) for the spec's
         // byte-determinism requirement; the cross-host half is carried by the fixed sorts and

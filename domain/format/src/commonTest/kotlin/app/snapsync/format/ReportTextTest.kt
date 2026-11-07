@@ -1,7 +1,10 @@
 package app.snapsync.format
 
+import app.snapsync.domain.crash.ReportedIds
+import app.snapsync.domain.event.EventId
 import app.snapsync.domain.process.ProcessMetricReport
 import app.snapsync.domain.report.DiagnosticDump
+import app.snapsync.domain.report.Fact
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -15,13 +18,22 @@ class ReportTextTest {
     private fun parsed(text: String) = Json.parseToJsonElement(text) as JsonObject
 
     @Test
-    fun `a kept bug report holds the five sections, identifiers intact`() {
+    fun `a kept bug report holds the six sections, identifiers intact`() {
         val id = "550e8400-e29b-41d4-a716-446655440000"
-        val dump = DiagnosticDump("stuck on $id", mapOf("event_id" to id), mapOf("photos_pending" to "1"), "a\n", "e\n")
+        val ids = ReportedIds(EventId.parse(id), Fact.Unsupported, "app.snapsync")
+        val dump =
+            DiagnosticDump(
+                "stuck on $id",
+                ids,
+                mapOf("screen" to "Joined"),
+                mapOf("photos_pending" to "1"),
+                "a\n",
+                "e\n",
+            )
         val saved = parsed(ReportText.saved(dump))
-        assertEquals(setOf("note", "state", "ledger", "app_log", "ext_log"), saved.keys)
+        assertEquals(setOf("note", "snapsync", "state", "ledger", "app_log", "ext_log"), saved.keys)
         assertEquals("stuck on $id", ((saved["note"] as JsonObject)["text"] as JsonPrimitive).content)
-        assertEquals(id, ((saved["state"] as JsonObject)["event_id"] as JsonPrimitive).content)
+        assertEquals(id, ((saved["snapsync"] as JsonObject)["event"] as JsonPrimitive).content)
     }
 
     @Test

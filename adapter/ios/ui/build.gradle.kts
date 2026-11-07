@@ -40,7 +40,6 @@ kotlin {
             implementation(project(":domain:presentation"))
             // The membership's request statuses the tour's commands answer on.
             implementation(project(":domain:query"))
-            implementation(project(":domain:feature"))
             implementation(libs.kotlinx.datetime)
             // The tour spells the dates it sets (`TimestampText`).
             implementation(project(":domain:format"))

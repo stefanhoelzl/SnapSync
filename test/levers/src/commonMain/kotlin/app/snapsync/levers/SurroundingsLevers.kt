@@ -193,12 +193,13 @@ data class ReceivedEvent(
 data class ReceivedException(val type: String, val value: String?)
 
 /**
- * One diagnostic dump as the reporter's backend received it: the member's [note], the app's [state] and [ledger]
- * sections, the tail of both logs, and how many bytes of log it carried.
+ * One diagnostic dump as the reporter's backend received it: the member's [note], SnapSync's own ids ([snapsync]:
+ * `event`, `device`, `process`), the app's [state] and [ledger] sections, the tail of both logs, and how many bytes of log it carried.
  */
 @Serializable
 data class ReceivedDump(
     val note: String,
+    val snapsync: Map<String, String>,
     val state: Map<String, String>,
     val ledger: Map<String, String>,
     val appLog: String,

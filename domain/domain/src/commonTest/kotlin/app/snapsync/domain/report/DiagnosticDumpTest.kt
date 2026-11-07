@@ -1,5 +1,7 @@
 package app.snapsync.domain.report
 
+import app.snapsync.domain.crash.ReportedIds
+import app.snapsync.domain.event.EventId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -9,6 +11,7 @@ class DiagnosticDumpTest {
     private val id = "550e8400-e29b-41d4-a716-446655440000"
     private val dump = DiagnosticDump(
         note = "stuck on $id — see https://snapsync.stho.net/join/$id#k=abc",
+        ids = ReportedIds(EventId.parse(id), Fact.Failed("no device id stored yet"), "app.snapsync"),
         state = mapOf("screen" to "Joined"),
         ledger = mapOf("photos_pending" to "1"),
         appLog = "app $id\n",
@@ -22,6 +25,7 @@ class DiagnosticDumpTest {
         assertEquals(
             mapOf(
                 "note" to mapOf("text" to dump.note),
+                "snapsync" to mapOf("event" to id, "device" to "failed (no device id stored yet)", "process" to "app.snapsync"),
                 "state" to dump.state,
                 "ledger" to dump.ledger,
                 "app_log" to mapOf("text" to dump.appLog),

@@ -1,6 +1,4 @@
-package app.snapsync.model
-
-import app.snapsync.domain.report.Fact
+package app.snapsync.domain.report
 
 /** Whether the system lets this app refresh in the background — iOS's per-app Background App Refresh. */
 enum class BackgroundRefresh(val label: String) {
@@ -69,18 +67,3 @@ data class DeviceConditionsReading(
         }
     }
 }
-
-/**
- * The facts only the app composition holds, handed to a bug report as one value. Each is a direct read the composition
- * maps to a [Fact]; none is decided there.
- */
-data class AppFacts(
-    /** The device id the app already resolved — never minted for a report. */
-    val deviceId: Fact<String>,
-    /** The device's zone id, e.g. `Europe/Vienna`. */
-    val timeZone: Fact<String>,
-    /** This process's memory footprint in whole megabytes; unsupported where the platform's is not read. */
-    val memoryFootprintMb: Fact<Long>,
-    /** Under limited photo access, how many photos the selection holds; unsupported under any other grant. */
-    val selectionPhotos: Fact<Int>,
-)

@@ -2,8 +2,8 @@ package app.snapsync.mock
 
 import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.domain.report.Fact
-import app.snapsync.model.StandbyBucket
-import app.snapsync.model.Thermal
+import app.snapsync.domain.report.StandbyBucket
+import app.snapsync.domain.report.Thermal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

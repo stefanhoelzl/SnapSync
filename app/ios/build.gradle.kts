@@ -71,7 +71,6 @@ kotlin {
             api(project(":domain:model"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
-            api(project(":domain:feature"))
             api(project(":domain:compose"))
             // The shared host composition: the core and the status host over it (`snapSyncHost`).
             implementation(project(":domain:host"))

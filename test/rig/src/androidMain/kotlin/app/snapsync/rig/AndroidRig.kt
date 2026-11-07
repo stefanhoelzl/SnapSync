@@ -24,7 +24,6 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.addMotionPhoto
 import app.snapsync.rig.gallery.androidGalleryReader
 import app.snapsync.rig.gallery.seedMediaStore
-import app.snapsync.services.logs.LogTailService
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -171,7 +170,7 @@ private fun AndroidRigLaunch.hooks(
     uploadTier = { uploadersCarried(osSupportsOsDrivenUpload = false) },
     uploadBase = uploadBase,
     transferBinding = "mock",
-    deviceLog = LogTailService(ports.files.value)::tail,
+    deviceLog = deviceLogText(ports.files.value),
     osExtensionEnabled = { null },
     servicesOf = { hooks ->
         world.servedServices(

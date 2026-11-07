@@ -48,7 +48,6 @@ kotlin {
             // the screens' own code sees no presentation.
             implementation(project(":domain:presentation"))
             implementation(project(":domain:query"))
-            implementation(project(":domain:feature"))
             implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:format"))

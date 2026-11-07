@@ -47,7 +47,6 @@ kotlin {
             api(project(":domain:model"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
-            api(project(":domain:feature"))
             api(project(":domain:compose"))
             // The JVM-covered upload layers (the data tier, the use cases and their entry points).
             // The extension-safe iOS adapters implement their ports and UploadExtensionRoot composes them.

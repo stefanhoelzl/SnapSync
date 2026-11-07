@@ -388,19 +388,6 @@ version or op gates these — each phase deletes its own uses, and the last one 
 - **Remove:** each phase reads its columns as values — a `when` over the `Stored` — and deletes its `held` calls; the
   phase that removes the last one deletes the file and this entry.
 
-### What was received as the old zones reach it (app)
-- **What:** phase 4.5 moved receiving into the layers (`domain/data/.../receiving/`); the old zones that read it
-  reach the data layer directly, through edges that stay theirs until their concepts move (the manifest's, 4.4c, is
-  gone: `EventUnion` reads the data layer's `ManifestRecord` itself):
-  - `StatusRefresh` (`domain/feature/.../status/`, 4.9) reads `ReceivedPhotosRead` — the store's readiness and what it
-    received (the uploads' gate, 4.4b, reads it in the data layer, `UploadGateRead`);
-  - `CollectDiagnosticDump` (`domain/feature/.../diagnostics/`, 4.10) reads `ReceivingCounts`; the album's (4.7) reads it
-    through `ReceivedAlbumPhotos`.
-- **Why:** each reader is its own phase's concept; rewriting them over a use case's answer here would have rewritten
-  them twice.
-- **Remove:** each phase moves its reader into a use case or query over the same data-layer read; the phase that
-  removes the last edge deletes this entry.
-
 ## One-off ops
 
 ### Bytes still in the old storage layout (api)

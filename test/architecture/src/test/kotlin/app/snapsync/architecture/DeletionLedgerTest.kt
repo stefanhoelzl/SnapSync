@@ -521,6 +521,34 @@ class DeletionLedgerTest {
     }
 
     /**
+     * The diagnostics before their layers (phase 4.10): a crash channel, log writers and a process account in the
+     * services, a bug report assembled in the last feature over facts the composition handed it as lambdas, and the
+     * scrubs that ran over every captured event and logged link — where the layers now carry the channel, the reads and
+     * the account, the report is a use case over typed reads, and a secret leaves no line by type (`InviteText`). The
+     * `:domain:feature` module went with its last feature, and the zone with it.
+     */
+    @Test
+    fun `the diagnostics' retired items stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            val pre = """(class|interface|object) (Collect""" + "DiagnosticDump|LogTail" + "Service|DeviceConditions" +
+                "Readings|Diagnostic" + "Environment|App" + "Facts|Crash" + "Reporting|Sink" + "LogWriter|Crash" +
+                "LogWriter|ProcessLog" + "Writers|Process" + "Account|Crash" + "Handlers)\\b"
+            declared(files, pre).forEach { add("the diagnostics' pre-layer types in $it (the layers' — 4.10)") }
+            declared(
+                files,
+                """fun (redact""" + "EventKeys|redact" + "Uuids|scrubbed" + "Crumb|scrubbed" + "Event)\\b",
+            ).forEach {
+                add("a scrub in $it (ids ride in full; a key leaves no line by type — 4.10)")
+            }
+            if (File(repoRoot, "domain/" + "feature").exists()) {
+                add("domain/feature (the last feature became a use case; the zone went with it — 4.10)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
      * The device runs' shell scripts (phase 13): the `journeys (ios|android)` jobs run the `journeys` program
      * (`:test:journeys`) over the typed client, waiting on the device's events — so a script back is a second way to
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop

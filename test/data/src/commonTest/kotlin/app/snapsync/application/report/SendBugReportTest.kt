@@ -5,6 +5,7 @@ package app.snapsync.application.report
 import app.snapsync.application.EntryPointCall
 import app.snapsync.data.crash.CrashChannel
 import app.snapsync.data.crash.RecordingReporter
+import app.snapsync.data.report.NO_IDS
 import app.snapsync.data.report.SavedReport
 import app.snapsync.domain.crash.CrashShaping
 import app.snapsync.domain.report.DiagnosticDump
@@ -19,7 +20,7 @@ import kotlin.test.assertEquals
 /** A confirmed report goes where the build reports, and is kept on the device where it reports nowhere. */
 class SendBugReportTest {
 
-    private val dump = DiagnosticDump("it froze", mapOf("screen" to "Joined"), emptyMap(), "a\n", "e\n")
+    private val dump = DiagnosticDump("it froze", NO_IDS, mapOf("screen" to "Joined"), emptyMap(), "a\n", "e\n")
     private val reporter = RecordingReporter()
     private val files = mutableMapOf<String, ByteArray>()
 
