@@ -72,7 +72,7 @@ retained the next cycle sees no changes and enumerates nothing. The uninstall cl
 membership with them. Photos this device downloaded stay in the library carrying their SnapSync mark, so a rejoin
 recognises them rather than sharing them back.
 
-**The oracle when you forget:** each process logs `[boot] upload base = …` in `debug.log`. A tunnel
+**The oracle when you forget:** each process logs `[Info/process] upload base host=…` in `debug.log`. A tunnel
 host there beside a cycle reporting `enumeration: 0 seen` (or `N seen, 0 new, N already-uploaded`)
 means the app was updated in place rather than installed fresh.
 

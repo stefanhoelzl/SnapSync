@@ -1,18 +1,16 @@
-// `:test:feature` (`docs/testing.md`, "Feature tests compose real services over port mocks"): the feature tests that
-// need a service. Features see services only — the feature → ports edge is a compile boundary — so a test that builds
-// a feature over a real service, and that service over the ports' in-memory mocks, cannot live in `:domain:feature`'s
-// own test source set: that set compiles against exactly what feature does. Here it can: this module sees feature,
-// services, ports and the mocks. A feature test that touches no port and no service stays in `:domain:feature`.
+// `:test:feature` (`docs/testing.md`, "Service-backed suites compose real services over port mocks"): the suites that
+// build real services and layers over the ports' in-memory mocks — a compile path no `:domain:*` module's own test
+// source set has. The features it was named for are gone (4.10); what stays here is what needs the mocks and a service.
 //
 // Test-only: no main sources, never linked into anything. Targets mirror `:adapter:generic:mock` (jvm +
-// iosSimulatorArm64 + android) — the tests run on the JVM only, as feature's own do (`docs/testing.md`, "Where
+// iosSimulatorArm64 + android) — the tests run on the JVM only, as the layers' own do (`docs/testing.md`, "Where
 // each test runs").
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     // The `android` target (`snapsync.android`), mirroring the mocks'. Its `commonTest` is not run on the emulator.
     id("snapsync.android")
     // Instrumented: its tests also cover the zones whose entries in the root build file's `coverage { }` name it
-    // (`:domain:feature` first). It holds no class of its own to measure.
+    // (`:domain:services` among them). It holds no class of its own to measure.
     alias(libs.plugins.kover)
 }
 

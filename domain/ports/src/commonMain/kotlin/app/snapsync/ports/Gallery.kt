@@ -10,7 +10,7 @@ import kotlin.time.Instant
  * resources and its albums, and file assets into an album. **Thin**: it answers what the platform shows and
  * decides nothing. Whether a read is authoritative, which grant may answer a presence question, which albums
  * are denylisted and what a partial grant's selection means are all decided above it, in `:domain:services`
- * and `:domain:feature`.
+ * and the layers.
  *
  * The upload extension gets this and nothing more; the app gets [Gallery], which extends it.
  *
