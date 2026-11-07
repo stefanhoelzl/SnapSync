@@ -142,7 +142,7 @@ class CreateFlowTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "The last day starts as today, but not the end time",
     )
     fun `the start is preset to now and the last day to today with its time blank`() = createTest { _ ->
@@ -162,14 +162,26 @@ class CreateFlowTest {
 
     // The screen's part: Create disabled and the line's words. Which step comes next is the form's (`CreateDraftTest`).
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The next missing step is named from the start")
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "A name alone does not allow Create")
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "The next missing step is named from the start",
+    )
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "A name alone does not allow Create",
+    )
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "Choosing a later last day does not fill in the end time",
     )
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "Setting the end time completes the range")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "Setting the end time completes the range",
+    )
     fun `the line above Create names the next missing step`() = createTest { rig ->
         onNodeWithText(str(Res.string.create_step_name)).assertExists()
         onNodeWithText(str(Res.string.create_button)).assertIsNotEnabled()
@@ -192,7 +204,7 @@ class CreateFlowTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "Choosing only the end's hour does not set the end time",
     )
     fun `an end hour alone still asks for the end time and Create stays disabled`() = createTest { rig ->
@@ -210,7 +222,11 @@ class CreateFlowTest {
     // The screen's part: the duration said together with what the range shares. The five days are the form's
     // (`CreateDraftTest`).
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The duration and the consequence are stated")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "The duration and the consequence are stated",
+    )
     fun `a five-day range reads that it lasts 5 days beside what its dates share`() = createTest { rig ->
         typeName(rig, "My Party")
         pickDay(rig, "Saturday, 11 July 2026", day = 11)
@@ -592,7 +608,6 @@ class CreateFlowTest {
     }
 
     private companion object {
-        const val RANGE = "The host chooses the event's date range and its end time"
 
         /** No keyboard override: the test platform's own. */
         val KEEP: SoftwareKeyboardController = CountingKeyboard()

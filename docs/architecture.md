@@ -62,7 +62,9 @@ The core is the modules under `domain/` — its zones, its layers and the host �
 of it, `:domain:domain`, whose package is `app.snapsync.domain` (the grouping is to be renamed `core/` in phase 5). Each declares only the zone edges its law
 permits, always with `implementation()`, so a forbidden reference does not resolve. That covers
 fully-qualified names, typealiases and generated source, which a text scan would miss. The permitted
-edges are `ModuleSetTest`'s `permitted` map.
+edges are `ModuleSetTest`'s `permitted` map. The one edge outside a zone's law is its tests' `:test:verifies`, inside
+`commonTest.dependencies` only: the annotation depends on nothing, so a zone's tests can claim what the zone decides
+("Tests verify requirements") without the zone gaining a platform.
 
 ```
 inbound  <-  ports  <-  scheduling                       (the layers work enters and runs on — docs/patterns.md)
@@ -341,7 +343,7 @@ These pin one feature's structural rule that no type can state:
 
 The specs (`openspec/specs/`) say what a user observes; the code is laid out by its own laws, not by the specs'
 cut. They are linked in one direction only: a test that verifies a requirement says so with
-`@Verifies(spec = "…", requirement = "…"[, scenario = "…"])` (`:test:control`), keyed on the spec's directory
+`@Verifies(spec = "…", requirement = "…"[, scenario = "…"])` (`:test:verifies`), keyed on the spec's directory
 and the requirement's title. The Deno suites (`api/test`, `site/scripts/*.test.ts`) write the same annotation as a
 one-line comment directly above a `Deno.test`, `// @Verifies(spec = "…", requirement = "…", scenario = "…")`, and claim
 what the api or a web page decides. A suite claims a scenario only where its own code decides the outcome; a scenario
@@ -633,7 +635,8 @@ measure — the branches a test reaches through one copy were not credited toget
   What integration reaches in the wiring is construction and connection only: it holds no decision (`detektAppShell`),
   so every branch the graph needs is a unit-tested feature's or service's, and the JVM root composes through the same
   device bundles (`AppDevicePorts`, `ExtensionDevicePorts`) the phone's roots do.
-- The block lives in the root build file because `ModuleSetTest` forbids a `:domain:*` build file to name a module,
+- The block lives in the root build file because `ModuleSetTest` forbids a `:domain:*` build file to name a module
+  outside its zone's law (its tests' `:test:verifies` aside),
   and `Zones.kt` reads those files as text, where an edge to the covering module would render backwards. Name leaf
   modules: `:domain` is an empty container, and a report filtered to it measures nothing.
 

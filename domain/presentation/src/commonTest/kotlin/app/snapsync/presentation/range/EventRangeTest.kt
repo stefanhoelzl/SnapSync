@@ -23,7 +23,6 @@ import kotlin.time.Duration.Companion.days
 class EventRangeTest {
 
     private companion object {
-        const val RANGE = "The host chooses the event's date range and its end time"
 
         val START = LocalDateTime(2026, 7, 6, 18, 4)
         val TODAY: LocalDate = START.date
@@ -63,7 +62,7 @@ class EventRangeTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "The last day starts as today, but not the end time",
     )
     fun `a fresh range ends today with the end time blank`() {
@@ -76,7 +75,7 @@ class EventRangeTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "Choosing a later last day does not fill in the end time",
     )
     fun `the first tap on a later day places the last day and leaves its time blank`() {
@@ -102,7 +101,11 @@ class EventRangeTest {
     }
 
     @Test
-    @Verifies(spec = "create-event", requirement = RANGE, scenario = "A past or future range can be chosen")
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "A past or future range can be chosen",
+    )
     fun `a range that started three weeks ago or one that starts next month is a range to create`() {
         val past = fresh.pickDay(LocalDate(2026, 6, 15), THIRTY_DAYS).pickDay(TODAY, THIRTY_DAYS).endAt(20, 0)
         assertEquals(LocalDateTime(2026, 6, 15, 18, 4), past.from)
@@ -159,7 +162,7 @@ class EventRangeTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "Choosing only the end's hour does not set the end time",
     )
     fun `settling the Until hour alone does not fill the minute or set the end`() {
@@ -174,7 +177,7 @@ class EventRangeTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "Choosing the end's minute first fills in the current hour",
     )
     fun `settling the Until minute with the hour blank takes the clock's hour`() {
@@ -185,7 +188,7 @@ class EventRangeTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "Choosing the end's minute first fills in the current hour",
     )
     fun `a minute drag fills a blank hour with the clock's hour and leaves the minute blank`() {
@@ -199,7 +202,7 @@ class EventRangeTest {
     @Test
     @Verifies(
         spec = "create-event",
-        requirement = RANGE,
+        requirement = "The host chooses the event's date range and its end time",
         scenario = "Choosing the end's minute first fills in the current hour",
     )
     fun `a clock hour that is no valid end fills the start's hour instead`() {

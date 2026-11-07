@@ -2,6 +2,7 @@
 
 package app.snapsync.presentation
 
+import app.snapsync.control.Verifies
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
@@ -115,7 +116,14 @@ class StatusContainerHostNetworkTest {
 
     // ── the joined status line ───────────────────────────────────────────────────────────────
 
+    // The layer's part of "Offline": no network reads as the offline line. That the line offers no tap is the screen's
+    // (`StatusScreenTest`).
     @Test
+    @Verifies(
+        spec = "sync-status",
+        requirement = "Only missing access and a blocked network make the status line tappable",
+        scenario = "Offline",
+    )
     fun `a missing network is the status line with its cause`() = runTest {
         for ((access, notice) in listOf(
             NetworkAccess.Offline to NetworkNotice.OFFLINE,

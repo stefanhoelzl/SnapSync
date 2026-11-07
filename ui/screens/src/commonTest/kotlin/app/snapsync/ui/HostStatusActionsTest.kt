@@ -107,7 +107,6 @@ import kotlin.time.Instant
 import app.snapsync.ui.components.resources.Res as ComponentRes
 
 /** The event the joined tests are members of. */
-private const val MENU = "The app menu is one tap away on every screen"
 
 private const val JOINED_ID = "11111111-1111-4111-8111-111111111111"
 
@@ -545,7 +544,11 @@ class HostStatusActionsTest {
     }
 
     @Test
-    @Verifies(spec = "app-experience", requirement = MENU, scenario = "Opening the menu while joined")
+    @Verifies(
+        spec = "app-experience",
+        requirement = "The app menu is one tap away on every screen",
+        scenario = "Opening the menu while joined",
+    )
     fun `a joined member's menu holds the mobile-data switch and its note, the report, both links and the build`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
@@ -563,7 +566,11 @@ class HostStatusActionsTest {
         }
 
     @Test
-    @Verifies(spec = "app-experience", requirement = MENU, scenario = "Editing event settings")
+    @Verifies(
+        spec = "app-experience",
+        requirement = "The app menu is one tap away on every screen",
+        scenario = "Editing event settings",
+    )
     fun `a tap where the menu button is while the settings are open closes them and opens no menu`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
@@ -583,7 +590,11 @@ class HostStatusActionsTest {
         }
 
     @Test
-    @Verifies(spec = "app-experience", requirement = MENU, scenario = "Closing the menu")
+    @Verifies(
+        spec = "app-experience",
+        requirement = "The app menu is one tap away on every screen",
+        scenario = "Closing the menu",
+    )
     fun `a tap outside the open menu closes it and leaves the screen as it was`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
@@ -596,7 +607,11 @@ class HostStatusActionsTest {
         }
 
     @Test
-    @Verifies(spec = "app-experience", requirement = MENU, scenario = "Closing the menu with its close button")
+    @Verifies(
+        spec = "app-experience",
+        requirement = "The app menu is one tap away on every screen",
+        scenario = "Closing the menu with its close button",
+    )
     fun `the menu's close button closes it and leaves the screen as it was`() =
         rigTest(rig(config = MEMBERSHIP)) { rig ->
             awaitState(rig) { it.joined != null }
