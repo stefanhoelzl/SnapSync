@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.impl.background.systemjob.SystemJobService
 import app.snapsync.android.gallery.MediaStoreResource
 import app.snapsync.android.gallery.MediaStoreSeeder
+import app.snapsync.android.network.DataSaver
 import app.snapsync.android.network.MeteredWifi
 import app.snapsync.android.network.awaitUnrestrictedNetwork
 import app.snapsync.android.storage.Airplane
@@ -163,6 +164,9 @@ class AndroidWorkContractTest {
         return holds.filter { it.state == WorkInfo.State.RUNNING }.map { it.id }
     }
 
+    /** How a binding makes the emulator's network restricted, and lifts it again. */
+    private class Restriction(val enter: () -> Unit, val lift: () -> Unit)
+
     private val upload = object : Binding<TransferSessionState, SessionUnderTest> {
         override val host = Host.ANDROID_EMU
         override val kind = BindingKind.Live
@@ -178,72 +182,98 @@ class AndroidWorkContractTest {
 
         override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
             if (state !in reaches) return Entered.Unreachable("Android takes the library's own items, and files too")
-            val base = fixture()
-            // The fixture is the host's, reached over the emulator's Wi-Fi: metering the Wi-Fi meters the transfer.
-            if (state == TransferSessionState.RESTRICTED_NETWORK) MeteredWifi.enter()
-            val seeded = mutableSetOf<PlatformAssetId>()
-            val ended = Collections.synchronizedList(mutableListOf<Ended>())
-            val bare = AndroidUpload(
-                context,
-                AndroidBackgroundTime(context),
-                maxLive = CAP,
-                journalName = "contract.$clauseId",
-                unrestricted = awaitUnrestrictedNetwork(context),
-            )
-            val adapter = bare.recorded(log)
-            adapter.inbound(
-                TransferHandlers(
-                    onFinished = inboundOf { ended += Ended(it.tag, it.failure) },
-                    onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
-                    onEventsDrained = inboundOf {},
+            return createUpload(state, clauseId, log, Restriction(MeteredWifi::enter, MeteredWifi::lift))
+        }
+    }
+
+    /**
+     * The restricted network Android's Data Saver makes of an unmetered Wi-Fi: no capability changes and nothing is
+     * blocked, so only the adapter's own wait can hold the transfer.
+     */
+    private val uploadUnderDataSaver = object : Binding<TransferSessionState, SessionUnderTest> {
+        override val host = Host.ANDROID_EMU
+        override val kind = BindingKind.Live
+        override val adapter = AndroidUpload::class
+        override val reaches = setOf(TransferSessionState.RESTRICTED_NETWORK)
+
+        override fun create(state: TransferSessionState, clauseId: String, log: CallLog): Entered<SessionUnderTest> {
+            if (state !in reaches) return Entered.Unreachable("this binding enters RESTRICTED_NETWORK by Data Saver")
+            return createUpload(state, clauseId, log, Restriction(DataSaver::enter, DataSaver::lift))
+        }
+    }
+
+    /** The in-process session in [state], its network restricted the [restriction]'s way when the state asks for it. */
+    private fun createUpload(
+        state: TransferSessionState,
+        clauseId: String,
+        log: CallLog,
+        restriction: Restriction,
+    ): Entered<SessionUnderTest> {
+        val base = fixture()
+        // The fixture is the host's, reached over the emulator's Wi-Fi: restricting the Wi-Fi restricts the transfer.
+        if (state == TransferSessionState.RESTRICTED_NETWORK) restriction.enter()
+        val seeded = mutableSetOf<PlatformAssetId>()
+        val ended = Collections.synchronizedList(mutableListOf<Ended>())
+        val bare = AndroidUpload(
+            context,
+            AndroidBackgroundTime(context),
+            maxLive = CAP,
+            journalName = "contract.$clauseId",
+            unrestricted = awaitUnrestrictedNetwork(context),
+        )
+        val adapter = bare.recorded(log)
+        adapter.inbound(
+            TransferHandlers(
+                onFinished = inboundOf { ended += Ended(it.tag, it.failure) },
+                onBackgroundEvents = backgroundOf { _, completion -> completion.complete() },
+                onEventsDrained = inboundOf {},
+            ),
+        )
+        val usable: suspend (String) -> TransferSource = { _ ->
+            val id = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-01T12:00:00Z", count = 1).single()
+            seeded += id
+            TransferSource.Resource(
+                MediaStoreResource(
+                    ContentUris.withAppendedId(
+                        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+                        id.value.toLong(),
+                    ),
                 ),
             )
-            val usable: suspend (String) -> TransferSource = { _ ->
-                val id = MediaStoreSeeder.seed(MediaStoreSeeder.CAMERA, "2001-01-01T12:00:00Z", count = 1).single()
-                seeded += id
-                TransferSource.Resource(
-                    MediaStoreResource(
-                        ContentUris.withAppendedId(
-                            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
-                            id.value.toLong(),
-                        ),
-                    ),
-                )
-            }
-            if (state == TransferSessionState.AT_CAP) {
-                runEntry {
-                    repeat(CAP) { n ->
-                        val key = uploadClauseKey(clauseId, n = n + 1)
-                        val url = base + TransferSessionContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
-                        val target = UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY)
-                        val created = adapter.create(usable(key), target, key)
-                        check(
-                            created == CreateOutcome.CREATED,
-                        ) { "filling the cap: transfer ${n + 1} was $created" }
-                    }
+        }
+        if (state == TransferSessionState.AT_CAP) {
+            runEntry {
+                repeat(CAP) { n ->
+                    val key = uploadClauseKey(clauseId, n = n + 1)
+                    val url = base + TransferSessionContract.path(clauseId, FixtureAnswer.Hold, n = n + 1)
+                    val target = UploadTarget(url, mapOf("Content-Type" to "image/jpeg"), TransferNetwork.ANY)
+                    val created = adapter.create(usable(key), target, key)
+                    check(
+                        created == CreateOutcome.CREATED,
+                    ) { "filling the cap: transfer ${n + 1} was $created" }
                 }
             }
-            return Entered.Ready(
-                SessionUnderTest(
-                    session = adapter,
-                    base = base,
-                    usable = usable,
-                    unusable = { TransferSource.File("/nonexistent/$it") },
-                    ended = { synchronized(ended) { ended.toList() } },
-                    objects = landedAt(base),
-                    liftRestriction = { MeteredWifi.lift() },
-                    fileSource = { key ->
-                        TransferSource.File(
-                            File(context.cacheDir, key).apply { writeBytes(PhotoLibrary.jpeg) }.absolutePath,
-                        )
-                    },
-                ),
-            ) {
-                // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.
-                runEntry { bare.live().forEach { bare.cancel(it) } }
-                MediaStoreSeeder.delete(seeded)
-                if (state == TransferSessionState.RESTRICTED_NETWORK) MeteredWifi.lift()
-            }
+        }
+        return Entered.Ready(
+            SessionUnderTest(
+                session = adapter,
+                base = base,
+                usable = usable,
+                unusable = { TransferSource.File("/nonexistent/$it") },
+                ended = { synchronized(ended) { ended.toList() } },
+                objects = landedAt(base),
+                liftRestriction = { restriction.lift() },
+                fileSource = { key ->
+                    TransferSource.File(
+                        File(context.cacheDir, key).apply { writeBytes(PhotoLibrary.jpeg) }.absolutePath,
+                    )
+                },
+            ),
+        ) {
+            // The cleanup is the binding's, not the clause's: it goes round the proxy, so it claims nothing.
+            runEntry { bare.live().forEach { bare.cancel(it) } }
+            MediaStoreSeeder.delete(seeded)
+            if (state == TransferSessionState.RESTRICTED_NETWORK) restriction.lift()
         }
     }
 
@@ -255,6 +285,10 @@ class AndroidWorkContractTest {
 
     @Test
     fun `in-process transfers satisfy the TransferSession contract`() = verify(TransferSessionContract, upload)
+
+    @Test
+    fun `in-process transfers satisfy the TransferSession contract under Data Saver`() =
+        verify(TransferSessionContract, uploadUnderDataSaver)
 
     @Test
     fun `a library change wakes the app`() {

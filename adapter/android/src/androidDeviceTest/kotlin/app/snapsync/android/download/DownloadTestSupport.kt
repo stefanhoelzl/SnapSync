@@ -20,6 +20,8 @@ internal fun removeAllDownloads() {
         }
         ids.forEach { downloadManager.remove(it) }
     }
+    // And every transfer an adapter parked under Data Saver, so none is enqueued into a later test.
+    context.deleteSharedPreferences(AndroidDownload.PARKED)
 }
 
 /**

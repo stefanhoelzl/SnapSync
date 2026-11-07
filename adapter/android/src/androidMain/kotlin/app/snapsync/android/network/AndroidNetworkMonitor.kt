@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * The Android [NetworkMonitor]: the app's DEFAULT network, as `ConnectivityManager`'s default-network callback reports
@@ -30,11 +31,24 @@ import kotlinx.coroutines.flow.first
  * and the callback still delivers the network — `onAvailable` first, then `onBlockedStatusChanged(true)`; in airplane
  * mode `activeNetwork` and the info are both `null` and nothing calls back.
  *
- * Restricted is a METERED default network: cellular, a hotspot, a Wi-Fi the person marked
- * metered. Data Saver needs no reading of its own — it applies to metered networks only, where the network already
- * reads restricted, and in the background it shows up as a block (measured on the API 36 emulator, 2026-10-03: Data
- * Saver on unmetered Wi-Fi held nothing). Capabilities arrive between `onAvailable` and `onBlockedStatusChanged`, so
- * the first reading already carries them; a later change — a metered override lifted in place — publishes again.
+ * Restricted is a METERED default network — cellular, a hotspot, a Wi-Fi the person marked
+ * metered — or any network while Data Saver is in force for this app:
+ *  - Metered is "not `NOT_METERED`". A carrier network marked `TEMPORARILY_NOT_METERED` stays metered, because that is
+ *    how Android schedules every held transfer: DownloadManager holds a download as a JobScheduler job of
+ *    `NETWORK_TYPE_UNMETERED`, which JobScheduler matches by the `NOT_METERED` bit alone (AOSP `DownloadInfo`,
+ *    `ConnectivityController.isStrictSatisfied`, `NetworkCapabilities.satisfiedByNetCapabilities`; read 2026-11-07), and
+ *    the capability's own documentation tells apps to use `NOT_METERED`.
+ *  - Data Saver is the platform's one switch for the whole phone. On an unmetered Wi-Fi it changes no capability and
+ *    blocks nothing (measured on the API 36 emulator, 2026-10-03), so it is read on its own: `restrictBackgroundStatus`
+ *    `ENABLED`. `WHITELISTED` — the member allowed SnapSync unrestricted data — holds nothing. It is read again at every
+ *    capability change, and a change of it is heard as `ACTION_RESTRICT_BACKGROUND_CHANGED`, which reaches only a
+ *    registered receiver. Measured on the API 36 emulator, 2026-11-07, switched from the shell: the status answers
+ *    `ENABLED`, `WHITELISTED` and `DISABLED` as switched, and the broadcast reached a receiver in a process with no
+ *    activity (an instrumented one). Whether it reaches a cached process is not measured; the re-read at every
+ *    capability change and at every new collection bounds a missed one.
+ *
+ * Capabilities arrive between `onAvailable` and `onBlockedStatusChanged`, so the first reading already carries them; a
+ * later change — a metered override lifted in place, Data Saver switched — publishes again.
  *
  * A block is anything the platform withholds the network for: Data Saver or a background restriction while the app is
  * in the background, a firewall chain an OEM's per-app switch sets. Each collection registers its own callback and
@@ -43,13 +57,15 @@ import kotlinx.coroutines.flow.first
 class AndroidNetworkMonitor(context: Context) : NetworkMonitor {
     private val connectivity: ConnectivityManager =
         context.applicationContext.getSystemService(ConnectivityManager::class.java)
+    private val dataSaver = DataSaverStatus(context)
 
     override fun watch(): Flow<NetworkAccess> = callbackFlow {
-        val reading = DefaultNetworkReading()
+        val reading = DefaultNetworkReading(dataSaver = dataSaver.inForce())
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) = reading.available(network)
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                reading.dataSaver(dataSaver.inForce())
                 reading.capabilities(network, capabilities.isMetered())?.let { trySend(it) }
             }
 
@@ -61,10 +77,15 @@ class AndroidNetworkMonitor(context: Context) : NetworkMonitor {
                 reading.lost(network)?.let { trySend(it) }
             }
         }
+        val dataSaverChanges =
+            launch { dataSaver.watch().collect { inForce -> reading.dataSaver(inForce)?.let(::trySend) } }
         connectivity.registerDefaultNetworkCallback(callback)
         @Suppress("DEPRECATION")
         if (connectivity.activeNetworkInfo == null) reading.absent()?.let { trySend(it) }
-        awaitClose { connectivity.unregisterNetworkCallback(callback) }
+        awaitClose {
+            connectivity.unregisterNetworkCallback(callback)
+            dataSaverChanges.cancel()
+        }
     }.distinctUntilChanged()
 }
 
@@ -72,13 +93,15 @@ class AndroidNetworkMonitor(context: Context) : NetworkMonitor {
  * One collection's view of the default network, fed from the platform's callback thread and the collector's: each
  * input answers the access to publish, or `null` when there is nothing new to say.
  */
-internal class DefaultNetworkReading {
+internal class DefaultNetworkReading(private var dataSaver: Boolean = false) {
     private var network: Network? = null
     private var published = false
     private var metered = false
 
     /** The current network's block status once the platform has told it; until then nothing is published for it. */
     private var blocked: Boolean? = null
+
+    private val online get() = NetworkAccess.Online(restricted = metered || dataSaver)
 
     @Synchronized
     fun available(network: Network) {
@@ -92,7 +115,14 @@ internal class DefaultNetworkReading {
         if (network != this.network) return null
         this.metered = metered
         // Before the block status the network is not yet published: the status reading carries this value.
-        return if (blocked == false) NetworkAccess.Online(restricted = metered).also { published = true } else null
+        return if (blocked == false) online.also { published = true } else null
+    }
+
+    /** Data Saver read again: a published, unblocked network is published again with it; otherwise nothing is new. */
+    @Synchronized
+    fun dataSaver(inForce: Boolean): NetworkAccess? {
+        dataSaver = inForce
+        return if (network != null && blocked == false) online.also { published = true } else null
     }
 
     @Synchronized
@@ -100,7 +130,7 @@ internal class DefaultNetworkReading {
         if (network != this.network) return null
         this.blocked = blocked
         published = true
-        return if (blocked) NetworkAccess.Blocked else NetworkAccess.Online(restricted = metered)
+        return if (blocked) NetworkAccess.Blocked else online
     }
 
     @Synchronized
@@ -123,14 +153,19 @@ internal class DefaultNetworkReading {
     }
 }
 
-/** Metered as the platform's own transfer scheduling reads it: neither permanently nor temporarily unmetered. */
-private fun NetworkCapabilities.isMetered(): Boolean =
-    !hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) &&
-        !hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED)
+/**
+ * Metered as the platform's own transfer scheduling reads it: not `NOT_METERED`. A temporarily unmetered network is
+ * metered ([AndroidNetworkMonitor]'s KDoc says why).
+ */
+private fun NetworkCapabilities.isMetered(): Boolean = meteredBy(::hasCapability)
+
+/** [isMetered] over a capability lookup — the platform's capabilities cannot be built outside the platform. */
+internal fun meteredBy(hasCapability: (Int) -> Boolean): Boolean =
+    !hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
 
 /**
- * Suspends until the phone's default network is unmetered and not withheld from this app — what an upload held to
- * unrestricted networks waits for before it sends a byte.
+ * Suspends until the phone's default network is unmetered, Data Saver does not hold this app, and the network is not
+ * withheld from it — what an upload held to unrestricted networks waits for before it sends a byte.
  */
 fun awaitUnrestrictedNetwork(context: Context): suspend () -> Unit {
     val monitor = AndroidNetworkMonitor(context)

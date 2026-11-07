@@ -106,7 +106,12 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
                         Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
                     )
                     // WorkManager's own unmetered constraint, which stays unsatisfied on
-                    // cellular and a metered Wi-Fi (measured on the API 36 emulator, 2026-10-03).
+                    // cellular and a metered Wi-Fi (measured on the API 36 emulator, 2026-10-03), and on a
+                    // temporarily unmetered carrier network too: JobScheduler matches it by `NOT_METERED`
+                    // alone (`AndroidNetworkMonitor`'s KDoc). It does not see Data Saver, so on an unmetered
+                    // Wi-Fi under it the heartbeat still runs; its run finds the uploads waiting and the
+                    // downloads parked, and re-arms. The photos travel at the first heartbeat after Data Saver
+                    // is off.
                     WakeNetwork.UNRESTRICTED ->
                         setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.UNMETERED).build())
                 }
