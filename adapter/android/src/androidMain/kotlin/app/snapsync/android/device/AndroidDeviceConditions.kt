@@ -4,9 +4,9 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.BatteryManager
 import android.os.PowerManager
+import app.snapsync.domain.report.Fact
 import app.snapsync.model.Charging
 import app.snapsync.model.DeviceConditionsReading
-import app.snapsync.model.Fact
 import app.snapsync.model.StandbyBucket
 import app.snapsync.model.Thermal
 import app.snapsync.model.runCatchingCancellable

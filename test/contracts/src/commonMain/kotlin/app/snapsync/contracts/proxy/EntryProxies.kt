@@ -3,11 +3,11 @@
 package app.snapsync.contracts.proxy
 
 import app.snapsync.contracts.CallLog
+import app.snapsync.domain.crash.CrashEvent
+import app.snapsync.domain.crash.CrashOptions
+import app.snapsync.domain.crash.CrashShaping
+import app.snapsync.domain.crash.Crumb
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.CrashEvent
-import app.snapsync.model.CrashOptions
-import app.snapsync.model.Crumb
-import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.ExtensionHandlers
@@ -31,28 +31,13 @@ fun CrashReporter.recorded(log: CallLog): CrashReporter = CrashReporterProxy(log
 internal class CrashReporterProxy(private val inner: CrashReporter, log: CallLog) : CrashReporter {
     private val r = log.recorder("CrashReporter")
 
-    override fun start(options: CrashOptions) = r.returns("start", inner.start(options))
+    override fun start(options: CrashOptions, shaping: CrashShaping) =
+        r.returns("start", inner.start(options, shaping))
     override fun capture(event: CrashEvent) = r.returns("capture", inner.capture(event))
     override fun breadcrumb(crumb: Crumb) = r.returns("breadcrumb", inner.breadcrumb(crumb))
     override fun setContext(name: String, fields: Map<String, String>) =
         r.returns("setContext", inner.setContext(name, fields))
     override suspend fun sendDump(dump: CrashEvent) = r.answer("sendDump", inner.sendDump(dump))
-
-    override fun listen(handlers: CrashHandlers) = r.returns(
-        "listen",
-        inner.listen(
-            CrashHandlers(
-                onEvent = { event ->
-                    r.called("handlers.onEvent", Recorder.arg(event, "CrashEvent"))
-                    handlers.onEvent(event)
-                },
-                onBreadcrumb = { crumb ->
-                    r.called("handlers.onBreadcrumb", Recorder.arg(crumb, "Crumb"))
-                    handlers.onBreadcrumb(crumb)
-                },
-            ),
-        ),
-    )
 }
 
 /** [DevControls] as its clause's [CallLog] sees it. */

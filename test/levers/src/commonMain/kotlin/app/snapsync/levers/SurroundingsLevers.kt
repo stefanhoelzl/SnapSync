@@ -5,9 +5,9 @@ import kotlinx.rpc.descriptor.serviceDescriptorOf
 import kotlinx.rpc.internal.utils.ExperimentalRpcApi
 import kotlinx.serialization.Serializable
 
-// The device's surroundings as typed services (`docs/testing.md`, "Typed services"): what the operating system tells the
-// app about its network, its power and its own process, the wall clock, and what the app hands the platform's own UI and
-// the crash reporter. Each is a mock's operator face; a host whose app runs the real system refuses it.
+// The device's surroundings as typed services (`docs/testing.md`, "Typed services"): what the operating system tells
+// the app about its network, its power and its own process, the wall clock, and what the app hands the platform's own
+// UI and the crash reporter. Each is a mock's operator face; a host whose app runs the real system refuses it.
 
 /** **The device's network** as the operating system reports it to the app. */
 @Rpc
@@ -176,14 +176,21 @@ interface CrashReporterLevers {
 
 /**
  * One automatic event as the reporter's backend received it: its [message], its [tags], and the [contexts] that rode
- * it — each by name, the latest the app set before it was sent.
+ * it — each by name, the latest the app set before it was sent — the [exceptions] it carries, outermost first, and the
+ * [fingerprint] it groups under (empty: the backend's own grouping).
  */
 @Serializable
 data class ReceivedEvent(
     val message: String,
     val tags: Map<String, String>,
     val contexts: Map<String, Map<String, String>>,
+    val exceptions: List<ReceivedException> = emptyList(),
+    val fingerprint: List<String> = emptyList(),
 )
+
+/** One exception an event carries: its [type]'s simple name and its [value] — what the backend titles an issue with. */
+@Serializable
+data class ReceivedException(val type: String, val value: String?)
 
 /**
  * One diagnostic dump as the reporter's backend received it: the member's [note], the app's [state] and [ledger]

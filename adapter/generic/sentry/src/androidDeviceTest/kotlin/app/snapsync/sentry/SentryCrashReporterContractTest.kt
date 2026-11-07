@@ -15,7 +15,8 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.CrashOptions
+import app.snapsync.domain.crash.CrashOptions
+import app.snapsync.domain.crash.CrashShaping
 import app.snapsync.ports.CrashReporter
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
@@ -124,8 +125,8 @@ class SentryCrashReporterContractTest {
      * single-threaded executor, queued during init, so a no-op submitted after `start` completes only after it.
      */
     private class SettledStart(private val reporter: CrashReporter) : CrashReporter by reporter {
-        override fun start(options: CrashOptions) {
-            reporter.start(options)
+        override fun start(options: CrashOptions, shaping: CrashShaping) {
+            reporter.start(options, shaping)
             SentryJava.getCurrentScopes().options.executorService.submit {}.get(SETTLE_SECONDS, TimeUnit.SECONDS)
         }
     }

@@ -124,7 +124,11 @@ coverage {
         // → 62/36 when the screen's build, report and store vocabulary moved to the domain (4.9): the store page,
         // the build label, the report's destination and the state section's keys, which the suite covered, left. No
         // test was lost. Measured 62.74 %.
-        integration(instructions = 62, branches = 36)
+        // → 53/22 when the crash channel, the process account and the bug report's values moved to the domain and the
+        // format (4.10): the crash vocabulary, the process-metric rules, the footprints and the report's budget, which
+        // the suite covered, left; what stays is the old zones' vocabulary no member's day reaches. No test was lost.
+        // Measured 53.32 / 22.95 %.
+        integration(instructions = 53, branches = 22)
     }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
@@ -249,7 +253,10 @@ coverage {
         // characters a platform id may hold beyond letters, digits, `-` and `/` — and their decoding — are the unit
         // suite's (`AssetIdTextTest`); no integration world's photo carries one. Measured 84.36 / 66.23 %.
         // → 85 in phase 38 (missing levers and world events). Measured 85.16 / 66.87 %, two runs.
-        integration(instructions = 85, branches = 66)
+        // Branches → 65 in phase 4.10 (diagnostics), when the memory trail's codec moved in from model: every way a
+        // trail file is not one is the unit suite's (`FootprintTrailTextTest`) — a member's day reads only its own.
+        // Measured 65.86 %.
+        integration(instructions = 85, branches = 65)
     }
     ":domain:domain" {
         unit()
@@ -261,7 +268,11 @@ coverage {
         // seal's and the opening's verdicts: a device that cannot name itself, a locked phone, a download fetched for
         // an event a switch left behind and the fourth failure in a row are their unit suite's (`SealVerdictsTest`).
         // → 92/77 in phase 38 (missing levers and world events). Measured 92.31 / 77.35 %, two runs.
-        integration(instructions = 92, branches = 77)
+        // Branches → 75 in phase 4.10 (diagnostics): the crash channel's and the process account's rules arrived,
+        // and their rare answers — a build that reports nowhere, a report naming the build it describes, every exit
+        // and hang a platform tallies, a quantity in an unknown unit — are their unit suites' (`ReportingTest`,
+        // `CrashShapingTest`, `ProcessMetricRulesTest`). Measured 75.93 %.
+        integration(instructions = 92, branches = 75)
     }
     // Measured once the polling tests were gone (3g-b): steady at 99/100 over five runs — the goal.
     // Branches back at the goal in phase 4.5 (receiving): the suite now reaches both of `Log.emit`'s branches (a line

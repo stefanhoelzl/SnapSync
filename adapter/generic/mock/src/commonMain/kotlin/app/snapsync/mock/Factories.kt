@@ -1,6 +1,6 @@
 package app.snapsync.mock
 
-import app.snapsync.model.CrashEvent
+import app.snapsync.domain.crash.CrashEvent
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.NetworkAccess

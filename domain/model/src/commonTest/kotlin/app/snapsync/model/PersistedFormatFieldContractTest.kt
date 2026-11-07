@@ -15,7 +15,7 @@ import kotlin.test.assertIs
 
 /**
  * What the documents a device keeps or exchanges may leave out: the membership it stores, the invite link it reads,
- * the manifest it publishes and the memory readings it carries into a report. Each
+ * and the manifest it publishes (the memory readings it carries into a report are `FootprintTrailTextTest`'s). Each
  * is written by one build and read by another, so which fields may be absent is the compatibility promise between
  * them — a field with a default is optional and reads as that default, every other field is required.
  */
@@ -58,21 +58,6 @@ class PersistedFormatFieldContractTest {
             MemberCounts.serializer(),
             MemberCounts(active = 2, settled = 1, waiting = 1),
             optional = setOf("waiting"),
-        )
-    }
-
-    @Test
-    fun `a memory reading requires when where and how much`() {
-        assertFieldContract(
-            FootprintSample.serializer(),
-            FootprintSample(
-                atEpochMillis = 1_780_000_000_000,
-                moment = "entering background",
-                footprintBytes = 80_000_000,
-                peakBytes = 120_000_000,
-                headroomBytes = 40_000_000,
-            ),
-            optional = setOf("peakBytes", "headroomBytes"),
         )
     }
 

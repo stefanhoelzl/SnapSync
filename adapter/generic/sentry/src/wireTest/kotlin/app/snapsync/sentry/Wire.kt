@@ -88,6 +88,7 @@ internal fun JsonObject.toDelivered(): DeliveredEvent {
         exceptionValues = values(
             this["exception"],
         ).mapNotNull { (it as? JsonObject)?.get("value")?.jsonPrimitive?.content },
+        fingerprint = (this["fingerprint"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content },
     )
 }
 

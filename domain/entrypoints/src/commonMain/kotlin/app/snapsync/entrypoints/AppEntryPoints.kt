@@ -1,8 +1,11 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.crash.DescribeReporter
 import app.snapsync.application.encryption.RestoreEventKey
 import app.snapsync.application.mobiledata.SetMobileData
+import app.snapsync.application.process.AccountForProcess
+import app.snapsync.application.process.RecordFootprint
 import app.snapsync.application.push.RegisterPush
 import app.snapsync.application.receiving.FreeTransfer
 import app.snapsync.application.receiving.RecordOutcome
@@ -21,6 +24,7 @@ import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.network.NetworkStatus
+import app.snapsync.data.process.MetricPayloadReading
 import app.snapsync.data.push.PushTokens
 import app.snapsync.data.receiving.ImportMarkerWrites
 import app.snapsync.data.receiving.ReceivingCounts
@@ -30,6 +34,7 @@ import app.snapsync.data.upload.SessionEnd
 import app.snapsync.data.upload.StagingSweep
 import app.snapsync.data.upload.UploaderAdmission
 import app.snapsync.domain.invite.InviteLinkVerdict
+import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.RestoreAnswer
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
@@ -74,8 +79,6 @@ import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Steps
 import app.snapsync.scheduling.orIfCut
-import app.snapsync.services.crash.FootprintSampler
-import app.snapsync.services.crash.ProcessAccount
 import app.snapsync.services.links.LinkReading
 import app.snapsync.services.transfer.SessionDrains
 
@@ -120,15 +123,16 @@ class OnBackground(
     runtime: Runtime,
     private val foreground: AppForeground,
     private val network: ForegroundNetwork,
-    private val footprints: FootprintSampler,
+    private val footprints: RecordFootprint,
 ) : InboundEntryPoint<Unit>(runtime) {
     private val log = Log("OnBackground")
 
+    @OptIn(EntryPointCall::class)
     override fun Delivery.run(arg: Unit) {
         foreground.left()
         network.stop()
         log.unlabelled.i("app entering background")
-        footprints.record("entering background")
+        footprints("entering background")
     }
 }
 
@@ -447,9 +451,13 @@ class OnMobileDataChanged(
 }
 
 /** A process-metric report: accounted for before the platform's callback returns — it may be delivered once. */
-class OnMetricReport(runtime: Runtime, private val account: ProcessAccount) :
-    InboundEntryPoint<ProcessMetricPayload>(runtime) {
-    override fun Delivery.run(arg: ProcessMetricPayload) = account.handle(arg)
+class OnMetricReport(
+    runtime: Runtime,
+    private val reading: MetricPayloadReading,
+    private val account: AccountForProcess,
+) : InboundEntryPoint<ProcessMetricPayload>(runtime) {
+    @OptIn(EntryPointCall::class)
+    override fun Delivery.run(arg: ProcessMetricPayload) = account(reading.read(arg))
 }
 
 // ── What the entry points share ──────────────────────────────────────────────────────────────────────────────────────
@@ -536,13 +544,13 @@ class WakeWork(
     private val rearm: RearmHeartbeat,
     private val downloads: ReceivingCounts,
     private val end: EndOfWake,
-    private val footprints: FootprintSampler,
+    private val footprints: RecordFootprint,
 ) {
     @OptIn(EntryPointCall::class)
     suspend fun full(kind: WakeKind, on: Run) = on.steps {
         var uploads: Pass<UploadPass> = Pass.Cut
         ensure("re-arm") { rearm(leftOf(uploads), downloads.stagedImports()) }
-        ensure("footprint") { footprints.record("after the ${kind.name.lowercase()} wake") }
+        ensure("footprint") { footprints("after the ${kind.name.lowercase()} wake") }
         concurrently {
             child("import received") { run(importReceived) }
             child("upload own") { uploads = run(uploadOwn) }
@@ -578,4 +586,16 @@ enum class WakeKind(val checksPhotos: Boolean, val boundsEventRead: Boolean) {
     SCHEDULED(checksPhotos = true, boundsEventRead = true),
     UPLOAD_SESSION(checksPhotos = true, boundsEventRead = true),
     DOWNLOAD_SESSION(checksPhotos = true, boundsEventRead = true),
+}
+
+/**
+ * The membership changed — or the app launched: every report this process sends from now on names the event and the
+ * device it is about.
+ */
+class OnMembershipChanged(runtime: Runtime, private val describe: DescribeReporter) :
+    BackgroundEntryPoint<MembershipRead>(runtime) {
+    @OptIn(EntryPointCall::class)
+    override suspend fun run(arg: MembershipRead, on: Run) = on.steps {
+        required { describe() }
+    }
 }

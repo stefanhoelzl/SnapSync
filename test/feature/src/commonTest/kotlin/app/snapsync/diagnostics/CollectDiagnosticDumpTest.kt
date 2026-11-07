@@ -10,6 +10,7 @@ import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.report.DiagnosticKeys
+import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
@@ -29,11 +30,9 @@ import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryNetworkMonitor
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.model.AppFacts
-import app.snapsync.model.DIAGNOSTIC_FAILURE_REASON_CHARS
 import app.snapsync.model.DeviceConditionsReading
 import app.snapsync.model.DiagnosticEnvironment
 import app.snapsync.model.EventConfig
-import app.snapsync.model.Fact
 import app.snapsync.model.StandbyBucket
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.DeviceConditions
@@ -342,7 +341,7 @@ class CollectDiagnosticDumpTest {
         )
         val dump = collector(conditions = conditions.port()).collect(NOTE, SCREEN)
 
-        assertEquals("failed (${"x".repeat(DIAGNOSTIC_FAILURE_REASON_CHARS)})", dump.state[DiagnosticKeys.THERMAL])
+        assertEquals("failed (${"x".repeat(Fact.FAILURE_REASON_CHARS)})", dump.state[DiagnosticKeys.THERMAL])
         assertEquals("rare", dump.state[DiagnosticKeys.STANDBY_BUCKET])
     }
 

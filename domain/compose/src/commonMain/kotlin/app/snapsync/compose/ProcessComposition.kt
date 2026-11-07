@@ -1,29 +1,32 @@
 package app.snapsync.compose
 
+import app.snapsync.application.process.AccountForProcess
+import app.snapsync.data.crash.CrashChannel
 import app.snapsync.data.logs.SinkLines
+import app.snapsync.data.process.FootprintTrail
+import app.snapsync.data.process.MetricPayloadReading
+import app.snapsync.domain.crash.CrashShaping
 import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ProcessName
 import app.snapsync.domain.report.ReportDestination
 import app.snapsync.entrypoints.OnMetricReport
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Inbound
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.ProcessLogging
 import app.snapsync.inbound.of
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
-import app.snapsync.ports.CrashHandlers
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.Files
 import app.snapsync.ports.LogSink
 import app.snapsync.ports.MetricHandlers
+import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.ports.ThreadLabel
 import app.snapsync.scheduling.Runtime
-import app.snapsync.services.crash.CrashReporting
-import app.snapsync.services.crash.FootprintTrail
-import app.snapsync.services.crash.ProcessAccount
 
 /**
  * The ports every process has exactly one of, whatever it composes afterwards (`docs/architecture.md`, "One
@@ -68,15 +71,16 @@ class ProcessPorts(
  * so no composition can be built in a process whose crash reporting has not started.
  */
 class ProcessServices internal constructor(
-    /** The process's crash reporting — started. */
-    val crash: CrashReporting,
+    /** The process's crash-reporting channel — started. */
+    val crash: CrashChannel,
     /**
-     * What a delivered process-metric report does. Exposed for ONE caller besides the port: the control channel,
-     * which drives a synthetic report through this very instance, so the path the OS drives is the path a test drives.
+     * What a delivered process-metric report does, and the entry point it is delivered through. Exposed for ONE caller
+     * besides the port: the control channel, which drives a synthetic report through this very instance, so the path
+     * the OS drives is the path a test drives.
      */
-    val processAccount: ProcessAccount,
+    val processMetrics: Inbound<ProcessMetricPayload, Unit>,
     /**
-     * The app's own memory readings, which [processAccount] attaches to the next report. Only the app records them —
+     * The app's own memory readings, which [processMetrics] attaches to the next report. Only the app records them —
      * it is the process the platform's reports describe.
      */
     val footprints: FootprintTrail,
@@ -91,8 +95,8 @@ class ProcessServices internal constructor(
     /** What the running build is — see [ProcessPorts.build]. */
     val build: BuildInfo,
 ) {
-    /** Where a bug report goes on this build — [CrashReporting.reportDestination]. */
-    val reportDestination: ReportDestination get() = crash.reportDestination
+    /** Where a bug report goes on this build — [CrashChannel.destination]. */
+    val reportDestination: ReportDestination get() = crash.destination
 
     /** Which build this is, as the app menu shows it. */
 
@@ -116,13 +120,12 @@ class ProcessServices internal constructor(
  * 3. The boot banner — the process and its build, then the backend it talks to — so it is the process's first line
  *    and, the channel running, the first breadcrumb of anything it reports.
  * 4. The process metrics are listened to — only now, because listening is a commitment: a provider may hand a held
- *    report over exactly once, so the handler must already be live (it is: [ProcessAccount] over the started
+ *    report over exactly once, so the handler must already be live (it is: `AccountForProcess` over the started
  *    channel, whose log writer is already installed).
  */
 @OptIn(CompositionOnly::class)
 fun snapSyncProcess(ports: ProcessPorts, runtime: Runtime): ProcessServices {
-    val crash = CrashReporting(ports.crashReporter, ports.build, ports.threadLabel, ports.files)
-    ports.crashReporter.listen(CrashHandlers(onEvent = crash::shapeEvent, onBreadcrumb = crash::shapeCrumb))
+    val crash = CrashChannel(ports.crashReporter, ports.build, ports.threadLabel, CrashShaping.STANDARD)
     ProcessLogging(
         listOfNotNull(SinkLines(ports.logSinks, ports.threadLabel), crash.lines),
         ports.logSinks.size,
@@ -130,9 +133,10 @@ fun snapSyncProcess(ports: ProcessPorts, runtime: Runtime): ProcessServices {
     crash.start()
     bootBanner(ports.build)
     val footprints = FootprintTrail(ports.files, ports.clock)
+    val metrics = OnMetricReport(runtime, MetricPayloadReading(), AccountForProcess(footprints, crash))
     val services = ProcessServices(
         crash,
-        ProcessAccount(crash, footprints),
+        metrics,
         footprints,
         ports.files,
         ports.clock,
@@ -140,7 +144,7 @@ fun snapSyncProcess(ports: ProcessPorts, runtime: Runtime): ProcessServices {
         ports.threadLabel,
         ports.build,
     )
-    ports.processMetrics.inbound(MetricHandlers(onReport = OnMetricReport(runtime, services.processAccount)))
+    ports.processMetrics.inbound(MetricHandlers(onReport = metrics))
     return services
 }
 

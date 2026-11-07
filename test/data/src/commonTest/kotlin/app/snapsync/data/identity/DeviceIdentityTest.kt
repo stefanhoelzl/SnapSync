@@ -282,6 +282,15 @@ class DeviceIdentityTest {
     }
 
     @Test
+    fun `the extension's current is the stored id, and its own resolution once it has one`() {
+        store.answers[SHARED] = found(testDeviceId("device-42").value, StoredProtection.RESTRICTED)
+        val identity = readOnly()
+        assertEquals(DeviceIdRead.Ok(testDeviceId("device-42"), DeviceIdRead.Via.READ), identity.current())
+        assertEquals(identity.id(), identity.current())
+        assertTrue(store.writes.isEmpty(), "the extension never writes the slot")
+    }
+
+    @Test
     fun `current answers this process's own resolution once it has one`() {
         val identity = minting()
         val minted = identity.id()

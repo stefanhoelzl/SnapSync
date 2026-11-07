@@ -1,11 +1,11 @@
 package app.snapsync.data.upload
 
+import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.FakeClient
 import app.snapsync.data.Held
 import app.snapsync.data.backend.Credential
 import app.snapsync.data.backend.TokenRead
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.token
 import app.snapsync.data.trust.CachedCredentialStore
 import app.snapsync.data.trust.TokenText
@@ -35,10 +35,6 @@ class UploadRequestsTest {
     private val key = UploadKey.of(AssetId.parse("A1")!!, ResourceRole.LIVE, "IMG_0001.MOV")
     private val detail = RowDetail(CaptureDate.Undated, "video/quicktime", "IMG_0001.MOV")
 
-    private class Identity(var read: DeviceIdRead) : DeviceIdentity {
-        override fun id(): DeviceIdRead = read
-    }
-
     /** This process's credential over [store]: holding none, it obtains [obtains] — `null` for one that cannot. */
     private class Gated(private val store: CachedCredentialStore, private val obtains: String? = null) : Credential {
         var asked = 0
@@ -54,7 +50,7 @@ class UploadRequestsTest {
     }
 
     private val held = Held(token = token(30))
-    private val identity = Identity(DeviceIdRead.Ok(device, DeviceIdRead.Via.READ))
+    private val identity = FixedIdentity(DeviceIdRead.Ok(device, DeviceIdRead.Via.READ))
     private val requests = UploadRequests(FakeClient().exchange(), held.store, Gated(held.store), identity)
 
     private fun built(answer: RequestBuilt): BuiltRequest = assertIs<RequestBuilt.Built>(answer).request

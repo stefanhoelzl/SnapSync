@@ -1,9 +1,9 @@
 package app.snapsync.device
 
+import app.snapsync.domain.report.Fact
 import app.snapsync.model.BackgroundRefresh
 import app.snapsync.model.Charging
 import app.snapsync.model.DeviceConditionsReading
-import app.snapsync.model.Fact
 import app.snapsync.model.Thermal
 import app.snapsync.model.runCatchingCancellable
 import app.snapsync.ports.DeviceConditions

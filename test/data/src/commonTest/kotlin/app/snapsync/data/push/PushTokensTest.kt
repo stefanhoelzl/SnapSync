@@ -1,7 +1,7 @@
 package app.snapsync.data.push
 
+import app.snapsync.application.membership.FixedIdentity
 import app.snapsync.data.identity.DeviceIdRead
-import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.domain.push.PushRegistrationKey
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.mock.BuildInfoMock
@@ -15,11 +15,7 @@ import kotlin.test.assertEquals
 /** The token the platform delivered, and the registration it makes for the device the identity names. */
 class PushTokensTest {
 
-    private class Identity(var read: DeviceIdRead) : DeviceIdentity {
-        override fun id(): DeviceIdRead = read
-    }
-
-    private val identity = Identity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
+    private val identity = FixedIdentity(DeviceIdRead.Ok(testDeviceId(DEVICE), DeviceIdRead.Via.READ))
     private class Service : PushNotifications {
         var asked = 0
         override val kind: String = "apns"

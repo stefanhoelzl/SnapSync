@@ -5,11 +5,11 @@ import app.snapsync.control.behaviour.Acts
 import app.snapsync.control.behaviour.Given
 import app.snapsync.control.behaviour.Seen
 import app.snapsync.control.behaviour.behaviour
+import app.snapsync.domain.report.DiagnosticDump
 import app.snapsync.domain.report.DiagnosticKeys
 import app.snapsync.levers.LogProcess
 import app.snapsync.levers.NetworkState
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.DIAGNOSTIC_LOG_BUDGET_BYTES
 import app.snapsync.rig.HostReporting
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.DirectionCount
@@ -24,10 +24,9 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The operator-initiated diagnostic dump over the **real** stack:
- * the same `snapSyncApp` core the device shells call, fired through the diagnostics sheet's tap (`UiIntent.SendDiagnostics`) — the same
- * `UserCommands` bundle presentation fires — landing in the host's reporter (the `crash-reporter` service, and the
- * world's `DumpReceived`).
+ * The operator-initiated diagnostic dump over the **real** stack: the same `snapSyncApp` core the device shells call,
+ * fired through the diagnostics sheet's tap (`UiIntent.SendDiagnostics`) — the same `UserCommands` bundle presentation
+ * fires — landing in the host's reporter (the `crash-reporter` service, and the world's `DumpReceived`).
  *
  * What this proves that the unit tests cannot: the command is *wired* — from the bundle, through the
  * composed assembly, to the port — and that a dump crossing the real graph carries the real counts
@@ -217,7 +216,7 @@ class DiagnosticDumpIntegrationTest {
         // Over the budget, the reporting server rejects the event and the SDK swallows the error: the dump would arrive
         // nowhere and say nothing.
         whenever { sendDiagnostics(NOTE) }
-        then { event<WorldEvent.DumpReceived> { it.dump.logBytes <= DIAGNOSTIC_LOG_BUDGET_BYTES } }
+        then { event<WorldEvent.DumpReceived> { it.dump.logBytes <= DiagnosticDump.LOG_BUDGET_BYTES } }
     }
 
     @Test

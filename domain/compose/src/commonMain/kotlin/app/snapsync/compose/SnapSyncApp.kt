@@ -1,11 +1,14 @@
 package app.snapsync.compose
 
+import app.snapsync.application.crash.DescribeReporter
 import app.snapsync.application.event.CreateEvent
 import app.snapsync.application.membership.LoadShareSet
+import app.snapsync.application.process.RecordFootprint
 import app.snapsync.application.trust.RefreshAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BuildTarget
 import app.snapsync.data.backend.Observers
+import app.snapsync.data.crash.ReportedIdsRead
 import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.event.EventCreation
 import app.snapsync.data.foreground.AppForeground
@@ -13,6 +16,7 @@ import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.PhotoGrants
 import app.snapsync.data.gallery.photoAccess
 import app.snapsync.data.links.OpenedInvites
+import app.snapsync.data.process.FootprintReading
 import app.snapsync.data.service.ServiceConditions
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk
@@ -29,6 +33,7 @@ import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.foreground.InFront
+import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.SharingProgressRead
@@ -36,11 +41,11 @@ import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.upload.UploaderChange
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.entrypoints.OnCredentialChanged
+import app.snapsync.entrypoints.OnMembershipChanged
 import app.snapsync.entrypoints.OnSelectionChanged
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.Fact
 import app.snapsync.model.GalleryAccess
 import app.snapsync.model.selectionPhotos
 import app.snapsync.ports.BackgroundTime
@@ -81,7 +86,6 @@ import app.snapsync.scheduling.Observation
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.RuntimePorts
 import app.snapsync.services.backend.BackendServices
-import app.snapsync.services.crash.FootprintSampler
 import app.snapsync.services.gallery.GalleryAccessState
 import app.snapsync.services.links.LinkReading
 import app.snapsync.services.transfer.SessionDrains
@@ -278,12 +282,8 @@ class AppCore internal constructor(
     val inFront: StateFlow<InFront> get() = foreground.inFront
 
     /** The app's own memory readings, taken while it settles in the background. */
-    internal val footprints: FootprintSampler by lazy {
-        FootprintSampler(
-            ports.processInfo,
-            process.footprints,
-            foreground,
-        )
+    internal val footprints: RecordFootprint by lazy {
+        RecordFootprint(foreground, FootprintReading(ports.processInfo), process.footprints)
     }
 
     /** [versionGate]'s cell, for readers outside the core (the status host), which see no service type. */
@@ -516,6 +516,18 @@ class AppCore internal constructor(
     @OptIn(CompositionOnly::class)
     fun installCompositionSubscriptions() {
         observation.follow(attestationStatus.tokenChanged, OnCredentialChanged(runtime, push.register))
+        // Every report names the event and the device it is about: stood on the channel at launch, again at every
+        // change.
+        observation.follow(
+            services.membership.changes,
+            OnMembershipChanged(
+                runtime,
+                DescribeReporter(
+                    ReportedIdsRead(services.membership, services.deviceIdentity, process.build),
+                    process.crash,
+                ),
+            ),
+        )
         // One selection-change emission → ONE read serving both consumers, the status total and the enqueue:
         // the cell feeds the cycle's discovery AND the total's count, which reads the very same snapshot — no second
         // library read on this path, and no snapshot-specific entry point for the total to drift through.

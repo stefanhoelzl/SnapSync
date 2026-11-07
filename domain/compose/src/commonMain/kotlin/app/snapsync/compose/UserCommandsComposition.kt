@@ -1,5 +1,7 @@
 package app.snapsync.compose
 
+import app.snapsync.application.report.SendBugReport
+import app.snapsync.data.report.SavedReport
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.request.AppLinkRequest
@@ -67,7 +69,12 @@ internal fun AppCore.commandsFor(reports: RequestStatuses<ReportOutcome>): CoreC
         reconfigure = work.settingsChanged,
         rename = work.renameRequested,
         switch = work.inviteForOtherEvent,
-        sendDiagnostics = OnSendDiagnosticsTapped(runtime, collectDiagnosticDump, process.crash, reports),
+        sendDiagnostics = OnSendDiagnosticsTapped(
+            runtime,
+            collectDiagnosticDump,
+            SendBugReport(process.crash, SavedReport(process.files)),
+            reports,
+        ),
         setMobileData = work.mobileDataChanged,
         restoreKey = work.keyRestoreRequested,
         retryMembershipRead = work.membershipReadRetried,

@@ -2,6 +2,7 @@ package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
 import app.snapsync.application.event.CreateEvent
+import app.snapsync.application.report.SendBugReport
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.request.AppLinkRequest
@@ -12,12 +13,10 @@ import app.snapsync.domain.service.ServiceFault
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
-import app.snapsync.model.outcome
 import app.snapsync.query.RequestStatusSink
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
-import app.snapsync.services.crash.CrashReporting
 import app.snapsync.services.platform.PhotoAccessAsks
 import app.snapsync.services.platform.SystemSurfaces
 
@@ -95,7 +94,7 @@ class OnChoosePhotosTapped(runtime: Runtime, private val asks: PhotoAccessAsks) 
 class OnSendDiagnosticsTapped(
     runtime: Runtime,
     private val dump: CollectDiagnosticDump,
-    private val crash: CrashReporting,
+    private val send: SendBugReport,
     private val statuses: RequestStatusSink<ReportOutcome>,
 ) : BackgroundEntryPoint<ReportRequest>(runtime) {
     private val log = Log("OnSendDiagnosticsTapped")
@@ -104,7 +103,8 @@ class OnSendDiagnosticsTapped(
     override suspend fun run(arg: ReportRequest, on: Run) = on.steps {
         statuses.begun(arg.id)
         ensure("answer") { statuses.settle(arg.id, ReportOutcome.NOT_SENT) }
-        val result = required { crash.sendDump(dump.collect(arg.note, arg.context)) }
+        val report = required { dump.collect(arg.note, arg.context) }
+        val result = required { send(report) }
         log.i("diagnostic dump", "result" of result, "screen" of arg.context.screen)
         required { statuses.done(arg.id, result.outcome) }
     }

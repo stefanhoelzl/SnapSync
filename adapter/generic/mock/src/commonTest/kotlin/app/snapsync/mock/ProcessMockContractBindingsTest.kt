@@ -18,8 +18,8 @@ import app.snapsync.contracts.ShownSettings
 import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.domain.report.Platform
 import app.snapsync.domain.version.Store
-import app.snapsync.model.Platform
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.Clock
 import app.snapsync.ports.SystemUi

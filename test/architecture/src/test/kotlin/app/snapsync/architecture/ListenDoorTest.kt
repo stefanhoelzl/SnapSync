@@ -14,8 +14,8 @@ import kotlin.test.assertTrue
  *    — and in the host zone for the handlers that need the status host to exist first (`UiHandlers`: an intent is
  *    the container's);
  *  - `inbound` is called only from `compose/`'s registration (`AppCore.inbound`, which the host calls once it is
- *    assembled) and the host zone, once per adapter — and from `snapSyncProcess` for the per-process event ports
- *    (`CrashReporter`, `ProcessMetrics`), which every root sets up before it composes anything, and from
+ *    assembled) and the host zone, once per adapter — and from `snapSyncProcess` for the per-process event port
+ *    (`ProcessMetrics`), which every root sets up before it composes anything, and from
  *    `snapSyncExtension` for the upload extension's `ExtensionHost`: that process has no host zone at all.
  *
  * Both are pinned exact-in-set and non-vacuous: a gate that finds no construction site or no registration would be

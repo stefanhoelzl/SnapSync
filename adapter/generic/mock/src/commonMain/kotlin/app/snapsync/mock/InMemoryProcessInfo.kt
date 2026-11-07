@@ -1,6 +1,6 @@
 package app.snapsync.mock
 
-import app.snapsync.model.MemoryFootprint
+import app.snapsync.domain.process.MemoryFootprint
 import app.snapsync.ports.ProcessInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

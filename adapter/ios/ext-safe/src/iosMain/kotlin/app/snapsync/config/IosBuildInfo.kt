@@ -2,11 +2,11 @@
 
 package app.snapsync.config
 
+import app.snapsync.domain.report.Platform
 import app.snapsync.domain.version.Store
 import app.snapsync.logging.appMarketingVersion
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
-import app.snapsync.model.Platform
 import app.snapsync.ports.BuildInfo
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
@@ -20,9 +20,9 @@ import platform.posix.utsname
 
 /**
  * The [BuildInfo] port over THIS process's bundle — the generated `Deployment.plist` both bundles carry, the bundle's
- * own version — and the running OS and device. Each process builds its own: the app and the upload extension read
- * their own bundle, so neither can bind the other's answer. Every value is read on first use, once, as a constant of
- * the running build. [bundle] is this process's own, the main bundle, everywhere but a contract binding, which hands in a
+ * own version — and the running OS and device. Each process builds its own: the app and the upload extension read their
+ * own bundle, so neither can bind the other's answer. Every value is read on first use, once, as a constant of the
+ * running build. [bundle] is this process's own, the main bundle, everywhere but a contract binding, which hands in a
  * bundle it built.
  */
 @NeverAnswers(

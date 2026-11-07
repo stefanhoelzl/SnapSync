@@ -17,8 +17,9 @@ import app.snapsync.contracts.ProcessDeath
 import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.domain.crash.CrashOptions
+import app.snapsync.domain.crash.CrashShaping
 import app.snapsync.domain.program.InvalidProgramState
-import app.snapsync.model.CrashOptions
 import app.snapsync.objc.objcBoundary
 import co.touchlab.kermit.Logger
 import platform.Foundation.NSCachesDirectory
@@ -39,10 +40,10 @@ import kotlin.time.Duration.Companion.seconds
  * and the REAL roads to the end of a process: the runtime's (`:domain:scheduling`) and `objcBoundary`'s.
  *
  * Three roles of this one executable ([runSelf]): the test as Gradle runs it starts the NEXT LAUNCH — a fresh process
- * whose SDK was never started, since sentry-cocoa reads its crash reports once per process — and fails unless it passes.
- * The next launch runs the clause, whose [ProcessDeath] runs a CRASH child per road: it starts the channel against the
- * clause's ingest under the production handlers, throws an `InvalidProgramState` down that road and dies. The children
- * share this process's Caches directory, where the reports wait for the next start.
+ * whose SDK was never started, since sentry-cocoa reads its crash reports once per process — and fails unless it
+ * passes. The next launch runs the clause, whose [ProcessDeath] runs a CRASH child per road: it starts the channel
+ * against the clause's ingest under the production handlers, throws an `InvalidProgramState` down that road and dies.
+ * The children share this process's Caches directory, where the reports wait for the next start.
  */
 class SentryProcessDeathContractTest {
 
@@ -104,8 +105,7 @@ class SentryProcessDeathContractTest {
     fun crash() {
         if (childRole(ROLE) != CRASH) return
         SentryCrashReporter().apply {
-            listen(CrashReporterContract.PRODUCTION)
-            start(CrashOptions(checkNotNull(childRole(DSN))))
+            start(CrashOptions(checkNotNull(childRole(DSN))), CrashShaping.STANDARD)
         }
         when (FatalRoute.valueOf(checkNotNull(childRole(ROUTE)))) {
             FatalRoute.UNAWAITED_WORK -> endOnUnawaitedWork()

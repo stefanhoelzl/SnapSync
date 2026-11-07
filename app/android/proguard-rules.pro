@@ -23,3 +23,6 @@
 # R8's full mode drops that annotation unless the OUTER class is kept too (measured 2026-10-28: without this line, every
 # intent read `UiIntent$ConfirmCreate`).
 -keepnames class app.snapsync.ui.state.UiIntent
+# A logged failure is reported as a `ReportedFailure` titled by its line (`LineReport`): renamed per build, one cause
+# would land in one issue per build, as `y7`, `w7` and `a8` once did (SNAPSYNC-59/60/62).
+-keepnames class app.snapsync.domain.crash.ReportedFailure

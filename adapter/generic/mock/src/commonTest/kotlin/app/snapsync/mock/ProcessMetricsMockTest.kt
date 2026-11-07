@@ -10,13 +10,13 @@ import app.snapsync.contracts.currentHost
 import app.snapsync.contracts.inboundOf
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.data.process.MetricPayloadReading
+import app.snapsync.domain.process.ProcessMetricRules
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.MetricReportKind
-import app.snapsync.model.processMetricEmissions
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.ProcessMetrics
-import app.snapsync.services.crash.report
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -76,5 +76,7 @@ class ProcessMetricsMockTest {
     }
 
     private fun reasons(kind: MetricReportKind): List<String> =
-        processMetricEmissions(metricPayloadOf(metricReport(kind)).report()).mapNotNull { it.reason }
+        ProcessMetricRules.account(
+            MetricPayloadReading().read(metricPayloadOf(metricReport(kind))).report,
+        ).crossings.map { it.key }
 }

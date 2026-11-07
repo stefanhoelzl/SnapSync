@@ -28,7 +28,8 @@ import app.snapsync.contracts.ProcessDeath
 import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import app.snapsync.model.CrashOptions
+import app.snapsync.domain.crash.CrashOptions
+import app.snapsync.domain.crash.CrashShaping
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
 import java.io.File
@@ -45,10 +46,10 @@ import kotlin.time.Duration.Companion.seconds
  * `CrashReporter`'s [CrashReporterState.AFTER_A_PROCESS_DEATH], live on the emulator over the REAL SDK and the REAL
  * roads to the end of a process (the runtime's, `:domain:scheduling`).
  *
- * The app's process is [ContractDeathService], in a process of its own (`:contractdeath`): it starts the channel against
- * the clause's ingest under the production handlers, throws an `InvalidProgramState` down the road it was asked for and
- * dies, its report written to the app's cache. The test process is the next launch: sentry-android delivers what its
- * cache holds whenever it starts — as `ACROSS_A_RESTART` relies on — so the clause's start is the next one.
+ * The app's process is [ContractDeathService], in a process of its own (`:contractdeath`): it starts the channel
+ * against the clause's ingest under the production handlers, throws an `InvalidProgramState` down the road it was asked
+ * for and dies, its report written to the app's cache. The test process is the next launch: sentry-android delivers
+ * what its cache holds whenever it starts — as `ACROSS_A_RESTART` relies on — so the clause's start is the next one.
  */
 class SentryProcessDeathContractTest {
 
@@ -159,13 +160,12 @@ class SentryProcessDeathContractTest {
  */
 class ContractDeathService : Service() {
     override fun onBind(intent: Intent): IBinder {
-        // sentry-kmp takes its context from a provider that only the app's default process creates — Kotlin-internal, so
-        // made by name, as the manifest makes it.
+        // sentry-kmp takes its context from a provider that only the app's default process creates — Kotlin-internal,
+        // so made by name, as the manifest makes it.
         (Class.forName(SENTRY_CONTEXT_PROVIDER).getDeclaredConstructor().newInstance() as ContentProvider)
             .attachInfo(applicationContext, ProviderInfo())
         SentryCrashReporter().apply {
-            listen(CrashReporterContract.PRODUCTION)
-            start(CrashOptions(checkNotNull(intent.getStringExtra(DSN))))
+            start(CrashOptions(checkNotNull(intent.getStringExtra(DSN))), CrashShaping.STANDARD)
         }
         val route = FatalRoute.valueOf(checkNotNull(intent.getStringExtra(ROUTE)))
         // After the bind has been answered and let go (`endProcess`), so the system does not restart it.

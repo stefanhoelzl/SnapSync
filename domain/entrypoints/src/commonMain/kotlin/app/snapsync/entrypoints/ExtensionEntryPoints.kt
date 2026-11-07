@@ -1,6 +1,7 @@
 package app.snapsync.entrypoints
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.crash.DescribeReporter
 import app.snapsync.application.sharing.PublishManifest
 import app.snapsync.application.upload.CreateJobs
 import app.snapsync.application.upload.DeriveContribution
@@ -43,12 +44,16 @@ class OnProcess(
     private val credential: CachedCredentialStore,
     private val membership: MembershipRepository,
     private val keys: EventKeyStore,
+    private val describe: DescribeReporter,
     private val pass: ExtensionPass,
 ) : AnsweredEntryPoint<Unit, ProcessingAnswer>(runtime, onFailure = ProcessingAnswer.FAILED) {
+    @OptIn(EntryPointCall::class)
     override suspend fun run(arg: Unit, on: Run): ProcessingAnswer = on.steps {
         // The app renews into the shared protected item, which this process's copy cannot see: read it again.
         required { credential.reread() }
         required { membership.reload() }
+        // Every report this invocation sends names the membership it works for. Never the pass's end: best effort.
+        isolated("describe reporter") { describe() }
         required { keys.reload() }
         when (required { pass.run(on) }) {
             ExtensionAnswer.REST -> ProcessingAnswer.COMPLETED

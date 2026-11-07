@@ -1,21 +1,6 @@
 package app.snapsync.model
 
-/**
- * One fact a bug report carries about the device or the app, as it could be read at the moment the user confirmed the
- * report.
- *
- * Three cases because a report renders them three ways: a [Known] value is written, an [Unsupported] fact — one the
- * platform does not have at all, Android's standby bucket on an iPhone — is left out, and a [Failed] read is written
- * as failed with its [Failed.reason], so a reading that could not be taken is never mistaken for one that does not
- * exist. The one renderer is `CollectDiagnosticDump`.
- */
-sealed interface Fact<out T> {
-    data class Known<out T>(val value: T) : Fact<T>
-
-    data object Unsupported : Fact<Nothing>
-
-    data class Failed(val reason: String) : Fact<Nothing>
-}
+import app.snapsync.domain.report.Fact
 
 /** Whether the system lets this app refresh in the background — iOS's per-app Background App Refresh. */
 enum class BackgroundRefresh(val label: String) {

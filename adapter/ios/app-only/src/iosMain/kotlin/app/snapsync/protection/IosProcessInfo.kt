@@ -2,7 +2,7 @@
 
 package app.snapsync.protection
 
-import app.snapsync.model.MemoryFootprint
+import app.snapsync.domain.process.MemoryFootprint
 import app.snapsync.model.Never
 import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.ProcessInfo
@@ -28,13 +28,13 @@ import platform.darwin.task_vm_info
  * The iOS [ProcessInfo] of the app process: its memory footprint. App-only: the extension composes no [ProcessInfo].
  * `ProcessInfoContract` runs live on the simulator app.
  *
- * THE FOOTPRINT is the kernel's own accounting of this task (`task_info(TASK_VM_INFO)`): `phys_footprint` is the
- * figure the system's memory-pressure exits are decided on, `ledger_phys_footprint_peak` the highest it has been, and
+ * THE FOOTPRINT is the kernel's own accounting of this task (`task_info(TASK_VM_INFO)`): `phys_footprint` is the figure
+ * the system's memory-pressure exits are decided on, `ledger_phys_footprint_peak` the highest it has been, and
  * `limit_bytes_remaining` how far the process is from its own limit. Each field belongs to a revision of the struct,
  * and the kernel reports how much of it it filled, so a field it did not fill reads `null` rather than zero. A mach
- * call on our own task — no UIKit, any thread, nothing that blocks. It always answers: every iOS this app supports fills
- * the first revision for its own task, so a refusal is a broken platform, raised as an error, never a quiet "nothing
- * read" — an answer no device can give and no test could prove.
+ * call on our own task — no UIKit, any thread, nothing that blocks. It always answers: every iOS this app supports
+ * fills the first revision for its own task, so a refusal is a broken platform, raised as an error, never a quiet
+ * "nothing read" — an answer no device can give and no test could prove.
  */
 @NeverAnswers(
     Never(member = "memoryFootprint", answer = "null"),

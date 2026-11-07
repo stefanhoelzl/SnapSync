@@ -2,8 +2,10 @@ package app.snapsync.rig
 
 import app.snapsync.data.crypto.EncryptionSlots
 import app.snapsync.data.preferences.PreferenceKeys
+import app.snapsync.data.process.FootprintTrail
 import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
 import app.snapsync.data.receiving.db.DownloadDatabase
+import app.snapsync.data.report.SavedReport
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.device.DeviceId
@@ -22,16 +24,14 @@ import app.snapsync.levers.StoreFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.mock.FileSystemMock
 import app.snapsync.mock.LibraryAssets
-import app.snapsync.model.SAVED_DIAGNOSTIC_REPORT_PATH
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.SecureSlot
-import app.snapsync.services.crash.FootprintTrail
 
 // The store services the channel implements itself rather than a mock's operator (`docs/testing.md`, "Typed services"):
-// each names what it acts on in the app's own terms — a device log by its process, the staging directory, a Keychain item
-// by what it is, an older build's leftovers by what that build wrote — which only code that sees the app's services can
-// map to the stores' addresses.
+// each names what it acts on in the app's own terms — a device log by its process, the staging directory, a Keychain
+// item by what it is, an older build's leftovers by what that build wrote — which only code that sees the app's
+// services can map to the stores' addresses.
 
 /**
  * [FilesLevers] over the mocked disk: a device log grown, and what the device's files hold, counted as the app's own
@@ -89,9 +89,10 @@ internal class LockedDevice(private val world: MockWorld) : DeviceLevers {
 }
 
 /**
- * [OlderInstallLevers] over the mocked databases and disk: what an older build left, written over the device's own stores
- * through the operator's hand (no armed fault reaches it) — the one service that writes app-private state, deliberately:
- * no path in the current app produces it, so the honest way to reach it is to write what the older build wrote.
+ * [OlderInstallLevers] over the mocked databases and disk: what an older build left, written over the device's own
+ * stores through the operator's hand (no armed fault reaches it) — the one service that writes app-private state,
+ * deliberately: no path in the current app produces it, so the honest way to reach it is to write what the older build
+ * wrote.
  */
 internal class OlderInstall(private val world: MockWorld) : OlderInstallLevers {
     override suspend fun stagedBacklog(device: String?, asset: String?): Long {
@@ -166,4 +167,4 @@ internal fun FileSystemMock.stagedFiles(): Int = paths(
 
 private val DIAGNOSTICS: Set<String> =
     listOf(DeviceLogText.APP_LOG, DeviceLogText.EXTENSION_LOG).flatMap { listOf(it, "$it.1") }.toSet() +
-        FootprintTrail.PATH + SAVED_DIAGNOSTIC_REPORT_PATH
+        FootprintTrail.PATH + SavedReport.PATH

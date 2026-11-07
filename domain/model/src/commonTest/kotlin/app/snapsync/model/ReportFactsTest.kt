@@ -1,5 +1,7 @@
 package app.snapsync.model
 
+import app.snapsync.domain.process.MemoryFootprint
+import app.snapsync.domain.report.Fact
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

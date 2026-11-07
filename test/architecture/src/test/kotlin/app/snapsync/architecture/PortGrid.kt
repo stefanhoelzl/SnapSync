@@ -51,8 +51,8 @@ internal object PortGrid {
     }
 
     /**
-     * Each generic port ([Ui]-shaped: a port over the types a screen speaks) with its type arguments as [AppPorts] binds
-     * them — a generic port's cells are the cells of what the composition hands it, never of its bare parameters.
+     * Each generic port ([Ui]-shaped: a port over the types a screen speaks) with its type arguments as [AppPorts]
+     * binds them — a generic port's cells are the cells of what the composition hands it, never of its bare parameters.
      */
     private val bound: Map<KClass<*>, Map<KTypeParameter, KType>> by lazy {
         AppPorts::class.primaryConstructor!!.parameters.map { it.type }.mapNotNull { type ->
@@ -105,7 +105,7 @@ internal object PortGrid {
             (bundleType.classifier as KClass<*>).declaredMemberProperties.sortedBy { it.name }.flatMap { f ->
                 if (deliveryReturnsRunning(f.returnType)) handles += Running::class
                 if (isFunction(f.returnType)) {
-                    // A shaping callback the platform's SDK calls (`CrashReporter.listen`'s): a handler all the same.
+                    // A callback the platform calls through a `listen` door: a handler all the same.
                     callbackCells(name, "$name.handlers.${f.name}", f.name, f.returnType, handles)
                 } else {
                     argumentCells(
@@ -204,8 +204,8 @@ internal object PortGrid {
         (type.classifier as? KClass<*>)?.let { Function::class.isSuperclassOf(it) } == true
 
     /**
-     * A non-port, non-sealed interface of the ports zone that a port hands over: a handle, whose members are cells too —
-     * handed as it is, or carried by a leaf of a sealed answer (`DbOpen.Opened`'s database).
+     * A non-port, non-sealed interface of the ports zone that a port hands over: a handle, whose members are cells too
+     * — handed as it is, or carried by a leaf of a sealed answer (`DbOpen.Opened`'s database).
      */
     private fun noteHandle(type: KType, handles: MutableSet<KClass<*>>) {
         val k = type.classifier as? KClass<*> ?: return
@@ -218,8 +218,7 @@ internal object PortGrid {
 
     /**
      * [handlerBundle] as a type, its arguments bound as the composition binds [port] ([bound]): an [EventPort]'s, or
-     * the bundle of a port that is not one but is listened to all the same (`CrashReporter.listen`, whose handlers
-     * shape what the platform's SDK sends).
+     * the bundle of a port that is not one but is listened to all the same, through a `listen` door.
      */
     private fun handlerBundleType(port: KClass<*>): KType? =
         port.allSupertypes.firstOrNull {

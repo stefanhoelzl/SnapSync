@@ -70,6 +70,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":domain:model"))
+            // The crash channel's vocabulary and the shaping it applies (`domain/crash`).
+            api(project(":domain:domain"))
             api(project(":domain:ports"))
             // sentry-cocoa itself is provided at EXECUTABLE link time — by SPM in iosApp.xcodeproj for the app/appex
             // (the exported frameworks are static, so Gradle's libtool "link" needs no Sentry symbols), and by the

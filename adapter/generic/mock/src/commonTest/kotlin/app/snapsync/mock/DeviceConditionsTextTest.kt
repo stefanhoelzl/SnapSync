@@ -1,7 +1,7 @@
 package app.snapsync.mock
 
 import app.snapsync.domain.report.DiagnosticKeys
-import app.snapsync.model.Fact
+import app.snapsync.domain.report.Fact
 import app.snapsync.model.StandbyBucket
 import app.snapsync.model.Thermal
 import kotlin.test.Test
