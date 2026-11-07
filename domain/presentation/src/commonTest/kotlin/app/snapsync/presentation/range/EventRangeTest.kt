@@ -1,5 +1,6 @@
 package app.snapsync.presentation.range
 
+import app.snapsync.control.Verifies
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -22,6 +23,8 @@ import kotlin.time.Duration.Companion.days
 class EventRangeTest {
 
     private companion object {
+        const val RANGE = "The host chooses the event's date range and its end time"
+
         val START = LocalDateTime(2026, 7, 6, 18, 4)
         val TODAY: LocalDate = START.date
         val SUNDAY = LocalDate(2026, 7, 8)
@@ -58,6 +61,7 @@ class EventRangeTest {
     private val fresh = EventRange(from = START)
 
     @Test
+    @Verifies(spec = "create-event", requirement = RANGE, scenario = "The last day starts as today, but not the end time")
     fun `a fresh range ends today with the end time blank`() {
         assertEquals(TODAY, fresh.endDay)
         assertNull(fresh.untilTime)
@@ -66,6 +70,11 @@ class EventRangeTest {
     }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "Choosing a later last day does not fill in the end time",
+    )
     fun `the first tap on a later day places the last day and leaves its time blank`() {
         val picked = fresh.pickDay(SUNDAY, THIRTY_DAYS)
         assertEquals(START, picked.from)
@@ -86,6 +95,22 @@ class EventRangeTest {
     fun `a start moved far back pulls the last day inside the window`() {
         val moved = fresh.pickDay(LocalDate(2026, 5, 1), THIRTY_DAYS)
         assertEquals(LocalDate(2026, 5, 31), moved.endDay)
+    }
+
+    @Test
+    @Verifies(spec = "create-event", requirement = RANGE, scenario = "A past or future range can be chosen")
+    fun `a range that started three weeks ago or one that starts next month is a range to create`() {
+        val past = fresh.pickDay(LocalDate(2026, 6, 15), THIRTY_DAYS).pickDay(TODAY, THIRTY_DAYS).endAt(20, 0)
+        assertEquals(LocalDateTime(2026, 6, 15, 18, 4), past.from)
+        assertEquals(LocalDateTime(2026, 7, 6, 20, 0), past.until)
+        assertTrue(past.isValid(THIRTY_DAYS))
+
+        // A first range placed, then a tap next month starts the range there.
+        val nextMonth = fresh.pickDay(SUNDAY, THIRTY_DAYS).endAt(21, 0)
+            .pickDay(LocalDate(2026, 8, 10), THIRTY_DAYS).pickDay(LocalDate(2026, 8, 12), THIRTY_DAYS).endAt(12, 0)
+        assertEquals(LocalDateTime(2026, 8, 10, 18, 4), nextMonth.from)
+        assertEquals(LocalDateTime(2026, 8, 12, 12, 0), nextMonth.until)
+        assertTrue(nextMonth.isValid(THIRTY_DAYS))
     }
 
     @Test
@@ -128,6 +153,11 @@ class EventRangeTest {
     }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "Choosing only the end's hour does not set the end time",
+    )
     fun `settling the Until hour alone does not fill the minute or set the end`() {
         val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilHour(21, THIRTY_DAYS)
         assertEquals(21, set.untilHour)
@@ -135,13 +165,25 @@ class EventRangeTest {
         assertNull(set.until)
     }
 
+    // The range's part of "Choosing the end's minute first fills in the current hour": which hour fills in. The real
+    // minutes shown while the wheel moves are the picker's (`AppEventRangePickerTest`).
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "Choosing the end's minute first fills in the current hour",
+    )
     fun `settling the Until minute with the hour blank takes the clock's hour`() {
         val set = fresh.pickDay(SUNDAY, THIRTY_DAYS).settleUntilMinute(30, THIRTY_DAYS, currentHour = 20)
         assertEquals(LocalDateTime(2026, 7, 8, 20, 30), set.until)
     }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "Choosing the end's minute first fills in the current hour",
+    )
     fun `a minute drag fills a blank hour with the clock's hour and leaves the minute blank`() {
         val filled = fresh.pickDay(SUNDAY, THIRTY_DAYS).fillUntilHour(20, THIRTY_DAYS)
         assertEquals(20, filled.untilHour)
@@ -151,6 +193,11 @@ class EventRangeTest {
     }
 
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = RANGE,
+        scenario = "Choosing the end's minute first fills in the current hour",
+    )
     fun `a clock hour that is no valid end fills the start's hour instead`() {
         // Same day, start 18:04, the clock at 16: 16 and 17 have no minute after the start, 18 does.
         val sameDay = fresh.pickDay(TODAY, THIRTY_DAYS)

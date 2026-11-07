@@ -102,7 +102,14 @@ class AppEventRangePickerTest {
         assertEquals("untilHour 10", log.last("untilHour"))
     }
 
+    // The picker's part: an hour alone shows the minute as unset. That the hour does not set the end is the form's
+    // (`EventRangeTest`).
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "Choosing only the end's hour does not set the end time",
+    )
     fun `a set end hour with a blank minute shows the minute unset`() {
         setPicker(FRESH.copy(endDay = LocalDate(2026, 3, 12), endPending = false, untilHour = 10))
         rule.onNodeWithText(str(Res.string.range_end_pick_time, "12 Mar 2026")).assertExists()
@@ -110,7 +117,14 @@ class AppEventRangePickerTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "not set"))
     }
 
+    // The picker's part: the moving minutes ask for an hour at once, and the minute they stop on is reported. Which
+    // hour fills in is the form's (`EventRangeTest`).
     @Test
+    @Verifies(
+        spec = "create-event",
+        requirement = "The host chooses the event's date range and its end time",
+        scenario = "Choosing the end's minute first fills in the current hour",
+    )
     fun `dragging the blank Until minutes reports it before the settle`() {
         setPicker(FRESH.copy(endDay = LocalDate(2026, 3, 12), endPending = false))
         val minutes = rule.onNodeWithContentDescription(str(Res.string.wheel_end_minute), useUnmergedTree = true)
