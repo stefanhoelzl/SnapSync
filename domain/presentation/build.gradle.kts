@@ -32,6 +32,9 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.orbit.test)
             implementation(libs.coroutines.test)
+            // `@Verifies`: a scenario the presentation layer's own state decides (the create form's draft) is claimed
+            // here, by the test that reduces it.
+            implementation(project(":test:verifies"))
         }
     }
 }

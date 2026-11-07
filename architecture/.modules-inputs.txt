@@ -246,6 +246,7 @@ edge :domain:ports :domain:model
 edge :domain:presentation :domain:domain
 edge :domain:presentation :domain:inbound
 edge :domain:presentation :domain:query
+edge :domain:presentation :test:verifies
 edge :domain:presentation :ui:state
 edge :domain:query :domain:data
 edge :domain:query :domain:domain
