@@ -17,10 +17,10 @@ import app.snapsync.levers.ReceivedException
 import app.snapsync.levers.SystemUiLevers
 import app.snapsync.levers.SystemUiRecord
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.Handoff
 import app.snapsync.ports.Clock
 import app.snapsync.ports.CrashReporter
 import app.snapsync.ports.DeviceIntegrity
+import app.snapsync.ports.Handoff
 import app.snapsync.ports.MetricHandlers
 import app.snapsync.ports.MetricNode
 import app.snapsync.ports.ProcessInfo

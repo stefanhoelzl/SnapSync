@@ -1,6 +1,6 @@
 package app.snapsync.selection
 
-import app.snapsync.model.ConfinedTo
+import app.snapsync.annotations.ConfinedTo
 import app.snapsync.ports.LibraryGrant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope

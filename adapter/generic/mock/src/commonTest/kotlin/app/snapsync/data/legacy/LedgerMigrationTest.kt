@@ -1,4 +1,4 @@
-package app.snapsync.services.ledger
+package app.snapsync.data.legacy
 
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.contracts.at
@@ -21,19 +21,14 @@ import app.snapsync.domain.upload.DestinationPath
 import app.snapsync.domain.upload.MintsEndedJob
 import app.snapsync.domain.upload.ReportedLanding
 import app.snapsync.domain.upload.UploadRow
+import app.snapsync.format.LegacyMembership
 import app.snapsync.format.TimestampText
 import app.snapsync.format.UploadKeyText
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.model.EventConfig
-import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.Databases
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.Files
-import app.snapsync.services.databases.CONFIG_FILE_NAME
-import app.snapsync.services.databases.LegacyRecords
-import app.snapsync.services.databases.databaseAt
-import app.snapsync.services.databases.strings
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -152,7 +147,7 @@ private fun appOpen(databases: Databases, files: Files) =
 
 /** A shared area holding the membership's legacy file, joined to [eventId]. */
 private fun membershipFile(eventId: String): Files = inMemoryFiles().apply {
-    val config = EventConfig(
+    val config = LegacyMembership(
         testEventId(eventId),
         name = "Anna's Birthday",
         minPhotoDate = CaptureCutoff(TimestampText.parse("2026-07-06T14:32:11Z")),
@@ -160,7 +155,7 @@ private fun membershipFile(eventId: String): Files = inMemoryFiles().apply {
         endsAt = EventEnd(TimestampText.parse("2099-12-31T00:00:00Z")),
         deletesAt = DeletesAt(TimestampText.parse("2099-12-31T00:00:00Z")),
     )
-    write(FileArea.SHARED, CONFIG_FILE_NAME, encodeConfigFile(config).encodeToByteArray())
+    write(FileArea.SHARED, LegacyRecords.CONFIG_FILE_NAME, LegacyFiles.config(config))
 }
 
 /** The distinct events the ledger holds rows for, sorted. */

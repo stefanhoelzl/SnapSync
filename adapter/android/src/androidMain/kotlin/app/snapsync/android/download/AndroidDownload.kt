@@ -7,12 +7,12 @@ import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
 import app.snapsync.android.network.DataSaverStatus
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.logAt
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.logging.logAt
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
@@ -117,7 +117,7 @@ class AndroidDownload(
     }
 
     /** [transfer] handed to DownloadManager; false, logged, when it refuses the request. */
-    private fun enqueue(transfer: Parked): Boolean = runCatchingCancellable {
+    private fun enqueue(transfer: Parked): Boolean = PlatformCalls.attempt {
         manager.enqueue(request(transfer.url, transfer.headers, transfer.tag, restarts = 0, transfer.network))
     }.onFailure { log.w(it) { "${transfer.tag}: DownloadManager refused the request" } }.isSuccess
 
@@ -228,7 +228,7 @@ class AndroidDownload(
         val current = handlers.orNull("a finished transfer") ?: return 0
         val finished = rows(id) { it.finishedRow() }.filterNotNull()
         for (row in finished) {
-            runCatchingCancellable {
+            PlatformCalls.attempt {
                 run {
                     row.deliverTo(current)
                 }.also { log.logAt(Severity.Debug) { "download.didComplete(tag=${row.tag})" } }
@@ -290,7 +290,7 @@ class AndroidDownload(
             )
             return
         }
-        runCatchingCancellable { manager.enqueue(request(url, headers, tag, restarts + 1, network)) }.fold(
+        PlatformCalls.attempt { manager.enqueue(request(url, headers, tag, restarts + 1, network)) }.fold(
             onSuccess = { log.w { "$tag: DownloadManager ran the transfer twice; fetching it again (${restarts + 1})" } },
             onFailure = {
                 log.w(it) { "$tag: DownloadManager refused the restart" }
@@ -436,7 +436,7 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
                 AndroidDownload.registration.filterNotNull().first()
             }
             if (download != null) {
-                runCatchingCancellable { download.deliverBroadcast(id, OnceCompletion { released.complete(Unit) }) }
+                PlatformCalls.attempt { download.deliverBroadcast(id, OnceCompletion { released.complete(Unit) }) }
                     .onFailure { Logger.withTag("download").w(it) { "the completion broadcast for $id failed" } }
                 withTimeoutOrNull(BROADCAST_BUDGET_MILLIS) { released.await() }
             }

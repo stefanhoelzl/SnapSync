@@ -12,7 +12,7 @@ import app.snapsync.mock.MockDevice
 import app.snapsync.mock.MockState
 import app.snapsync.mock.MockedSystem
 import app.snapsync.mock.TemporaryFiles
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.FileArea
@@ -109,7 +109,7 @@ sealed interface LaunchAdapters {
          * torn state lives at most one interval and never survives a quiet moment.
          */
         fun save(): List<MockedSystem> = choice.mocked.filter { system ->
-            val text = runCatchingCancellable { MockState.encode(device, system) }.getOrNull() ?: return@filter false
+            val text = PlatformCalls.attempt { MockState.encode(device, system) }.getOrNull() ?: return@filter false
             if (written[system] == text) return@filter false
             val ok = files.write(FileArea.SHARED, AdapterFiles.state(system), text.encodeToByteArray()) is FileResult.Ok
             if (ok) written[system] = text
@@ -200,7 +200,7 @@ sealed interface LaunchAdapters {
             device.declaredVersion.value = facts.appVersion
             val problems = choice.mocked.filter { persisted }.mapNotNull { system ->
                 when (val state = files.read(FileArea.SHARED, AdapterFiles.state(system))) {
-                    is FileResult.Ok -> runCatchingCancellable {
+                    is FileResult.Ok -> PlatformCalls.attempt {
                         MockState.restore(
                             device,
                             system,

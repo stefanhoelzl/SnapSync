@@ -32,19 +32,19 @@ import app.snapsync.android.upload.AndroidExtensionRegistry
 import app.snapsync.android.work.AndroidBackgroundTime
 import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
+import app.snapsync.annotations.PlatformEntry
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppDevicePorts
 import app.snapsync.composition.process.ProcessPorts
+import app.snapsync.dates.DateLocales
 import app.snapsync.host.ComposedApp
 import app.snapsync.host.snapSyncHost
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.metrics.NoProcessMetrics
-import app.snapsync.model.PlatformEntry
-import app.snapsync.model.uncaughtInRootScope
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.scheduling.RootScopeFailures
 import app.snapsync.sentry.SentryCrashReporter
-import app.snapsync.services.dates.formatsFor
 import app.snapsync.time.SystemClock
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
@@ -79,7 +79,7 @@ class SnapSyncRoot(internal val application: Application) {
 
     /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */
     private val screenDates: ScreenDates by lazy {
-        ScreenDates { tag -> DateFormatter(ports.dateFormatting.value.formatsFor(tag)::format) }
+        ScreenDates { tag -> DateFormatter(DateLocales.forScreen(ports.dateFormatting.value, tag)::format) }
     }
 
     /**
@@ -176,8 +176,8 @@ class SnapSyncRoot(internal val application: Application) {
         )
     }
 
-    // The app-scope error boundary (`uncaughtInRootScope`). The main lane: the composition's, as on iOS.
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + uncaughtInRootScope(log))
+    // The app-scope error boundary (`RootScopeFailures`). The main lane: the composition's, as on iOS.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main + RootScopeFailures())
 
     /** The core AND the status host over it, from the shared host composition. */
     private val composed: ComposedApp by lazy {

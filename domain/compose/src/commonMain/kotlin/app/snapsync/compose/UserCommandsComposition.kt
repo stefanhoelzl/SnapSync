@@ -2,6 +2,8 @@ package app.snapsync.compose
 
 import app.snapsync.application.report.SendBugReport
 import app.snapsync.data.report.SavedReport
+import app.snapsync.data.system.PhotoAccessAsks
+import app.snapsync.data.system.SystemSurfaces
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.request.AppLinkRequest
@@ -25,8 +27,6 @@ import app.snapsync.entrypoints.OnSendDiagnosticsTapped
 import app.snapsync.entrypoints.OnShareTapped
 import app.snapsync.inbound.Background
 import app.snapsync.query.RequestStatuses
-import app.snapsync.services.platform.PhotoAccessAsks
-import app.snapsync.services.platform.SystemSurfaces
 
 /**
  * **What the member can ask for, as the core's entry points** (`docs/architecture.md`, "Commands cross one door"): each

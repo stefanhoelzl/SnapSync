@@ -7,7 +7,6 @@ import app.snapsync.data.trust.AttestationStatus
 import app.snapsync.data.trust.AttestingCredential
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.ports.Clock
-import app.snapsync.services.backend.BackendServices
 
 /**
  * The app's credential: it proves with the platform's integrity service and reaches the backend's open `/attest/…`

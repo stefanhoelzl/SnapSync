@@ -7,7 +7,7 @@ import app.snapsync.contracts.attest.InMemoryKeyAttestation
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.backend.VersionIgnored
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.GatedRequest
 import app.snapsync.wire.api.OpenRequest
@@ -24,7 +24,7 @@ internal class Wire(transport: HttpTransport, version: String = "99.0") {
 
     suspend fun <R : Reply> send(request: GatedRequest<R>): R {
         val device = DEVICE_IN_PATH.find(request.wire.path)?.groupValues?.get(1) ?: CREATOR
-        val token = runCatchingCancellable { tokens.tokenFor(device) }.getOrNull()
+        val token = PlatformCalls.attemptSuspending { tokens.tokenFor(device) }.getOrNull()
         return BackendGateway(exchange, HeldCredential(token)).send(request)
     }
 

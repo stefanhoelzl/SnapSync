@@ -6,8 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **A shipped migration is never edited** (capability `photo-sharing`; `domain/data/build.gradle.kts`,
- * `domain/services/build.gradle.kts`).
+ * **A shipped migration is never edited** (capability `photo-sharing`; `domain/data/build.gradle.kts`).
  *
  * Each database's schema is its migration chain and nothing else (`deriveSchemaFromMigrations`). A phone that already
  * ran a migration keeps what that migration did; a fresh install runs whatever the file says now. Editing a migration

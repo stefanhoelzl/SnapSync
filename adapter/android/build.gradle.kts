@@ -19,7 +19,6 @@ kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     sourceSets {
         androidMain.dependencies {
-            api(project(":domain:model"))
             api(project(":domain:domain"))
             // The Motion Photo codec: an iPhone Live Photo is saved here as one.
             implementation(project(":adapter:generic:motionphoto"))
@@ -66,7 +65,6 @@ kotlin {
             // The `HttpTransport` contract binds `KtorHttpTransport` over this module's client (`androidHttpClient`).
             implementation(project(":adapter:generic:app"))
             // The storage services' contracts run through the services over these adapters.
-            implementation(project(":domain:services"))
             // The log sink's test reads its file back through the data layer's log tails, as a bug report does.
             implementation(project(":domain:data"))
             implementation(libs.kotlinx.datetime)

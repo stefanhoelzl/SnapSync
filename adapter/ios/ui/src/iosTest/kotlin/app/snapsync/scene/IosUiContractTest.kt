@@ -14,8 +14,8 @@ import app.snapsync.contracts.UiStateForContract
 import app.snapsync.contracts.UiUnderTest
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
+import app.snapsync.dates.DateLocales
 import app.snapsync.dates.IosDateFormatting
-import app.snapsync.model.resolveDateLocale
 import app.snapsync.tour.StatusScreenTour
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
@@ -38,7 +38,7 @@ class IosUiContractTest : StatusScreenTour() {
         dates = ScreenDates { tag ->
             val dates = IosDateFormatting()
             val device = dates.deviceLocale()
-            DateFormatter(dates.formats(resolveDateLocale(tag, device.language, device.region))::format)
+            DateFormatter(dates.formats(DateLocales.resolve(tag, device.language, device.region))::format)
         },
         log = Logger.withTag("contract"),
     )

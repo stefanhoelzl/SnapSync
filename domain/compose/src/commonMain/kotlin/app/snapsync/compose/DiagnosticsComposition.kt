@@ -12,7 +12,8 @@ import app.snapsync.data.process.FootprintReading
 import app.snapsync.data.report.DeviceConditionsRead
 import app.snapsync.domain.report.BuildLabel
 import app.snapsync.domain.report.ReportedEnvironment
-import app.snapsync.model.uploadersCarried
+import app.snapsync.domain.upload.OsSupport
+import app.snapsync.format.UploadersCarriedText
 import app.snapsync.ports.BuildInfo
 import app.snapsync.ports.ExtensionRegistry
 
@@ -58,7 +59,7 @@ internal fun reportedEnvironment(build: BuildInfo, registry: ExtensionRegistry):
         build = BuildLabel(build.appVersion, build.buildNumber),
         osVersion = build.osVersion,
         deviceModel = build.deviceModel,
-        uploaders = uploadersCarried(registry.supported),
+        uploaders = UploadersCarriedText.of(OsSupport.of(registry.supported)),
         uploadBase = build.uploadHost,
         reporterEnvironment = build.reporterEnvironment,
     )

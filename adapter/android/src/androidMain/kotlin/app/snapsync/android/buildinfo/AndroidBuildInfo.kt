@@ -1,10 +1,10 @@
 package app.snapsync.android.buildinfo
 
 import android.os.Build
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.domain.report.Platform
 import app.snapsync.domain.version.Store
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.BuildInfo
 
 /**

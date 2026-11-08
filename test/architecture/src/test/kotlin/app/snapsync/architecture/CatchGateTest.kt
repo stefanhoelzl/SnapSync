@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  * So production source (under `domain/`, `adapter/`, `app/`, `ui/`, outside test source sets) may not call
  * `runCatching`, and may catch `Throwable`/`Exception` only where the SAME `try` catches `CancellationException`
  * first, or where the handler rethrows what it caught (log-and-rethrow). Everything else goes through
- * `runCatchingCancellable` (`model/`).
+ * `PlatformCalls.attempt` (`:adapter:generic:app`).
  *
  * **Nothing catches an `InvalidProgramState`** (`docs/patterns.md`, "Invalid program state"): it is an `Error`, so a
  * catch of `Exception` passes it on, and a catch of `Throwable` must catch it first in the same `try` — to rethrow it,
@@ -33,8 +33,8 @@ class CatchGateTest {
 
     /** Where a catch-all is the point, and why. Keyed by path suffix. */
     private val allowed = mapOf(
-        "/domain/model/src/commonMain/kotlin/app/snapsync/model/Catching.kt" to
-            "the cancellation-keeping helpers themselves",
+        "/adapter/generic/app/src/commonMain/kotlin/app/snapsync/platform/Catching.kt" to
+            "the adapters' cancellation-keeping helpers themselves",
         // The runtime's containment (`docs/patterns.md`, "Containment"): what a run, a delivery or a pass throws is
         // reported where it was started, and nowhere else.
         "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to
@@ -95,7 +95,7 @@ class CatchGateTest {
             found.isEmpty(),
             "these catch sites can swallow cancellation (law \"Catch sites keep cancellation\") or an " +
                 "InvalidProgramState (`docs/patterns.md`, \"Invalid program state\"). Use " +
-                "`runCatchingCancellable` (model/); a handler that must catch " +
+                "`PlatformCalls.attempt` (:adapter:generic:app); a handler that must catch " +
                 "broadly either catches `CancellationException` and `InvalidProgramState` first in the same `try` " +
                 "and rethrows them, or " +
                 "rethrows what it caught. Only an ObjC boundary may catch everything, and it is named in this gate.\n" +
@@ -116,7 +116,7 @@ class CatchGateTest {
         val sample = """
             fun a() = runCatching { work() }
             fun b() = x.runCatching { work() }
-            fun c() = runCatchingCancellable { work() }
+            fun c() = PlatformCalls.attempt { work() }
             fun d() { try { work() } catch (e: CancellationException) { throw e } catch (e: Throwable) { log(e) } }
             fun e() { try { work() } catch (t: Throwable) { log(t); throw t } }
             fun f() { try { work() } catch (e: Exception) { log(e) } }

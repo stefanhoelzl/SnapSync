@@ -9,8 +9,8 @@ import app.snapsync.domain.event.MakesEventKey
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.FileHead
 import app.snapsync.format.Hmac
-import app.snapsync.model.roleFromUploadKey
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.format.ResourceRoleText
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.GcmNonce
@@ -79,7 +79,7 @@ class EventKeyLedger {
             EventId.parse(tag[EVENT])!!,
             DeviceId.parse(tag[DEVICE])!!,
             AssetId.parse(tag[ASSET])!!,
-            roleFromUploadKey(tag[RESOURCE]),
+            ResourceRoleText.ofKey(tag[RESOURCE]),
         )
         val associated = EncryptedFileFormat.associatedData(binding)
         val head = FileHead.of(
@@ -107,10 +107,10 @@ class EventKeyLedger {
         if (request.method != Routes.CreateEvent.METHOD || !request.url.substringBefore('?').endsWith(Routes.CreateEvent.TEMPLATE)) return
         if (created.status != CREATED) return
         val keyId = request.body?.let {
-            runCatchingCancellable { WireJson.decodeFromString(EventCreate.serializer(), it) }.getOrNull()
+            PlatformCalls.attempt { WireJson.decodeFromString(EventCreate.serializer(), it) }.getOrNull()
         }
             ?.keyId ?: return
-        val eventId = runCatchingCancellable { WireJson.decodeFromString(Event.serializer(), created.body) }.getOrNull()
+        val eventId = PlatformCalls.attempt { WireJson.decodeFromString(Event.serializer(), created.body) }.getOrNull()
             ?.eventId ?: return
         lock.locked { keyIds[eventId] = keyId }
     }

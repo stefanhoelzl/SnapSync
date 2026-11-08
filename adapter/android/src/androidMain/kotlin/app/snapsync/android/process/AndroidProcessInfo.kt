@@ -1,8 +1,8 @@
 package app.snapsync.android.process
 
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.domain.process.MemoryFootprint
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
 import app.snapsync.ports.ProcessInfo
 
 /**

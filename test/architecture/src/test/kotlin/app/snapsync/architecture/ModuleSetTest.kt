@@ -131,7 +131,7 @@ class ModuleSetTest {
         // green build.
         //
         // Since the split it asserts two further things the module graph cannot state about itself: that
-        // each zone declares only the edge its law permits (so `ports` cannot reach `services`), and that
+        // each zone declares only the edge its law permits (so `ports` cannot reach `data`), and that
         // it declares it with `implementation()` — an `api()` edge would republish the zone to every
         // downstream consumer, dissolving the boundary the split exists to create. The one edge outside a zone's law is
         // its tests' `:test:verifies`, inside `commonTest.dependencies`: an annotation that depends on nothing.
@@ -140,7 +140,6 @@ class ModuleSetTest {
         val permitted = mapOf(
             // The domain layer: values and pure policy, depending on nothing.
             "domain" to emptySet<String>(),
-            "model" to setOf(":domain:domain", ":domain:format"),
             // The text a value takes on the wire and in a store, once per format: it spells the domain's values.
             "format" to setOf(":domain:domain"),
             // The backend API's HTTP shapes, generated from `api/openapi.yaml`: they reference nothing.
@@ -149,7 +148,7 @@ class ModuleSetTest {
             "inbound" to emptySet<String>(),
             // The deliveries' kinds: an event port's handlers are typed by them. The domain's values a port hands over
             // as they are (the build's store page).
-            "ports" to setOf(":domain:model", ":domain:inbound", ":domain:domain"),
+            "ports" to setOf(":domain:inbound", ":domain:domain"),
             // The runtime runs on the process's background time and labels its threads: two ports, nothing above — and
             // the domain's `InvalidProgramState`, which its containment never contains.
             "scheduling" to setOf(":domain:inbound", ":domain:ports", ":domain:domain"),
@@ -161,22 +160,16 @@ class ModuleSetTest {
             // The query layer: what the screen reads — the membership, the join's and switch's lookups, and the
             // request-keyed statuses — over data and the domain, writing nothing; the invite in its link's text.
             "query" to setOf(":domain:domain", ":domain:data", ":domain:inbound", ":domain:format"),
-            // The shared capabilities over the thin ports: the vocabulary and the ports, never a feature.
-            // MIGRATING: the gateway and the device identity the need-shaped services stand on are data's since trust moved.
-            "services" to setOf(
-                ":domain:model", ":domain:domain", ":domain:ports", ":domain:inbound", ":domain:wire", ":domain:data",
-                ":domain:format",
-            ),
-            // The entry points order the work of each trigger. MIGRATING: their steps still call the services
-            // directly, until phase 4 moves the work under sequences.
+            // The entry points order the work of each trigger: the runtime's steps over the use cases, the data layer
+            // and the queries.
             "entrypoints" to setOf(
-                ":domain:inbound", ":domain:scheduling", ":domain:model", ":domain:domain", ":domain:ports",
-                ":domain:services", ":domain:application", ":domain:data", ":domain:query",
+                ":domain:inbound", ":domain:scheduling", ":domain:domain", ":domain:ports", ":domain:application",
+                ":domain:data", ":domain:query",
             ),
             // `:ui:state` because the app's `Ui` port is bound to the screen's vocabulary in `AppPorts`.
             // MIGRATING: the app's composition builds the composition layer's shared half until phase 5 moves it there.
             "compose" to setOf(
-                ":domain:model", ":domain:domain", ":domain:ports", ":domain:services", ":domain:inbound",
+                ":domain:domain", ":domain:ports", ":domain:inbound",
                 ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:data", ":domain:application",
                 ":domain:format", ":domain:query", ":domain:composition:process",
             ),
@@ -198,7 +191,7 @@ class ModuleSetTest {
             "presentation" to setOf(":domain:domain", ":domain:query", ":domain:inbound", ":ui:state"),
             // The shared host composition: the one zone that sees both the composition zone and presentation.
             "host" to setOf(
-                ":domain:model", ":domain:domain", ":domain:ports", ":domain:compose",
+                ":domain:domain", ":domain:ports", ":domain:compose",
                 ":domain:presentation",
                 ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:query",
                 // MIGRATING: the process ports the app's ports carry, whose build the host's facts read.
@@ -252,7 +245,7 @@ class ModuleSetTest {
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
             // The core's zones and the host (`docs/architecture.md`, "Zones inside the core").
-            ":domain:model", ":domain:domain", ":domain:format", ":domain:wire", ":domain:ports", ":domain:services",
+            ":domain:domain", ":domain:format", ":domain:wire", ":domain:ports",
             ":domain:presentation", ":domain:compose", ":domain:host",
             // The layers the core's work runs on (`docs/patterns.md`): the deliveries, the runtime, the entry points.
             ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":domain:data", ":domain:application",
@@ -265,7 +258,7 @@ class ModuleSetTest {
             ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:ios:ui", ":adapter:generic:app",
             ":adapter:generic:mock", ":adapter:generic:sentry", ":adapter:android",
             // The Motion Photo codec both import adapters share: it withholds the core from them — the format they must
-            // agree on lives here, not in `:domain:model`, so an adapter reaches it without linking the core.
+            // agree on lives here, not in the core, so an adapter reaches it without linking the core.
             ":adapter:generic:motionphoto",
             // The operator faces' typed interfaces: it withholds the mocks from the tests, which compile against these and
             // call them through the control channel, while the mocks implement them (`docs/testing.md`, "Typed

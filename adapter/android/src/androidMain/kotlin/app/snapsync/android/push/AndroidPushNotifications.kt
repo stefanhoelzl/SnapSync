@@ -2,14 +2,14 @@ package app.snapsync.android.push
 
 import android.content.Context
 import app.snapsync.android.download.OnceCompletion
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.PUSH_KIND_FCM
-import app.snapsync.model.PlatformError
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
+import app.snapsync.ports.PlatformError
 import app.snapsync.ports.PushHandlers
+import app.snapsync.ports.PushKind
 import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.PushToken
@@ -42,7 +42,7 @@ class FirebaseConfig(
 /**
  * The Android [PushNotifications]: Firebase Cloud Messaging, the counterpart of APNs.
  *
- * - **Its kind is [PUSH_KIND_FCM]**, which the device's registration carries, so the backend sends through FCM.
+ * - **Its kind is [PushKind.FCM.value]**, which the device's registration carries, so the backend sends through FCM.
  * - **Firebase is started here, by hand**, from [config] — the manifest removes Firebase's auto-start provider, so a
  *   build or a test that never composes this adapter never starts Firebase. An unconfigured build, and a phone without
  *   Google Play services, answer [register] with [PushHandlers.onTokenFailure] and never hear a push; their photos
@@ -63,14 +63,14 @@ class AndroidPushNotifications(
 
     private val handlers = HandlerSlot<PushHandlers>("PushNotifications", BeforeListen.Dropped)
 
-    override val kind: String = PUSH_KIND_FCM
+    override val kind: String = PushKind.FCM.value
 
     private val messaging: FirebaseMessaging? by lazy {
         if (!config.isConfigured) {
             log.i { "this build names no Firebase project — it gets no push" }
             return@lazy null
         }
-        runCatchingCancellable {
+        PlatformCalls.attempt {
             if (FirebaseApp.getApps(appContext).isEmpty()) {
                 FirebaseApp.initializeApp(
                     appContext,
@@ -160,7 +160,7 @@ class SnapSyncMessagingService : FirebaseMessagingService() {
             // is held — on a latch, never a coroutine runner — until the core releases the push, at most the budget.
             val push = AndroidPushNotifications.registration.value ?: return@body null
             val released = CountDownLatch(1)
-            runCatchingCancellable { push.deliverMessage(message.data, OnceCompletion { released.countDown() }) }
+            PlatformCalls.attempt { push.deliverMessage(message.data, OnceCompletion { released.countDown() }) }
                 .onFailure { log.w(it) { "the push could not be handed over" } }
             released.await(AndroidPushNotifications.MESSAGE_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
         }.also { log.i { "onMessageReceived(keys=${message.data.keys}) = ${if (it == null) "no composition" else "it=$it"}" } }

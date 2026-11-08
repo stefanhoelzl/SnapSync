@@ -13,14 +13,12 @@ kotlin {
         commonMain.dependencies {
             implementation(project(":domain:inbound"))
             implementation(project(":domain:scheduling"))
-            implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:query"))
             // The deliveries' arguments are the ports' vocabulary; no port is called from here.
             implementation(project(":domain:ports"))
             // MIGRATING (`ModuleSetTest`'s permitted edges say so): the steps call today's services until phase 4 moves
             // them underneath, and the edge goes when nothing here needs it any more.
-            implementation(project(":domain:services"))
             // MIGRATING: the use cases its steps call, and the credential store the extension re-reads at every
             // invocation (`OnProcess`, built by the extension's own composition).
             implementation(project(":domain:application"))

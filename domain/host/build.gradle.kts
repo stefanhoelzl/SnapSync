@@ -23,7 +23,6 @@ plugins {
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:query"))
             implementation(project(":domain:ports"))

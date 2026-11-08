@@ -50,5 +50,6 @@ Roots found:
 | `PhotoLibraryPermission` | x | x | |
 | `ProcessPorts` | x | x | x |
 | `PublicNSLogSink` | x | x | x |
+| `RootScopeFailures` | x | x | |
 | `SceneRecord` | x | x | |
 | `SentryCrashReporter` | x | x | x |

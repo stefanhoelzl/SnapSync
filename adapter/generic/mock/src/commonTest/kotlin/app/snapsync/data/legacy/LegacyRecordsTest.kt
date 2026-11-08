@@ -1,4 +1,4 @@
-package app.snapsync.services.databases
+package app.snapsync.data.legacy
 
 import app.snapsync.data.album.AlbumMap
 import app.snapsync.data.membership.EventCheck
@@ -26,13 +26,12 @@ import app.snapsync.domain.sharing.ManifestVersion
 import app.snapsync.domain.sharing.PublishedDeclaration
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.format.EncryptionText
+import app.snapsync.format.LegacyMemberCounts
+import app.snapsync.format.LegacyMembership
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.model.EventConfig
-import app.snapsync.model.MemberCounts
-import app.snapsync.model.encodeConfigFile
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
@@ -74,11 +73,11 @@ class LegacyRecordsTest {
     private fun membershipOf(db: SharedDatabase) = MembershipRepository(db)
 
     /** The membership [db] holds, in the legacy record's shape — `null` unless it reads as joined. */
-    private fun joinedIn(db: SharedDatabase): EventConfig? =
+    private fun joinedIn(db: SharedDatabase): LegacyMembership? =
         (membershipOf(db).read() as? MembershipRead.Joined)?.membership?.let(::recordOf)
 
     /** [joined] as the legacy record that would hold it: what the copy is compared against. */
-    private fun recordOf(joined: Membership): EventConfig = EventConfig(
+    private fun recordOf(joined: Membership): LegacyMembership = LegacyMembership(
         eventId = joined.event.id,
         name = joined.event.name.text,
         minPhotoDate = joined.share.range.from,
@@ -88,7 +87,7 @@ class LegacyRecordsTest {
         deletesAt = joined.event.deletesAt,
         direction = joined.share.direction,
         saveToAlbum = joined.share.album == AlbumChoice.SaveToAlbum,
-        members = joined.event.members?.let { MemberCounts(it.active, it.settled, it.waiting) },
+        members = joined.event.members?.let { LegacyMemberCounts(it.active, it.settled, it.waiting) },
         openUntil = joined.event.openUntil,
         deleted = joined is Membership.Deleted,
         keyId = EncryptionText.of(joined.event.encryption),
@@ -104,7 +103,7 @@ class LegacyRecordsTest {
 
     @Test
     fun `the extension pauses until the app has copied - and reads nothing meanwhile`() {
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED)
 
         assertEquals(SharedRecordsReadiness.LegacyPending, extension().readiness())
         assertIs<MembershipRead.Unavailable>(membershipOf(extension()).read(), "never read as not joined")
@@ -124,17 +123,17 @@ class LegacyRecordsTest {
 
     @Test
     fun `the membership file becomes the membership row and is deleted`() {
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED)
 
         assertEquals(JOINED, joinedIn(app()))
-        assertFalse(CONFIG_FILE_NAME in shared, "the legacy file is gone")
+        assertFalse(LegacyRecords.CONFIG_FILE_NAME in shared, "the legacy file is gone")
     }
 
     @Test
     fun `a membership's member counts are copied, the waiting one only when it was recorded`() {
-        for (counts in listOf(MemberCounts(3, 1, waiting = 2), MemberCounts(3, 1))) {
+        for (counts in listOf(LegacyMemberCounts(3, 1, waiting = 2), LegacyMemberCounts(3, 1))) {
             val legacy = JOINED.copy(members = counts)
-            shared[CONFIG_FILE_NAME] = encodeConfigFile(legacy).encodeToByteArray()
+            shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(legacy)
             val db =
                 SharedDatabase(
                     DatabasesMock().port(),
@@ -147,7 +146,7 @@ class LegacyRecordsTest {
     @Test
     fun `a membership's album choice is copied, on or off`() {
         for (saveToAlbum in listOf(true, false)) {
-            shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED.copy(saveToAlbum = saveToAlbum)).encodeToByteArray()
+            shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED.copy(saveToAlbum = saveToAlbum))
             val db =
                 SharedDatabase(
                     DatabasesMock().port(),
@@ -159,8 +158,8 @@ class LegacyRecordsTest {
 
     @Test
     fun `an unreadable membership file stays pending and reads as unreadable until it can be copied`() {
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
-        denied += FileArea.SHARED to CONFIG_FILE_NAME
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED)
+        denied += FileArea.SHARED to LegacyRecords.CONFIG_FILE_NAME
 
         val read = membershipOf(app()).read()
         assertIs<MembershipRead.Unavailable>(read, "a membership that could not be copied is never a leave")
@@ -172,42 +171,42 @@ class LegacyRecordsTest {
 
     @Test
     fun `a membership file that does not decode is left in place and never read as a leave`() {
-        shared[CONFIG_FILE_NAME] = """{"v":2,"payload":{"eventId":"from-a-later-build"}}""".encodeToByteArray()
+        shared[LegacyRecords.CONFIG_FILE_NAME] = """{"v":2,"payload":{"eventId":"from-a-later-build"}}""".encodeToByteArray()
 
         assertIs<MembershipRead.Unavailable>(membershipOf(app()).read())
-        assertTrue(CONFIG_FILE_NAME in shared)
+        assertTrue(LegacyRecords.CONFIG_FILE_NAME in shared)
     }
 
     @Test
     fun `a copied source is never copied again - its leftover is deleted at the next open`() = runTest {
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED)
         membershipOf(app()).leave() // copied, then left
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray() // a delete the crash never made
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED) // a delete the crash never made
         values[ALBUM_MAP] = "{}" // and a key the same crash left
 
         assertIs<MembershipRead.NotJoined>(membershipOf(app()).read(), "the mark outranks the leftover")
-        assertFalse(CONFIG_FILE_NAME in shared, "the leftover file is gone")
+        assertFalse(LegacyRecords.CONFIG_FILE_NAME in shared, "the leftover file is gone")
         assertTrue(values.isEmpty(), "the leftover key is gone")
     }
 
     @Test
     fun `a membership file that is not text stays pending`() {
-        shared[CONFIG_FILE_NAME] = byteArrayOf(0xC3.toByte(), 0x28)
+        shared[LegacyRecords.CONFIG_FILE_NAME] = byteArrayOf(0xC3.toByte(), 0x28)
 
         assertIs<MembershipRead.Unavailable>(membershipOf(app()).read())
-        assertTrue(CONFIG_FILE_NAME in shared)
+        assertTrue(LegacyRecords.CONFIG_FILE_NAME in shared)
     }
 
     @Test
     fun `a copied file that cannot be deleted is still copied - its mark outranks it`() {
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED)
         val keeping = object : Files by inMemoryFiles(shared = shared) {
             override fun delete(area: FileArea, path: String): FileResult<Unit> = FileResult.Failed("busy")
         }
         val db = SharedDatabase(databases.port(), LegacyRecords(keeping, inMemoryPreferences(values)))
 
         assertEquals(JOINED, joinedIn(db))
-        assertTrue(CONFIG_FILE_NAME in shared, "left behind, for a later open to delete")
+        assertTrue(LegacyRecords.CONFIG_FILE_NAME in shared, "left behind, for a later open to delete")
     }
 
     // ---- the manifest record ------------------------------------------------------------------------------------
@@ -312,7 +311,7 @@ class LegacyRecordsTest {
 
     @Test
     fun `unreadable keys stay pending - the albums and the joined event's check times alike`() {
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED)
         values[ALBUM_MAP] = """{"${testEventId("E1").value}":"album-1"}"""
         val locked = object : app.snapsync.ports.Preferences by inMemoryPreferences(values) {
             override fun get(key: String) = app.snapsync.ports.PrefRead.Unavailable("locked")
@@ -330,8 +329,20 @@ class LegacyRecordsTest {
     // ---- the check times ----------------------------------------------------------------------------------------
 
     @Test
+    fun `a check time never recorded stays never asked`() {
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED)
+        val asked = NOW - 10.minutes
+        values["app.snapsync.check.photos.${JOINED.eventId}"] = asked.toEpochMilliseconds().toString()
+
+        val checks = EventCheckRecord(app())
+
+        assertEquals(CheckedAt.At(Timestamp.of(asked)), checks.last(EventCheck.PHOTOS, JOINED.eventId))
+        assertEquals(CheckedAt.Never, checks.last(EventCheck.STATE, JOINED.eventId))
+    }
+
+    @Test
     fun `the joined event's check times are copied and its keys go`() {
-        shared[CONFIG_FILE_NAME] = encodeConfigFile(JOINED).encodeToByteArray()
+        shared[LegacyRecords.CONFIG_FILE_NAME] = LegacyFiles.config(JOINED)
         val asked = NOW - 10.minutes
         values["app.snapsync.check.photos.${JOINED.eventId}"] = asked.toEpochMilliseconds().toString()
         values["app.snapsync.check.close.${JOINED.eventId}"] = "yesterday" // garbled: not copied, so due
@@ -355,7 +366,7 @@ class LegacyRecordsTest {
 
         val NOW: Instant = Instant.parse("2026-06-15T12:00:00Z")
 
-        val JOINED = EventConfig(
+        val JOINED = LegacyMembership(
             eventId = testEventId("E-joined"),
             name = "Anna's Birthday",
             minPhotoDate = CaptureCutoff(TimestampText.parse("2026-06-10T00:00:00Z")),

@@ -1,10 +1,10 @@
 package app.snapsync.download
 
+import app.snapsync.annotations.PlatformEntry
 import app.snapsync.ios.urlsession.HandlerRelease
 import app.snapsync.ios.urlsession.MainThreadRelease
 import app.snapsync.ios.urlsession.transferSessionConfiguration
-import app.snapsync.model.PlatformEntry
-import app.snapsync.model.logAt
+import app.snapsync.logging.logAt
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.TransferOutcome

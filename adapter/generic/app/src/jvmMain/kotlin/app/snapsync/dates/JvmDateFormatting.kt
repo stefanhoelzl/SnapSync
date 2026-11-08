@@ -1,8 +1,8 @@
 package app.snapsync.dates
 
-import app.snapsync.model.DateFormats
-import app.snapsync.model.DateLocale
+import app.snapsync.ports.DateFormats
 import app.snapsync.ports.DateFormatting
+import app.snapsync.ports.DateLocale
 import app.snapsync.ports.DeviceLocale
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.toJavaLocalDateTime

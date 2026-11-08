@@ -25,11 +25,17 @@ enum class LegacySource(val key: String) {
 }
 
 /**
- * The app's one-time copy of the shared records' legacy homes into the open database — a shim that lives in the old
- * zone (`LegacyRecords`, `PENDING_CLEANUPS.md`): the store runs it once per process, right after the app's open.
+ * The app's one-time copy of the shared records' legacy homes into the open database — a shim (`LegacyRecords`,
+ * `PENDING_CLEANUPS.md`): the store runs it once per process, right after the app's open. A failure it answers fails
+ * the open; a source that fails alone stays pending.
  */
 interface LegacyCopy {
-    fun copyInto(db: LedgerDatabase)
+    fun copyInto(db: OwnedDatabase.Opened<LedgerDatabase>): DbResult<Unit>
+}
+
+/** The extension's, which never copies a legacy home: it only asks the database whether the app has. */
+private object NoLegacy : LegacyCopy {
+    override fun copyInto(db: OwnedDatabase.Opened<LedgerDatabase>): DbResult<Unit> = DbResult.Ok(Unit)
 }
 
 /** Whether the shared database's records can be read now. */
@@ -58,9 +64,8 @@ class SharedDatabase(databases: Databases, legacy: LegacyCopy?) {
     private val owned = object : OwnedDatabase<LedgerDatabase>(databases, LEDGER_DB_NAME, LedgerDatabase.Schema) {
         override fun over(driver: SqlDriver) = sharedDatabaseOver(driver)
 
-        override fun prepared(database: LedgerDatabase) {
-            legacy?.copyInto(database)
-        }
+        override fun prepared(database: Opened<LedgerDatabase>): DbResult<Unit> =
+            (legacy ?: NoLegacy).copyInto(database)
     }
 
     /** Runs [statements] on the database: a failed open or a failed statement is [DbResult.Failed]. */

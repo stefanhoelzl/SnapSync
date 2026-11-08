@@ -221,12 +221,10 @@ class DetektTiersPlugin : Plugin<Project> {
             ":app:android" to "shell",
 
             // The tested core and its adapters.
-            ":domain:model" to "core",
             ":domain:inbound" to "core",
             ":domain:wire" to "core",
             ":domain:format" to "core",
             ":domain:ports" to "core",
-            ":domain:services" to "core",
             ":domain:compose" to "core",
             ":adapter:generic:app" to "core",
             ":adapter:generic:mock" to "core",

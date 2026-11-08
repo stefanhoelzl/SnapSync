@@ -119,9 +119,7 @@ class SharedDatabaseTest {
     }
 
     private class RecordingCopy(private val copies: MutableList<LedgerDatabase>) : LegacyCopy {
-        override fun copyInto(db: LedgerDatabase) {
-            copies += db
-        }
+        override fun copyInto(db: OwnedDatabase.Opened<LedgerDatabase>) = db.execute { copies += it }
     }
 
     private companion object {

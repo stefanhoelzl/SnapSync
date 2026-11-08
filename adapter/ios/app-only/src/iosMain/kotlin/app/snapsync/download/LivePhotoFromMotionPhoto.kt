@@ -1,6 +1,5 @@
 package app.snapsync.download
 
-import app.snapsync.model.runCatchingCancellable
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.motionphoto.motionPresentationTimestampUs
 import app.snapsync.motionphoto.withExtension
@@ -8,6 +7,7 @@ import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.ImportFile
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -155,12 +155,12 @@ internal class LivePhotoFromMotionPhoto(private val log: Logger) {
         val mp4 = "$dir$identifier.mp4"
         val mov = "$dir$identifier.mov"
         val pair = Pair(stillOut, name, mov, withExtension(name, ".MOV"))
-        val made = runCatchingCancellable {
+        val made = PlatformCalls.attemptSuspending {
             write(file.copyOfRange(0, video.first), stillIn)
             write(file.copyOfRange(video.first, video.last + 1), mp4)
-            val route = tagStill(stillIn, stillOut, identifier) ?: return@runCatchingCancellable null
+            val route = tagStill(stillIn, stillOut, identifier) ?: return@attemptSuspending null
             val keyFrameUs = motionPresentationTimestampUs(xmp) ?: 0L
-            if (!rewrapVideo(mp4, mov, identifier, keyFrameUs)) return@runCatchingCancellable null
+            if (!rewrapVideo(mp4, mov, identifier, keyFrameUs)) return@attemptSuspending null
             log.i {
                 "$assetId: a motion photo taken apart into a Live Photo (still $route, video ${video.count()} B passed through)"
             }

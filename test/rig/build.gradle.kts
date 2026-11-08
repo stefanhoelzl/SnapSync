@@ -79,9 +79,10 @@ kotlin {
             // host the ones its launch-time adapters mocks (`docs/testing.md`, "Launch-time adapters"). Contained with
             // this module: a production build links neither.
             implementation(project(":adapter:generic:mock"))
+            // The adapters' boundary catch-all, for the rig's own platform calls.
+            implementation(project(":adapter:generic:app"))
             // The typed services the levers are served from (`LeverDispatch.kt`): their interfaces and descriptors.
             implementation(project(":test:levers"))
-            implementation(project(":domain:model"))
             implementation(project(":domain:domain"))
             implementation(project(":domain:format"))
             implementation(project(":domain:ports"))
@@ -92,7 +93,6 @@ kotlin {
             implementation(project(":domain:composition:process"))
             implementation(project(":domain:composition:extension"))
             // The device-log writer the rig re-points at the extension's log for an invoked cycle.
-            implementation(project(":domain:services"))
             implementation(project(":domain:data"))
             // The download progress `/device/state` reports, read where the screen reads it.
             implementation(project(":domain:query"))

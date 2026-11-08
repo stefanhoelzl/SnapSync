@@ -18,7 +18,7 @@ import app.snapsync.contracts.UPLOAD_CONTENT_TYPE
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.runEntry
 import app.snapsync.contracts.verify
-import app.snapsync.model.destinationPathOf
+import app.snapsync.data.upload.Destinations
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -109,7 +109,9 @@ class SimulatorUploadJobQueueContractTest {
         )
         check(os.create(StandInPhoto, target) == CreateOutcome.CREATED)
         if (state == OsUploadQueueState.PRESENTED_RETRY_SPENT) {
-            val offered = os.retryOffered().first { it.destinationUrl?.let(::destinationPathOf) == destinationPathOf(target.url) }
+            val offered = os.retryOffered().first {
+                it.destinationUrl?.let { url -> Destinations.pathOf(url).path } == Destinations.pathOf(target.url).path
+            }
             os.retry(offered, target)
         }
         check(jobs.createdThisCycle().isNotEmpty())
@@ -143,7 +145,7 @@ class SimulatorUploadJobQueueContractTest {
         }
 
         private suspend fun settle(target: UploadTarget, resource: GalleryResourceHandle?, retried: Boolean) {
-            val path = destinationPathOf(target.url).removePrefix(BASE_PATH)
+            val path = Destinations.pathOf(target.url).path.removePrefix(BASE_PATH)
             val contentType = target.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value
             when (val answer = TransferFixture.answerOf(path)) {
                 // No upload clause redirects.

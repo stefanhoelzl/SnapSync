@@ -11,8 +11,9 @@ import app.snapsync.data.trust.TokenText
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.trust.BearerToken
+import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
-import app.snapsync.model.uploadKey
+import app.snapsync.format.UploadKeyText
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
@@ -325,7 +326,7 @@ class EdgeSetup(private val transport: HttpTransport, base: String, private val 
 class SeededAsset(val assetId: AssetId, val roles: List<ResourceRole>, val filename: String = "IMG_0001.JPG") {
     val creationDate = "2030-01-02T12:00:00Z"
 
-    fun key(role: ResourceRole) = uploadKey(assetId, role, filename)
+    fun key(role: ResourceRole) = UploadKeyText.of(UploadKey.of(assetId, role, filename))
 
     /** This asset as a manifest declares it. */
     fun onWire() = ManifestAsset(

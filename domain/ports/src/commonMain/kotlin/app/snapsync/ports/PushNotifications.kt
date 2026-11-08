@@ -3,7 +3,6 @@ package app.snapsync.ports
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Inbound
-import app.snapsync.model.PlatformError
 
 /**
  * **The platform's push service**: ask it for this device's token, and hear the
@@ -18,7 +17,7 @@ import app.snapsync.model.PlatformError
  */
 interface PushNotifications : EventPort<PushHandlers> {
     /**
-     * The push service this adapter speaks — the backend's push kind (`PUSH_KIND_APNS`, `PUSH_KIND_FCM`) the device's
+     * The push service this adapter speaks — the backend's push kind ([PushKind]) the device's
      * registration carries, so the backend picks the sender that can reach it. A fact of the platform, fixed for the
      * adapter's life: an iOS build only ever holds APNs tokens, an Android build only FCM ones.
      */

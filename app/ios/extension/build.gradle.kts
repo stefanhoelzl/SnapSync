@@ -44,7 +44,6 @@ kotlin {
             kotlin.srcDir(if (rigEnabled) "../../../test/rig/src/ext-hook/kotlin" else "src/entries/kotlin")
         }
         commonMain.dependencies {
-            api(project(":domain:model"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
             // The extension's own composition (`docs/architecture.md`, "The composition layer") and the process ports

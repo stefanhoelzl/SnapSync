@@ -331,7 +331,7 @@ internal object BytecodeReader {
         annotations.orEmpty().none { it.desc == "Lorg/jetbrains/annotations/NotNull;" }
 
     private fun claims(annotations: List<AnnotationNode>): List<Triple<String, String, String>> =
-        annotations.filter { it.desc == "Lapp/snapsync/model/NeverAnswers;" }.flatMap { a ->
+        annotations.filter { it.desc == "Lapp/snapsync/annotations/NeverAnswers;" }.flatMap { a ->
             val values = a.values.orEmpty().chunked(2).associate { (k, v) -> k as String to v }
             (values["claims"] as? List<*>).orEmpty().filterIsInstance<AnnotationNode>().map { n ->
                 val v = n.values.orEmpty().chunked(2).associate { (k, x) -> k as String to x as String }

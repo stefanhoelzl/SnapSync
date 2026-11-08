@@ -2,10 +2,10 @@ package app.snapsync.systemui
 
 import app.snapsync.link.SystemUrlOpenerApi
 import app.snapsync.link.UrlOpenerApi
-import app.snapsync.model.Handoff
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.objc.onQueue
+import app.snapsync.ports.Handoff
 import app.snapsync.ports.SystemUi
 import co.touchlab.kermit.Logger
 import platform.Foundation.NSURL

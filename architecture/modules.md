@@ -32,12 +32,10 @@ flowchart LR
   domain_format[":domain:format"]
   domain_host[":domain:host"]
   domain_inbound[":domain:inbound"]
-  domain_model[":domain:model"]
   domain_ports[":domain:ports"]
   domain_presentation[":domain:presentation"]
   domain_query[":domain:query"]
   domain_scheduling[":domain:scheduling"]
-  domain_services[":domain:services"]
   domain_wire[":domain:wire"]
   test_architecture[":test:architecture"]
   test_cli[":test:cli"]
@@ -67,11 +65,9 @@ flowchart LR
   adapter_android --> domain_domain
   adapter_android --> domain_format
   adapter_android --> domain_inbound
-  adapter_android --> domain_model
   adapter_android --> domain_ports
   adapter_android --> domain_presentation
   adapter_android --> domain_query
-  adapter_android --> domain_services
   adapter_android --> test_contracts
   adapter_android --> test_verifies
   adapter_android --> ui_components
@@ -81,12 +77,10 @@ flowchart LR
   adapter_generic_app --> domain_domain
   adapter_generic_app --> domain_format
   adapter_generic_app --> domain_inbound
-  adapter_generic_app --> domain_model
   adapter_generic_app --> domain_ports
-  adapter_generic_app --> domain_services
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
-  adapter_generic_app --> test_verifies
+  adapter_generic_mock --> adapter_generic_app
   adapter_generic_mock --> domain_compose
   adapter_generic_mock --> domain_composition_extension
   adapter_generic_mock --> domain_composition_process
@@ -95,10 +89,8 @@ flowchart LR
   adapter_generic_mock --> domain_entrypoints
   adapter_generic_mock --> domain_format
   adapter_generic_mock --> domain_inbound
-  adapter_generic_mock --> domain_model
   adapter_generic_mock --> domain_ports
   adapter_generic_mock --> domain_scheduling
-  adapter_generic_mock --> domain_services
   adapter_generic_mock --> domain_wire
   adapter_generic_mock --> test_contracts
   adapter_generic_mock --> test_levers
@@ -107,7 +99,6 @@ flowchart LR
   adapter_generic_sentry --> adapter_generic_app
   adapter_generic_sentry --> adapter_ios_ext_safe
   adapter_generic_sentry --> domain_domain
-  adapter_generic_sentry --> domain_model
   adapter_generic_sentry --> domain_ports
   adapter_generic_sentry --> domain_scheduling
   adapter_generic_sentry --> test_contracts
@@ -115,9 +106,7 @@ flowchart LR
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain_compose
   adapter_ios_app_only --> domain_inbound
-  adapter_ios_app_only --> domain_model
   adapter_ios_app_only --> domain_ports
-  adapter_ios_app_only --> domain_services
   adapter_ios_app_only --> test_contracts
   adapter_ios_app_only --> test_verifies
   adapter_ios_ext_safe --> adapter_generic_app
@@ -126,16 +115,13 @@ flowchart LR
   adapter_ios_ext_safe --> domain_domain
   adapter_ios_ext_safe --> domain_format
   adapter_ios_ext_safe --> domain_inbound
-  adapter_ios_ext_safe --> domain_model
   adapter_ios_ext_safe --> domain_ports
-  adapter_ios_ext_safe --> domain_services
   adapter_ios_ext_safe --> test_contracts
   adapter_ios_ext_safe --> test_verifies
   adapter_ios_ui --> adapter_ios_app_only
   adapter_ios_ui --> adapter_ios_ext_safe
   adapter_ios_ui --> domain_format
   adapter_ios_ui --> domain_inbound
-  adapter_ios_ui --> domain_model
   adapter_ios_ui --> domain_ports
   adapter_ios_ui --> domain_presentation
   adapter_ios_ui --> domain_query
@@ -151,21 +137,19 @@ flowchart LR
   app_android --> domain_composition_process
   app_android --> domain_host
   app_android --> domain_inbound
-  app_android --> domain_model
   app_android --> domain_ports
   app_android --> domain_presentation
-  app_android --> domain_services
+  app_android --> domain_scheduling
   app_android --> ui_components
   app_android --> ui_state
   app_desktop --> adapter_generic_app
   app_desktop --> app_jvm
   app_desktop --> domain_data
   app_desktop --> domain_domain
-  app_desktop --> domain_model
+  app_desktop --> domain_format
   app_desktop --> domain_ports
   app_desktop --> domain_presentation
   app_desktop --> domain_query
-  app_desktop --> domain_services
   app_desktop --> test_control
   app_desktop --> ui_components
   app_desktop --> ui_screens
@@ -179,10 +163,9 @@ flowchart LR
   app_ios --> domain_composition_process
   app_ios --> domain_host
   app_ios --> domain_inbound
-  app_ios --> domain_model
   app_ios --> domain_ports
   app_ios --> domain_presentation
-  app_ios --> domain_services
+  app_ios --> domain_scheduling
   app_ios --> ui_components
   app_ios --> ui_screens
   app_ios --> ui_state
@@ -192,7 +175,6 @@ flowchart LR
   app_ios_extension --> domain_composition_extension
   app_ios_extension --> domain_composition_process
   app_ios_extension --> domain_inbound
-  app_ios_extension --> domain_model
   app_ios_extension --> domain_ports
   app_jvm --> adapter_generic_app
   app_jvm --> adapter_generic_mock
@@ -200,10 +182,8 @@ flowchart LR
   app_jvm --> domain_composition_extension
   app_jvm --> domain_composition_process
   app_jvm --> domain_host
-  app_jvm --> domain_model
   app_jvm --> domain_ports
   app_jvm --> domain_presentation
-  app_jvm --> domain_services
   app_jvm --> ui_state
   domain_application --> domain_data
   domain_application --> domain_domain
@@ -216,11 +196,9 @@ flowchart LR
   domain_compose --> domain_entrypoints
   domain_compose --> domain_format
   domain_compose --> domain_inbound
-  domain_compose --> domain_model
   domain_compose --> domain_ports
   domain_compose --> domain_query
   domain_compose --> domain_scheduling
-  domain_compose --> domain_services
   domain_compose --> ui_state
   domain_composition_extension --> domain_application
   domain_composition_extension --> domain_composition_process
@@ -246,28 +224,22 @@ flowchart LR
   domain_entrypoints --> domain_data
   domain_entrypoints --> domain_domain
   domain_entrypoints --> domain_inbound
-  domain_entrypoints --> domain_model
   domain_entrypoints --> domain_ports
   domain_entrypoints --> domain_query
   domain_entrypoints --> domain_scheduling
-  domain_entrypoints --> domain_services
   domain_format --> domain_domain
   domain_host --> domain_compose
   domain_host --> domain_composition_process
   domain_host --> domain_domain
   domain_host --> domain_entrypoints
   domain_host --> domain_inbound
-  domain_host --> domain_model
   domain_host --> domain_ports
   domain_host --> domain_presentation
   domain_host --> domain_query
   domain_host --> domain_scheduling
   domain_host --> ui_state
-  domain_model --> domain_domain
-  domain_model --> domain_format
   domain_ports --> domain_domain
   domain_ports --> domain_inbound
-  domain_ports --> domain_model
   domain_presentation --> domain_domain
   domain_presentation --> domain_inbound
   domain_presentation --> domain_query
@@ -280,13 +252,6 @@ flowchart LR
   domain_scheduling --> domain_domain
   domain_scheduling --> domain_inbound
   domain_scheduling --> domain_ports
-  domain_services --> domain_data
-  domain_services --> domain_domain
-  domain_services --> domain_format
-  domain_services --> domain_inbound
-  domain_services --> domain_model
-  domain_services --> domain_ports
-  domain_services --> domain_wire
   test_architecture --> adapter_generic_app
   test_architecture --> adapter_generic_mock
   test_architecture --> domain_application
@@ -295,9 +260,7 @@ flowchart LR
   test_architecture --> domain_data
   test_architecture --> domain_domain
   test_architecture --> domain_format
-  test_architecture --> domain_model
   test_architecture --> domain_ports
-  test_architecture --> domain_services
   test_architecture --> domain_wire
   test_architecture --> test_contracts
   test_architecture --> test_levers
@@ -313,13 +276,10 @@ flowchart LR
   test_contracts --> domain_domain
   test_contracts --> domain_format
   test_contracts --> domain_inbound
-  test_contracts --> domain_model
   test_contracts --> domain_ports
-  test_contracts --> domain_services
   test_contracts --> domain_wire
   test_contracts --> ui_state
   test_control --> domain_domain
-  test_control --> domain_model
   test_control --> domain_presentation
   test_control --> test_client
   test_control --> test_levers
@@ -336,7 +296,6 @@ flowchart LR
   test_data --> domain_query
   test_data --> domain_wire
   test_data --> test_contracts
-  test_data --> test_verifies
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
   test_feature --> adapter_generic_mock
@@ -345,21 +304,17 @@ flowchart LR
   test_feature --> domain_domain
   test_feature --> domain_format
   test_feature --> domain_inbound
-  test_feature --> domain_model
   test_feature --> domain_ports
   test_feature --> domain_scheduling
-  test_feature --> domain_services
   test_harness_driver --> app_desktop
   test_integration --> domain_domain
   test_integration --> domain_format
-  test_integration --> domain_model
   test_integration --> domain_presentation
   test_integration --> test_control
   test_integration --> ui_state
   test_journeys --> adapter_generic_app
   test_journeys --> domain_domain
   test_journeys --> domain_format
-  test_journeys --> domain_model
   test_journeys --> domain_ports
   test_journeys --> domain_presentation
   test_journeys --> domain_wire
@@ -367,22 +322,20 @@ flowchart LR
   test_journeys --> test_contracts
   test_journeys --> test_control
   test_journeys --> ui_state
+  test_launch_adapters --> adapter_generic_app
   test_launch_adapters --> adapter_generic_mock
   test_launch_adapters --> domain_compose
   test_launch_adapters --> domain_composition_extension
   test_launch_adapters --> domain_composition_process
   test_launch_adapters --> domain_inbound
-  test_launch_adapters --> domain_model
   test_launch_adapters --> domain_ports
   test_launch_adapters --> ui_state
   test_levers --> ui_state
   test_no_grant --> adapter_android
-  test_no_grant --> domain_model
   test_no_grant --> domain_ports
   test_no_grant --> test_contracts
   test_no_grant --> test_verifies
   test_partial_grant --> adapter_android
-  test_partial_grant --> domain_model
   test_partial_grant --> domain_ports
   test_partial_grant --> test_contracts
   test_partial_grant --> test_verifies
@@ -400,11 +353,9 @@ flowchart LR
   test_rig --> domain_domain
   test_rig --> domain_format
   test_rig --> domain_inbound
-  test_rig --> domain_model
   test_rig --> domain_ports
   test_rig --> domain_presentation
   test_rig --> domain_query
-  test_rig --> domain_services
   test_rig --> domain_wire
   test_rig --> test_contracts
   test_rig --> test_edge
@@ -417,7 +368,6 @@ flowchart LR
   ui_screens --> adapter_generic_app
   ui_screens --> domain_domain
   ui_screens --> domain_format
-  ui_screens --> domain_model
   ui_screens --> domain_presentation
   ui_screens --> domain_query
   ui_screens --> test_verifies

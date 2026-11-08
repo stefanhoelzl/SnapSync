@@ -4,6 +4,7 @@ import app.snapsync.application.EntryPointCall
 import app.snapsync.application.upload.ReconcileUploader
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.gallery.PhotoGrants
+import app.snapsync.data.legacy.LegacyRecords
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.Stored
@@ -22,11 +23,11 @@ import app.snapsync.domain.upload.ExtensionSwitch
 import app.snapsync.domain.upload.OsSupport
 import app.snapsync.domain.upload.OsUploaderAdmission
 import app.snapsync.domain.upload.UploaderChange
+import app.snapsync.format.LegacyMembership
 import app.snapsync.format.TimestampText
 import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
-import app.snapsync.model.EventConfig
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.DevControls
 import app.snapsync.ports.ExtensionRegistry
@@ -34,7 +35,6 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
 import app.snapsync.ports.UploaderPin
-import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -108,7 +108,7 @@ class ProducerExclusivityTest {
         private val held = database
 
         /** [joined] as the membership row a join writes, re-read as every trigger re-reads it. */
-        fun join(joined: EventConfig) {
+        fun join(joined: LegacyMembership) {
             held.use {
                 it.membershipQueries.saveMembership(
                     eventId = Stored.Valid(joined.eventId),
@@ -262,7 +262,7 @@ private fun registrable(supported: Boolean, grant: LibraryGrant, pin: UploaderPi
 
 /** The membership a join persists. */
 private val MEMBERSHIP =
-    EventConfig(
+    LegacyMembership(
         testEventId("E"),
         "E",
         CaptureCutoff(TimestampText.parse("2026-01-01T00:00:00Z")),

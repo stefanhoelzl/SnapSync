@@ -1,11 +1,11 @@
 package app.snapsync.link
 
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
+import app.snapsync.annotations.PlatformEntry
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
-import app.snapsync.model.PlatformEntry
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links

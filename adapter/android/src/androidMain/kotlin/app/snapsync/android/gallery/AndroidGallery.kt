@@ -8,12 +8,12 @@ import android.os.Looper
 import android.provider.MediaStore
 import app.snapsync.android.permission.AndroidPhotoPermission
 import app.snapsync.android.permission.PhotoGrants
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
 import app.snapsync.ports.GalleryImportRequest
@@ -118,7 +118,7 @@ class AndroidGallery(
     override suspend fun changeToken(): LibraryChangeToken = withContext(Dispatchers.IO) {
         VolumeGenerations(
             MediaStore.getExternalVolumeNames(appContext).sorted().mapNotNull { volume ->
-                runCatchingCancellable {
+                PlatformCalls.attempt {
                     volume to (MediaStore.getVersion(appContext, volume) to MediaStore.getGeneration(appContext, volume))
                 }
                     .onFailure { log.w(it) { "the media provider gave no generation for $volume" } }.getOrNull()

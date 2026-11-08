@@ -1,10 +1,10 @@
 package app.snapsync.android.link
 
 import android.content.Intent
+import app.snapsync.annotations.PlatformEntry
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.PlatformEntry
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links

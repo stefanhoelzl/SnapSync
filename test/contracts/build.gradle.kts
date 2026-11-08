@@ -70,7 +70,6 @@ kotlin {
             kotlin.srcDir(generateSchemaStatements)
         }
         commonMain.dependencies {
-            api(project(":domain:model"))
             api(project(":domain:domain"))
             // The text a value takes on the wire — a resource role's token in an upload's path.
             implementation(project(":domain:format"))
@@ -87,7 +86,6 @@ kotlin {
             // `DatabasesContract` brings its own schema and reads through the driver it is handed.
             implementation(libs.sqldelight.runtime)
             // The schema clauses (`SchemaClauses.kt`) run every statement through the databases' generated code.
-            implementation(project(":domain:services"))
             // The production gateway the Backend contract's client is (`Edge.kt`).
             implementation(project(":domain:data"))
             api(kotlin("test"))

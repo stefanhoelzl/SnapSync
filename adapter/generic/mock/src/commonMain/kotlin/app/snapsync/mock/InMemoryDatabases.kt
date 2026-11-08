@@ -10,7 +10,7 @@ import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.DatabaseFault
 import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WriteKind
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -111,7 +111,7 @@ internal class InMemoryDatabases(
         if (locked) return@locked Found.Answered(DbOpen.Failed("locked: the device has not been unlocked since boot"))
         if (name in unreadable) return@locked Found.Answered(DbOpen.Failed("disk I/O error: $name cannot be read"))
         refusals[name]?.let { Found.Answered(it) }
-            ?: runCatchingCancellable { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
+            ?: PlatformCalls.attempt { if (readOnly) openReadOnly(name, schema) else openReadWrite(name, schema) }
                 .getOrElse { Found.Answered(DbOpen.Failed("${it::class.simpleName}: ${it.message}")) }
     }
 

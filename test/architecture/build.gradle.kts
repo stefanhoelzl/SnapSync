@@ -47,7 +47,6 @@ dependencies {
     // (`docs/architecture.md`, "The upload transitions stop in-flight work only at a leave") — the one guard here
     // that executes domain code rather than reading source: the invariant is behavioral (no reachable sequence
     // orphans in-flight work), which no text scan can see.
-    testImplementation(project(":domain:model"))
     testImplementation(project(":domain:domain"))
     testImplementation(project(":domain:format"))
     testImplementation(project(":domain:data"))
@@ -61,7 +60,6 @@ dependencies {
     testImplementation(project(":test:verifies"))
     // The transitions read the membership and the grant through their services, built over the ports' mocks.
     testImplementation(project(":domain:ports"))
-    testImplementation(project(":domain:services"))
     testImplementation(project(":adapter:generic:mock"))
     // The composition layer's bundles `PortBundleTest` reads by reflection.
     testImplementation(project(":domain:composition:process"))
@@ -157,7 +155,6 @@ tasks.test {
             // MigrationPinTest's subject: the migration chains. Without them an edit to a shipped `.sqm` — the one
             // change the pin exists to catch — leaves this task UP-TO-DATE and the pin silently stops pinning.
             include("domain/data/src/commonMain/sqldelight/**/*.sqm")
-            include("domain/services/src/commonMain/sqldelight/**/*.sqm")
             // The event-link domain guard's subjects. Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing

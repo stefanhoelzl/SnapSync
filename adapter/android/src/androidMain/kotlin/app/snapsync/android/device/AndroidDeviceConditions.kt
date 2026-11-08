@@ -9,7 +9,7 @@ import app.snapsync.domain.report.DeviceConditionsReading
 import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.StandbyBucket
 import app.snapsync.domain.report.Thermal
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.DeviceConditions
 
 /**
@@ -38,8 +38,8 @@ class AndroidDeviceConditions(context: Context) : DeviceConditions {
     )
 }
 
-private inline fun <T> fact(read: () -> Fact<T>): Fact<T> =
-    runCatchingCancellable { read() }.getOrElse { Fact.Failed(it.message ?: it::class.java.simpleName) }
+private fun <T> fact(read: () -> Fact<T>): Fact<T> =
+    PlatformCalls.attempt { read() }.getOrElse { Fact.Failed(it.message ?: it::class.java.simpleName) }
 
 private fun bucketOf(bucket: Int): Fact<StandbyBucket> = when (bucket) {
     UsageStatsManager.STANDBY_BUCKET_ACTIVE -> Fact.Known(StandbyBucket.ACTIVE)

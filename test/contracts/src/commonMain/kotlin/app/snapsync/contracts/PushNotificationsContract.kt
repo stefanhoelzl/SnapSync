@@ -4,7 +4,7 @@ package app.snapsync.contracts
 
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.PlatformError
+import app.snapsync.ports.PlatformError
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushNotifications

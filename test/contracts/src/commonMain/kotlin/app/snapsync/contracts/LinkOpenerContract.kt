@@ -1,6 +1,6 @@
 package app.snapsync.contracts
 
-import app.snapsync.model.Handoff
+import app.snapsync.ports.Handoff
 import app.snapsync.ports.SystemUi
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

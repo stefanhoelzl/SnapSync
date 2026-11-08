@@ -68,9 +68,10 @@ kotlin {
             // dependency folds it into `SnapSyncKit` instead — settled by a compile
             // (`linkDebugFrameworkIosSimulatorArm64`), not by reasoning.
             if (rigEnabled) implementation(project(":app:ios:extension"))
-            api(project(":domain:model"))
             api(project(":domain:ports"))
             api(project(":domain:inbound"))
+            // The root scope's handler (`RootScopeFailures`), the parent of the runtime's.
+            implementation(project(":domain:scheduling"))
             api(project(":domain:compose"))
             api(project(":domain:composition:process"))
             // The shared host composition: the core and the status host over it (`snapSyncHost`).
@@ -87,7 +88,6 @@ kotlin {
             // BGTaskScheduler, PhotoKit importer, permission).
             implementation(project(":adapter:generic:app"))
             // The storage services the root builds over the thin storage adapters (`docs/architecture.md`).
-            implementation(project(":domain:services"))
             implementation(project(":adapter:ios:ext-safe"))
             implementation(project(":adapter:ios:app-only"))
             implementation(project(":adapter:ios:ui"))

@@ -96,48 +96,6 @@ subprojects {
 // filtered to it measures nothing — `:domain:model:koverVerify` once passed at 100 over an empty report that way.
 coverage {
     integrationGoal(instructions = 95, branches = 85)
-    ":domain:model" {
-        unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":test:feature"))
-        // 72 → 71 in phase 4.1 (trust): the trust vocabulary the suite covered left for ports and data, so what stays
-        // is the same code measured without it — no test was lost. 71/40 → 76/46 when the JVM host began playing
-        // process-metric reports, which run the rule that reads them (`ProcessMetricsKt`). 76/46 → 77/47 when the suite
-        // began claiming the scenarios an Android phone's answers decide (folder albums, the install referrer). → 79/48
-        // when the update test began updating from every older install (`AppUpdateIntegrationTest`): the legacy
-        // membership's codec. → 76/45 in phase 4.2 (membership), for the same reason as the 2c drop: `Direction`,
-        // `LedgerState` and the membership's vocabulary the suite covered (the join's choices and loads, the outcomes)
-        // left for the domain and the layers.
-        // → 77/47 in phase 31, once the polling tests waited on outcome events instead.
-        // → 74/43 in phase 4.4a (selection): the selection policy, its candidate seams and the
-        // facts they read — which the suite covered — left for the domain and the data layer. Measured 74.37 / 43.12 %.
-        // → 71/42 in phase 4.5 (receiving): the union, import and download-record vocabulary the suite covered left for
-        // the domain and the data layer. Measured 71.35 / 42.69 %.
-        // → 67/37 in phase 4.4b (uploads), landed after 4.5: the upload engine's model — its resources, requests,
-        // outcomes and the cycle's results, which the suite covered — left for the domain and the data layer, and the
-        // dead leftovers with it. Measured 67.02 / 37.41 %.
-        // → 64/37 in phase 4.4c (manifest): the device manifest and the ledger row it read, which the suite covered,
-        // left for the domain and the data layer. No test was lost. Measured 64.49 / 37.40 %.
-        // → 63/37 in phase 4.9 (status and presentation): the bug report's context and outcome, which the suite
-        // covered, left for the domain with the requests the command door carries, and the old command interface went.
-        // No test was lost. Measured 63.47 %.
-        // → 63/36 when the screen read the sharing progress itself (4.9): the old status snapshot's classification
-        // (`SyncProgress.state`), which the suite covered, went with it. No test was lost. Measured 36.78 %.
-        // → 62/36 when the screen's build, report and store vocabulary moved to the domain (4.9): the store page,
-        // the build label, the report's destination and the state section's keys, which the suite covered, left. No
-        // test was lost. Measured 62.74 %.
-        // → 53/22 when the crash channel, the process account and the bug report's values moved to the domain and the
-        // format (4.10): the crash vocabulary, the process-metric rules, the footprints and the report's budget, which
-        // the suite covered, left; what stays is the old zones' vocabulary no member's day reaches. No test was lost.
-        // Measured 53.32 / 22.95 %.
-        // → 52/22 when an invite's key left the logs by type (4.10): `redactEventKeys`, which the suite ran on every
-        // logged link, went — `LinkReading` logs what a link opened instead. No test was lost. Measured 52.87 %.
-        // → 46/20 when the bug report moved to the layers (4.10): the device conditions' vocabulary, the report's
-        // environment and its facts, which the suite covered, left for the domain. No test was lost. Measured
-        // 46.08 / 20.74 %.
-        // → 45/20 in phase 4.11 (extension composition): the extension's processing answer, which every invocation
-        // the suite plays covered, left for the ports as the `ExtensionHost` port's vocabulary. No test was lost.
-        // Measured 45.38 %.
-        integration(instructions = 45, branches = 20)
-    }
     // Declarations only: what it can count is the event ports' handler bundles, measured by the entry mocks' dispatch
     // tests (`EntryDispatchTest`). A member with a default body is logic in a declaration zone and moves out.
     ":domain:ports" {
@@ -148,23 +106,6 @@ coverage {
         // contracts' (`FilesContract`) to reach, never a member's day. → 91 in phase 38 (missing levers and world
         // events). Measured 91.38 %, two runs.
         integration(instructions = 91, branches = 85) // no branches: any branch target is met
-    }
-    ":domain:services" {
-        // Beside the JVM adapters runs the encrypted file format's cipher, held to Tink's reference implementation.
-        unit(alsoCoveredBy = listOf(":adapter:generic:app", ":adapter:generic:mock", ":test:feature"))
-        // 81/59 → 82/60 when the JVM host began playing process-metric reports (`ProcessAccount`, `FootprintSampler`).
-        // 82/60 → 85/64 when the update test began updating from every older install (`AppUpdateIntegrationTest`): the
-        // shared records' legacy copy, the older databases' migrations, a 0.4 transfer's tag. Held with the locked
-        // phone and the refusing Keychain and preferences (`unavailable-keychain-and-preferences`). → 84/63 in phase
-        // 4.2 (membership): the config service the suite covered left for the data layer.
-        // → 86/65 in phase 31, once the polling tests waited on outcome events instead.
-        // Branches → 64 in phase 4.3 (encryption): the key the old sealing and opening read from the store, each of its
-        // reads — a slot holding no key — the crypto suites' (`:test:feature`), until they move into the data layer.
-        // Branches → 65 in phase 19 (claim: event-album).
-        // Instructions → 85 in phase 4.5 (receiving): the download store, its jobs, the staging and the importer the
-        // suite covered moved to the data layer. Measured 85.15 %.
-        // → 90/71 in phase 38 (missing levers and world events). Measured 90.89 / 71.22 %, two runs.
-        integration(instructions = 90, branches = 71)
     }
     ":domain:wire" {
         skipped(
@@ -183,7 +124,8 @@ coverage {
                 "each platform's SQLite through DatabasesContract's schema clauses",
             packages = listOf("app.snapsync.data.store.db", "app.snapsync.data.receiving.db"),
         )
-        unit(alsoCoveredBy = listOf(":test:data"))
+        // The legacy copy (a shim) is run by the mocks' own suites, over the in-memory databases and files it reads.
+        unit(alsoCoveredBy = listOf(":test:data", ":adapter:generic:mock"))
         // The protocol's every reply and every store failure are the data suites'; the suite reaches the paths a
         // member's day takes.
         // 79/53 → 81/58 with the locked phone and the refusing Keychain (`unavailable-keychain-and-preferences`): the
@@ -242,7 +184,11 @@ coverage {
         // Branches → 65 in phase 4.10 (diagnostics), when the memory trail's codec moved in from model: every way a
         // trail file is not one is the unit suite's (`FootprintTrailTextTest`) — a member's day reads only its own.
         // Measured 65.86 %.
-        integration(instructions = 85, branches = 65)
+        // → 84/58 in phase 5 (clean-up), when the legacy membership's decoder and the push payload's codec moved in
+        // from model: every way a 0.4 file does not read and every malformed push are the unit suite's
+        // (`LegacyMembershipTextTest`, `PushPayloadTextTest`) — an updated device holds one good file, a push names its
+        // event. No test was lost. Measured 84.25 / 58.83 %.
+        integration(instructions = 84, branches = 58)
     }
     ":domain:domain" {
         unit()
@@ -282,7 +228,11 @@ coverage {
     // path a tap's intents took went with the tap tracking: both are the unit suites' now. Measured 92.88 / 74.76 %.
     ":domain:scheduling" {
         unit()
-        integration(instructions = 92, branches = 74)
+        // → 91/72 in phase 5 (clean-up), when the root scope's handler, the transfer session's drain counter and the
+        // membership change's exclusion moved in from model and services: a root's uncaught failure and a sweep that
+        // meets a join are the unit suite's (`RootScopeFailuresTest`, `ExclusionTest`). No test was lost. Measured
+        // 91.43 / 72.35 %.
+        integration(instructions = 91, branches = 72)
     }
     // The process's composition registers its metric reports' entry point; the mocks' suite drives it.
     ":domain:entrypoints" {

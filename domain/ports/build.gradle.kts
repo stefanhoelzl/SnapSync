@@ -17,7 +17,6 @@ plugins {
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":domain:model"))
             // The domain's values a port hands over as they are: the build's store page (`BuildInfo.store`).
             implementation(project(":domain:domain"))
             // How work enters: the inbound kinds the event ports' handlers are typed as, and the completion handles.

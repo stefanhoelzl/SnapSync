@@ -5,8 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import app.snapsync.dates.DateLocales
 import app.snapsync.ports.DateFormatting
-import app.snapsync.services.dates.formatsFor
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.LocalDarkThemeOverride
@@ -35,7 +35,7 @@ fun ScreenPane(
             state?.let {
                 StatusScreen(
                     state = it,
-                    dateFormats = { tag -> DateFormatter(dateFormatting.formatsFor(tag)::format) },
+                    dateFormats = { tag -> DateFormatter(DateLocales.forScreen(dateFormatting, tag)::format) },
                     actions = statusActions(onIntent),
                 )
             } ?: Text("the app has shown nothing yet")

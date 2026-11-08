@@ -75,7 +75,7 @@ open class SimulatorRecord(
  * A registry over one [SimulatorRecord] — the process-wide [SimulatorExtensionRecord] unless a binding passes its own.
  *
  * It answers the same three raw facts the PhotoKit adapter does — did the write succeed, and if not, which domain and
- * code — so the tested classifier (`model/registrationOutcome`) judges a scenario driven here and a device exercising
+ * code — so the tested classifier (the domain's `RegistrationVerdict`) judges a scenario driven here and a device exercising
  * the same code path identically, which is the one place a substitute could quietly lie.
  */
 internal class SimulatorExtensionRegistry(

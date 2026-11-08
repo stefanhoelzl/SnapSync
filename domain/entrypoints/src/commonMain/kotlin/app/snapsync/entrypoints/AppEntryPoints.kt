@@ -26,6 +26,7 @@ import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.network.NetworkReadings
 import app.snapsync.data.network.NetworkStatus
 import app.snapsync.data.process.MetricPayloadReading
+import app.snapsync.data.push.PushPayload
 import app.snapsync.data.push.PushTokens
 import app.snapsync.data.receiving.ImportMarkerWrites
 import app.snapsync.data.receiving.ReceivingCounts
@@ -51,15 +52,13 @@ import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.wake.UploadsLeft
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.of
-import app.snapsync.model.PlatformError
-import app.snapsync.model.pushEventId
-import app.snapsync.model.pushSeq
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.FinishedDownload
 import app.snapsync.ports.FinishedTransfer
 import app.snapsync.ports.ImportPlaceholder
 import app.snapsync.ports.ImportSettled
 import app.snapsync.ports.LinkDelivery
+import app.snapsync.ports.PlatformError
 import app.snapsync.ports.ProcessMetricPayload
 import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushToken
@@ -78,9 +77,9 @@ import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Pass
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
+import app.snapsync.scheduling.SessionDrains
 import app.snapsync.scheduling.Steps
 import app.snapsync.scheduling.orIfCut
-import app.snapsync.services.transfer.SessionDrains
 
 // ── What happens on each trigger of the app process ─────────────────────────────────────────────────────────────────
 //
@@ -158,11 +157,11 @@ class OnSilentPush(
 ) : BackgroundEntryPoint<PushMessage>(runtime) {
     override suspend fun run(arg: PushMessage, on: Run) = on.steps {
         required { prelude.run(on) }
-        when (required { tail.of(pushEventId(arg.payload)) }) {
+        when (required { tail.of(PushPayload.eventId(arg)) }) {
             // A push for the joined event: what it announced is read from the position it names (decision record
             // `changes/incremental-union`, D6) — a burst of pushes after one read costs no further reads.
             PushTailVerdict.Joins -> {
-                required { receive.run(on, UnionTrigger.PUSH, pushSeq(arg.payload)) }
+                required { receive.run(on, UnionTrigger.PUSH, PushPayload.seq(arg)) }
                 detached { wake.full(WakeKind.SILENT_PUSH, on) }
             }
             // Notably a left event, whose backend membership persists and so keeps pushing: never received again.

@@ -18,7 +18,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * one open at a time — `lazy`'s synchronized initialisation keeps two first uses from opening twice — and kept only
  * when it succeeded: a failed open is answered and replaced by a fresh attempt for the next use, so a locked device's
  * failure is retried rather than fixed for the process. [prepared] runs once on the database right after the open (the
- * shared database's legacy copy); it failing fails the open.
+ * shared database's legacy copy), each of its statement runs failing alone; it answering a failure fails the open.
  */
 @OptIn(ExperimentalAtomicApi::class)
 abstract class OwnedDatabase<D>(
@@ -30,8 +30,11 @@ abstract class OwnedDatabase<D>(
     /** The generated database over [driver], its column adapters wired. */
     protected abstract fun over(driver: SqlDriver): D
 
-    /** What the store does once on the database, right after the open: nothing, unless it says otherwise. */
-    protected open fun prepared(database: D) = Unit
+    /**
+     * What the store does once on the database, right after the open: nothing, unless it says otherwise. A failure it
+     * answers fails the open, which the next use retries.
+     */
+    protected open fun prepared(database: Opened<D>): DbResult<Unit> = DbResult.Ok(Unit)
 
     /** That this database changed — a commit made through it, or (told by the store's owner) another process's. */
     val changes: StoreChanges = StoreChanges()
@@ -48,15 +51,30 @@ abstract class OwnedDatabase<D>(
     }
 
     private fun openOnce(): DbResult<Kept<D>> = when (val opened = databases.open(name, schema, readOnly = false)) {
-        is DbOpen.Opened -> opened.database.execute { driver ->
-            Kept(opened.database, over(AnnouncingDriver(driver, changes)).also(::prepared))
-        }
+        is DbOpen.Opened -> kept(
+            opened.database.execute { driver -> Kept(opened.database, over(AnnouncingDriver(driver, changes))) },
+        )
         is DbOpen.Failed -> DbResult.Failed(opened.detail)
         // Only a read-only open may answer these; an adapter that does breaks the `Databases` contract.
         DbOpen.Missing, DbOpen.OldSchema ->
             DbResult.Failed("a read-write open answered $opened, which only a read-only open may")
     }
 
+    private fun kept(open: DbResult<Kept<D>>): DbResult<Kept<D>> = when (open) {
+        is DbResult.Ok -> preparedAs(open, prepared(Opened(open.value.handle, open.value.database)))
+        is DbResult.Failed -> open
+    }
+
+    private fun preparedAs(open: DbResult.Ok<Kept<D>>, prepared: DbResult<Unit>): DbResult<Kept<D>> = when (prepared) {
+        is DbResult.Ok -> open
+        is DbResult.Failed -> prepared
+    }
+
     /** The open database and the generated [database] over its driver, used only inside its [handle]'s execute. */
     private class Kept<D>(val handle: OpenDatabase, val database: D)
+
+    /** The database just opened, as [prepared] reaches it: each [execute] its own run of statements, failing alone. */
+    class Opened<D> internal constructor(private val handle: OpenDatabase, private val database: D) {
+        fun <T> execute(statements: (D) -> T): DbResult<T> = handle.execute { statements(database) }
+    }
 }

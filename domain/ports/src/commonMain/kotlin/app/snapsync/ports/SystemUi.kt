@@ -1,7 +1,5 @@
 package app.snapsync.ports
 
-import app.snapsync.model.Handoff
-
 /**
  * The platform's own UI, where this app hands something over and stops being involved — ONE external system: the
  * operating system's shell (`UIActivityViewController`, `UIApplication.openURL` and the app's Settings page on iOS;

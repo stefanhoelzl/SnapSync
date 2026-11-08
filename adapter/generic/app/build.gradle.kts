@@ -30,7 +30,6 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:model"))
             api(project(":domain:domain"))
             api(project(":domain:ports"))
             // The inbound kinds the event ports deliver through.
@@ -66,7 +65,6 @@ kotlin {
         named("jvmTest") {
             dependencies {
                 implementation(project(":test:contracts"))
-                implementation(project(":domain:services"))
                 implementation(project(":domain:format"))
                 implementation(project(":domain:domain"))
                 implementation(project(":domain:data"))

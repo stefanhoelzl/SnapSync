@@ -3,6 +3,7 @@ package app.snapsync.data.membership
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.LegacyCopy
 import app.snapsync.data.store.LegacySource
+import app.snapsync.data.store.OwnedDatabase
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.domain.album.AlbumChoice
@@ -34,9 +35,8 @@ internal const val OTHER = "1f0e8a5c-3f1b-4c2d-9e7a-1b2c3d4e5f61"
 
 /** Every legacy record already copied: the database is the records' one home. */
 internal object Copied : LegacyCopy {
-    override fun copyInto(
-        db: LedgerDatabase,
-    ) = LegacySource.entries.forEach { db.legacyImportQueries.markImported(it.key) }
+    override fun copyInto(db: OwnedDatabase.Opened<LedgerDatabase>) =
+        db.execute { open -> LegacySource.entries.forEach { open.legacyImportQueries.markImported(it.key) } }
 }
 
 /** The shared database of [device], its legacy records copied. */

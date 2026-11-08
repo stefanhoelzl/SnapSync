@@ -3,9 +3,9 @@ package app.snapsync.android.dates
 import android.icu.text.DateFormat
 import android.icu.util.TimeZone
 import android.icu.util.ULocale
-import app.snapsync.model.DateFormats
-import app.snapsync.model.DateLocale
+import app.snapsync.ports.DateFormats
 import app.snapsync.ports.DateFormatting
+import app.snapsync.ports.DateLocale
 import app.snapsync.ports.DeviceLocale
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.toInstant

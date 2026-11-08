@@ -18,13 +18,13 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.await
 import androidx.work.workDataOf
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeHandlers
@@ -280,7 +280,8 @@ class AndroidWake(context: Context, private val log: Logger = Logger.withTag("wa
          */
         suspend fun deliver(id: WakeId, block: suspend (AndroidWake) -> Unit) {
             val wake = withTimeoutOrNull(COMPOSITION_WAIT_MILLIS) { registration.filterNotNull().first() } ?: return
-            runCatchingCancellable { block(wake) }.onFailure { Logger.withTag("wake").w(it) { "the $id wake failed" } }
+            PlatformCalls.attemptSuspending { block(wake) }
+                .onFailure { Logger.withTag("wake").w(it) { "the $id wake failed" } }
         }
     }
 }

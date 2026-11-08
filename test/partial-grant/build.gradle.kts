@@ -16,7 +16,6 @@ kotlin {
         androidMain.dependencies {
             implementation(project(":adapter:android"))
             implementation(project(":test:contracts"))
-            implementation(project(":domain:model"))
             implementation(project(":domain:ports"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)

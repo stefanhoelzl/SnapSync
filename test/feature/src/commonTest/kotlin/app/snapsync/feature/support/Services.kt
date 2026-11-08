@@ -5,6 +5,7 @@ package app.snapsync.feature.support
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.data.identity.MintingDeviceIdentity
+import app.snapsync.data.legacy.LegacyRecords
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.store.SharedDatabase
@@ -17,6 +18,7 @@ import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadRow
+import app.snapsync.format.LegacyMembership
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.UploadKeyText
 import app.snapsync.levers.WriteKind
@@ -26,7 +28,6 @@ import app.snapsync.mock.inMemoryDatabases
 import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
-import app.snapsync.model.EventConfig
 import app.snapsync.ports.Clock
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
@@ -39,10 +40,8 @@ import app.snapsync.ports.FileTail
 import app.snapsync.ports.Files
 import app.snapsync.ports.OpenDatabase
 import app.snapsync.ports.PlatformDeviceId
-import app.snapsync.services.databases.LegacyRecords
 import app.snapsync.testids.testDeviceId
 import app.snapsync.testids.testEventId
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
 
@@ -151,7 +150,7 @@ class SharedStore(val databases: DatabasesMock = DatabasesMock()) {
      * The membership, persisted — what the repository reads at its first use. Written past the levers below: a test
      * seeds the store it then locks or refuses.
      */
-    fun persist(config: EventConfig?) {
+    fun persist(config: LegacyMembership?) {
         val locked = databases.locked
         databases.lock(false)
         inspected.use { database ->
@@ -180,13 +179,13 @@ fun testShared(databases: Databases = inMemoryDatabases()): SharedDatabase =
     SharedDatabase(databases, LegacyRecords(inMemoryFiles(), inMemoryPreferences()))
 
 /** The real membership repository over [store], seeded with [initial]. */
-fun membershipIn(initial: EventConfig? = null, store: SharedStore = SharedStore()): MembershipRepository {
+fun membershipIn(initial: LegacyMembership? = null, store: SharedStore = SharedStore()): MembershipRepository {
     store.persist(initial)
     return MembershipRepository(store.db)
 }
 
 /** [config] as the one membership row, written raw — how a test seeds what a join would have written. */
-internal fun MembershipQueries.saveRow(config: EventConfig) = saveMembership(
+internal fun MembershipQueries.saveRow(config: LegacyMembership) = saveMembership(
     eventId = Stored.Valid(config.eventId),
     name = config.name,
     minPhotoDate = config.minPhotoDate,

@@ -2,13 +2,13 @@
 
 package app.snapsync.background
 
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
 import app.snapsync.inbound.of
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.Wake

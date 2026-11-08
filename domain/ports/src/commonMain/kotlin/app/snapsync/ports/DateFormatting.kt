@@ -1,15 +1,12 @@
 package app.snapsync.ports
 
-import app.snapsync.model.DateFormats
-import app.snapsync.model.DateLocale
-
 /**
  * The platform's date formatting (`docs/architecture.md`, "Localization"): its CLDR data turning a skeleton into the
  * words, the order and the hour cycle a person reads — `java.time` on the JVM, ICU on Android, `NSDateFormatter` on
  * iOS. Only the app renders dates, so only the app's bundle carries it; the upload extension has none.
  *
  * It formats in the locale it is given and says what the device's own is; which locale a screen formats in is the
- * core's (`resolveDateLocale`).
+ * adapters' (`DateLocales.resolve`).
  */
 interface DateFormatting : Port {
     /** The device's own language and region, as the platform states them. */

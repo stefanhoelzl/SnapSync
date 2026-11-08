@@ -1,5 +1,8 @@
 package app.snapsync.mock
 
+import app.snapsync.data.upload.Destinations
+import app.snapsync.entry.BeforeListen
+import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.levers.CreatedJob
@@ -12,9 +15,6 @@ import app.snapsync.levers.UploadQueueView
 import app.snapsync.levers.UploadSessionLevers
 import app.snapsync.levers.UploadSessionView
 import app.snapsync.levers.WorldEvent
-import app.snapsync.model.BeforeListen
-import app.snapsync.model.HandlerSlot
-import app.snapsync.model.destinationPathOf
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.CreateOutcome
@@ -75,7 +75,7 @@ class CreatedUpload(val job: String, val contentType: String)
  * The OS's name for a job made towards [url]: the asset and role its destination names (`<assetId>/<role>`, the byte
  * route's last two segments) — the request is all a job queue keeps of what the job is for.
  */
-internal fun jobNameOf(url: String): String = destinationPathOf(url).split('/').takeLast(2).joinToString("/")
+internal fun jobNameOf(url: String): String = Destinations.pathOf(url).path.split('/').takeLast(2).joinToString("/")
 
 /**
  * The PhotoKit tier's upload-job queue: jobs the operating system holds between the app's cycles, presented in its two

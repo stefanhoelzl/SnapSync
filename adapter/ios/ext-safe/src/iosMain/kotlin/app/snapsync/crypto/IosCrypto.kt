@@ -1,6 +1,6 @@
 package app.snapsync.crypto
 
-import app.snapsync.model.runCatchingCancellable
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.GcmNonce
@@ -74,7 +74,7 @@ class IosCrypto : Crypto {
         if (sealed.size < TAG_LENGTH) return null
         val cipher = cipher(key)
         // CryptoKit answers a seal that does not authenticate by throwing; nothing else here throws for valid inputs.
-        return runCatchingCancellable { cipher.decryptWithIvBlocking(nonce.bytes, sealed) }.getOrNull()
+        return PlatformCalls.attempt { cipher.decryptWithIvBlocking(nonce.bytes, sealed) }.getOrNull()
     }
 
     override fun sha256(chunks: Sequence<ByteArray>): ByteArray = memScoped {

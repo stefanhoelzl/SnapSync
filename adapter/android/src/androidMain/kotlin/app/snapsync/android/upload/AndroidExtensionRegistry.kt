@@ -1,7 +1,7 @@
 package app.snapsync.android.upload
 
-import app.snapsync.model.Never
-import app.snapsync.model.NeverAnswers
+import app.snapsync.annotations.Never
+import app.snapsync.annotations.NeverAnswers
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState

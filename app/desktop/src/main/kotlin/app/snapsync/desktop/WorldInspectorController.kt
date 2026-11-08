@@ -18,7 +18,9 @@ import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.domain.sharing.WalkBounds
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.version.Store
+import app.snapsync.format.UploadKeyText
 import app.snapsync.inbound.Completion
 import app.snapsync.jvm.JvmApp
 import app.snapsync.jvm.JvmLanes
@@ -36,8 +38,7 @@ import app.snapsync.mock.MockManifestAsset
 import app.snapsync.mock.MockManifestResource
 import app.snapsync.mock.StorePage
 import app.snapsync.mock.id
-import app.snapsync.model.runCatchingCancellable
-import app.snapsync.model.uploadKey
+import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryRead
@@ -386,7 +387,7 @@ class WorldInspectorController(
             launch {
                 mocks.systemUi.shared.collect { shared ->
                     shared.lastOrNull()?.let { url ->
-                        runCatchingCancellable { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
+                        PlatformCalls.attempt { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(url), null) }
                         appendConsole("share invite → $url")
                     }
                 }
@@ -418,7 +419,7 @@ class WorldInspectorController(
     private fun injectMember(eventId: String, deviceId: String) {
         val backend = mocks.backend.operator
         val asset = AssetId.parse("$deviceId-a1")!!
-        val key = uploadKey(asset, ResourceRole.PRIMARY, FOREIGN_FILENAME)
+        val key = UploadKeyText.of(UploadKey.of(asset, ResourceRole.PRIMARY, FOREIGN_FILENAME))
         backend.deposit(deviceId, asset, ResourceRole.PRIMARY, FOREIGN_FILENAME, eventId)
         backend.seedMember(
             eventId,
