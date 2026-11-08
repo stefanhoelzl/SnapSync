@@ -362,7 +362,7 @@ jobs:
       contents: read
       actions: write
     # Build-scope values, read by EVERY resolver invocation in this job — the explicit step below and the one
-    # `:domain` performs at Gradle configuration time — which is what makes re-resolving idempotent. `channel` is the
+    # `:core` performs at Gradle configuration time — which is what makes re-resolving idempotent. `channel` is the
     # single discriminator the xcconfig renderer derives APS_ENVIRONMENT / APNS_ENV / SENTRY_ENVIRONMENT from, and it
     # gates the DSN: the renderer emits none unless the channel names a distributed build, so a stray secret cannot
     # arm crash reporting on a branch-gate archive.
@@ -689,7 +689,7 @@ jobs:
           key: swiftpm-${{ runner.os }}-${{ hashFiles('iosApp/iosApp.xcodeproj/project.pbxproj') }}
       # The rig app's own build caches, which ios-build's Gradle cache cannot hold: the Gradle build cache entries of
       # the compiles the rig and the `local` deployment change (the deployment's domain is generated into
-      # `:domain:model`, so every module above it compiles differently here) and of the program's compile, and the two
+      # `:core:model`, so every module above it compiles differently here) and of the program's compile, and the two
       # frameworks' Kotlin/Native incremental-link caches (`kotlin.incremental.native`, gradle.properties). Restored
       # OVER ios-build's Gradle cache: build-cache entries are content-addressed files, so the two merge. ~150 MB, saved
       # by main only, success only (a half-written link cache must never be published); a branch reads main's.

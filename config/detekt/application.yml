@@ -1,4 +1,4 @@
-# The `application` tier (`DetektTiersPlugin`): `:domain:application`, one use case per operation a trigger runs.
+# The `application` tier (`DetektTiersPlugin`): `:core:application`, one use case per operation a trigger runs.
 #
 # A CLAIM, measured on the layer's first use case (2026-10-14: at most 3 / 1): a use case does one thing over the data
 # layer and the domain's verdicts, so a function stays at most 3 paths and 3 cognitive points — the data layer's claim.

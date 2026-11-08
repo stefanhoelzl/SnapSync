@@ -26,12 +26,12 @@ kotlin {
         commonMain.dependencies {
             // The mocked device and its state codec, and the ports bundle a root composes over.
             api(project(":adapter:generic:mock"))
-            api(project(":domain:composition:app"))
-            api(project(":domain:composition:process"))
-            api(project(":domain:composition:extension"))
+            api(project(":core:composition:app"))
+            api(project(":core:composition:process"))
+            api(project(":core:composition:extension"))
             implementation(project(":ui:state"))
-            implementation(project(":domain:ports"))
-            implementation(project(":domain:inbound"))
+            implementation(project(":core:ports"))
+            implementation(project(":core:inbound"))
             // The adapters' boundary catch-all, for the launch-time adapters' own platform calls.
             implementation(project(":adapter:generic:app"))
         }

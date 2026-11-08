@@ -16,7 +16,7 @@ import kotlin.test.assertTrue
  */
 class EventNameLiteralTest {
 
-    private val roots = listOf("/domain/", "/adapter/", "/app/", "/ui/")
+    private val roots = listOf("/core/", "/adapter/", "/app/", "/ui/")
 
     private fun isProduction(path: String): Boolean {
         val sourceSet = path.substringAfter("/src/", "").substringBefore('/')

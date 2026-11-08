@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  * reported FAILED, a cancelled leave step posted an Error-severity crash event, and structured concurrency lost
  * the signal it runs on. About twenty sites did exactly that.
  *
- * So production source (under `domain/`, `adapter/`, `app/`, `ui/`, outside test source sets) may not call
+ * So production source (under `core/`, `adapter/`, `app/`, `ui/`, outside test source sets) may not call
  * `runCatching`, and may catch `Throwable`/`Exception` only where the SAME `try` catches `CancellationException`
  * first, or where the handler rethrows what it caught (log-and-rethrow). Everything else goes through
  * `PlatformCalls.attempt` (`:adapter:generic:app`).
@@ -37,16 +37,16 @@ class CatchGateTest {
             "the adapters' cancellation-keeping helpers themselves",
         // The runtime's containment (`docs/patterns.md`, "Containment"): what a run, a delivery or a pass throws is
         // reported where it was started, and nowhere else.
-        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to
+        "/core/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to
             "a synchronous delivery's catch (no coroutine to cancel) and an answered delivery's ObjC boundary — any " +
             "throwable, cancellation included, aborts the process across it",
-        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/SingleFlight.kt" to
+        "/core/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/SingleFlight.kt" to
             "a pass's end as a value for every waiter: its answer, its failure, or its cancellation (a cut pass)",
         "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/objc/ObjCBoundary.kt" to
             "objcBoundary: every Kotlin block and delegate method ObjC calls — nothing may unwind into ObjC frames",
     )
 
-    private val productionRoots = listOf("/domain/", "/adapter/", "/app/", "/ui/")
+    private val productionRoots = listOf("/core/", "/adapter/", "/app/", "/ui/")
 
     private fun isProduction(path: String): Boolean =
         productionRoots.any { path.startsWith(it) } && !Regex("""/src/(\w*[Tt]est)/""").containsMatchIn(path)

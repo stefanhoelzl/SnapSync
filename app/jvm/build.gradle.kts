@@ -17,13 +17,13 @@ kotlin {
 
 dependencies {
     // What a caller names: the composed app and its status host, and the mocks it chooses from.
-    api(project(":domain:composition:app"))
-    api(project(":domain:composition:process"))
-    api(project(":domain:composition:extension"))
-    api(project(":domain:presentation"))
+    api(project(":core:composition:app"))
+    api(project(":core:composition:process"))
+    api(project(":core:composition:extension"))
+    api(project(":core:presentation"))
     api(project(":adapter:generic:mock"))
     implementation(project(":ui:state"))
-    implementation(project(":domain:ports"))
+    implementation(project(":core:ports"))
     implementation(project(":adapter:generic:app"))
     implementation(libs.ktor.client.core)
     implementation(libs.coroutines.core)

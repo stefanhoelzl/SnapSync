@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  * The ⑥ classifier: absence is the not-found error class **only** (capability
  * `photo-sharing`).
  *
- * These assertions used to live in `:domain`'s `commonTest`, where they compared integer literals
+ * These assertions used to live in `:core`'s `commonTest`, where they compared integer literals
  * against integer literals and could not fail — a JVM run has no `NSCocoaErrorDomain` to disagree
  * with. Here they name Apple's own constants, so the suite fails if a value ever moves under us.
  */

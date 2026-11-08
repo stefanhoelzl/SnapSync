@@ -86,7 +86,7 @@ style:
     maxLineLength: 132
   MagicNumber:
     # REGISTER — 2 sites. A shell that names a timeout or a byte count is transcribing a platform
-    # value; the constant belongs in `:domain`, and moving it is a code change this gate's landing
+    # value; the constant belongs in `:core`, and moving it is a code change this gate's landing
     # change deliberately does not make.
     active: false
 naming:

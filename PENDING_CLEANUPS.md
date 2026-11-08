@@ -110,7 +110,7 @@ middle of an event.
 
 ### Share `/join/<uuid>` instead of the fragment form (app)
 - **What:** a plain event's invite is still shared, and QR-encoded, in the fragment form `/join#v=3&d=…`
-  (`InviteLinkText.format`, `domain/format/`).
+  (`InviteLinkText.format`, `core/format/`).
 - **Why:** builds older than 0.5 cannot decode the path form.
 - **Remove:** switch the shared form and the QR to `/join/<uuid>`.
 - **Keep forever:**
@@ -135,7 +135,7 @@ such membership is live.
     case re-uploads them.
   - **Keep:** 12.sqm itself, until the migration chain is squashed again.
 - **3-field download task tags.**
-  - **What:** `TransferTag.parse` (`domain/data/.../receiving/DownloadTransfers.kt`, `FIELDS` from three) reads tags
+  - **What:** `TransferTag.parse` (`core/data/.../receiving/DownloadTransfers.kt`, `FIELDS` from three) reads tags
     written by a transfer that ≤0.4 started.
   - **Covered by:** the update test's downloads.db v5–v6 cases, whose received photo in flight finishes under 0.4's tag
     (`OlderInstalls.kt`, `startedWithNoEvent`).
@@ -143,11 +143,11 @@ such membership is live.
     baseline in the same PR, or the v5–v6 cases lose that photo.
 - **Download rows with an empty event.**
   - **What:** rows planned before 6.sqm, handled in:
-    - `StagingFolder.Legacy` (`domain/domain/.../receiving/Transfers.kt`), which `StagedPath.of` stages in the root,
+    - `StagingFolder.Legacy` (`core/domain/.../receiving/Transfers.kt`), which `StagedPath.of` stages in the root,
       and `StagingFolder.of`'s empty event read as it
-    - `landings` in `domain/data/.../receiving/PathStatements.kt` (the root path kept in use) and `fetchedFor` in
-      `domain/application/.../receiving/Staging.kt` (a legacy folder names no event to open with)
-    - `domain/domain/.../event/SealVerdicts.kt` (`OpenVerdict.of`'s `fetchedFor: null`: the event joined then is the
+    - `landings` in `core/data/.../receiving/PathStatements.kt` (the root path kept in use) and `fetchedFor` in
+      `core/application/.../receiving/Staging.kt` (a legacy folder names no event to open with)
+    - `core/domain/.../event/SealVerdicts.kt` (`OpenVerdict.of`'s `fetchedFor: null`: the event joined then is the
       one joined now)
     - the `download-staging/` row of `docs/architecture.md`
   - **Covered only in part:** the update test stages a 0.4 transfer with no event (`StagingFolder.Legacy`'s root),
@@ -175,8 +175,8 @@ such membership is live.
   off. A rig build already encrypts by default.
   - `adapter/generic/app/.../dev/InertDevControls.kt`: `createsPlainEvents()` answers `true` — and its KDoc, and
     `InertDevControlsTest`.
-  - The KDoc of `DevControls.createsPlainEvents` (`domain/ports`) and `NewEventKeys`
-    (`domain/data/.../crypto/NewEventKeys.kt`).
+  - The KDoc of `DevControls.createsPlainEvents` (`core/ports`) and `NewEventKeys`
+    (`core/data/.../crypto/NewEventKeys.kt`).
   - `DevControlsContract`: the shipped clause expects `true`, the switched clause `false`, and
     `RigDevControlsContractTest` sets `encrypts = true` for `SWITCHED`.
   - The `invite-link` spec: "Every invite form opens in every future version" says every event this version creates
@@ -235,16 +235,16 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
 ### Legacy homes of the shared records (app)
 - **What:** an updated device holds the records the app and the extension share in their pre-database homes. The app
   copies each into `ledger.db` once, at its first open, and deletes it; the extension pauses until it has.
-  - `domain/data/.../legacy/`: the copy (`LegacyRecords` and its per-source copies `LegacyMembershipCopy`,
+  - `core/data/.../legacy/`: the copy (`LegacyRecords` and its per-source copies `LegacyMembershipCopy`,
     `LegacyTextCopy`, `LegacyAlbumCopy`, `LegacyChecksCopy`, `LegacyHomes`) — `eventconfig.json`,
     `device-manifest/last-uploaded.json`, `membership/pending-leaves.txt`, the Preferences keys
     `app.snapsync.album.map` / `.filled` and `app.snapsync.check.*`.
   - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
-    membership read's "still in its legacy file" answer (`MembershipRepository.read`, `domain/data/.../membership/`).
-  - `UploadPause.LEGACY_RECORDS` and its check at the head of `UploadGateRead.read` (`domain/data/.../upload/`).
-  - `PushRegistrationRecord.legacy` / `moved` (`domain/data/.../push/`: `push-registration/last-registered.txt` into the
+    membership read's "still in its legacy file" answer (`MembershipRepository.read`, `core/data/.../membership/`).
+  - `UploadPause.LEGACY_RECORDS` and its check at the head of `UploadGateRead.read` (`core/data/.../upload/`).
+  - `PushRegistrationRecord.legacy` / `moved` (`core/data/.../push/`: `push-registration/last-registered.txt` into the
     Preferences key) and its `files` parameter.
-  - `LegacyMembershipText` (`domain/format/`, the 0.4 membership file's decoder and its `LegacyMembership` values),
+  - `LegacyMembershipText` (`core/format/`, the 0.4 membership file's decoder and its `LegacyMembership` values),
     read only by the copy.
 - **Why:** a device that updated mid-event must keep its membership, its pending leaves and its albums — one the version
   gate refused too, which updates later.
@@ -254,7 +254,7 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   (0.4's formats, each citing its source) and `forgetLegacyRecords` (what 0.6's copy left).
 - **Remove:** `data/legacy/` and its tests (`LegacyRecordsTest`, `LegacyFailuresTest`, `LegacyFiles`);
   `SharedDatabase`'s `legacy` parameter (and the `LegacyCopy`
-  interface beside it, `domain/data/.../store/SharedDatabase.kt`), `imported` and `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
+  interface beside it, `core/data/.../store/SharedDatabase.kt`), `imported` and `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
   copy and its two tests; `LegacyMembershipText` and its test; `writeLegacyRecords`, `forgetLegacyRecords` and the `RECORDS_MOVED` layer
   in `OlderInstalls.kt`. Squash the ledger chain to a v14 baseline, or the update test's v12–v13 cases lose their
   membership. Add a migration that drops `legacyImport`. Then the `Files` adapter's

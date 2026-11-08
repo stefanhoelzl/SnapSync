@@ -1,5 +1,5 @@
 // `:test:feature` (`docs/testing.md`, "Service-backed suites compose real services over port mocks"): the suites that
-// build real services and layers over the ports' in-memory mocks — a compile path no `:domain:*` module's own test
+// build real services and layers over the ports' in-memory mocks — a compile path no `:core:*` module's own test
 // source set has. The features it was named for are gone (4.10); what stays here is what needs the mocks and a service.
 //
 // Test-only: no main sources, never linked into anything. Targets mirror `:adapter:generic:mock` (jvm +
@@ -10,7 +10,7 @@ plugins {
     // The `android` target (`snapsync.android`), mirroring the mocks'. Its `commonTest` is not run on the emulator.
     id("snapsync.android")
     // Instrumented: its tests also cover the zones whose entries in the root build file's `coverage { }` name it
-    // (`:domain:services` among them). It holds no class of its own to measure.
+    // (`:core:services` among them). It holds no class of its own to measure.
     alias(libs.plugins.kover)
 }
 
@@ -25,15 +25,15 @@ kotlin {
     }
     sourceSets {
         commonTest.dependencies {
-            implementation(project(":domain:domain"))
-            implementation(project(":domain:format"))
-            implementation(project(":domain:ports"))
-            implementation(project(":domain:data"))
+            implementation(project(":core:domain"))
+            implementation(project(":core:format"))
+            implementation(project(":core:ports"))
+            implementation(project(":core:data"))
             // The status total's use case, which the cross-consumer ceiling fixture asks like every other consumer.
-            implementation(project(":domain:application"))
+            implementation(project(":core:application"))
             // The runtime a feature's outliving work runs under (`support/Runtime.kt`), and the entry points' tests.
-            implementation(project(":domain:scheduling"))
-            implementation(project(":domain:inbound"))
+            implementation(project(":core:scheduling"))
+            implementation(project(":core:inbound"))
             implementation(project(":adapter:generic:mock"))
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)

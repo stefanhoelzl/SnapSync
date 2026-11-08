@@ -1,8 +1,8 @@
 // `:adapter:generic:app` (`docs/architecture.md`): platform-free technology implementations of the
-// `:domain` ports — the Ktor HTTP clients, the clock and time zone, and the JVM `Databases` adapter.
+// `:core` ports — the Ktor HTTP clients, the clock and time zone, and the JVM `Databases` adapter.
 // Named for the technology, placed by linkage: generic code links everywhere (JVM harness, app,
 // extension); its one platform source set, `jvmMain`, holds the SQLite driver only the JVM links (the
-// iOS one is `:adapter:ios:ext-safe`'s). The stores themselves are `:domain:services`'. The `generic`
+// iOS one is `:adapter:ios:ext-safe`'s). The stores themselves are `:core:services`'. The `generic`
 // prefix is the platform axis (a pure path grouping, no build file — same as `adapter/ios/`); the `app`
 // leaf is SHIPPABILITY — this module links into the shipped app AND extension binaries (both
 // processes, unlike `:adapter:ios:app-only`, whose leaf encodes PROCESS linkage). Packages keep their
@@ -30,10 +30,10 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:domain"))
-            api(project(":domain:ports"))
+            api(project(":core:domain"))
+            api(project(":core:ports"))
             // The inbound kinds the event ports deliver through.
-            api(project(":domain:inbound"))
+            api(project(":core:inbound"))
             api(libs.coroutines.core)
             // HttpClient appears in every Ktor adapter's public constructor — consumers construct
             // their own engine (Darwin on device, MockEngine in the world/harness), so the type is API.
@@ -57,14 +57,14 @@ kotlin {
             }
         }
         // The contract bindings (`docs/architecture.md`). The contracts live in `:test:contracts`' commonMain.
-        // `:domain:services` is here, test-only, for the encrypted file format: its cipher (`FileCipher`) is held to
+        // `:core:services` is here, test-only, for the encrypted file format: its cipher (`FileCipher`) is held to
         // Tink's reference implementation, which only this JVM test source set links.
         named("jvmTest") {
             dependencies {
                 implementation(project(":test:contracts"))
-                implementation(project(":domain:format"))
-                implementation(project(":domain:domain"))
-                implementation(project(":domain:data"))
+                implementation(project(":core:format"))
+                implementation(project(":core:domain"))
+                implementation(project(":core:data"))
                 // The backend contracts' live bindings talk to the real `api/` over a socket, through the one
                 // process lifecycle `:test:edge` holds for every JVM consumer of the real backend.
                 implementation(project(":test:edge"))

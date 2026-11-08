@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --quiet --with cryptography python
 # Regenerates test/vectors/encrypted-file.json — the reference vectors both halves of the encrypted file
-# format are held to (`api/src/encrypted-file.ts`, `:domain:model`'s EncryptedFileFormat). Deliberately an
+# format are held to (`api/src/encrypted-file.ts`, `:core:model`'s EncryptedFileFormat). Deliberately an
 # implementation INDEPENDENT of both, over pyca/cryptography; the JVM test additionally decrypts every vector
 # with Google Tink, so the format is Tink's by measurement, not by reading. Deterministic: re-running it
 # rewrites the same file.

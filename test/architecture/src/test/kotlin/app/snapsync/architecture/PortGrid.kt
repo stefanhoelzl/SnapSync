@@ -31,8 +31,8 @@ import kotlin.test.assertTrue
 
 /**
  * **The port grid's derivation** (`docs/testing.md`, "The port grid"): every cell an adapter can answer, read by
- * reflection over the compiled `:domain:ports` — and every outcome the backend can answer, read off the generated
- * replies of `:domain:wire` ([wireCells]). [PortGridTest] reports it; [ClauseCoversTest] holds every clause's declared
+ * reflection over the compiled `:core:ports` — and every outcome the backend can answer, read off the generated
+ * replies of `:core:wire` ([wireCells]). [PortGridTest] reports it; [ClauseCoversTest] holds every clause's declared
  * cells to it. One derivation, so the two can never disagree about what a cell's text is.
  */
 internal object PortGrid {
@@ -246,9 +246,9 @@ internal object PortGrid {
         (bundleType.classifier as KClass<*>).typeParameters
             .zip(bundleType.arguments.map { it.type!!.boundBy(bound[port].orEmpty()) }).toMap()
 
-    /** The top-level interfaces declared in `:domain:ports`, by simple name — the same read [PortBundleTest] makes. */
+    /** The top-level interfaces declared in `:core:ports`, by simple name — the same read [PortBundleTest] makes. */
     private fun portInterfaces(): Set<String> {
-        val dir = File(SourceScan.repoRoot, "domain/ports/src/commonMain/kotlin/app/snapsync/ports")
+        val dir = File(SourceScan.repoRoot, "core/ports/src/commonMain/kotlin/app/snapsync/ports")
         assertTrue(dir.isDirectory, "port grid: $dir is gone — re-point the scan")
         return dir.walk().filter { it.extension == "kt" }.flatMap { file ->
             Regex("""^(?:sealed |fun )?interface\s+(\w+)""", RegexOption.MULTILINE).findAll(file.readText()).map {

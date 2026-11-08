@@ -8,7 +8,7 @@ import app.snapsync.contracts.answerVariant
  * handle that port hands out (`Download.Completion`), counted under the port as the grid counts it.
  *
  * The proxies are hand-written, one per port of the grid (`docs/testing.md`, "A declared cell must occur"), and each
- * names its member by the same text the grid derives from `:domain:ports`; the completeness gate in `:test:architecture`
+ * names its member by the same text the grid derives from `:core:ports`; the completeness gate in `:test:architecture`
  * drives every cell of the grid through them and fails on one recorded differently.
  */
 class Recorder internal constructor(private val log: CallLog, private val owner: String) {

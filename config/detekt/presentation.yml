@@ -1,4 +1,4 @@
-# The `presentation` tier (`DetektTiersPlugin`): `:domain:presentation`, the reduction into the screen's state.
+# The `presentation` tier (`DetektTiersPlugin`): `:core:presentation`, the reduction into the screen's state.
 #
 # A CLAIM, not debt (`docs/architecture.md`, "The core and its layers"): presentation reduces what the queries read into
 # `UiState`, one concern per file — a health ladder of rungs, a layer per world, a flow per surface — so a function
@@ -35,7 +35,7 @@ complexity:
     thresholdInEnums: 26
   LargeClass:
     # Default. The largest class here is ~275 lines; pinning 280 would assert a size limit on
-    # `:domain` types that no module law states.
+    # `:core` types that no module law states.
     active: true
     threshold: 600
 style:

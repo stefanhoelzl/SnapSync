@@ -11,7 +11,7 @@ kotlin {
     // Compose/UI, so the extension binary stays small. Each target exposes a static framework
     // "SnapSyncUploadKit" that
     // the Xcode app-extension target links — separate from the app's "SnapSyncKit", so the two
-    // process binaries never both statically pull :domain:engine into one image.
+    // process binaries never both statically pull :core:engine into one image.
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
             baseName = "SnapSyncUploadKit"
@@ -44,12 +44,12 @@ kotlin {
             kotlin.srcDir(if (rigEnabled) "../../../test/rig/src/ext-hook/kotlin" else "src/entries/kotlin")
         }
         commonMain.dependencies {
-            api(project(":domain:ports"))
-            api(project(":domain:inbound"))
+            api(project(":core:ports"))
+            api(project(":core:inbound"))
             // The extension's own composition (`docs/architecture.md`, "The composition layer") and the process ports
             // it is built over — the root links no other composition, and no old zone (`ExtensionSafetyTest`).
-            api(project(":domain:composition:extension"))
-            api(project(":domain:composition:process"))
+            api(project(":core:composition:extension"))
+            api(project(":core:composition:process"))
             // The extension-safe iOS adapters implement their ports and UploadExtensionRoot composes them.
             // The extension framework's contents are decided by linkage (migration step 4): the
             // extension-safe iOS adapters (:adapter:ios:ext-safe — the discovery walk + cursor store,

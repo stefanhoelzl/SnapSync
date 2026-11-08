@@ -37,7 +37,7 @@ the source of truth for versions).
 api/            the Deno backend (bunny Edge Scripting) - explained in docs/ (architecture · testing · deployment)
 site/           the Astro landing page
 iosApp/         the Xcode project (app + upload-extension targets) - NOT a Gradle project
-domain/          the core, one module per layer (domain format wire inbound ports scheduling data application query
+core/            the core, one module per layer (domain format wire inbound ports scheduling data application query
                 entrypoints presentation composition/*) - layer table, placement guide, laws: docs/architecture.md §1-2
 adapter/ ui/ app/ test/   the platform adapters, the screens, the roots, the test equipment - graph in architecture/modules.md
 openspec/       specs/ (contract of record: user-observable outcomes) + changes/archive/ (decision records)

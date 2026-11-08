@@ -1,4 +1,4 @@
-# The `domain` tier (`DetektTiersPlugin`): `:domain:domain`, values and pure policy.
+# The `domain` tier (`DetektTiersPlugin`): `:core:domain`, values and pure policy.
 #
 # A CLAIM, not debt (`docs/patterns.md`, "The domain"): a verdict is a `when` over a fact's cases — at most 4 paths and
 # 4 cognitive points, the entry points' claim. Measured before it was written: every pure rule bound for this layer was

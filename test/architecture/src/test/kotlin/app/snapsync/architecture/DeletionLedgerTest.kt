@@ -23,7 +23,7 @@ class DeletionLedgerTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    private fun sources(): List<File> = listOf("adapter", "domain", "app", "test", "ui").flatMap { root ->
+    private fun sources(): List<File> = listOf("adapter", "core", "app", "test", "ui").flatMap { root ->
         File(repoRoot, root).walkTopDown()
             .filter { it.isFile && it.extension == "kt" && "/build/" !in it.path && "/src/" in it.path }
             .filterNot { it.name == "DeletionLedgerTest.kt" }
@@ -431,7 +431,7 @@ class DeletionLedgerTest {
                 "Union|Download" + "Service|Suppression" + "Service|Download" + "Jobs|Staging" + "Service|Gallery" +
                 "Importer|GalleryAsset" + "Presence|OthersDeclared" + "Union|EventUnion" + "Source)\\b"
             declared(files, pre).forEach { add("receiving's pre-layer types in $it (the layers' — 4.5)") }
-            if (File(repoRoot, "domain/services/src/commonMain/kotlin/app/snapsync/services/downloads").exists()) {
+            if (File(repoRoot, "core/services/src/commonMain/kotlin/app/snapsync/services/downloads").exists()) {
                 add("a services/downloads package (the download store is the data layer's — 4.5)")
             }
             val reset = """class (OnDev""" + "Reset|ForgetMem" + "bership|Dev" + "Reset|Dev" + "Handlers)\\b"
@@ -542,7 +542,7 @@ class DeletionLedgerTest {
      * services, a bug report assembled in the last feature over facts the composition handed it as lambdas, and the
      * scrubs that ran over every captured event and logged link — where the layers now carry the channel, the reads and
      * the account, the report is a use case over typed reads, and a secret leaves no line by type (`InviteText`). The
-     * `:domain:feature` module went with its last feature, and the zone with it.
+     * `:core:feature` module went with its last feature, and the zone with it.
      */
     @Test
     fun `the diagnostics' retired items stay dead`() {
@@ -558,8 +558,8 @@ class DeletionLedgerTest {
             ).forEach {
                 add("a scrub in $it (ids ride in full; a key leaves no line by type — 4.10)")
             }
-            if (File(repoRoot, "domain/" + "feature").exists()) {
-                add("domain/feature (the last feature became a use case; the zone went with it — 4.10)")
+            if (File(repoRoot, "core/" + "feature").exists()) {
+                add("core/feature (the last feature became a use case; the zone went with it — 4.10)")
             }
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
@@ -576,8 +576,8 @@ class DeletionLedgerTest {
     fun `the old zones and the lazy app composition stay dead`() {
         val files = sources()
         val resurrections = buildList {
-            listOf("model", "services", "compose", "host").filter { File(repoRoot, "domain/" + it).exists() }
-                .forEach { add("domain/$it (the layers' — phase 5)") }
+            listOf("model", "services", "compose", "host").filter { File(repoRoot, "core/" + it).exists() }
+                .forEach { add("core/$it (the layers' — phase 5)") }
             val retired = """\b(class App""" + "Core|fun snapSync" + "App|fun snapSync" + "Host|class App" + "Services|" +
                 "class App" + "Work|class App" + "Uploader|class Receiving" + "Layers|class Album" + "Layers)\\b"
             declared(files, retired).forEach { add("the lazy app composition in $it (`AppGraph` — phase 5)") }

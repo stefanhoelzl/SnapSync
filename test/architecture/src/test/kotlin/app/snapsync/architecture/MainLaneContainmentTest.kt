@@ -103,7 +103,7 @@ class MainLaneContainmentTest {
     private val runBlockingCallForms = listOf("runBlocking {", "runBlocking(")
 
     private val runBlockingAllowed = listOf(
-        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt",
+        "/core/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt",
         "/adapter/ios/ext-safe/src/rig/kotlin/app/snapsync/contract/extension/ContractRunningExtensionHost.kt",
     )
 

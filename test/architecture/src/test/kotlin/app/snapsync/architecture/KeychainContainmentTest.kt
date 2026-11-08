@@ -27,8 +27,8 @@ class KeychainContainmentTest {
 
     /**
      * The module allowed to touch the Keychain. Everything else must borrow it. Migration step 4
-     * moved the impls (the Keychain store, today `IosSecureStore`) from `:domain:keychain` into the
-     * extension-safe adapter module (step 12 then deleted `:domain:keychain` entirely) — the
+     * moved the impls (the Keychain store, today `IosSecureStore`) from `:core:keychain` into the
+     * extension-safe adapter module (step 12 then deleted `:core:keychain` entirely) — the
      * containment property is unchanged, only its address.
      */
     private val owningModule = "/adapter/ios/ext-safe/"

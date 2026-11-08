@@ -33,7 +33,7 @@ private const val REQUEST_TIMEOUT_MILLIS = 5_000L
  * a request or a response is someone else's: sending it and answering whatever came back is `KtorHttpTransport`'s
  * (the technology-neutral adapter, identical on every platform), and the routes, the declared build version, the
  * bearer header and what an answer means — a rejected credential, a refused build — are the backend gateway's, in
- * `:domain:services`.
+ * `:core:services`.
  */
 fun darwinHttpClient(): HttpClient = HttpClient(Darwin) {
     install(HttpTimeout) { requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS }

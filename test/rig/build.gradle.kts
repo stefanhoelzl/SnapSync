@@ -62,7 +62,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // The rig is written against `:domain` types only (AppGraph, the read-model StateFlows) plus
+            // The rig is written against `:core` types only (AppGraph, the read-model StateFlows) plus
             // the presentation read-model it serializes. Platform-bound verbs arrive as injected lambdas
             // the host shell builds — the same shape `flow/` uses for port touches — so this module names
             // no platform API and an Android target would be a build-file edit, not a rewrite.
@@ -83,22 +83,22 @@ kotlin {
             implementation(project(":adapter:generic:app"))
             // The typed services the levers are served from (`LeverDispatch.kt`): their interfaces and descriptors.
             implementation(project(":test:levers"))
-            implementation(project(":domain:domain"))
-            implementation(project(":domain:format"))
-            implementation(project(":domain:ports"))
-            implementation(project(":domain:inbound"))
+            implementation(project(":core:domain"))
+            implementation(project(":core:format"))
+            implementation(project(":core:ports"))
+            implementation(project(":core:inbound"))
             // `BackendReach` speaks the device API as `api/openapi.yaml` declares it: the generated routes and DTOs.
-            implementation(project(":domain:wire"))
-            implementation(project(":domain:composition:app"))
+            implementation(project(":core:wire"))
+            implementation(project(":core:composition:app"))
             // What the rig drives through the app's graph — the uploader pin's follow — is an entry point's.
-            implementation(project(":domain:entrypoints"))
-            implementation(project(":domain:composition:process"))
-            implementation(project(":domain:composition:extension"))
+            implementation(project(":core:entrypoints"))
+            implementation(project(":core:composition:process"))
+            implementation(project(":core:composition:extension"))
             // The device-log writer the rig re-points at the extension's log for an invoked cycle.
-            implementation(project(":domain:data"))
+            implementation(project(":core:data"))
             // The download progress `/device/state` reports, read where the screen reads it.
-            implementation(project(":domain:query"))
-            implementation(project(":domain:presentation"))
+            implementation(project(":core:query"))
+            implementation(project(":core:presentation"))
             // The screen state `/device/state` reports, and the intents `/user` dispatches.
             api(project(":ui:state"))
             // `StatusContainerHost` is an Orbit `ContainerHost`; presentation does not export Orbit.

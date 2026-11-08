@@ -1,4 +1,4 @@
-// `:adapter:generic:mock` (`docs/architecture.md`, `docs/testing.md` "Mocks"): ONE mock per `:domain` port — what
+// `:adapter:generic:mock` (`docs/architecture.md`, `docs/testing.md` "Mocks"): ONE mock per `:core` port — what
 // the JVM root (`:app:jvm`), the world, the feature tests and every integration test stand on. An adapter named for
 // its technology (in-memory, platform-free — hence the `generic` platform-axis prefix), placed by linkage: it links
 // only into test equipment, never a shipped binary — which is what the `mock` SHIPPABILITY leaf records (vs sibling
@@ -37,25 +37,25 @@ kotlin {
     }
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:domain"))
-            api(project(":domain:ports"))
+            api(project(":core:domain"))
+            api(project(":core:ports"))
             // The inbound kinds the event ports deliver through, and the completion handles.
-            api(project(":domain:inbound"))
+            api(project(":core:inbound"))
             // The slots trust keeps its items under (`TrustSlots`): the keychain mock is seeded at the device-id slot,
             // and its persisted state names the slots it restores.
-            implementation(project(":domain:data"))
+            implementation(project(":core:data"))
             // The adapters' shared base: the event ports' handler cell and the boundary catch-all every adapter uses.
             implementation(project(":adapter:generic:app"))
             // The backend's mock answers the device API as `api/openapi.yaml` declares it: the generated routes
             // and DTOs.
-            implementation(project(":domain:wire"))
+            implementation(project(":core:wire"))
             // The screen's vocabulary the screen mock is a `Ui` port over.
             api(project(":ui:state"))
             // The operator faces' typed interfaces, which the mocks implement (`docs/testing.md`, "Typed services").
             api(project(":test:levers"))
             api(libs.coroutines.core)
             // The text a value takes on the wire — the backend mock routes and stores a resource role by its token.
-            implementation(project(":domain:format"))
+            implementation(project(":core:format"))
             // The Clock double answers a zone (`TimeFactories.kt`).
             implementation(libs.kotlinx.datetime)
             // `inMemoryDatabases()`: real SQLite, in memory — the platform's driver per target, below.
@@ -72,8 +72,8 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.sqldelight.driver.android)
         }
-        // The stay-behind tests that drive `:domain` subjects through these fakes (re-homed from the
-        // deleted `:domain:gallery` / `:domain:download-store` / `:capability:attest` modules at
+        // The stay-behind tests that drive `:core` subjects through these fakes (re-homed from the
+        // deleted `:core:gallery` / `:core:download-store` / `:capability:attest` modules at
         // migration step 10; commonTest runs on the JVM only — `docs/testing.md`, "Where each test runs").
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -84,12 +84,12 @@ kotlin {
             // The storage services' fake-driven tests: the services over the storage mocks (`docs/testing.md`).
             // The process's log writers these tests install and read back (`ProcessLogging`).
             // A process's composition takes its runtime (`ProcessGraph`, `ExtensionEntryTest`).
-            implementation(project(":domain:scheduling"))
+            implementation(project(":core:scheduling"))
             // The compositions these fakes drive: the process's start and the upload extension's graph.
-            implementation(project(":domain:composition:process"))
-            implementation(project(":domain:composition:extension"))
+            implementation(project(":core:composition:process"))
+            implementation(project(":core:composition:extension"))
             // The handler a process's start registers, which these tests deliver a report through (`OnMetricReport`).
-            implementation(project(":domain:entrypoints"))
+            implementation(project(":core:entrypoints"))
         }
     }
 }

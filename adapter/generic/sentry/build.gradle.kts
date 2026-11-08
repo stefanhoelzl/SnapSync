@@ -70,8 +70,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             // The crash channel's vocabulary and the shaping it applies (`domain/crash`).
-            api(project(":domain:domain"))
-            api(project(":domain:ports"))
+            api(project(":core:domain"))
+            api(project(":core:ports"))
             // sentry-cocoa itself is provided at EXECUTABLE link time — by SPM in iosApp.xcodeproj for the app/appex
             // (the exported frameworks are static, so Gradle's libtool "link" needs no Sentry symbols), and by the
             // provisioning above for this module's own simulator test binary. On Android it brings sentry-android,
@@ -87,7 +87,7 @@ kotlin {
                 implementation(kotlin("test"))
                 implementation(project(":test:contracts"))
                 // The process-death clause's roads to the end of a process: the runtime's, and `objcBoundary`'s.
-                implementation(project(":domain:scheduling"))
+                implementation(project(":core:scheduling"))
                 implementation(project(":adapter:ios:ext-safe"))
                 implementation(libs.kotlinx.serialization.json)
             }
@@ -97,7 +97,7 @@ kotlin {
             dependencies {
                 implementation(project(":test:contracts"))
                 // The process-death clause's roads to the end of a process: the runtime's.
-                implementation(project(":domain:scheduling"))
+                implementation(project(":core:scheduling"))
                 // …composed as a shipped build composes it (`NoEntryEvents`).
                 implementation(project(":adapter:generic:app"))
                 implementation(libs.kotlinx.serialization.json)

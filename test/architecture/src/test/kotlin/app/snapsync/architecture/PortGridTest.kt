@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
  * from another port is counted under the port declaring it, except a generic base's ([EventPort.inbound]), counted
  * under every port that binds it.
  *
- * Read by REFLECTION over the compiled `:domain:ports`, not by text: a regex over the source counts the generic
+ * Read by REFLECTION over the compiled `:core:ports`, not by text: a regex over the source counts the generic
  * `Reply<T>` as having no subtypes at all. Ports are found as [PortBundleTest] finds them — every interface declared
  * in the zone, filtered to those extending [Port] — so a new port is in the grid by construction.
  *
@@ -84,7 +84,7 @@ class PortGridTest {
     fun `the grid finds the ports`() {
         assertTrue(
             ports.size >= 30,
-            "port grid: only ${ports.size} ports found — the reflection over :domain:ports broke",
+            "port grid: only ${ports.size} ports found — the reflection over :core:ports broke",
         )
     }
 

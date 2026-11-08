@@ -24,7 +24,7 @@ import kotlin.test.fail
  *   error: usually a third-party or platform one, or another zone of the core, where a module boundary
  *   is the only construction that makes the zone edge unresolvable rather than merely forbidden.
  *   `:ui:components` is the only module that may depend on Material 3; `:ui:state`, the screen's vocabulary,
- *   references nothing project-internal, so the screens built on it cannot name a domain type; the host, `:domain:host`, is the one
+ *   references nothing project-internal, so the screens built on it cannot name a domain type; the host, `:core:host`, is the one
  *   zone that sees both the core's composition zone and presentation, so neither gains the other.
  * - **Contained** — each exists so that something is ABSENT from a production build, linked only under
  *   a build property (a build-time-only module is contained by compilation, not by a runtime check):
@@ -34,7 +34,7 @@ import kotlin.test.fail
  * - **Support** — never linked into any shipped-format binary, and exempt from the production-module
  *   laws.
  *
- * The core's zone split (`:domain:*`) is the one place withholding is satisfied by an internal
+ * The core's zone split (`:core:*`) is the one place withholding is satisfied by an internal
  * boundary: a module boundary enumerates nothing and cannot be renamed into passivity, unlike the text
  * gates it replaced. [`the core declares only permitted zone edges`] pins the precondition for that.
  */
@@ -139,60 +139,60 @@ class ModuleSetTest {
             // The domain layer: values and pure policy, depending on nothing.
             "domain" to emptySet<String>(),
             // The text a value takes on the wire and in a store, once per format: it spells the domain's values.
-            "format" to setOf(":domain:domain"),
+            "format" to setOf(":core:domain"),
             // The backend API's HTTP shapes, generated from `api/openapi.yaml`: they reference nothing.
             "wire" to emptySet<String>(),
             // The inbound kinds an event port delivers through, the trigger and the structured log: nothing below them.
             "inbound" to emptySet<String>(),
             // The deliveries' kinds: an event port's handlers are typed by them. The domain's values a port hands over
             // as they are (the build's store page).
-            "ports" to setOf(":domain:inbound", ":domain:domain"),
+            "ports" to setOf(":core:inbound", ":core:domain"),
             // The runtime runs on the process's background time and labels its threads: two ports, nothing above — and
             // the domain's `InvalidProgramState`, which its containment never contains.
-            "scheduling" to setOf(":domain:inbound", ":domain:ports", ":domain:domain"),
+            "scheduling" to setOf(":core:inbound", ":core:ports", ":core:domain"),
             // The data layer: the repositories over the ports and the backend's protocol over the transport and the
             // generated wire — translating, never deciding — labelling its lines with the structured log.
-            "data" to setOf(":domain:domain", ":domain:ports", ":domain:wire", ":domain:inbound", ":domain:format"),
+            "data" to setOf(":core:domain", ":core:ports", ":core:wire", ":core:inbound", ":core:format"),
             // The application layer: use cases over data and the domain's verdicts, writing the structured log.
-            "application" to setOf(":domain:domain", ":domain:data", ":domain:inbound", ":domain:format"),
+            "application" to setOf(":core:domain", ":core:data", ":core:inbound", ":core:format"),
             // The query layer: what the screen reads — the membership, the join's and switch's lookups, and the
             // request-keyed statuses — over data and the domain, writing nothing; the invite in its link's text.
-            "query" to setOf(":domain:domain", ":domain:data", ":domain:inbound", ":domain:format"),
+            "query" to setOf(":core:domain", ":core:data", ":core:inbound", ":core:format"),
             // The entry points order the work of each trigger: the runtime's steps over the use cases, the data layer
             // and the queries — and host assembly, a person's start, which builds the status host (presentation) and
             // shows the screen's states (`:ui:state`).
             "entrypoints" to setOf(
-                ":domain:inbound", ":domain:scheduling", ":domain:domain", ":domain:ports", ":domain:application",
-                ":domain:data", ":domain:query", ":domain:presentation", ":ui:state",
+                ":core:inbound", ":core:scheduling", ":core:domain", ":core:ports", ":core:application",
+                ":core:data", ":core:query", ":core:presentation", ":ui:state",
             ),
             // The composition layer (`docs/architecture.md`, "The composition layer"), wiring only. Its shared half: what
             // every process wires — every layer below presentation, and no old zone.
             "composition/process" to setOf(
-                ":domain:domain", ":domain:inbound", ":domain:ports", ":domain:scheduling", ":domain:data",
-                ":domain:application", ":domain:entrypoints",
+                ":core:domain", ":core:inbound", ":core:ports", ":core:scheduling", ":core:data",
+                ":core:application", ":core:entrypoints",
             ),
             // The upload extension's half: the shared half and the same layers — never presentation, the query layer or
             // the screen's vocabulary, which the extension does not link.
             "composition/extension" to setOf(
-                ":domain:composition:process", ":domain:domain", ":domain:inbound", ":domain:ports",
-                ":domain:scheduling", ":domain:data", ":domain:application", ":domain:entrypoints",
+                ":core:composition:process", ":core:domain", ":core:inbound", ":core:ports",
+                ":core:scheduling", ":core:data", ":core:application", ":core:entrypoints",
             ),
             // The app's half: the shared half, every layer, presentation and the screen's vocabulary its `Ui` port is bound
             // to — and no old zone.
             "composition/app" to setOf(
-                ":domain:composition:process", ":domain:domain", ":domain:inbound", ":domain:ports",
-                ":domain:scheduling", ":domain:data", ":domain:application", ":domain:query", ":domain:entrypoints",
-                ":domain:presentation", ":domain:format", ":ui:state",
+                ":core:composition:process", ":core:domain", ":core:inbound", ":core:ports",
+                ":core:scheduling", ":core:data", ":core:application", ":core:query", ":core:entrypoints",
+                ":core:presentation", ":core:format", ":ui:state",
             ),
             // The UI-state reduction: the domain's vocabulary, the query layer it reads, the inbound kinds its command door
             // fires (`UserCommand`), and the screen's vocabulary it reduces into. `:ui:state` references nothing
             // project-internal, so none of the four hands it a platform.
-            "presentation" to setOf(":domain:domain", ":domain:query", ":domain:inbound", ":ui:state"),
+            "presentation" to setOf(":core:domain", ":core:query", ":core:inbound", ":ui:state"),
         )
         val problems = permitted.flatMap { (zone, allowed) ->
-            val build = File(repoRoot, "domain/$zone/build.gradle.kts")
-            assertTrue(build.isFile, "domain/$zone/build.gradle.kts is missing — the core moved")
-            val module = ":domain:" + zone.replace("/", ":")
+            val build = File(repoRoot, "core/$zone/build.gradle.kts")
+            assertTrue(build.isFile, "core/$zone/build.gradle.kts is missing — the core moved")
+            val module = ":core:" + zone.replace("/", ":")
             val text = build.readText()
             val tests = commonTestBlock(text)
             Regex("""(\w+)\(project\(\s*"([^"]+)"\s*\)\)""").findAll(text).mapNotNull { m ->
@@ -236,13 +236,13 @@ class ModuleSetTest {
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
             // The core's layers (`docs/architecture.md`, "The core and its layers").
-            ":domain:domain", ":domain:format", ":domain:wire", ":domain:ports",
-            ":domain:presentation",
+            ":core:domain", ":core:format", ":core:wire", ":core:ports",
+            ":core:presentation",
             // The layers the core's work runs on (`docs/patterns.md`): the deliveries, the runtime, the entry points.
-            ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":domain:data", ":domain:application",
-            ":domain:query",
+            ":core:inbound", ":core:scheduling", ":core:entrypoints", ":core:data", ":core:application",
+            ":core:query",
             // The composition layer: the extension's half withholds everything the app composes from the extension.
-            ":domain:composition:process", ":domain:composition:extension", ":domain:composition:app",
+            ":core:composition:process", ":core:composition:extension", ":core:composition:app",
             // `:ui:state` withholds the domain from the screens: they see the screen's vocabulary, and no domain
             // type resolves there.
             ":ui:state", ":ui:screens", ":ui:components",

@@ -37,7 +37,7 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * `CrashReporter`'s [CrashReporterState.AFTER_A_PROCESS_DEATH], live on the simulator test executable over the REAL SDK
- * and the REAL roads to the end of a process: the runtime's (`:domain:scheduling`) and `objcBoundary`'s.
+ * and the REAL roads to the end of a process: the runtime's (`:core:scheduling`) and `objcBoundary`'s.
  *
  * Three roles of this one executable ([runSelf]): the test as Gradle runs it starts the NEXT LAUNCH — a fresh process
  * whose SDK was never started, since sentry-cocoa reads its crash reports once per process — and fails unless it

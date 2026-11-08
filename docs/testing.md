@@ -103,27 +103,27 @@ the rows in the in-memory database, the files in an area, a refusal the mock ans
 Those suites live in **`:test:feature`** (JVM and the iOS simulator), which sees the services, the layers, the ports
 and the mocks together — the bug report's assembly over real reads (`AssembleBugReportTest`) among them; its
 `support/` package holds the shared setups (`configService`, `TestLedger`, `testIdentity`, `RecordingFiles`, …). The
-features it was named for are gone (the last became a use case in 4.10). A service's own tests live in `:domain:services`
+features it was named for are gone (the last became a use case in 4.10). A service's own tests live in `:core:services`
 (over hand-written port doubles) or, where they need the mocks, in `:adapter:generic:mock`'s `commonTest` — which also
 holds the composition's process tests and the mocks' own contract bindings, because the mocks are `internal` and only their own module's
 tests can build one in a chosen state.
 
 **The data layer's suites** live in **`:test:data`** for the same reason (JVM and the iOS simulator, `commonTest`
-only): `:domain:data` may name no mock, and its repositories and the backend's protocol are tested over the real ones —
+only): `:core:data` may name no mock, and its repositories and the backend's protocol are tested over the real ones —
 the secure store, a scripted transport, a scripted integrity service — and observed at the port. Its pure translations
-(a reply's category, the issuers' answers, a DER chain) are tested in `:domain:data`'s own `commonTest`, and the
-domain's verdicts in `:domain:domain`'s. `:test:data` also tests the application layer's use cases, over the data they
+(a reply's category, the issuers' answers, a DER chain) are tested in `:core:data`'s own `commonTest`, and the
+domain's verdicts in `:core:domain`'s. `:test:data` also tests the application layer's use cases, over the data they
 call; both layers are credited with it. A feature whose work runs `outliving` its caller runs under a runtime in its tests too
 (`support/Runtime.kt`'s `underRuntime { }`), so a cancelled caller leaves that work running as it does in the app.
 
 The runtime itself — entry-point bases, expiry and its grace, steps, single flight — is tested in
-`:domain:scheduling`'s `commonTest` over virtual time, and `:domain:inbound`'s log in its own; both modules sit at
+`:core:scheduling`'s `commonTest` over virtual time, and `:core:inbound`'s log in its own; both modules sit at
 zero uncovered lines.
 
 ### No `:app:*` module has a test source set
 
 `:app:ios`, `:app:ios:extension`, `:app:jvm` and `:app:desktop` declare no tests. If behaviour
-there needs coverage, **move it** into `:domain` or an adapter and test it there.
+there needs coverage, **move it** into `:core` or an adapter and test it there.
 
 The reasons differ, so keep them separate:
 - `:app:ios` and `:app:ios:extension` are **wiring-only by gate**. `detektAppShell`,
@@ -274,7 +274,7 @@ Where bindings live: beside their implementations.
   built, as its still, once; a killed import's pending item reads absent and is cleaned; the fixtures live in
   `src/androidDeviceTest/resources/import/`; an import into an event album lands only in its folder, and a killed one
   there is cleaned too). The motion photo is asserted on its bytes: whether Google Photos PLAYS it is measured on a
-  phone: a test cannot read what another app plays. The byte formats themselves are `:domain:model`'s
+  phone: a test cannot read what another app plays. The byte formats themselves are `:core:model`'s
   `MotionPhoto.kt`, tested on the JVM. Whether a gallery app sorts by those dates, and whether a MOV plays, is the
   closed test's.
 - The event album on Android: the `FolderAlbum` contract runs live on `ANDROID_EMU` (`AndroidGalleryContractTest`) and
@@ -386,7 +386,7 @@ where the bare adapter would answer "empty". An adapter bound bare must pass the
 ### The port grid
 
 `ContractCoverageTest` asks whether each clause reaches something real. `PortGridTest` asks the reverse
-question: what could an adapter answer at all? It reads `:domain:ports` by reflection and lists every
+question: what could an adapter answer at all? It reads `:core:ports` by reflection and lists every
 **cell** an adapter can produce:
 - `Port.member → Variant`: a member crossed with each variant of its return type. A sealed type gives one
   cell per leaf subtype (only the outer type of a generic), an enum one per entry, `Boolean` a `true` and
@@ -503,7 +503,7 @@ reading of source text.
 - **A cell is covered for an adapter** when a real binding of that adapter (`ContractCoverage`'s reading:
   `Live` on a host CI runs, or `Replay` through its recording) reaches a clause that declares it. The one
   exception is the backend's `Backend.*` cells, which any real binding covers.
-- **A cell the code cannot answer is claimed, never listed.** `@NeverAnswers` (`:domain:model`) on the
+- **A cell the code cannot answer is claimed, never listed.** `@NeverAnswers` (`:core:model`) on the
   adapter class names the member (or `handler`) and the answer, typed as the grid writes it:
 
   ```kotlin
@@ -781,7 +781,7 @@ The hosts differ only in the hook they hand the server. They never differ in a r
 encoding. Both bind loopback only.
 
 **On the app host the rig is an adapter set, chosen at build time.** The root builds its real adapters as one lazy
-bundle (`AppDevicePorts`, `:domain:compose`) and calls `platformAdapters(real, …)`, which a rig build compiles from
+bundle (`AppDevicePorts`, `:core:compose`) and calls `platformAdapters(real, …)`, which a rig build compiles from
 `:test:rig`'s hook directory instead of the app's `src/prod`: the ports are the launch-time adapters' (below), the UI is
 decorated (`RigUi`, which forwards everything to the screen it wraps), the development controls are the channel's
 (`RigDevControls`: the per-uploader switch, invite-link hints, the reset), and the server starts once the root has
@@ -1398,8 +1398,8 @@ never reaches past the protocol.
 
 **What it covers, and what judges it.** The suite is instrumented, and plays two parts, both in the root build file's
 `coverage { }` (`docs/architecture.md`, "Coverage"):
-- It also covers the unit measurement of the WIRING — `:domain:compose`, `:domain:host`, `:app:jvm` — and of
-  `:domain:entrypoints`, whose entries name it in `alsoCoveredBy`. The wiring graph is not unit-tested by law and is
+- It also covers the unit measurement of the WIRING — `:core:compose`, `:core:host`, `:app:jvm` — and of
+  `:core:entrypoints`, whose entries name it in `alsoCoveredBy`. The wiring graph is not unit-tested by law and is
   smoke-tested here, so this suite is the test written for it. Everything else it runs — model, feature, services,
   presentation — reaches zero through its own unit tests, never through a scenario that happens to pass through it.
 - What it covers of each core module ON ITS OWN is judged by that module's `integration(…)` target, against a goal of

@@ -2,7 +2,7 @@
 """Resolve a deployment and emit every rendering (`docs/deployment.md`).
 
 WHY THIS EXISTS. A deployment fact — the device-facing domain, the storage zone, the Apple team and
-bundle ids — is read by FOUR toolchains: Deno (`api/`), Gradle (`domain/`), Xcode (`iosApp/`) and
+bundle ids — is read by FOUR toolchains: Deno (`api/`), Gradle (`core/`), Xcode (`iosApp/`) and
 Astro (`site/`), plus the App Store metadata. Before this, each held its own copy: the domain lived in
 NINE places, six of them pinned by nothing at all, and `TEAM_ID`/`BUNDLE_ID` were written twice in two
 languages with nothing checking they agreed — while composing the App Attest `rpIdHash` and the AASA
@@ -264,7 +264,7 @@ INVENTORY = [
     """),
     Key("eventWindowMaxSeconds", [JSON, PROPS], doc="""
         Largest permitted `endsAt - startsAt`, and the absent-`endsAt` fallback. Reaches Gradle too, where
-        `:domain` generates the app's `EVENT_WINDOW_MAX_SECONDS` from it: the create screen's picker bounds
+        `:core` generates the app's `EVENT_WINDOW_MAX_SECONDS` from it: the create screen's picker bounds
         a range to it, so the limit the host is shown and the limit the backend enforces are ONE value
         rather than a copy that could drift into a refusal the screen cannot explain. DELIBERATELY DISTINCT
         from the lifetime even while they hold the same number: they answer different questions ("how

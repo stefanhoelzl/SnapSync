@@ -22,20 +22,20 @@ flowchart LR
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
   app_jvm[":app:jvm"]
-  domain_application[":domain:application"]
-  domain_composition_app[":domain:composition:app"]
-  domain_composition_extension[":domain:composition:extension"]
-  domain_composition_process[":domain:composition:process"]
-  domain_data[":domain:data"]
-  domain_domain[":domain:domain"]
-  domain_entrypoints[":domain:entrypoints"]
-  domain_format[":domain:format"]
-  domain_inbound[":domain:inbound"]
-  domain_ports[":domain:ports"]
-  domain_presentation[":domain:presentation"]
-  domain_query[":domain:query"]
-  domain_scheduling[":domain:scheduling"]
-  domain_wire[":domain:wire"]
+  core_application[":core:application"]
+  core_composition_app[":core:composition:app"]
+  core_composition_extension[":core:composition:extension"]
+  core_composition_process[":core:composition:process"]
+  core_data[":core:data"]
+  core_domain[":core:domain"]
+  core_entrypoints[":core:entrypoints"]
+  core_format[":core:format"]
+  core_inbound[":core:inbound"]
+  core_ports[":core:ports"]
+  core_presentation[":core:presentation"]
+  core_query[":core:query"]
+  core_scheduling[":core:scheduling"]
+  core_wire[":core:wire"]
   test_architecture[":test:architecture"]
   test_cli[":test:cli"]
   test_client[":test:client"]
@@ -60,69 +60,70 @@ flowchart LR
   ui_state[":ui:state"]
   adapter_android --> adapter_generic_app
   adapter_android --> adapter_generic_motionphoto
-  adapter_android --> domain_data
-  adapter_android --> domain_domain
-  adapter_android --> domain_format
-  adapter_android --> domain_inbound
-  adapter_android --> domain_ports
-  adapter_android --> domain_presentation
-  adapter_android --> domain_query
+  adapter_android --> core_data
+  adapter_android --> core_domain
+  adapter_android --> core_format
+  adapter_android --> core_inbound
+  adapter_android --> core_ports
+  adapter_android --> core_presentation
+  adapter_android --> core_query
   adapter_android --> test_contracts
   adapter_android --> test_verifies
   adapter_android --> ui_components
   adapter_android --> ui_screens
   adapter_android --> ui_state
-  adapter_generic_app --> domain_data
-  adapter_generic_app --> domain_domain
-  adapter_generic_app --> domain_format
-  adapter_generic_app --> domain_inbound
-  adapter_generic_app --> domain_ports
+  adapter_generic_app --> core_data
+  adapter_generic_app --> core_domain
+  adapter_generic_app --> core_format
+  adapter_generic_app --> core_inbound
+  adapter_generic_app --> core_ports
   adapter_generic_app --> test_contracts
   adapter_generic_app --> test_edge
+  adapter_generic_app --> test_verifies
   adapter_generic_mock --> adapter_generic_app
-  adapter_generic_mock --> domain_composition_extension
-  adapter_generic_mock --> domain_composition_process
-  adapter_generic_mock --> domain_data
-  adapter_generic_mock --> domain_domain
-  adapter_generic_mock --> domain_entrypoints
-  adapter_generic_mock --> domain_format
-  adapter_generic_mock --> domain_inbound
-  adapter_generic_mock --> domain_ports
-  adapter_generic_mock --> domain_scheduling
-  adapter_generic_mock --> domain_wire
+  adapter_generic_mock --> core_composition_extension
+  adapter_generic_mock --> core_composition_process
+  adapter_generic_mock --> core_data
+  adapter_generic_mock --> core_domain
+  adapter_generic_mock --> core_entrypoints
+  adapter_generic_mock --> core_format
+  adapter_generic_mock --> core_inbound
+  adapter_generic_mock --> core_ports
+  adapter_generic_mock --> core_scheduling
+  adapter_generic_mock --> core_wire
   adapter_generic_mock --> test_contracts
   adapter_generic_mock --> test_levers
   adapter_generic_mock --> ui_state
   adapter_generic_motionphoto --> test_verifies
   adapter_generic_sentry --> adapter_generic_app
   adapter_generic_sentry --> adapter_ios_ext_safe
-  adapter_generic_sentry --> domain_domain
-  adapter_generic_sentry --> domain_ports
-  adapter_generic_sentry --> domain_scheduling
+  adapter_generic_sentry --> core_domain
+  adapter_generic_sentry --> core_ports
+  adapter_generic_sentry --> core_scheduling
   adapter_generic_sentry --> test_contracts
   adapter_ios_app_only --> adapter_generic_motionphoto
   adapter_ios_app_only --> adapter_ios_ext_safe
-  adapter_ios_app_only --> domain_composition_app
-  adapter_ios_app_only --> domain_inbound
-  adapter_ios_app_only --> domain_ports
+  adapter_ios_app_only --> core_composition_app
+  adapter_ios_app_only --> core_inbound
+  adapter_ios_app_only --> core_ports
   adapter_ios_app_only --> test_contracts
   adapter_ios_app_only --> test_verifies
   adapter_ios_ext_safe --> adapter_generic_app
-  adapter_ios_ext_safe --> domain_composition_app
-  adapter_ios_ext_safe --> domain_data
-  adapter_ios_ext_safe --> domain_domain
-  adapter_ios_ext_safe --> domain_format
-  adapter_ios_ext_safe --> domain_inbound
-  adapter_ios_ext_safe --> domain_ports
+  adapter_ios_ext_safe --> core_composition_app
+  adapter_ios_ext_safe --> core_data
+  adapter_ios_ext_safe --> core_domain
+  adapter_ios_ext_safe --> core_format
+  adapter_ios_ext_safe --> core_inbound
+  adapter_ios_ext_safe --> core_ports
   adapter_ios_ext_safe --> test_contracts
   adapter_ios_ext_safe --> test_verifies
   adapter_ios_ui --> adapter_ios_app_only
   adapter_ios_ui --> adapter_ios_ext_safe
-  adapter_ios_ui --> domain_format
-  adapter_ios_ui --> domain_inbound
-  adapter_ios_ui --> domain_ports
-  adapter_ios_ui --> domain_presentation
-  adapter_ios_ui --> domain_query
+  adapter_ios_ui --> core_format
+  adapter_ios_ui --> core_inbound
+  adapter_ios_ui --> core_ports
+  adapter_ios_ui --> core_presentation
+  adapter_ios_ui --> core_query
   adapter_ios_ui --> test_contracts
   adapter_ios_ui --> test_verifies
   adapter_ios_ui --> ui_components
@@ -131,22 +132,22 @@ flowchart LR
   app_android --> adapter_android
   app_android --> adapter_generic_app
   app_android --> adapter_generic_sentry
-  app_android --> domain_composition_app
-  app_android --> domain_composition_process
-  app_android --> domain_inbound
-  app_android --> domain_ports
-  app_android --> domain_presentation
-  app_android --> domain_scheduling
+  app_android --> core_composition_app
+  app_android --> core_composition_process
+  app_android --> core_inbound
+  app_android --> core_ports
+  app_android --> core_presentation
+  app_android --> core_scheduling
   app_android --> ui_components
   app_android --> ui_state
   app_desktop --> adapter_generic_app
   app_desktop --> app_jvm
-  app_desktop --> domain_data
-  app_desktop --> domain_domain
-  app_desktop --> domain_format
-  app_desktop --> domain_ports
-  app_desktop --> domain_presentation
-  app_desktop --> domain_query
+  app_desktop --> core_data
+  app_desktop --> core_domain
+  app_desktop --> core_format
+  app_desktop --> core_ports
+  app_desktop --> core_presentation
+  app_desktop --> core_query
   app_desktop --> test_control
   app_desktop --> ui_components
   app_desktop --> ui_screens
@@ -156,101 +157,101 @@ flowchart LR
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
   app_ios --> adapter_ios_ui
-  app_ios --> domain_composition_app
-  app_ios --> domain_composition_process
-  app_ios --> domain_inbound
-  app_ios --> domain_ports
-  app_ios --> domain_presentation
-  app_ios --> domain_scheduling
+  app_ios --> core_composition_app
+  app_ios --> core_composition_process
+  app_ios --> core_inbound
+  app_ios --> core_ports
+  app_ios --> core_presentation
+  app_ios --> core_scheduling
   app_ios --> ui_components
   app_ios --> ui_screens
   app_ios --> ui_state
   app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_generic_sentry
   app_ios_extension --> adapter_ios_ext_safe
-  app_ios_extension --> domain_composition_extension
-  app_ios_extension --> domain_composition_process
-  app_ios_extension --> domain_inbound
-  app_ios_extension --> domain_ports
+  app_ios_extension --> core_composition_extension
+  app_ios_extension --> core_composition_process
+  app_ios_extension --> core_inbound
+  app_ios_extension --> core_ports
   app_jvm --> adapter_generic_app
   app_jvm --> adapter_generic_mock
-  app_jvm --> domain_composition_app
-  app_jvm --> domain_composition_extension
-  app_jvm --> domain_composition_process
-  app_jvm --> domain_ports
-  app_jvm --> domain_presentation
+  app_jvm --> core_composition_app
+  app_jvm --> core_composition_extension
+  app_jvm --> core_composition_process
+  app_jvm --> core_ports
+  app_jvm --> core_presentation
   app_jvm --> ui_state
-  domain_application --> domain_data
-  domain_application --> domain_domain
-  domain_application --> domain_format
-  domain_application --> domain_inbound
-  domain_composition_app --> domain_application
-  domain_composition_app --> domain_composition_process
-  domain_composition_app --> domain_data
-  domain_composition_app --> domain_domain
-  domain_composition_app --> domain_entrypoints
-  domain_composition_app --> domain_format
-  domain_composition_app --> domain_inbound
-  domain_composition_app --> domain_ports
-  domain_composition_app --> domain_presentation
-  domain_composition_app --> domain_query
-  domain_composition_app --> domain_scheduling
-  domain_composition_app --> ui_state
-  domain_composition_extension --> domain_application
-  domain_composition_extension --> domain_composition_process
-  domain_composition_extension --> domain_data
-  domain_composition_extension --> domain_domain
-  domain_composition_extension --> domain_entrypoints
-  domain_composition_extension --> domain_inbound
-  domain_composition_extension --> domain_ports
-  domain_composition_extension --> domain_scheduling
-  domain_composition_process --> domain_application
-  domain_composition_process --> domain_data
-  domain_composition_process --> domain_domain
-  domain_composition_process --> domain_entrypoints
-  domain_composition_process --> domain_inbound
-  domain_composition_process --> domain_ports
-  domain_composition_process --> domain_scheduling
-  domain_data --> domain_domain
-  domain_data --> domain_format
-  domain_data --> domain_inbound
-  domain_data --> domain_ports
-  domain_data --> domain_wire
-  domain_entrypoints --> domain_application
-  domain_entrypoints --> domain_data
-  domain_entrypoints --> domain_domain
-  domain_entrypoints --> domain_inbound
-  domain_entrypoints --> domain_ports
-  domain_entrypoints --> domain_presentation
-  domain_entrypoints --> domain_query
-  domain_entrypoints --> domain_scheduling
-  domain_entrypoints --> ui_state
-  domain_format --> domain_domain
-  domain_ports --> domain_domain
-  domain_ports --> domain_inbound
-  domain_presentation --> domain_domain
-  domain_presentation --> domain_inbound
-  domain_presentation --> domain_query
-  domain_presentation --> test_verifies
-  domain_presentation --> ui_state
-  domain_query --> domain_data
-  domain_query --> domain_domain
-  domain_query --> domain_format
-  domain_query --> domain_inbound
-  domain_scheduling --> domain_domain
-  domain_scheduling --> domain_inbound
-  domain_scheduling --> domain_ports
+  core_application --> core_data
+  core_application --> core_domain
+  core_application --> core_format
+  core_application --> core_inbound
+  core_composition_app --> core_application
+  core_composition_app --> core_composition_process
+  core_composition_app --> core_data
+  core_composition_app --> core_domain
+  core_composition_app --> core_entrypoints
+  core_composition_app --> core_format
+  core_composition_app --> core_inbound
+  core_composition_app --> core_ports
+  core_composition_app --> core_presentation
+  core_composition_app --> core_query
+  core_composition_app --> core_scheduling
+  core_composition_app --> ui_state
+  core_composition_extension --> core_application
+  core_composition_extension --> core_composition_process
+  core_composition_extension --> core_data
+  core_composition_extension --> core_domain
+  core_composition_extension --> core_entrypoints
+  core_composition_extension --> core_inbound
+  core_composition_extension --> core_ports
+  core_composition_extension --> core_scheduling
+  core_composition_process --> core_application
+  core_composition_process --> core_data
+  core_composition_process --> core_domain
+  core_composition_process --> core_entrypoints
+  core_composition_process --> core_inbound
+  core_composition_process --> core_ports
+  core_composition_process --> core_scheduling
+  core_data --> core_domain
+  core_data --> core_format
+  core_data --> core_inbound
+  core_data --> core_ports
+  core_data --> core_wire
+  core_entrypoints --> core_application
+  core_entrypoints --> core_data
+  core_entrypoints --> core_domain
+  core_entrypoints --> core_inbound
+  core_entrypoints --> core_ports
+  core_entrypoints --> core_presentation
+  core_entrypoints --> core_query
+  core_entrypoints --> core_scheduling
+  core_entrypoints --> ui_state
+  core_format --> core_domain
+  core_ports --> core_domain
+  core_ports --> core_inbound
+  core_presentation --> core_domain
+  core_presentation --> core_inbound
+  core_presentation --> core_query
+  core_presentation --> test_verifies
+  core_presentation --> ui_state
+  core_query --> core_data
+  core_query --> core_domain
+  core_query --> core_format
+  core_query --> core_inbound
+  core_scheduling --> core_domain
+  core_scheduling --> core_inbound
+  core_scheduling --> core_ports
   test_architecture --> adapter_generic_app
   test_architecture --> adapter_generic_mock
-  test_architecture --> domain_application
-  test_architecture --> domain_composition_app
-  test_architecture --> domain_composition_extension
-  test_architecture --> domain_composition_process
-  test_architecture --> domain_data
-  test_architecture --> domain_domain
-  test_architecture --> domain_format
-  test_architecture --> domain_ports
-  test_architecture --> domain_wire
+  test_architecture --> core_application
+  test_architecture --> core_composition_app
+  test_architecture --> core_composition_extension
+  test_architecture --> core_composition_process
+  test_architecture --> core_data
+  test_architecture --> core_domain
+  test_architecture --> core_format
+  test_architecture --> core_ports
+  test_architecture --> core_wire
   test_architecture --> test_contracts
   test_architecture --> test_levers
   test_architecture --> test_verifies
@@ -261,71 +262,72 @@ flowchart LR
   test_client --> test_levers
   test_client --> test_rig
   test_contracts --> adapter_generic_motionphoto
-  test_contracts --> domain_data
-  test_contracts --> domain_domain
-  test_contracts --> domain_format
-  test_contracts --> domain_inbound
-  test_contracts --> domain_ports
-  test_contracts --> domain_wire
+  test_contracts --> core_data
+  test_contracts --> core_domain
+  test_contracts --> core_format
+  test_contracts --> core_inbound
+  test_contracts --> core_ports
+  test_contracts --> core_wire
   test_contracts --> ui_state
-  test_control --> domain_domain
-  test_control --> domain_presentation
+  test_control --> core_domain
+  test_control --> core_presentation
   test_control --> test_client
   test_control --> test_levers
   test_control --> test_rig
   test_control --> test_verifies
   test_control --> ui_state
   test_data --> adapter_generic_mock
-  test_data --> domain_application
-  test_data --> domain_data
-  test_data --> domain_domain
-  test_data --> domain_format
-  test_data --> domain_inbound
-  test_data --> domain_ports
-  test_data --> domain_query
-  test_data --> domain_wire
+  test_data --> core_application
+  test_data --> core_data
+  test_data --> core_domain
+  test_data --> core_format
+  test_data --> core_inbound
+  test_data --> core_ports
+  test_data --> core_query
+  test_data --> core_wire
   test_data --> test_contracts
+  test_data --> test_verifies
   test_edge --> adapter_generic_app
   test_edge --> test_contracts
   test_feature --> adapter_generic_mock
-  test_feature --> domain_application
-  test_feature --> domain_data
-  test_feature --> domain_domain
-  test_feature --> domain_format
-  test_feature --> domain_inbound
-  test_feature --> domain_ports
-  test_feature --> domain_scheduling
+  test_feature --> core_application
+  test_feature --> core_data
+  test_feature --> core_domain
+  test_feature --> core_format
+  test_feature --> core_inbound
+  test_feature --> core_ports
+  test_feature --> core_scheduling
   test_harness_driver --> app_desktop
-  test_integration --> domain_domain
-  test_integration --> domain_format
-  test_integration --> domain_presentation
+  test_integration --> core_domain
+  test_integration --> core_format
+  test_integration --> core_presentation
   test_integration --> test_control
   test_integration --> ui_state
   test_journeys --> adapter_generic_app
-  test_journeys --> domain_domain
-  test_journeys --> domain_format
-  test_journeys --> domain_ports
-  test_journeys --> domain_presentation
-  test_journeys --> domain_wire
+  test_journeys --> core_domain
+  test_journeys --> core_format
+  test_journeys --> core_ports
+  test_journeys --> core_presentation
+  test_journeys --> core_wire
   test_journeys --> test_client
   test_journeys --> test_contracts
   test_journeys --> test_control
   test_journeys --> ui_state
   test_launch_adapters --> adapter_generic_app
   test_launch_adapters --> adapter_generic_mock
-  test_launch_adapters --> domain_composition_app
-  test_launch_adapters --> domain_composition_extension
-  test_launch_adapters --> domain_composition_process
-  test_launch_adapters --> domain_inbound
-  test_launch_adapters --> domain_ports
+  test_launch_adapters --> core_composition_app
+  test_launch_adapters --> core_composition_extension
+  test_launch_adapters --> core_composition_process
+  test_launch_adapters --> core_inbound
+  test_launch_adapters --> core_ports
   test_launch_adapters --> ui_state
   test_levers --> ui_state
   test_no_grant --> adapter_android
-  test_no_grant --> domain_ports
+  test_no_grant --> core_ports
   test_no_grant --> test_contracts
   test_no_grant --> test_verifies
   test_partial_grant --> adapter_android
-  test_partial_grant --> domain_ports
+  test_partial_grant --> core_ports
   test_partial_grant --> test_contracts
   test_partial_grant --> test_verifies
   test_rig --> adapter_android
@@ -335,18 +337,18 @@ flowchart LR
   test_rig --> adapter_ios_app_only
   test_rig --> adapter_ios_ext_safe
   test_rig --> app_jvm
-  test_rig --> domain_composition_app
-  test_rig --> domain_composition_extension
-  test_rig --> domain_composition_process
-  test_rig --> domain_data
-  test_rig --> domain_domain
-  test_rig --> domain_entrypoints
-  test_rig --> domain_format
-  test_rig --> domain_inbound
-  test_rig --> domain_ports
-  test_rig --> domain_presentation
-  test_rig --> domain_query
-  test_rig --> domain_wire
+  test_rig --> core_composition_app
+  test_rig --> core_composition_extension
+  test_rig --> core_composition_process
+  test_rig --> core_data
+  test_rig --> core_domain
+  test_rig --> core_entrypoints
+  test_rig --> core_format
+  test_rig --> core_inbound
+  test_rig --> core_ports
+  test_rig --> core_presentation
+  test_rig --> core_query
+  test_rig --> core_wire
   test_rig --> test_contracts
   test_rig --> test_edge
   test_rig --> test_launch_adapters
@@ -356,10 +358,10 @@ flowchart LR
   ui_components --> test_verifies
   ui_components --> ui_state
   ui_screens --> adapter_generic_app
-  ui_screens --> domain_domain
-  ui_screens --> domain_format
-  ui_screens --> domain_presentation
-  ui_screens --> domain_query
+  ui_screens --> core_domain
+  ui_screens --> core_format
+  ui_screens --> core_presentation
+  ui_screens --> core_query
   ui_screens --> test_verifies
   ui_screens --> ui_components
   ui_screens --> ui_state

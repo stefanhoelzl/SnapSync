@@ -46,7 +46,7 @@ class DetektTierCoverageTest {
 
     /**
      * Tiers that scope by PATH rather than by module, so they appear in no module mapping:
-     * `compose` is a sub-scope of `:domain` carved out of `core`, and `buildscripts`
+     * `compose` is a sub-scope of `:core` carved out of `core`, and `buildscripts`
      * is every `*.gradle.kts` in the build. They still need a config and a registered task, which
      * is what the tests below assert about them.
      */

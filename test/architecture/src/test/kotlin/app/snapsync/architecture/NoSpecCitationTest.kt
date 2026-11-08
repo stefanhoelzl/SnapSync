@@ -67,7 +67,7 @@ class NoSpecCitationTest {
          * Top-level trees that hold production Kotlin. Pinned so a moved tree fails here instead of dropping out
          * of scope. A new tree joins the scan anyway; it is only missing from this check.
          */
-        val TREES = setOf("domain", "adapter", "ui", "app", "test", "tools", "build-logic", "api", "site")
+        val TREES = setOf("core", "adapter", "ui", "app", "test", "tools", "build-logic", "api", "site")
 
         /** The api's and the site's source: TypeScript, the Astro pages and the Astro config. */
         val WEB_EXTENSIONS = setOf("ts", "tsx", "astro", "mjs")

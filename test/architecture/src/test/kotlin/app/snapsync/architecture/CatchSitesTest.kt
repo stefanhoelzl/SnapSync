@@ -47,18 +47,18 @@ class CatchSitesTest {
     private val translating = listOf(
         "/adapter/",
         "/app/desktop/",
-        "/domain/data/",
-        "/domain/format/",
-        "/domain/wire/",
+        "/core/data/",
+        "/core/format/",
+        "/core/wire/",
     )
 
     /** The runtime's sites themselves, and why each may catch everything. */
     private val sites = mapOf(
-        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to
+        "/core/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to
             "a run's containment, a synchronous delivery's, an answered delivery's ObjC boundary, the scope's handler",
-        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Steps.kt" to
+        "/core/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Steps.kt" to
             "`isolated`: a step whose failure is reported and the run goes on",
-        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/SingleFlight.kt" to
+        "/core/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/SingleFlight.kt" to
             "a pass's end as a value for every waiter: its answer, its failure, or its cancellation",
         "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/objc/ObjCBoundary.kt" to
             "every Kotlin block and delegate method ObjC calls — nothing may unwind into ObjC frames",
@@ -66,7 +66,7 @@ class CatchSitesTest {
             "the adapters' helpers themselves",
     )
 
-    private val roots = listOf("/domain/", "/adapter/", "/app/", "/ui/")
+    private val roots = listOf("/core/", "/adapter/", "/app/", "/ui/")
 
     private fun isProduction(path: String): Boolean {
         val sourceSet = path.substringAfter("/src/", "").substringBefore('/')
@@ -101,7 +101,7 @@ class CatchSitesTest {
                 "none goes through `PlatformCalls` and is named here, with what it guards. One removed: lower its count " +
                 "here (the list only shrinks).",
         )
-        assertTrue(NAMED.keys.none { it.startsWith("/domain/") }, "the core names no catch-all")
+        assertTrue(NAMED.keys.none { it.startsWith("/core/") }, "the core names no catch-all")
     }
 
     @Test

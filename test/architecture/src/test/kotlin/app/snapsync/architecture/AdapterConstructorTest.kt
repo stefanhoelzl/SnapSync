@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
  *
  * WHAT IT READS. Every class in the adapter modules' production AND rig source sets (a rig adapter is an adapter too)
  * — the honest in-memory doubles of `:adapter:generic:mock` included — whose supertypes name an interface
- * `domain/ports` declares. The port set is derived from the ports module, never listed. Heuristic in one respect,
+ * `core/ports` declares. The port set is derived from the ports module, never listed. Heuristic in one respect,
  * stated: a secondary constructor is attributed to the nearest preceding class, which is right for every file today.
  *
  * THE EXEMPTIONS ARE EXACT. Each is an adapter-private bridge whose function IS the operating system's own block — a
@@ -29,7 +29,7 @@ class AdapterConstructorTest {
 
     private val ports: Set<String> by lazy {
         SourceScan.kotlinFiles()
-            .filter { it.path.startsWith("/domain/ports/src/commonMain/") }
+            .filter { it.path.startsWith("/core/ports/src/commonMain/") }
             .flatMap { src -> PORT.findAll(src.text).map { it.groupValues[1] }.toList() }
             .toSet()
     }

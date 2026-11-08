@@ -43,7 +43,7 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * `CrashReporter`'s [CrashReporterState.AFTER_A_PROCESS_DEATH], live on the emulator over the REAL SDK and the REAL
- * roads to the end of a process (the runtime's, `:domain:scheduling`).
+ * roads to the end of a process (the runtime's, `:core:scheduling`).
  *
  * The app's process is [ContractDeathService], in a process of its own (`:contractdeath`): it starts the channel
  * against the clause's ingest under the production handlers, throws an `InvalidProgramState` down the road it was asked

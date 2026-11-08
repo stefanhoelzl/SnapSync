@@ -2,7 +2,7 @@
 #
 # ONE rule. `:app:*` is wiring — it constructs adapters, bundles them as ports, and forwards OS
 # callbacks. Constructing is not a decision; branching, ordering, and error-mapping are, and they belong
-# in `:domain`, which is tested. This config is the executable half of that rule.
+# in `:core`, which is tested. This config is the executable half of that rule.
 #
 # Why detekt and not Konsist, which every other guard uses: Konsist exposes no AST — only raw `.text` —
 # and `text.contains("if")` also matches `verify`, `modifier`, `specific`, and `lifecycle`. Counting

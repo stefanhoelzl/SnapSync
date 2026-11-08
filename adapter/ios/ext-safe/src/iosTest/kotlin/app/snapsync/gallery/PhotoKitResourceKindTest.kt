@@ -19,7 +19,7 @@ import kotlin.test.assertNull
 /**
  * The `PHAssetResourceType` → [ResourceKind] table.
  *
- * These assertions used to live in `:domain`'s `commonTest` as bare integers compared to bare
+ * These assertions used to live in `:core`'s `commonTest` as bare integers compared to bare
  * integers — a table over Apple's ABI that no JVM run could
  * disagree with, and that no gate could see, because an ABI decoder written in primitives is
  * indistinguishable from arithmetic. Here they name the SDK's own constants, so a value moving under

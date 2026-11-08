@@ -122,7 +122,7 @@ class RunbookSkillsTest {
      * construction** rather than by a runtime check. `SNAPSYNC_RIG_PORT` lives there.
      */
     private val sourceTriggers: Map<String, String> = run {
-        val roots = listOf("domain", "app", "adapter", "ui").map { File(repoRoot, it) }
+        val roots = listOf("core", "app", "adapter", "ui").map { File(repoRoot, it) }
         roots.forEach { assertTrue(it.isDirectory, "guard is scanning nothing — ${it.name}/ not found") }
         val files = roots.asSequence()
             .flatMap { it.walkTopDown().asSequence() }

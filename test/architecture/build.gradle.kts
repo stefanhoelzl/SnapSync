@@ -47,24 +47,24 @@ dependencies {
     // (`docs/architecture.md`, "The upload transitions stop in-flight work only at a leave") — the one guard here
     // that executes domain code rather than reading source: the invariant is behavioral (no reachable sequence
     // orphans in-flight work), which no text scan can see.
-    testImplementation(project(":domain:domain"))
-    testImplementation(project(":domain:format"))
-    testImplementation(project(":domain:data"))
-    testImplementation(project(":domain:application"))
+    testImplementation(project(":core:domain"))
+    testImplementation(project(":core:format"))
+    testImplementation(project(":core:data"))
+    testImplementation(project(":core:application"))
     // The generated wire (`api/openapi.yaml`): the limits and routes the client's mirrors are pinned to.
-    testImplementation(project(":domain:wire"))
+    testImplementation(project(":core:wire"))
     // The screen's vocabulary: the name cap the event-name gate pins, and the types `AppPorts` binds `Ui` to.
     testImplementation(project(":ui:state"))
     // `@Verifies`: a requirement held by the platform shells' declarations (the orientation lock, the launch window's
     // colour) is claimed by the guard that reads them.
     testImplementation(project(":test:verifies"))
     // The transitions read the membership and the grant through their services, built over the ports' mocks.
-    testImplementation(project(":domain:ports"))
+    testImplementation(project(":core:ports"))
     testImplementation(project(":adapter:generic:mock"))
     // The composition layer's bundles `PortBundleTest` reads by reflection.
-    testImplementation(project(":domain:composition:process"))
-    testImplementation(project(":domain:composition:app"))
-    testImplementation(project(":domain:composition:extension"))
+    testImplementation(project(":core:composition:process"))
+    testImplementation(project(":core:composition:app"))
+    testImplementation(project(":core:composition:extension"))
     // LeverFacesTest holds every migrated operator face to its typed interface, through the interfaces' descriptors.
     testImplementation(project(":test:levers"))
     // GatedPathPinTest drives the client's REAL ungated-path predicate against the backend's closed list.
@@ -128,12 +128,12 @@ tasks.test {
     // change — a guard that goes stale is a guard that fails open.
     //
     // Declared as a file tree over `src/` and the entitlements specifically, NOT as whole top-level
-    // directories: `domain/`, `capability/` and `app/` also contain each module's `build/` output, and
+    // directories: `core/`, `capability/` and `app/` also contain each module's `build/` output, and
     // depending on those makes this task consume other tasks' outputs without a dependency edge (Gradle
     // rejects it, and rightly — the guard's result would depend on task ordering).
     inputs.files(
         fileTree(rootDir) {
-            include("domain/**/src/**/*.kt")
+            include("core/**/src/**/*.kt")
             include("ui/**/src/**/*.kt")
             include("capability/**/src/**/*.kt")
             include("app/**/src/**/*.kt")
@@ -155,7 +155,7 @@ tasks.test {
             include("test/contracts/*")
             // MigrationPinTest's subject: the migration chains. Without them an edit to a shipped `.sqm` — the one
             // change the pin exists to catch — leaves this task UP-TO-DATE and the pin silently stops pinning.
-            include("domain/data/src/commonMain/sqldelight/**/*.sqm")
+            include("core/data/src/commonMain/sqldelight/**/*.sqm")
             // The event-link domain guard's subjects. Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing
@@ -182,7 +182,7 @@ tasks.test {
             // the core zones' build files whose project edges it pins. Without them an include-only or
             // edge-only edit leaves this task UP-TO-DATE.
             include("settings.gradle.kts")
-            include("domain/*/build.gradle.kts")
+            include("core/*/build.gradle.kts")
             // `RunbookSkillsTest`'s subjects (`docs/architecture.md`): AGENTS.md's runbook
             // pointers must resolve to these files. Without them declared, renaming or
             // deleting a skill leaves this task UP-TO-DATE — a dangling pointer is invisible by

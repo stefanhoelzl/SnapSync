@@ -11,10 +11,10 @@ import kotlin.test.assertTrue
  * A port implementation is one external system, translated. One that holds another port reaches a second external
  * system through the first, and the decision about how the two combine hides inside an adapter where no mock can see
  * it and no second platform inherits it. So: no adapter's constructor takes a port. Combining ports is a service's
- * job (`:domain:services`), or a feature's.
+ * job (`:core:services`), or a feature's.
  *
  * WHAT IT READS. Every constructor parameter of every class in the adapter modules' production source sets, typed as
- * an interface `domain/ports` declares. The port set is derived from the ports module, never listed, so a new port is
+ * an interface `core/ports` declares. The port set is derived from the ports module, never listed, so a new port is
  * in scope the day it is written. The rig-gated `src/rig` source sets are out of scope by the law's own exception: a
  * rig decorator forwards to the adapter it wraps.
  *
@@ -39,7 +39,7 @@ class PortsNeverCallPortsTest {
      */
     private val ports: Set<String> by lazy {
         val supertypes = SourceScan.kotlinFiles()
-            .filter { it.path.startsWith("/domain/ports/src/commonMain/") }
+            .filter { it.path.startsWith("/core/ports/src/commonMain/") }
             .flatMap { src -> INTERFACE.findAll(src.text).map { it.groupValues[1] to it.groupValues[2] }.toList() }
             .associate { (name, supers) -> name to SUPERTYPE.findAll(supers).map { it.value }.toSet() }
         generateSequence(setOf("Port")) { known ->
@@ -69,7 +69,7 @@ class PortsNeverCallPortsTest {
         assertTrue(
             added.isEmpty(),
             "an adapter takes a port in its constructor — ports never call ports; compose them in a service " +
-                "(`:domain:services`) or a feature instead:\n" + added.joinToString("\n") { "  $it — ${found[it]}" },
+                "(`:core:services`) or a feature instead:\n" + added.joinToString("\n") { "  $it — ${found[it]}" },
         )
         val gone = remaining.keys - found.keys
         assertTrue(
@@ -82,7 +82,7 @@ class PortsNeverCallPortsTest {
     @Test
     fun `the scan is real (non-vacuity floor)`() {
         // Lowered from 40 when the feature → ports cut took the store interfaces out (36 remain).
-        assertTrue(ports.size >= 30, "parsed only ${ports.size} port interfaces from domain/ports — the scan is broken")
+        assertTrue(ports.size >= 30, "parsed only ${ports.size} port interfaces from core/ports — the scan is broken")
         assertTrue(
             "HttpTransport" in ports && "DeviceIntegrity" in ports,
             "the ports this law was written for are in scope",
@@ -94,7 +94,7 @@ class PortsNeverCallPortsTest {
             listOf("Probe.http"),
             KotlinDecls.constructorParams(sample).filter { it.type in ports }.map { "${it.owner}.${it.name}" },
         )
-        assertTrue(File(SourceScan.repoRoot, "domain/ports/src/commonMain").isDirectory)
+        assertTrue(File(SourceScan.repoRoot, "core/ports/src/commonMain").isDirectory)
     }
 
     private companion object {

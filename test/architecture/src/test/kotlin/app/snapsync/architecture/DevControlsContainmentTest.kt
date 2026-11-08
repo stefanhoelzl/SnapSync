@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
  * implementation in production source is `InertDevControls` (null pin, never delivers) — the channel's
  * `RigDevControls` lives in `:test:rig`, which a production build does not link.
  *
- * Production source here: `:domain`, `:adapter`, `:app` and `:ui` main source sets, never their tests and never an
+ * Production source here: `:core`, `:adapter`, `:app` and `:ui` main source sets, never their tests and never an
  * adapter's rig-gated `src/rig`. The rig's own hook directories live under `test/` and are out of scope by path. The
  * mocks (`:adapter:generic:mock`) are not production either: `MockContainmentTest` keeps every shipped root from
  * linking them.
@@ -23,7 +23,7 @@ class DevControlsContainmentTest {
 
     private val production by lazy {
         SourceScan.kotlinFiles().filter { src ->
-            listOf("/domain/", "/adapter/", "/app/", "/ui/").any { src.path.startsWith(it) } &&
+            listOf("/core/", "/adapter/", "/app/", "/ui/").any { src.path.startsWith(it) } &&
                 !src.path.startsWith("/adapter/generic/mock/") &&
                 !Regex("""/src/(\w*[Tt]est|rig)/""").containsMatchIn(src.path)
         }

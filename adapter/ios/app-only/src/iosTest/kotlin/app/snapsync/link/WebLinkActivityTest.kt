@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 /**
  * The web-link test over a delivered `NSUserActivity` (capability `join-event`).
  *
- * This assertion used to live in `:domain`'s `commonTest` as
+ * This assertion used to live in `:core`'s `commonTest` as
  * `assertEquals("NSUserActivityTypeBrowsingWeb", BROWSING_WEB_ACTIVITY_TYPE)` — a constant compared
  * to a copy of itself, which cannot fail and says nothing about iOS. Here it compares against the
  * platform's own symbol, so drifting the value we match on is a red test rather than every invite

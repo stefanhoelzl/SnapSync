@@ -1,4 +1,4 @@
-# The `scheduling` tier (`DetektTiersPlugin`): `:domain:scheduling`, the runtime every run is started by.
+# The `scheduling` tier (`DetektTiersPlugin`): `:core:scheduling`, the runtime every run is started by.
 #
 # A CLAIM, not debt (`docs/patterns.md`): written with the code, not measured after it. The runtime is the one place
 # that launches coroutines and catches what a run throws, and it stays small enough to read in one sitting.

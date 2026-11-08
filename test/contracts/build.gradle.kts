@@ -17,16 +17,16 @@ plugins {
 // production module's main code can assert.
 //
 // The statement lists `DatabasesContract`'s schema clauses run (`SchemaStatementsTask`): read from the SQLDelight
-// code `:domain:data` generates for its databases, so a query added there is run here with
+// code `:core:data` generates for its databases, so a query added there is run here with
 // nothing to remember. A fixture per argument type; a type with none fails this task naming the statement.
 // The date roles' fixture instant, fully qualified: a fixture names only its own type, which the statement's file
 // imports.
 val epoch = "app.snapsync.domain.time.Timestamp.of(kotlin.time.Instant.fromEpochSeconds(0))"
 
 val generateSchemaStatements = tasks.register<SchemaStatementsTask>("generateSchemaStatements") {
-    dependsOn(":domain:data:generateSqlDelightInterface")
+    dependsOn(":core:data:generateSqlDelightInterface")
     generatedCode.from(
-        project(":domain:data").layout.buildDirectory.dir("generated/sqldelight/code"),
+        project(":core:data").layout.buildDirectory.dir("generated/sqldelight/code"),
     )
     outputDir.set(layout.buildDirectory.dir("generated/schemaStatements/kotlin"))
     packageName.set("app.snapsync.contracts")
@@ -70,24 +70,24 @@ kotlin {
             kotlin.srcDir(generateSchemaStatements)
         }
         commonMain.dependencies {
-            api(project(":domain:domain"))
+            api(project(":core:domain"))
             // The text a value takes on the wire — a resource role's token in an upload's path.
-            implementation(project(":domain:format"))
+            implementation(project(":core:format"))
             // The Motion Photo fixtures the import contracts hand a library.
             implementation(project(":adapter:generic:motionphoto"))
-            api(project(":domain:ports"))
+            api(project(":core:ports"))
             // The inbound kinds the event ports deliver through.
-            api(project(":domain:inbound"))
+            api(project(":core:inbound"))
             // The Backend contract speaks the device API as `api/openapi.yaml` declares it: the generated routes,
             // replies and DTOs are its clauses' vocabulary, so a binding names them too.
-            api(project(":domain:wire"))
+            api(project(":core:wire"))
             // The screen's vocabulary the Ui contract tours (`UiIntent`) over the port bound to it.
             api(project(":ui:state"))
             // `DatabasesContract` brings its own schema and reads through the driver it is handed.
             implementation(libs.sqldelight.runtime)
             // The schema clauses (`SchemaClauses.kt`) run every statement through the databases' generated code.
             // The production gateway the Backend contract's client is (`Edge.kt`).
-            implementation(project(":domain:data"))
+            implementation(project(":core:data"))
             api(kotlin("test"))
             api(libs.coroutines.test)
             implementation(libs.coroutines.core)

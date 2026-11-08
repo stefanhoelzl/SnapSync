@@ -1,7 +1,7 @@
 // The ENCRYPTED FILE FORMAT of an encrypted event's stored photo — the TypeScript half, written against
 // WebCrypto alone so the edge (the iOS extension's uploads, which it encrypts as they stream) and the
 // event page in a browser (which decrypts the zip it builds) run the same code. The Kotlin half is
-// `:domain:model`'s `EncryptedFileFormat`; both are held to `test/vectors/encrypted-file.json`, which an
+// `:core:model`'s `EncryptedFileFormat`; both are held to `test/vectors/encrypted-file.json`, which an
 // implementation independent of either produced and Google Tink decrypts.
 //
 // A file is a 9-byte SnapSync prefix, then Tink's `AesGcmHkdfStreaming` ciphertext byte for byte:

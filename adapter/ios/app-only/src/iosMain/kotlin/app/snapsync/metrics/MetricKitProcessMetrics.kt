@@ -55,7 +55,7 @@ import platform.darwin.NSObject
  * device — so `ProcessMetricsContract`'s delivery is recorded on the SE2 by a run that waits for it, at the
  * [MetricKitApi] seam (`ProcessMetrics@IOS_DEVICE_APP.rec`), and replayed on every build. The measured evidence of the
  * subscriber's lifetime lives in this comment (the seventeen payloads, the write-only field that silenced them, the
- * day-long hold); the rule over what arrives is `:domain:model`'s, tested there.
+ * day-long hold); the rule over what arrives is `:core:model`'s, tested there.
  *
  * ⏰ **Expiry**: this whole `MX*` surface is deprecated at iOS 27 in favour of a Swift-only successor
  * that Kotlin/Native cannot call. When that bites, this class is what gets replaced — behind
@@ -141,7 +141,7 @@ internal class SystemMetricKitApi : MetricKitApi {
  * delivery means losing the report permanently.
  *
  * Separate from [MetricKitProcessMetrics] because Kotlin/Native refuses to mix Kotlin and ObjC
- * supertypes, so the class ObjC is handed cannot also be the class `:domain` sees. Internal rather
+ * supertypes, so the class ObjC is handed cannot also be the class `:core` sees. Internal rather
  * than private: a private nested class was the previous shape, and keeping this one visible to the
  * module is a small nudge against quietly nesting it again.
  */

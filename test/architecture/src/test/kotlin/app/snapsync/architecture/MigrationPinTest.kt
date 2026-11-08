@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * **A shipped migration is never edited** (capability `photo-sharing`; `domain/data/build.gradle.kts`).
+ * **A shipped migration is never edited** (capability `photo-sharing`; `core/data/build.gradle.kts`).
  *
  * Each database's schema is its migration chain and nothing else (`deriveSchemaFromMigrations`). A phone that already
  * ran a migration keeps what that migration did; a fresh install runs whatever the file says now. Editing a migration
@@ -25,7 +25,7 @@ class MigrationPinTest {
      * downloads chain there in phase 4.5, its files' bytes unchanged). A file's pin is keyed by its path under the root.
      */
     private val chains = listOf(
-        File(SourceScan.repoRoot, "domain/data/src/commonMain/sqldelight"),
+        File(SourceScan.repoRoot, "core/data/src/commonMain/sqldelight"),
     )
 
     /** Every migration, by its path under its root in [chains], and the SHA-256 of its bytes. */

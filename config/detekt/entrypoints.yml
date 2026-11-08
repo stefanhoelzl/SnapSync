@@ -1,4 +1,4 @@
-# The `entrypoints` tier (`DetektTiersPlugin`): `:domain:entrypoints`, one entry point per operating-system trigger.
+# The `entrypoints` tier (`DetektTiersPlugin`): `:core:entrypoints`, one entry point per operating-system trigger.
 #
 # A CLAIM, not debt. Every other tier file records where a scope stood when it was measured, a ceiling that may only
 # fall. These numbers were written before the code (`docs/patterns.md`, "Entry points"): an entry point orders steps

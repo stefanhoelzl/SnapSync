@@ -60,7 +60,7 @@ class MockContainmentTest {
     @Test
     fun `no production Kotlin imports a mock`() {
         val production = SourceScan.kotlinFiles().filter { src ->
-            listOf("/domain/", "/adapter/", "/app/", "/ui/").any { src.path.startsWith(it) } &&
+            listOf("/core/", "/adapter/", "/app/", "/ui/").any { src.path.startsWith(it) } &&
                 !src.path.startsWith("/adapter/generic/mock/") &&
                 !src.path.startsWith("/app/jvm/") &&
                 !src.path.startsWith("/app/desktop/") &&

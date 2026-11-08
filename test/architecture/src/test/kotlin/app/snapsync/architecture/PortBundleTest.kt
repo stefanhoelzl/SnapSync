@@ -29,7 +29,7 @@ import kotlin.test.assertTrue
  * parameter is a [Port], a `List` of ports (a process's log sinks), a `Lazy` port (the device bundles' first-use adapters),
  * or one of these bundles nested ([ProcessPorts] inside the app's and the extension's).
  *
- * And the other direction: every interface in `:domain:ports` extends [Port], so "a port" is a checkable fact rather
+ * And the other direction: every interface in `:core:ports` extends [Port], so "a port" is a checkable fact rather
  * than a directory. The few that are not ports are listed in [notPorts], with their reason.
  */
 class PortBundleTest {
@@ -42,7 +42,7 @@ class PortBundleTest {
         ExtensionDevicePorts::class.java,
     )
 
-    /** Interfaces in `:domain:ports` that are NOT ports — each a handle or a value a port hands over. */
+    /** Interfaces in `:core:ports` that are NOT ports — each a handle or a value a port hands over. */
     private val notPorts = mapOf(
         "EntryEvent" to "what the runtime tells of an entry point's work — a sealed value the EntryEvents port is handed",
         "BackgroundTimeHold" to "one hold on the process's background time, answered by the BackgroundTime port",
@@ -88,7 +88,7 @@ class PortBundleTest {
             offenders.isEmpty(),
             "a composition bundle carries something that is not a port. Build a service inside the composition " +
                 "(`AppServices`, the extension's services), read a build constant from `BuildInfo`, let the adapter " +
-                "that needs the main thread reach it itself — or, if it really is a seam, declare it in :domain:ports " +
+                "that needs the main thread reach it itself — or, if it really is a seam, declare it in :core:ports " +
                 "extending `Port`.\n" + offenders.joinToString("\n"),
         )
     }
@@ -116,12 +116,12 @@ class PortBundleTest {
         val declared = portInterfaces()
         assertTrue(
             declared.size >= 30,
-            "port-bundle gate: found only ${declared.size} interfaces in :domain:ports — the scan is broken",
+            "port-bundle gate: found only ${declared.size} interfaces in :core:ports — the scan is broken",
         )
         val offenders = (declared - notPorts.keys).filterNot { Port::class.java.isAssignableFrom(portsClass(it)) }
         assertTrue(
             offenders.isEmpty(),
-            "an interface in :domain:ports does not extend `Port`: ${offenders.sorted()}. A port declares it; a handle " +
+            "an interface in :core:ports does not extend `Port`: ${offenders.sorted()}. A port declares it; a handle " +
                 "or a value a port hands over is listed in `notPorts` with its reason.",
         )
         val stale = notPorts.keys - declared
@@ -156,9 +156,9 @@ class PortBundleTest {
 
     private fun unwrap(type: Type): Type = if (type is WildcardType) type.upperBounds.single() else type
 
-    /** The top-level interfaces declared in `:domain:ports`, by simple name, read from its source. */
+    /** The top-level interfaces declared in `:core:ports`, by simple name, read from its source. */
     private fun portInterfaces(): Set<String> {
-        val dir = File(SourceScan.repoRoot, "domain/ports/src/commonMain/kotlin/app/snapsync/ports")
+        val dir = File(SourceScan.repoRoot, "core/ports/src/commonMain/kotlin/app/snapsync/ports")
         assertTrue(dir.isDirectory, "port-bundle gate: $dir is gone — re-point the scan")
         return dir.walk().filter { it.extension == "kt" }.flatMap { file ->
             Regex(

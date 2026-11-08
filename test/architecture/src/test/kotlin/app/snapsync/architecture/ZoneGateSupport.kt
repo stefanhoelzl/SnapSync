@@ -15,8 +15,8 @@ import kotlin.test.fail
  * and arms on the zone's first file with zero gate edits. A zone directory that exists but scans
  * empty FAILS: a layout drift must surface as red, not as a gate that passes forever.
  *
- * SCOPE ASSUMPTION (design D6, named here so a deviation is a conscious edit): the `:domain` module
- * roots at `domain/` with `src/` beside the legacy submodule directories until they empty — zones
+ * SCOPE ASSUMPTION (design D6, named here so a deviation is a conscious edit): the `:core` module
+ * roots at `core/` with `src/` beside the legacy submodule directories until they empty — zones
  * live at `domain/<zone>/src/commonMain/kotlin/…/<zone>/` — the presentation zone and the host
  * (`app.snapsync.host`) included. If migration step 3a/9 picks a different root, these gates go
  * pending-forever (the PENDING line names the absent scope); that step's diff must then edit these
@@ -28,17 +28,17 @@ internal object ZoneGates {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    /** The core's layers, each its own Gradle module under `domain/`. */
+    /** The core's layers, each its own Gradle module under `core/`. */
     val zoneTokens = listOf(
         "domain", "inbound", "ports", "scheduling", "entrypoints", "presentation", "data", "application", "format",
         "query", "composition/process", "composition/extension", "composition/app",
     )
 
-    /** The core's tree root. Each zone is its own module beneath it: `domain/<zone>/`. */
-    val domainSrc = File(repoRoot, "domain")
+    /** The core's tree root. Each layer is its own module beneath it: `core/<layer>/`. */
+    val domainSrc = File(repoRoot, "core")
 
     /**
-     * A zone's production sources — `domain/<zone>/src/commonMain/kotlin/app/snapsync/<zone>`.
+     * A layer's production sources — `core/<layer>/src/commonMain/kotlin/app/snapsync/<zone>`.
      *
      * The zone edges themselves are no longer text-gated: each zone is a Gradle module declaring only
      * the zone dependency its law permits, so a forbidden reference does not resolve (spec
@@ -69,7 +69,7 @@ internal object ZoneGates {
         val files = zoneFiles(domainSrc, zone)
         assertTrue(
             files != null,
-            "$gate gate: no `$zone` zone at domain/$zone/src/commonMain — the core's layout moved; " +
+            "$gate gate: no `$zone` zone at core/$zone/src/commonMain — the core's layout moved; " +
                 "re-point the scan rather than letting this gate pass on an absent scope",
         )
         assertTrue(

@@ -1,0 +1,22 @@
+plugins {
+    // A core layer (`snapsync.layer`): targets, the shared test dependencies.
+    id("snapsync.layer")
+}
+
+// The core's `scheduling` layer (`docs/architecture.md` §1): how work RUNS — the entry-point bases every
+// delivery goes through, the step runner, single flight, the supervised process scope, the operating system's
+// expiry. Pure mechanism: it knows no use case and no trigger. It is the one module of the core that may start a
+// coroutine (`CoroutinesInScheduling`).
+
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":core:inbound"))
+            // The platform's background time, and the per-thread log label a run's lines carry.
+            implementation(project(":core:ports"))
+            // `InvalidProgramState`: the one failure the runtime's containment passes on, ending the process.
+            implementation(project(":core:domain"))
+            api(libs.coroutines.core)
+        }
+    }
+}

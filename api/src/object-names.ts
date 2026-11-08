@@ -9,7 +9,7 @@
  * key their ledger and download records by, is derived with it from `asset_id`, `role` and `filename`, so the
  * string they see never changes.
  *
- * Mirrors the client's `uploadKey` exactly (`:domain` `model/UploadKeys.kt`). It lived beside
+ * Mirrors the client's `uploadKey` exactly (`:core` `model/UploadKeys.kt`). It lived beside
  * the v1 parse it inverts, and moved here when v1 was retired (`changes/separate-event-page-from-device-api`).
  */
 export function objectNameFor(assetId: string, role: string, originalFilename: string): string {

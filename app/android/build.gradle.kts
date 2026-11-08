@@ -18,9 +18,9 @@ plugins {
     id("snapsync.rig")
 }
 
-// The resolved deployment the app talks to (`docs/deployment.md`): `:domain:format` runs the resolver at configuration
+// The resolved deployment the app talks to (`docs/deployment.md`): `:core:format` runs the resolver at configuration
 // time (it generates LINK_ORIGIN from the same resolution), so this project reads what that run rendered.
-evaluationDependsOn(":domain:format")
+evaluationDependsOn(":core:format")
 
 val deployment: Map<String, String> = rootProject.layout.projectDirectory.file("build/deployment.properties").asFile
     .readLines()
@@ -157,14 +157,14 @@ kotlin {
 dependencies {
     // Both together, or neither: the contributed hook and the module it names cannot be half-present.
     if (rigEnabled) implementation(project(":test:rig"))
-    implementation(project(":domain:ports"))
-    implementation(project(":domain:inbound"))
+    implementation(project(":core:ports"))
+    implementation(project(":core:inbound"))
     // The root scope's handler (`RootScopeFailures`), the parent of the runtime's.
-    implementation(project(":domain:scheduling"))
+    implementation(project(":core:scheduling"))
     // The app's composition: its graph and the status host over it (`composeApp`).
-    implementation(project(":domain:composition:app"))
-    implementation(project(":domain:composition:process"))
-    implementation(project(":domain:presentation"))
+    implementation(project(":core:composition:app"))
+    implementation(project(":core:composition:process"))
+    implementation(project(":core:presentation"))
     implementation(project(":adapter:generic:app"))
     implementation(project(":adapter:android"))
     // The screen's date formatting the root builds over the `DateFormatting` port, for the UI adapter (`ScreenDates`).
