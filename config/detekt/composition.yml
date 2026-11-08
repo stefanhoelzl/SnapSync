@@ -1,4 +1,4 @@
-# The `composition` tier (`DetektTiersPlugin`): the composition layer, `:core:composition:*` (`docs/architecture.md`,
+# The `composition` tier (`QualityPlugin`): the composition layer, `:core:composition:*` (`docs/architecture.md`,
 # "The composition layer").
 #
 # A CLAIM, not debt, like `entrypoints.yml`: these numbers were written with the code. The layer is wiring only — graph

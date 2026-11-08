@@ -89,7 +89,7 @@ complexity:
     # is exactly the drift this file exists to prevent.
     excludes: []
 
-# The project's own rules (`:tools:detekt-rules`). A rule's SCOPE is a reading, not a ceiling: words are words in
+# The project's own rules (build-logic's `:detekt-rules`). A rule's SCOPE is a reading, not a ceiling: words are words in
 # every tier, so where they may not be written is said once, here (`docs/architecture.md`, "Localization").
 snapsync:
   HardCodedUiText:

@@ -20,7 +20,7 @@ dependencies {
     // compileOnly for the same reason: the integration measurement reads the suite's binary report through Kover's
     // report library, which the ONE Kover plugin brings onto the root build's classpath (its runtime dependency).
     compileOnly("org.jetbrains.kotlinx:kover-features-jvm:${libs.versions.kover.get()}")
-    // compileOnly for the same reason: `snapsync.detekt-tiers` registers tasks of the ONE detekt plugin the root
+    // compileOnly for the same reason: `snapsync.quality` registers tasks of the ONE detekt plugin the root
     // loaded.
     compileOnly(libs.detekt.gradle)
     // The zero coverage gate reads a module's compiled classes to recognise compiler glue by its bytecode shape
@@ -88,9 +88,9 @@ gradlePlugin {
             id = "snapsync.layer"
             implementationClass = "app.snapsync.buildlogic.LayerPlugin"
         }
-        register("detektTiers") {
-            id = "snapsync.detekt-tiers"
-            implementationClass = "app.snapsync.buildlogic.DetektTiersPlugin"
+        register("quality") {
+            id = "snapsync.quality"
+            implementationClass = "app.snapsync.buildlogic.QualityPlugin"
         }
         register("deployment") {
             id = "snapsync.deployment"

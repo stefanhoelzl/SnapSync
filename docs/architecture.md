@@ -363,7 +363,7 @@ now (`DeletionLedgerTest` keeps it dead).
 | | a layer's permitted edges, `implementation()` only | the compiler + `ModuleSetTest` |
 | | the core is `commonMain` only, its libraries allowlisted per layer | `PlatformCodeContainmentTest` + the compiler |
 | | each core module in exactly one detekt tier | `DetektTierCoverageTest` |
-| | each tier's `includes` matches a file | the build-logic check (`DetektTiersPlugin`) |
+| | each tier's `includes` matches a file | the build-logic check (`QualityPlugin`) |
 | ports | interfaces, handlers and data vocabulary only | `PortsHoldInterfacesOnlyTest` |
 | | every port extends `Port`; bundles hold ports only | `PortBundleTest` |
 | | failures as values, no `@Throws` | `PortGridTest` + the contracts |
@@ -557,8 +557,8 @@ integration measurement's exceptions are one.
 
 ### Complexity ceilings (fall only)
 
-- The detekt tier tasks gate `build`, one per scope, registered by build-logic's `snapsync.detekt-tiers` plugin
-  (`DetektTiersPlugin`): `detektShellTier`, `detektComposeTier`, `detektEntryPointsTier`, `detektSchedulingTier`,
+- The detekt tier tasks gate `build`, one per scope, registered by build-logic's `snapsync.quality` plugin
+  (`QualityPlugin`): `detektShellTier`, `detektComposeTier`, `detektEntryPointsTier`, `detektSchedulingTier`,
   `detektDomainTier`, `detektDataTier`, `detektApplicationTier`, `detektCoreTier`, `detektUiTier`, `detektHarnessTier`,
   `detektTestsTier`, `detektBuildScriptsTier`. There is one task per scope because a detekt 1.x rule carries one threshold
   per config.

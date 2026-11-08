@@ -34,8 +34,8 @@ class DetektTierCoverageTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    /** The convention plugin that registers every detekt task and owns the tier map (`snapsync.detekt-tiers`). */
-    private val tiersPlugin = File(repoRoot, "build-logic/src/main/kotlin/app/snapsync/buildlogic/DetektTiersPlugin.kt")
+    /** The convention plugin that registers every detekt task and owns the tier map (`snapsync.quality`). */
+    private val tiersPlugin = File(repoRoot, "build-logic/src/main/kotlin/app/snapsync/buildlogic/QualityPlugin.kt")
 
     /**
      * Not a tier's config. `_base.yml` is the shared baseline every tier layers beneath its own file;
@@ -56,7 +56,7 @@ class DetektTierCoverageTest {
     private fun tierMapBlock(): String {
         val text = tiersPlugin.readText()
         val start = text.indexOf("val TIER_OF: Map<String, String> = mapOf(")
-        assertTrue(start >= 0, "DetektTiersPlugin no longer declares `TIER_OF` — this guard is scanning nothing")
+        assertTrue(start >= 0, "QualityPlugin no longer declares `TIER_OF` — this guard is scanning nothing")
         val end = text.indexOf("\n        )", start)
         assertTrue(end > start, "could not find the end of the `TIER_OF` block")
         return text.substring(start, end)
@@ -86,7 +86,7 @@ class DetektTierCoverageTest {
         assertTrue(
             unmapped.isEmpty(),
             "these modules are in the build but in NO complexity tier, so nothing measures them: " +
-                "${unmapped.sorted()}. Add each to `TIER_OF` in DetektTiersPlugin " +
+                "${unmapped.sorted()}. Add each to `TIER_OF` in QualityPlugin " +
                 "(`docs/architecture.md`, \"Coverage is derived, never remembered\").",
         )
 

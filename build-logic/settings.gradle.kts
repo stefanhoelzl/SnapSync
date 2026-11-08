@@ -18,3 +18,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "build-logic"
+
+// The project's detekt rules: a library of this build, not a plugin (`snapsync.quality` loads them into every detekt
+// task).
+include("detekt-rules")
