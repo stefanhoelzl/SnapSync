@@ -10,7 +10,6 @@ import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.FileHead
 import app.snapsync.format.Hmac
 import app.snapsync.format.ResourceRoleText
-import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.AesKey
 import app.snapsync.ports.Crypto
 import app.snapsync.ports.GcmNonce
@@ -20,7 +19,6 @@ import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Routes
 import app.snapsync.wire.models.Event
 import app.snapsync.wire.models.EventCreate
-import app.snapsync.wire.runtime.WireJson
 import kotlin.concurrent.Volatile
 
 /**
@@ -107,10 +105,10 @@ class EventKeyLedger {
         if (request.method != Routes.CreateEvent.METHOD || !request.url.substringBefore('?').endsWith(Routes.CreateEvent.TEMPLATE)) return
         if (created.status != CREATED) return
         val keyId = request.body?.let {
-            PlatformCalls.attempt { WireJson.decodeFromString(EventCreate.serializer(), it) }.getOrNull()
+            decodedOrNull(EventCreate.serializer(), it)
         }
             ?.keyId ?: return
-        val eventId = PlatformCalls.attempt { WireJson.decodeFromString(Event.serializer(), created.body) }.getOrNull()
+        val eventId = decodedOrNull(Event.serializer(), created.body)
             ?.eventId ?: return
         lock.locked { keyIds[eventId] = keyId }
     }

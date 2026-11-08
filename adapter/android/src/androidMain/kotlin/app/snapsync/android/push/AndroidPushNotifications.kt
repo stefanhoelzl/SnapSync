@@ -161,8 +161,8 @@ class SnapSyncMessagingService : FirebaseMessagingService() {
             // is held — on a latch, never a coroutine runner — until the core releases the push, at most the budget.
             val push = AndroidPushNotifications.registration.value ?: return@body null
             val released = CountDownLatch(1)
-            PlatformCalls.attempt { push.deliverMessage(message.data, OnceCompletion { released.countDown() }) }
-                .onFailure { log.unlabelled.w("the push could not be handed over", cause = it) }
+            // The push's run is the runtime's, and contained there: a failure is reported where the run was started.
+            push.deliverMessage(message.data, OnceCompletion { released.countDown() })
             released.await(AndroidPushNotifications.MESSAGE_BUDGET_MILLIS, TimeUnit.MILLISECONDS)
         }.also {
             log.unlabelled.i(
