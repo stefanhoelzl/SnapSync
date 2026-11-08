@@ -23,6 +23,9 @@ dependencies {
     // compileOnly for the same reason: `snapsync.quality` registers tasks of the ONE detekt plugin the root
     // loaded.
     compileOnly(libs.detekt.gradle)
+    // compileOnly for the same reason: `snapsync.conventions` configures the ONE dependency-analysis plugin the root
+    // loaded.
+    compileOnly(libs.dependency.analysis.gradle)
     // The zero coverage gate reads a module's compiled classes to recognise compiler glue by its bytecode shape
     // (`CoverageZero`). An ordinary dependency: nothing else on this classpath loads ASM under its own name.
     implementation(libs.asm.tree)
@@ -79,6 +82,10 @@ gradlePlugin {
         register("wire") {
             id = "snapsync.wire"
             implementationClass = "app.snapsync.buildlogic.wire.WirePlugin"
+        }
+        register("conventions") {
+            id = "snapsync.conventions"
+            implementationClass = "app.snapsync.buildlogic.ConventionsPlugin"
         }
         register("archiveNames") {
             id = "snapsync.archive-names"
