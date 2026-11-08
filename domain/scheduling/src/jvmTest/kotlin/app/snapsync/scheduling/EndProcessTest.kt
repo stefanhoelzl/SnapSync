@@ -2,6 +2,7 @@ package app.snapsync.scheduling
 
 import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.ports.ThreadLabel
+import app.snapsync.scheduling.Runtime.Companion.endProcess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest

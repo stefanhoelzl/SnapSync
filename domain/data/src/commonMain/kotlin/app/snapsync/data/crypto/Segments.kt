@@ -1,5 +1,6 @@
 package app.snapsync.data.crypto
 
+import app.snapsync.data.crypto.FileCipher.Companion.nonceOf
 import app.snapsync.format.EncryptedFileFormat
 import app.snapsync.format.FileHead
 import app.snapsync.format.SegmentRead
@@ -119,6 +120,16 @@ internal class Unsealing(
 
     private fun opened(segment: Int, bytes: ByteArray, last: Boolean): Authenticated =
         crypto.aesGcmOpen(key, nonceOf(head, segment, last), bytes)?.let(Authenticated::Plain) ?: Authenticated.Not
+
+    private fun going(written: FileResult<Unit>): Opened? = when (written) {
+        is FileResult.Ok -> null
+        is FileFailure -> Opened.Unreadable(written)
+    }
+
+    private fun ended(written: FileResult<Unit>): Opened = when (written) {
+        is FileResult.Ok -> Opened.Whole
+        is FileFailure -> Opened.Unreadable(written)
+    }
 }
 
 /** Whether a segment authenticated, and its plaintext when it did. */
@@ -135,16 +146,6 @@ internal sealed interface Opened {
     class Damaged(val segment: Int) : Opened
 
     class Unreadable(val failure: FileFailure) : Opened
-}
-
-private fun going(written: FileResult<Unit>): Opened? = when (written) {
-    is FileResult.Ok -> null
-    is FileFailure -> Opened.Unreadable(written)
-}
-
-private fun ended(written: FileResult<Unit>): Opened = when (written) {
-    is FileResult.Ok -> Opened.Whole
-    is FileFailure -> Opened.Unreadable(written)
 }
 
 /** The output being built: `<to>.part`, moved to `<to>` only once whole, removed on any failure. */

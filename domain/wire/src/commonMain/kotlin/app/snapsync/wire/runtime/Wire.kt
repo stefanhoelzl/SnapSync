@@ -1,5 +1,6 @@
 package app.snapsync.wire.runtime
 
+import app.snapsync.wire.runtime.Wire.encodeSegment
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
 
@@ -42,25 +43,30 @@ val WireJson: Json = Json {
     explicitNulls = false
 }
 
-/** [value] as one path segment: every character outside RFC 3986's unreserved set percent-encoded, as UTF-8. */
-fun encodeSegment(value: String): String = buildString {
-    for (byte in value.encodeToByteArray()) {
-        val c = byte.toInt().toChar()
-        if (byte >= 0 && (c.isLetterOrDigit() || c in UNRESERVED)) append(c) else append(percent(byte))
-    }
-}
-
-/** The query string of [parameters] — `?a=1&b=2`, only those present — or `""` when none is. */
-fun query(vararg parameters: Pair<String, String?>): String {
-    val present = parameters.mapNotNull { (name, value) -> value?.let { name to it } }
-    if (present.isEmpty()) return ""
-    return present.joinToString("&", prefix = "?") { (name, value) -> "${encodeSegment(name)}=${encodeSegment(value)}" }
-}
-
 private const val UNRESERVED = "-._~"
 private const val HEX = "0123456789ABCDEF"
 
-private fun percent(byte: Byte): String {
-    val b = byte.toInt() and 0xFF
-    return "%" + HEX[b shr 4] + HEX[b and 0x0F]
+object Wire {
+    /** [value] as one path segment: every character outside RFC 3986's unreserved set percent-encoded, as UTF-8. */
+    fun encodeSegment(value: String): String = buildString {
+        for (byte in value.encodeToByteArray()) {
+            val c = byte.toInt().toChar()
+            if (byte >= 0 && (c.isLetterOrDigit() || c in UNRESERVED)) append(c) else append(percent(byte))
+        }
+    }
+
+    /** The query string of [parameters] — `?a=1&b=2`, only those present — or `""` when none is. */
+    fun query(vararg parameters: Pair<String, String?>): String {
+        val present = parameters.mapNotNull { (name, value) -> value?.let { name to it } }
+        if (present.isEmpty()) return ""
+        return present.joinToString(
+            "&",
+            prefix = "?",
+        ) { (name, value) -> "${encodeSegment(name)}=${encodeSegment(value)}" }
+    }
+
+    private fun percent(byte: Byte): String {
+        val b = byte.toInt() and 0xFF
+        return "%" + HEX[b shr 4] + HEX[b and 0x0F]
+    }
 }

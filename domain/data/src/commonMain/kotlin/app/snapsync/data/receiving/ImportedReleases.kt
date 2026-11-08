@@ -1,5 +1,14 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.held
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.read
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.then
+import app.snapsync.data.receiving.ImportedReleases.Companion.importedAsset
+import app.snapsync.data.receiving.MarkerStatements.clear
+import app.snapsync.data.receiving.MarkerStatements.confirm
+import app.snapsync.data.receiving.RowStatements.dropResources
+import app.snapsync.data.receiving.RowStatements.refsOf
+import app.snapsync.data.receiving.RowStatements.stagedPaths
 import app.snapsync.data.receiving.db.SelectImportedHoldingBytes
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.receiving.AssetPresence
@@ -69,19 +78,22 @@ class ImportedReleases(private val store: DownloadStore) {
             store.staging.release(paths)
             store.read { q -> dropResources(q, imported.ref) }.then { DownloadRead.Ok(paths.size) }
         }
+
+    companion object {
+        private fun importedOf(row: SelectImportedHoldingBytes): List<ImportedAsset> =
+            refsOf(row.sourceDeviceId.held() to row.sourceAssetId.held()).flatMap { ref ->
+                row.createdLocalId.held().map { importedAsset(ref, it) }
+            }
+
+        /**
+         * The one mint of an [ImportedAsset]: a photo the store has recorded as imported onto [created] — by an
+         * import's own
+         * write, by the read of an imported row, or by an interrupted import's guarded settle.
+         */
+        @OptIn(MintsImportedAsset::class)
+        internal fun importedAsset(ref: AssetRef, created: AssetId): ImportedAsset = ImportedAsset(ref, created)
+    }
 }
 
 /** What adjudication did: the [verdict], and whether its guarded write [applied] (`false`: the row moved on). */
 class Adjudicated(val verdict: InterruptedImportVerdict, val applied: Boolean)
-
-private fun importedOf(row: SelectImportedHoldingBytes): List<ImportedAsset> =
-    refsOf(row.sourceDeviceId.held() to row.sourceAssetId.held()).flatMap { ref ->
-        row.createdLocalId.held().map { importedAsset(ref, it) }
-    }
-
-/**
- * The one mint of an [ImportedAsset]: a photo the store has recorded as imported onto [created] — by an import's own
- * write, by the read of an imported row, or by an interrupted import's guarded settle.
- */
-@OptIn(MintsImportedAsset::class)
-internal fun importedAsset(ref: AssetRef, created: AssetId): ImportedAsset = ImportedAsset(ref, created)

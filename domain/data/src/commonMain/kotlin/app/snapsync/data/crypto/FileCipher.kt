@@ -97,6 +97,26 @@ class FileCipher(private val crypto: Crypto, private val files: Files) {
     private fun fileKey(key: IdentifiedKey, head: FileHead, binding: FileBinding): AesKey = aesKeyOf(
         EncryptedFileFormat.fileKeyOf(key.key.bytes(), head.salt, EncryptedFileFormat.associatedData(binding), hmac),
     )
+
+    companion object {
+        private fun sealed(placed: FileResult<Unit>): SealOutcome = when (placed) {
+            is FileResult.Ok -> SealOutcome.Sealed
+            is FileFailure -> SealOutcome.Failed(placed)
+        }
+
+        /** A file key, as the format derives it: [EncryptedFileFormat.KEY_LENGTH] bytes. */
+        private fun aesKeyOf(bytes: ByteArray): AesKey {
+            val exact = EncryptedFileFormat.ofLength(bytes, EncryptedFileFormat.KEY_LENGTH)
+            return AesKey(exact ?: throw InvalidProgramState("the format derives a 32-byte file key"))
+        }
+
+        /** Segment [segment]'s nonce, as the format builds it: [EncryptedFileFormat.NONCE_LENGTH] bytes. */
+        internal fun nonceOf(head: FileHead, segment: Int, last: Boolean): GcmNonce {
+            val bytes = EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last)
+            val exact = EncryptedFileFormat.ofLength(bytes, EncryptedFileFormat.NONCE_LENGTH)
+            return GcmNonce(exact ?: throw InvalidProgramState("the format builds a 12-byte nonce"))
+        }
+    }
 }
 
 /** What became of one seal. */
@@ -145,21 +165,3 @@ private class Opening(
     val from: String,
     val to: String,
 )
-
-private fun sealed(placed: FileResult<Unit>): SealOutcome = when (placed) {
-    is FileResult.Ok -> SealOutcome.Sealed
-    is FileFailure -> SealOutcome.Failed(placed)
-}
-
-/** A file key, as the format derives it: [EncryptedFileFormat.KEY_LENGTH] bytes. */
-private fun aesKeyOf(bytes: ByteArray): AesKey {
-    val exact = EncryptedFileFormat.ofLength(bytes, EncryptedFileFormat.KEY_LENGTH)
-    return AesKey(exact ?: throw InvalidProgramState("the format derives a 32-byte file key"))
-}
-
-/** Segment [segment]'s nonce, as the format builds it: [EncryptedFileFormat.NONCE_LENGTH] bytes. */
-internal fun nonceOf(head: FileHead, segment: Int, last: Boolean): GcmNonce {
-    val bytes = EncryptedFileFormat.segmentNonce(head.noncePrefix, segment, last)
-    val exact = EncryptedFileFormat.ofLength(bytes, EncryptedFileFormat.NONCE_LENGTH)
-    return GcmNonce(exact ?: throw InvalidProgramState("the format builds a 12-byte nonce"))
-}

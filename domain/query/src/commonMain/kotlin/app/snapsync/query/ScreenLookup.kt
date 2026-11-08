@@ -1,8 +1,8 @@
 package app.snapsync.query
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Trigger
-import app.snapsync.inbound.of
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 

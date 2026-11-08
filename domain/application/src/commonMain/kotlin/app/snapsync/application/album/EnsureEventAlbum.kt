@@ -14,8 +14,8 @@ import app.snapsync.domain.album.StoredAlbumVerdict
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.PhotoAccess
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /**
  * Make sure the joined membership's album exists, as far as the member wants one and the grant allows: the album the

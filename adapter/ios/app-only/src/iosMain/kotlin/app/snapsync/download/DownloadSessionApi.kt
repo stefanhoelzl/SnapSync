@@ -1,8 +1,8 @@
 package app.snapsync.download
 
 import app.snapsync.annotations.PlatformEntry
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ios.urlsession.HandlerRelease
 import app.snapsync.ios.urlsession.MainThreadRelease
 import app.snapsync.ios.urlsession.transferSessionConfiguration

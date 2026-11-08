@@ -2,6 +2,9 @@ package app.snapsync.data.receiving
 
 import app.snapsync.data.backend.BackendExchange
 import app.snapsync.data.mobiledata.MobileDataStore
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.refOf
+import app.snapsync.data.receiving.MarkerStatements.clear
+import app.snapsync.data.receiving.RowStatements.pending
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.domain.receiving.FetchVerdict
@@ -9,8 +12,8 @@ import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.domain.receiving.StagingFolder
 import app.snapsync.domain.receiving.TransferSlots
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.Download
 import app.snapsync.ports.StartResult
 

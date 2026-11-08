@@ -14,6 +14,11 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.presentation.JoinGateRules.maintenanceWait
+import app.snapsync.presentation.JoinedLayer.message
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UnjoinedLayer.message
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -67,7 +72,9 @@ private val FOUND = found(MEMBERSHIP.name, MEMBERSHIP.startsAt, MEMBERSHIP.endsA
 private val SETTLED = SharingProgressRead.Read(SharingProgress(shared = 4, total = 4, handedOver = 0))
 private val WAITING = SharingProgressRead.Read(SharingProgress(shared = 2, total = 4, handedOver = 2))
 
-/** What the host reads of this phone's verification and of the service — what [ServiceFaultReductionTest]'s cases vary. */
+/**
+ * What the host reads of this phone's verification and of the service — what [ServiceFaultReductionTest]'s cases vary.
+ */
 private data class Verified(
     val attested: Boolean = true,
     val refusal: DeviceRefusal? = null,
@@ -108,7 +115,10 @@ class ServiceFaultReductionTest {
                 mobileData = AlwaysAllowed,
             ),
             scope,
-            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+            cutoffFormatter = CutoffFormatter(
+                now = instants({ Instant.parse("2026-07-09T12:00:00Z") }),
+                zone = TimeZone.UTC,
+            ),
             commands = commands.door,
             shareableCount = noQueries,
             joinDetails = joinDetails(load),

@@ -1,7 +1,7 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.levers.MovingPhoto
 import app.snapsync.rig.refused
 import kotlinx.cinterop.BetaInteropApi

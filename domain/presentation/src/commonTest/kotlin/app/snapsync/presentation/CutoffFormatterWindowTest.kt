@@ -28,13 +28,13 @@ class CutoffFormatterWindowTest {
     fun `a local pick converts to the corresponding UTC cutoff`() {
         // 16:32:11 local in CEST (UTC+2, July) is 14:32:11 UTC.
         val local = LocalDateTime(2026, 7, 6, 16, 32, 11)
-        val f = CutoffFormatter(now, TimeZone.of("Europe/Berlin"))
+        val f = CutoffFormatter(instants(now), TimeZone.of("Europe/Berlin"))
         assertEquals(timestamp("2026-07-06T14:32:11Z"), f.toCutoff(local))
     }
 
     @Test
     fun `the latest end is exactly the window after the start`() {
-        val f = CutoffFormatter(now, TimeZone.UTC)
+        val f = CutoffFormatter(instants(now), TimeZone.UTC)
         val from = LocalDateTime(2026, 7, 14, 18, 0)
         assertEquals(LocalDateTime(2026, 8, 13, 18, 0), f.latestEnd(from))
         assertTrue(f.fitsEventWindow(from, LocalDateTime(2026, 8, 13, 18, 0)))
@@ -45,7 +45,7 @@ class CutoffFormatterWindowTest {
     fun `across a daylight-saving change the limit is in instants and not wall-clock days`() {
         // Berlin falls back on 25 Oct 2026, so 30 wall-clock days from 10 Oct 12:00 are 30 days and an HOUR
         // of real time — which the backend refuses. The latest end is therefore 11:00 on the wall clock.
-        val f = CutoffFormatter(now, TimeZone.of("Europe/Berlin"))
+        val f = CutoffFormatter(instants(now), TimeZone.of("Europe/Berlin"))
         val from = LocalDateTime(2026, 10, 10, 12, 0)
         assertEquals(LocalDateTime(2026, 11, 9, 11, 0), f.latestEnd(from))
         assertTrue(f.fitsEventWindow(from, LocalDateTime(2026, 11, 9, 11, 0)))
@@ -56,7 +56,7 @@ class CutoffFormatterWindowTest {
     fun `an open-until date is whole days after now in instants and within the window the backend admits`() {
         // Berlin falls back on 25 Oct 2026: seven days from 22 Oct 12:00 are 11:00 on the wall clock on 29 Oct, and
         // exactly 7 x 24 hours of real time — so the 30-day choice never exceeds the 30 days the backend allows.
-        val f = CutoffFormatter({ Instant.parse("2026-10-22T10:00:00Z") }, TimeZone.of("Europe/Berlin"))
+        val f = CutoffFormatter(instants({ Instant.parse("2026-10-22T10:00:00Z") }), TimeZone.of("Europe/Berlin"))
         assertEquals("2026-10-29T10:00:00Z", f.openFor(7).at.text())
         assertEquals(LocalDateTime(2026, 10, 29, 11, 0), f.toLocal(f.openFor(7)))
         val thirty = Instant.parse(f.openFor(30).at.text()) - Instant.parse("2026-10-22T10:00:00Z")

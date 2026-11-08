@@ -6,8 +6,8 @@ import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.PhotoNetwork
 import app.snapsync.domain.mobiledata.StoredChoice
 import app.snapsync.format.MobileDataText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.PrefRead
 import app.snapsync.ports.Preferences
 import app.snapsync.ports.TransferNetwork

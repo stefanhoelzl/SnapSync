@@ -9,8 +9,8 @@ import app.snapsync.domain.upload.ResumePoint
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.ResourceRoleText
 import app.snapsync.format.UploadKeyText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.wire.api.AppTooOld
 import app.snapsync.wire.api.Invalid
 import app.snapsync.wire.api.Maintenance

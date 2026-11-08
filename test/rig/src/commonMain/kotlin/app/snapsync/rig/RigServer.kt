@@ -5,8 +5,8 @@ package app.snapsync.rig
 import app.snapsync.contracts.FixtureAnswer
 import app.snapsync.contracts.TransferFixture
 import app.snapsync.contracts.currentHost
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.levers.DeviceAdvertisement
 import app.snapsync.levers.LeverService
 import io.ktor.http.HttpHeaders

@@ -1,7 +1,7 @@
 package app.snapsync.data.upload
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileFailure
 import app.snapsync.ports.FileResult

@@ -6,8 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import app.snapsync.android.scene.ForegroundActivity
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.Handoff
 import app.snapsync.ports.SystemUi

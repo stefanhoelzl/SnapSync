@@ -5,6 +5,8 @@ import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.foreground.ForegroundReturn
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.MembershipShown
 import app.snapsync.ui.state.Layer
@@ -27,7 +29,8 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
- * The create draft against the clock and the app's foreground life (capability `create-event`): its start follows the clock
+ * The create draft against the clock and the app's foreground life (capability `create-event`): its start follows the
+ * clock
  * until the host chooses the range, and only a long absence starts it afresh.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -133,7 +136,7 @@ class CreateFormClockTest {
             ),
             scope,
             commands = commands.door,
-            cutoffFormatter = CutoffFormatter(now = now, zone = TimeZone.UTC),
+            cutoffFormatter = CutoffFormatter(now = instants(now), zone = TimeZone.UTC),
             shareableCount = noQueries,
             joinDetails = unanswered,
             reduction = Dispatchers.Default,

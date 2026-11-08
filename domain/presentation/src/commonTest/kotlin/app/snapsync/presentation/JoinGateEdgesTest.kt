@@ -21,6 +21,8 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.presentation.JoinGateRules.details
+import app.snapsync.presentation.UnjoinedLayer.asksAccessOnJoin
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -57,7 +59,7 @@ private const val EVENT_ID = "22222222-2222-4222-8222-222222222222"
 private const val OTHER_EVENT_ID = "33333333-3333-4333-8333-333333333333"
 
 /** The test's clock: 2026-07-09 12:00 UTC, in UTC. */
-private val CLOCK = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC)
+private val CLOCK = CutoffFormatter(now = instants({ Instant.parse("2026-07-09T12:00:00Z") }), zone = TimeZone.UTC)
 private val NOW = LocalDateTime(2026, 7, 9, 12, 0)
 
 /** An encrypted event's key, as an invite link carries it. */
@@ -83,7 +85,8 @@ private val OTHER_MEMBERSHIP = TestMembership(
 
 /**
  * The join gate's less-travelled roads (capability `join-event`): an older invite link's hints, an invite whose key
- * cannot be read, a Retry or a switch confirm with nothing to act on, a details load torn down or overtaken, and a commit refused for
+ * cannot be read, a Retry or a switch confirm with nothing to act on, a details load torn down or overtaken, and a
+ * commit refused for
  * the link. `StatusContainerHostTest` owns the gate's main roads.
  *
  * Driven on a real container over the test's own scheduler, and observed at what the gate writes — the pending join

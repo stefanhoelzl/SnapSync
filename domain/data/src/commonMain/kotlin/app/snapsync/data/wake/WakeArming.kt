@@ -4,8 +4,8 @@ import app.snapsync.domain.wake.HeartbeatCadence
 import app.snapsync.domain.wake.HeartbeatNetwork
 import app.snapsync.domain.wake.HeartbeatTrigger
 import app.snapsync.domain.wake.LibraryWatch
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.Wake
 import app.snapsync.ports.WakeCadence

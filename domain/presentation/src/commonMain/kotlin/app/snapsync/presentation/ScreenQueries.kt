@@ -19,6 +19,7 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
+import app.snapsync.presentation.JoinedLayer.shown
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.encryption.InviteRead
 import app.snapsync.query.membership.MembershipQuery
@@ -44,7 +45,8 @@ class ScreenQueries(
     /** The photo-library grant: the health's access rung, and whether a first join's confirm asks for it. */
     val grant: StateFlow<PhotoGrant>,
     /**
-     * The membership as the screen shows it ([MembershipQuery.shown]): held, none, or not readable — its presence is the
+     * The membership as the screen shows it ([MembershipQuery.shown]): held, none, or not readable — its presence is
+     * the
      * reduction's top rung.
      */
     val membership: StateFlow<MembershipShown>,
@@ -75,9 +77,13 @@ class ScreenQueries(
  * `docs/architecture.md`) — read from the secure store, never from the membership.
  */
 class EventKeyView(
-    /** Whether this device holds it: a lost one is the joined screen's status line, and a reopened invite gives it back. */
+    /**
+     * Whether this device holds it: a lost one is the joined screen's status line, and a reopened invite gives it back.
+     */
     val presence: StateFlow<KeyPresence>,
-    /** The joined event's invite as the member shares it, read at each reduction beside the membership ([InviteRead]). */
+    /**
+     * The joined event's invite as the member shares it, read at each reduction beside the membership ([InviteRead]).
+     */
     val invite: InviteRead,
 )
 

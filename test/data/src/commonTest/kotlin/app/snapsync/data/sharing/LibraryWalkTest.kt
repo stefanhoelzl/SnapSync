@@ -2,7 +2,7 @@
 
 package app.snapsync.data.sharing
 
-import app.snapsync.data.gallery.facts
+import app.snapsync.data.gallery.GalleryTranslation.facts
 import app.snapsync.domain.sharing.WalkBounds
 import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.mock.LibraryAssets

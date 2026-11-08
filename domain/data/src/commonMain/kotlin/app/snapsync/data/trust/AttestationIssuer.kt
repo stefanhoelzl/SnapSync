@@ -5,8 +5,8 @@ import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.trust.AttestKeyId
 import app.snapsync.domain.trust.ChallengeVerdict
 import app.snapsync.domain.trust.TokenIssuance
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.ProveResult
 import app.snapsync.wire.api.AppTooOld

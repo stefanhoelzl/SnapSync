@@ -3,9 +3,9 @@ package app.snapsync.data.process
 import app.snapsync.data.crash.CrashChannel
 import app.snapsync.domain.report.ProcessName
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.ProcessLogging
-import app.snapsync.inbound.of
 import app.snapsync.ports.BuildInfo
 
 /**

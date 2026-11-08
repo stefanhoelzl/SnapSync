@@ -3,8 +3,8 @@ package app.snapsync.data.upload
 import app.snapsync.data.crypto.SealOrder
 import app.snapsync.data.crypto.SealOutcome
 import app.snapsync.data.crypto.UploadSealing
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader

@@ -3,8 +3,8 @@
 package app.snapsync.download
 
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ios.upload.applyTransferNetwork
 import app.snapsync.ios.urlsession.DrainCount
 import app.snapsync.ios.urlsession.SessionCompletion

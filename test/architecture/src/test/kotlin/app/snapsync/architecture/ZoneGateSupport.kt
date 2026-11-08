@@ -103,11 +103,8 @@ internal object ZoneGates {
     fun zoneOf(ref: String): String? = ref.split('.').firstOrNull { it in zoneTokens }
 
     /**
-     * Kotlin source with comments blanked out, newlines preserved so line numbers survive. Shared by
-     * the two gates that must read **code only**: [PlatformIdentifierTest] (whose exemption for prose
-     * is its whole design) and [CompositionSeamTest] (whose subject, `AppPorts`, documents the
-     * function-typed fields it no longer has — `presentPhotoPicker: () -> Unit` appears verbatim in a
-     * KDoc there, and a scanner that read comments would report a field that does not exist).
+     * Kotlin source with comments blanked out, newlines preserved so line numbers survive — for a gate that must read
+     * **code only**, as [PlatformIdentifierTest] (whose exemption for prose is its whole design).
      *
      * Written by hand rather than by regex because none of the three cases is regular: Kotlin block
      * comments **nest**, a `//` inside a string literal (`"https://…"`) is not a comment, and a raw

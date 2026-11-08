@@ -28,6 +28,7 @@ import app.snapsync.domain.receiving.ReceivingVerdict
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.upload.UploaderChange
+import app.snapsync.entrypoints.MembershipEntryPoints.membership
 import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.scheduling.AskedSequence
 import app.snapsync.scheduling.BackgroundEntryPoint

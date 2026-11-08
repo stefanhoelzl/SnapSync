@@ -1,78 +1,84 @@
 package app.snapsync.presentation
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
+import app.snapsync.presentation.JoinedLayer.message
+import app.snapsync.presentation.UnjoinedLayer.message
 import app.snapsync.presentation.range.RangeEdit
 import app.snapsync.ui.state.UiIntent
 
 private val log = Log("StatusContainerHost")
 
-/**
- * What a person did on the screen, handed over by the platform's UI (the `Ui` port's `onIntent` handler) — **the one
- * intent → method table** of the status container. Every case is one public intent of [StatusContainerHost], so a UI
- * binds nothing itself: it names the tap, and this decides what it means. Exhaustive, so a case added to [UiIntent]
- * without a meaning here does not compile. An extension rather than a member: the container's own function count is
- * a measured ceiling, and this table adds no behaviour of its own.
- */
-@Suppress("CyclomaticComplexMethod") // one arm per case of a closed set: a table, not a decision tree
-fun StatusContainerHost.onIntent(intent: UiIntent) {
-    // The one line a tap writes: the intent's name alone, never what it carries (a name, a note, a link).
-    log.unlabelled.i("intent", "intent" of intent::class.simpleName)
-    when (intent) {
-        UiIntent.ConfirmCreate -> create.onConfirm()
-        is UiIntent.CreateName -> create.onName(intent.name)
-        is UiIntent.KeepOpenFor -> create.onKeepOpenFor(intent.days)
-        UiIntent.KeepOpenDismiss -> create.onKeepOpenDismiss()
-        is UiIntent.RangeDay -> picker.onEdit(RangeEdit.Day(intent.day))
-        is UiIntent.RangeDragStart -> picker.onEdit(RangeEdit.DragStart(intent.day))
-        is UiIntent.RangeDragEnd -> picker.onEdit(RangeEdit.DragEnd(intent.day))
-        is UiIntent.RangeSweep -> picker.onEdit(RangeEdit.Sweep(intent.anchor, intent.day))
-        is UiIntent.RangeFromHour -> picker.onEdit(RangeEdit.FromHour(intent.value))
-        is UiIntent.RangeFromMinute -> picker.onEdit(RangeEdit.FromMinute(intent.value))
-        is UiIntent.RangeUntilHour -> picker.onEdit(RangeEdit.UntilHour(intent.value))
-        is UiIntent.RangeUntilMinute -> picker.onEdit(RangeEdit.UntilMinute(intent.value))
-        UiIntent.RangeUntilMinuteDrag -> picker.onEdit(RangeEdit.UntilMinuteDrag)
-        UiIntent.RangePickerOpen -> picker.onOpen()
-        UiIntent.RangePickerConfirm -> picker.onConfirm()
-        UiIntent.RangePickerDismiss -> picker.onDismiss()
-        UiIntent.RequestPermission -> access.onRequestPermission()
-        UiIntent.ChoosePhotos -> access.onChoosePhotos()
-        UiIntent.OpenSettings -> access.onOpenSettings()
-        UiIntent.LeaveEvent -> onLeaveEvent()
-        UiIntent.ShareInvite -> onShareInvite()
-        UiIntent.OpenAppStore -> onOpenAppStore()
-        UiIntent.ConfirmLeaveOpen -> surfaces.onConfirmLeaveOpen()
-        UiIntent.ConfirmLeaveDismiss -> surfaces.onConfirmLeaveDismiss()
-        UiIntent.RenameOpen -> surfaces.onRenameOpen()
-        UiIntent.RenameDismiss -> surfaces.onRenameDismiss()
-        UiIntent.QrOpen -> surfaces.onQrOpen()
-        UiIntent.QrDismiss -> surfaces.onQrDismiss()
-        UiIntent.ReportBugOpen -> surfaces.onReportBugOpen()
-        is UiIntent.ReportRefusal -> surfaces.onReportRefusal(intent.message)
-        UiIntent.ReportBugDismiss -> surfaces.onReportBugDismiss()
-        UiIntent.MenuOpen -> surfaces.onMenuOpen()
-        UiIntent.MenuDismiss -> surfaces.onMenuDismiss()
-        UiIntent.MenuReportBug -> surfaces.onMenuReportBug()
-        is UiIntent.OpenLink -> surfaces.onOpenLink(intent.link)
-        UiIntent.ReportNoticeDismiss -> surfaces.onReportNoticeDismiss()
-        UiIntent.OpenReconfigure -> surfaces.onOpenReconfigure()
-        UiIntent.CancelReconfigure -> surfaces.onCancelReconfigure()
-        is UiIntent.RenameEvent -> onRenameEvent(intent.eventId, intent.name)
-        UiIntent.RenameStatusConsumed -> onRenameStatusConsumed()
-        UiIntent.ConfirmStopSharing -> settings.onConfirmStopSharing()
-        UiIntent.KeepSharing -> settings.onKeepSharing()
-        is UiIntent.ShareOn -> form.onShareOn(intent.to)
-        is UiIntent.ReceiveOn -> form.onReceiveOn(intent.to)
-        is UiIntent.SaveToAlbum -> form.onSaveToAlbum(intent.to)
-        is UiIntent.MobileData -> surfaces.onMobileData(intent.to)
-        is UiIntent.RangePreset -> form.onRangePreset(intent.preset)
-        UiIntent.RetryLoad -> onRetryLoad()
-        UiIntent.ConfirmJoin -> onConfirmJoin()
-        UiIntent.ConfirmSwitch -> onConfirmSwitch()
-        UiIntent.RetryJoin -> onRetryJoin()
-        UiIntent.RetryMembershipRead -> retry.onRetry()
-        UiIntent.CancelJoin -> onCancelJoin()
-        UiIntent.CancelSwitch -> onCancelSwitch()
-        is UiIntent.SendDiagnostics -> onSendDiagnostics(intent.note, intent.screen)
+object UiIntents {
+    /**
+     * What a person did on the screen, handed over by the platform's UI (the `Ui` port's `onIntent` handler) — **the
+     * one
+     * intent → method table** of the status container. Every case is one public intent of [StatusContainerHost], so a
+     * UI
+     * binds nothing itself: it names the tap, and this decides what it means. Exhaustive, so a case added to [UiIntent]
+     * without a meaning here does not compile. An extension rather than a member: the container's own function count is
+     * a measured ceiling, and this table adds no behaviour of its own.
+     */
+    @Suppress("CyclomaticComplexMethod") // one arm per case of a closed set: a table, not a decision tree
+    fun StatusContainerHost.onIntent(intent: UiIntent) {
+        // The one line a tap writes: the intent's name alone, never what it carries (a name, a note, a link).
+        log.unlabelled.i("intent", "intent" of intent::class.simpleName)
+        when (intent) {
+            UiIntent.ConfirmCreate -> create.onConfirm()
+            is UiIntent.CreateName -> create.onName(intent.name)
+            is UiIntent.KeepOpenFor -> create.onKeepOpenFor(intent.days)
+            UiIntent.KeepOpenDismiss -> create.onKeepOpenDismiss()
+            is UiIntent.RangeDay -> picker.onEdit(RangeEdit.Day(intent.day))
+            is UiIntent.RangeDragStart -> picker.onEdit(RangeEdit.DragStart(intent.day))
+            is UiIntent.RangeDragEnd -> picker.onEdit(RangeEdit.DragEnd(intent.day))
+            is UiIntent.RangeSweep -> picker.onEdit(RangeEdit.Sweep(intent.anchor, intent.day))
+            is UiIntent.RangeFromHour -> picker.onEdit(RangeEdit.FromHour(intent.value))
+            is UiIntent.RangeFromMinute -> picker.onEdit(RangeEdit.FromMinute(intent.value))
+            is UiIntent.RangeUntilHour -> picker.onEdit(RangeEdit.UntilHour(intent.value))
+            is UiIntent.RangeUntilMinute -> picker.onEdit(RangeEdit.UntilMinute(intent.value))
+            UiIntent.RangeUntilMinuteDrag -> picker.onEdit(RangeEdit.UntilMinuteDrag)
+            UiIntent.RangePickerOpen -> picker.onOpen()
+            UiIntent.RangePickerConfirm -> picker.onConfirm()
+            UiIntent.RangePickerDismiss -> picker.onDismiss()
+            UiIntent.RequestPermission -> access.onRequestPermission()
+            UiIntent.ChoosePhotos -> access.onChoosePhotos()
+            UiIntent.OpenSettings -> access.onOpenSettings()
+            UiIntent.LeaveEvent -> onLeaveEvent()
+            UiIntent.ShareInvite -> onShareInvite()
+            UiIntent.OpenAppStore -> onOpenAppStore()
+            UiIntent.ConfirmLeaveOpen -> surfaces.onConfirmLeaveOpen()
+            UiIntent.ConfirmLeaveDismiss -> surfaces.onConfirmLeaveDismiss()
+            UiIntent.RenameOpen -> surfaces.onRenameOpen()
+            UiIntent.RenameDismiss -> surfaces.onRenameDismiss()
+            UiIntent.QrOpen -> surfaces.onQrOpen()
+            UiIntent.QrDismiss -> surfaces.onQrDismiss()
+            UiIntent.ReportBugOpen -> surfaces.onReportBugOpen()
+            is UiIntent.ReportRefusal -> surfaces.onReportRefusal(intent.message)
+            UiIntent.ReportBugDismiss -> surfaces.onReportBugDismiss()
+            UiIntent.MenuOpen -> surfaces.onMenuOpen()
+            UiIntent.MenuDismiss -> surfaces.onMenuDismiss()
+            UiIntent.MenuReportBug -> surfaces.onMenuReportBug()
+            is UiIntent.OpenLink -> surfaces.onOpenLink(intent.link)
+            UiIntent.ReportNoticeDismiss -> surfaces.onReportNoticeDismiss()
+            UiIntent.OpenReconfigure -> surfaces.onOpenReconfigure()
+            UiIntent.CancelReconfigure -> surfaces.onCancelReconfigure()
+            is UiIntent.RenameEvent -> onRenameEvent(intent.eventId, intent.name)
+            UiIntent.RenameStatusConsumed -> onRenameStatusConsumed()
+            UiIntent.ConfirmStopSharing -> settings.onConfirmStopSharing()
+            UiIntent.KeepSharing -> settings.onKeepSharing()
+            is UiIntent.ShareOn -> form.onShareOn(intent.to)
+            is UiIntent.ReceiveOn -> form.onReceiveOn(intent.to)
+            is UiIntent.SaveToAlbum -> form.onSaveToAlbum(intent.to)
+            is UiIntent.MobileData -> surfaces.onMobileData(intent.to)
+            is UiIntent.RangePreset -> form.onRangePreset(intent.preset)
+            UiIntent.RetryLoad -> onRetryLoad()
+            UiIntent.ConfirmJoin -> onConfirmJoin()
+            UiIntent.ConfirmSwitch -> onConfirmSwitch()
+            UiIntent.RetryJoin -> onRetryJoin()
+            UiIntent.RetryMembershipRead -> retry.onRetry()
+            UiIntent.CancelJoin -> onCancelJoin()
+            UiIntent.CancelSwitch -> onCancelSwitch()
+            is UiIntent.SendDiagnostics -> onSendDiagnostics(intent.note, intent.screen)
+        }
     }
 }

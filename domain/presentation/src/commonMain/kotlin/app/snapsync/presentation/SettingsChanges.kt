@@ -5,6 +5,8 @@ import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.SettingsResult
 import app.snapsync.domain.membership.ShareChoice
 import app.snapsync.domain.request.SettingsRequest
+import app.snapsync.presentation.RangeResolution.reconfigureForm
+import app.snapsync.presentation.RenameRequests.answerTo
 import app.snapsync.query.membership.MembershipShown
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
@@ -110,7 +112,8 @@ internal class SettingsChanges(
     /**
      * Run one change through [UserCommands.reconfigure]. The event id rides with the values so a switch that landed
      * while the settings were open makes the use-case a no-op rather than overwriting a different membership; the
-     * share-range rule is the use-case's. Afterwards the controls are re-seeded from the settings in effect — the change
+     * share-range rule is the use-case's. Afterwards the controls are re-seeded from the settings in effect — the
+     * change
      * if it landed, the ones before it if not — so a change that did not land shows the setting still in effect, and
      * says so: the controls never hold a value that is not saved.
      */

@@ -16,9 +16,10 @@ import app.snapsync.domain.album.AlbumWishVerdict
 import app.snapsync.domain.album.GrantVerdict
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.membership.Membership
+import app.snapsync.entrypoints.MembershipEntryPoints.membership
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.scheduling.BackgroundEntryPoint
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime

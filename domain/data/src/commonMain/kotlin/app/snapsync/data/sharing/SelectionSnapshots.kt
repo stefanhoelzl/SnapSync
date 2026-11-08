@@ -1,7 +1,7 @@
 package app.snapsync.data.sharing
 
-import app.snapsync.data.gallery.assetId
-import app.snapsync.data.gallery.facts
+import app.snapsync.data.gallery.GalleryTranslation.assetId
+import app.snapsync.data.gallery.GalleryTranslation.facts
 import app.snapsync.domain.asset.AssetFacts
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.PhotoAccess

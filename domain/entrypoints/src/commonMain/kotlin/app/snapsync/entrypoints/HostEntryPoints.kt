@@ -24,8 +24,8 @@ import app.snapsync.presentation.BuildFacts
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.ScreenQueries
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.presentation.UserCommands
-import app.snapsync.presentation.onIntent
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.sharing.PhotoGrantQuery

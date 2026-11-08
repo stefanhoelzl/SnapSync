@@ -12,7 +12,7 @@ package app.snapsync.ports
  * Its promises are the port contract `HttpTransportContract`, bound for every engine the app ships: CIO and OkHttp on
  * the JVM, OkHttp on the Android emulator, Darwin on the iOS simulator.
  */
-fun interface HttpTransport : Port {
+interface HttpTransport : Port {
     suspend fun send(request: HttpRequest): HttpResult
 }
 

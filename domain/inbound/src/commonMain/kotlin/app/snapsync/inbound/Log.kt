@@ -7,10 +7,12 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.coroutines.coroutineContext
 
 /** One named value a log line carries. Rendered by the writer, never interpolated into the event. */
-class Field(val name: String, val value: Any?)
-
-/** `"eventId" of id` — a [Field]. */
-infix fun String.of(value: Any?): Field = Field(this, value)
+class Field(val name: String, val value: Any?) {
+    companion object {
+        /** `"eventId" of id` — a [Field]. */
+        infix fun String.of(value: Any?): Field = Field(this, value)
+    }
+}
 
 /** A line's level — the core's own, so no layer that writes or reads a line names the logging library. */
 enum class LogLevel { DEBUG, INFO, WARN, ERROR }
@@ -72,7 +74,8 @@ class Log(private val tag: String) {
 
         fun w(event: String, vararg fields: Field, cause: Throwable? = null) = emit(LogLevel.WARN, event, fields, cause)
 
-        // Laid out with `emit(` on the declaration line on purpose: the coverage tool counts the default-argument stub on
+        // Laid out with `emit(` on the declaration line on purpose: the coverage tool counts the default-argument stub
+        // on
         // that line, and a member's day never writes an unlabelled Error without a cause (only the iOS adapters do).
         fun e(event: String, vararg fields: Field, cause: Throwable? = null) = emit(
             LogLevel.ERROR,

@@ -3,8 +3,8 @@
 package app.snapsync.objc
 
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi

@@ -119,37 +119,41 @@ internal data class Local(
     val mobileDataNotSaved: Boolean = false,
     /**
      * The open report sheet was opened from "Report this" beside a refusal, so its report
-     * carries the refused verification's facts. Kept out of [Overlays]: it is how the sheet was opened, not what is shown.
+     * carries the refused verification's facts. Kept out of [Overlays]: it is how the sheet was opened, not what is
+     * shown.
      */
     val verifiedReport: Boolean = false,
     /** The member's try at reading the membership again is running. */
     val retryingRead: Boolean = false,
 )
 
-/**
- * [combine] over thirteen flows, typed. The library's typed overloads stop at five, and nesting them is not the same
- * thing: each level is a stage of its own, so one synchronous change to cells in different levels reaches the
- * screen as several emissions rather than one. The casts are positional and fixed by this signature.
- */
-@Suppress("UNCHECKED_CAST", "LongParameterList")
-internal fun <A, B, C, D, E, F, G, H, I, J, K, L, M, R> combineFlat(
-    a: Flow<A>,
-    b: Flow<B>,
-    c: Flow<C>,
-    d: Flow<D>,
-    e: Flow<E>,
-    f: Flow<F>,
-    g: Flow<G>,
-    h: Flow<H>,
-    i: Flow<I>,
-    j: Flow<J>,
-    k: Flow<K>,
-    l: Flow<L>,
-    m: Flow<M>,
-    transform: (A, B, C, D, E, F, G, H, I, J, K, L, M) -> R,
-): Flow<R> = combine(listOf(a, b, c, d, e, f, g, h, i, j, k, l, m)) { v ->
-    transform(
-        v[0] as A, v[1] as B, v[2] as C, v[3] as D, v[4] as E, v[5] as F, v[6] as G,
-        v[7] as H, v[8] as I, v[9] as J, v[10] as K, v[11] as L, v[12] as M,
-    )
+object ScreenInputs {
+    /**
+     * [combine] over thirteen flows, typed. The library's typed overloads stop at five, and nesting them is not the
+     * same
+     * thing: each level is a stage of its own, so one synchronous change to cells in different levels reaches the
+     * screen as several emissions rather than one. The casts are positional and fixed by this signature.
+     */
+    @Suppress("UNCHECKED_CAST", "LongParameterList")
+    internal fun <A, B, C, D, E, F, G, H, I, J, K, L, M, R> combineFlat(
+        a: Flow<A>,
+        b: Flow<B>,
+        c: Flow<C>,
+        d: Flow<D>,
+        e: Flow<E>,
+        f: Flow<F>,
+        g: Flow<G>,
+        h: Flow<H>,
+        i: Flow<I>,
+        j: Flow<J>,
+        k: Flow<K>,
+        l: Flow<L>,
+        m: Flow<M>,
+        transform: (A, B, C, D, E, F, G, H, I, J, K, L, M) -> R,
+    ): Flow<R> = combine(listOf(a, b, c, d, e, f, g, h, i, j, k, l, m)) { v ->
+        transform(
+            v[0] as A, v[1] as B, v[2] as C, v[3] as D, v[4] as E, v[5] as F, v[6] as G,
+            v[7] as H, v[8] as I, v[9] as J, v[10] as K, v[11] as L, v[12] as M,
+        )
+    }
 }

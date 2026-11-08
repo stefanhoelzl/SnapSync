@@ -1,7 +1,8 @@
 package app.snapsync.data.membership
 
 import app.snapsync.data.backend.BackendGateway
-import app.snapsync.data.backend.faultOf
+import app.snapsync.data.backend.ServiceFaults
+import app.snapsync.data.membership.MembershipRows.membership
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.service.ServiceFault
@@ -31,7 +32,9 @@ class EventJoin(private val gateway: BackendGateway) {
             Unauthorized -> EnrollFact.Unverified
             // The event is gone: an answer from a working service.
             EventNotFound -> EnrollFact.Failed(fault = null)
-            is ClientError, is ServerIssue, is NoAnswer -> EnrollFact.Failed(faultOf(reply) ?: ServiceFault.UNREACHABLE)
+            is ClientError, is ServerIssue, is NoAnswer -> EnrollFact.Failed(
+                ServiceFaults.of(reply) ?: ServiceFault.UNREACHABLE,
+            )
         }
 }
 

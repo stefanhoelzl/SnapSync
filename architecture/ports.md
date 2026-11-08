@@ -45,6 +45,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CredentialStore` | `:domain:data` | `:domain:data` CachedCredentialStore, SecureCredentialStore; `:test:data` ScriptedStore | yes |
 | `CredentialVerdict` | `:domain:domain` | `:domain:domain` Answered, Rejected | no |
 | `Crypto` | `:domain:ports` | `:adapter:android` AndroidCrypto; `:adapter:generic:app` JcaCrypto; `:adapter:generic:mock` FakeCrypto; `:adapter:ios:ext-safe` IosCrypto; `:test:contracts` CryptoProxy | yes |
+| `CurrentInstant` | `:domain:query` | `:domain:query` WallClockInstant | no |
 | `Databases` | `:domain:ports` | `:adapter:android` AndroidDatabases; `:adapter:generic:app` JdbcDatabases; `:adapter:generic:mock` Faulty, Process; `:adapter:ios:ext-safe` IosDatabases; `:domain:data` Failing; `:test:contracts` DatabasesProxy | no |
 | `DateFormats` | `:domain:ports` | `:adapter:android` AndroidDateFormats; `:adapter:generic:app` JvmDateFormats; `:adapter:ios:app-only` IosDateFormats; `:test:contracts` DateFormatsProxy | no |
 | `DateFormatting` | `:domain:ports` | `:adapter:android` AndroidDateFormatting; `:adapter:generic:app` JvmDateFormatting, Platform; `:adapter:ios:app-only` IosDateFormatting; `:test:contracts` DateFormattingProxy | no |
@@ -212,6 +213,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PushRegistrationOutcome` | `:domain:application` | `:domain:application` Deferred, NoToken, NotRegistered, Registered, Unchanged | no |
 | `PushTailVerdict` | `:domain:domain` | `:domain:domain` Joins, MembershipUnreadable, NamesNoEvent, OtherEvent | no |
 | `RangeEdit` | `:domain:presentation` | `:domain:presentation` Day, DragEnd, DragStart, FromHour, FromMinute, Sweep, UntilHour, UntilMinute, UntilMinuteDrag | no |
+| `RangeLimits` | `:domain:presentation` | `:domain:presentation` CutoffFormatter | no |
 | `ReadPlan` | `:domain:domain` | `:domain:domain` NotReadable, Snapshot, Walk | no |
 | `RearmOutcome` | `:domain:application` | `:domain:application` Armed, NotArmed, NotJoined | no |
 | `ReceivedPhotosRead` | `:domain:data` | `:domain:data` ReceivedPhotos, ReceivedPhotosReader; `:test:data` Received; `:test:feature` TestReceived | yes |
@@ -258,6 +260,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `Rung` | `:domain:presentation` | `:domain:presentation` KeyLost, NeedsAccess, NoNetwork, NotStarted, NothingMoves, ServiceFailing, Unattested, VerificationFailing | no |
 | `Running` | `:domain:inbound` | `:domain:scheduling` Expirable; `:test:contracts` Expiries, RunningProxy; `:test:rig` Unexpirable | yes |
 | `ScheduleResult` | `:domain:ports` | `:domain:ports` Refused, Scheduled, Unsupported | no |
+| `ScreenSource` | `:domain:presentation` | `:domain:presentation` ContainerScreen | no |
 | `SealOutcome` | `:domain:data` | `:domain:data` Failed, Sealed | no |
 | `SealVerdict` | `:domain:domain` | `:domain:domain` Plain, Sealed, Withheld | no |
 | `SecureStore` | `:domain:ports` | `:adapter:android` AndroidSecureStore; `:adapter:generic:mock` InMemorySecureStore; `:adapter:ios:ext-safe` AppGroupFileSecureStore, IosSecureStore, Recording, SimulatorSecureStore; `:test:contracts` SecureStoreProxy; `:test:data` RecordingSecureStore | yes |
@@ -311,4 +314,5 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `WakeTrigger` | `:domain:ports` | `:domain:ports` After, LibraryChange | no |
 | `WalkBounds` | `:domain:domain` | `:domain:domain` None, Within | no |
 | `WalkRead` | `:domain:data` | `:domain:data` NotReadable, Walked | no |
+| `WindowResolution` | `:domain:presentation` | `:domain:presentation` ContainerWindow | no |
 | `WriteOutcome` | `:domain:ports` | `:domain:ports` Failed, Ok | no |

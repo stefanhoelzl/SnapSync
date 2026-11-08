@@ -2,7 +2,7 @@
 
 package app.snapsync.tour
 
-import app.snapsync.inbound.of
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
@@ -106,7 +106,7 @@ import app.snapsync.presentation.ScreenQueries
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.UserCommand
 import app.snapsync.presentation.UserCommands
-import app.snapsync.presentation.onIntent
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.encryption.InviteRead
@@ -230,7 +230,7 @@ private val OTHER_EVENT = JoinDetails.Found(
     completed = false,
 )
 
-private val CUTOFF = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC)
+private val CUTOFF = CutoffFormatter(now = instants({ Instant.parse("2026-07-06T12:00:00Z") }), zone = TimeZone.UTC)
 
 private fun linkTo(eventId: String) = InviteLinkText.format(InviteLink(EventId.parse(eventId)!!, null)).raw
 

@@ -10,8 +10,8 @@ import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.TimestampText
 import app.snapsync.format.UploadKeyText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /**
  * A stored `ledgerRow` read as an [UploadRow] — the one mapper every read of the upload's rows uses, so a column is

@@ -5,8 +5,8 @@ import app.snapsync.data.mobiledata.MobileDataStore
 import app.snapsync.data.store.StoreWrite
 import app.snapsync.domain.mobiledata.MobileDataChoice
 import app.snapsync.domain.mobiledata.MobileDataOutcome
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("SetMobileData")
 

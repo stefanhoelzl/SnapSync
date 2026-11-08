@@ -17,6 +17,13 @@ import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.inbound.Log
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.OverlayMask.maskedFor
+import app.snapsync.presentation.RangeResolution.resolve
+import app.snapsync.presentation.Reduction.reduceFrom
+import app.snapsync.presentation.RenameRequests.answerTo
+import app.snapsync.presentation.ScreenInputs.combineFlat
+import app.snapsync.presentation.Switches.mobileData
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
@@ -74,7 +81,8 @@ class StatusContainerHost(
     // zone read once); tests pass a fixed instant and zone.
     private val cutoffFormatter: CutoffFormatter,
     private val scope: CoroutineScope,
-    // The lane presentation reduces on — the CPU lane (`docs/architecture.md`, "Concurrency and failure"): Orbit's event
+    // The lane presentation reduces on — the CPU lane (`docs/architecture.md`, "Concurrency and failure"): Orbit's
+    // event
     // loop, kept off the composition lane so a blocked platform call there never freezes the screen. Named by the
     // composition, never left to Orbit's default, so a host that must see every task (the control channel's JVM host)
     // can hand its own.
@@ -94,7 +102,8 @@ class StatusContainerHost(
     private val attestFault = queries.verification.fault
     private val serviceFault = queries.verification.service
 
-    // The attestation's verdict and the service's condition travel as one input, so the reduction below keeps its arity.
+    // The attestation's verdict and the service's condition travel as one input, so the reduction below keeps its
+    // arity.
     private val trust: Flow<Trust> =
         combine(attested, refusal, attestFault, serviceFault) { a, r, f, s -> Trust(a, r, f, s) }
 
@@ -169,7 +178,7 @@ class StatusContainerHost(
     internal val form: FormEdits = FormEdits(cells, membership, settings, ranges)
 
     /** The conversions from the domain into what the screen shows (see [Display]). */
-    private val display = Display(cutoffFormatter, ::resolveRange)
+    private val display = Display(cutoffFormatter, ContainerWindow())
 
     /** The create form's own taps ([CreateFlow]). */
     internal val create: CreateFlow = CreateFlow(cells, display, cutoffFormatter, commands, creationStatus, gate)
@@ -203,7 +212,7 @@ class StatusContainerHost(
         create.onCreateEvent(name, startsAt, endsAt, openUntil)
 
     /** Send the diagnostic dump with the member's note, from the surface named [screen][ReportFlow.send]. */
-    internal val onSendDiagnostics: (String, String) -> Unit = { note, screen -> report.send(note, screen) }
+    internal fun onSendDiagnostics(note: String, screen: String) = report.send(note, screen)
 
     /** The non-idempotent commands claimed while their intent runs — see [guardedIntent]. */
     private val inFlight = MutableStateFlow<Set<Guarded>>(emptySet())
@@ -219,8 +228,15 @@ class StatusContainerHost(
      * rules are identical, and a range rule that held on one surface and not the other would be a bug
      * nobody would ever see.
      */
-    private fun resolveRange(form: RangeForm, startsAt: EventStart, endsAt: EventEnd): ResolvedRange =
-        ranges.resolve(form, startsAt, endsAt, local.value.shareCount)
+    private inner class ContainerWindow : WindowResolution {
+        override fun resolve(form: RangeForm, startsAt: EventStart, endsAt: EventEnd): ResolvedRange =
+            ranges.resolve(form, startsAt, endsAt, local.value.shareCount)
+    }
+
+    /** The container's own state flow, read at each use. */
+    private inner class ContainerScreen : ScreenSource {
+        override fun models(): StateFlow<ScreenModel> = container.stateFlow
+    }
 
     /**
      * "Now", re-emitted whenever a clock-driven line can next change ([nextClockChange]) — and only while the app is in
@@ -231,7 +247,8 @@ class StatusContainerHost(
      * snapshot emission would ever retire it — without this, the clock line would sit there past the start until
      * something unrelated happened to re-emit.
      *
-     * It waits on the reduction lane ([reduction]), so it keeps the clock the process keeps: a host whose lanes run on a
+     * It waits on the reduction lane ([reduction]), so it keeps the clock the process keeps: a host whose lanes run on
+     * a
      * clock of its own (the control channel's JVM host) moves this line when that clock moves.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -249,8 +266,9 @@ class StatusContainerHost(
         emit(cutoffFormatter.nowCutoff())
         while (true) {
             val now = cutoffFormatter.nowCutoff()
-            // The wait alone runs on the reduction lane, whose clock is the process's; the line is emitted where it was asked.
-            withContext(reduction) { delay(nextClockChange(event, now, cutoffFormatter).at - now.at) }
+            // The wait alone runs on the reduction lane, whose clock is the process's; the line is emitted where it was
+            // asked.
+            withContext(reduction) { delay(NextClockChange.of(event, now, cutoffFormatter).at - now.at) }
             emit(cutoffFormatter.nowCutoff())
         }
     }
@@ -279,7 +297,8 @@ class StatusContainerHost(
             ),
             // The container SURVIVES a throwing intent — and this handler is the
             // whole of what makes it so. It is not a logging convenience: Orbit runs each intent as
-            // `runCatchingCancellable { … }.exceptionOrNull()?.let { settings.exceptionHandler?.handleException(…) ?: throw it }`,
+            // `runCatchingCancellable { … }.exceptionOrNull()?.let { settings.exceptionHandler?.handleException(…) ?:
+            // throw it }`,
             // so with NO handler configured it RE-THROWS, which cancels `RealContainer.intentJob` — a plain
             // `Job(parent)`, not a `SupervisorJob` — after which every later `orbit()` call is a child of a
             // cancelled job and silently never runs. Measured on orbit-core 10.0.0: without a handler a
@@ -332,7 +351,8 @@ class StatusContainerHost(
                     )
                 }.collect { model -> reduce { model } }
             }
-            // Whether the joined event's key is held: a lost one is the joined screen's status line until a reopened invite
+            // Whether the joined event's key is held: a lost one is the joined screen's status line until a reopened
+            // invite
             // gives it back, and a change of it re-reads the invite an encrypted event offers only with its key held.
             intent {
                 keyPresence.collect { presence -> local.update { it.copy(keyPresence = presence) } }
@@ -408,7 +428,7 @@ class StatusContainerHost(
     }
 
     /** What the screen shows: the display half of the container's [ScreenModel]. */
-    val screen: StateFlow<UiState> = Displayed { container.stateFlow }
+    val screen: StateFlow<UiState> = Displayed(ContainerScreen())
 
     /**
      * One UI state from the observed inputs, the presentation-owned cells and "now".

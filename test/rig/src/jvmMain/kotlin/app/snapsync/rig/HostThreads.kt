@@ -10,6 +10,8 @@ import app.snapsync.levers.WorldEvent
 import app.snapsync.levers.WorldLevers
 import app.snapsync.logging.JvmThreadLabel
 import app.snapsync.mock.UploadNetwork
+import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.ThreadLabel
 import app.snapsync.rig.time.Interleaving
@@ -90,10 +92,12 @@ internal class HostThreads private constructor(
         if (answersOnTheLoop) {
             transport
         } else {
-            HttpTransport { request ->
-                loop.outside(
-                    "a request to the backend",
-                ) { transport.send(request) }
+            object : HttpTransport {
+                override suspend fun send(request: HttpRequest): HttpResult = run {
+                    loop.outside(
+                        "a request to the backend",
+                    ) { transport.send(request) }
+                }
             }
         }
 

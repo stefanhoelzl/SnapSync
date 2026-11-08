@@ -36,12 +36,13 @@ import app.snapsync.annotations.PlatformEntry
 import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.composition.app.AppGraph
 import app.snapsync.composition.app.ComposedApp
+import app.snapsync.composition.app.ScreenClockGraph
 import app.snapsync.composition.app.composeApp
 import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.dates.DateLocales
 import app.snapsync.http.KtorHttpTransport
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.metrics.NoProcessMetrics
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
@@ -88,7 +89,7 @@ class SnapSyncRoot(internal val application: Application) {
      * status host reduces with it and the screen renders with it.
      */
     private val cutoffFormatter: CutoffFormatter by lazy {
-        CutoffFormatter(now = ports.clock.value::now, zone = ports.clock.value.timeZone())
+        ScreenClockGraph(ports.clock.value, ports.clock.value.timeZone()).formatter
     }
 
     /**

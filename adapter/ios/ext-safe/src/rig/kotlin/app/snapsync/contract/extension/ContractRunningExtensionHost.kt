@@ -6,9 +6,9 @@ import app.snapsync.contracts.CONTRACT_REFUSED
 import app.snapsync.contracts.OsUploadQueueContract
 import app.snapsync.inbound.Answered
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ios.upload.Step
 import app.snapsync.ios.upload.callsFor
 import app.snapsync.ios.upload.extensionTransferClauses

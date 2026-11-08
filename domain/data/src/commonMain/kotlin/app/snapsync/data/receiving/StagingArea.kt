@@ -2,8 +2,8 @@ package app.snapsync.data.receiving
 
 import app.snapsync.domain.receiving.StagedEvidence
 import app.snapsync.domain.receiving.StagedPath
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileFailure
 import app.snapsync.ports.FileResult

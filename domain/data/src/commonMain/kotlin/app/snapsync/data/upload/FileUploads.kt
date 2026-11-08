@@ -2,8 +2,8 @@ package app.snapsync.data.upload
 
 import app.snapsync.data.crypto.SealOrder
 import app.snapsync.domain.upload.TransferStart
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.TransferSource
 import app.snapsync.wire.api.Routes

@@ -1,7 +1,7 @@
 package app.snapsync.data.sharing
 
 import app.snapsync.data.backend.BackendGateway
-import app.snapsync.data.backend.faultOf
+import app.snapsync.data.backend.ServiceFaults
 import app.snapsync.domain.asset.ResourceRole
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.service.ServiceFault
@@ -39,7 +39,7 @@ class ManifestPublication(private val gateway: BackendGateway) {
             // An event closed before events stopped closing keeps its set: re-sending could never change the answer.
             is PublishManifestReply.SetFixed -> PublishReply.Refused(PublishRefusal.SET_FIXED)
             is ClientError -> PublishReply.Refused(PublishRefusal.NOT_TAKEN)
-            is ServerIssue, is NoAnswer -> PublishReply.Unreachable(faultOf(reply))
+            is ServerIssue, is NoAnswer -> PublishReply.Unreachable(ServiceFaults.of(reply))
         }
 }
 

@@ -18,8 +18,8 @@ import app.snapsync.domain.receiving.ImportedAsset
 import app.snapsync.domain.receiving.Recognised
 import app.snapsync.domain.receiving.StagedDownload
 import app.snapsync.domain.receiving.UnconfirmedImport
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /**
  * One pass of the import drain: the event album its imports file into ([album] — read once, before the pass, so the

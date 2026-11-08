@@ -1,5 +1,7 @@
 package app.snapsync.wire.runtime
 
+import app.snapsync.wire.runtime.Wire.encodeSegment
+import app.snapsync.wire.runtime.Wire.query
 import kotlinx.serialization.Serializable
 import kotlin.test.Test
 import kotlin.test.assertEquals

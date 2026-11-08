@@ -2,8 +2,8 @@ package app.snapsync.data.store
 
 import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
 import app.snapsync.data.receiving.DownloadDatabaseFile
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("ChangedElsewhere")
 

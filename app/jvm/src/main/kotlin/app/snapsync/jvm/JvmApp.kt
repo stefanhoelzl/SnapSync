@@ -2,6 +2,7 @@ package app.snapsync.jvm
 
 import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.composition.app.ComposedApp
+import app.snapsync.composition.app.ScreenClockGraph
 import app.snapsync.composition.app.composeApp
 import app.snapsync.composition.extension.ExtensionDevicePorts
 import app.snapsync.composition.extension.composeExtension
@@ -189,7 +190,7 @@ class JvmApp<D>(
 
         /** Both from the launch's clock, as a phone's root builds it: the zone read once, "now" on every ask. */
         private fun cutoffFormatter(): CutoffFormatter =
-            CutoffFormatter(now = ports.device.clock::now, zone = ports.device.clock.timeZone())
+            ScreenClockGraph(ports.device.clock, ports.device.clock.timeZone()).formatter
     }
 }
 

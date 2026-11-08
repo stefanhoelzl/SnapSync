@@ -13,9 +13,13 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.Store
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.RangeResolution.resolve
+import app.snapsync.presentation.ScreenModel.Companion.outsideReach
+import app.snapsync.presentation.ScreenModel.Companion.view
 import app.snapsync.presentation.range.EventRange
 import app.snapsync.presentation.range.RangeBounds
-import app.snapsync.presentation.range.view
+import app.snapsync.presentation.range.RangeEditing.view
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.BuildLine
 import app.snapsync.ui.state.CreateForm
@@ -41,7 +45,56 @@ import kotlinx.datetime.LocalDateTime
  * domain values behind it that the taps act on ([shown]) — both produced by ONE reduction pass, so a tap acts on
  * exactly what was displayed, and the screen never sees a domain value.
  */
-data class ScreenModel(val ui: UiState, val shown: Shown)
+data class ScreenModel(val ui: UiState, val shown: Shown) {
+    companion object {
+        /** The bounds a member's range is picked in, around the event's `[windowStart, windowEnd]`. */
+        internal fun CutoffFormatter.shareBounds(windowStart: LocalDateTime, windowEnd: LocalDateTime): RangeBounds =
+            RangeBounds.aroundEvent(windowStart, windowEnd, this)
+
+        /**
+         * A form and what it resolved to — with the calendar, while it is [picking] — as the participation surface
+         * shows them.
+         * [permission] decides what the surface says is shared: under a partial grant, the member's selection.
+         */
+        internal fun RangeForm.view(
+            range: ResolvedRange,
+            permission: PhotoGrant,
+            picking: Picking?,
+        ): RangeView = RangeView(
+            shareOn = shareOn,
+            receiveOn = receiveOn,
+            saveToAlbum = saveToAlbum,
+            albumHolds = albumContents.shown,
+            preset = preset,
+            from = range.from,
+            until = range.until,
+            windowStart = range.windowStart,
+            windowEnd = range.windowEnd,
+            nowAvailable = range.nowAvailable,
+            today = range.today,
+            commitEnabled = range.commitEnabled,
+            shareCount = range.shareCount,
+            picker = picking?.let { it.range.view(it.bounds, range.today) },
+            outside = outsideReach(range),
+            sharesSelection = permission == PhotoGrant.LIMITED,
+        )
+
+        /**
+         * Where [range] reaches past the event's window — said beneath the count, so a wide range never passes for the
+         * event's.
+         */
+        internal fun outsideReach(range: ResolvedRange): OutsideReach? {
+            val before = range.from < range.windowStart
+            val after = range.until > range.windowEnd
+            return when {
+                before && after -> OutsideReach.BOTH
+                before -> OutsideReach.BEFORE
+                after -> OutsideReach.AFTER
+                else -> null
+            }
+        }
+    }
+}
 
 /**
  * The domain values behind what the screen shows, which a tap acts on but no screen renders.
@@ -62,14 +115,28 @@ data class Shown(
 /** One reduction's layer, the range its surface resolved, and what its share shares — each `null` when it has none. */
 internal class Reduced(val layer: Layer, val range: ResolvedRange? = null, val share: ShareRequest? = null)
 
+/** A form against an event window, as the container resolves it at the moment of asking. */
+internal interface WindowResolution {
+    fun resolve(form: RangeForm, startsAt: EventStart, endsAt: EventEnd): ResolvedRange
+}
+
+/** The container's state flow, read at each use: the container's to replace (Orbit's test harness does). */
+internal interface ScreenSource {
+    fun models(): StateFlow<ScreenModel>
+}
+
 /**
  * The conversions from the domain into what the screen shows: every moment into the device's zone, through the one
  * [CutoffFormatter], and a form against an event window through the container's one resolution.
  */
 internal class Display(
     private val dates: CutoffFormatter,
-    val resolve: (RangeForm, EventStart, EventEnd) -> ResolvedRange,
+    private val window: WindowResolution,
 ) {
+    /** [form] against the window from [startsAt] to [endsAt], as the container resolves it now. */
+    fun resolve(form: RangeForm, startsAt: EventStart, endsAt: EventEnd): ResolvedRange =
+        window.resolve(form, startsAt, endsAt)
+
     /** The joined membership as the joined screen states it. */
     fun event(joined: Membership): JoinedEvent = JoinedEvent(
         eventId = joined.event.id.value,
@@ -94,8 +161,10 @@ internal class Display(
         ?.takeIf { joined !is Membership.Deleted && it.at > joined.event.range.end.at && it.at > now }
         ?.let(dates::toLocal)
 
-    /** What a created event's range may be: anywhere in time, at most the event window long, its end time the host's. */
-    val createBounds: RangeBounds = RangeBounds.lastingAtMost(dates::latestEnd)
+    /**
+     * What a created event's range may be: anywhere in time, at most the event window long, its end time the host's.
+     */
+    val createBounds: RangeBounds = RangeBounds.lastingAtMost(dates)
 
     /**
      * The end a draft may be created with, or `null` while Create is not offered: only a complete draft has one. The
@@ -137,52 +206,6 @@ internal class Display(
  */
 internal data class Picking(val range: EventRange, val bounds: RangeBounds)
 
-/** The bounds a member's range is picked in, around the event's `[windowStart, windowEnd]`. */
-internal fun CutoffFormatter.shareBounds(windowStart: LocalDateTime, windowEnd: LocalDateTime): RangeBounds =
-    RangeBounds.aroundEvent(windowStart, windowEnd, ::latestEnd, ::earliestStart)
-
-/**
- * A form and what it resolved to — with the calendar, while it is [picking] — as the participation surface shows them.
- * [permission] decides what the surface says is shared: under a partial grant, the member's selection.
- */
-internal fun RangeForm.view(
-    range: ResolvedRange,
-    permission: PhotoGrant,
-    picking: Picking?,
-): RangeView = RangeView(
-    shareOn = shareOn,
-    receiveOn = receiveOn,
-    saveToAlbum = saveToAlbum,
-    albumHolds = albumContents.shown,
-    preset = preset,
-    from = range.from,
-    until = range.until,
-    windowStart = range.windowStart,
-    windowEnd = range.windowEnd,
-    nowAvailable = range.nowAvailable,
-    today = range.today,
-    commitEnabled = range.commitEnabled,
-    shareCount = range.shareCount,
-    picker = picking?.let { it.range.view(it.bounds, range.today) },
-    outside = outsideReach(range),
-    sharesSelection = permission == PhotoGrant.LIMITED,
-)
-
-/**
- * Where [range] reaches past the event's window — said beneath the count, so a wide range never passes for the
- * event's.
- */
-internal fun outsideReach(range: ResolvedRange): OutsideReach? {
-    val before = range.from < range.windowStart
-    val after = range.until > range.windowEnd
-    return when {
-        before && after -> OutsideReach.BOTH
-        before -> OutsideReach.BEFORE
-        after -> OutsideReach.AFTER
-        else -> null
-    }
-}
-
 internal val AlbumContents.shown: AlbumHolds
     get() = when (this) {
         AlbumContents.SharedAndReceived -> AlbumHolds.SHARED_AND_RECEIVED
@@ -203,14 +226,14 @@ internal val DeviceRefusal.cause: RefusalCause
  * harness does).
  */
 @OptIn(ExperimentalForInheritanceCoroutinesApi::class)
-internal class Displayed(private val source: () -> StateFlow<ScreenModel>) : StateFlow<UiState> {
-    override val value: UiState get() = source().value.ui
+internal class Displayed(private val source: ScreenSource) : StateFlow<UiState> {
+    override val value: UiState get() = source.models().value.ui
 
     override val replayCache: List<UiState> get() = listOf(value)
 
     override suspend fun collect(collector: FlowCollector<UiState>): Nothing {
         var last: UiState? = null
-        source().collect { model ->
+        source.models().collect { model ->
             if (model.ui != last) {
                 last = model.ui
                 collector.emit(model.ui)

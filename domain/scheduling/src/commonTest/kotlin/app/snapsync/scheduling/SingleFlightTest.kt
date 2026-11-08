@@ -3,6 +3,7 @@
 package app.snapsync.scheduling
 
 import app.snapsync.inbound.Trigger
+import app.snapsync.scheduling.Sequence.Companion.orIfCut
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi

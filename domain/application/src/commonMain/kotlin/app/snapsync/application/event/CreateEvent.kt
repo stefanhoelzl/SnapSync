@@ -6,8 +6,8 @@ import app.snapsync.data.crypto.NewEventKeys
 import app.snapsync.data.event.EventCreation
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.request.CreateRequest
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("CreateEvent")
 

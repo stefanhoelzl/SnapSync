@@ -10,8 +10,8 @@ import app.snapsync.domain.upload.GateStep
 import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadHost
 import app.snapsync.domain.upload.UploadPause
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /**
  * **The gate of an upload pass** — read once per pass, so a join, a leave or a switch takes effect on the next pass

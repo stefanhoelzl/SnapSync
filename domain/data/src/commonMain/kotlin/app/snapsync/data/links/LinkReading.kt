@@ -2,8 +2,8 @@ package app.snapsync.data.links
 
 import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.format.InviteLinkText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.LinkDelivery
 
 /**

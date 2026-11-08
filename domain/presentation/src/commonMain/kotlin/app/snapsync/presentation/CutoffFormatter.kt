@@ -7,6 +7,8 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.presentation.range.RangeLimits
+import app.snapsync.query.time.CurrentInstant
 import app.snapsync.ui.state.CoarseDuration
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
@@ -18,23 +20,20 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Duration.Companion.days
-import kotlin.time.Instant
 
 /**
  * Bridges the join screen's **local** date-time picker and the capture dates.
  * Injected into the screen so `:ui:screens` needs no clock or
  * timezone knowledge: it holds only a `LocalDateTime` and calls these methods. **Pure given its
- * inputs** (migration step 9): [now] and [zone] arrive injected — production binds the `Clock` port
- * (`:adapter:generic:app`'s `SystemClock`: its now, and its zone read once, by the host composition)
- * as plain function/value inputs, since the armed presentation gate forbids this module naming
- * `ports/`); tests pass a fixed instant and zone for determinism.
+ * inputs**: [now] and [zone] arrive injected — production reads the device's wall clock through the query layer's
+ * [CurrentInstant] and its zone once, at the root; tests pass a fixed instant and zone for determinism.
  */
 class CutoffFormatter(
-    private val now: () -> Instant,
+    private val now: CurrentInstant,
     private val zone: TimeZone,
-) {
+) : RangeLimits {
     /** The current instant as a local wall-clock value — seeds the "Now" preset and the create screen. */
-    fun nowLocal(): LocalDateTime = now().toLocalDateTime(zone)
+    fun nowLocal(): LocalDateTime = now.now().toLocalDateTime(zone)
 
     /** The zone the member picks dates in, as its id. */
     fun zoneId(): String = zone.id
@@ -46,7 +45,7 @@ class CutoffFormatter(
     fun nowToTheMinute(): LocalDateTime = nowLocal().let { LocalDateTime(it.date, LocalTime(it.hour, it.minute)) }
 
     /** How long until the clock's next minute begins — never zero, so a clock that does not move waits a minute. */
-    fun millisToNextMinute(): Long = MILLIS_PER_MINUTE - now().toEpochMilliseconds().mod(MILLIS_PER_MINUTE)
+    fun millisToNextMinute(): Long = MILLIS_PER_MINUTE - now.now().toEpochMilliseconds().mod(MILLIS_PER_MINUTE)
 
     /** A picked local wall-clock value as the capture date it names. */
     fun toCutoff(local: LocalDateTime): Timestamp = Timestamp.of(local.toInstant(zone))
@@ -75,7 +74,9 @@ class CutoffFormatter(
      */
     fun nowCutoff(): Timestamp = toCutoff(nowLocal())
 
-    /** The first local midnight after [after], in this device's zone: where the joined screen's "today" next changes. */
+    /**
+     * The first local midnight after [after], in this device's zone: where the joined screen's "today" next changes.
+     */
     fun nextMidnight(after: Timestamp): Timestamp =
         Timestamp.of(after.at.toLocalDateTime(zone).date.plus(1, DateTimeUnit.DAY).atStartOfDayIn(zone))
 
@@ -88,7 +89,7 @@ class CutoffFormatter(
      * between the two UTC values this formatter's [toCutoff] produces: across a daylight-saving change, "30
      * local days later" is an hour more or less than the limit, and the hour more is a refusal.
      */
-    fun latestEnd(from: LocalDateTime): LocalDateTime =
+    override fun latestEnd(from: LocalDateTime): LocalDateTime =
         (from.toInstant(zone) + EventWindow.MAX).toLocalDateTime(zone)
 
     /**
@@ -96,7 +97,7 @@ class CutoffFormatter(
      * same reason: a member's range is no longer than an event may be (`CaptureRange`), which the join measures in
      * seconds.
      */
-    fun earliestStart(until: LocalDateTime): LocalDateTime =
+    override fun earliestStart(until: LocalDateTime): LocalDateTime =
         (until.toInstant(zone) - EventWindow.MAX).toLocalDateTime(zone)
 
     /**
@@ -104,7 +105,7 @@ class CutoffFormatter(
      * `changes/back-dated-events`, D1). Added in INSTANTS, like [latestEnd]: the backend bounds it in seconds from its
      * own now, and "30 local days" across a daylight-saving change is an hour more than the 30 days it admits.
      */
-    fun openFor(days: Int): OpenUntil = OpenUntil(Timestamp.of(now() + days.days))
+    fun openFor(days: Int): OpenUntil = OpenUntil(Timestamp.of(now.now() + days.days))
 
     /** Whether `[from, until]` is no longer than the backend's event window — see [latestEnd]. */
     fun fitsEventWindow(from: LocalDateTime, until: LocalDateTime): Boolean =

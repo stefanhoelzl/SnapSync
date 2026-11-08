@@ -1,7 +1,7 @@
 package app.snapsync.entry
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlin.concurrent.Volatile
 
 /**

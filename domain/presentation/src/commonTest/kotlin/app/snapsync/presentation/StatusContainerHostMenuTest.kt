@@ -14,6 +14,9 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.mobiledata.MobileDataQuery
 import app.snapsync.testids.testEventId
@@ -118,7 +121,7 @@ class StatusContainerHostMenuTest {
                         scope,
                         commands = commands,
                         cutoffFormatter = CutoffFormatter(
-                            now = { Instant.parse("2026-07-09T12:00:00Z") },
+                            now = instants({ Instant.parse("2026-07-09T12:00:00Z") }),
                             zone = TimeZone.UTC,
                         ),
                         shareableCount = noQueries,
@@ -155,7 +158,8 @@ class StatusContainerHostMenuTest {
             host.stateWhere("nothing open") { it.overlays == Overlays() }
         }
 
-    // ── the mobile-data switch (capability `mobile-data`; decision record `changes/archive/2026-10-07-mobile-data-per-device`, D3) ──────
+    // ── the mobile-data switch (capability `mobile-data`; decision record
+    // `changes/archive/2026-10-07-mobile-data-per-device`, D3) ──────
 
     @Test
     fun `the menu's mobile-data switch applies as it is flipped and the menu stays open`() = onHost { host, world ->

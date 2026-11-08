@@ -16,6 +16,8 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.presentation.JoinGateRules.settled
+import app.snapsync.presentation.Switches.mobileData
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.mobiledata.MobileDataQuery
@@ -97,7 +99,7 @@ class StatusContainerHostNetworkTest {
             scope,
             joinDetails = joinDetails(load),
             commands = commands.door,
-            cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
+            cutoffFormatter = CutoffFormatter(now = instants({ NOW }), zone = TimeZone.UTC),
             shareableCount = noQueries,
             reduction = StandardTestDispatcher(testScheduler),
         )
@@ -215,7 +217,8 @@ class StatusContainerHostNetworkTest {
 
     @Test
     fun `photos kept off mobile data on a restricted network wait for Wi-Fi with still arrows`() = runTest {
-        // The device's choice, not the membership's (decision record `changes/archive/2026-10-07-mobile-data-per-device`).
+        // The device's choice, not the membership's (decision record
+        // `changes/archive/2026-10-07-mobile-data-per-device`).
         val host =
             host(FakeNetwork(NetworkAccess.Online(restricted = true)), progress = oneUploading, mobileData = false)
         assertEquals(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN, waitingForWifi = true), host.health())
@@ -247,7 +250,7 @@ class StatusContainerHostNetworkTest {
     fun `offline the create layer carries the notice`() = runTest {
         assertEquals(
             Layer.CreateEvent(
-                freshCreateForm(CutoffFormatter(now = { NOW }, zone = TimeZone.UTC)),
+                freshCreateForm(CutoffFormatter(now = instants({ NOW }), zone = TimeZone.UTC)),
                 network = NetworkNotice.OFFLINE,
             ),
             host(FakeNetwork(NetworkAccess.Offline), config = null).screen.value.layer,
@@ -261,7 +264,7 @@ class StatusContainerHostNetworkTest {
         driving(host) {
             assertEquals(
                 Layer.CreateEvent(
-                    freshCreateForm(CutoffFormatter(now = { NOW }, zone = TimeZone.UTC)),
+                    freshCreateForm(CutoffFormatter(now = instants({ NOW }), zone = TimeZone.UTC)),
                     error = ScreenMessage.CREATE_FAILED,
                     network = NetworkNotice.OFFLINE,
                 ),
@@ -271,7 +274,7 @@ class StatusContainerHostNetworkTest {
             runCurrent()
             assertEquals(
                 Layer.CreateEvent(
-                    freshCreateForm(CutoffFormatter(now = { NOW }, zone = TimeZone.UTC)),
+                    freshCreateForm(CutoffFormatter(now = instants({ NOW }), zone = TimeZone.UTC)),
                     error = ScreenMessage.CREATE_FAILED,
                 ),
                 host.screen.value.layer,

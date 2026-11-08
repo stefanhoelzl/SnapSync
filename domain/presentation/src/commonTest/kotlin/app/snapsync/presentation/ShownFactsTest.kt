@@ -3,6 +3,8 @@ package app.snapsync.presentation
 import app.snapsync.domain.network.NetworkAccess
 import app.snapsync.domain.request.OwnPage
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.presentation.JoinedLayer.message
+import app.snapsync.presentation.UnjoinedLayer.message
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.ScreenMessage

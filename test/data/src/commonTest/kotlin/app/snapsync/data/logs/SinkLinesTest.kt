@@ -1,8 +1,8 @@
 package app.snapsync.data.logs
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.LogLine
-import app.snapsync.inbound.of
 import app.snapsync.mock.ThreadLabelMock
 import app.snapsync.ports.LogSink
 import kotlin.test.Test

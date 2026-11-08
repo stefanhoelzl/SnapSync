@@ -5,8 +5,8 @@ import app.snapsync.domain.upload.StagedFile
 import app.snapsync.domain.upload.TransferEnd
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.format.UploadKeyText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.TransferSession
 

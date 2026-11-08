@@ -1,7 +1,7 @@
 package app.snapsync.data.event
 
 import app.snapsync.data.backend.BackendGateway
-import app.snapsync.data.backend.faultOf
+import app.snapsync.data.backend.ServiceFaults
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.EventName
 import app.snapsync.domain.event.EventNameVerdict
@@ -31,7 +31,7 @@ class EventRename(private val gateway: BackendGateway) {
             is Invalid -> RenameFact.Refused
             // The server's positive word that the event's photos were deleted — unlike a lone "not found".
             is Closed -> RenameFact.EventOver
-            is ClientError, is ServerIssue, is NoAnswer -> RenameFact.Unanswered(faultOf(reply))
+            is ClientError, is ServerIssue, is NoAnswer -> RenameFact.Unanswered(ServiceFaults.of(reply))
         }
 
     private fun stored(text: String): RenameFact = when (val name = EventName.of(text)) {

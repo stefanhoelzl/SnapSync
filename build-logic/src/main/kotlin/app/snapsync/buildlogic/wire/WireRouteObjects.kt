@@ -30,7 +30,7 @@ internal object WireRouteObjects {
             .addKdoc("Every operation of `api/openapi.yaml` the app calls or builds, by its operationId.")
         for (op in d.operations.filter { it.method != "OPTIONS" }) routes.addType(route(d, op))
         return FileSpec.builder(PACKAGE, "Routes").addFileComment(GENERATED)
-            .addImport(RUNTIME, "encodeSegment", "query")
+            .addImport("$RUNTIME.Wire", "encodeSegment", "query")
             .addImport("kotlinx.serialization.builtins", "ListSerializer")
             .addType(routes.build()).build()
     }

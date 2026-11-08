@@ -4,8 +4,8 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.upload.StagedFile
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.format.UploadKeyText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileFailure
 import app.snapsync.ports.FileResult

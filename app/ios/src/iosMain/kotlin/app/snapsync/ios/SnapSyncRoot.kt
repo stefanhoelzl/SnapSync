@@ -8,6 +8,7 @@ import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.composition.app.AppGraph
 import app.snapsync.composition.app.AppPorts
 import app.snapsync.composition.app.ComposedApp
+import app.snapsync.composition.app.ScreenClockGraph
 import app.snapsync.composition.app.composeApp
 import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.config.IosBuildInfo
@@ -23,9 +24,9 @@ import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.identity.NoPlatformDeviceId
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Inbound
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ios.qos.newUserInitiatedLane
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
@@ -159,7 +160,7 @@ object SnapSyncRoot {
      * clock's: the system's own on every production build, and an adapter choice's mocked clock wherever one fixes it.
      */
     private val cutoffFormatter: CutoffFormatter by lazy {
-        CutoffFormatter(now = ports.clock.value::now, zone = ports.clock.value.timeZone())
+        ScreenClockGraph(ports.clock.value, ports.clock.value.timeZone()).formatter
     }
 
     /** The process's date formatting as the screen renders through it — over the `DateFormatting` port. */

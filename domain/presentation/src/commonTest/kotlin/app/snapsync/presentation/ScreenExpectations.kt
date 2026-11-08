@@ -1,5 +1,7 @@
 package app.snapsync.presentation
 
+import app.snapsync.domain.event.EventEnd
+import app.snapsync.domain.event.EventStart
 import app.snapsync.ui.state.CreateForm
 import app.snapsync.ui.state.JoinedEvent
 import app.snapsync.ui.state.Layer
@@ -21,12 +23,13 @@ internal suspend fun OrbitScopedTestContextInternal<ScreenModel, *, *, *>.expect
 /** [this] membership as the joined screen states it, its moments in [zone] — as the container's own display does. */
 internal fun TestMembership.shown(zone: TimeZone = TimeZone.UTC): JoinedEvent =
     Display(
-        CutoffFormatter(now = { Instant.DISTANT_PAST }, zone = zone),
-    ) { _, _, _ -> error("no range here") }.event(held())
+        CutoffFormatter(now = instants({ Instant.DISTANT_PAST }), zone = zone),
+        noWindow("no range here"),
+    ).event(held())
 
 /** The create form as a fresh draft — [draft] the draft's number — shows it on [clock]. */
 internal fun freshCreateForm(clock: CutoffFormatter, draft: Int = 0): CreateForm =
-    Display(clock) { _, _, _ -> error("the create form resolves no event window") }
+    Display(clock, noWindow("the create form resolves no event window"))
         .create(CreateDraft.fresh(CreateDraftSession(epoch = draft), clock.nowToTheMinute()))
 
 /** The create layer on [clock] as a fresh draft — [draft] the draft's number — shows it. */
@@ -36,3 +39,8 @@ internal fun createLayerAt(
     network: NetworkNotice? = null,
     draft: Int = 0,
 ) = Layer.CreateEvent(freshCreateForm(clock, draft), error, network)
+
+/** A window resolution a test that resolves no event window hands the display: asked, it fails with [why]. */
+internal fun noWindow(why: String): WindowResolution = object : WindowResolution {
+    override fun resolve(form: RangeForm, startsAt: EventStart, endsAt: EventEnd): ResolvedRange = error(why)
+}

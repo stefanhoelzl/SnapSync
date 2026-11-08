@@ -4,8 +4,8 @@ package app.snapsync.gallery
 
 import app.snapsync.annotations.Never
 import app.snapsync.annotations.NeverAnswers
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.objc.ObjCFailure

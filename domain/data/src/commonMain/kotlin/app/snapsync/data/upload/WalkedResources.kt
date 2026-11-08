@@ -1,6 +1,6 @@
 package app.snapsync.data.upload
 
-import app.snapsync.data.gallery.facts
+import app.snapsync.data.gallery.GalleryTranslation.facts
 import app.snapsync.data.sharing.DiscoveryRead
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.asset.ResourceRole

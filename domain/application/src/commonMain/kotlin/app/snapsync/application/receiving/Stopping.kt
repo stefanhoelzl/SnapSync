@@ -6,8 +6,8 @@ import app.snapsync.data.receiving.ReceivingCleanup
 import app.snapsync.domain.membership.ConfirmedNotJoined
 import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.Membership
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /** Why receiving may be torn down — each case carries what makes the irreversible cleanup safe. */
 sealed interface StopReason {

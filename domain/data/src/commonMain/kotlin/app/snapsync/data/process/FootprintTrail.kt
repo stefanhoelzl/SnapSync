@@ -4,8 +4,8 @@ import app.snapsync.domain.process.FootprintSample
 import app.snapsync.domain.process.FootprintTrailRule
 import app.snapsync.domain.process.MemoryFootprint
 import app.snapsync.format.FootprintTrailText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.Clock
 import app.snapsync.ports.FileAccess
 import app.snapsync.ports.FileArea

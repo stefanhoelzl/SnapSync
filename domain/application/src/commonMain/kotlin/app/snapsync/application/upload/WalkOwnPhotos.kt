@@ -15,8 +15,8 @@ import app.snapsync.domain.sharing.SettlingLook
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadRow
 import app.snapsync.domain.upload.WalkDiff
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("WalkOwnPhotos")
 

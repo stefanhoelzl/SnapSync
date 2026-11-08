@@ -7,6 +7,8 @@ import app.snapsync.domain.invite.InviteLinkVerdict
 import app.snapsync.domain.report.ReportOutcome
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.MembershipShown
 import app.snapsync.ui.state.Layer
@@ -78,7 +80,10 @@ class NoticeTimersTest {
                 mobileData = AlwaysAllowed,
             ),
             scope,
-            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+            cutoffFormatter = CutoffFormatter(
+                now = instants({ Instant.parse("2026-07-09T12:00:00Z") }),
+                zone = TimeZone.UTC,
+            ),
             commands = commands.door,
             shareableCount = noQueries,
             joinDetails = unanswered,

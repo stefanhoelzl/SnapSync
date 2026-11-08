@@ -8,8 +8,8 @@ import app.snapsync.data.upload.OwnUploadRows
 import app.snapsync.data.upload.RowTransition
 import app.snapsync.data.upload.RowTransitions
 import app.snapsync.domain.event.EventId
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlinx.coroutines.withTimeoutOrNull
 
 private val log = Log("SettleStoredUploads")

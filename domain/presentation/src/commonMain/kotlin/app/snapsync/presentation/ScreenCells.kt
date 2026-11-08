@@ -26,12 +26,6 @@ internal data class Owned<T>(val eventId: EventId?, val value: T) {
     }
 }
 
-internal fun MutableStateFlow<Local>.editOverlays(edit: (Overlays) -> Overlays) = update {
-    it.copy(overlays = edit(it.overlays))
-}
-
-internal fun MutableStateFlow<Local>.editForm(edit: (RangeForm) -> RangeForm) = update { it.copy(form = edit(it.form)) }
-
 /**
  * How a part of the screen runs its work on the container — as an intent, or as a guarded one ([Guarded]) — and reads
  * what the container holds now.
@@ -76,6 +70,18 @@ internal class ScreenCells(
         invalidLinkClear = scope.launch {
             delay(TRANSIENT_ERROR_MILLIS)
             local.update { it.copy(transientError = null) }
+        }
+    }
+
+    companion object {
+        internal fun MutableStateFlow<Local>.editOverlays(edit: (Overlays) -> Overlays) = update {
+            it.copy(overlays = edit(it.overlays))
+        }
+
+        internal fun MutableStateFlow<Local>.editForm(edit: (RangeForm) -> RangeForm) = update {
+            it.copy(
+                form = edit(it.form),
+            )
         }
     }
 }

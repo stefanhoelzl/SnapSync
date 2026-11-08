@@ -13,8 +13,16 @@ import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
+import app.snapsync.presentation.JoinGateRules.forUnreadableKey
+import app.snapsync.presentation.JoinGateRules.loadedOf
+import app.snapsync.presentation.JoinGateRules.reloadWhileUpdating
+import app.snapsync.presentation.JoinGateRules.settled
+import app.snapsync.presentation.JoinGateRules.showing
+import app.snapsync.presentation.RangeResolution.resolve
+import app.snapsync.presentation.RenameRequests.answerTo
+import app.snapsync.presentation.UnjoinedLayer.asksAccessOnJoin
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.MembershipShown
@@ -115,7 +123,8 @@ internal class JoinGate(
      * double join.
      *
      * Both rungs read state that already exists and already self-clears, so there is no duplicate-tracking field to
-     * leak or to forget to reset: `pending` is cleared when the join is committed or dismissed, and the membership names
+     * leak or to forget to reset: `pending` is cleared when the join is committed or dismissed, and the membership
+     * names
      * the event only while it stands. A repeat is therefore ignored exactly while the member is still deciding about
      * it, and a genuinely re-opened invite afterwards is acted on again.
      *
@@ -257,7 +266,8 @@ internal class JoinGate(
     /**
      * Another event's invite while joined: when leaving the joined event loses nothing for anyone (decision record
      * `changes/back-dated-events`, D8), it is left at once, without the switch question — the join that follows is then
-     * a first join, whose Cancel leaves the device in no event, exactly as after a confirmed switch. Asked only once the
+     * a first join, whose Cancel leaves the device in no event, exactly as after a confirmed switch. Asked only once
+     * the
      * invite has loaded, and only while it is still the gate's: an invite that cannot be joined never leaves the joined
      * event.
      */

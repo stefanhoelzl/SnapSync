@@ -4,19 +4,15 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 
 /**
- * The length limit a range is held to: the latest end accepted for a given start — zone-aware arithmetic the
- * container's [app.snapsync.presentation.CutoffFormatter] answers.
+ * The limits a range is held to: the latest end accepted for a given start, and the earliest start for a given end —
+ * zone-aware arithmetic the container's [app.snapsync.presentation.CutoffFormatter] answers.
  */
-internal fun interface LatestUntil {
-    fun of(from: LocalDateTime): LocalDateTime
-}
+interface RangeLimits {
+    /** The latest end a range starting at [from] may have. */
+    fun latestEnd(from: LocalDateTime): LocalDateTime
 
-/**
- * The longest a range may reach back: the earliest start for a given end — the mirror of [LatestUntil], answered by
- * the same zone-aware arithmetic.
- */
-internal fun interface EarliestFrom {
-    fun of(until: LocalDateTime): LocalDateTime
+    /** The earliest start a range ending at [until] may have. */
+    fun earliestStart(until: LocalDateTime): LocalDateTime
 }
 
 /**
@@ -31,7 +27,7 @@ internal class RangeBounds private constructor(
     val latestStart: LocalDateTime?,
     /** The earliest end, whatever the start — the start of the range an end must reach — or `null` for none. */
     private val endFloor: LocalDateTime?,
-    private val longest: LatestUntil,
+    private val limits: RangeLimits,
     /**
      * Whether the end time starts blank and is cleared when it stops being valid (create: the host must set
      * it), rather than always set and moved to the nearest valid time (join: the event's end is the default).
@@ -41,25 +37,25 @@ internal class RangeBounds private constructor(
     val markedDays: ClosedRange<LocalDate>?,
 ) {
     /** The latest end a range starting at [from] may have. */
-    fun latestEnd(from: LocalDateTime): LocalDateTime = longest.of(from)
+    fun latestEnd(from: LocalDateTime): LocalDateTime = limits.latestEnd(from)
 
     /** The earliest end a range starting at [from] may have: after its start, and reaching [endFloor]. */
     fun earliestEnd(from: LocalDateTime): LocalDateTime = if (endFloor == null) from else maxOf(endFloor, from)
 
     companion object {
-        /** An event being created: anywhere in time, at most [longest] long, the end time set by the host. */
-        fun lastingAtMost(longest: LatestUntil): RangeBounds = RangeBounds(
+        /** An event being created: anywhere in time, at most [limits] long, the end time set by the host. */
+        fun lastingAtMost(limits: RangeLimits): RangeBounds = RangeBounds(
             earliest = null,
             latestStart = null,
             endFloor = null,
-            longest = longest,
+            limits = limits,
             blankEndTime = true,
             markedDays = null,
         )
 
         /**
-         * The range a member shares around an event's own `[start, end]`: at most [longest]
-         * long and overlapping the event — so it starts no earlier than the event's start reaches back ([earliestFrom])
+         * The range a member shares around an event's own `[start, end]`: at most [limits]
+         * long and overlapping the event — so it starts no earlier than the event's start reaches back
          * and no later than its end, and ends no earlier than its start. Its end time is always set, and the event's
          * own days are marked. The same rule the join and the reconfigure refuse a range by (`CaptureRange`), so the
          * calendar never offers one they would refuse.
@@ -67,13 +63,12 @@ internal class RangeBounds private constructor(
         fun aroundEvent(
             start: LocalDateTime,
             end: LocalDateTime,
-            longest: LatestUntil,
-            earliestFrom: EarliestFrom,
+            limits: RangeLimits,
         ): RangeBounds = RangeBounds(
-            earliest = earliestFrom.of(start),
+            earliest = limits.earliestStart(start),
             latestStart = end,
             endFloor = start,
-            longest = longest,
+            limits = limits,
             blankEndTime = false,
             markedDays = start.date..end.date,
         )

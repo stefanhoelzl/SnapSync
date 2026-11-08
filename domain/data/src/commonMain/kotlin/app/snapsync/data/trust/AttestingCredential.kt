@@ -16,8 +16,8 @@ import app.snapsync.domain.trust.RenewalVerdict
 import app.snapsync.domain.trust.TokenIssuance
 import app.snapsync.domain.trust.UsabilityVerdict
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.Clock
 import app.snapsync.ports.WriteOutcome
 import kotlinx.coroutines.sync.Mutex

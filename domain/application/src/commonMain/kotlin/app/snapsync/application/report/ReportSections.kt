@@ -1,5 +1,7 @@
 package app.snapsync.application.report
 
+import app.snapsync.application.report.ReportSections.joined
+import app.snapsync.application.report.ReportSections.put
 import app.snapsync.data.gallery.GrantRead
 import app.snapsync.data.logs.DeviceLogTails
 import app.snapsync.data.logs.LoggingProcess
@@ -24,9 +26,6 @@ import app.snapsync.domain.report.ReportContext
 import app.snapsync.domain.upload.AssetProgress
 import app.snapsync.format.PhotoGrantText
 import app.snapsync.format.TimestampText
-
-/** The membership held, `null` while none is or it cannot be read now. */
-private fun MembershipRepository.joined(): Membership? = (state.value as? MembershipRead.Joined)?.membership
 
 /**
  * The facts a log tail may not hold — the boot lines that carry most of them roll off first. What the user was looking
@@ -159,15 +158,22 @@ class ReportLogs(private val tails: DeviceLogTails, private val budgetBytes: Int
     }
 }
 
-/**
- * The one rendering of a [Fact] into a section: a known value as its label, an unsupported one LEFT OUT (the platform
- * has no such thing, and the report's `os` says which it was), a failed one as `failed (<reason>)` — so a reading that
- * could not be taken is never mistaken for one that does not exist.
- */
-internal fun <T> MutableMap<String, String>.put(key: String, fact: Fact<T>, label: (T) -> String) {
-    when (fact) {
-        is Fact.Known -> put(key, label(fact.value))
-        Fact.Unsupported -> Unit
-        is Fact.Failed -> put(key, fact.shown)
+object ReportSections {
+    /** The membership held, `null` while none is or it cannot be read now. */
+    internal fun MembershipRepository.joined(): Membership? = (state.value as? MembershipRead.Joined)?.membership
+
+    /**
+     * The one rendering of a [Fact] into a section: a known value as its label, an unsupported one LEFT OUT (the
+     * platform
+     * has no such thing, and the report's `os` says which it was), a failed one as `failed (<reason>)` — so a reading
+     * that
+     * could not be taken is never mistaken for one that does not exist.
+     */
+    internal fun <T> MutableMap<String, String>.put(key: String, fact: Fact<T>, label: (T) -> String) {
+        when (fact) {
+            is Fact.Known -> put(key, label(fact.value))
+            Fact.Unsupported -> Unit
+            is Fact.Failed -> put(key, fact.shown)
+        }
     }
 }

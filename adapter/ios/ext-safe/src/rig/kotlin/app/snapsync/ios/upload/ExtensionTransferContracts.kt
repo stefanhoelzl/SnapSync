@@ -30,8 +30,8 @@ import app.snapsync.contracts.uploadTarget
 import app.snapsync.data.upload.Destinations
 import app.snapsync.gallery.PhotoKitResource
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
 import app.snapsync.ports.LibraryGrant

@@ -15,8 +15,8 @@ import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.domain.receiving.StagingFolder
 import app.snapsync.domain.receiving.TransferFacts
 import app.snapsync.domain.receiving.TransferVerdict
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /**
  * Keep a finished transfer's bytes — INLINE, on the platform's delivering thread, which deletes the temporary file
@@ -133,6 +133,12 @@ class RecordStaged(private val queue: ImportQueue, private val opening: Download
         }
         return outcome
     }
+
+    /** The event a transfer's bytes were fetched for, if its tag names one — whose key opens them. */
+    private fun TransferTag.fetchedFor(): EventId? = when (val named = folder) {
+        is StagingFolder.Event -> EventId.parse(named.name)
+        StagingFolder.Legacy -> null
+    }
 }
 
 /** What a staged download's record came to. */
@@ -164,10 +170,4 @@ class FreeTransfer(private val queue: ImportQueue) {
         error?.let { log.w("a download failed; it is retried", "why" of it) }
         queue.transferEnded(tag)
     }
-}
-
-/** The event a transfer's bytes were fetched for, if its tag names one — whose key opens them. */
-private fun TransferTag.fetchedFor(): EventId? = when (val named = folder) {
-    is StagingFolder.Event -> EventId.parse(named.name)
-    StagingFolder.Legacy -> null
 }

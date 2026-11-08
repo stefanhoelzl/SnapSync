@@ -14,7 +14,7 @@ import kotlin.time.Instant
 /** When the joined screen's clock-driven lines can next change. */
 class NextClockChangeTest {
 
-    private val clock = CutoffFormatter(now = { Instant.DISTANT_PAST }, zone = TimeZone.of("Europe/Berlin"))
+    private val clock = CutoffFormatter(now = instants({ Instant.DISTANT_PAST }), zone = TimeZone.of("Europe/Berlin"))
 
     private val running = TestMembership(
         eventId = testEventId("11111111-1111-4111-8111-111111111111"),
@@ -30,15 +30,15 @@ class NextClockChangeTest {
         val event = running.held().event
         assertEquals(
             timestamp("2026-07-05T12:01:00Z"),
-            nextClockChange(event, timestamp("2026-07-05T12:00:00Z"), clock),
+            NextClockChange.of(event, timestamp("2026-07-05T12:00:00Z"), clock),
         )
         assertEquals(
             timestamp("2026-07-08T12:01:00Z"),
-            nextClockChange(event, timestamp("2026-07-08T12:00:00Z"), clock),
+            NextClockChange.of(event, timestamp("2026-07-08T12:00:00Z"), clock),
         )
         assertEquals(
             timestamp("2026-07-10T00:01:00Z"),
-            nextClockChange(event, timestamp("2026-07-10T00:00:00Z"), clock),
+            NextClockChange.of(event, timestamp("2026-07-10T00:00:00Z"), clock),
             "at the end itself, a minute on — when it has ended",
         )
     }
@@ -49,7 +49,7 @@ class NextClockChangeTest {
         val event = running.held().event
         assertEquals(
             timestamp("2026-07-11T22:00:00Z"),
-            nextClockChange(event, timestamp("2026-07-11T12:00:00Z"), clock),
+            NextClockChange.of(event, timestamp("2026-07-11T12:00:00Z"), clock),
         )
     }
 
@@ -58,13 +58,16 @@ class NextClockChangeTest {
         val event = running.copy(openUntil = OpenUntil(timestamp("2026-07-11T18:00:00Z"))).held().event
         assertEquals(
             timestamp("2026-07-11T18:00:00Z"),
-            nextClockChange(event, timestamp("2026-07-11T12:00:00Z"), clock),
+            NextClockChange.of(event, timestamp("2026-07-11T12:00:00Z"), clock),
         )
         assertEquals(
             timestamp("2026-07-11T22:00:00Z"),
-            nextClockChange(event, timestamp("2026-07-11T19:00:00Z"), clock),
+            NextClockChange.of(event, timestamp("2026-07-11T19:00:00Z"), clock),
         )
         val late = running.copy(openUntil = OpenUntil(timestamp("2026-07-12T06:00:00Z"))).held().event
-        assertEquals(timestamp("2026-07-11T22:00:00Z"), nextClockChange(late, timestamp("2026-07-11T12:00:00Z"), clock))
+        assertEquals(
+            timestamp("2026-07-11T22:00:00Z"),
+            NextClockChange.of(late, timestamp("2026-07-11T12:00:00Z"), clock),
+        )
     }
 }

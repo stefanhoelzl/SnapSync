@@ -5,6 +5,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.request.CreateRequest
+import app.snapsync.presentation.RenameRequests.answerTo
 import app.snapsync.query.RequestStatus
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -26,9 +27,11 @@ internal class CreateFlow(
      * gate a scanned invite does. Permission is not consulted here — a missing grant surfaces afterward. The in-flight
      * and failure outcomes arrive back through the creation status; nothing is reduced here.
      *
-     * [startsAt] and [endsAt] arrive as the screen's **local** wall-clock picks and are converted here, through the same
+     * [startsAt] and [endsAt] arrive as the screen's **local** wall-clock picks and are converted here, through the
+     * same
      * [CutoffFormatter] the join surface uses — so the app has exactly one origin of "now" and one local→UTC
-     * conversion, and `:ui:screens` stays free of any clock or timezone knowledge. [openUntil] is the day guests may join
+     * conversion, and `:ui:screens` stays free of any clock or timezone knowledge. [openUntil] is the day guests may
+     * join
      * until, for an event created after its end (the back-dated sheet's choice); `null` otherwise.
      */
     fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime, openUntil: OpenUntil? = null) =

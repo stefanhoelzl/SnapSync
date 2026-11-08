@@ -1,5 +1,6 @@
 package app.snapsync.data.crypto
 
+import app.snapsync.data.crypto.UploadSealing.Companion.held
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.FileBinding
@@ -10,8 +11,8 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.KeyPresence
 import app.snapsync.domain.event.OpenFailures
 import app.snapsync.domain.event.OpenVerdict
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.Files
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -102,6 +103,27 @@ class DownloadOpening(
         reported(counted, resource.source, why)
         return OpenAnswer.NotOpened
     }
+
+    /**
+     * A lost key is the membership's state, not this file's fault: the joined screen says so, and nothing is counted.
+     */
+    private suspend fun keyless(): OpenAnswer = OpenAnswer.NotOpened.also {
+        log.w("an encrypted download was not opened: no event key is kept")
+    }
+
+    private suspend fun reported(failures: OpenFailures, source: DeviceId, why: String) = when (failures.report) {
+        OpenFailures.Report.ONCE -> log.e(
+            "an encrypted download failed to open, again",
+            "failures" of failures.count,
+            "source" of source,
+            "why" of why,
+        )
+        OpenFailures.Report.QUIETLY -> log.w(
+            "an encrypted download did not open; it is downloaded again",
+            "attempt" of failures.count,
+            "why" of why,
+        )
+    }
 }
 
 /** Where a download lands, and so whether it must be opened before it is staged. */
@@ -145,22 +167,3 @@ private class Resource(val landed: Landing.Sealed, val source: DeviceId, val ass
 }
 
 private val log = Log("DownloadOpening")
-
-/** A lost key is the membership's state, not this file's fault: the joined screen says so, and nothing is counted. */
-private suspend fun keyless(): OpenAnswer = OpenAnswer.NotOpened.also {
-    log.w("an encrypted download was not opened: no event key is kept")
-}
-
-private suspend fun reported(failures: OpenFailures, source: DeviceId, why: String) = when (failures.report) {
-    OpenFailures.Report.ONCE -> log.e(
-        "an encrypted download failed to open, again",
-        "failures" of failures.count,
-        "source" of source,
-        "why" of why,
-    )
-    OpenFailures.Report.QUIETLY -> log.w(
-        "an encrypted download did not open; it is downloaded again",
-        "attempt" of failures.count,
-        "why" of why,
-    )
-}

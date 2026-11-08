@@ -7,8 +7,8 @@ import app.snapsync.domain.album.AlbumChoice
 import app.snapsync.format.LegacyMembership
 import app.snapsync.format.LegacyMembershipDecode
 import app.snapsync.format.LegacyMembershipText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files

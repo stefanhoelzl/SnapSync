@@ -26,6 +26,14 @@ abstract class Sequence<R>(key: String, yieldsToJoin: Boolean = false) : SingleF
     abstract suspend fun pass(on: Run): R
 
     final override suspend fun passFor(asked: Any?, on: Run): R = pass(on)
+
+    companion object {
+        /** The pass's result, or [cut] for a pass that ended without one — what a waiter reads a cut pass as. */
+        fun <R> Pass<R>.orIfCut(cut: R): R = when (this) {
+            is Pass.Completed -> result
+            Pass.Cut -> cut
+        }
+    }
 }
 
 /**
@@ -51,10 +59,4 @@ sealed interface Pass<out R> {
 
     /** The pass ended without a result — the process is going away, or the waiter's own time was up first. */
     data object Cut : Pass<Nothing>
-}
-
-/** The pass's result, or [cut] for a pass that ended without one — what a waiter reads a cut pass as. */
-fun <R> Pass<R>.orIfCut(cut: R): R = when (this) {
-    is Pass.Completed -> result
-    Pass.Cut -> cut
 }

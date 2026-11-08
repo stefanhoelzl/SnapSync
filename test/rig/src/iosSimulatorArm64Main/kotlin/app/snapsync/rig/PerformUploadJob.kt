@@ -3,8 +3,8 @@
 package app.snapsync.rig
 
 import app.snapsync.gallery.PhotoKitResource
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ios.upload.SimulatorUploadJobs
 import app.snapsync.levers.PerformedJob
 import app.snapsync.levers.PlayedJob

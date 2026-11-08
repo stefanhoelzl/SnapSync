@@ -84,9 +84,9 @@ import app.snapsync.presentation.PlatformCommands
 import app.snapsync.presentation.RequestStatusFlows
 import app.snapsync.presentation.ScreenQueries
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.presentation.UserCommand
 import app.snapsync.presentation.UserCommands
-import app.snapsync.presentation.onIntent
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
@@ -221,7 +221,7 @@ internal class ContainerRig(
             ),
         ),
         scope = scope,
-        cutoffFormatter = CutoffFormatter(now = { clock.instant }, zone = TimeZone.UTC),
+        cutoffFormatter = CutoffFormatter(now = instants({ clock.instant }), zone = TimeZone.UTC),
         commands = UserCommands(
             inviteOpened = command { _: InviteLinkVerdict -> invites.value = null },
             leave = command { _: Unit ->
@@ -312,7 +312,7 @@ internal fun ComposeUiTest.show(rig: ContainerRig) {
         CompositionLocalProvider(LocalReduceMotion provides true) {
             val state = rig.collectScreen()
             WithoutKeyboardInsets {
-                StatusScreen(state = state, dateFormats = testDates, actions = statusActions(rig.host::onIntent))
+                StatusScreen(state = state, dateFormats = testDates, actions = statusActions { rig.host.onIntent(it) })
             }
         }
     }

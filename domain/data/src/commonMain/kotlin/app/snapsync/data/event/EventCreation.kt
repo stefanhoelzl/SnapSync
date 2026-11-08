@@ -1,7 +1,7 @@
 package app.snapsync.data.event
 
 import app.snapsync.data.backend.BackendGateway
-import app.snapsync.data.backend.faultOf
+import app.snapsync.data.backend.ServiceFaults
 import app.snapsync.domain.event.CreateResult
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.IdentifiedKey
@@ -52,6 +52,8 @@ class EventCreation(private val gateway: BackendGateway) {
         CreateEventReply.InvalidWindow -> CreateResult.InvalidWindow
         CreateEventReply.InvalidName, is Invalid -> CreateResult.InvalidName
         Unauthorized -> CreateResult.Unverified
-        is ClientError, is ServerIssue, is NoAnswer -> CreateResult.Failed(faultOf(reply) ?: ServiceFault.UNREACHABLE)
+        is ClientError, is ServerIssue, is NoAnswer -> CreateResult.Failed(
+            ServiceFaults.of(reply) ?: ServiceFault.UNREACHABLE,
+        )
     }
 }

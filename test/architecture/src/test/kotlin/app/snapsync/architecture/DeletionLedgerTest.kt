@@ -585,6 +585,10 @@ class DeletionLedgerTest {
             if (File(repoRoot, coldBoot).exists()) {
                 add("JvmRoot" + "BootsColdTest (an eager graph has no warm or cold — phase 5)")
             }
+            // The composition seam gate pinned every function-typed field of the bundles and every function-typed constructor
+            // parameter the composition built; detekt's NoFunctionTypes refuses both in every core module now.
+            val seam = "test/architecture/src/test/kotlin/app/snapsync/architecture/Composition" + "SeamTest.kt"
+            if (File(repoRoot, seam).exists()) add("Composition" + "SeamTest (NoFunctionTypes holds it — phase 5)")
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
     }

@@ -50,6 +50,8 @@ import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.InboundImplementation
+import app.snapsync.presentation.JoinGateRules.details
+import app.snapsync.presentation.Switches.mobileData
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.RequestStatuses
 import app.snapsync.query.ScreenLookup
@@ -96,7 +98,10 @@ internal fun joinDetails(load: suspend (String) -> JoinDetails): ScreenLookup<In
 internal val unanswered: ScreenLookup<InviteLink, JoinDetails> =
     joinDetails { JoinDetails.Unanswered(ServiceFault.UNREACHABLE) }
 
-/** The event the server serves for an invite: [name] over `[startsAt, endsAt]`, found and not deleted unless [completed]. */
+/**
+ * The event the server serves for an invite: [name] over `[startsAt, endsAt]`, found and not deleted unless
+ * [completed].
+ */
 internal fun found(
     name: String,
     startsAt: EventStart,
@@ -194,7 +199,9 @@ internal class TestCommands(
     /** Trying the membership read again is answered at once, or once [readMayAnswer] completes when a test sets it. */
     var readMayAnswer: CompletableDeferred<Unit>? = null
 
-    /** What the door does as each request is handed to it, before its work runs — a throw there is the firing intent's. */
+    /**
+     * What the door does as each request is handed to it, before its work runs — a throw there is the firing intent's.
+     */
     var handedOver: (Any) -> Unit = {}
 
     /** Where this door's requests are answered — the statuses a host built over it reads. */

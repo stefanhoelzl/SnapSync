@@ -2,6 +2,8 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
+import app.snapsync.presentation.ShownFacts.eventTiming
+import app.snapsync.presentation.ShownFacts.timeLeftOf
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.TimeLeft
 import kotlin.test.Test

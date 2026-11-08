@@ -9,6 +9,7 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteText
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.format.InviteLinkText
+import app.snapsync.query.encryption.EventKeyQuery.Companion.presenceOf
 import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +33,24 @@ class EventKeyQuery(
     val presence: StateFlow<KeyPresence> = PresenceFlow(membership, keys)
 
     override fun invite(): InviteText? = inviteOf(membership.state.value, keys.state.value)
+
+    private fun inviteOf(read: MembershipRead, fact: KeyFact): InviteText? = read.held()?.let { joined ->
+        when (joined.event.encryption) {
+            Encryption.Plain -> InviteLinkText.format(InviteLink(joined.event.id, null))
+            is Encryption.Encrypted -> (KeyPresence.of(joined, fact) as? KeyPresence.Held)
+                ?.let { InviteLinkText.format(InviteLink(joined.event.id, it.key.key)) }
+        }
+    }
+
+    companion object {
+        /** What the screen reads of the joined event's key, from the membership [read] and the store's [fact]. */
+        internal fun presenceOf(read: MembershipRead, fact: KeyFact): KeyPresence = KeyPresence.of(read.held(), fact)
+
+        private fun MembershipRead.held() = when (this) {
+            is MembershipRead.Joined -> membership
+            is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
+        }
+    }
 }
 
 /**
@@ -41,21 +60,6 @@ class EventKeyQuery(
  */
 interface InviteRead {
     fun invite(): InviteText?
-}
-
-private fun presenceOf(read: MembershipRead, fact: KeyFact): KeyPresence = KeyPresence.of(read.held(), fact)
-
-private fun inviteOf(read: MembershipRead, fact: KeyFact): InviteText? = read.held()?.let { joined ->
-    when (joined.event.encryption) {
-        Encryption.Plain -> InviteLinkText.format(InviteLink(joined.event.id, null))
-        is Encryption.Encrypted -> (KeyPresence.of(joined, fact) as? KeyPresence.Held)
-            ?.let { InviteLinkText.format(InviteLink(joined.event.id, it.key.key)) }
-    }
-}
-
-private fun MembershipRead.held() = when (this) {
-    is MembershipRead.Joined -> membership
-    is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
 }
 
 /**

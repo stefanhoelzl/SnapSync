@@ -7,6 +7,7 @@ import app.snapsync.domain.request.OwnPage
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.presentation.ShownFacts.timeLeftOf
 import app.snapsync.ui.state.AppLink
 import app.snapsync.ui.state.EventTiming
 import app.snapsync.ui.state.NetworkNotice
@@ -60,23 +61,25 @@ internal val AppLink.page: OwnPage
         AppLink.PRIVACY_POLICY -> OwnPage.PRIVACY_POLICY
     }
 
-/** [span] floored to its largest whole unit. */
-internal fun timeLeftOf(span: Duration): TimeLeft = when {
-    span >= 1.days -> TimeLeft.Days(span.inWholeDays.toInt())
-    span >= 1.hours -> TimeLeft.Hours(span.inWholeHours.toInt())
-    span >= 1.minutes -> TimeLeft.Minutes(span.inWholeMinutes.toInt())
-    else -> TimeLeft.UnderAMinute
-}
+object ShownFacts {
+    /** [span] floored to its largest whole unit. */
+    internal fun timeLeftOf(span: Duration): TimeLeft = when {
+        span >= 1.days -> TimeLeft.Days(span.inWholeDays.toInt())
+        span >= 1.hours -> TimeLeft.Hours(span.inWholeHours.toInt())
+        span >= 1.minutes -> TimeLeft.Minutes(span.inWholeMinutes.toInt())
+        else -> TimeLeft.UnderAMinute
+    }
 
-/**
- * The timing of an event bounded by [startsAt] and [endsAt] at [now]. The start is inclusive (the event has
- * begun AT its start) and so is the end: an event is [EventTiming.Ended] only once `now` is past [endsAt],
- * the same comparison the ended marker always made.
- */
-fun eventTiming(startsAt: EventStart, endsAt: EventEnd, now: Timestamp): EventTiming {
-    return when {
-        startsAt.at > now -> EventTiming.Upcoming(timeLeftOf(startsAt.at - now))
-        endsAt.at < now -> EventTiming.Ended
-        else -> EventTiming.Running(timeLeftOf(endsAt.at - now))
+    /**
+     * The timing of an event bounded by [startsAt] and [endsAt] at [now]. The start is inclusive (the event has
+     * begun AT its start) and so is the end: an event is [EventTiming.Ended] only once `now` is past [endsAt],
+     * the same comparison the ended marker always made.
+     */
+    fun eventTiming(startsAt: EventStart, endsAt: EventEnd, now: Timestamp): EventTiming {
+        return when {
+            startsAt.at > now -> EventTiming.Upcoming(timeLeftOf(startsAt.at - now))
+            endsAt.at < now -> EventTiming.Ended
+            else -> EventTiming.Running(timeLeftOf(endsAt.at - now))
+        }
     }
 }
