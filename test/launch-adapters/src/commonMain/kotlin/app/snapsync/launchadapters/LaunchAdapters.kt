@@ -2,7 +2,7 @@
 
 package app.snapsync.launchadapters
 
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.composition.extension.ExtensionDevicePorts
 import app.snapsync.inbound.Answered
 import app.snapsync.inbound.CompositionOnly

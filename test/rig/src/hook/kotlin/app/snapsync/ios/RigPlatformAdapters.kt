@@ -8,8 +8,7 @@
 package app.snapsync.ios
 
 import app.snapsync.background.IosWake
-import app.snapsync.compose.AppDevicePorts
-import app.snapsync.compose.pushHandlers
+import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.contract.AppPush
 import app.snapsync.contract.appDeviceContracts
@@ -142,7 +141,7 @@ private fun iosHooks(launch: RigLaunch) = RigHooks(
                     adapter = SnapSyncRoot.pushNotifications,
                     composed = { SnapSyncRoot.ports.pushNotifications.value },
                     // The rig plays the composition here: the app's own handlers, handed back to its adapter.
-                    appHandlers = { SnapSyncRoot.app.pushHandlers() },
+                    appHandlers = { SnapSyncRoot.app.pushHandlers },
                 ),
             ),
     ),

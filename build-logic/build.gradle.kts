@@ -80,6 +80,10 @@ gradlePlugin {
             id = "snapsync.wire"
             implementationClass = "app.snapsync.buildlogic.wire.WirePlugin"
         }
+        register("archiveNames") {
+            id = "snapsync.archive-names"
+            implementationClass = "app.snapsync.buildlogic.ArchiveNamesPlugin"
+        }
         register("layer") {
             id = "snapsync.layer"
             implementationClass = "app.snapsync.buildlogic.LayerPlugin"

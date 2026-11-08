@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.compose.AppCore
+import app.snapsync.composition.app.AppGraph
 import app.snapsync.contracts.EntryDriver
 import app.snapsync.contracts.InAppContract
 import app.snapsync.domain.process.ProcessMetricReport
@@ -42,7 +42,7 @@ private val log = Logger.withTag("rig")
  */
 fun rigServices(
     launch: RigLaunch,
-    core: () -> AppCore,
+    core: () -> AppGraph,
     host: () -> StatusContainerHost,
     photoAccess: PhotoLibraryPermission,
     /** The app's OWN process-metric handler, so a synthetic report drives the path the OS drives. */
@@ -57,7 +57,7 @@ fun rigServices(
     world.servedServices(
         osServices,
         hooks.world.acts,
-        reconcileUploads = { core().reconcileUploaders() },
+        reconcileUploads = { core().uploaderPinMoved.followed() },
     ) +
         world.servedHostServices(
             listOf(
@@ -104,7 +104,7 @@ fun rigServices(
  * The photo library's verbs: PhotoKit's where the library is real, the mocked library's where the launch adapters mock
  * it — whose seed and read the JVM host's are, and which no PhotoKit wipe or camera file reaches.
  */
-private fun photoKitGallery(launch: RigLaunch, core: () -> AppCore, photoAccess: PhotoLibraryPermission) =
+private fun photoKitGallery(launch: RigLaunch, core: () -> AppGraph, photoAccess: PhotoLibraryPermission) =
     if (launch.world.isMocked(MockedSystem.LIBRARY)) {
         galleryService(
             seed = honoured { n, kind -> launch.world.seedMockLibrary(n, kind) },
@@ -130,7 +130,7 @@ private fun photoKitGallery(launch: RigLaunch, core: () -> AppCore, photoAccess:
     }
 
 /** The gallery read, bound to the app's own photos rather than a second walk. */
-private fun photoKitGalleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> GalleryView =
+private fun photoKitGalleryReader(core: () -> AppGraph): suspend (String?, Boolean, Boolean) -> GalleryView =
     { cutoff, resources, includesUpload ->
         val reader = GalleryReport(
             photos = core().ownPhotos,

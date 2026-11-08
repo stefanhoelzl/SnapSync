@@ -33,12 +33,12 @@ import app.snapsync.android.work.AndroidBackgroundTime
 import app.snapsync.android.work.AndroidUpload
 import app.snapsync.android.work.AndroidWake
 import app.snapsync.annotations.PlatformEntry
-import app.snapsync.compose.AppCore
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
+import app.snapsync.composition.app.AppGraph
+import app.snapsync.composition.app.ComposedApp
+import app.snapsync.composition.app.composeApp
 import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.dates.DateLocales
-import app.snapsync.host.ComposedApp
-import app.snapsync.host.snapSyncHost
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.metrics.NoProcessMetrics
 import app.snapsync.presentation.CutoffFormatter
@@ -55,7 +55,7 @@ import kotlinx.coroutines.SupervisorJob
 
 /**
  * **The Android composition root** (`docs/architecture.md`, "The composition layer"): ONE per process, built in
- * `Application.onCreate` — the shared host composition (`snapSyncHost`, whose first act sets the process up) over the
+ * `Application.onCreate` — the shared host composition (`composeApp`, whose first act sets the process up) over the
  * ports this build's adapter set hands back ([platformAdapters]) and nothing else. Android runs the activity,
  * the workers and the push service in this one process, so they are all entry ports on this one
  * composition; there is no second root.
@@ -181,7 +181,7 @@ class SnapSyncRoot(internal val application: Application) {
 
     /** The core AND the status host over it, from the shared host composition. */
     private val composed: ComposedApp by lazy {
-        snapSyncHost(
+        composeApp(
             scope = scope,
             lane = Dispatchers.Main,
             // The CPU lane: presentation reduces on the platform's pool, off the composition lane.
@@ -193,7 +193,7 @@ class SnapSyncRoot(internal val application: Application) {
     }
 
     /** The composed core. `internal` for a rig build's channel, which reaches it as a thunk. */
-    internal val app: AppCore get() = composed.core
+    internal val app: AppGraph get() = composed.core
 
     /** The status host, assembled on first touch. `internal` for a rig build's channel. */
     internal val host: StatusContainerHost get() = composed.host

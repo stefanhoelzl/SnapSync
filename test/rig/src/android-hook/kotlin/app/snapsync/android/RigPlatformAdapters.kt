@@ -1,6 +1,6 @@
 package app.snapsync.android
 
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.rig.androidRigLaunch
 import app.snapsync.rig.start
 

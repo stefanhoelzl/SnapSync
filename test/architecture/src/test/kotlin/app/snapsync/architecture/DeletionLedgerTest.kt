@@ -511,7 +511,7 @@ class DeletionLedgerTest {
                 files,
                 pre,
             ).forEach { add("a lane-decorated door in $it (the command door's and the lookups' — 4.9)") }
-            val decorators = """fun (<T> )?(AppCore\.)?(awaitingOn""" + "CoreLane|detachedOn" + "CoreLane|handed" +
+            val decorators = """fun (<T> )?(AppGraph\.)?(awaitingOn""" + "CoreLane|detachedOn" + "CoreLane|handed" +
                 "Off|userCommands" + "For|userQueries" + "For|joinDetails" + "For)\\b"
             declared(
                 files,
@@ -526,7 +526,7 @@ class DeletionLedgerTest {
             declared(files, creation).forEach {
                 add("the create before its request in $it (a create is answered on its status — 4.9)")
             }
-            declared(files, """fun AppCore\.on""" + "GrantChanged\\b").forEach {
+            declared(files, """fun AppGraph\.on""" + "GrantChanged\\b").forEach {
                 add("a launched grant follower in $it (an entry point — 4.9)")
             }
             declared(files, """fun on""" + "OpenUrl\\b").forEach {
@@ -559,6 +559,30 @@ class DeletionLedgerTest {
             }
             if (File(repoRoot, "domain/" + "feature").exists()) {
                 add("domain/feature (the last feature became a use case; the zone went with it — 4.10)")
+            }
+        }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
+     * The old zones (phase 5): `model/`, `services/`, `compose/` and `host/` are gone, and with them the app's lazily built
+     * composition — `AppCore` and its `*Layers`, `snapSyncApp`, `snapSyncHost`, `ComposedApp`'s lambda — whose `by lazy`
+     * cells decided, member by member, what a launch built. The app is `AppGraph` over `composeApp` now, eager and inert,
+     * and the status host is assembled by `AssembleHost` when a person reaches the app. `JvmRootBootsColdTest` retired
+     * with the lazy graph: it held a warm JVM root apart from a cold phone, and an eager graph has no warm or cold.
+     */
+    @Test
+    fun `the old zones and the lazy app composition stay dead`() {
+        val files = sources()
+        val resurrections = buildList {
+            listOf("model", "services", "compose", "host").filter { File(repoRoot, "domain/" + it).exists() }
+                .forEach { add("domain/$it (the layers' — phase 5)") }
+            val retired = """\b(class App""" + "Core|fun snapSync" + "App|fun snapSync" + "Host|class App" + "Services|" +
+                "class App" + "Work|class App" + "Uploader|class Receiving" + "Layers|class Album" + "Layers)\\b"
+            declared(files, retired).forEach { add("the lazy app composition in $it (`AppGraph` — phase 5)") }
+            val coldBoot = "test/architecture/src/test/kotlin/app/snapsync/architecture/JvmRoot" + "BootsColdTest.kt"
+            if (File(repoRoot, coldBoot).exists()) {
+                add("JvmRoot" + "BootsColdTest (an eager graph has no warm or cold — phase 5)")
             }
         }
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")

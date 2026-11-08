@@ -135,8 +135,6 @@ class ModuleSetTest {
         // it declares it with `implementation()` — an `api()` edge would republish the zone to every
         // downstream consumer, dissolving the boundary the split exists to create. The one edge outside a zone's law is
         // its tests' `:test:verifies`, inside `commonTest.dependencies`: an annotation that depends on nothing.
-        // MIGRATING (`docs/architecture.md`, "The core and its zones"): the old zones depend on the domain layer while
-        // their types move into it — never the reverse — and phase 5 deletes them with their edges.
         val permitted = mapOf(
             // The domain layer: values and pure policy, depending on nothing.
             "domain" to emptySet<String>(),
@@ -161,17 +159,11 @@ class ModuleSetTest {
             // request-keyed statuses — over data and the domain, writing nothing; the invite in its link's text.
             "query" to setOf(":domain:domain", ":domain:data", ":domain:inbound", ":domain:format"),
             // The entry points order the work of each trigger: the runtime's steps over the use cases, the data layer
-            // and the queries.
+            // and the queries — and host assembly, a person's start, which builds the status host (presentation) and
+            // shows the screen's states (`:ui:state`).
             "entrypoints" to setOf(
                 ":domain:inbound", ":domain:scheduling", ":domain:domain", ":domain:ports", ":domain:application",
-                ":domain:data", ":domain:query",
-            ),
-            // `:ui:state` because the app's `Ui` port is bound to the screen's vocabulary in `AppPorts`.
-            // MIGRATING: the app's composition builds the composition layer's shared half until phase 5 moves it there.
-            "compose" to setOf(
-                ":domain:domain", ":domain:ports", ":domain:inbound",
-                ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:data", ":domain:application",
-                ":domain:format", ":domain:query", ":domain:composition:process",
+                ":domain:data", ":domain:query", ":domain:presentation", ":ui:state",
             ),
             // The composition layer (`docs/architecture.md`, "The composition layer"), wiring only. Its shared half: what
             // every process wires — every layer below presentation, and no old zone.
@@ -185,18 +177,17 @@ class ModuleSetTest {
                 ":domain:composition:process", ":domain:domain", ":domain:inbound", ":domain:ports",
                 ":domain:scheduling", ":domain:data", ":domain:application", ":domain:entrypoints",
             ),
+            // The app's half: the shared half, every layer, presentation and the screen's vocabulary its `Ui` port is bound
+            // to — and no old zone.
+            "composition/app" to setOf(
+                ":domain:composition:process", ":domain:domain", ":domain:inbound", ":domain:ports",
+                ":domain:scheduling", ":domain:data", ":domain:application", ":domain:query", ":domain:entrypoints",
+                ":domain:presentation", ":domain:format", ":ui:state",
+            ),
             // The UI-state reduction: the domain's vocabulary, the query layer it reads, the inbound kinds its command door
             // fires (`UserCommand`), and the screen's vocabulary it reduces into. `:ui:state` references nothing
             // project-internal, so none of the four hands it a platform.
             "presentation" to setOf(":domain:domain", ":domain:query", ":domain:inbound", ":ui:state"),
-            // The shared host composition: the one zone that sees both the composition zone and presentation.
-            "host" to setOf(
-                ":domain:domain", ":domain:ports", ":domain:compose",
-                ":domain:presentation",
-                ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":ui:state", ":domain:query",
-                // MIGRATING: the process ports the app's ports carry, whose build the host's facts read.
-                ":domain:composition:process",
-            ),
         )
         val problems = permitted.flatMap { (zone, allowed) ->
             val build = File(repoRoot, "domain/$zone/build.gradle.kts")
@@ -244,14 +235,14 @@ class ModuleSetTest {
 
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
-            // The core's zones and the host (`docs/architecture.md`, "Zones inside the core").
+            // The core's layers (`docs/architecture.md`, "The layers").
             ":domain:domain", ":domain:format", ":domain:wire", ":domain:ports",
-            ":domain:presentation", ":domain:compose", ":domain:host",
+            ":domain:presentation",
             // The layers the core's work runs on (`docs/patterns.md`): the deliveries, the runtime, the entry points.
             ":domain:inbound", ":domain:scheduling", ":domain:entrypoints", ":domain:data", ":domain:application",
             ":domain:query",
             // The composition layer: the extension's half withholds everything the app composes from the extension.
-            ":domain:composition:process", ":domain:composition:extension",
+            ":domain:composition:process", ":domain:composition:extension", ":domain:composition:app",
             // `:ui:state` withholds the domain from the screens: they see the screen's vocabulary, and no domain
             // type resolves there.
             ":ui:state", ":ui:screens", ":ui:components",

@@ -1,5 +1,5 @@
 // `:app:android` — the Android app's composition root, what `:app:ios` is to the phone: an `Application` that composes
-// the app once, in its one process (`startProcess`, then `snapSyncHost` — `SnapSyncRoot`), and the activity that
+// the app once, in its one process (`startProcess`, then `composeApp` — `SnapSyncRoot`), and the activity that
 // pulls the screen. Wiring only, gated as a shell (`detektAppShell`, `KotlinShellGuardTest`); no test source set.
 //
 // A build WITHOUT `-Psnapsync.rig=true` composes every real Android adapter (`src/prod`), with no crash reporter until
@@ -161,11 +161,10 @@ dependencies {
     implementation(project(":domain:inbound"))
     // The root scope's handler (`RootScopeFailures`), the parent of the runtime's.
     implementation(project(":domain:scheduling"))
-    implementation(project(":domain:compose"))
+    // The app's composition: its graph and the status host over it (`composeApp`).
+    implementation(project(":domain:composition:app"))
     implementation(project(":domain:composition:process"))
     implementation(project(":domain:presentation"))
-    // The shared host composition: the core and the status host over it (`snapSyncHost`).
-    implementation(project(":domain:host"))
     implementation(project(":adapter:generic:app"))
     implementation(project(":adapter:android"))
     // The screen's date formatting the root builds over the `DateFormatting` port, for the UI adapter (`ScreenDates`).

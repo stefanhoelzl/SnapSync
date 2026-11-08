@@ -40,6 +40,8 @@ plugins {
     alias(libs.plugins.detekt)
     // Every detekt task this build runs, and the project's own rules on each (`DetektTiersPlugin`).
     id("snapsync.detekt-tiers")
+    // Every module's archives named after its whole path, so no two modules' jars collide (`ArchiveNamesPlugin`).
+    id("snapsync.archive-names")
     // Every module's coverage, described in the `coverage { }` block below (`docs/architecture.md`, "Coverage").
     id("snapsync.coverage")
     alias(libs.plugins.dependency.analysis)
@@ -78,7 +80,7 @@ subprojects {
 // `alsoCoveredBy` — tests a placement rule put elsewhere:
 //  - `:adapter:generic:mock` and `:test:feature` hold the zones' service- and mock-driven suites (`docs/testing.md`,
 //    "Feature tests compose real services over port mocks"), which a `:domain:*` build file may not name;
-//  - `:test:integration` covers the WIRING — `:domain:compose`, the composition layer, `:domain:host`, `:app:jvm` —
+//  - `:test:integration` covers the WIRING — the composition layer and `:app:jvm` —
 //    and the entry points: "The composition layer" says the wiring graph is not unit-tested and IS smoke-tested by
 //    the integration surface, and the entry points order each trigger's steps and decide nothing (`docs/patterns.md`,
 //    "Entry points"), while the integration surface delivers every trigger from the operating system's side. It
@@ -239,14 +241,6 @@ coverage {
         unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
         integration(instructions = 100, branches = 100)
     }
-    ":domain:compose" {
-        unit(alsoCoveredBy = listOf(":test:integration"))
-        integration(instructions = 100, branches = 100)
-    }
-    ":domain:host" {
-        unit(alsoCoveredBy = listOf(":test:integration"))
-        integration(instructions = 100, branches = 100)
-    }
     // The composition layer: wiring, not unit-tested by law ("The composition layer") — smoke-tested by the integration
     // surface, which composes both processes over the JVM root, and driven by the mocks' suites: the process's start
     // (`ProcessCompositionTest`) and the upload extension over its entry port (`ExtensionEntryTest`).
@@ -256,6 +250,10 @@ coverage {
     }
     ":domain:composition:extension" {
         unit(alsoCoveredBy = listOf(":test:integration", ":adapter:generic:mock"))
+        integration(instructions = 100, branches = 100)
+    }
+    ":domain:composition:app" {
+        unit(alsoCoveredBy = listOf(":test:integration"))
         integration(instructions = 100, branches = 100)
     }
     ":domain:presentation" {

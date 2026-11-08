@@ -72,10 +72,8 @@ kotlin {
             api(project(":domain:inbound"))
             // The root scope's handler (`RootScopeFailures`), the parent of the runtime's.
             implementation(project(":domain:scheduling"))
-            api(project(":domain:compose"))
+            api(project(":domain:composition:app"))
             api(project(":domain:composition:process"))
-            // The shared host composition: the core and the status host over it (`snapSyncHost`).
-            implementation(project(":domain:host"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:state"))
             // The screen's date formatting the root builds over the `DateFormatting` port, for the UI adapter.

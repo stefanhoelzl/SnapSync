@@ -28,10 +28,10 @@ internal object ZoneGates {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    /** The core's zones and layers and the host, each its own Gradle module under `domain/`. */
+    /** The core's layers, each its own Gradle module under `domain/`. */
     val zoneTokens = listOf(
-        "model", "domain", "inbound", "ports", "scheduling", "services", "entrypoints", "presentation",
-        "compose", "host", "data", "application", "format", "query", "composition/process", "composition/extension",
+        "domain", "inbound", "ports", "scheduling", "entrypoints", "presentation", "data", "application", "format",
+        "query", "composition/process", "composition/extension", "composition/app",
     )
 
     /** The core's tree root. Each zone is its own module beneath it: `domain/<zone>/`. */

@@ -2,7 +2,7 @@
 
 package app.snapsync.rig
 
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly

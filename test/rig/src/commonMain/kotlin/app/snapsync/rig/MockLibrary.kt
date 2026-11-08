@@ -88,7 +88,10 @@ private suspend fun MockWorld.mockOwnPhotos(): OwnPhotos {
     val library = device.library
     val clock = WallClock(device.clock.port())
     val selection = SelectionSnapshots()
-    selection.published(flowOf(library.selection.value?.let(::SelectionSnapshot)), beforePublish = {}).collect()
+    selection.published(
+        flowOf(library.selection.value?.let(::SelectionSnapshot)),
+        beforePublish = NothingWithheld,
+    ).collect()
     return OwnPhotos(
         library.port(),
         GalleryWalk(library.port(), clock),
@@ -116,3 +119,8 @@ internal fun foreignAsset(
 
 /** The app host's bulk-seed date: 2001-09-09, before any event can start. */
 private const val BULK_DATE = "2001-09-09T01:46:40Z"
+
+/** A publication nothing is withheld before: the rig's library reads publish as they are. */
+private object NothingWithheld : app.snapsync.data.sharing.BeforePublish {
+    override suspend fun before(selection: app.snapsync.data.sharing.SelectionState.Read) = Unit
+}

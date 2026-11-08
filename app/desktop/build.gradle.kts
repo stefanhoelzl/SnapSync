@@ -26,7 +26,7 @@ dependencies {
     implementation(project(":ui:components"))
     // The generic adapters (`KtorHttpTransport`, the system clock) the JVM root composes the app over.
     implementation(project(":adapter:generic:app"))
-    // The full-stack harness: the JVM root, whose app IS the shared `snapSyncHost` composition over the mocks.
+    // The full-stack harness: the JVM root, whose app IS the shared `composeApp` composition over the mocks.
     implementation(project(":app:jvm"))
     // The inspector's policy badge reads the library mock through the same gallery services the cycle composes.
     // The inspector's "forget the event key" lever addresses the key's slot, which the data layer names.

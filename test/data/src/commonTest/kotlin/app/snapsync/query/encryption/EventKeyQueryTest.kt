@@ -24,6 +24,7 @@ import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ports.StoredProtection
 import app.snapsync.testids.testEventId
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -51,12 +52,12 @@ class EventKeyQueryTest {
 
     @Test
     fun `no membership, or one that cannot be read, needs no key and offers none`() = runTest {
-        val query = EventKeyQuery(device.membership, keys, backgroundScope)
+        val query = EventKeyQuery(device.membership, keys)
         assertEquals(KeyPresence.NotNeeded, query.presence.value)
         assertNull(query.invite(), "no membership, no invite")
         val unreadable = MembershipRepository(SharedDatabase(DatabasesMock().port(), legacy = null))
         assertIs<MembershipRead.Unavailable>(unreadable.state.value)
-        assertEquals(KeyPresence.NotNeeded, EventKeyQuery(unreadable, keys, backgroundScope).presence.value)
+        assertEquals(KeyPresence.NotNeeded, EventKeyQuery(unreadable, keys).presence.value)
     }
 
     @Test
@@ -64,7 +65,7 @@ class EventKeyQueryTest {
         device.membership.enter(enrolled(encrypted()))
         device.membership.reload()
         keys.keep(KeyToKeep.Key(key), testEventId(EVENT))
-        val query = EventKeyQuery(device.membership, keys, backgroundScope)
+        val query = EventKeyQuery(device.membership, keys)
         assertEquals(key.key, assertIs<KeyPresence.Held>(query.presence.value).key.key)
         assertEquals(InviteLinkText.format(InviteLink(testEventId(EVENT), key.key)), query.invite(), "the whole invite")
 
@@ -86,12 +87,28 @@ class EventKeyQueryTest {
         device.membership.reload()
         secure.answers[EncryptionSlots.EVENT_KEY] =
             SecureStoreRead.Found(EventKeyText.encode(key.key), StoredProtection.BACKGROUND_READABLE)
-        val query = EventKeyQuery(device.membership, keys, backgroundScope)
+        val query = EventKeyQuery(device.membership, keys)
         assertEquals(KeyPresence.NotNeeded, query.presence.value)
         assertEquals(
             InviteLinkText.format(InviteLink(testEventId(EVENT), null)),
             query.invite(),
             "even with a key read",
         )
+    }
+
+    @Test
+    fun `the key's presence is followed while collected, and reads nothing as the query is built`() = runTest {
+        val query = EventKeyQuery(device.membership, keys)
+        assertEquals(listOf(KeyPresence.NotNeeded), query.presence.replayCache)
+        val seen = mutableListOf<KeyPresence>()
+        val following = launch { query.presence.collect { seen += it } }
+        runCurrent()
+        device.membership.enter(enrolled(encrypted()))
+        device.membership.reload()
+        keys.keep(KeyToKeep.Key(key), testEventId(EVENT))
+        runCurrent()
+        following.cancel()
+        assertEquals(KeyPresence.NotNeeded, seen.first())
+        assertEquals(key.key, assertIs<KeyPresence.Held>(seen.last()).key.key)
     }
 }

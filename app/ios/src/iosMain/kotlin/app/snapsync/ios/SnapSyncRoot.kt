@@ -4,9 +4,11 @@ import app.snapsync.annotations.PlatformEntry
 import app.snapsync.attest.IosDeviceIntegrity
 import app.snapsync.background.IosBackgroundTime
 import app.snapsync.background.IosWake
-import app.snapsync.compose.AppCore
-import app.snapsync.compose.AppDevicePorts
-import app.snapsync.compose.AppPorts
+import app.snapsync.composition.app.AppDevicePorts
+import app.snapsync.composition.app.AppGraph
+import app.snapsync.composition.app.AppPorts
+import app.snapsync.composition.app.ComposedApp
+import app.snapsync.composition.app.composeApp
 import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.config.IosBuildInfo
 import app.snapsync.config.osCarriesOsDrivenUpload
@@ -19,8 +21,6 @@ import app.snapsync.download.IosDownload
 import app.snapsync.files.IosFiles
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
-import app.snapsync.host.ComposedApp
-import app.snapsync.host.snapSyncHost
 import app.snapsync.http.KtorHttpTransport
 import app.snapsync.identity.NoPlatformDeviceId
 import app.snapsync.inbound.Inbound
@@ -243,7 +243,7 @@ object SnapSyncRoot {
         // Power saving, battery, thermal state and Background App Refresh — read only for a bug report.
         deviceConditions = lazy { IosDeviceConditions() },
         // Plain HTTP over the platform's client, which every backend call goes through. The backend's protocol — its
-        // base, the declared version, the credential and its verdicts — is the core's gateway (`AppCore.exchange`).
+        // base, the declared version, the credential and its verdicts — is the core's gateway (`AppGraph.exchange`).
         http = lazy { KtorHttpTransport(darwinHttpClient()) },
         // The process's background time (`beginBackgroundTask`): what a push or a transfer wake holds across its own
         // work and its tail, and the only "time is up" those wakes get.
@@ -280,7 +280,7 @@ object SnapSyncRoot {
     /**
      * This process's per-process ports: its crash reporter, its log sinks and boot banner, its process metrics, its
      * files, its clock and its entry-point seam, and what the build is. The composition sets the process up from them
-     * as its FIRST act (`startProcess`, inside `snapSyncHost`) — its crash reporting before any other wiring can fail.
+     * as its FIRST act (`startProcess`, inside `composeApp`) — its crash reporting before any other wiring can fail.
      */
     private val processPorts: ProcessPorts by lazy {
         ProcessPorts(
@@ -321,7 +321,7 @@ object SnapSyncRoot {
     /**
      * The composed app graph (`docs/architecture.md`, "The composition layer"): this root
      * constructs the platform adapters and coordination lambdas as [AppPorts]; `snapSyncApp`
-     * composes the features. Every [AppCore] property is `by lazy`, so first-touch construction
+     * composes the features. Every [AppGraph] property is `by lazy`, so first-touch construction
      * timing matches the lazy web that used to live here — nothing resolves the device identity or
      * opens a protected store earlier than before (the locked-background-launch property).
      */
@@ -329,15 +329,15 @@ object SnapSyncRoot {
     // `-Psnapsync.rig=true` — can pass it as a thunk without anything being widened to `public`.
     // `internal` is module-wide and is NOT exported to the `SnapSyncKit` ObjC header, so no framework
     // surface changes and no production build can reach it from outside this module.
-    internal val app: AppCore get() = composed.core
+    internal val app: AppGraph get() = composed.core
 
     /**
      * The core AND the status host over it, from the shared host composition (`docs/architecture.md`, "The
      * composition layer"): this root supplies ports and nothing else. `by lazy`, and cheap to force — every
-     * [AppCore] property is itself `by lazy`, and host assembly happens only when [host] is first touched.
+     * [AppGraph] property is itself `by lazy`, and host assembly happens only when [host] is first touched.
      */
     private val composed: ComposedApp by lazy {
-        snapSyncHost(
+        composeApp(
             scope = scope,
             lane = compositionLane,
             // The CPU lane: presentation reduces on the platform's pool, off the composition lane.
@@ -563,8 +563,8 @@ object SnapSyncRoot {
         pushNotifications.deliverMessage(payload, completion)
 
     // The permission-grant subscriptions (upload-arm start + event-album ensure) live in `compose/`
-    // (`AppCore.installPermissionSubscriptions`) and are installed ONLY from the [host] assembly above — never on mere
-    // [AppCore] construction, so a cold background wake starts no producer off the StateFlow's replay. Both fire only
+    // (`AppGraph.installPermissionSubscriptions`) and are installed ONLY from the [host] assembly above — never on mere
+    // [AppGraph] construction, so a cold background wake starts no producer off the StateFlow's replay. Both fire only
     // on a *transition* to GRANTED; a membership entered while access was already granted is armed by the join's own
     // steps (`AfterJoin`).
 

@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.contracts.attest.SoftwareKeyIntegrity
 
 /** A simulator has no App Attest: every real adapter stands but the integrity service, a software key instead. */

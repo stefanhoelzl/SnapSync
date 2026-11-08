@@ -1,6 +1,6 @@
 package app.snapsync.rig
 
-import app.snapsync.compose.AppDevicePorts
+import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.contracts.attest.InMemoryKeyAttestation
 import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase

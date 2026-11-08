@@ -1,6 +1,6 @@
 package app.snapsync.architecture
 
-import app.snapsync.compose.AppPorts
+import app.snapsync.composition.app.AppPorts
 import app.snapsync.inbound.Answered
 import app.snapsync.inbound.Background
 import app.snapsync.inbound.Completion

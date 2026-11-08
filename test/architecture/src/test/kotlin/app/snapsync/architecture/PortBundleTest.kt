@@ -1,7 +1,7 @@
 package app.snapsync.architecture
 
-import app.snapsync.compose.AppDevicePorts
-import app.snapsync.compose.AppPorts
+import app.snapsync.composition.app.AppDevicePorts
+import app.snapsync.composition.app.AppPorts
 import app.snapsync.composition.extension.ExtensionDevicePorts
 import app.snapsync.composition.extension.ExtensionPorts
 import app.snapsync.composition.process.ProcessPorts

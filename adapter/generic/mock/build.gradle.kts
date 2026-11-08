@@ -41,9 +41,6 @@ kotlin {
             api(project(":domain:ports"))
             // The inbound kinds the event ports deliver through, and the completion handles.
             api(project(":domain:inbound"))
-            // A rig build's launch adapters hand a root back its `DevicePorts`, some swapped for mocks
-            // (`:test:launch-adapters`).
-            api(project(":domain:compose"))
             // The slots trust keeps its items under (`TrustSlots`): the keychain mock is seeded at the device-id slot,
             // and its persisted state names the slots it restores.
             implementation(project(":domain:data"))

@@ -40,10 +40,10 @@ class SelectionSnapshots {
      */
     fun published(
         changes: Flow<SelectionSnapshot?>,
-        beforePublish: suspend (SelectionState.Read) -> Unit,
+        beforePublish: BeforePublish,
     ): Flow<Unit> = changes.filterNotNull().map { change ->
         val read = SelectionState.Read(change.assets)
-        beforePublish(read)
+        beforePublish.before(read)
         latest.value = read
     }
 
@@ -93,4 +93,9 @@ sealed interface SelectionState {
 class SnapshotResources(private val assets: List<GalleryAssetResources>) : AssetResources {
     override suspend fun of(ids: Set<AssetId>): GalleryRead<List<GalleryAssetResources>> =
         GalleryRead.Read(assets.filter { it.asset.id.assetId() in ids })
+}
+
+/** What sees each selection before any reader can: what it withholds is withheld before a cycle could admit from it. */
+interface BeforePublish {
+    suspend fun before(selection: SelectionState.Read)
 }

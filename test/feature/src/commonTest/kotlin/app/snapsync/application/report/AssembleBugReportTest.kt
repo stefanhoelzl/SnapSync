@@ -11,6 +11,7 @@ import app.snapsync.data.process.FootprintReading
 import app.snapsync.data.receiving.DOWNLOADS_DB_NAME
 import app.snapsync.data.receiving.ReceivingCounts
 import app.snapsync.data.report.DeviceConditionsRead
+import app.snapsync.data.report.EnvironmentRead
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.store.LEDGER_DB_NAME
 import app.snapsync.data.trust.PresentedCertificate
@@ -41,6 +42,7 @@ import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.upload.LedgerState
 import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.feature.support.LEDGER_EVENT
+import app.snapsync.feature.support.NothingWithheld
 import app.snapsync.feature.support.TestLedger
 import app.snapsync.feature.support.membershipIn
 import app.snapsync.feature.support.receivingCounts
@@ -157,7 +159,9 @@ class AssembleBugReportTest {
         return AssembleBugReport(
             ids = ReportedIdsRead(membership, identity, BuildInfoMock(processId = "app.snapsync").port()),
             state = ReportState(
-                environment = environment,
+                environment = object : EnvironmentRead {
+                    override fun environment() = environment
+                },
                 membership = membership,
                 grant = grant,
                 osUploader = OsUploader(inMemoryExtensionRegistry(), UploaderSwitches(DevControlsMock().port()), grant),
@@ -520,7 +524,7 @@ class AssembleBugReportTest {
         )
 
         val twelve = SelectionSnapshot((1..12).map { LibraryAssets.photo("asset-$it") })
-        selection.published(flowOf(twelve), beforePublish = {}).collect()
+        selection.published(flowOf(twelve), beforePublish = NothingWithheld).collect()
         val dump = assembly(permission = LibraryGrant.LIMITED)(NOTE, SCREEN)
 
         assertEquals("12", dump.state[DiagnosticKeys.SELECTION_PHOTOS])

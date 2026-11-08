@@ -9,26 +9,27 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.InviteText
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.format.InviteLinkText
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * What the screen reads of the joined event's key: whether it is held, and the invite that carries it. It follows
- * the membership and the key slot as they are re-read at every entry, and never reads on its own. [scope] is the
- * process's: it keeps it following.
+ * the membership and the key slot as they are re-read at every entry, and never reads on its own — nor as it is built:
+ * the first read of either opens a store.
  */
 class EventKeyQuery(
     private val membership: MembershipRepository,
     private val keys: EventKeyStore,
-    scope: CoroutineScope,
 ) : InviteRead {
 
-    /** Whether the joined event's key is held. Only [KeyPresence.Lost] stops anything. */
-    val presence: StateFlow<KeyPresence> = combine(membership.state, keys.state, ::presenceOf)
-        .stateIn(scope, SharingStarted.Eagerly, presenceOf(membership.state.value, keys.state.value))
+    /**
+     * Whether the joined event's key is held — read when asked, followed when collected. Only [KeyPresence.Lost] stops
+     * anything.
+     */
+    val presence: StateFlow<KeyPresence> = PresenceFlow(membership, keys)
 
     override fun invite(): InviteText? = inviteOf(membership.state.value, keys.state.value)
 }
@@ -55,4 +56,23 @@ private fun inviteOf(read: MembershipRead, fact: KeyFact): InviteText? = read.he
 private fun MembershipRead.held() = when (this) {
     is MembershipRead.Joined -> membership
     is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
+}
+
+/**
+ * The key's presence over the membership's and the key slot's own state: its [value] read at the moment it is asked,
+ * and its changes followed only while collected — so building it reads neither store.
+ */
+@OptIn(ExperimentalForInheritanceCoroutinesApi::class)
+private class PresenceFlow(
+    private val membership: MembershipRepository,
+    private val keys: EventKeyStore,
+) : StateFlow<KeyPresence> {
+    override val value: KeyPresence get() = presenceOf(membership.state.value, keys.state.value)
+    override val replayCache: List<KeyPresence> get() = listOf(value)
+
+    // Run inside the membership's own collection, which never ends — and neither does the combination it starts, which
+    // follows the membership too: so this collection never ends either, as a StateFlow's must not.
+    override suspend fun collect(collector: FlowCollector<KeyPresence>): Nothing = membership.state.collect {
+        combine(membership.state, keys.state, ::presenceOf).distinctUntilChanged().collect(collector)
+    }
 }

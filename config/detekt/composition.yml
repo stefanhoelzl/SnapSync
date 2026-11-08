@@ -11,5 +11,9 @@ complexity:
   CognitiveComplexMethod:
     threshold: 1
   LongParameterList:
-    # A SIZE measure, not a decision: the upload graph takes each piece a process builds its own way (`UploadGraph`).
-    constructorThreshold: 17
+    # A SIZE measure, not a decision: the upload graph takes each piece a process builds its own way (`UploadGraph`),
+    # and a process's port bundle names every port it has (`AppDevicePorts`: 25). 17 → 26 in phase 5, when the app's
+    # bundles moved in from `compose/` (whose tier carried 47 for them, and is gone): FORCING — a bundle has no
+    # defaults, so every root fails to compile until it answers each port, and the extension's bundles are flat the
+    # same way; grouping the ports into sub-bundles only to pass this count would add a layer no reader needs.
+    constructorThreshold: 26

@@ -28,7 +28,7 @@ import kotlin.time.Instant
 
 /**
  * The control channel's **JVM host** (`docs/testing.md`, "One control protocol, served by two hosts"): the unchanged
- * [RigServer], over the app the JVM root composes (`:app:jvm`'s [JvmApp] — the same `snapSyncHost` the iOS root
+ * [RigServer], over the app the JVM root composes (`:app:jvm`'s [JvmApp] — the same `composeApp` the iOS root
  * calls) over the device as mocks ([JvmMocks]).
  *
  * A hook, not a second server. What this host adds is only what the iOS rig adds on its side: the composition lane,
@@ -206,7 +206,7 @@ class JvmRigHost private constructor(
                     rig.world.servedServices(
                         rig.host,
                         rig.threads.acts,
-                        reconcileUploads = { rig.app.composed.core.reconcileUploaders() },
+                        reconcileUploads = { rig.app.composed.core.uploaderPinMoved.followed() },
                     ) + rig.world.servedHostServices(jvmHostServices(rig, hooks), rig.threads.acts)
                 },
                 // The running launch's fact: the played OS may carry the upload extension from a relaunch on.
