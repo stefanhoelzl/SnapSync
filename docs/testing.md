@@ -86,7 +86,7 @@ Non-`commonTest` source sets that exist today:
 | `:adapter:generic:app` `jvmTest` + `:adapter:ios:ext-safe` `iosTest` | JVM-driver and native-driver halves of one storage contract; together they cover both targets | no |
 | `:adapter:generic:app` `jvmTest` (backend Live bindings) | they launch `api/` as a local process, which a K/N test executable under `simctl` cannot do. Nothing is lost: the clients are `commonMain` code, and their K/N compile is covered by `commonTest` | yes, stated in the build file |
 | `:ui:components` `jvmTest` | Compose component tests with no iOS counterpart | yes |
-| `:test:architecture`, `:tools:diagrams` `src/test` | they read the repository's own text | yes |
+| `:test:architecture` `src/test` | it reads the repository's own text | yes |
 | `:test:integration` `src/test` | drives the JVM host of the control channel, which is a JVM server. The lost coverage (the composed graph running on K/N over mocks) is partly covered by the core's own simulator tests and by the simulator app under the contracts and journeys | yes, stated in the build file |
 
 Where a target is genuinely skipped, the build file that declares the source set **says which coverage
@@ -1396,10 +1396,10 @@ claims (`docs/architecture.md`, "Tests verify requirements").
 A test that needs a missing lever or read adds it **to the vocabulary, classified on both hosts**. It
 never reaches past the protocol.
 
-**What it covers, and what judges it.** The suite is instrumented, and plays two parts, both in the root build file's
-`coverage { }` (`docs/architecture.md`, "Coverage"):
+**What it covers, and what judges it.** The suite is instrumented, and plays two parts, both in each module's own
+`coverage { }`, and judged against the goal in its own build file (`docs/architecture.md`, "Coverage"):
 - It also covers the unit measurement of the WIRING — `:core:compose`, `:core:host`, `:app:jvm` — and of
-  `:core:entrypoints`, whose entries name it in `alsoCoveredBy`. The wiring graph is not unit-tested by law and is
+  `:core:entrypoints`, whose blocks name it in `alsoCoveredBy`. The wiring graph is not unit-tested by law and is
   smoke-tested here, so this suite is the test written for it. Everything else it runs — model, feature, services,
   presentation — reaches zero through its own unit tests, never through a scenario that happens to pass through it.
 - What it covers of each core module ON ITS OWN is judged by that module's `integration(…)` target, against a goal of

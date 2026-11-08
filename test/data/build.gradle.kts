@@ -6,7 +6,7 @@ plugins {
 // test-only (`docs/testing.md`, "The data layer's suites"): the data layer's repositories and the backend's protocol
 // run over the ports' in-memory mocks — the real secure store, transport and integrity doubles — and are observed at
 // the port. `:core:data` cannot name a mock (no core module may), so its suites live here; their coverage is
-// credited to it and to `:core:application` (the root build file's `coverage { }`). jvm()+iosSimulatorArm64,
+// credited to it and to `:core:application` and `:core:query` (their `coverage { }`). jvm()+iosSimulatorArm64,
 // commonTest only.
 
 kotlin {
