@@ -78,7 +78,8 @@ import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The WorkManager adapters against their port contracts on the emulator, and the Android facts no shared contract
+ * The WorkManager adapters against their port contracts on the emulator (the wake's library-change half is this app's
+ * own JobScheduler job; its own facts are `AndroidLibraryWakeTest`'s), and the Android facts no shared contract
  * states: a library change wakes the app; a wake re-armed from inside its own run is not cancelled by it; a transfer a
  * dead process left is reported failed. The upload clauses exchange bytes with `scripts/transfer-fixture.py`, whose
  * address the Gradle test run (`androidPlatformTest`) passes as the `fixture` instrumentation argument; a run without
@@ -278,7 +279,7 @@ class AndroidWorkContractTest {
     }
 
     @Test
-    fun `WorkManager satisfies the Wake contract`() = verify(WakeContract, wake)
+    fun `WorkManager and the library-change job satisfy the Wake contract`() = verify(WakeContract, wake)
 
     @Test
     fun `expedited work satisfies the BackgroundTime contract`() = verify(BackgroundTimeContract, backgroundTime)

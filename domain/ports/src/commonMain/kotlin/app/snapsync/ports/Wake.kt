@@ -6,7 +6,8 @@ import app.snapsync.inbound.Granted
 /**
  * **The operating system's scheduled wakes of this app** (`docs/architecture.md`, "Background execution"): ask it to
  * wake the app later, cancel that request, and hear it when it does. On iOS a `BGProcessingTask` through
- * `BGTaskScheduler`; on Android a one-shot `WorkManager` request.
+ * `BGTaskScheduler`; on Android a one-shot `WorkManager` request for the heartbeat, and a JobScheduler job of the
+ * app's own for the library-change wake.
  *
  * One external system, deciding nothing. **When** a wake is wanted — after a tail that left work, never after one
  * that declined — and what its delay and network requirement are, is the `Heartbeat` service's (`:domain:services`);
@@ -24,8 +25,8 @@ interface Wake : EventPort<WakeHandlers> {
      * Ask for [id] to wake the app when [trigger] allows. Idempotent: a request for an [id] already pending replaces
      * it rather than stacking a second one.
      *
-     * Suspending, because an answer may take the platform a while: Android's is only true once WorkManager has
-     * registered the request, and an Android caller is often on the main thread, where waiting by blocking froze the
+     * Suspending, because an answer may take the platform a while: Android's is only true once WorkManager or the
+     * job scheduler has registered the request, and an Android caller is often on the main thread, where waiting by blocking froze the
      * app (SNAPSYNC-40). An adapter suspends for that answer and never blocks its caller's thread.
      */
     suspend fun schedule(id: WakeId, trigger: WakeTrigger): ScheduleResult
