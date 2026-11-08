@@ -1,6 +1,6 @@
 # The `presentation` tier (`DetektTiersPlugin`): `:domain:presentation`, the reduction into the screen's state.
 #
-# A CLAIM, not debt (`docs/architecture.md`, "Zones inside the core"): presentation reduces what the queries read into
+# A CLAIM, not debt (`docs/architecture.md`, "The core and its layers"): presentation reduces what the queries read into
 # `UiState`, one concern per file — a health ladder of rungs, a layer per world, a flow per surface — so a function
 # stays at most 4 paths and 4 cognitive points. A function that needs more is two concerns. It is Compose-free, so
 # none of Compose's structural inflation applies to it. detekt fails AT the threshold, so each is one above the claim:

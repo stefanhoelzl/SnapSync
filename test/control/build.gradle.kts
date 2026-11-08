@@ -8,7 +8,7 @@ plugins {
 // "One control protocol, served by two hosts"): a person's forms (`Person`), the behaviour DSL, `@Verifies` — and the
 // home of the JVM host's tests.
 //
-// Support group (`docs/architecture.md`, "The module set withholds; packages organize"): it links into no
+// Support group (`docs/architecture.md`, "The module set: three groups"): it links into no
 // shipped-format binary. JVM-only because every caller of the protocol is: a test drives the simulator app over
 // HTTP from the build host exactly as it drives the JVM host.
 //

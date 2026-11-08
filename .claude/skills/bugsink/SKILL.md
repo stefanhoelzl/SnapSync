@@ -409,6 +409,6 @@ wrong, say so and let the operator reopen it in the web UI.
   arrive days later; `SNAPSYNC-1` took three). That is what makes `dsyms-<dist>` the right artifact.
   On iOS it holds *because* the app deliberately never sets the SDK's `dist` option — see the
   `privacy-security` spec requirement "The build number is the SDK's crash-time value and is never
-  overridden". Do not "fix" that omission. On Android the app DOES set it (`model/`'s `crashDist`: the
+  overridden". Do not "fix" that omission. On Android the app DOES set it (`CrashOptions.dist`: the
   Android SDK does not re-stamp it at send) to its `versionCode` — the same `run_number + 2000` the
   run's iOS build carries — so `r8-mapping-<dist>` is the right artifact there.

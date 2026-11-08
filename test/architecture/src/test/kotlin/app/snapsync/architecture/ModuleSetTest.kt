@@ -13,7 +13,7 @@ import kotlin.test.fail
  * module justified by no law is a package with a derived text gate instead.
  *
  * The expected set used to be parsed at test runtime out of the `docs/architecture.md` spec's
- * "The module set withholds; packages organize" requirement. That spec is gone, so the enumeration now
+ * "The module set: three groups" requirement. That spec is gone, so the enumeration now
  * lives HERE, and this KDoc carries the rationale the spec used to:
  *
  * - **Why a guard at all.** A module cannot be added by accident — it takes a directory, a build file
@@ -235,7 +235,7 @@ class ModuleSetTest {
 
         /** Each withholds a dependency (third-party, platform, or another core zone) by compile error. */
         val WITHHOLDING = setOf(
-            // The core's layers (`docs/architecture.md`, "The layers").
+            // The core's layers (`docs/architecture.md`, "The core and its layers").
             ":domain:domain", ":domain:format", ":domain:wire", ":domain:ports",
             ":domain:presentation",
             // The layers the core's work runs on (`docs/patterns.md`): the deliveries, the runtime, the entry points.

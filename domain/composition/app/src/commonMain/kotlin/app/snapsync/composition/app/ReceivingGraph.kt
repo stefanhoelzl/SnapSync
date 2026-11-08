@@ -47,7 +47,7 @@ import app.snapsync.query.receiving.ReceivingProgress
 import app.snapsync.scheduling.Runtime
 
 /**
- * Receiving in the app process (`docs/architecture.md`, "The layers"): its store over `downloads.db` — the app its one
+ * Receiving in the app process (`docs/architecture.md` §1): its store over `downloads.db` — the app its one
  * writer and migrator — the staging area, the transfers, the library's import and presence, the union read, and the
  * use cases the entry points order. Nothing here opens the store as it is built.
  */

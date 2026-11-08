@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **`ports/` holds interfaces, their vocabulary and nothing else** (`docs/architecture.md`, "Ports and seams").
+ * **`ports/` holds interfaces, their vocabulary and nothing else** (`docs/architecture.md`, "Ports").
  *
  * A port is what the core uses of one external system: a declaration. Logic sitting beside it — a decision, a helper,
  * an inert implementation, a stateful holder — is code no adapter implements and no mock replaces, living in the one

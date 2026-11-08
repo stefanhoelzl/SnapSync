@@ -4,7 +4,7 @@
 // declares only the selection permission, and `:test:no-grant`'s declares none. Device tests only.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The `android` target (`docs/architecture.md`, "Zones inside the core") — this module's only one.
+    // The `android` target (`docs/architecture.md`, "The core and its layers") — this module's only one.
     id("snapsync.android")
 }
 

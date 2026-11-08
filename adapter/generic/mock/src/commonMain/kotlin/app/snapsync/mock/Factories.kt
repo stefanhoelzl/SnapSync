@@ -9,7 +9,7 @@ import app.snapsync.ports.ProcessInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
- * **The port-typed factories** (`docs/architecture.md`; law "The module set withholds"): the contract bindings and
+ * **The port-typed factories** (`docs/architecture.md`; law "The module set: three groups"): the contract bindings and
  * the tests build a port's in-memory implementation here, over cells they hold — the same `internal` classes a mock's
  * port face is (`docs/testing.md`, "Mocks").
  *

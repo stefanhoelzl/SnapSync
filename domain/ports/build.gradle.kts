@@ -1,13 +1,13 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
+    // The allowed targets, declared once (`docs/architecture.md`, "The core and its layers").
     id("snapsync.targets")
     alias(libs.plugins.kotlin.serialization)
     // The simulator test run's standard streams, beside its failure messages.
     id("snapsync.simulator-test-output")
 }
 
-// The core'"'"'s `ports` zone (`docs/architecture.md`, "The module set withholds; packages organize").
+// The core'"'"'s `ports` zone (`docs/architecture.md`, "The module set: three groups").
 // The need-named I/O boundary. Speaks the domain vocabulary and nothing else.
 //
 // Zone edges are declared with `implementation()`, never `api()`: a zone must not leak to a downstream

@@ -5,7 +5,7 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.VersionCatalogsExtension
 
 /**
- * A module of the core's LAYERS (`docs/architecture.md`, "The layers"): `:domain:inbound`, `:domain:scheduling`,
+ * A module of the core's LAYERS (`docs/architecture.md` §1): `:domain:inbound`, `:domain:scheduling`,
  * `:domain:entrypoints` — the modules the restructuring creates, which are born clean rather than ratcheted down.
  * Everything such a module shares is declared once, here:
  *

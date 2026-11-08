@@ -109,7 +109,8 @@ middle of an event.
 - **Record:** `openspec/changes/archive/2026-10-06-per-event-storage-layout` (design D4/D5).
 
 ### Share `/join/<uuid>` instead of the fragment form (app)
-- **What:** `domain/model/.../EventLink.kt` still shares, and QR-encodes, `/join#v=3&d=…`.
+- **What:** a plain event's invite is still shared, and QR-encoded, in the fragment form `/join#v=3&d=…`
+  (`InviteLinkText.format`, `domain/format/`).
 - **Why:** builds older than 0.5 cannot decode the path form.
 - **Remove:** switch the shared form and the QR to `/join/<uuid>`.
 - **Keep forever:**
@@ -127,9 +128,9 @@ such membership is live.
 
 - **Parked ledger rows.**
   - **What:** 12.sqm moved every row under the empty event `''`; the membership's legacy copy adopts them into the
-    event it copies, or drops them when there is none (`LegacyRecords.copyMembership`, `Ledger.sq` `adoptParked` /
+    event it copies, or drops them when there is none (`LegacyMembershipCopy`, `Ledger.sq` `adoptParked` /
     `dropParked`).
-  - **Remove:** both queries, their calls in `LegacyRecords`, and `LedgerMigrationTest`'s parked-row cases. Squash
+  - **Remove:** both queries, their calls in `LegacyMembershipCopy`, and `LedgerMigrationTest`'s parked-row cases. Squash
     the ledger chain to a v13 baseline in the same PR: a v12 device's rows would stay parked, and the update test's v12
     case re-uploads them.
   - **Keep:** 12.sqm itself, until the migration chain is squashed again.
@@ -234,7 +235,8 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
 ### Legacy homes of the shared records (app)
 - **What:** an updated device holds the records the app and the extension share in their pre-database homes. The app
   copies each into `ledger.db` once, at its first open, and deletes it; the extension pauses until it has.
-  - `domain/services/.../databases/LegacyRecords.kt`: the copy — `eventconfig.json`,
+  - `domain/data/.../legacy/`: the copy (`LegacyRecords` and its per-source copies `LegacyMembershipCopy`,
+    `LegacyTextCopy`, `LegacyAlbumCopy`, `LegacyChecksCopy`, `LegacyHomes`) — `eventconfig.json`,
     `device-manifest/last-uploaded.json`, `membership/pending-leaves.txt`, the Preferences keys
     `app.snapsync.album.map` / `.filled` and `app.snapsync.check.*`.
   - `SharedDatabase.imported` / `readiness`, the `legacyImport` table (`13.sqm`, `LegacyImport.sq`), and the
@@ -242,16 +244,18 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
   - `UploadPause.LEGACY_RECORDS` and its check at the head of `UploadGateRead.read` (`domain/data/.../upload/`).
   - `PushRegistrationRecord.legacy` / `moved` (`domain/data/.../push/`: `push-registration/last-registered.txt` into the
     Preferences key) and its `files` parameter.
-  - `model/ConfigFile.kt` (the envelope codec), read only by the copy.
+  - `LegacyMembershipText` (`domain/format/`, the 0.4 membership file's decoder and its `LegacyMembership` values),
+    read only by the copy.
 - **Why:** a device that updated mid-event must keep its membership, its pending leaves and its albums — one the version
   gate refused too, which updates later.
 - **Covered by:** `AppUpdateIntegrationTest`'s cases at ledger.db v12–v13: the extension waits
   (`PauseReason.LEGACY_RECORDS`) until the app's first open copies every record, then shares; nothing is shared twice,
   the album is kept, the pending leave reaches the backend. Their state is `OlderInstalls.kt`'s `writeLegacyRecords`
   (0.4's formats, each citing its source) and `forgetLegacyRecords` (what 0.6's copy left).
-- **Remove:** `LegacyRecords` and `LegacyRecordsTest`; `SharedDatabase`'s `legacy` parameter (and the `LegacyCopy`
+- **Remove:** `data/legacy/` and its tests (`LegacyRecordsTest`, `LegacyFailuresTest`, `LegacyFiles`);
+  `SharedDatabase`'s `legacy` parameter (and the `LegacyCopy`
   interface beside it, `domain/data/.../store/SharedDatabase.kt`), `imported` and `readiness`; the pause reason and its gate branch; the membership read's legacy answer; the push record's legacy
-  copy and its two tests; `ConfigFile.kt`; `writeLegacyRecords`, `forgetLegacyRecords` and the `RECORDS_MOVED` layer
+  copy and its two tests; `LegacyMembershipText` and its test; `writeLegacyRecords`, `forgetLegacyRecords` and the `RECORDS_MOVED` layer
   in `OlderInstalls.kt`. Squash the ledger chain to a v14 baseline, or the update test's v12–v13 cases lose their
   membership. Add a migration that drops `legacyImport`. Then the `Files` adapter's
   not-found classification is no longer load-bearing for the leave decision (`FileAbsence.kt`, `docs/architecture.md` §11, "Entitlements & Info.plist").
@@ -340,7 +344,7 @@ closing (`back-dated-events`: open-until dates; the app never leaves an event on
     that use it (`EncryptedEventIntegrationTest`, `PathFormLinkIntegrationTest`)
   - the api's keyless `POST /events` (`keyId` optional in `api/src/routes/shared.ts`, `key_id` NULL in
     `api/src/db.ts`) and the plain branch of `api/src/routes/encrypted-upload.ts`
-  - the app's plain branches: `Encryption.Plain` (`openedBy`), `EventConfig.inviteUrl`'s fragment form,
+  - the app's plain branches: `Encryption.Plain` (`openedBy`), `InviteLinkText.format`'s fragment form,
     `SealVerdict.Plain` and `Landing.Plain` for a plain event, `KeyPresence.NotNeeded` for a joined event
   - the event page's plain path (`site/src/pages/join.astro`, `encryptionOf`)
 - **Remove:** require a key on create; refuse every keyless event in the app and on the page; drop the rig switch.
@@ -368,7 +372,7 @@ also carries the stamp, and keeps it).
 - **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
 
 ### What stands in for the old close in the app and its mocks (app)
-- **What:** the mocks still know an event can have closed. (The app's `EventConfig.closed` and the `closed` column of
+- **What:** the mocks still know an event can have closed. (The app's old membership record's `closed` and the `closed` column of
   ledger.db's `membership` row are gone since phase 4.2: migration `16.sqm` drops the column, and a membership that
   carried it reads as open.)
   - `adapter/generic/mock/.../BackendMock.kt`: `BackendState.Event.closed`, which only a state saved by an earlier mock
@@ -378,22 +382,6 @@ also carries the stamp, and keeps it).
   backend still refuses its rename.
 - **Remove:** the mock's branches and the fixture state, with the api entry above.
 - **Record:** `openspec/changes/archive/2026-10-12-back-dated-events` (design, D2/D5).
-
-## As the core's concepts move into its layers (phase 4)
-
-**Unlock condition:** the concept that owns each caller has moved into the layers (`docs/patterns.md`). No release,
-version or op gates these — each phase deletes its own uses, and the last one deletes the shim.
-
-### The old zones' throwing read of a stored id (app)
-- **What:** `held` (`domain/services/…/services/databases/StoredIds.kt`): an id column as the old zones read it — the
-  id, or a throw when the column spells none, as the column's adapter threw before it answered a `Stored`
-  (`ledger.db` v18, `downloads.db` v11). Its callers: `LegacyRecords` (with its legacy copy, `Legacy homes of the shared
-  records`). Receiving's (4.5), the uploads' (4.4b), the album's (4.7) and the manifest record's (4.4c) are gone: the data
-  layer reads its id columns as `Stored` values, dropping a row that spells none.
-- **Why:** each store decides what a row that spells no id means when it moves into the data layer, as the membership's
-  did (an unreadable membership, a leave that fails); deciding it now would have rewritten stores other phases own.
-- **Remove:** each phase reads its columns as values — a `when` over the `Stored` — and deletes its `held` calls; the
-  phase that removes the last one deletes the file and this entry.
 
 ## One-off ops
 

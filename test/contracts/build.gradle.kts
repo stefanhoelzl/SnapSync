@@ -2,7 +2,7 @@ import app.snapsync.buildlogic.SchemaStatementsTask
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
+    // The `android` target (`docs/architecture.md`, "The core and its layers"): the Android app links this module.
     id("snapsync.android")
 }
 
@@ -11,7 +11,7 @@ plugins {
 // a device through the rig. A list rather than `@Test` methods because Kotlin/Native has no reflection:
 // an in-app runner cannot discover test methods, and `kotlin.test` cannot skip one dynamically.
 //
-// CONTAINED, not support (`docs/architecture.md`, "The module set withholds"): it links into the iOS app
+// CONTAINED, not support (`docs/architecture.md`, "The module set: three groups"): it links into the iOS app
 // — and into `:adapter:ios:ext-safe`'s rig-gated source set — ONLY under `-Psnapsync.rig=true`. Its
 // withholding argument: it is the only module whose MAIN source set depends on `kotlin-test`, so no
 // production module's main code can assert.

@@ -4,7 +4,7 @@ plugins {
 
 // `:test:edge` — the REAL backend, served as a local process for JVM tests (`LiveEdge`: the Deno `api/`
 // run as `src/dev/serve.ts --ephemeral`, loopback-only, over a filesystem store). Support group
-// (`docs/architecture.md`, "The module set withholds; packages organize"): it never links into a shipped-format
+// (`docs/architecture.md`, "The module set: three groups"): it never links into a shipped-format
 // binary, and it exists because two unrelated consumers need the same process — the backend contracts' live
 // bindings (`:adapter:generic:app`'s `jvmTest`) and the rig's JVM host over the real backend (`:test:rig`'s
 // `jvmMain`, `-Psnapsync.rigBackend=deno`). Neither can host it for the other: in the rig it would make the adapter's

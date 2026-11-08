@@ -3,7 +3,7 @@ plugins {
     id("snapsync.layer")
 }
 
-// The core's `entrypoints` layer (`docs/architecture.md`, "The layers"): one entry point per operating-system trigger,
+// The core's `entrypoints` layer (`docs/architecture.md` §1): one entry point per operating-system trigger,
 // named for it (`OnHeartbeat`), each a short list of steps that orders and never decides — the overview of what
 // happens on every trigger, in three flat files. It sees how work enters and runs, and — for the arguments its
 // deliveries carry — the ports' vocabulary; it calls no port (`EntryPointsCallNoPortTest`).

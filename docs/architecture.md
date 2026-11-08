@@ -1,18 +1,28 @@
 # SnapSync architecture
 
-How the app and the backend are put together, which rules hold them in shape, and what enforces each
-rule. This is an engineering doc, not a contract. What a user can observe is specified in
-`openspec/specs/`. The reasons behind a rule live in the decision records cited inline
-(`openspec/changes/archive/<id>`). Testing lives in `docs/testing.md`, and build, deploy and release
-live in `docs/deployment.md`.
+How the app and the backend are put together, which rules hold them in shape, what enforces each rule and why it
+exists. This is an engineering doc, not a contract: what a user can observe is specified in `openspec/specs/`, and the
+reasons behind a *behaviour* live in its decision record (`openspec/changes/archive/<id>`). The reasons behind an
+*engineering* rule live here, beside the rule (§2), and in `docs/patterns.md`, which is how to write code in the
+layers. Testing lives in `docs/testing.md`; build, deploy and release in `docs/deployment.md`.
 
-**The gates are the authority, and this doc explains them.** Almost every rule below is a check that
-fails `./gradlew build` (or `deno task lint` / `deno task test` for `api/`). Where the doc and a gate
-disagree, the gate wins. Fix the doc. A rule marked **review** has no gate, and only a reviewer who
-knows it can hold it.
+**The gates are the authority, and this doc explains them.** Almost every rule below is a check that fails
+`./gradlew build` (or `deno task lint` / `deno task test` for `api/`). Where the doc and a gate disagree, the gate
+wins: fix the doc. A rule marked **review** has no gate, and only a reviewer who knows it can hold it.
 
-Main decision record: `changes/archive/2026-07-17-establish-target-architecture`. Seam, failure, state
-and concurrency rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+**The standing principles.** These decide every choice the rules leave open:
+
+- **A clean architecture is the goal**; behaving the same for a user is a constraint a change respects, never the goal.
+  A compromise is not kept because it is behaviour-neutral.
+- **It is kept clean continuously.** Propose, prefer and recommend the architecturally clean solution — never the
+  smaller diff because it is smaller. When the clean one costs more, say so and recommend it anyway.
+- **No dead production code.** What a change leaves unused is deleted in that change. A use only by a test, the rig or
+  a mock keeps nothing alive.
+- **Build logic lives in `build-logic/`**: a convention plugin, task, detekt or coverage wiring goes straight into the
+  included build, never into a root build file.
+
+Main decision record: `changes/archive/2026-07-17-establish-target-architecture`. Seam, failure, state and concurrency
+rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 ---
 
@@ -28,89 +38,96 @@ architecture/   GENERATED diagrams (section 6)
 
 ### The module set: three groups
 
-Every module in `settings.gradle.kts` belongs to exactly one group. The group names the law that
-justifies the module's existence. A structure that no law justifies is a **package** (with a derived
-text gate if it needs one), not a module. The enumeration lives in `ModuleSetTest`
-(`:test:architecture`). Adding a module means adding the `include` **and** placing the module in one
+Every module in `settings.gradle.kts` belongs to exactly one group. The group names the law that justifies the
+module's existence. A structure that no law justifies is a **package**, not a module. The enumeration lives in
+`ModuleSetTest` (`:test:architecture`). Adding a module means adding the `include` **and** placing the module in one
 group, with the group's argument in the commit.
 
 | group | why it exists | members |
 |---|---|---|
-| **Withholding** | withholds a dependency (third-party, platform, or another core zone) from its consumers by compile error | `:domain:model` `:domain:inbound` `:domain:ports` `:domain:scheduling` `:domain:services` `:domain:entrypoints` `:domain:presentation` `:domain:compose` `:domain:host` · `:ui:state` `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:generic:app` `:adapter:generic:mock` `:adapter:generic:sentry` `:adapter:generic:motionphoto` · `:test:levers` (the mocks withheld from the tests that call their typed faces) · `:app:ios` `:app:ios:extension` `:app:desktop` |
+| **Withholding** | withholds a dependency (third-party, platform, or another layer) from its consumers by compile error | the core's layers (below) · `:ui:state` `:ui:screens` `:ui:components` · `:adapter:ios:ext-safe` `:adapter:ios:app-only` `:adapter:ios:ui` `:adapter:generic:app` `:adapter:generic:mock` `:adapter:generic:sentry` `:adapter:generic:motionphoto` `:adapter:android` · `:test:levers` (the mocks withheld from the tests that call their typed faces) · `:app:ios` `:app:ios:extension` `:app:android` `:app:desktop` |
 | **Contained** | exists so that something is **absent** from a production build, and is linked only under a build property | `:test:rig`, `:test:contracts`, `:test:launch-adapters` (`-Psnapsync.rig`) |
-| **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:app:jvm` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:client` `:test:control` `:test:cli` `:test:journeys` `:tools:diagrams` `:tools:detekt-rules` |
+| **Support** | never linked into a shipped-format binary, exempt from production-module laws | `:app:jvm` `:test:integration` `:test:architecture` `:test:harness-driver` `:test:edge` `:test:client` `:test:control` `:test:cli` `:test:journeys` `:test:feature` `:test:data` `:test:partial-grant` `:test:no-grant` `:test:verifies` `:tools:diagrams` `:tools:detekt-rules` |
 
 Key placements:
 
 - `:ui:components` is the only module that may depend on Material 3.
-- `:ui:state` is the screen's vocabulary — `UiState` (display values only) and `UiIntent` — and references
-  nothing project-internal, so `:ui:screens` and `:ui:components`, which see it and nothing of the domain, cannot
-  name a domain type. Presentation maps the domain into it.
-- The host, `:domain:host`, is the only module that sees both the core's `compose/` zone and
-  presentation, so neither gains the other.
+- `:ui:state` is the screen's vocabulary — `UiState` (display values only) and `UiIntent` — and references nothing
+  project-internal, so `:ui:screens` and `:ui:components`, which see it and nothing of the domain, cannot name a domain
+  type. Presentation maps the domain into it.
 - `:test:contracts` is the only module whose main code may assert (it withholds `kotlin-test`).
-- `:test:control` and `:test:integration` compile against `model/` and presentation, each
-  declared explicitly (the zones export nothing transitively), and never against `ports/`, `entrypoints/`,
-  `compose/`, the host or the mocks. The compile boundary is the integration surface's read-model rule.
 
-There is no per-module prose inventory: each module's build file and its code's KDoc say what it is. The live graph is `architecture/modules.md`.
+There is no per-module prose inventory: each module's build file and its code's KDoc say what it is. The live graph is
+`architecture/modules.md`.
 
-### The core and its zones
+### The core and its layers
 
-The core is the modules under `domain/` — its zones, its layers and the host — each with its package at
-`app.snapsync.<zone>` (the host's is `app.snapsync.host`). "The core" names that grouping; `domain` names one layer
-of it, `:domain:domain`, whose package is `app.snapsync.domain` (the grouping is to be renamed `core/` in phase 5). Each declares only the zone edges its law
-permits, always with `implementation()`, so a forbidden reference does not resolve. That covers
-fully-qualified names, typealiases and generated source, which a text scan would miss. The permitted
-edges are `ModuleSetTest`'s `permitted` map. The one edge outside a zone's law is its tests' `:test:verifies`, inside
-`commonTest.dependencies` only: the annotation depends on nothing, so a zone's tests can claim what the zone decides
-("Tests verify requirements") without the zone gaining a platform.
+The core is the modules under `domain/` (a path grouping, not a module): one module per **layer**, each with its
+package at `app.snapsync.<layer>` — so `domain` names both the grouping and one layer of it, `:domain:domain`
+(`app.snapsync.domain`). Each layer declares only the edges its law permits, always with `implementation()`, so a
+forbidden reference does not resolve — fully-qualified names, typealiases and generated source included, which a text
+scan would miss. The permitted edges are `ModuleSetTest`'s `permitted` map; the one edge outside a layer's law is its
+tests' `:test:verifies`, inside `commonTest.dependencies` only (an annotation that depends on nothing).
 
 ```
-inbound  <-  ports  <-  scheduling                       (the layers work enters and runs on — docs/patterns.md)
-model    <-  ports  <-  services  <-  entrypoints  <-  compose  <-  host
-                                      (+ inbound, scheduling)        ^
-                                          presentation --------------+
-domain   <-  every zone above that names its values  (MIGRATING; it depends on nothing)
-domain, ports, wire, inbound  <-  data  <-  application  (the layers phase 4 moves the work into)
-data, application  <-  services, entrypoints, compose   (MIGRATING)
+                 domain  ◀── every layer that names its values (it depends on nothing)
+format ──▶ domain        wire (nothing)        inbound (nothing)
+ports ──▶ inbound, domain
+scheduling ──▶ inbound, ports, domain
+data ──▶ domain, ports, wire, inbound, format
+application, query ──▶ domain, data, inbound, format
+presentation ──▶ domain, query, inbound, :ui:state
+entrypoints ──▶ inbound, scheduling, domain, ports, application, data, query, presentation, :ui:state
+composition/process ──▶ the layers below presentation · composition/extension ──▶ + composition/process
+composition/app ──▶ composition/process and every layer, :ui:state
 ```
 
-`entrypoints/` sees `services/` **migrating**: an entry point's steps still call today's services, until phase 4 moves
-the work under sequences and the edge goes. The last feature became a use case in 4.10, and `:domain:feature` went with
-it.
+The layer table — what each holds, what it may see, the complexity it is held to (cyclomatic / cognitive per
+function: the threshold of its detekt tier in `config/detekt/`, which flags a function at or above it), and what
+proves it:
 
-`domain/` is the first of the layers phase 4 moves the old zones into (`docs/patterns.md`, "The domain"). The old
-zones depend on it while their types move — `model`, `services`, `presentation`, `entrypoints`, `compose` and
-the host, each edge **migrating** — and it depends on nothing, so the direction is one-way. Phase 5 deletes the
-old zones with their edges. `data` and `application` were created by the first concept moved into them, trust (4.1):
-the old zones reach them the same one-way **migrating** way (`services`, `entrypoints`, `compose`), and
-neither reaches an old zone — `data`'s only edges are the domain, the format, the ports, the wire and the inbound log.
-`query` was created by the membership (4.2): what the screen asks and the requests' statuses, over `data`.
-The composition layer (`composition/`) was created by the upload extension's composition (4.11): the extension
-process is the first one composed the target way, its graph built of the layers alone, and the app's `compose/` reaches
-its shared half (`composition/process`) the same one-way **migrating** way until phase 5 moves the app's composition in.
+| layer | holds | may see | detekt threshold (cyclomatic / cognitive) | proof / budget |
+|---|---|---|---|---|
+| `domain` | values and verdicts, by concept (`time`, `event`, `sharing`, `asset`, `device`, `upload`, `receiving`, `album`, `report`…): the identities, the dates, the policies, the evidence types — pure, no I/O, no state, no format | nothing — no module, no library | 5 / 5 (`domain`) | `DomainPurity`, `NoTopLevelFunctions`; unit coverage zero-miss |
+| `format` | the text a value takes on the wire and in a store, once per format (`TimestampText`, `InviteLinkText`, `EncryptedFileFormat`, `LegacyMembershipText`, `PushPayloadText`…) — total decoders: a typed library catch, never a throw | `domain` | 19 / 20 (`core`) | `OnlyInvalidProgramStateThrows`; unit coverage zero-miss |
+| `wire` | the backend's HTTP shapes, generated from `api/openapi.yaml` | nothing | 19 / 20 (`core`) | generated; `BackendContract` |
+| `inbound` | how work **enters**: the four inbound kinds, their handles, the `Trigger`, the structured `Log`, the opt-in markers (`@InboundImplementation`, `@CompositionOnly`, `@AppProcessOnly`) | nothing | 19 / 20 (`core`) | the opt-ins; unit coverage zero-miss |
+| `ports` | every port interface, the event ports' `*Handlers` bundles, and the ports' data vocabulary — nothing else | `inbound`, `domain` | 19 / 20 (`core`) | `PortsHoldInterfacesOnlyTest`, `PortBundleTest`, the contracts (`docs/testing.md`) |
+| `scheduling` | how work **runs**, not knowing the work: the `Runtime`, the entry-point bases, `Run`/`Steps`, single-flight `Sequence`s, `Observation`, `Exclusion`, `SessionDrains`, `ScreenDisplay`, `RootScopeFailures` | `inbound`, `ports`, `domain` | 7 / 9 (`scheduling`) | `CoroutinesInScheduling` (only this layer starts coroutines) |
+| `data` | the repositories over the ports and the backend's protocol over the transport — translation, never a decision: every branch is a domain verdict's, as an exhaustive `when` used as an expression | `domain`, `ports`, `wire`, `inbound`, `format` | 4 / 4 (`data`) | `DataShape`, `StoreWritesAnnounceTest` |
+| `application` | one use case per operation a trigger runs, called only by an entry point (`EntryPointCall`), never by another use case | `domain`, `data`, `inbound`, `format` | 4 / 4 (`application`) | the `EntryPointCall` opt-in |
+| `query` | what the screen reads, never written: the query states, the lookups, the request statuses | `domain`, `data`, `inbound`, `format` | 5 / 5 (`query`) | `QueryReadOnlyTest` |
+| `presentation` | the UI-state reduction: `StatusContainerHost` and its parts, mapping the domain into `UiState` | `domain`, `query`, `inbound`, `:ui:state` | 5 / 5 (`presentation`) | the compiler (no `application`, `entrypoints` or `data` edge) |
+| `entrypoints` | what happens on a trigger: one entry point per operating-system trigger, a short list of steps that orders and never decides; the host's assembly (`AssembleHost`) | `inbound`, `scheduling`, `domain`, `ports` (vocabulary only), `application`, `data`, `query`, `presentation`, `:ui:state` | 4 / 4 (`entrypoints`) | `EntryPointShape`, `OneCallPerStep`, `EntryPointsCallNoPortTest` |
+| `composition/*` | construction only: named graph classes of `val`s and one composing function per process — `process` (every process's), `extension`, `app` | the layers they wire (`ModuleSetTest`) | 2 / 1 (`composition`) | `CompositionIsWiringTest`, `PortBundleTest` |
 
-| zone | holds | may reference |
-|---|---|---|
-| `domain/` | values and pure policy, by concept (`time`, `event`, `sharing`, `asset`, `device`): the timestamp, the event's and a membership's dates and capture range, the identities, the event's key and encryption and the verdicts over them (`KeyPresence`, `SealVerdict`, `OpenVerdict`, "The encrypted file format", below), and the selection (`sharing/`, `asset/`): an asset's facts (`AssetFacts`, `MediaKind`, `PixelArea`), the one policy (`SelectionPolicy.of`, its rules, `SelectionCalibration.STANDARD`), the read plan (`ReadPlan`) and the admission (`admit` → `Discovery`, `admitRecorded`), whose evidence is `AdmittedAsset` and `AdmittedRow`; and the small concepts' (4.8) rules — the push registration and the silent push's tail (`PushRegistrationVerdict`, `PushTailVerdict`), the network notice (`NetworkAccess`, `NetworkNotice`), the mobile-data choice (`MobileDataChoice`), the heartbeat's cadence (`CadenceFacts`, `HeartbeatCadence`) and the OS uploader (`OsUploaderAdmission`, `OsUploaderStanding`); the upload's verdicts (`upload/`, 4.4b): a pass's gate (`UploadGate`, its `Stop` cases, `GateStep`, `UploadAdmission`), what a pass came to and what the extension answers (`UploadPass`, `ExtensionAnswer`), a walk's diff and a top-up's plan (`WalkDiff`, `TopUpPlan`), a row and its key (`UploadRow`, `UploadKey`), what an OS-held job no row owns is (`JobRoute`, `Ownerless`), and what a membership transition does to the two uploaders (`UploaderChange`, `Registration`, `UploaderArming`); and receiving (`receiving/`, "Receiving", below): the union's values and read plan, the typestate (`StagedDownload`, `ImportedAsset`), the transfer and import verdicts, the received photo's name and the recognition's rules, whose evidence is `ReceivingMembership` and `Recognised`; and the event album's (`album/`, 4.7): the choice (`AlbumChoice`), what the phone's album holds (`AlbumContents`), who asks (`AlbumAsk`) and the verdicts over them (`AlbumWishVerdict`, `StoredAlbumVerdict`, `ImportAlbumVerdict`, `OwnPlacementVerdict`, `ReceivedPlacementVerdict`, `FillMarkVerdict`, `GrantVerdict`). No format: the boundary reads and writes them (`docs/patterns.md`, "Formats live at the boundary") | nothing — no module, no library (`DomainPurity`) |
-| `data/` | the repositories over the ports and the backend's protocol over the transport — translation, never a decision: every branch is a domain verdict's, as an exhaustive `when` used as an expression (`DataShape`; claim ≤ 3/3). Today trust: the backend boundary (`BackendExchange`, `BackendGateway`, the `Credential` it carries, the version gate), the credential stores, the device identity and the attestation handshake ("Trust", below); and the membership ("The membership", below): the `ledger.db` store (`SharedDatabase`, `OwnedDatabase`), `MembershipRepository`, `PendingLeaves`, `EventCheckRecord`, the event's read and rename (`EventDirectory`, `EventRename`), the enrolment and the leave told to the backend (`EventJoin`, `LeaveNotifier`); and encryption (`crypto/`, "The encrypted file format", below): the key's store and ids (`EventKeyStore`, `EventKeyIds`, `NewEventKeys`), the cipher (`FileCipher`), an upload's sealing and a download's opening (`UploadSealing`, `DownloadOpening`); and the selection (`sharing/`, `gallery/`): `OwnPhotos`, the one place a member's contribution is derived, read and admitted, over the library walk (`GalleryWalk`, the app's `MemoizedWalk`), the selection as last read (`SelectionSnapshots`) and the album denylist (`DenylistedAlbums`); and the small concepts (4.8): push (`PushTokens`, `PushRegistrationRecord`, `PushEndpointPublisher`), the network (`NetworkReadings`, `NetworkStatus`), the mobile-data choice (`MobileDataStore`, the `PreferenceKeys`), the wakes (`WakeArming`), the grant (`GrantRead`) and the OS's own uploader (`OsUploader`, `UploaderSwitches`); the upload (`upload/`, 4.4b): its rows (`OwnUploadRows` reads, `WalkRecord` the walk's writes, `RowTransitions` the guarded compare-and-set moves, `JobRecord` what a tier records, `UploadRowsReset`, `UploadProgress`), a pass's gate (`UploadGateRead`, `PassEntryRead`), the photos' resources (`OwnPhotoResources`, `RecentWalk`), the request (`UploadRequests`, `UploadStandings`), the two transfer tiers behind `UploadTier` (`SessionTier` with `SessionCreate`, `FileUploads`, `SessionEnds`, `StagingSweep`; `OsQueueTier` with `OsQueueDrain`, `JobOwners`, `JobAcknowledgement`), the backend's listing (`DeviceListing`) and the extension's registration (`ExtensionRegistrar`); and receiving (`receiving/`, "Receiving", below): the `downloads.db` store (`DownloadStore`) and what reads and writes it — the plan, the import queue, the releases, the recognition's records, the counts, what was received (`ReceivedPhotos`, the extension's read-only `ReceivedPhotosReader`) — the staging area, the library import, the union read (`EventUnion`) and the reported position; and the event album (`album/`): its map (`AlbumMap`), the library's album calls both processes hold (`AlbumFiling`), the app's creation (`AlbumCreation`, `@AppProcessOnly`) and the grant's change pairs (`PhotoAccessChanges`) | `domain/`, `:domain:format`, `ports/`, `:domain:wire`, `inbound/` |
-| `application/` | one use case per operation a trigger runs, each called only by an entry point (`EntryPointCall`) and never by another use case: `RefreshAttestation`, the wake's refresh, and the membership's (`EnrollDevice`, `EnterMembership`, `LeaveEvent`, `RefreshMembership`, `ReconfigureEvent`, `RenameEvent`, `DeliverPendingLeaves`, `ClaimStateCheck`), and encryption's `RestoreEventKey`, and the small concepts' (`RegisterPush`, `SetMobileData`, `RearmHeartbeat`), the upload's (`DeriveContribution`, `WalkOwnPhotos`, `RecordWalk`, `PlanTopUp`, `CreateJobs`, `SettlePresentedJobs`, `RecordFinishedUpload`, `SettleStoredUploads`, `ReconcileUploader`, `StopUploads`), and receiving's (`PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and the rest, "Receiving", below), and the album's (`EnsureEventAlbum`, `PlaceOwnPhotos`, `PlaceReceivedPhotos`, `AlbumForImport`, `MarkAlbumFilled`, `OwnAlbumPhotos`, `ReceivedAlbumPhotos`, "The event album", below) — each logging, through the structured log, the outcome it decided | `domain/`, `data/`, `inbound/` (the log) |
-| `query/` | what the screen asks, read and never written (`QueryReadOnlyTest`): `MembershipQuery` (the membership held, `joined`), `JoinDetailsLookup`, `SwitchLookup`, `EventKeyQuery` (the key and the invite it carries), `ShareableCountLookup`, `OpenedInvitesQuery`, `PhotoGrantQuery`, `PushTailLookup`, `NetworkStatusQuery`, `MobileDataQuery`, `ReceivingProgress`, `SharingProgressQuery` — and a member's requests as they stand (`RequestStatus`, `MembershipStatuses`, `MobileDataStatuses`), written by the work that answers them (`docs/patterns.md`, "Queries and requests") | `domain/`, `data/`, `inbound/` (the log) |
-| `model/` | vocabulary, pure domain services and codecs, logging helpers (`logAt`), and **every pure-data type a port carries** | nothing project-internal |
-| `inbound/` | how work **enters** the core: the four inbound kinds an event port delivers through (`Inbound`, `Background`, `Granted`, `Answered`), the handles they carry (`Completion`, `Running`), the `Trigger` that names the work, the structured `Log`, and the opt-in markers (`@InboundImplementation`, `@CompositionOnly`, `@AppProcessOnly`) — `docs/patterns.md` | nothing project-internal |
-| `ports/` | every port interface — outbound, and the event ports the platform delivers through (`EventPort<H>`, registered with `inbound(handlers)`), with their `*Handlers` bundles typed by the inbound kinds — and nothing else (`PortsHoldInterfacesOnlyTest`). Every port extends the `Port` marker (`PortBundleTest`), `BuildInfo` among them: what the running build is | `model/`, `inbound/`, `domain/` (a value a port hands over as it is) |
-| `scheduling/` | how work **runs**: the process's `Runtime` (the supervised scope, the background-time holds, the expiry, `outliving`, `endProcess` — an `InvalidProgramState` handed to the last resort), the entry-point bases, the `Run` they hand their bodies (`on.steps { }`), single-flight `Sequence`s, `Observation` — `docs/patterns.md` | `inbound/`, `ports/` (`BackgroundTime`, `ThreadLabel`, `EntryEvents`), `domain/` (`InvalidProgramState`) |
-| `services/` | the shared capabilities built over the thin ports: what a store holds, when it is opened, what a failure means — each a **concrete** class an entry point or composition takes as it is, with an interface only where there are several implementations or a decorator. The storage services (`AlbumMapService`), over the shared database (its `.sq` files and generated code are `:domain:data`'s); the gallery services (`GalleryAccessState` — what the grant means; `GalleryAlbums`); the transfer services (`SessionDrains`); the app's foreground facts (`AppForeground`); and the backend services. The process's crash channel, its account, its footprints and its log writers are the layers' (`data/crash`, `data/process`, `data/logs`) since 4.10 | `model/`, `domain/`, `format/`, `ports/`, `inbound/`, `wire/`, and `data/` (migrating) |
-| `presentation/` | the UI-state reduction: `StatusContainerHost` reduces what it reads (`ScreenQueries`, its lookups, the build's `BuildFacts`) into a `ScreenModel` (the `UiState` it shows plus the facts behind it, `Shown`) and shows only its `UiState`; a tap reaches it through its one intent table (`onIntent`) alone. Its parts are classes of their own over the screen's shared cells (`ScreenCells`): the join gate (`JoinGate`), the settings and their queue, the form, the create flow, the range picker, the surfaces, the bug report — and the joined layer's status line is an ordered ladder of rungs (`StatusLadder`). The create draft and the range calendar's rules are presentation's, so the screen states what it is told. It catches nothing (a command fires and never throws; a lookup answers failures as values), and holds every function to 4/4 (`config/detekt/presentation.yml`) | `domain/`, `query/`, `inbound/` (the command door, the log) and `:ui:state` |
-| `entrypoints/` | one **entry point** per operating-system trigger, named for it (`OnSilentPush`), each a short list of steps that orders and never decides (`AppEntryPoints.kt`, `ExtensionEntryPoints.kt`), the work several share (`WakeWork`, `ForegroundWork`, `Prelude`), the membership's requests and the steps they share (`MembershipEntryPoints.kt`), the upload's sequences and steps (`UploadEntryPoints.kt`: `TopUp`, `WalkAndPublish`, `UploadOwn`, `AlbumPlacement`, `UploaderArm`, `OnUploaderChange`) and the wake's `ImportReceived` | `inbound/`, `scheduling/`, `model/`, `domain/`, `application/`, `data/`, `query/`, `ports/` (the deliveries' vocabulary — it calls no port), `feature/` and `services/` (migrating) |
-| `compose/` | the app's composition (`snapSyncApp`), until phase 5 moves it into the composition layer: the services it builds over its ports (`AppServices`), the app's uploader over the shared `UploadGraph` and its own tier (`AppUploader`), the process's `Runtime`, decorators, and every app event port's registration (`AppCore.inbound`, handing each port its entry points) | every zone but `presentation/` and the host, `:ui:state` (the `Ui` port is bound to it in `AppPorts`), and `composition/process` (migrating) |
-| `composition/` | **the composition layer** — wiring only ("The composition layer", §2): `composition/process`, what every process wires (`ProcessPorts`, `ProcessGraph`, `startProcess`, the shared `UploadGraph`), and `composition/extension`, the upload extension's own (`ExtensionPorts`, `ExtensionDevicePorts`, `ExtensionGraph`, `composeExtension`) | every layer below presentation (`domain/`, `inbound/`, `ports/`, `scheduling/`, `data/`, `application/`, `entrypoints/`) — never presentation, `query/`, `:ui:state` or an old zone; the extension's half also `composition/process` |
-| host (`host/`) | the shared host composition, `snapSyncHost`: the core plus the status host over it; it calls `AppCore.inbound` once the host can be assembled, and registers the UI handlers itself, which need the status host | `model/`, `inbound/`, `scheduling/`, `entrypoints/`, `ports/`, `compose/`, `presentation/`, and `:ui:state` |
+Every core layer also holds the cross-cutting rules: no function-typed constructor parameter or property, no
+`fun interface` (`NoFunctionTypes`), no top-level function but a process's composing function
+(`NoTopLevelFunctions`). A constructor touches no port (`ConstructorsTouchNoPort`) in every layer that builds over
+ports — `inbound`, `scheduling`, `domain`, `data`, `application`, `query`, `entrypoints`, `presentation` and the
+composition — and `domain`, `format`, `inbound`, `scheduling`, `data`, `application`, `query` and `entrypoints` throw
+only an `InvalidProgramState` (`OnlyInvalidProgramStateThrows`). Every number in a tier is a ceiling that only falls (§5).
 
-A **pure-data type** is a data class, an enum class, or a sealed class or interface that references no
-port and carries no logic beyond its own members. A port's pure-data types are declared in `model/`, so an
-adapter and the core share them without either naming the other's zone.
+### Where code goes — the placement guide
+
+Ask in this order; the first yes is the layer.
+
+| question | layer |
+|---|---|
+| Is it pure — a value, a rule over values, a verdict? | `domain` |
+| Is it the text a value takes on the wire or in a store? | `format` |
+| Does it translate a port, or own a store? | `data` |
+| Is it one operation a trigger runs? | `application` |
+| Is it read-only state the screen follows or asks? | `query` |
+| Is it when or how work runs, without knowing the work? | `scheduling` |
+| Is it what happens on a trigger — the steps, in order? | `entrypoints` |
+| Does it map state into what a screen shows? | `presentation` |
+| Is it construction only — which instance goes where? | `composition` |
+| Does it talk to a platform API? | an adapter |
+
+A type a port carries is the port's vocabulary (`ports`); a helper every adapter shares is the adapter base's
+(`:adapter:generic:app` — `HandlerSlot`, `PlatformCalls`, `DateLocales`, the annotations). A use only by a test, the
+rig or a mock keeps nothing in production: such a helper lives in the test equipment.
 
 **Allowed targets.** The core's modules and the `:ui:*` modules compile for exactly `jvm`, `iosArm64`,
 `iosSimulatorArm64` and `android`, declared once by the `snapsync.targets` convention plugin in the `build-logic/`
@@ -130,9 +147,9 @@ contract bindings), run on a Gradle-managed emulator by `androidPlatformTest`. T
 iOS splits its adapters because its upload extension is a second process with linkage limits, and Android has no
 second process.
 
-`domain/` is a path grouping, not a module. The zone split is the one place where withholding is done
-by an internal boundary. It was chosen because the text gates it replaced had to enumerate violation
-forms, could not see generated code, and passed green when their directory was renamed.
+The layer split is the one place where withholding is done by an internal boundary. It was chosen because the text
+gates it replaced had to enumerate violation forms, could not see generated code, and passed green when their
+directory was renamed.
 
 ### Adapters
 
@@ -144,13 +161,13 @@ paths, not modules. Each axis names the question that separates its leaves:
   extension-side link unsafe. `ui` is app-only too and holds what needs Compose and UIKit's UI: the `Ui`
   adapter (the Compose scene SwiftUI pulls, and the scene rule), the `Lifecycle` adapter, and the
   main-confined `SceneRecord` they share.
-- **generic axis = shippability.** `app` ships in the app and extension binaries, and so does `sentry` — the crash
-  reporter, the `CrashReporter` port over the Sentry KMP SDK, ONE seat for iOS (both processes) and Android, because it
-  is where "nothing unshaped leaves" is enforced. It reads no platform API: the build's facts arrive in `CrashOptions`
-  from `BuildInfo`. It is its own module because it withholds the SDK. `mock` never ships. Each mock
-  is a durable state, a per-process port face and a separate operator face (`docs/testing.md`, "Mocks"); the
-  classes behind the port faces are all `internal` and every face is port-typed, so honesty is checked by the
-  compiler: an app is only ever handed a port.
+- **generic axis = shippability.** `app` ships in the app and extension binaries — the adapters every platform shares
+  and the adapter base (above) — and so does `sentry`: the crash reporter, the `CrashReporter` port over the Sentry KMP
+  SDK, ONE seat for iOS (both processes) and Android, because it is where "nothing unshaped leaves" is enforced. It
+  reads no platform API: the build's facts arrive in `CrashOptions` from `BuildInfo`. It is its own module because it
+  withholds the SDK. `mock` never ships. Each mock is a durable state, a per-process port face and a separate operator
+  face (`docs/testing.md`, "Mocks"); the classes behind the port faces are all `internal` and every face is
+  port-typed, so honesty is checked by the compiler: an app is only ever handed a port.
 
 Adapters are named for the technology and hold implementations only. Finer structure is packages.
 
@@ -158,48 +175,245 @@ Adapters are named for the technology and hold implementations only. Finer struc
 
 | binary | composition root | calls |
 |---|---|---|
-| iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `snapSyncHost` from `:domain:host`, over `AppPorts` |
+| iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `composeApp` (`:domain:composition:app`), over `AppPorts` |
 | iOS upload extension, iOS 26.1 and later (`SnapSyncUploadKit`) | `:app:ios:extension` `UploadExtensionRoot` | `composeExtension`, over `ExtensionPorts` |
-| Android app | `:app:android` `SnapSyncRoot` | `snapSyncHost`, over `AppPorts` |
-| JVM root — the desktop world harness, the JVM rig host | `:app:jvm` `JvmApp`, over adapters its caller chooses (the mocks by default) | `snapSyncHost`; `composeExtension` beside it, each over its own process ports (a process that supplies no log sinks installs no log writer: Kermit's list is JVM-global) |
+| Android app | `:app:android` `SnapSyncRoot` | `composeApp`, over `AppPorts` |
+| JVM root — the desktop world harness, the JVM rig host | `:app:jvm` `JvmApp`, over adapters its caller chooses (the mocks by default) | `composeApp`; `composeExtension` beside it, each over its own process ports (a process that supplies no log sinks installs no log writer: `Log`'s writers are JVM-global) |
 
 ---
 
 ## 2. The laws
 
-One line each. The authority is the named gate. Gates live in `:test:architecture`
-(`test/architecture/src/test/kotlin/app/snapsync/architecture/`) unless noted. **review** = no gate.
+Grouped by theme, one row each: the law, the gate that holds it, and why it exists — where it matters, the
+alternative that was rejected. Gates live in `:test:architecture`
+(`test/architecture/src/test/kotlin/app/snapsync/architecture/`) or are detekt rules (`tools/detekt-rules`,
+configured in `config/detekt/`) unless noted. **review** = no gate. The rule inventory at the end of this section lists
+every rule once, with its gate.
 
-### Structure
+### Layers and edges
+
+| law | gate | why |
+|---|---|---|
+| The build's module set equals the three groups, each module in exactly one | `ModuleSetTest` | a module no law justifies is a package; an unplaced one grows edges nobody argued for |
+| A core layer references only its permitted layers, through `implementation()` edges | the compiler + `ModuleSetTest` | a forbidden reference must not resolve at all; an `api()` edge would republish a layer to every consumer |
+| The core names no platform API, imports only its per-layer allowlisted libraries, and holds no main source set but `commonMain` | the compiler + `PlatformCodeContainmentTest` | platform code behind a port is code a mock can replace and a second platform need not re-make |
+| Only `:ui:components` sees Material 3, its icons, or the QR library | the compiler | the design system is one module's |
+| Core and `:ui:*` modules declare no target list of their own | **review** (`snapsync.targets` declares them) | one place to add a target |
+| Every core module is scanned by exactly one detekt tier | `DetektTierCoverageTest` | a module no tier reads holds no rule |
+
+### Ports
+
+| law | gate | why |
+|---|---|---|
+| Anything touching an external system (time, files, network, platform) goes through a port, named for the **need**, never the technology; the process-level ports are one external system each (`CrashReporter`, `ProcessMetrics`, `LogSink`, `Clock`, `Crypto`, `ProcessInfo`, `SystemUi`, `BackgroundTime`, `ThreadLabel`, `EntryEvents`) | **review** (partly the compiler: `ports` cannot import Ktor, nor SQLDelight beyond its runtime interfaces) | a technology-named port leaks its library into the core |
+| `ports` holds interfaces, the `*Handlers` bundles and data vocabulary only — no helper, no object, no decision | `PortsHoldInterfacesOnlyTest` | logic beside a port is code no adapter implements and no mock replaces |
+| Every port extends `Port`; a bundle (`AppPorts`, `ExtensionPorts`, `ProcessPorts`, the device bundles) holds ports and nothing else | `PortBundleTest` | a root that hands the core a service, a constant or a lambda decides for it |
+| A port answers every expected failure as a value — a sealed answer, never a throw; an adapter catches its library's failure once, typed, and translates it | `PortGridTest` (no `@Throws`) + each port's contract | a throw crosses the seam untyped, and a caller forgets it |
+| Ports never call ports: no adapter's constructor takes a port | `PortsNeverCallPortsTest` | combining two systems is a decision, which belongs where a mock can see it |
+| An adapter's constructor takes no function; an adapter declares, with `@NeverAnswers`, the answers its code cannot give | `AdapterConstructorTest`, `NeverAnswersCheck` + `AdapterCoverageTest` | a callback wired past `inbound` is a seam nobody tests; an unclaimed cell is an untested answer |
+| Every port-grid cell is covered by a clause run against a real implementation, and recorded by its port's proxy | `ClauseCoversTest`, `ProxyCompletenessTest`, `ContractCoverageTest` | a mock that answers what no real adapter does tests nothing |
+| A platform's magic values, ABI integers and error tables stay in adapters | `PhotoKitAbiContainmentTest` + **review** | a bare literal no gate can see collides with the next platform's |
+| Production reads a development control only through `DevControls`, whose production adapter is inert — `NeverAnswers` declares what it never answers — and whose only other adapter is compiled into a rig build | `DevControlsContainmentTest` + `NeverAnswersCheck` | a test-only input with a declared constant production answer is a port's answer, not dead code; moving the uploader pin into a composition seam (rejected) would have hidden the same variability where nothing describes it |
+
+### Inbound and entry
+
+| law | gate | why |
+|---|---|---|
+| What the operating system tells a process arrives through **entry ports** (`EventPort<H>`), delivered raw through the inbound kind its handler is typed by; a root keeps one-line forwarders | `EntryIntegrationTest`, `OsCompletionIntegrationTest`, `ExtensionEntryTest`, `ListenDoorTest` + shell gates | a root that decides is untested; one door per system keeps every delivery labelled and contained |
+| Only the runtime's entry-point bases implement an inbound kind | the compiler (`@SubclassOptInRequired(InboundImplementation)`) | every delivery must pass the code that labels, times and contains it |
+| Only a composition builds a `*Handlers` and calls `inbound` | `ListenDoorTest` + `@CompositionOnly` | registration is wiring; a second site is a second, untested wiring |
+| One entry point per operating-system trigger, named for it, ordering steps and deciding nothing; it calls no port | `EntryPointShape`, `EntryPointsCallNoPortTest`, the `entrypoints` tier | read top to bottom, the entry points are what the app does on every trigger |
+| **Host-first:** only a person reaching the app assembles the screen host — `OnForeground` and the UI's `onLive`/intents run `AssembleHost`; a push, a wake or a relaunch builds no host and installs no subscription | `EntryIntegrationTest`, `OsCompletionIntegrationTest` | a cold background launch must not run the launch reconcile (it re-registers the extension) or follow the grant; an eager host in the graph (rejected) would have |
+| Commands cross one door: presentation fires every command through `UserCommands`, each a `UserCommand` over an entry point, fired and never awaited | the compiler (presentation has no `application`/`entrypoints` edge) | a screen that calls work directly bypasses the entry point that labels it |
+
+### Steps and scheduling
+
+| law | gate | why |
+|---|---|---|
+| Only the runtime starts coroutines; work a run does not await is `detached` | `CoroutinesInScheduling` | a launch past the runtime escapes its label, its background-time hold and its containment |
+| A step is one call: `required`, `isolated`, `child`, `ensure`, `detached` blocks each hold one statement | `OneCallPerStep` | the step's name is what it does, so the list reads as the trigger's overview |
+| Work several triggers ask for runs single-flight (`Sequence`) | `SingleFlightTest` | one more pass however many join; a waiter whose time is up withdraws without cancelling others |
+| Two runs that must not overlap name an `Exclusion`: the holder releases it in an `ensure` step, work that yields skips and says so | `ExclusionTest` + **review** | when work runs is scheduling's; a mutex in the old services (`MembershipTransition`, retired) hid the rule in a feature |
+| The lanes are the app's only source of timers and threads; the main thread is named only by allowlisted platform-UI adapters | `TestsWaitOnEventsTest`, `MainLaneContainmentTest` | a host that owns the lanes owns the app's time, so tests wait on events, never on time |
+| A delivery the platform makes once is persisted before its entry point returns | **review** | after the callback returns, the process's runtime is not ours to assume |
+| No OS completion handler is stored in a mutable field: it rides its delivery as a `Completion`, answered once | `OsHandlerContainmentTest` + `EntryPointTest` | a stored handler is answered twice or never |
+| Mutable state touched from an OS callback thread is confined to a named lane (`@ConfinedTo`) or is a thread-safe primitive | `ConfinementGateTest` (heuristic) | a callback arrives on threads it does not choose |
+
+### Errors and containment
+
+| law | gate | why |
+|---|---|---|
+| The layers throw nothing but an `InvalidProgramState`, whose `because` is a literal (`domain`, `format`, `inbound`, `scheduling`, `data`, `application`, `query`, `entrypoints`); nothing catches it | `OnlyInvalidProgramStateThrows`, `InvalidProgramStateBecause` | an expected failure is a value; a broken guarantee ends the process with its crash report rather than limping on |
+| The core catches only typed third-party failures (in `data`, `format`, `wire`); a bug is contained at the runtime's three sites only — a run's containment, `isolated`, a pass's outcome | `CatchSitesTest` (the core's map empty) + `CatchGateTest` | a catch-all in the core turns a bug into a silently wrong answer |
+| An adapter catches what its platform throws: typed where the platform documents it, else at a named `PlatformCalls.attempt` site that keeps cancellation | `CatchSitesTest` (named adapter sites, exact, shrink-only) | an undocumented platform throw becomes a value, never a crash; each catch-all states what it guards |
+| No Kotlin throw escapes into ObjC; no ObjC `Boolean`/`NSError**` result is dropped | `ObjCBoundaryGateTest` (heuristic) | an exception unwinding into ObjC frames ends the process |
+| A read that can be unknown returns a sealed result with an explicit *unreadable*; absence is never silent | **review** | "could not look" folded into "nothing" is how an unreadable membership once read as a leave |
+
+### Types and evidence
+
+| law | gate | why |
+|---|---|---|
+| The domain is values and verdicts: no suspension, no state, no behaviour as a value, no world, no top-level function | `DomainPurity` | a verdict that reads the world cannot be unit-tested as a value |
+| A business rule is a type: parse, don't validate (`EventId.parse`, `CaptureRange.of`); a fact only a check can mint is evidence with its own `@RequiresOptIn(ERROR)` minting marker | the compiler + `OptInPinsTest` | a value that exists obeys its rule; evidence cannot be forged past its one mint |
+| No function-typed constructor parameter or property, no `fun interface`, no function type alias, anywhere in the core | `NoFunctionTypes` | behaviour handed in as a lambda is a seam nobody names or tests; an interface names it |
+| No top-level function in the core but a process's composing function (`composeApp`, `composeExtension`, `startProcess`) | `NoTopLevelFunctions` | a function lives on the type it belongs to, so "where is it?" has one answer |
+| A constructor never touches a port: no initializer or `init` block reads or calls a port-typed parameter, reads a `.value` through a parameter, or starts a flow `Eagerly` | `ConstructorsTouchNoPort` | a graph built eagerly opens nothing, so a locked background launch is never forced into a read |
+| A photo's identity is one canonical `AssetId`, minted from the platform's id by one reversible encoding (`AssetIdText`) | construction + `AssetIdTest`, `AssetIdTextTest` | the core, both stores, the manifest and the backend carry it unchanged |
+
+### Data and cross-process
+
+| law | gate | why |
+|---|---|---|
+| Data translates and never decides: every branch is a domain verdict's, as an exhaustive `when` used as an expression | `DataShape` | a decision in data is a decision no domain test sees |
+| Storage by kind: event and membership state in the shared database (`ledger.db`); device-scoped values in `Preferences`; bytes in `Files`; secrets in `SecureStore`. A database that cannot be opened is unreadable, never "not joined" | **review**; `MembershipRepositoryTest`, `LegacyRecordsTest` | one consistency domain covers what must commit together |
+| A store opens on first use and keeps only a successful open | `StoreOpenTest`, `OwnedDatabaseTest` | a locked launch's failure is retried at the next use |
+| No raw statement: every write goes through the generated queries, so the change signal announces it | `StoreWritesAnnounceTest` | the screen follows the store's change signal, never a poll |
+| What another process committed arrives through `Databases.inbound`; a process's own commits never come back to it | `DatabasesContract` | a missed notice costs freshness, never correctness |
+| The download store has one writer, the app; the extension opens it read-only and pauses on an older schema | `ReceivedPhotosReaderTest`, `CycleVerdictsTest`, `PassGateTest` | one migrator per store |
+| No transport adapter holds the upload rows; each kind of durable write has one owner, a guarded single transaction | `TransportLedgerGateTest` + **review** | two processes running the owner is fine; two owners is not |
+| A shipped migration is never edited | `MigrationPinTest` | a phone that already ran it would never run the edit |
+| Paths are area-relative; `Files` answers `NotFound` only for a definite absence | `FilesContract` (`DENIED_IS_NEVER_NOT_FOUND`) | an unreadable file read as absent was a false leave |
+
+### Logging and secrets
+
+| law | gate | why |
+|---|---|---|
+| Every line goes through `Log`: a literal event, its varying values as fields, its trigger from the coroutine context — or, unlabelled, from the thread's `ThreadLabel` | `EventNameLiteralTest` + the build (no logging library but `Log` resolves) | a line reads, and a failure report groups, by what happened; Kermit and its bridge (retired) carried free text with no fields |
+| Every line reaches each process sink once and the crash channel once; the crash channel carries everything but an event key | `SinkLinesTest`, `CrashChannelTest` + the secret types | an event key in a crash report hands the event's photos to whoever reads it |
+| A secret is its own type, rendered only where it is meant to leave | the secret types (`docs/patterns.md`, "Secret types and rendering") | a `String` secret is logged by the first `toString` |
+
+### Composition and shells
+
+| law | gate | why |
+|---|---|---|
+| **The composition layer is wiring only:** a root hands its composition ports and nothing else; named graph classes hold only `val`s built by constructor calls — no branch, no `lazy`, no lambda, no member function — and each process has one straight-line composing function whose first act is `startProcess` | `CompositionIsWiringTest`, `ExtensionSafetyTest`, `PortBundleTest`, the `composition` tier | the graph is not unit-tested; it can only be trusted if it cannot decide. A lazy graph (the old `compose/`, retired) let a root's touch change what a launch built |
+| The upload's layers are one graph both processes build (`UploadGraph`); the app-only pieces (`@AppProcessOnly`) cannot be built from what the extension links | `ExtensionSafetyTest`, `OptInPinsTest` | the extension's linkage is a platform limit, held by types |
+| Shells (`:app:ios`, `:app:ios:extension`, `:app:android`, `:app:jvm`, rig-contributed shell source) hold zero decisions | `detektAppShell` + `KotlinShellGuardTest` | every decision a root once held is unit-tested where it moved |
+| Swift is a transcriber: decision keywords only at pinned occurrences | `SwiftShellGuardTest` | Swift cannot be tested from Linux |
+| The build's adapter set is chosen at build time, by compilation: no flag is read, no inert stub ships, no shipped binary links a mock | the build scripts + `DevControlsContainmentTest`, `MockContainmentTest` | a remote-control affordance present in every binary is inert only by how it is started |
+| A tap crosses as a `UiIntent`, decided by one exhaustive intent table | `HostStatusActionsTest` + the compiler | the table clicked is the table that ships |
+| `:ui:screens` takes no `suspend` parameter; a function-typed `var` or a defaulted function parameter appears nowhere outside the core | `ScreensTakeNoSuspendSeamTest`, `LambdaSeamShapeTest` | the adapters, roots and screens are outside the core rules' scan |
+
+### Naming
+
+| law | gate | why |
+|---|---|---|
+| An answer's name says its kind: `XResult` (a port's operation), `XRead` (a read that can be unreadable), `XReply` (the backend's), `XOutcome` (what a use case did), `XVerdict` (a domain decision), `XQuery` / `XLookup` (what the screen follows / asks) | **review** | the suffix tells a reader which layer made it and whether it can be unknown |
+| An entry point is named for its trigger (`OnSilentPush`); a port for its need, an adapter for its technology | **review** | the trigger names read as the app's behaviour; the need names keep technology out of the core |
+| A boolean that stands for a choice is an enum | **review** | `true` at a call site says nothing |
+
+### Platform, runtime identity and containment
+
+| law | gate | why |
+|---|---|---|
+| All Keychain API use lives in `:adapter:ios:ext-safe` | `KeychainContainmentTest` | one place pins the accessibility class |
+| Neither entitlements file raises `default-data-protection` to `NSFileProtectionComplete` | `DataProtectionEntitlementTest` | it would make every App-Group file unreadable while locked |
+| Extension-linked Kotlin references only allowlisted `platform.*` frameworks | `ExtensionSafetyTest` | the extension's linkage is a platform limit |
+| Runtime-identity literals appear exactly once, with pinned non-Kotlin copies agreeing | `RuntimeIdentityTest` | the installed base holds them |
+| Apple enums decoded with a fallback arm are pinned to the platform klib's declared set | `PlatformVocabularyPinTest` | a Kotlin bump can move the vocabulary |
+| The device actuals name the background session and the PhotoKit job APIs, the simulator actuals neither | `TransferSessionBindingTest`, `UploadJobSubsystemBindingTest` | PhotoKit job creation traps on a simulator |
+| The event-link domain is generated from one resolved deployment everywhere; both delivery paths stay | `EventLinkDomainTest`, `EventLinkDeliveryTest` | a hand-written host drifts |
+| A build-time-only module is contained by compilation; production declares no `SNAPSYNC_*` literal; the control channel binds loopback only | the build scripts, `RunbookSkillsTest`, `ControlChannelLoopbackTest` | test control must be absent from a shipped binary, not merely inert |
+| Client and backend event-name caps and the gated-route list agree | `EventNameLimitTest`, `GatedPathPinTest` | two copies of a rule drift |
+| Every runbook skill `AGENTS.md` points at exists | `RunbookSkillsTest` | a pointer that reaches nothing is followed without the skill |
+| Retired dead weight stays dead | `DeletionLedgerTest` | bringing one back means deleting its row, with the argument |
+
+### Tests verify requirements
+
+The specs (`openspec/specs/`) say what a user observes; the code is laid out by its own laws, not by the specs'
+cut. They are linked in one direction only: a test that verifies a requirement says so with
+`@Verifies(spec = "…", requirement = "…"[, scenario = "…"])` (`:test:verifies`), keyed on the spec's directory
+and the requirement's title. What an adapter or the platform decides is claimed by a named test beside the adapter (a
+device test, a contract binding's own test, or a journey) — never by a whole-contract run, which proves every clause at
+once, and never by a mock's binding, which proves only the mock. The Deno suites (`api/test`, `site/scripts/*.test.ts`)
+write the same annotation as a one-line comment directly above a `Deno.test`, `// @Verifies(spec = "…", requirement = "…", scenario = "…")`, and claim
+what the api or a web page decides. A suite claims a scenario only where its own code decides the outcome; a scenario
+split between the api and the app carries one claim per deciding place, each saying in a line which part it proves.
+Scenarios left unclaimed on purpose (a platform's or a store's outcome, an accepted "may" gap, a release obligation)
+are listed with a reason in `AcceptedUnclaimed` (`:test:architecture`) — never in `openspec/`, and never work still to
+do. `./gradlew :test:architecture:verifiesReport` lists which requirements and scenarios a test claims and which none
+does, leaving the list out (`build/reports/verifies.md`, non-gating, never committed).
+
+| law | gate | why |
+|---|---|---|
+| Every `@Verifies` names a spec, requirement and scenario that exist | `VerifiesGateTest` | a renamed requirement fails the build and names the tests that claimed it |
+| Every `AcceptedUnclaimed` entry names an unclaimed scenario that exists, with a reason | `AcceptedUnclaimedTest` | an accepted gap is a decision, not a forgotten test |
+| Production code cites no spec | `NoSpecCitationTest` (heuristic) | the link runs from tests to specs only |
+
+### Disciplines with no gate
+
+- **Necessity claims carry forcing proofs.** "The platform forces X" cites an API contract, a vendor
+  doc, or a device measurement, never the current code, and names the trigger that would dissolve it.
+  A gate that pins an exception carries the proof in its failure message.
+- **A capability claim is settled by a compile, not a symbol table.** A klib records what ships, not
+  what is callable (`Dispatchers.IO` is in the Native klib and is `internal`). To learn what an Apple API
+  *declares* (enum sets, nullability), read the klib (`adapter/ios/AGENTS.md`, "Reading the Apple SDK from Linux").
+  What the *device* does needs a measurement.
+- **Expiry of the lane reasoning.** The three-lane argument is iOS-shaped (two processes). A platform
+  whose background work runs in-process (Android) re-derives it rather than inheriting it.
+
+### The rule inventory
+
+Every rule of the core's layers once, by theme, with its gate. A gate **retired** is named with what holds its rule
+now (`DeletionLedgerTest` keeps it dead).
+
+| theme | rule | gate |
+|---|---|---|
+| layers & edges | the module set's three groups | `ModuleSetTest` |
+| | a layer's permitted edges, `implementation()` only | the compiler + `ModuleSetTest` |
+| | the core is `commonMain` only, its libraries allowlisted per layer | `PlatformCodeContainmentTest` + the compiler |
+| | each core module in exactly one detekt tier | `DetektTierCoverageTest` |
+| | each tier's `includes` matches a file | the build-logic check (`DetektTiersPlugin`) |
+| ports | interfaces, handlers and data vocabulary only | `PortsHoldInterfacesOnlyTest` |
+| | every port extends `Port`; bundles hold ports only | `PortBundleTest` |
+| | failures as values, no `@Throws` | `PortGridTest` + the contracts |
+| | ports never call ports; adapter constructors take no function | `PortsNeverCallPortsTest`, `AdapterConstructorTest` |
+| | every grid cell covered, recorded and claimed | `ClauseCoversTest`, `ProxyCompletenessTest`, `ContractCoverageTest`, `AdapterCoverageTest`, `NeverAnswersCheck` |
+| | the one development port | `DevControlsContainmentTest` |
+| inbound & entry | only the runtime implements a kind | `@SubclassOptInRequired(InboundImplementation)` |
+| | only a composition registers handlers | `ListenDoorTest`, `@CompositionOnly` |
+| | an entry point orders and never decides, and calls no port | `EntryPointShape`, `EntryPointsCallNoPortTest` |
+| | host-first assembly | `EntryIntegrationTest`, `OsCompletionIntegrationTest` |
+| steps & scheduling | only the runtime starts coroutines | `CoroutinesInScheduling` |
+| | one call per step | `OneCallPerStep` |
+| | single flight; the exclusion | `SingleFlightTest`, `ExclusionTest` |
+| | lanes own time and threads | `TestsWaitOnEventsTest`, `MainLaneContainmentTest` |
+| | completions ride their delivery; OS-callback state is confined | `OsHandlerContainmentTest`, `ConfinementGateTest` |
+| errors & containment | only `InvalidProgramState` is thrown, with a literal reason | `OnlyInvalidProgramStateThrows`, `InvalidProgramStateBecause` |
+| | typed library catches in data/format/wire/adapters; named adapter catch-alls; none in the core | `CatchSitesTest`, `CatchGateTest` |
+| | nothing unwinds into ObjC | `ObjCBoundaryGateTest` |
+| types & evidence | the domain is pure | `DomainPurity` |
+| | evidence minted in one place | `@RequiresOptIn` markers + `OptInPinsTest` |
+| | no function types | `NoFunctionTypes` |
+| | no top-level functions | `NoTopLevelFunctions` |
+| | constructors touch no port | `ConstructorsTouchNoPort` |
+| data & cross-process | data translates, never decides | `DataShape` |
+| | first-use opens; writes through the queries; shipped migrations frozen | `StoreOpenTest`, `StoreWritesAnnounceTest`, `MigrationPinTest` |
+| | one writer per store, one owner per write | `TransportLedgerGateTest`, `ReceivedPhotosReaderTest` |
+| logging & secrets | `Log` only, literal events | `EventNameLiteralTest` |
+| | everything but an event key reaches the crash channel | `CrashChannelTest`, `SinkLinesTest` |
+| naming | answer suffixes, trigger and need names, enums for choices | **review** |
+| gates — new in phase 5 | `ConstructorsTouchNoPort`, `NoTopLevelFunctions`, `NoFunctionTypes` widened to every core module, `CatchSitesTest` as a named map | — |
+| gates — retired in phase 5 | `CompositionSeamTest` (→ `NoFunctionTypes`), `JvmRootBootsColdTest` (→ the eager graph and `ConstructorsTouchNoPort`), `KermitBridgeTest` (the bridge is gone) | `DeletionLedgerTest` |
+| gates — kept | `LambdaSeamShapeTest`, `ScreensTakeNoSuspendSeamTest` (outside the core, which no detekt rule scans) | — |
+
+### The ports, the entries and the state, in detail
+
+What each port is, what each entry point takes, and who owns each piece of state — the detail the themed tables above
+name. Each row's gate is listed beside it.
 
 | law | enforced by |
 |---|---|
-| The build's module set equals the three groups, and each module is in exactly one group | `ModuleSetTest` |
-| A core zone references only its permitted zones, through `implementation()` edges only | the compiler (zone modules) + `ModuleSetTest` "the core declares only permitted zone edges" |
-| The core names no platform API and imports only its per-zone allowlisted libraries | the compiler. The allowlist is each zone's `build.gradle.kts` dependency block |
-| A port's pure-data types live in `model/` | **review** (`model/` compiles without `ports/`, so a moved type cannot reference a port) |
-| Core and `:ui:*` modules declare no target list of their own | **review** (the `snapsync.targets` plugin declares them) |
-| Only `:ui:components` sees Material 3, its icons, or the QR library | the compiler (`implementation` dependencies in `ui/components/build.gradle.kts`) |
-| `:domain` has no `iosMain` source directory | **ungated** (visible in review) |
-| `:domain` declares no top-level mutable state (no allowlist) | **ungated.** The old spec named a "core-purity gate", but none exists |
-
-### Ports and seams
-
-| law | enforced by |
-|---|---|
-| Anything touching an external system (time, files, network, platform) goes through a port in `ports/`, named for the **need**, never the technology. The process-level ones are one external system each: `CrashReporter`, `ProcessMetrics`, `LogSink`, `Clock` (now and the device zone), `Crypto` (the platform's primitives: secure random bytes, HMAC-SHA256, AES-256-GCM of one segment), `ProcessInfo` (the process's memory footprint, none where it is not read), `SystemUi` (share sheet, open a URL, the app's Settings page), `BackgroundTime` (a hold on the process's background time, begun with the run its end expires), `ThreadLabel` (a per-thread slot: the trigger the runtime's lane labels each task's thread with, which a Kermit line reads) and `EntryEvents` (where the runtime tells each entry point's work — delivered, answered, done — beside its log line: nowhere on a shipped build, the control channel's stream on a rig build) | **review** (partly the compiler: `ports/` cannot import Ktor, nor any of SQLDelight but its runtime interfaces, which `Databases` carries) |
-| **A port answers every expected failure as a value** in its signature — a sealed result (`ProveResult`, `GalleryRead`, `FileResult`, `SecureStoreRead`, `WriteOutcome`, `Handoff`, …), never a throw. A failure only our own code, manifest or build could cause is a **precondition**: the adapter guards it, and its contract pins it where a host can reach it — or its one builder makes it impossible (`AesKey`, `GcmNonce`, built by the data layer's cipher at the format's lengths). An adapter catches what its platform library throws once, with typed catches, and translates it into the port's answer; `Databases` hands out an `OpenDatabase` whose `execute` runs a store's statements on the platform's driver and answers a refused one as `DbResult.Failed`, the driver used only inside it. An Objective-C exception cannot be caught from Kotlin at all, so an adapter checks first what would raise one (`UploadSession.upload`, an unreadable file) | `PortGridTest` (no port member declares `@Throws`) + each port's contract (`DatabasesContract`'s `A_REFUSED_WRITE_FAILS_AND_CHANGES_NOTHING`) |
-| A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only; `Files`: read, tail, range, write, append, delete, exists, locate within an area — range and append so a file too large to hold is read and written a piece at a time; `Preferences`: get, set, remove). What a store holds, when it opens and what a failure means is a service's, in `services/` | **review** |
-| The photo library is one thin port: `GalleryReader` (both processes: assets by policy or id, resources by id, albums, album members, create, add, and the `albumKind` — a `COLLECTION` a photo is added to on iOS, the `FOLDER` a photo lives in on Android) and `Gallery` (the app: plus the access request, the selection picker, the partial grant's selection observer, the import and the change token). It answers what the platform shows, and `NotReadable` — never an empty answer — when no grant lets the process read. What may be read under which grant and which albums are denied are the selection's (the domain's `ReadPlan`, data's `OwnPhotos` and `DenylistedAlbums`), and which grant may say a photo is gone the gallery services' (`services/`); what the kind means for the event album is read once, by `GalleryAlbums`, into `AlbumContents` (`model/`: whether own photos are placed, whether an empty album does not resolve), and what the album then holds and when an emptied one counts as deleted is `AlbumCoordinator`'s (`feature/album`), which never names a platform. Ids cross as the platform's own (`PlatformAssetId`), assets as the platform describes them (`GalleryAsset`: a capture instant or none, the media facts, a pixel area or none) and resources by `ResourceKind` (`PHOTO`, `VIDEO`, `PAIRED_VIDEO` — an original only) under an opaque `GalleryResourceHandle` only the adapter that handed it out reads; the domain's `AssetFacts` are the data layer's reading of them (`facts()`), the upload's resources too (`OwnPhotoResources`: each original keyed under its role, a `FoundResource` and the handle it sends from) | `GalleryReaderContract`, `GalleryContract`, `GalleryImportContract` (live on `IOS_SIM_APP`, the no-grant state on `IOS_SIM_KEXE`), `FolderAlbumContract` (live on `ANDROID_EMU`) + `GalleryServicesTest` |
-| A photo's identity is one canonical `AssetId` (`model/`): non-empty, RFC 3986 unreserved characters only, never `..` — a URL path segment the backend accepts as it is, an object-name fragment, and free of the download tag's `\n`. The core, both stores, the manifest and the backend carry it unchanged; there is no translation on either side of the wire. It is minted from the platform's own id by ONE reversible encoding (`AssetIdText`, `:domain:format`, read through data's `assetId()`: `/` → `_`, `~` escaping the rest), the identity on every id stored before it — PhotoKit's `{UUID}/L0/NNN` is `{UUID}_L0_NNN`, a media-store id is itself — so every platform id has one, and no adapter mints it. A value from outside (a backend reply, an OS-held task tag) that is not canonical is a malformed reply or an undecodable tag, never a crash | construction (`AssetId.parse`, its one way in) + `AssetIdTest`, `AssetIdTextTest` |
+| A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only; `Files`: read, tail, range, write, append, delete, exists, locate within an area — range and append so a file too large to hold is read and written a piece at a time; `Preferences`: get, set, remove). What a store holds, when it opens and what a failure means is the data layer's (`OwnedDatabase`, `SharedDatabase`, the repositories) | **review** |
+| The photo library is one thin port: `GalleryReader` (both processes: assets by policy or id, resources by id, albums, album members, create, add, and the `albumKind` — a `COLLECTION` a photo is added to on iOS, the `FOLDER` a photo lives in on Android) and `Gallery` (the app: plus the access request, the selection picker, the partial grant's selection observer, the import and the change token). It answers what the platform shows, and `NotReadable` — never an empty answer — when no grant lets the process read. What may be read under which grant and which albums are denied are the selection's (the domain's `ReadPlan`, data's `OwnPhotos` and `DenylistedAlbums`),; what the kind means for the event album is read by data's `AlbumFiling` into the domain's `AlbumContents` (whether own photos are placed, whether an empty album does not resolve), and what the album then holds is the album's verdicts (`domain` `album/`), which never name a platform. Ids cross as the platform's own (`PlatformAssetId`), assets as the platform describes them (`GalleryAsset`: a capture instant or none, the media facts, a pixel area or none) and resources by `ResourceKind` (`PHOTO`, `VIDEO`, `PAIRED_VIDEO` — an original only) under an opaque `GalleryResourceHandle` only the adapter that handed it out reads; the domain's `AssetFacts` are the data layer's reading of them (`facts()`), the upload's resources too (`OwnPhotoResources`: each original keyed under its role, a `FoundResource` and the handle it sends from) | `GalleryReaderContract`, `GalleryContract`, `GalleryImportContract` (live on `IOS_SIM_APP`, the no-grant state on `IOS_SIM_KEXE`), `FolderAlbumContract` (live on `ANDROID_EMU`) |
+| A photo's identity is one canonical `AssetId` (`domain`): non-empty, RFC 3986 unreserved characters only, never `..` — a URL path segment the backend accepts as it is, an object-name fragment, and free of the download tag's `\n`. The core, both stores, the manifest and the backend carry it unchanged; there is no translation on either side of the wire. It is minted from the platform's own id by ONE reversible encoding (`AssetIdText`, `:domain:format`, read through data's `assetId()`: `/` → `_`, `~` escaping the rest), the identity on every id stored before it — PhotoKit's `{UUID}/L0/NNN` is `{UUID}_L0_NNN`, a media-store id is itself — so every platform id has one, and no adapter mints it. A value from outside (a backend reply, an OS-held task tag) that is not canonical is a malformed reply or an undecodable tag, never a crash | construction (`AssetId.parse`, its one way in) + `AssetIdTest`, `AssetIdTextTest` |
 | The transfers are thin ports, one external system each. An upload goes through one of two, which differ in what the system keeps and tells: `OsUploadQueue` (the OS's job queue — PhotoKit's: create a job sending a library resource; the first failures offered for their free retry, and every job that ended presented until acknowledged; retry, acknowledge — a job is known by the destination it was made with, the one fact the OS keeps) and `TransferSession` (the app's own session — a background `URLSession`, Android's in-process PUTs: start a transfer of a file, or of a resource where it `takesResources`, tagged; list and cancel the live ones; every end told once, as it happens, under its tag, and a relaunch's events handed over then drained) — so neither carries the other's vocabulary. A failed transfer is one fact, `TransferFailure(detail)`: nothing above the adapter decides on why; `Download` (start, cancel everything the session holds, and a finish reported with its facts and temporary file), `Wake` (schedule and cancel a `WakeId`, and hear the wake — a `Granted` delivery, whose `Running` the adapter expires when the operating system withdraws the time) and `ExtensionRegistry` (set and read the upload extension's registration, `Unsupported` on a platform without one — so no root holds an `if` around it). What a job means for the upload rows and what a body may be staged as are the data layer's (`OsQueueTier` and `SessionTier` behind `UploadTier`, each process composing its own; `JobRecord`), when the heartbeat is armed the domain's (`Heartbeat`), and the rest the features' and entry points' (the download jobs, the wake's sequences). A platform's in-flight limit is its own and surfaces as `LIMIT_EXCEEDED`: `CreateJobs` creates until refused. An OS completion handler crosses as a `Completion`, handed with the delivery it rides and answered once by the run it starts. A transfer session's relaunch is two deliveries: `onBackgroundEvents` (a `Background<SessionRelaunch>`, carrying how many drain reports came before it) and `onEventsDrained` (an `Inbound<SessionDrain>`, numbered), so the relaunch's run waits for the first drain report after it however the two race to the core (`SessionDrains`) | `OsUploadQueueContract` (creation, the limit and the presented states recorded in the extension on a device; what asks the system nothing on `IOS_SIM_KEXE`), `TransferSessionContract` and `DownloadContract` (live on `IOS_SIM_APP` and `ANDROID_EMU`, their relaunches recorded), `WakeContract` and `ExtensionRegistryContract` (recorded, under their pre-11f names) + `OsQueueTest`, `SessionTierTest`, `JobOwnershipTest`, `HeartbeatTest` |
 | The origin exclusions' tuning — the two resolution floors and the album denylist — is one `SelectionCalibration.STANDARD` value in the domain, product policy rather than a platform fact: no composition supplies its own, so the app and the extension cannot disagree. They judge a library walk only: the read's own case says where its candidates came from (`CandidateSet.Walked` or `Selected`), and a selection is judged without every rule that `judgesWhatItIs` — inside `SelectionPolicy.admit`, so no caller can pair a read with the wrong rules. A ledger row is judged by the rules that need only an id and a date (`RecordedRule`, `admitRecorded`) | construction (`SelectionPolicy.of`, its one way in) + `SelectionPolicyTest` |
 | `SecureStore` writes answer a `WriteOutcome`, and trust's stores answer what they read and wrote as values — a refused write fails the operation where it is made (the device id is unavailable and never used unsaved; a token is not accepted; a key id is refused), an unreadable item is `Unavailable`, never mistaken for absence. A write may replace by delete-then-add, so after a refused one the old value may be gone | `SecureStoreContract` (`INACCESSIBLE_WRITE_REFUSES`) + `DeviceIdentityTest`, `CredentialStoreTest` |
-| How a date reads is one thin port, `DateFormatting`, in the app's bundle only (the extension renders nothing): `deviceLocale()` states the device's language and region, and `formats(DateLocale)` answers a `DateFormats` (`model/`) in that locale over the platform's CLDR data — `java.time` on the JVM, ICU on Android, `NSDateFormatter` on iOS. Which locale a screen formats in is the core's: services' `formatsFor(languageTag)` resolves it once (`resolveDateLocale`, `model/`). Each root builds a `ScreenDates` (`:ui:components`) over it, as `CutoffFormatter` over `Clock`, and hands that to its UI adapter — which may take no port — and on to `StatusScreen`; a rig build keeps the platform's, since it keeps no state to mock | `DateFormattingContract` (live on `JVM`, `IOS_SIM_KEXE`, `ANDROID_EMU`) + `DateLocaleTest`, `DateFormatsForTest` |
+| How a date reads is one thin port, `DateFormatting`, in the app's bundle only (the extension renders nothing): `deviceLocale()` states the device's language and region, and `formats(DateLocale)` answers a `DateFormats` (its vocabulary, in `ports`) in that locale over the platform's CLDR data — `java.time` on the JVM, ICU on Android, `NSDateFormatter` on iOS. Which locale a screen formats in is one rule every root applies: the adapter base's `DateLocales.forScreen` resolves it once (`DateLocales.resolve`). Each root builds a `ScreenDates` (`:ui:components`) over it, as `CutoffFormatter` over `Clock`, and hands that to its UI adapter — which may take no port — and on to `StatusScreen`; a rig build keeps the platform's, since it keeps no state to mock | `DateFormattingContract` (live on `JVM`, `IOS_SIM_KEXE`, `ANDROID_EMU`) + `DateLocaleTest`, `ScreenDateFormatsTest` |
 | Cryptography is one thin port, `Crypto`: primitives only, each answered by the platform's own implementation (CryptoKit through cryptography-kotlin's bridge and CommonCrypto on iOS, the JCA provider on Android and the JVM). A cipher key and nonce — `AesKey` (32 bytes) and `GcmNonce` (12), the port's own vocabulary — are built by the data layer's cipher at the format's lengths, checked there (`InvalidProgramState`), so no member has a wrong length to refuse, and a seal that does not authenticate opens to `null`. No adapter knows the encrypted file format: its layout is `EncryptedFileFormat` (`:domain:format`, in bytes; HKDF over an HMAC the data layer adapts over the port) and its files are sealed and opened a segment at a time by `FileCipher` (`data/crypto`). The TypeScript twin the edge and the event page run is `api/src/encrypted-file.ts` | `CryptoContract` (published vectors; live on `JVM`, `IOS_SIM_KEXE`, `ANDROID_EMU`) + both halves held to `test/vectors/encrypted-file.json` and, on the JVM, to Google Tink itself (`EncryptedFileFormatTest`, `api/test/encrypted-file.test.ts`) |
-| Ports never call ports: no adapter's constructor takes a port. Combining two external systems is a service's job (`services/`) or a use case's, so no decision hides inside an adapter where a mock cannot see it and a second platform would have to re-make it | `PortsNeverCallPortsTest` (every constructor parameter of the adapter modules' production source sets typed as a `ports/` interface; the rig's decorators are exempt). Its allowlist is exact both ways and only shrinks: 11d, 11e and 11f emptied their holdings; what remains is named with its owner |
 | The backend is reached over ONE plain port, `HttpTransport`: send a request, answer what came back — a status, headers and text, or `Unreachable` — whatever the status, and never throw. `KtorHttpTransport` is its one implementation on every platform, over the engine each composition supplies. What a route is, which token it carries and what an answer means are not the transport's: they are the backend boundary's ("The backend boundary", §8) | `HttpTransportContract` (live on `JVM`; `ANDROID_EMU` and the simulator compile it) |
-| The backend's protocol is `BackendGateway`'s, in `data/`, and nowhere else (`BackendExchange` is it without a credential, for the `/attest/…` issuers); what an answer means is the domain's verdicts (`BackendAnswer`, `CredentialVerdict`, `RetryVerdict`, `VersionVerdict`): every request declares the build's version; the credential is read per request, and one that cannot be read sends nothing — the request is answered as no answer; an `Unauthorized` to a gated request that carried a token drops THAT token, recovers, and retries the request once with the recovered token; a request that must not go out without a token (create, join, the push registration — `sendObtainingFirst`) obtains one first; an `AppTooOld` on any route refuses the build; any answer from past the version check — a success, an `Unauthorized`, any other `4xx` — clears the refusal (a server issue or no answer says nothing). The app's credential re-attests; the extension's only drops the token and never retries. Every need-shaped backend service (directory, join, manifest, leave, union, device files, create, change, push token) sits over it and reads its route's generated reply; attestation reaches the open issuers through the exchange, so recovery never re-enters itself | `BackendGatewayTest` (`:test:data`), `BackendServicesTest`, `BackendContract` (the real gateway against `api/` and the mock, `A_GATED_ROUTE_REFUSES_A_REQUEST_WITHOUT_A_TOKEN` included) |
+| The backend's protocol is `BackendGateway`'s, in `data/`, and nowhere else (`BackendExchange` is it without a credential, for the `/attest/…` issuers); what an answer means is the domain's verdicts (`BackendAnswer`, `CredentialVerdict`, `RetryVerdict`, `VersionVerdict`): every request declares the build's version; the credential is read per request, and one that cannot be read sends nothing — the request is answered as no answer; an `Unauthorized` to a gated request that carried a token drops THAT token, recovers, and retries the request once with the recovered token; a request that must not go out without a token (create, join, the push registration — `sendObtainingFirst`) obtains one first; an `AppTooOld` on any route refuses the build; any answer from past the version check — a success, an `Unauthorized`, any other `4xx` — clears the refusal (a server issue or no answer says nothing). The app's credential re-attests; the extension's only drops the token and never retries. Every need-shaped backend service (directory, join, manifest, leave, union, device files, create, change, push token) sits over it and reads its route's generated reply; attestation reaches the open issuers through the exchange, so recovery never re-enters itself | `BackendGatewayTest` (`:test:data`), `BackendContract` (the real gateway against `api/` and the mock, `A_GATED_ROUTE_REFUSES_A_REQUEST_WITHOUT_A_TOKEN` included) |
 | `DeviceIntegrity` only proves (`prove(challenge, handle?)`: a fresh key's attestation, or an assertion by an existing one), answering a `ProveResult` — `Ok`, or `Refused` naming why (`NotAvailable` in a process without the service, `UnknownKey`, `Failed`). Only the app process holds one; the extension has none. The app's credential (`AttestingCredential`, `data/`) asks when the domain's verdicts say so, and the credential store (`SecureCredentialStore` behind the in-memory `CachedCredentialStore`) keeps the token and key handle | `DeviceIntegrityContract` (`NotAvailable` live on `IOS_SIM_KEXE`; the ceremony and `UnknownKey` recorded on a device, replayed every build; `UnknownKey` and `Failed` live on `ANDROID_EMU`) + `AttestingCredentialTest` (`:test:data`) |
 | Paths are area-relative (`FileArea.SHARED`/`PRIVATE`); only an adapter resolves a platform path, and `locate` is the one exit, for a platform API that must be handed a file. No absolute container path is stored | **review** (the download store's staged paths: `DownloadStoreMigrationTest`) |
 | `Files` answers `NotFound` for a definite absence only: a present file that cannot be read is `Denied`, never absent — while the legacy membership file is still copied into the shared database, a file read as absent is a false leave | `FilesContract` (`DENIED_IS_NEVER_NOT_FOUND`, live on JVM and `IOS_SIM_KEXE`) |
@@ -209,20 +423,9 @@ One line each. The authority is the named gate. Gates live in `:test:architectur
 | What the screen shows of a store follows that store's change signal (`StoreChanges`, one per database: this process's commits through `OwnedDatabase`'s driver, the other process's through `OnChangedElsewhere`), never a poll and never a refresh call; the queries read only while a screen follows them and the app is in front, so a background run reads nothing for them. The status total, which no store holds, is the one count a step takes (`CountOwnPhotos`) | `StoreWritesAnnounceTest` (no raw statement), `SharingProgressQueryTest`/`ReceivingProgressTest` (re-read on change, none while away), `CrossProcessStatusIntegrationTest`, `BackgroundCompositionIntegrationTest` |
 | The download store has one writer and one migrator, the app. The upload extension opens it read-only: no store suppresses nothing; an older schema **pauses** the pass (`UploadGate.Paused`, `OLD_SCHEMA`: `UploadPass.PAUSED`, answered to iOS as *processing*) and never runs it without suppression; an unopenable one stops it as `Unreadable` (`COULD_NOT_LOOK`, answered *failed*). The pause is asked only after the process's admission (`UploadGateRead`), so a partial grant never pauses | `ReceivedPhotosReaderTest`, `CycleVerdictsTest`, `PassGateTest` (a process that may not create never opens the echo store), `DatabasesContract` |
 | A received photo's library name is the sender's with a SnapSync mark (`ReceivedPhotoName`: a hash of the source ref, never an id), given to the library by `LibraryImport` — the library stores the name it is handed, and a join records each marked photo of the event's union that the store has no row for — read from the event window of the library (`GalleryReader.assets`; on Android the event albums' folders are part of the default gallery like any folder) — as that ref's import, BEFORE the config save and for every direction. **Nothing of a membership is shared before its recognition:** a pass that READ the union records `recognised(eventId)` in the download store, and the pass's gate withholds every pass before it (`UploadGate.recognition`, read by `UploadGateRead`) — in the app and in the extension, which reads the record read-only — and the status total stays uncounted until then; nor is anything imported — `ImportNextStaged` takes the `Recognised` only a pass that read the union mints, so a photo downloaded again is never saved twice. A union it cannot read settles nothing, so the next pass (foreground, wake, import drain, network return) asks again. A selection change that brings marked photos the store does not record withdraws the record before the snapshot is published and recognises them first (`SelectionRecognition`: `RecognitionNeeded`, `WithholdRecognition`). The mark is read, never a selection rule: suppression stays `NotEcho` over the store | `ReceivedPhotoNameTest` (the token is a stored format, pinned), `LibraryImportTest` (the import names each file with the mark), `GalleryImportContract` (`AN_IMPORT_KEEPS_THE_NAME_IT_WAS_GIVEN`), `RecognitionRecordsTest` (adoption), `RecognizeReceivedPhotosTest` (recognition), `PassGateTest`, `StatusRefreshTest`, `ReinstallIntegrationTest` |
-| A platform's magic values, ABI integers and error tables stay in adapters, never in `model/`/`ports/`/`domain/` | `PhotoKitAbiContainmentTest` (PhotoKit media ABI). The JVM target rejects Apple types. Otherwise **review** |
-| A composition bundle (`AppPorts`, `ExtensionPorts`, `ProcessPorts`, `AppDevicePorts`, `ExtensionDevicePorts`) holds ports and nothing else: the composition builds every service over them, reads the build's constants from `BuildInfo`, and names no main lane. A root decides nothing for the core by handing it a service, a constant or a lambda | `PortBundleTest` (reflection over the compiled bundles; and every `ports/` interface extends `Port`, its exceptions listed with their reason) |
-| A function type is a seam only for an in-process, non-throwing callback into the core. Anything that leaves the process, can throw, or needs a lane is a port | `CompositionSeamTest`: every function-typed field of a `*Ports` bundle (none, today) and every function-typed constructor parameter in `feature/`/`compose/` is pinned with its reason, exact in both directions |
-| A process-constant value (build version and number, baked host, store page, push environment, OS version, device model) is read from the `BuildInfo` port — raw, as the platform states it — never handed to a composition as a value or a thunk; whether the OS carries the upload-extension mechanism is the `ExtensionRegistry`'s `supported`. The boot banner and a dump's environment are composed from these facts (`startProcess`, `diagnosticEnvironment`); a root logs only what it alone knows, after composing | `PortBundleTest`, `BuildInfoContract`, `ExtensionRegistryContract` |
-| No function-typed `var` (callback slot) in production. Callbacks are bound at construction | `LambdaSeamShapeTest` |
-| No default on a function-typed constructor parameter (except `@Composable`) | `LambdaSeamShapeTest` |
+| A process-constant value (build version and number, baked host, store page, push environment, OS version, device model) is read from the `BuildInfo` port — raw, as the platform states it — never handed to a composition as a value or a thunk; whether the OS carries the upload-extension mechanism is the `ExtensionRegistry`'s `supported`. The boot banner and a dump's environment are composed from these facts (`startProcess`, the report's `ReportedEnvironment`); a root logs only what it alone knows, after composing | `PortBundleTest`, `BuildInfoContract`, `ExtensionRegistryContract` |
 | What the operating system tells a process arrives through **entry ports**, each an event port named for one external system: the app's `Lifecycle` (became active / is leaving it), `Links` (a link delivered, raw), `PushNotifications` (the token, its failure, a silent push with its `Completion`), `Ui<S, I>` (show a state; a person's intent, a live screen — generic over the screen's vocabulary, bound to `UiState`/`UiIntent` in `AppPorts`, so the port names no screen type) and `DevControls` (the build's switches and reset), and the extension's `ExtensionHost` (an invocation, answered as the platform's three-case `ProcessingAnswer`, and its end). An adapter hands deliveries over raw and in platform-independent values, through the inbound kind its handler is typed by (`docs/patterns.md`); what one runs is the composition's entry point. Each root keeps one-line forwarders for its Swift callbacks and holds no entry of its own | `EntryIntegrationTest` + `OsCompletionIntegrationTest` (the entry points' promises over the JVM root, through the rig) + `ExtensionEntryTest` + `ListenDoorTest` + shell gates. Naming is **review** |
-| **Host-first entries**: only two deliveries assemble the status host — `Lifecycle.onForeground` (`OnForeground`'s step after the token request, on the composition lane, before its own work) and `Ui.onLive` — each a person reaching the app. A link is not one: `OnLink` keeps it as the opened invite (`OpenedInvites`), which the status screen opens once it starts. A push token, a silent push, a scheduled or transfer wake builds no host, so a cold background start installs no permission-grant subscription | `EntryIntegrationTest`, `OsCompletionIntegrationTest` (from a background launch, read off the OS's record) |
-| An adapter's constructor takes no function. What the platform says arrives through `inbound`, what the core asks is a port method; a function on a constructor is a callback wired past both | `AdapterConstructorTest` (every class implementing a port interface in an adapter module's production and rig source sets, the mocks included), with no exemptions |
-| `ports/` holds interfaces — plain, `fun` and sealed (with a sealed interface's cases) — the `*Handlers` bundles its event ports are registered with, and the ports' **data vocabulary**: value, data and enum classes that carry values and nothing more (no function beyond a `toString`, no nested object), so an adapter can depend on the ports alone. A decision or helper belongs in `services/` or `model/`, an implementation in an adapter, an inert binding (`NoProcessMetrics`, `NoBackgroundTime`) in `compose/`. The vocabulary moves in port by port; what is still in `model/` moves when its port is reshaped | `PortsHoldInterfacesOnlyTest` (no allowlist) |
-| **Events arrive through `inbound`.** An event port extends `EventPort<H>`; its `*Handlers` bundle — whose constructor is `@CompositionOnly`, every field one of the inbound kinds — is built and registered with `inbound(handlers)` by a composition only, once per adapter, after the graph it delivers into is built: the app's by `AppCore.inbound` (`compose/AppInbound.kt`), which the host zone calls once the host can be assembled, beside the UI handlers it builds itself (they need the status host); the per-process `ProcessMetrics` by `startProcess`, because every composition sets its process up first; and the extension's `ExtensionHost` by `composeExtension`, because that process has no host zone. `CrashReporter` is no event port: its `listen(CrashHandlers)` registers the callbacks that shape what its SDK sends. A rig decorator's forwarding `inbound` counts as the composition's single one. `inbound` only registers: it runs no handler and builds no feature. Every handler is an entry point (the table below), or, for the UI, a presentation intent. A `*Handlers`-typed `var` exists only behind an `override fun inbound` (or `listen`) | `ListenDoorTest` (both halves, non-vacuous) + `LambdaSeamShapeTest` + `CompositionOpensNoDatabaseTest` + the `@CompositionOnly` opt-in (a compile error elsewhere) |
 | The partial grant's selection observer opens on composition (`Gallery.observeChanges`), on every start — a background one included, so a wake that builds no screen still learns the selection and its uploads are not withheld; the latest snapshot is kept for a consumer that attaches late | `EntryIntegrationTest` + `SelectionSnapshotLaneTest` |
-| A read that can be unknown returns a sealed result with an explicit *unreadable*, never folded into a known answer. Predicates are named for the states they accept | **review** |
-| Absence is never silent: a seam that can answer "nothing" separates *nothing* from *could not tell* wherever the consequences differ, or states why the collapse is safe for every cause | **review** (design discipline) |
 
 **The entry table** — every delivery an event port makes, the inbound kind it is, and the entry point that takes it (`entrypoints/`, `docs/patterns.md`):
 
@@ -252,127 +455,22 @@ as a delivery, and the next waits for that run — the partial grant's selection
 received-photo recognition withholds what it must) and, once the host is assembled, a returned network
 (`OnNetworkReturned`).
 
-### State and authority
-
-| law | enforced by |
+| state law | enforced by |
 |---|---|
 | Authority lives behind ports. After process death every fact is recoverable from a durable store or the external system. This binds adapters too | **review** |
 | A delivery the platform makes **once** is persisted before the entry point returns, citing proof (API contract, vendor doc, or measurement) that it is once-only. A MetricKit report is handled **inline** on the thread MetricKit delivers on (the lane law's one exception for it): `ProcessAccount` attaches it — with the app's own last memory readings, `FootprintTrail` — to the crash channel and logs it before the callback returns | **review** |
-| Each kind of write to a durable port has exactly one owner (a feature use case or a port's guarded write), written as one transaction with the guard in the statement. Two processes running that owner is fine | **review** |
+| Each kind of write to a durable port has exactly one owner (a use case or a port's guarded write), written as one transaction with the guard in the statement. Two processes running that owner is fine | **review** |
 | No transport adapter holds the upload rows (`OwnUploadRows`, `WalkRecord`, `RowTransitions`, `JobRecord`, `UploadRowsReset`): the data layer's tier records a transfer's end, through `JobRecord`'s guarded write, where the platform reports it | `TransportLedgerGateTest` |
 | No OS completion handler is stored in a mutable field (Kotlin and Swift): an adapter wraps the block in an immutable `Completion` and delivers it with its event, and the run answers it once — after its work, or after the expiry's grace | `OsHandlerContainmentTest` (a plain ban, no licensed owner) + the runtime (`EntryPointTest`) |
-| The walk memo (`MemoizedWalk`) is built in one place, the app's own photos (`AppCore.ownPhotos`), never by the extension or the shared `UploadGraph` | `@AppProcessOnly` on its constructor; `OptInPinsTest` pins the app composition's one opt-in |
+| The walk memo (`MemoizedWalk`) is built in one place, the app's own photos (`AppGraph.ownPhotos`), never by the extension or the shared `UploadGraph` | `@AppProcessOnly` on its constructor; `OptInPinsTest` pins the app composition's one opt-in |
 | Mutable state touched from an OS callback thread is confined to a named lane (`@ConfinedTo`) or is a thread-safe primitive | `ConfinementGateTest` (heuristic) |
 
-### Entry points, commands and queries
-
-| law | enforced by |
-|---|---|
-| Rules live in features. Entry points order work and never decide: one per operating-system trigger, named for it, whose `run` is a short list of steps (`docs/patterns.md`) | the `core` complexity tier + **review** (the entry-point detekt rules are phase 4's) |
-| Every delivery reaches the core through a `scheduling/` entry-point base, which labels, times and contains it: only the bases implement an inbound kind | the compiler (`@SubclassOptInRequired(InboundImplementation)`; the host's two UI handlers opt in at their site) |
-| Work a run does not await is `detached` — labelled with the run's trigger, under its own background-time hold — never launched past the runtime | **review** (`Runtime.scope` is still public for the old zones' own launches, until phase 4) |
-| Work several triggers ask for runs single-flight (`Sequence`): one more pass however many join, and a waiter whose time is up withdraws without cancelling the pass others wait for | `SingleFlightTest` |
-| A step either stops the run (`required`) or is contained and logged (`isolated`); `concurrently` children are each isolated, and the step ends when all have | `StepsTest` |
-| Commands cross one door: every command is an entry point, a service call, or a presentation intent — OS callbacks cross `entrypoints/`, and an event port's handler is exactly one entry point (or, for the UI, an intent). Presentation fires every command through its `UserCommands` door — each a `UserCommand` over an entry point, fired and never awaited — and never calls a use case or a feature | the compiler (presentation has no `entrypoints/`, `application/` or `feature/` edge) + `ModuleSetTest` |
-| Only a composition builds an event port's `*Handlers` (`compose/`, or `host/` where the host must exist first) | `ListenDoorTest` (with its twin: at least one site seen) + the `@CompositionOnly` constructor |
-| Presentation reads only the query layer — its state, fed by the store's change notices, and its lookups (`ScreenLookup`, each read on the composition lane) — and the domain's values | the compiler (presentation's edges are `domain/`, `query/`, `inbound/` and `:ui:state`) + `ModuleSetTest` |
-| `:ui:screens` takes no `suspend` function parameter or field | `ScreensTakeNoSuspendSeamTest` |
-| What a screen shows is `UiState`. Compose-remembered state in `:ui:screens` is allowlisted per file with its reason | `ScreenStateContainmentTest` |
-
-### Composition and shells
-
-| law | enforced by |
-|---|---|
-| **The composition layer.** A root hands its composition ports and nothing else — `AppPorts` to `snapSyncHost` (app), `ExtensionPorts` to `composeExtension` (extension), each nesting the process's `ProcessPorts` — and the composition is **wiring only**: named graph classes (`ProcessGraph`, `UploadGraph`, `ExtensionGraph`) holding only `val`s built by constructor calls, no branch, no `lazy`, no lambda, no member function, and per process one straight-line composing function. A constructor never touches a port — every store opens on first use (`OwnedDatabase`) — so a graph built eagerly opens nothing. The composition's FIRST act is `startProcess` over the process's `ProcessGraph`: `StartProcess` (data's) installs the log writers (Kermit's and the structured `Log`'s), starts crash reporting before any other wiring can fail, and logs the boot banner, then the process metrics' entry point is registered; one crash reporter, one process-metrics source, one `Files`, one `Clock`, one `ThreadLabel` and one `BuildInfo` per process. It returns the `StartedProcess` that only `StartProcess` mints and every later graph requires (`AppCore`, `ExtensionGraph`), so none can be built in a process whose crash reporting has not started. The upload's layers are one graph both processes build (`UploadGraph`), each passing the pieces it builds its own way; the extension's graph declares them as the restricted types — `StoredDeviceIdentity` (reads, never mints), `ReceivedPhotosReader` (the download store read-only), `DropOnlyCredential`, `ExtensionUploaderAdmission`, `PlaceOwnPhotos` — and the app-only pieces (`@AppProcessOnly`) cannot be built from anything the extension links. The app root builds the process's ONE `CutoffFormatter` (the zone read once) and hands the same instance to the UI adapter and to `snapSyncHost`. A root never builds the status host or installs subscriptions. Only a process that supplies log sinks installs writers into Kermit's global list (a device root does; the JVM root's processes, many in one JVM, supply none unless their log is read back) | `CompositionIsWiringTest` + `ExtensionSafetyTest` (nothing the shipped extension links opts into `@AppProcessOnly`) + `ModuleSetTest` + `PortBundleTest` + the `composition` detekt tier. The wiring graph is not unit-tested. It is smoke-tested by the integration surface, over the JVM root |
-| A platform-mechanism decision (today: may the upload extension be registered, the domain's `OsUploaderAdmission`) is a pure, total, unit-tested function of runtime state, re-evaluated when an input changes. Target-fixed facts are not inputs | the compiler (exhaustive `when`) + `ProducerExclusivityTest` (no cell true below iOS 26.1) |
-| Upload transitions stop in-flight work only at a leave (no deregister or cancel on revoke/reconfigure/launch; no registration write under a partial grant; enable always goes disable→enable) | `ProducerExclusivityTest` |
-| Shells (`:app:ios`, `:app:ios:extension`, the JVM root `:app:jvm`, the host `:domain:host` and the shared composition `:domain:compose` — core zones, but wiring every root calls — rig-contributed shell source) hold zero decisions: the composition constructs and connects, and every decision, guard, failure arm and piece of per-event state it once held is a feature's or a service's, unit-tested there | `detektAppShell` (cyclomatic threshold 2, gating) + `KotlinShellGuardTest` (roots exist, `@Suppress` inventory exact both ways) |
-| The build's adapter set is chosen at build time: a root builds its real adapters as one lazy device bundle — `AppDevicePorts` or `ExtensionDevicePorts`, each naming exactly the ports its process has, none defaulted — and calls `platformAdapters()` (app) or `extensionPorts()`/`extensionHost()` (extension), compiled from the root's `src/prod`/`src/entries` or — only under `-Psnapsync.rig=true` — from the control channel's source, which hands back the launch-time adapters' ports (`docs/testing.md`), decorates the UI (`RigUi`), supplies its own `DevControls` and runs a requested contract in the extension. No flag is read, no inert stub ships and no shipped binary links a mock | the build scripts + `DevControlsContainmentTest` + `MockContainmentTest` |
-| Source a build script contributes into a shell's source set is shell source for the gates | the root `build.gradle.kts` `appShellSources` list, mirrored in `KotlinShellGuardTest` |
-| Swift is a transcriber: decision keywords only at pinned occurrences, and every Swift shell function forwards to Kotlin | `SwiftShellGuardTest` |
-| A tap crosses from a platform UI as a `UiIntent`: the screen's one tap table (`statusActions(dispatch)`) names each tap, and the container's one exhaustive table (`StatusContainerHost.onIntent`) decides what it means. No UI binds a container method itself | `HostStatusActionsTest` (the table clicked is the table that ships) + the compiler (the intent table is exhaustive) |
-| The scene-mode resolver (`SceneRecord.resolve`) has one caller, the UI adapter's pull, and the scene generation one writer; SwiftUI pulls the scene at one site and binds only the generation `onSceneActive()` answers | `SceneRecordCompletenessTest` + `SwiftShellGuardTest` |
-| The credential-recovery loop is composed, never wired by a shell: `snapSyncApp` builds the backend gateway over the `HttpTransport` port a root supplies, with the attestation service as its credential. (It used to need a text pin on the iOS root, which handed the core's rejection hook to the HTTP client — a cycle `compose/` could not close) | `PushIntegrationTest` (the JVM root composes the phone's loop) + `BackendGatewayTest` |
-
-### Concurrency and failure
-
-| law | enforced by |
-|---|---|
-| A **lane** is a dispatcher with a fixed role and fixed threads, and rules for what may run on it; the root names which dispatcher plays each lane. Three lanes: **main** (platform UI only, and the one UIKit completion handler UIKit requires there — a background `URLSession`'s, released by its adapter's `Completion`), **CPU** (presentation reduction: Orbit's event loop, which `StatusContainerHost` is handed as `reduction` — never left to Orbit's default), **composition** (a dedicated serial dispatcher for blocking calls, network, stores; its thread pinned to `QOS_CLASS_USER_INITIATED` by its first task, logged once). The composition names only the last two: **main is adapter-internal** — a platform-UI adapter (the share sheet, the URL opener, the Settings page, the permission prompt and picker) hops there itself, so a command that hands something to the platform's UI runs on the composition lane like every other. The upload extension has a lane of its own, which its root names (`composeExtension(ports, lane)`). The live scope is never UI-bound, in any binary | **review** for the scope. The main lane is gated below; the CPU lane by `StatusContainerHostTest`'s pin |
-| **The lanes are the app's only source of timers and threads.** The app code — the core's zones, and the generic adapters and mocks the JVM host composes over — names no dispatcher, thread or timer: every `delay` and `withTimeout` runs on the lane of the code that asks, so a host that owns the lanes owns the app's time. The control channel's JVM host runs every lane on one loop with mocked time (`docs/testing.md`, "How a test waits"); a platform adapter's own hop to a platform thread is the platform's, and outside this law | `TestsWaitOnEventsTest` (the app code the JVM host runs names no dispatcher or thread; one JVM adapter the host does not run is exempt, with its reason) |
-| One adapter-owned hop lane beside them: the **PhotoKit read lane** (`photoKitReadLane`, `:adapter:ios:ext-safe`), a single dedicated thread pinned to `USER_INITIATED`, used by the discovery walk and the candidate source. A dedicated thread, because a pooled worker left at `USER_INITIATED` would carry the class into unrelated work | **review** |
-| The main thread is named only by allowlisted platform-UI adapters (Kotlin `Dispatchers.Main`, `MainScope()`, `dispatch_get_main_queue`, `NSOperationQueue.mainQueue`; Swift `DispatchQueue.main`). `runBlocking` appears only where an `Answered` delivery is answered: the runtime's `AnsweredEntryPoint` (the extension's `process()` is synchronous by the operating system's contract — its work runs on the delivering thread, or on the lane a host names as the runtime's `answerOn`, while that thread waits) and the rig's `ContractRunningExtensionHost` | `MainLaneContainmentTest` |
-| An adapter's dispatcher hop means throughput, never safety (the composition already keeps work off main) | **review** |
-| Two entry-port exceptions run on the main thread by design: the iOS `SceneRecord` is written only there (UIKit's activation notification and SwiftUI's calls both arrive there, and the scene rule reads it there), and `Ui.onLive` runs there synchronously, because SwiftUI's pull must return a controller whose first frame already has a state. Foreground host assembly is NOT one of them: it is a step of `OnForeground`, on the composition lane | **review** (`SceneRecordCompletenessTest` pins the record's single writer) |
-| No `runCatching` / `catch (Throwable\|Exception)` outside the cancellation-keeping and ObjC-boundary helpers and the runtime's containment sites (`Runtime`, `Steps`, `SingleFlight`; `docs/patterns.md`, "Containment"); the old zones' catch-alls are a per-file baseline that only shrinks. A cancellation is never reported as a failure, and nothing catches an `InvalidProgramState`: a catch of `Throwable` rethrows it, and where it would leave Kotlin for the platform the process ends with its crash report (`docs/patterns.md`, "Invalid program state") | `CatchSitesTest` + `CatchGateTest` |
-| No Kotlin throw escapes into ObjC (delegate overrides and blocks run through the boundary helper), and no ObjC `Boolean`/`NSError**` result is dropped (checked-call helper) | `ObjCBoundaryGateTest` (heuristic) |
-| A multi-step use case declares each step required (stops and returns failure) or best-effort (logs and continues) | **review** |
-
-### Platform, runtime identity and containment
-
-| law | enforced by |
-|---|---|
-| The core (`:domain:*`) and the UI (`:ui:*`) hold no main source set but `commonMain`: platform code lives in an adapter, behind a port. Test source sets are unrestricted | `PlatformCodeContainmentTest` (modules from `settings.gradle.kts`, source sets from each module's `src/`) |
-| All Keychain API use lives in `:adapter:ios:ext-safe` (import or fully-qualified) | `KeychainContainmentTest`. That module's own tests pin the accessibility class on every query |
-| Neither entitlements file raises `default-data-protection` to `NSFileProtectionComplete` (it would make every App-Group file unreadable while locked, which kills background sync) | `DataProtectionEntitlementTest` |
-| Extension-linked Kotlin references only allowlisted `platform.*` frameworks (scope derived from the extension's dependency closure) | `ExtensionSafetyTest` |
-| Runtime-identity literals (strings the OS or installed base holds) appear exactly once, with pinned non-Kotlin copies agreeing | `RuntimeIdentityTest` (inventory in the test; see section 9) |
-| Apple enums decoded with a fallback arm are pinned to the platform klib's declared set | `PlatformVocabularyPinTest` |
-| The device (`iosArm64`) actual of the transfer session names the background configuration, and the simulator actual does not | `TransferSessionBindingTest` + an executable simulator test in `:adapter:ios:app-only` |
-| The device actuals of the upload-job subsystem name the PhotoKit APIs, and the simulator actuals name neither (PhotoKit job creation traps on a simulator) | `UploadJobSubsystemBindingTest` |
-| The event-link domain is generated from one resolved deployment everywhere (entitlement, `LINK_ORIGIN`, AASA, upload host, site URLs). No hand-written host literal. The extension claims no associated domain | `EventLinkDomainTest` |
-| The Swift shell keeps both event-link delivery paths (`.onOpenURL` and the scene delegate's cold and warm halves) | `EventLinkDeliveryTest` (its failure message carries the device evidence) |
-| A build-time-only module is contained **by compilation**: without its property, a build contains none of its source. There are no runtime flags or inert stubs. A needed shell call site is contributed by the module under the same property | the build scripts + CI's gated compile (`docs/testing.md` section 1). Shape is **review** |
-| Production Kotlin declares no `"SNAPSYNC_*"` literal (no launch triggers) | `RunbookSkillsTest` |
-| Every runbook skill `AGENTS.md` points at exists, with a matching frontmatter name | `RunbookSkillsTest` |
-| The control channel binds the loopback address only | `ControlChannelLoopbackTest` |
-| Client and backend event-name caps agree, and no screen states the cap as a literal | `EventNameLimitTest` |
-| The client's gated-route predicate matches the backend's closed list in `api/src/app.ts` | `GatedPathPinTest` |
-| Retired dead weight stays dead (zxing/kotlincrypto, the `capability/` tree, the manifest accumulator, a second `*Enrollment` uploader, ...) | `DeletionLedgerTest`. Bringing one back means deleting its row in the same commit |
-
-### Feature invariants held by guards
-
-These pin one feature's structural rule that no type can state:
+Structural rules of one concept that no type can state:
 
 | guard | holds |
 |---|---|
 | `SelectionPolicyContainmentTest` | the capture-date bounds are compared in exactly one place (`CaptureRange.holds`) |
 | `QueryReadOnlyTest` | the query layer calls no write of the data layer |
-| `JvmRootBootsColdTest` | constructing a launch of the JVM root forces no `AppCore` member |
-
-### Tests verify requirements
-
-The specs (`openspec/specs/`) say what a user observes; the code is laid out by its own laws, not by the specs'
-cut. They are linked in one direction only: a test that verifies a requirement says so with
-`@Verifies(spec = "…", requirement = "…"[, scenario = "…"])` (`:test:verifies`), keyed on the spec's directory
-and the requirement's title. What an adapter or the platform decides is claimed by a named test beside the adapter (a
-device test, a contract binding's own test, or a journey) — never by a whole-contract run, which proves every clause at
-once, and never by a mock's binding, which proves only the mock. The Deno suites (`api/test`, `site/scripts/*.test.ts`)
-write the same annotation as a one-line comment directly above a `Deno.test`, `// @Verifies(spec = "…", requirement = "…", scenario = "…")`, and claim
-what the api or a web page decides. A suite claims a scenario only where its own code decides the outcome; a scenario
-split between the api and the app carries one claim per deciding place, each saying in a line which part it proves.
-Scenarios left unclaimed on purpose (a platform's or a store's outcome, an accepted "may" gap, a release obligation)
-are listed with a reason in `AcceptedUnclaimed` (`:test:architecture`) — never in `openspec/`, and never work still to
-do. `./gradlew :test:architecture:verifiesReport` lists which requirements and scenarios a test claims and which none
-does, leaving the list out (`build/reports/verifies.md`, non-gating, never committed).
-
-| law | enforced by |
-|---|---|
-| Every `@Verifies` names a spec, requirement and scenario that exist, so a renamed requirement fails the build and names the tests that claimed it | `VerifiesGateTest` (text: every test source set, the journeys included, and the Deno test files) |
-| Every `AcceptedUnclaimed` entry names a scenario that exists and no test claims, and gives a reason | `AcceptedUnclaimedTest` |
-| Production code cites no spec: no capability named in backticks, in a comment or a string, in any `.kt`/`.kts` outside a test source set, or any `.ts`/`.astro`/`.mjs` of `api/` and `site/` outside a Deno test file | `NoSpecCitationTest` (text, heuristic: a paraphrase is not caught) |
-
-### Disciplines with no gate
-
-- **Necessity claims carry forcing proofs.** "The platform forces X" cites an API contract, a vendor
-  doc, or a device measurement, never the current code, and names the trigger that would dissolve it.
-  A gate that pins an exception carries the proof in its failure message.
-- **A capability claim is settled by a compile, not a symbol table.** A klib records what ships, not
-  what is callable (`Dispatchers.IO` is in the Native klib and is `internal`). To learn what an Apple API
-  *declares* (enum sets, nullability), read the klib (`adapter/ios/AGENTS.md`, "Reading the Apple SDK from Linux").
-  What the *device* does needs a measurement.
-- **Expiry of the lane reasoning.** The three-lane argument is iOS-shaped (two processes). A platform
-  whose background work runs in-process (Android) re-derives it rather than inheriting it.
 
 ---
 
@@ -472,11 +570,12 @@ integration measurement's exceptions are one.
 - Tier membership is derived from the live Gradle model (the plugin's tier map).
   `DetektTierCoverageTest` fails if a subproject is in zero or two tiers, or if a config file belongs to
   no tier. Each task fails if it scanned zero files.
-- `compose/` has its own tier. The `flow` tier went with its zone. `entrypoints/` and `scheduling/` have their own,
+- Each layer has its own tier (`inbound`, `wire`, `format` and `ports` share `core`); the composition modules share
+  `composition`. `entrypoints/` and `scheduling/`
   and their files are the first that state a **claim**, written with the code, rather than debt measured after it:
   an entry point orders steps and decides nothing (cyclomatic and cognitive 4), and the runtime stays small enough to
   read in one sitting (7 / 9). `domain/`'s claim is the entry points' (4 / 4), and it was measured before it was
-  written: every pure rule bound for the layer was at most 6 / 4 in `model`, and each case above 4 re-checked a
+  written: every pure rule bound for the layer was at most 6 / 4 where it came from, and each case above 4 re-checked a
   nullable or sentinel input (`docs/patterns.md`, "The domain"). `data/` claims 3 / 3 — it translates, and a function
   that needs more is deciding (`docs/patterns.md`, "The data layer") — and `application/` the same, measured on its
   first use case. A `when` whose every entry is one expression counts once (`_base.yml`'s reading of
@@ -521,10 +620,10 @@ two measurements, with a target or with a `skipped(…)` and its reason:
 ```kotlin
 coverage {
     integrationGoal(instructions = 95, branches = 85)
-    ":domain:services" {
-        skipped("SQLDelight's generated code: …", packages = listOf("app.snapsync.services.ledger.db", …))
-        unit(alsoCoveredBy = listOf(":adapter:generic:mock", ":adapter:generic:app", ":test:feature"))
-        integration(instructions = 80, branches = 58)
+    ":domain:data" {
+        skipped("generated by SQLDelight …", packages = listOf("app.snapsync.data.store.db", …))
+        unit(alsoCoveredBy = listOf(":test:data", ":adapter:generic:mock"))
+        integration(instructions = 86, branches = 64)
     }
     ":ui:screens" { unit(); integration { skipped("Compose: the suite stays at the intent level") } }
     ":adapter:generic:mock" { skipped("test equipment: …") }
@@ -624,10 +723,11 @@ measure — the branches a test reaches through one copy were not credited toget
 - A module's own tests always count. Another module's count only through its entry's `alsoCoveredBy`, which merges
   that module's coverage data (Kover's `kover` dependency) — never its classes. The modules whose tests cover others
   apply Kover themselves: `:adapter:generic:mock`, `:test:feature`, `:test:data`, `:test:integration`.
-- Unit placement: the `:domain:*` zones are also covered by `:adapter:generic:mock` and `:test:feature`, `:domain:services`
-  by `:adapter:generic:app` too, the data and application layers by `:test:data`, and `:ui:components` and
-  `:domain:presentation` by `:ui:screens`.
-- **The wiring**: `:domain:compose`, `:domain:host`, `:domain:entrypoints` and `:app:jvm` are also covered by
+- Unit placement: `:domain:ports` is also covered by `:adapter:generic:mock` and `:test:feature`, the data layer by
+  `:test:data` and the mocks' suites (the legacy copy runs over the in-memory stores), the application layer by
+  `:test:data` and `:test:feature`, the query layer by `:test:data`, and `:ui:components` and `:domain:presentation` by
+  `:ui:screens`.
+- **The wiring**: the composition modules, `:domain:entrypoints` and `:app:jvm` are also covered by
   `:test:integration`. "The composition layer" (§2) says the wiring graph is not unit-tested and IS smoke-tested by
   the integration surface, so for these the integration tests are the tests written for the code. The entry points
   join them for the same reason (and are covered by the mocks' suite too, which composes the process's metric-report
@@ -636,10 +736,10 @@ measure — the branches a test reaches through one copy were not credited toget
   The suite covers no other module's unit measurement: a thick integration suite cannot stand in for a thin unit suite
   — which is why what it covers of the rest is a measurement of its own (`integration`), judged apart.
   What integration reaches in the wiring is construction and connection only: it holds no decision (`detektAppShell`),
-  so every branch the graph needs is a unit-tested feature's or service's, and the JVM root composes through the same
+  so every branch the graph needs is a unit-tested layer's, and the JVM root composes through the same
   device bundles (`AppDevicePorts`, `ExtensionDevicePorts`) the phone's roots do.
 - The block lives in the root build file because `ModuleSetTest` forbids a `:domain:*` build file to name a module
-  outside its zone's law (its tests' `:test:verifies` aside),
+  outside its layer's law (its tests' `:test:verifies` aside),
   and `Zones.kt` reads those files as text, where an edge to the covering module would render backwards. Name leaf
   modules: `:domain` is an empty container, and a report filtered to it measures nothing.
 
@@ -651,9 +751,9 @@ Decision record: `changes/archive/2026-08-28-add-coverage-bounds`, **partly supe
 default engine), D3 (`INSTRUCTION` and `BRANCH`, never `LINE`) and D5a (credit follows placement) stand. D2 (aggregate
 + package-floor percentages) gives way to the own-`report.xml` gate — the very alternative D2 deferred — module by
 module as each reaches zero; every module reached it, and the floors are gone. D4 stands except that integration now
-covers the wiring modules and the entry points, and has a measurement of its own. D5 (`compose/`
-unbounded) rested on Kover crediting per project while `compose/` was a package of `:domain`; it is its own module now,
-so it is measured. D6 (seed at `floor(measured)`) gives way to zero.
+covers the wiring modules and the entry points, and has a measurement of its own. D5 (the composition
+unbounded) rested on Kover crediting per project while it was a package of `:domain`; it is its own modules now, so
+it is measured. D6 (seed at `floor(measured)`) gives way to zero.
 
 ---
 
@@ -665,7 +765,7 @@ byte-deterministic (code-point sort, `\n`, UTF-8, no timestamps or absolute path
 | file | what |
 |---|---|
 | `modules.md` (+ `.modules-inputs.txt` sidecar) | module graph from the Gradle model's **build** configurations. `kover*` is excluded, and the file header says so |
-| `zones.md` | zone/feature graph (derived from `build.gradle.kts` text, so never declare a report-aggregation edge in a scanned module's build script; the root build is the place) |
+| `zones.md` | layer graph (derived from `build.gradle.kts` text, so never declare a report-aggregation edge in a scanned module's build script; the root build is the place) |
 | `ports.md` | port × adapter matrix, including a fake-and-contract column |
 | `di.md` | DI wiring graphs and the binary × port matrix |
 
@@ -726,7 +826,7 @@ code change.
   `CoarseDuration`, not "2 weeks". So `:domain:*` has no resources dependency, and a message nobody
   worded is a missing `when` branch at compile time (`Words.kt` in `:ui:screens`).
 - **Dates are the platform's.** `UiState` carries dates as values (`LocalDateTime`, `LocalDate`), never as text.
-  `DateFormats` (`model/`) formats a CLDR skeleton (`yMMMd`, `jm`); the `DateFormatting` port answers one through
+  `DateFormats` (`ports`) formats a CLDR skeleton (`yMMMd`, `jm`); the `DateFormatting` port answers one through
   `java.time` on the JVM, ICU on Android and `NSDateFormatter` on iOS. `:ui:components` holds no platform code: the
   root hands the screen a `ScreenDates` over the port, and `StatusScreen` provides the formatter for the resolved
   language as `LocalDateFormats`. Month names, day/month
@@ -1082,7 +1182,7 @@ joined screen's service line reads (decision record `changes/tell-service-faults
 | `HttpTransport` (port) | send one request, answer what came back — never throws | `ports/`; `KtorHttpTransport` in `:adapter:generic:app` |
 | `:domain:wire` (generated) | routes, request shapes, replies — the description, in Kotlin | `domain/wire`, from `api/openapi.yaml` |
 | `BackendExchange` / `BackendGateway` | the protocol: the build's base and version header on every request (`BackendTarget`), the bearer on a `GatedRequest` only, `Unauthorized` → recover → retry once, `AppTooOld`/`Success` → the version gate, every answer → the service's condition (`data/service/ServiceConditions`) | `data/backend/` |
-| need-shaped services | what a reply MEANS to the app (`EventNotFound` is "gone" to the directory, "nothing to leave" to the leave) | `services/backend/` |
+| need-shaped services | what a reply MEANS to the app (`EventNotFound` is "gone" to the directory, "nothing to leave" to the leave) | `data/event/`, `data/membership/`, `data/push/` (built in `BackendGraph`) |
 
 **Two kinds of route.** An operation whose `security` admits no token is `OpenRequest` (the `/attest/…` issuers);
 every other one is `GatedRequest`, which alone can carry the token — the two legacy optional reads (`getEvent`,
@@ -1171,9 +1271,8 @@ event as the server last served it and the member's own share of it. The concept
   what it held, and a leave that cannot be written tells the backend nothing; another event's invite loads first and
   only then asks whether to switch, so an invite that cannot be joined never leaves the joined event.
 
-**What has not moved yet stays in `feature/membership/`**, each piece until its phase moves it into the layers: the
-join-time share-set load (`ShareSetLoad`, 4.4b). The
-membership itself (its row, its use cases, its queries) is already the layers'.
+The membership is the layers' whole: its row, its use cases (the join-time share-set load, `LoadShareSet`, among them)
+and its queries.
 
 **A member's request answers on its status** (`docs/patterns.md`, "Queries and requests"): the join, a settings
 change, a rename and a switch's question cross the door with a `RequestId` and are answered on `MembershipStatuses`;
@@ -1255,7 +1354,7 @@ layers:
   placed before its job (`AlbumPlacement`).
 
 **The extension only places.** Its composition holds `PlaceOwnPhotos` and nothing else of the album: making an album
-and gathering are `@AppProcessOnly`, built in one place (`compose/AlbumComposition.kt`).
+and gathering are `@AppProcessOnly`, built in one place (`AlbumGraph`, `:domain:composition:app`).
 
 ### HTTP API (v2, current)
 
@@ -1924,23 +2023,24 @@ step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`swit
 ### Composition roots (manual DI — no expect/actual; each calls its composition)
 
 Both roots are wiring only: each constructs its process's platform adapters and hands them to the
-composition functions — the app's in `:domain`'s `compose/` zone, the extension's in `:domain:composition:extension` (law "The composition layer") — there
+composition functions — the app's `composeApp` in `:domain:composition:app`, the extension's in `:domain:composition:extension` (law "The composition layer") — there
 is no per-root cycle or feature assembly any more.
 
 - **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
   `SupervisorJob` scope on its own composition lane (outlives Compose recomposition). Builds `AppPorts` —
   ports and nothing else (`PortBundleTest`): the process's `ProcessPorts` with its `IosBuildInfo`, the App-Group
-  storage ports, PhotoKit, the generic HTTP backend, the entry ports — and calls `snapSyncHost(scope, lane, ports,
-  formatter)` (the lane its scope runs on), whose first act sets the process up (crash reporting first) and which builds every service over the
-  ports; the lazily composed graph (the screen's queries, attestation, join/leave/create, downloads, upload arm) is
-  wired into `StatusContainerHost`. **The scope carries a `CoroutineExceptionHandler`** — its one
+  storage ports, PhotoKit, the generic HTTP backend, the entry ports — and calls `composeApp`
+  (with the lane its scope runs on), whose first act sets the process up (crash reporting first) and which builds the
+  whole graph eagerly over the ports — opening nothing (law "A constructor never touches a port"); the screen host is
+  assembled later, by `AssembleHost`, when a person first reaches the app. **The scope carries a
+  `CoroutineExceptionHandler`** (scheduling's `RootScopeFailures`) — its one
   non-negotiable member: a `SupervisorJob` isolates siblings from each other but does **nothing**
   for a throwable no child handles, which on Kotlin/Native hits the default terminate → `SIGABRT`.
   Without the handler an uncaught launch-path failure (a platform-API call, an App-Group read, a
   deprecated PhotoKit selector on a newer iOS) aborts the whole app before first paint. The handler
   logs the throwable to `debug.log` (the un-redacted channel) and lets the app live — the
   "errors reduce into state, never crash the shell" rule, applied to the one seam Compose reduction
-  cannot reach. Every feature still reduces its own domain errors into `UiState`; this is the last
+  cannot reach. Every layer still reduces its own domain errors into `UiState`; this is the last
   resort for what nothing else did, and it is what makes an otherwise-invisible launch crash
   self-diagnosing (the exception text lands in `debug.log` instead of an opaque abort).
 - **Extension**: `app/ios/extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
@@ -1952,7 +2052,7 @@ is no per-root cycle or feature assembly any more.
   host; `process()` runs `OnProcess` — one blocking `ExtensionPass` over the shared `UploadGraph` and the OS's queue
   (`OsQueueTier`, `OsQueueDrain`) — whose `ExtensionAnswer` it maps to the `ProcessingAnswer` (an in-flight job
   answers *processing*, `UploadPass.extensionAnswer`) and the raw-value handoff through the tested `ports/` rules.
-- The app-driven tier's uploader (`compose/AppUploader.kt`) builds the same `UploadGraph` over the app's own
+- The app-driven tier's uploader (`UploaderGraph`, `:domain:composition:app`) builds the same `UploadGraph` over the app's own
   services and its `SessionTier` over the `TransferSession` port (the background-`URLSession` adapter); the wake's
   sequences (`TopUp`, `WalkAndPublish`, `UploadOwn`) drive it.
 
@@ -1980,7 +2080,7 @@ it takes **evidence** the membership's uploads end (`EndsUploads`: a committed l
 that did not finish, a deleted event): the extension deregistered, the wakes cancelled, the live session
 transfers cancelled with their staged files (`AfterJoin`, `AfterSettings`, `Leaving`, `SweepLeftovers`,
 `DeletedTransfers` in `MembershipEntryPoints.kt`). **None of them clears the upload rows**: only a join resets
-them (`ShareSetLoad` over `UploadRowsReset`: the joined event's seeded from a confirmed listing, every other
+them (`LoadShareSet` over `UploadRowsReset`: the joined event's seeded from a confirmed listing, every other
 event's purged; and the rig's reset clears them), as its own step (`delivery`, `join-event`). And **no transition but an end of uploads stops in-flight
 work**: the registration spans the membership (never removed by a reconfigure or a grant change), a revoke stops
 only new creation — so nothing is ever orphaned, and nothing needs repair (decision record
@@ -2006,7 +2106,7 @@ the compiler cannot — driving the real `ReconcileUploader` and `ExtensionRegis
 registrable below 26.1, and that no transition sequence wipes in-flight work anywhere but at a leave.
 
 **Ledger writers are owned by code, not by a process** (`photo-sharing`). The app holds the upload rows' writers on
-every OS version — built in `UploadGraph` and the app's uploader (`compose/AppUploader.kt`) — and on **iOS ≥26.1**
+every OS version — built in `UploadGraph` and the app's uploader (`UploaderGraph`) — and on **iOS ≥26.1**
 the **extension** builds the same layers. Every write is one guarded transaction owned by named code: the walk's
 (`WalkRecord`), a tier's guarded transitions (`JobRecord` over `RowTransitions`), and the join's reset
 (`UploadRowsReset`). Outside the shared composition, `:app:ios` constructs no writer.
@@ -2113,7 +2213,7 @@ reinstall. To exercise the app's uploader alone on a ≥26.1 device, switch the 
 
 - **Device logs:** both composition roots hand their composition the sinks `PublicNSLogSink()` and
   `FileLogSink(<destination>)` — they live in `:adapter:ios:ext-safe` (capability `privacy-security`) — and it
-  (`StartProcess`, run by the composition's first act) installs the Kermit writers and logs the boot banner. The file
+  (`StartProcess`, run by the composition's first act) installs `Log`'s writers and logs the boot banner. The file
   sink takes its **destination**: the app passes `appLogDestination()`
   (its own `Documents/debug.log`, pullable as before), the extension `extensionLogDestination()`
   (`ext-debug.log` in the **App Group**, so the app can read it for a diagnostic dump; it falls back

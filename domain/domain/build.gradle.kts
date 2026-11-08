@@ -5,7 +5,7 @@ plugins {
     id("snapsync.deployment")
 }
 
-// The core's `domain` layer (`docs/architecture.md`, "The core and its zones"): values and pure policy, packaged by
+// The core's `domain` layer (`docs/architecture.md`, "The core and its layers"): values and pure policy, packaged by
 // concept — time, event, sharing, asset, device. It depends on nothing — no project module, no library — so every I/O,
 // every port and every format is unresolvable here; `DomainPurity` holds what the standard library still allows. The
 // old zones depend on it while they move (MIGRATING, `ModuleSetTest`); it never depends on them.

@@ -3,10 +3,15 @@
 How work enters the core, how it runs, and how it is written — the patterns `:domain:inbound`,
 `:domain:scheduling`, `:domain:entrypoints` and `:domain:domain` hold, and every new trigger and every value the
 domain gains follows. Where each layer sits and what
-it may reference is `docs/architecture.md` ("The core and its zones"); this file is how to write in them.
+it may reference is `docs/architecture.md` ("The core and its layers", and its placement guide); this file is how to
+write in them.
+
+The standing principles that decide every choice these patterns leave open — a clean architecture is the goal and
+behaving the same only a constraint, kept clean continuously, no dead production code, build logic in `build-logic/` —
+are `docs/architecture.md`'s opening.
 
 ```
-platform ──delivery──▶ event port ──inbound kind──▶ entry point ──steps──▶ features · services · sequences
+platform ──delivery──▶ event port ──inbound kind──▶ entry point ──steps──▶ use cases · data · sequences
  (adapter)              (ports/)     (inbound/)      (entrypoints/,          (single flight, scheduling/)
                                                       on scheduling/'s base)
 ```
@@ -39,8 +44,8 @@ bases in `scheduling/` opt in, and the host's two UI handlers at their pinned si
 base. So every delivery reaches the core through code that labels, times and contains it.
 
 **Only a composition wires one.** A handler bundle's constructor, `EventPort.inbound(…)`, `Observation.follow` and
-`Log.install` are `@CompositionOnly`. The app's ports are wired in one function, `AppCore.inbound(host)`
-(`compose/AppInbound.kt`), which the host calls once the host can be assembled; the process's in `startProcess`
+`Log.install` are `@CompositionOnly`. The app's ports are wired in its one composing function, `composeApp`
+(`composition/app`); the process's in `startProcess`
 (`composition/process`), after `StartProcess.run()` — itself `@CompositionOnly`, so only a composition starts a
 process; the extension's in `composeExtension` (`composition/extension`).
 
@@ -72,8 +77,12 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
   `BackgroundEntryPoint` (`Background`), `GrantedEntryPoint` (`Granted`), `AnsweredEntryPoint` (`Answered`, with the
   answer a failure gives).
 - **`run` orders and never decides.** Each step makes one call; what the step does is that call's. A `when` over a
-  fact a feature answered selects between steps — with a subject, no `else`, as an expression — and nothing more.
-  A decision is a feature's. The `entrypoints` detekt tier holds the claim (cyclomatic and cognitive 4).
+  fact a use case or a query answered selects between steps — with a subject, no `else`, as an expression — and
+  nothing more. A decision is a domain verdict's. The `entrypoints` detekt tier holds the claim (threshold 4).
+- **The screen host is assembled by a step, not by the graph**: `AssembleHost` (entrypoints) builds the
+  `StatusContainerHost`, installs the permission subscriptions, follows network returns and starts the UI
+  collection, once, when a person first reaches the app (`OnForeground`, the UI's `onLive` or intents). A push, a
+  wake or a relaunch never runs it, so a cold background launch installs no subscription.
 - **The base gives every trigger the same treatment by construction:** the `Trigger` (the class name), the
   containment, the background-time hold (begun on the delivering thread, before the callback returns — the OS may
   suspend the process the moment it does), and the expiry.
@@ -102,8 +111,7 @@ class OnSilentPush(runtime: Runtime, private val prelude: Prelude, …) : Backgr
 - A member's request is answered on its **status** (section 13): the entry point's first step is
   `ensure("answer") { status.settle(id, …) }`, so a run that ends early still answers, and the step that knows the
   outcome writes it with `done`.
-- `entrypoints/` sees the ports' vocabulary for its arguments and calls no port. Its edges to `feature/` and
-  `services/` are **migrating**: phase 4 moves the work underneath sequences and use cases.
+- `entrypoints/` sees the ports' vocabulary for its arguments and calls no port (`EntryPointsCallNoPortTest`).
 
 ---
 
@@ -165,10 +173,6 @@ started for no delivery (`OnArm` from a grant change) is its own: a `done` with 
 before it. A sequence's pass runs in the process scope, never in a waiter's: what it detaches is its own, named by the
 pass's trigger, and a waiter's `done` covers the pass only while it waits for it.
 
-What `done` does not see yet: work the old zones still launch on `Runtime.scope` — a leave's backend notice, the
-album gather, a reconfigure's download reconcile, the permission and push subscriptions. Phase 4 moves them under
-entry points, and their work joins its entry's `done` then.
-
 A shipped build's adapter keeps nothing (`NoEntryEvents`): the log line is the diagnostic. A rig build and the JVM feed
 the control channel's event stream (`docs/testing.md`, "How a test waits"). The iOS upload extension, its own process
 on a device, keeps nothing either: its events reach only its own log (`ext-debug.log`).
@@ -217,12 +221,18 @@ passing on an `InvalidProgramState`, which ends the process (§15):
 3. the process scope's `CoroutineExceptionHandler`, for work nobody awaits (`unawaited work failed`).
 
 `SingleFlight` turns a pass's end into a value for its waiters — answer, failure or cancellation (a cut) — and is
-the fourth `catch` in the layer. `CatchSitesTest` licenses exactly these files, and holds every other catch-all in
-production — the old zones' `runCatchingCancellable`, `contained` and broad or typed
-`catch` clauses (an adapter's typed catch excepted: turning a platform throw into a value is its job) — to a baseline,
-counted per file, that may only shrink. Phase 4 empties it as it moves the old zones under entry points and
-sequences, and deletes the helpers with their last use. `CatchGateTest` holds the other half: every site still
-there keeps cancellation.
+the fourth `catch` in the layer. `CatchSitesTest` licenses exactly these files; outside them the core catches nothing
+but a typed third-party failure, in the layers that translate a library (`data`, `format`, `wire`). An adapter turns
+its platform's throw into a value: with a typed catch where the platform documents what it throws, else at a named
+`PlatformCalls.attempt` site (`:adapter:generic:app`) that keeps cancellation — each site a row of `CatchSitesTest`,
+with what it guards, exact and shrink-only. `CatchGateTest` holds the other half: every site keeps cancellation.
+
+```kotlin
+// good — a library's documented failure, read as a value (format)
+private fun parsed(text: String): JsonElement? = try { Json.parseToJsonElement(text) } catch (_: SerializationException) { null }
+// bad — a catch-all in the core turns a bug into a quietly wrong answer
+val read = try { store.read() } catch (e: Exception) { null }
+```
 
 ---
 
@@ -246,13 +256,22 @@ log.i("top-up planned", "needing" of needing.size, "admitted" of plan.rows.size)
   groups — by what happened, never by the values it happened with. Every line rides the crash channel as a
   breadcrumb, and an `Error` or `Assert` line is a report too, titled by its event and grouped by its tag and event
   (`CrashShaping`).
-- The levels are `LogLevel`'s, and every line reaches each of the process's sinks once (`SinkLines`) and the crash
+- The levels are `LogLevel`'s — `DEBUG`, `INFO`, `WARN`, `ERROR` — and every line reaches each of the process's sinks once (`SinkLines`) and the crash
   channel once (`CrashLines`), both installed by the process's start (`StartProcess`, through `ProcessLogging`, which calls `Log.install`).
 
-The old zones' Kermit lines reach the same writers through a **bridge**, `KermitBridge`, Kermit's only writer, which
-forwards each to `Log` at its level. The runtime's lane writes each task's trigger into a per-thread slot, the
-`ThreadLabel` port (a `ThreadLocal` on the JVM and Android, a thread-local global on iOS), and the writers read it.
-Each old line moves to `Log` when phase 4 moves its code.
+**Every line is `Log`'s** — the core's, every adapter's, every root's; there is no other logging library (Kermit and its
+bridge were retired in phase 5). Code that does not suspend — an adapter's OS callback, a root — writes `log.unlabelled`:
+the runtime's lane writes each task's trigger into a per-thread slot, the `ThreadLabel` port (a `ThreadLocal` on the JVM
+and Android, a thread-local global on iOS), and the writers read it for a line that carries none, so an OS callback's
+line still says `[OnX]`. An `Error` line reaches the operator; everything but an event key rides the crash channel
+(§14).
+
+```kotlin
+// good
+log.unlabelled.w("legacy source unreadable — retried at the next open", "source" of source.key, "read" of read)
+// bad — the value in the event: every line a different event, nothing groups
+log.unlabelled.w("legacy $source unreadable ($read)")
+```
 
 ---
 
@@ -298,7 +317,7 @@ read under the grant's plan and admitted — the one place every consumer of the
 manifest's record and publish (`ManifestRecord`, `ManifestPublication`); and the upload
 (`data/upload`): the upload rows and their guarded transitions, a pass's gate reads, the request, and the two
 transfer tiers behind `UploadTier` (`SessionTier`, `OsQueueTier`). Its edges are the domain,
-the format, the ports, the generated wire and the inbound log — never an old zone, never `application`.
+the format, the ports, the generated wire and the inbound log — never `application`.
 
 - **Data translates and never decides.** Its only branch is an exhaustive `when` over a fact or a domain verdict,
   with a subject and no `else`, **used as an expression** — its value is the answer, so no case can quietly do nothing
@@ -318,10 +337,9 @@ the format, the ports, the generated wire and the inbound log — never an old z
   `DropOnlyCredential`. The app-only kinds carry `@AppProcessOnly` on their constructors (§10).
 - **The claim: ≤ 3 cyclomatic, ≤ 3 cognitive** per function (`config/detekt/data.yml`). A `when` whose every entry is
   one expression counts once (`_base.yml`): it selects over a fact's cases. A function that needs more is deciding.
-- **The old zones reach it one way while their concepts move** (MIGRATING). A shim that keeps an old zone's shape for
-  callers a later phase owns — the guard a sweep of a failed leave's leftovers waits out (`MembershipTransition`) —
-  lives in the old zone, never in the layer, and is listed in `PENDING_CLEANUPS.md` with the phases that delete its
-  callers.
+- **A compatibility shim is the data layer's like any store**, written to its rules and listed in `PENDING_CLEANUPS.md`
+  with its unlock condition: the one-time copy of 0.4's files and keys into `ledger.db` (`data/legacy/`), each source its
+  own run of statements, so one that fails stays pending alone.
 
 Its suites run over the ports' mocks in `:test:data` (no core module may name a mock), credited to it; its pure
 translations are tested in its own `commonTest`.
@@ -336,11 +354,11 @@ A value's text — on the wire, in a store, in a JSON file — is the boundary's
 | format | the one place | |
 |---|---|---|
 | a timestamp's text (`yyyy-MM-dd'T'HH:mm:ss'Z'`) | `TimestampText` (`:domain:format`) | `format`, `parse`, `parseOrNull`, and an asset's `captureDate`/`captureText` |
-| a value in a JSON format | `AsString` serializers (`model/DomainSerializers.kt`) | each format opts in with `@file:UseSerializers(…)`; a missing one is a compile error |
+| a value in a JSON document | the document's own `XText` object in `:domain:format` (`InviteLinkText`, `LegacyMembershipText`, `FootprintTrailText`) | a total decoder over the parsed tree: a typed catch of the library's failure, a value for every answer, never a throw |
 | a value in a database column | a `ColumnAdapter` per type (`data/store/DomainColumnAdapters.kt`) | wired once per database; the `.sq` column names its type (`TEXT AS EventId`) |
 
-`:domain:format` holds the formats that zones on both sides of the data layer need: a dependency on it hands over
-nothing but formats — no DTO, no port, no store. The rest moves to `data` with the services in phase 4. A column's Kotlin type lives in the `CREATE TABLE` of a migration,
+`:domain:format` holds the formats the layers on both sides of the data layer need: a dependency on it hands over
+nothing but formats — no DTO, no port, no store. A column's Kotlin type lives in the `CREATE TABLE` of a migration,
 and a shipped migration is never edited (`MigrationPinTest`): giving a column a type is a new migration that rebuilds
 its table (`ledger.db` 15, `downloads.db` 9), changing no byte a device stores. A column that holds a sentinel no
 value can be (`ledgerRow.eventId`'s parked `''`) stays text, converted where it is read.
@@ -356,7 +374,7 @@ slip past it. Its hole is that anyone may write `@OptIn(X::class)`, so **every o
 
 - **The project's markers**, found rather than listed: `@InboundImplementation`, `@CompositionOnly` (§1) and
   `@AppProcessOnly` — the walk memo (`MemoizedWalk`), which the upload extension's 32 MB process must never construct or reach: its
-  constructor carries the marker, and the app's composition opts in once, building its own photos (`AppCore.ownPhotos`).
+  constructor carries the marker, and the app's composition opts in once, building its own photos (`AppGraph.ownPhotos`).
 - **The library markers the library itself calls delicate**: `DelicateCoroutinesApi`, `InternalCoroutinesApi`,
   `ExperimentalForInheritanceCoroutinesApi`, `DelicateCryptographyApi` — the sites where someone accepted a risk.
   The markers that only say "this is cinterop" or "not yet stable" are not pinned.
@@ -440,10 +458,6 @@ where the outcome is known, and `settle` — which answers only a request still 
 step, so a run cut short still answers. There is no fifth entry-point base: a request is a `Background` delivery like
 any other, and its status is a read-model.
 
-At the door a request is `handedOff` (`compose/UserCommandsComposition.kt`): the third lane-declaring form beside
-`awaitingOnCoreLane` and `detachedOnCoreLane` (`CommandLaneTest`), since the entry point's runtime runs the work on
-the composition lane and nothing but the hand-off runs on the tapping thread.
-
 ---
 
 ## 14. Secret types and rendering
@@ -477,7 +491,7 @@ something *guarantees* the state can never happen, and it is **fatal**: if it is
 wrong, and running on might not be safe.
 
 ```kotlin
-// The gallery services' one encoding of a platform id: every character it emits is canonical.
+// The asset id's one encoding (`AssetIdText`) of a platform id: every character it emits is canonical.
 return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encoding emits only canonical characters")
 ```
 
@@ -488,10 +502,10 @@ return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encod
   row an earlier build wrote, an OS-held tag — is never impossible: it is a value (`XRead`, `XVerdict`, `Parsed`, an id
   column's `Stored`). Its supertype is `Error`, not `Exception`, so it cannot be mistaken for one.
 - **Nothing catches it.** A catch of `Exception` passes it on; a catch of `Throwable` catches it first in the same `try`
-  and rethrows it (`CatchGateTest`) — `runCatchingCancellable`, `isolated`, a run's containment and a pass's outcome
+  and rethrows it (`CatchGateTest`) — `PlatformCalls.attempt`, `isolated`, a run's containment and a pass's outcome
   all do. Where it would otherwise leave Kotlin for the platform, the process ends: the runtime's synchronous
   boundaries (an inline or answered delivery) and its scope's handler hand it to the coroutines library's last resort
-  (`endProcess`), a root's scope rethrows it (`uncaughtInRootScope`), and on iOS `objcBoundary` runs Kotlin/Native's
+  (`endProcess`), a root's scope rethrows it (`RootScopeFailures`), and on iOS `objcBoundary` runs Kotlin/Native's
   unhandled path itself (`endProcess` in `objc/`). A Kotlin throwable that unwinds into Objective-C or Swift frames
   terminates **without** Kotlin/Native's unhandled-exception hook, and the crash report says only that something threw
   — measured on the simulator, 2026-10-25; through the last resort the report carries the guarantee and the stack.
@@ -504,22 +518,27 @@ return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encod
   `application`, `query`, `entrypoints`, `scheduling` and `inbound`): no other `throw` than a rethrow, no `require`,
   `check`, `error`, `requireNotNull`, `checkNotNull`, `TODO` or `!!`, and none of the standard library's reads that throw
   on an empty or missing value (`first`, `last`, `single`, `reduce`, `getValue`, `getOrThrow`). A conversion that throws
-  on bad text (`String.toInt()`) is review's: syntax cannot tell it from one that cannot. The old zones join as phase 4
-  moves them; until then their throwing reads live in the old zones (`held` —
-  `PENDING_CLEANUPS.md`).
+  on bad text (`String.toInt()`) is review's: syntax cannot tell it from one that cannot.
 
 ---
 
+
 ## 16. Composition is wiring
 
-The composition layer (`:domain:composition:*`, `docs/architecture.md` "The composition layer") says which instance
-goes where, and nothing else:
+The composition layer (`:domain:composition:process`, `:domain:composition:extension`, `:domain:composition:app`;
+`docs/architecture.md`, "Composition and shells") says which instance goes where, and nothing else:
 
 - **A graph class holds only `val`s, each built by a constructor call** — `ProcessGraph`, `UploadGraph`,
-  `ExtensionGraph`. A companion factory (`UploadHost.of`), a collection builder (`listOfNotNull`) and a property read
-  are wiring too: none branches. No `if`, `when`, loop, `try`, `?:`, `lazy`, lambda or member function.
-- **A constructor never touches a port.** A store opens on first use (`OwnedDatabase`), an identity resolves on its
-  first read — so a graph built eagerly opens nothing, and nothing is deferred with `lazy` to make it so.
+  `ExtensionGraph`, and the app's `AppGraph` with its concept graphs (`ServicesGraph`, `BackendGraph`,
+  `MembershipGraph`, `ReceivingGraph`, `UploaderGraph`, `AlbumGraph`, `StatusGraph`, `WakeGraph`, `WorkGraph`,
+  `CommandsGraph`, `HostGraph`). A companion factory (`UploadHost.of`), a collection builder (`listOfNotNull`) and a
+  property read are wiring too: none branches. No `if`, `when`, loop, `try`, `?:`, `lazy`, lambda or member function.
+- **The graph is eager, and a constructor never touches a port** (`ConstructorsTouchNoPort`, §17). A store opens on
+  first use (`OwnedDatabase`), an identity resolves on its first read, a query reads when it is first collected — so
+  a graph built eagerly opens nothing, and nothing is deferred with `lazy` to make it so.
+- **What runs only for a person is a step, not a node.** The screen host is not built by the graph: `AssembleHost`
+  (entrypoints) is, and constructs nothing until the foreground or the UI runs it once (§2). The deferral is tested
+  behaviour in a layer, not a `lazy` in wiring.
 - **What must happen in order is a class below the composition**, not a function in it: the process's start is
   `StartProcess` (data's), tested for its order, and its `run()` is `@CompositionOnly` and mints the `StartedProcess`
   every later graph takes — the order held by a type, not by a comment.
@@ -527,43 +546,127 @@ goes where, and nothing else:
   general interface (`UploadGraph` takes a `DeviceIdentity`); the extension's graph declares the restricted type it
   passes (`StoredDeviceIdentity`), and an app-only piece (`@AppProcessOnly`) is not buildable from anything the
   extension links.
-- **Each process has one composing function** (`startProcess`, `composeExtension`): straight-line, it builds the
-  graphs and registers the handlers (`@CompositionOnly`).
+- **Each process has one composing function** (`startProcess`, `composeExtension`, `composeApp`): straight-line, it
+  builds the graphs and registers the handlers (`@CompositionOnly`). They are the core's only top-level functions.
 
 ---
 
-## 17. What holds these rules
+## 17. The rules, one by one
+
+Each: the rule, why, a short good and bad, and the gate.
+
+**Business rules are types.** *Parse, don't validate*: a value that exists obeys its rule, and its only way in is the
+type's own (`EventId.parse`, `CaptureRange.of`). A fact only a check can establish is **evidence** (§11), minted at one
+site behind its own `@RequiresOptIn(ERROR)` marker. A state a value passes through is a **typestate** (`StagedDownload`
+→ `ImportedAsset`), and a transition between stored states is a **compare-and-set** write that changes the row only
+while it is still the one decided for (§8). *Why:* a rule checked at every use is a rule some use forgets.
+```kotlin
+val range = CaptureRange.of(from, until) ?: return Unusable   // good: the type is the rule
+fun upload(from: Timestamp, until: Timestamp) { require(from <= until) }   // bad: validated, and forgotten elsewhere
+```
+*Gate:* the compiler, `OptInPinsTest`, `DomainPurity`.
+
+**Decisions are domain verdicts, taken by an exhaustive `when`.** A layer that is not the domain branches only over a
+verdict's or a fact's cases — with a subject, no `else`, as an expression — so a new case is a compile error, never a
+silent default. *Why:* a decision outside the domain is one no domain test sees.
+```kotlin
+when (RegistrationVerdict.of(write, reply)) { is Applied -> …; NothingToDisable -> …; … }   // good
+if (reply.code == 3201L) …                                                                  // bad: decided in data
+```
+*Gate:* `DataShape`, `EntryPointShape`.
+
+**No exceptions: outcomes are sealed.** An expected failure is a case of the answer (`XResult`, `XRead`, `XReply`,
+`XOutcome`, `XVerdict`, §14), never a throw; a library's failure is caught where it is translated, typed (§5); the one
+exception the core raises is `InvalidProgramState` (§15). There is no `Result`, no Arrow: a sealed answer names its
+cases. *Why:* a throw crosses every layer untyped, and the caller that forgets it is never told.
+*Gate:* `OnlyInvalidProgramStateThrows`, `CatchSitesTest`, `PortGridTest`.
+
+**Results are returned, never pushed.** A use case answers its outcome to the entry point that called it; a request's
+answer is written on its status by the work (§13), read by the screen. Nothing calls back up a layer. *Why:* a pushed
+result is a callback, and a callback is a seam nobody names.
+
+**Lambdas: a call-site block, never injected behaviour.** A DSL block at a call site (`steps { }`, `required { }`,
+`transaction { }`, `membership { active { … } }`) is fine. Behaviour handed to a constructor or held in a property is
+not: it is an interface, named. *Why:* a function-typed field is the shape of an adapter written inline and of an
+unwired callback alike.
+```kotlin
+class CutoffFormatter(private val now: CurrentInstant, …)     // good: a named reading
+class CutoffFormatter(private val now: () -> Instant, …)      // bad
+```
+*Gate:* `NoFunctionTypes` (every core module).
+
+**No top-level functions.** A function lives on the type it belongs to — a verdict on its value, a translation on the
+translating object (`GalleryTranslation`), a parse helper on `Parsed`'s companion, a helper as a private member of the
+one class using it. The three composing functions are the only exception. *Why:* "where does this live?" has one answer.
+*Gate:* `NoTopLevelFunctions`.
+
+**Booleans that stand for a choice are enums.** `UploadersCarriedText.of(OsSupport.CARRIED)`, not `of(true)`; a
+platform's Boolean is read into one at the boundary (`OsSupport.of(carried)`). *Why:* `true` at a call site says
+nothing. *Gate:* **review**.
+
+**Secrets and ids are their own types** (§14): a secret's `toString` is masked and its bytes are an opt-in; an id is a
+parsed value that renders in full. *Gate:* the types, `OptInPinsTest`.
+
+**A constructor touches no port.** No property initializer or `init` block reads or calls a port-typed constructor
+parameter, reads a `.value` through a parameter, or starts a flow `Eagerly`. *Why:* the composition is eager, so a
+constructor that reads would read on every launch — a locked background one included.
+```kotlin
+private val reporting by lazy { ReportingBuild(build.dsn, …).reporting() }   // good: read on first use
+private val kind = push.kind                                                   // bad: read as the graph is built
+```
+*Gate:* `ConstructorsTouchNoPort`.
+
+**Two runs that must not overlap name an exclusion.** When work runs is scheduling's: the run that keeps a state holds
+the `Exclusion` from the step that starts keeping it, and releases it in an `ensure` step, so however it ends; work
+that would take the state runs `unlessHeld`, skipped — and logged — while it is held, waited for by a holder. Today the
+membership change: a join holds it from the key on, the sweep of a failed leave's leftovers yields to it.
+```kotlin
+ensure("membership change") { change.release() }
+required { change.hold() }
+isolated("leftover key") { change.unlessHeld("leftover key") { keys.forget(none) } }
+```
+*Gate:* `ExclusionTest`.
+
+**The one development port.** Production reads a development control only through `DevControls`. Its production
+adapter answers the inert values forever, and `@NeverAnswers` declares every answer it never gives; the only adapter
+that answers otherwise is compiled into a rig build. *Why:* a test-only input whose production answer is a declared
+constant is a port's answer, not dead code; the alternative — the rig substituting the composition's admissions — is
+the same variability where nothing describes it. *Gate:* `DevControlsContainmentTest`, `NeverAnswersCheck`.
+
+---
+
+## 18. What holds these rules
 
 | rule | gate |
 |---|---|
 | An entry point holds no `if`; a `when` only over a subject, every case named; a `membership { }` block names a branch | detekt `EntryPointShape` (`:domain:entrypoints`) |
 | A query only reads | `QueryReadOnlyTest` |
-| Every user command declares its lane: awaited, detached or handed to an entry point | `CommandLaneTest` |
 | Data holds no `if`; a `when` only over a subject, every case named, used as an expression | detekt `DataShape` (`:domain:data`) |
 | Only an entry point calls a use case | `EntryPointCall` + `OptInPinsTest` |
 | A step is one call | detekt `OneCallPerStep` (`:domain:entrypoints`) |
-| Only the runtime starts coroutines | detekt `CoroutinesInScheduling` (`:domain:inbound`, `:domain:entrypoints`, `:domain:domain`, `:domain:data`, `:domain:application`; the old zones join in phase 4) |
-| Behaviour crosses as an interface, never a function-typed field, `fun interface` or alias | detekt `NoFunctionTypes` (`:domain:inbound`, `:domain:scheduling`, `:domain:entrypoints`, `:domain:domain`, `:domain:data`, `:domain:application`) |
-| The entry points' decisions and the runtime's size stay small | the `entrypoints` and `scheduling` tiers (`config/detekt/entrypoints.yml`, `scheduling.yml`) — claims, not debt |
+| Only the runtime starts coroutines | detekt `CoroutinesInScheduling` (`inbound`, `entrypoints`, `domain`, `data`, `application`, `query`) |
+| Behaviour crosses as an interface, never a function-typed field, `fun interface` or alias | detekt `NoFunctionTypes` (every core module) |
+| A function lives on its type | detekt `NoTopLevelFunctions` (every core module; the composing functions excepted) |
+| A constructor touches no port | detekt `ConstructorsTouchNoPort` (`inbound`, `scheduling`, `domain`, `data`, `application`, `query`, `entrypoints`, `presentation`, the composition) |
+| The entry points' decisions and the runtime's size stay small | the `entrypoints` and `scheduling` tiers — claims, not debt |
 | An entry point names no port | `EntryPointsCallNoPortTest` |
-| Only the runtime's sites catch everything; the old zones' catch-alls only shrink | `CatchSitesTest` (+ `CatchGateTest`: cancellation is kept) |
+| The core catches only typed library failures; each adapter catch-all is a named site | `CatchSitesTest` (+ `CatchGateTest`: cancellation is kept) |
 | The project's markers, and the delicate library ones, are opted into only where pinned; no build script opts a module in | `OptInPinsTest` |
 | The domain is values and verdicts: no suspension, state, behaviour as a value, world or top-level function | detekt `DomainPurity` (`:domain:domain`) |
-| A domain verdict stays small | the `domain` tier (`config/detekt/domain.yml`) — a claim, measured |
-| Data and a use case stay small | the `data` and `application` tiers (`config/detekt/data.yml`, `application.yml`) — claims |
-| Only the app process mints an identity or attests | `@AppProcessOnly` on `MintingDeviceIdentity` and `AttestingCredential` + `OptInPinsTest` |
-| The walk memo stays in the app process | `@AppProcessOnly` + `OptInPinsTest` |
-| Only the app makes or gathers an event album; the extension only places own photos | `@AppProcessOnly` on `AlbumCreation`, `EnsureEventAlbum`, `PlaceReceivedPhotos`, `AlbumGatherPass` and `OnPhotoAccessChanged`, one opt-in site (`AlbumComposition.kt`) + `OptInPinsTest` |
-| A format is written once, at the boundary | `TimestampText`, the `AsString` serializers, the column adapters — review; a missing serializer or adapter is a compile error |
+| A domain verdict, data and a use case stay small | the `domain`, `data` and `application` tiers — claims, measured |
+| Only the app process mints an identity or attests; the walk memo stays in the app | `@AppProcessOnly` + `OptInPinsTest` |
+| Only the app makes or gathers an event album; the extension only places own photos | `@AppProcessOnly` on `AlbumCreation`, `EnsureEventAlbum`, `PlaceReceivedPhotos`, `AlbumGatherPass` and `OnPhotoAccessChanged`, one opt-in site (`AlbumGraph`) + `OptInPinsTest` |
+| A format is written once, at the boundary | the `XText` objects and the column adapters — review; a missing adapter is a compile error |
 | A handler bundle is built and registered only by a composition | `ListenDoorTest` |
-| The composition layer is wiring: graph classes of `val`s built by constructor calls, no branch, `lazy` or lambda, one composing function per process | `CompositionIsWiringTest` + the `composition` tier (`config/detekt/composition.yml`) — a claim |
+| The composition layer is wiring: graph classes of `val`s built by constructor calls, no branch, `lazy` or lambda, one composing function per process | `CompositionIsWiringTest` + the `composition` tier |
 | Nothing the shipped upload extension links opts into `@AppProcessOnly` | `ExtensionSafetyTest` |
 | No OS completion handler is stored in a field | `OsHandlerContainmentTest` |
-| A background entry point never names the membership's teardown | `BackgroundTeardownTest` |
-| `inbound`, `scheduling`, `entrypoints`, `domain`, `data` and `application` have no uncovered line | `coverageZero` (the entry points credited by the integration surface, data and application by `:test:data`) |
-| The layers throw only an `InvalidProgramState`; no `require`, `check`, `!!` or throwing read | detekt `OnlyInvalidProgramStateThrows` (`domain`, `format`, `data`, `application`, `query`, `entrypoints`, `scheduling`, `inbound`) |
+| Two runs that must not overlap name an `Exclusion` | `ExclusionTest` |
+| Production reads development controls only through `DevControls` | `DevControlsContainmentTest` + `NeverAnswersCheck` |
+| Every line through `Log`, its event a literal | `EventNameLiteralTest` |
+| Every core module has no uncovered line | `coverageZero` (credit per `alsoCoveredBy` in the root build file) |
+| The layers below presentation throw only an `InvalidProgramState`; no `require`, `check`, `!!` or throwing read | detekt `OnlyInvalidProgramStateThrows` (`domain`, `format`, `data`, `application`, `query`, `entrypoints`, `scheduling`, `inbound`) |
 | An `InvalidProgramState`'s `because` is a literal | detekt `InvalidProgramStateBecause` (every production source set) |
 | Nothing catches an `InvalidProgramState` | `CatchGateTest` |
 | An `InvalidProgramState` ends the process with a crash report, delivered on the next start | `CrashReporterContract` (`AFTER_A_PROCESS_DEATH`, on `IOS_SIM_KEXE` and `ANDROID_EMU`) |
 | `steps { }` is written only inside a run | the compiler: it is a member of the `Run` the runtime hands an entry point's run, a sequence's pass and detached work |
-

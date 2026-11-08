@@ -20,7 +20,7 @@ import app.snapsync.inbound.AppProcessOnly
 import app.snapsync.scheduling.Runtime
 
 /**
- * The event album in the app process (`docs/architecture.md`, "The layers"): its map over the shared database, the
+ * The event album in the app process (`docs/architecture.md` §1): its map over the shared database, the
  * library's album calls and the use cases over them. The app is the album's one creator — this class is where it is
  * built (`@AppProcessOnly`); the upload extension's composition holds only a placement of own photos.
  */

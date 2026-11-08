@@ -75,9 +75,8 @@ toolchain cannot run anywhere else. Where two targets have equivalent implementa
 (section 4).
 
 `commonTest` is where a test *goes*. It is not a reason to *move* code. Do not move a platform-to-neutral
-translation into `model/` just to reach the faster JVM loop. The translation stays beside its inputs, so
-its test asserts against the platform's own symbols rather than a copied constant (`docs/architecture.md`
-spec, "Zones inside the core").
+translation into the core just to reach the faster JVM loop. The translation stays beside its inputs, so
+its test asserts against the platform's own symbols rather than a copied constant (`docs/architecture.md`, "The core and its layers").
 
 Non-`commonTest` source sets that exist today:
 
@@ -295,8 +294,7 @@ Where bindings live: beside their implementations.
 - `DateFormatting`: live on `JVM`, `IOS_SIM_KEXE` and `ANDROID_EMU` over each platform's real adapter — a skeleton's
   order, names and hour cycle in a pinned locale, a bare language, and the device's own. A space in an answer compares
   as a plain one (CLDR's no-break and narrow no-break spaces before `PM` differ by platform version). Its grid is one
-  cell, `formats → returns`: the `DateFormats` it hands over is a `model/` value, so its `format` is no cell of its
-  own. The `:ui:components` tests render through the real JVM adapter, so a label is asserted as a locale writes it;
+  cells, `formats → returns` and the `DateFormats` handle's `format → returns`, recorded through the handle's proxy. The `:ui:components` tests render through the real JVM adapter, so a label is asserted as a locale writes it;
   the `:ui:screens` tests through it too (an `expect` whose one real `actual` is the JVM's: that suite runs on the JVM only).
 - `Crypto`: live on `JVM`, `IOS_SIM_KEXE` and `ANDROID_EMU` — published known-answer vectors only (RFC 4231 HMAC, the GCM
   specification's AES-256 test cases), so every platform computes what the others do. The encrypted file format framed
@@ -330,9 +328,9 @@ Where bindings live: beside their implementations.
   the real `SharedPreferences` (`AndroidInstallReferrerTest`). It is no port and has no contract — the Links port's
   promise is unchanged. What the real Play client answers on a Play-installed build is reachable only once the listing
   is public (production launch), and is checked then by hand.
-- The storage services' suites — their rules, their migrations (each entered at its version through the
+- The legacy copy's and the stores' suites — their rules, their migrations (each entered at its version through the
   `Databases` port, so the service's own open runs the chain) and their answers to every port failure:
-  `:adapter:generic:mock` `commonTest` (`services/`), over the storage mocks, which `DatabasesMockContractBindingTest`
+  `:adapter:generic:mock` `commonTest` (`data/legacy/`), over the storage mocks, which `DatabasesMockContractBindingTest`
   and `StorageMockContractBindingsTest` hold to the platform adapters' clauses. The upload rows — their reads, the
   walk's record and the guarded transitions — are the data layer's, over the real `ledger.db` schema in `:test:data`
   (`OwnUploadRowsTest`, `RowsResetAndProgressTest`), and the use cases over them `UploadUseCasesTest`'s.
@@ -717,7 +715,7 @@ build the same classes over caller-held cells.
 
 ### The JVM root (`:app:jvm`)
 
-`JvmApp` composes the app on the JVM exactly as `SnapSyncRoot` does on the phone — `snapSyncHost` over `AppPorts`, ports
+`JvmApp` composes the app on the JVM exactly as `SnapSyncRoot` does on the phone — `composeApp` over `AppPorts`, ports
 and nothing else — and the upload extension beside it exactly as `UploadExtensionRoot` does (`composeExtension` over
 `ExtensionPorts`), over the adapters **its caller** chooses for each launch, from a durable state the caller keeps:
 `JvmApp(scope, durable) { durable -> adapters }`. `JvmMocks` is that durable state as one mock per external system, and
@@ -732,7 +730,7 @@ Its stated deviation from the phone:
   before `relaunch()` returns, where a killed process runs nothing more. A test's baseline read after a relaunch sees them.
 - both processes live in one JVM: the app and the extension each set their own process up over their own process ports
   (the extension's files reach only the shared area, its crash channel is one nobody observes), and a process that
-  supplies no log sinks leaves Kermit's JVM-global writer list alone — the rig's JVM host hands the app's process its
+  supplies no log sinks leaves `Log`'s JVM-global writer list alone — the rig's JVM host hands the app's process its
   recorder, which is how `host.logs()` reads the app's log back.
 
 The screen's "now" is the launch's `Clock`, like the core's: a test runs on mocked time only, never the wall clock.
@@ -761,9 +759,9 @@ Its callers are the rig's JVM host (section 6) and the desktop world harness (se
 
 Constructing a launch of the JVM root forces nothing the iOS root does not force at process start, so a path that
 works only because something else was built first fails over the JVM root as it would on a device — and every rig
-test on the JVM host runs over it. A gate (`JvmRootBootsColdTest` in `:test:architecture`) fails if `JvmApp.kt` — its
-own members or its launch's — reads a member of the composed core eagerly (in `init` or an eager property). Defer it
-with `by lazy`, `get()`, or the function that needs it. Decision record: `changes/archive/2026-09-23-harden-seam-bug-classes`.
+test on the JVM host runs over it. The app graph is eager and opens nothing (`ConstructorsTouchNoPort`); what only a
+person's arrival runs is `AssembleHost`, which no background launch reaches — so the JVM root and the phone build the
+same graph and run the same steps. Decision record: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 
 The world (`:test:world`) and its mini-edge, which the JVM root and the mocks replaced, were deleted in 11g2b; their
 tests are rig tests now (section 7). `DeletionLedgerTest` keeps them deleted.
@@ -1248,8 +1246,7 @@ test process's own and revoking one kills it, so `NO_GRANT` clauses stay the iOS
 are iOS's too (Android files no photo into an album — `GRANTED_SEEDED_ALBUMS_WRITABLE`). The mocks'
 SQLite reaches the platform through a context their AAR's `MockAndroidContext` provider takes at process start.
 
-The client compiles against `model/` and presentation, never `ports/`, `entrypoints/`, `compose/` or
-the host. **That compile boundary is the read-model rule.** Decision record:
+The client compiles against the domain and presentation, never `ports/`, `entrypoints/` or the composition. **That compile boundary is the read-model rule.** Decision record:
 `changes/archive/2026-09-23-add-rig-jvm-host`.
 
 ---
@@ -1282,7 +1279,7 @@ fun a_held_details_load_keeps_the_join_gate_loading_until_released() = behaviour
 `behaviour { … }` (`:test:control`, `app.snapsync.control.behaviour`) starts a **fresh in-process JVM host over the
 backend mock on mocked time**, subscribes to its event stream from the start, and closes it. `given` runs shared named
 steps (`Steps.kt`), each acting and awaiting its own outcome; then an ordered chain of `whenever`/`then` pairs, each
-`then` judged against the events from its own act on. A test cannot name a mock, a port, an entry point or `compose/`:
+`then` judged against the events from its own act on. A test cannot name a mock, a port, an entry point or the composition:
 the module does not compile against them. Test classes run in up to four JVMs at once, each test on its own host and
 port.
 
@@ -1484,7 +1481,7 @@ screen. It offers:
   makes the backend send, whose receiver is the download reconcile. **Heartbeat** fires the scheduled wake.
 - gallery and backend columns, the upload queue (Complete / Fail with what the OS says of it), downloads
   (Stage), failure levers, and Create event with a past or future start.
-- an engine console that streams Kermit output, each invoke's `ProcessingAnswer`, and what the share sheet was handed (it
+- an engine console that streams the log, each invoke's `ProcessingAnswer`, and what the share sheet was handed (it
   is copied to the clipboard).
 - a Light/Dark phone toggle.
 
