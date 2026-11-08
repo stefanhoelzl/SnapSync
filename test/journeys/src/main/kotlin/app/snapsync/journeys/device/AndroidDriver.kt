@@ -98,6 +98,12 @@ class AndroidDriver(private val shell: Shell, val adb: String, val serial: Strin
     fun delayedJobs(app: String): Int =
         ok(SHORT, "shell", "dumpsys", "jobscheduler", app).lineSequence().count { "Minimum latency" in it }
 
+    /**
+     * The jobs of [app] JobScheduler is running or about to run, as `dumpsys jobscheduler` lists them: each `Slot #…` of
+     * its `Active jobs:` and each entry of its `Pending queue:` (`N/A` and `None` when empty, measured 2026-11-08, API 36).
+     */
+    fun jobsInFlight(app: String): Int = JobsInFlight.count(ok(SHORT, "shell", "dumpsys", "jobscheduler", app), app)
+
     /** The jobs JobScheduler holds for [app] that wait for a change to a content URI: the library-change wake. */
     fun libraryWatches(app: String): Int =
         ok(SHORT, "shell", "dumpsys", "jobscheduler", app).lineSequence().count { "Trigger content URIs" in it }

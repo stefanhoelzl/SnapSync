@@ -57,6 +57,15 @@ class ForceStopJourney {
                 // as the force-stop's below does; on the emulator the arm after the join lands as on main (~340 ms).
                 until(REARMED, "A, joined, has its heartbeat pending") { heartbeats() >= 1 }
 
+                // The force-stop lands on an idle A: a job JobScheduler is running or binding when the package stops is
+                // restarted by the system, process and all, which re-arms the heartbeat the check below waits to see
+                // gone (CI 2026-11-08: the journeys before this one left an uploader arm running). Two reads in a row —
+                // the arm's work enqueues its jobs as it goes.
+                var idleBefore = false
+                until(IDLE, "A has no job running or due before it is force-stopped") {
+                    val idle = device.jobsInFlight(AndroidRun.APP) == 0
+                    (idle && idleBefore).also { idleBefore = idle }
+                }
                 device.forceStop(AndroidRun.APP)
                 // JobScheduler drops a stopped package's jobs on its own thread, after `am force-stop` has returned: a
                 // read straight after it can still find the heartbeat (353 ms behind a contended system_server, CI
@@ -97,5 +106,8 @@ class ForceStopJourney {
 
         /** How long a joined A's heartbeat may be between JobScheduler's replacements of it. */
         val REARMED = 10.seconds
+
+        /** How long A's jobs may run on after the journeys before this one. */
+        val IDLE = 120.seconds
     }
 }
