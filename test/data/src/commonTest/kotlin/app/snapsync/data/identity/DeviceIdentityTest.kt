@@ -44,7 +44,9 @@ class DeviceIdentityTest {
 
     private fun minting(
         secure: SecureStore = store,
-        platform: PlatformDeviceId = PlatformDeviceId { testDeviceId("minted-id").value },
+        platform: PlatformDeviceId = object : PlatformDeviceId {
+            override fun stableId(): String? = run { testDeviceId("minted-id").value }
+        },
     ) = MintingDeviceIdentity(store = secure, platformDeviceId = platform)
 
     private fun readOnly(secure: SecureStore = store) = StoredDeviceIdentity(secure)
@@ -111,10 +113,14 @@ class DeviceIdentityTest {
     fun `an unreadable shared slot blocks the app's mint rather than being treated as absence`() {
         store.answers[SHARED] = SecureStoreRead.Unavailable(LOCKED)
         var minted = false
-        val identity = minting(platform = {
-            minted = true
-            testDeviceId("minted-id").value
-        })
+        val identity = minting(
+            platform = object : PlatformDeviceId {
+                override fun stableId(): String? = run {
+                    minted = true
+                    testDeviceId("minted-id").value
+                }
+            },
+        )
 
         assertEquals(DeviceIdRead.Unavailable(LOCKED), identity.id())
         assertTrue(!minted, "a locked device must wait for the next launch, not acquire a new identity")
@@ -150,7 +156,11 @@ class DeviceIdentityTest {
 
     @Test
     fun `a platform that offers a stable id has that id minted`() {
-        val identity = minting(platform = { testDeviceId("platform-stable-id").value })
+        val identity = minting(
+            platform = object : PlatformDeviceId {
+                override fun stableId(): String? = run { testDeviceId("platform-stable-id").value }
+            },
+        )
 
         assertEquals(testDeviceId("platform-stable-id"), identity.id().let { (it as DeviceIdRead.Ok).value })
         assertEquals(listOf(testDeviceId("platform-stable-id").value), store.writesTo(SHARED))
@@ -158,7 +168,11 @@ class DeviceIdentityTest {
 
     @Test
     fun `a platform that offers none has a random upper-case UUID minted`() {
-        val identity = minting(platform = { null })
+        val identity = minting(
+            platform = object : PlatformDeviceId {
+                override fun stableId(): String? = run { null }
+            },
+        )
 
         val id = (identity.id() as DeviceIdRead.Ok).value.value
 
@@ -172,7 +186,11 @@ class DeviceIdentityTest {
     fun `a platform id that is no device id is unusable - never handed out`() {
         assertEquals(
             DeviceIdRead.Unavailable("the minted device id is not a device id"),
-            minting(platform = { "not-a-uuid" }).id(),
+            minting(
+                platform = object : PlatformDeviceId {
+                    override fun stableId(): String? = run { "not-a-uuid" }
+                },
+            ).id(),
         )
     }
 
@@ -183,10 +201,14 @@ class DeviceIdentityTest {
     fun `a refused persisting write is unavailable and the next resolve succeeds once writes are accepted`() {
         store.refuseWrites = true
         var mints = 0
-        val identity = minting(platform = {
-            mints++
-            testDeviceId("minted-$mints").value
-        })
+        val identity = minting(
+            platform = object : PlatformDeviceId {
+                override fun stableId(): String? = run {
+                    mints++
+                    testDeviceId("minted-$mints").value
+                }
+            },
+        )
 
         assertIs<DeviceIdRead.Unavailable>(identity.id(), "an unsaved id must never be used")
         assertEquals(SecureStoreRead.Absent, store.read(SHARED))
@@ -208,10 +230,14 @@ class DeviceIdentityTest {
     @Test
     fun `the identity is resolved once and then cached`() {
         var mints = 0
-        val identity = minting(platform = {
-            mints++
-            testDeviceId("minted-$mints").value
-        })
+        val identity = minting(
+            platform = object : PlatformDeviceId {
+                override fun stableId(): String? = run {
+                    mints++
+                    testDeviceId("minted-$mints").value
+                }
+            },
+        )
 
         assertEquals(testDeviceId("minted-1"), identity.id().let { (it as DeviceIdRead.Ok).value })
         assertEquals(testDeviceId("minted-1"), identity.id().let { (it as DeviceIdRead.Ok).value })
@@ -227,10 +253,14 @@ class DeviceIdentityTest {
 
         store.answers[SHARED] = SecureStoreRead.Unavailable(LOCKED)
         var mints = 0
-        val identity = minting(platform = {
-            mints++
-            testDeviceId("minted-id").value
-        })
+        val identity = minting(
+            platform = object : PlatformDeviceId {
+                override fun stableId(): String? = run {
+                    mints++
+                    testDeviceId("minted-id").value
+                }
+            },
+        )
 
         assertIs<DeviceIdRead.Unavailable>(identity.id())
         assertEquals(0, mints, "an unreadable store never mints")
@@ -247,7 +277,9 @@ class DeviceIdentityTest {
         val extension = readOnly(shared)
         val app = minting(
             secure = shared,
-            platform = { testDeviceId("the-apps-id").value },
+            platform = object : PlatformDeviceId {
+                override fun stableId(): String? = run { testDeviceId("the-apps-id").value }
+            },
         )
 
         assertEquals(DeviceIdRead.Absent, extension.id())

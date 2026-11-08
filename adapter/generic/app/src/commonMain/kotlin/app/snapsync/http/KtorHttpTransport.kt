@@ -1,8 +1,8 @@
 package app.snapsync.http
 
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport

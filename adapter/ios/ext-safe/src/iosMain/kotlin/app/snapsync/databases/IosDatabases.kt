@@ -6,8 +6,8 @@ import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.isNoSuchFile
 import app.snapsync.platform.PlatformCalls

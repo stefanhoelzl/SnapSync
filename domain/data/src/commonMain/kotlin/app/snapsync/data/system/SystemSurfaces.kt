@@ -2,8 +2,8 @@ package app.snapsync.data.system
 
 import app.snapsync.domain.request.AppLinkRequest
 import app.snapsync.format.OwnPageText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.Handoff
 import app.snapsync.ports.SystemUi

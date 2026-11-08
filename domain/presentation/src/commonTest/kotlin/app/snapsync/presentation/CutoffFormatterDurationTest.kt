@@ -14,7 +14,7 @@ import kotlin.time.Instant
  */
 class CutoffFormatterDurationTest {
 
-    private val f = CutoffFormatter(now = { Instant.parse("2026-07-14T18:00:00Z") }, zone = TimeZone.UTC)
+    private val f = CutoffFormatter(now = instants({ Instant.parse("2026-07-14T18:00:00Z") }), zone = TimeZone.UTC)
 
     @Test
     fun `duration is its coarsest whole unit`() {

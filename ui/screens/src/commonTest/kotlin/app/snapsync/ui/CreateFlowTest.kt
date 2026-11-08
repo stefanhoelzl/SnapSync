@@ -45,7 +45,7 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.format.InviteLinkText
 import app.snapsync.format.TimestampText
-import app.snapsync.presentation.onIntent
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.query.RequestStatus
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.ui.components.resources.calendar_next_month
@@ -585,7 +585,7 @@ class CreateFlowTest {
                             StatusScreen(
                                 state = state,
                                 dateFormats = testDates,
-                                actions = statusActions(rig.host::onIntent),
+                                actions = statusActions { rig.host.onIntent(it) },
                             )
                         }
                     }

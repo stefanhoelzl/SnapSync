@@ -3,6 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.service.ServiceFault
+import app.snapsync.presentation.JoinedLayer.shown
 import app.snapsync.query.RequestStatus
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -34,24 +35,27 @@ internal enum class RenameFailureReason {
     EVENT_OVER,
 }
 
-/**
- * The member's own rename [mine] as [status] answers it — another request's answer is none of the screen's. A rename
- * asked for and not yet answered is in flight, whether or not its run has begun: the screen fires it, and the entry
- * point marks it begun once it runs.
- */
-internal fun renameOf(status: RequestStatus<RenameResult>, mine: RequestId?): RenameStatus = when {
-    mine == null -> RenameStatus.Idle
-    status is RequestStatus.Done && status.id == mine -> status.value.shown()
-    else -> RenameStatus.InFlight
-}
+object RenameRequests {
+    /**
+     * The member's own rename [mine] as [status] answers it — another request's answer is none of the screen's. A
+     * rename
+     * asked for and not yet answered is in flight, whether or not its run has begun: the screen fires it, and the entry
+     * point marks it begun once it runs.
+     */
+    internal fun renameOf(status: RequestStatus<RenameResult>, mine: RequestId?): RenameStatus = when {
+        mine == null -> RenameStatus.Idle
+        status is RequestStatus.Done && status.id == mine -> status.value.shown()
+        else -> RenameStatus.InFlight
+    }
 
-private fun RenameResult.shown(): RenameStatus = when (this) {
-    RenameResult.Renamed -> RenameStatus.Succeeded
-    RenameResult.InvalidName -> RenameStatus.Failed(RenameFailureReason.INVALID_NAME)
-    is RenameResult.Failed -> RenameStatus.Failed(RenameFailureReason.SERVER, fault)
-    RenameResult.EventOver -> RenameStatus.Failed(RenameFailureReason.EVENT_OVER)
-}
+    private fun RenameResult.shown(): RenameStatus = when (this) {
+        RenameResult.Renamed -> RenameStatus.Succeeded
+        RenameResult.InvalidName -> RenameStatus.Failed(RenameFailureReason.INVALID_NAME)
+        is RenameResult.Failed -> RenameStatus.Failed(RenameFailureReason.SERVER, fault)
+        RenameResult.EventOver -> RenameStatus.Failed(RenameFailureReason.EVENT_OVER)
+    }
 
-/** The answer to the member's own request [mine], once it arrives. */
-internal suspend fun <T> StateFlow<RequestStatus<T>>.answerTo(mine: RequestId): T =
-    (first { it is RequestStatus.Done && it.id == mine } as RequestStatus.Done).value
+    /** The answer to the member's own request [mine], once it arrives. */
+    internal suspend fun <T> StateFlow<RequestStatus<T>>.answerTo(mine: RequestId): T =
+        (first { it is RequestStatus.Done && it.id == mine } as RequestStatus.Done).value
+}

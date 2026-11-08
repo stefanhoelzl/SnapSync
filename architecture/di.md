@@ -20,7 +20,6 @@ Roots found:
 |---|---|---|---|
 | `AppDevicePorts` | x | x | |
 | `BackgroundSessions` | x | x | |
-| `CutoffFormatter` | x | x | |
 | `ExtensionDevicePorts` | | | x |
 | `FileLogSink` | x | x | x |
 | `IosBackgroundTime` | x | x | |
@@ -53,4 +52,5 @@ Roots found:
 | `PublicNSLogSink` | x | x | x |
 | `RootScopeFailures` | x | x | |
 | `SceneRecord` | x | x | |
+| `ScreenClockGraph` | x | x | |
 | `SentryCrashReporter` | x | x | x |

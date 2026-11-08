@@ -1,7 +1,13 @@
 package app.snapsync.data.receiving
 
 import app.snapsync.data.Parsed
-import app.snapsync.data.gallery.assetId
+import app.snapsync.data.gallery.GalleryTranslation.assetId
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.held
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.refOf
+import app.snapsync.data.receiving.LibraryImport.Companion.reportOf
+import app.snapsync.data.receiving.MarkerStatements.clear
+import app.snapsync.data.receiving.MarkerStatements.confirm
+import app.snapsync.data.receiving.MarkerStatements.recordMarker
 import app.snapsync.domain.album.ImportAlbumVerdict
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
@@ -14,8 +20,8 @@ import app.snapsync.domain.receiving.StagedDownload
 import app.snapsync.domain.receiving.StagedResource
 import app.snapsync.domain.receiving.UnconfirmedImport
 import app.snapsync.format.ResourceRoleText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.GalleryImport
 import app.snapsync.ports.GalleryImportRequest
@@ -112,16 +118,42 @@ class LibraryImport(private val gallery: GalleryImport, private val staging: Sta
             ): Files = this
         }
     }
-}
 
-/** What the library reported of an import, as the domain reads it. */
-fun reportOf(outcome: ImportOutcome): ImportReport = when (outcome) {
-    is ImportOutcome.Imported -> ImportReport.Imported(outcome.created.assetId())
-    is ImportOutcome.Failed -> ImportReport.Failed(
-        outcome.message,
-        outcome.consumedResources,
-        outcome.placeholder?.assetId(),
-    )
+    companion object {
+        /** What the library reported of an import, as the domain reads it. */
+        fun reportOf(outcome: ImportOutcome): ImportReport = when (outcome) {
+            is ImportOutcome.Imported -> ImportReport.Imported(outcome.created.assetId())
+            is ImportOutcome.Failed -> ImportReport.Failed(
+                outcome.message,
+                outcome.consumedResources,
+                outcome.placeholder?.assetId(),
+            )
+        }
+
+        /** What a staged resource is to the library, or `null` when it is nothing the library takes. */
+        private fun StagedResource.kind(): ResourceKind? = when (media()) {
+            ReceivedMedia.PHOTO -> ResourceKind.PHOTO
+            ReceivedMedia.VIDEO -> ResourceKind.VIDEO
+            ReceivedMedia.PAIRED_VIDEO -> ResourceKind.PAIRED_VIDEO
+            ReceivedMedia.NONE -> null
+        }
+
+        /** What the library takes this resource as — nothing, for a role no build names. */
+        private fun StagedResource.media(): ReceivedMedia = when (val named = roleOf(role)) {
+            is Parsed.Ok -> ReceivedMedia.of(named.value, contentType)
+            is Parsed.Refused -> ReceivedMedia.NONE
+        }
+
+        private fun roleOf(text: String): Parsed<ResourceRole> =
+            ResourceRoleText.parse(text)?.let { Parsed.Ok(it) } ?: Parsed.Refused("no build names the role $text")
+
+        private fun StagedResource.marked(ref: AssetRef): String = ReceivedPhotoName.mark(originalFilename, ref)
+
+        private fun CaptureDate.at() = when (this) {
+            is CaptureDate.Dated -> at.at
+            CaptureDate.Undated -> null
+        }
+    }
 }
 
 /**
@@ -185,6 +217,14 @@ class ImportMarkerWrites(private val file: DownloadDatabaseFile) {
             "asset" of ref.sourceAssetId,
         )
     }
+
+    private fun marker(result: DbResult<Boolean>): MarkerWrite = when (result) {
+        is DbResult.Ok -> when (result.value) {
+            true -> MarkerWrite.Applied
+            false -> MarkerWrite.NoRow
+        }
+        is DbResult.Failed -> MarkerWrite.Failed(result.detail)
+    }
 }
 
 private val log = Log("ImportMarkerWrites")
@@ -200,36 +240,4 @@ sealed interface MarkerWrite {
 
     /** The correlation names no ref this build's imports carry. */
     class Unknown(val correlation: String) : MarkerWrite
-}
-
-private fun marker(result: DbResult<Boolean>): MarkerWrite = when (result) {
-    is DbResult.Ok -> when (result.value) {
-        true -> MarkerWrite.Applied
-        false -> MarkerWrite.NoRow
-    }
-    is DbResult.Failed -> MarkerWrite.Failed(result.detail)
-}
-
-/** What a staged resource is to the library, or `null` when it is nothing the library takes. */
-private fun StagedResource.kind(): ResourceKind? = when (media()) {
-    ReceivedMedia.PHOTO -> ResourceKind.PHOTO
-    ReceivedMedia.VIDEO -> ResourceKind.VIDEO
-    ReceivedMedia.PAIRED_VIDEO -> ResourceKind.PAIRED_VIDEO
-    ReceivedMedia.NONE -> null
-}
-
-/** What the library takes this resource as — nothing, for a role no build names. */
-private fun StagedResource.media(): ReceivedMedia = when (val named = roleOf(role)) {
-    is Parsed.Ok -> ReceivedMedia.of(named.value, contentType)
-    is Parsed.Refused -> ReceivedMedia.NONE
-}
-
-private fun roleOf(text: String): Parsed<ResourceRole> =
-    ResourceRoleText.parse(text)?.let { Parsed.Ok(it) } ?: Parsed.Refused("no build names the role $text")
-
-private fun StagedResource.marked(ref: AssetRef): String = ReceivedPhotoName.mark(originalFilename, ref)
-
-private fun CaptureDate.at() = when (this) {
-    is CaptureDate.Dated -> at.at
-    CaptureDate.Undated -> null
 }

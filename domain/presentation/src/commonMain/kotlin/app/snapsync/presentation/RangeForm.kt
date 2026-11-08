@@ -5,6 +5,7 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.Direction
+import app.snapsync.presentation.RangeResolution.resolve
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ShareCount
 import kotlinx.datetime.LocalDate

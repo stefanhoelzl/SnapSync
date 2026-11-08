@@ -1,5 +1,6 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.read
 import app.snapsync.data.receiving.db.DownloadStoreQueries
 import app.snapsync.domain.receiving.AssetRef
 import app.snapsync.domain.receiving.StagedDownload

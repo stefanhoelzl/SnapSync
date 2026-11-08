@@ -8,6 +8,9 @@ import app.snapsync.domain.event.OpenUntil
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.query.membership.MembershipShown
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.JoinPhase
@@ -312,7 +315,10 @@ class RangeIntentsTest {
             ),
             scope,
             commands = commands.door,
-            cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+            cutoffFormatter = CutoffFormatter(
+                now = instants({ Instant.parse("2026-07-09T12:00:00Z") }),
+                zone = TimeZone.UTC,
+            ),
             joinDetails = joinDetails { _ ->
                 found(
                     "Picnic",

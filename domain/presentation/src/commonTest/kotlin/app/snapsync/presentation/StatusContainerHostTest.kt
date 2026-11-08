@@ -23,6 +23,14 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.trust.DeviceRefusal
+import app.snapsync.presentation.JoinGateRules.settled
+import app.snapsync.presentation.JoinedLayer.message
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.ShownFacts.eventTiming
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UiIntents.onIntent
+import app.snapsync.presentation.UnjoinedLayer.asksAccessOnJoin
+import app.snapsync.presentation.UnjoinedLayer.message
 import app.snapsync.query.RequestStatus
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.query.membership.MembershipShown
@@ -294,7 +302,7 @@ private val DELETES_AT = DeletesAt(timestamp("2026-08-05T14:32:11Z"))
  * would assert nothing about that.
  */
 private fun fixedCutoffFormatter() = CutoffFormatter(
-    now = { NOW_CUTOFF.at },
+    now = instants({ NOW_CUTOFF.at }),
     zone = TimeZone.UTC,
 )
 
@@ -304,7 +312,7 @@ private class MovableClock(var instant: Instant) : Clock {
 }
 
 private fun movableCutoffFormatter(clock: MovableClock) =
-    CutoffFormatter(now = clock::now, zone = TimeZone.UTC)
+    CutoffFormatter(now = instants(clock::now), zone = TimeZone.UTC)
 
 private fun host(
     source: FakeSharingProgress,
@@ -2592,7 +2600,8 @@ class StatusContainerHostJoinedFactsTest {
 }
 
 /**
- * A phone the service refuses as not genuine, as each surface tells it (capabilities `privacy-security`, `create-event`,
+ * A phone the service refuses as not genuine, as each surface tells it (capabilities `privacy-security`,
+ * `create-event`,
  * `join-event`, `sync-status`): its own class beside [StatusContainerHostTest], over the same file-private helpers.
  */
 class StatusContainerHostRefusalTest {

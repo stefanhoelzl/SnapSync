@@ -1,8 +1,8 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.annotations.PlatformEntry
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.TransferHandle
 import kotlinx.cinterop.ExperimentalForeignApi

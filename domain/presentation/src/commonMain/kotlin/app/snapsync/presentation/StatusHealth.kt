@@ -7,25 +7,16 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.presentation.JoinGateRules.settled
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.Reduction.reduceFrom
+import app.snapsync.presentation.StatusHealth.arrowOf
+import app.snapsync.presentation.StatusHealth.syncHealth
+import app.snapsync.presentation.Switches.mobileData
 import app.snapsync.query.receiving.DownloadProgress
 import app.snapsync.ui.state.Arrow
 import app.snapsync.ui.state.NetworkNotice
 import app.snapsync.ui.state.SyncHealth
-
-/**
- * The joined layer's one status line, in a fixed priority: the rungs in order ([HEALTH_LADDER]), over what the
- * snapshot says on its own. Its own function because the ladder is one question, apart from which layer
- * [reduceFrom] builds.
- */
-internal fun joinedHealth(
-    observed: Observed,
-    joined: Membership,
-    network: NetworkNotice?,
-    nowCutoff: Timestamp,
-    keyLost: Boolean,
-): SyncHealth = HEALTH_LADDER.of(
-    StatusFacts(observed, joined, network, nowCutoff, keyLost, settledHealth(observed)),
-)
 
 /** What the ladder reads: the observed sources, the membership, the network's notice, "now" and the snapshot's word. */
 internal class StatusFacts(
@@ -156,34 +147,6 @@ private val HEALTH_LADDER = StatusLadder(
     last = Settled,
 )
 
-/**
- * What the snapshot says on its own: not read yet, settled, or work remaining.
- *
- * The download arm has its OWN read-ness, and it must gate the health too. [syncHealth] hides an arrow when its counts
- * are complete, and shows "Up to date" only when BOTH arrows are hidden — so an un-read [DownloadProgress], whose
- * `downloaded` and `total` are both a placeholder zero, hides the download arrow and can carry the whole screen to a
- * settled check mark on its own. Gating the upload side alone would relocate that defect rather than remove it: the
- * next member to join an event with foreign photos outstanding would meet it through this arm on their first launch
- * (`SNAPSYNC-14`, `SNAPSYNC-16`).
- */
-private fun settledHealth(observed: Observed): SyncHealth = when (val snapshot = observed.sync) {
-    // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
-    SharingProgressRead.NotYetRead -> SyncHealth.Loading
-    is SharingProgressRead.Read -> readHealth(snapshot.progress, observed)
-}
-
-/**
- * The read snapshot's health, once the downloads are read too. Photos kept off mobile data wait while the phone is on
- * a network the choice avoids: from the device's CURRENT choice, so after turning mobile data back on the few transfers
- * still holding the old rule read as pending, not waiting (decision record
- * `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
- */
-private fun readHealth(progress: SharingProgress, observed: Observed): SyncHealth {
-    if (!observed.download.read) return SyncHealth.Loading
-    val heldForWifi = !observed.mobileData && observed.network == NetworkAccess.Online(restricted = true)
-    return syncHealth(progress, observed.download, heldForWifi)
-}
-
 // Shown tracks completeness (never lies about "everything up/received"); pulse tracks live activity
 // (never fakes motion). Each arrow derives from ITS OWN COUNTS ALONE — this function does not read the
 // membership's direction, and never force-hides: an opted-out direction contributes no work and so has a
@@ -196,36 +159,87 @@ private fun readHealth(progress: SharingProgress, observed: Observed): SyncHealt
 // surface that would have shown them an upload they never asked for was the surface that hid it. If the counts are
 // right, the arrow is already right; if they are wrong, an arrow the member never asked for is the only signal anyone
 // gets. The display must not assert a contract the system is not keeping.
-internal fun syncHealth(progress: SharingProgress, download: DownloadProgress, heldForWifi: Boolean): SyncHealth {
-    val upload = uploadArrow(progress, heldForWifi)
-    val downloadArrow = downloadArrow(download, heldForWifi)
-    if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) return SyncHealth.InSync
-    // Only the others left outranks waiting for Wi-Fi: nothing of this device's own is held, so Wi-Fi would move nothing.
-    val others = onlyOthersLeft(upload, downloadArrow, download)
-    return SyncHealth.Syncing(
-        upload,
-        downloadArrow,
-        waitingForWifi = heldForWifi && !others,
-        waitingForOthers = others,
+
+object StatusHealth {
+    /**
+     * The joined layer's one status line, in a fixed priority: the rungs in order ([HEALTH_LADDER]), over what the
+     * snapshot says on its own. Its own function because the ladder is one question, apart from which layer
+     * [reduceFrom] builds.
+     */
+    internal fun joinedHealth(
+        observed: Observed,
+        joined: Membership,
+        network: NetworkNotice?,
+        nowCutoff: Timestamp,
+        keyLost: Boolean,
+    ): SyncHealth = HEALTH_LADDER.of(
+        StatusFacts(observed, joined, network, nowCutoff, keyLost, settledHealth(observed)),
     )
+
+    /**
+     * What the snapshot says on its own: not read yet, settled, or work remaining.
+     *
+     * The download arm has its OWN read-ness, and it must gate the health too. [syncHealth] hides an arrow when its
+     * counts
+     * are complete, and shows "Up to date" only when BOTH arrows are hidden — so an un-read [DownloadProgress], whose
+     * `downloaded` and `total` are both a placeholder zero, hides the download arrow and can carry the whole screen to
+     * a
+     * settled check mark on its own. Gating the upload side alone would relocate that defect rather than remove it: the
+     * next member to join an event with foreign photos outstanding would meet it through this arm on their first launch
+     * (`SNAPSYNC-14`, `SNAPSYNC-16`).
+     */
+    private fun settledHealth(observed: Observed): SyncHealth = when (val snapshot = observed.sync) {
+        // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
+        SharingProgressRead.NotYetRead -> SyncHealth.Loading
+        is SharingProgressRead.Read -> readHealth(snapshot.progress, observed)
+    }
+
+    /**
+     * The read snapshot's health, once the downloads are read too. Photos kept off mobile data wait while the phone is
+     * on
+     * a network the choice avoids: from the device's CURRENT choice, so after turning mobile data back on the few
+     * transfers
+     * still holding the old rule read as pending, not waiting (decision record
+     * `changes/archive/2026-10-04-mobile-data-for-photos`, D7).
+     */
+    private fun readHealth(progress: SharingProgress, observed: Observed): SyncHealth {
+        if (!observed.download.read) return SyncHealth.Loading
+        val heldForWifi = !observed.mobileData && observed.network == NetworkAccess.Online(restricted = true)
+        return syncHealth(progress, observed.download, heldForWifi)
+    }
+
+    internal fun syncHealth(progress: SharingProgress, download: DownloadProgress, heldForWifi: Boolean): SyncHealth {
+        val upload = uploadArrow(progress, heldForWifi)
+        val downloadArrow = downloadArrow(download, heldForWifi)
+        if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) return SyncHealth.InSync
+        // Only the others left outranks waiting for Wi-Fi: nothing of this device's own is held, so Wi-Fi would move
+        // nothing.
+        val others = onlyOthersLeft(upload, downloadArrow, download)
+        return SyncHealth.Syncing(
+            upload,
+            downloadArrow,
+            waitingForWifi = heldForWifi && !others,
+            waitingForOthers = others,
+        )
+    }
+
+    /** A held transfer is handed to the platform and so counts as in flight, but it is not RUNNING: no arrow pulses. */
+    private fun uploadArrow(progress: SharingProgress, heldForWifi: Boolean): Arrow =
+        arrowOf(shown = progress.shared < progress.total, pulsing = progress.handedOver > 0 && !heldForWifi)
+
+    /**
+     * The others' declared photos still uploading on their phones count as left to receive (change
+     * `count-declared-photos`): they raise the arrow, never its pulse — nothing of theirs runs here.
+     */
+    private fun downloadArrow(download: DownloadProgress, heldForWifi: Boolean): Arrow = arrowOf(
+        shown = download.downloaded < download.total + download.awaited,
+        pulsing = download.inFlight > 0 && !heldForWifi,
+    )
+
+    /** Only the others are left: nothing of this device's own runs, waits or is offered and not yet here. */
+    private fun onlyOthersLeft(upload: Arrow, downloadArrow: Arrow, download: DownloadProgress) =
+        upload == Arrow.HIDDEN && downloadArrow == Arrow.STATIC && download.downloaded >= download.total
+
+    internal fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
+        if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC
 }
-
-/** A held transfer is handed to the platform and so counts as in flight, but it is not RUNNING: no arrow pulses. */
-private fun uploadArrow(progress: SharingProgress, heldForWifi: Boolean): Arrow =
-    arrowOf(shown = progress.shared < progress.total, pulsing = progress.handedOver > 0 && !heldForWifi)
-
-/**
- * The others' declared photos still uploading on their phones count as left to receive (change
- * `count-declared-photos`): they raise the arrow, never its pulse — nothing of theirs runs here.
- */
-private fun downloadArrow(download: DownloadProgress, heldForWifi: Boolean): Arrow = arrowOf(
-    shown = download.downloaded < download.total + download.awaited,
-    pulsing = download.inFlight > 0 && !heldForWifi,
-)
-
-/** Only the others are left: nothing of this device's own runs, waits or is offered and not yet here. */
-private fun onlyOthersLeft(upload: Arrow, downloadArrow: Arrow, download: DownloadProgress) =
-    upload == Arrow.HIDDEN && downloadArrow == Arrow.STATIC && download.downloaded >= download.total
-
-internal fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
-    if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC

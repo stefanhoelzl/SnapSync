@@ -5,8 +5,8 @@ package app.snapsync.ios.urlsession
 import app.snapsync.annotations.Never
 import app.snapsync.annotations.NeverAnswers
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ios.upload.uploadUrlRequest
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.FinishedTransfer

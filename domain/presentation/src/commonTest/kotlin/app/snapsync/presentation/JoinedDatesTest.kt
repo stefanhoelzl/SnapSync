@@ -6,6 +6,7 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
+import app.snapsync.presentation.JoinedLayer.shown
 import app.snapsync.testids.testEventId
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -13,7 +14,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The joined screen's dates (capability `sync-status`, "The joined screen shows how long the event lasts"): every moment
+ * The joined screen's dates (capability `sync-status`, "The joined screen shows how long the event lasts"): every
+ * moment
  * the screen states is the device's, converted once here. How the label writes them is `AppDateRangeLabelTest`'s.
  */
 class JoinedDatesTest {

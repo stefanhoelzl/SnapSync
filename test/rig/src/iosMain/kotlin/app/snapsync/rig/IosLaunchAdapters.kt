@@ -6,11 +6,11 @@ import app.snapsync.composition.app.AppDevicePorts
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Granted
 import app.snapsync.inbound.InboundImplementation
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
-import app.snapsync.inbound.of
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterProcess

@@ -138,6 +138,29 @@ snapsync:
       - '**/domain/data/src/commonMain/**'
       - '**/domain/application/src/commonMain/**'
       - '**/domain/query/src/commonMain/**'
+      - '**/domain/ports/src/commonMain/**'
+      - '**/domain/format/src/commonMain/**'
+      - '**/domain/wire/src/commonMain/**'
+      - '**/domain/presentation/src/commonMain/**'
+      - '**/domain/composition/**/src/commonMain/**'
+  NoTopLevelFunctions:
+    # A function lives on the type it belongs to (`docs/patterns.md`, "No top-level functions"). The composing functions
+    # are each process's one entry from its root, and no type's member (`CompositionIsWiringTest` lists them).
+    active: true
+    allowed: ['composeApp', 'composeExtension', 'startProcess']
+    includes:
+      - '**/domain/domain/src/commonMain/**'
+      - '**/domain/format/src/commonMain/**'
+      - '**/domain/wire/src/commonMain/**'
+      - '**/domain/inbound/src/commonMain/**'
+      - '**/domain/ports/src/commonMain/**'
+      - '**/domain/scheduling/src/commonMain/**'
+      - '**/domain/data/src/commonMain/**'
+      - '**/domain/application/src/commonMain/**'
+      - '**/domain/query/src/commonMain/**'
+      - '**/domain/entrypoints/src/commonMain/**'
+      - '**/domain/presentation/src/commonMain/**'
+      - '**/domain/composition/**/src/commonMain/**'
   ConstructorsTouchNoPort:
     # A constructor never touches what it was handed (`docs/patterns.md`, "Composition is wiring"): so a graph built
     # eagerly opens nothing.

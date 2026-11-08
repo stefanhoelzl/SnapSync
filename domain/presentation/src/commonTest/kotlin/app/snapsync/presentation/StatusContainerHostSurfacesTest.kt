@@ -21,6 +21,11 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.presentation.JoinGateRules.details
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.RangeResolution.reconfigureForm
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.query.ScreenLookup
 import app.snapsync.query.membership.JoinDetails
 import app.snapsync.testids.testEventId
@@ -180,7 +185,7 @@ class StatusContainerHostSurfacesTest {
         scope,
         commands = commands.door,
         cutoffFormatter = CutoffFormatter(
-            now = { Instant.parse("2026-07-09T12:00:00Z") },
+            now = instants({ Instant.parse("2026-07-09T12:00:00Z") }),
             zone = TimeZone.UTC,
         ),
         shareableCount = shareableCount,
@@ -317,7 +322,8 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `an event longer than any capture range is not counted`() {
-        // The server serves an event 66 days long: longer than any range may be, so no range of it is a capture range and
+        // The server serves an event 66 days long: longer than any range may be, so no range of it is a capture range
+        // and
         // the count is unavailable without a read. A counted event's invite comes first, so the count the long one
         // shows can only be its own.
         val long = "22222222-2222-4222-8222-222222222222"
@@ -644,7 +650,8 @@ class StatusContainerHostSurfacesTest {
 
     @Test
     fun `a change that did not land shows the setting in effect and says so`() {
-        // The controls never hold a value that is not saved: the album goes back off, and the settings say why — whether
+        // The controls never hold a value that is not saved: the album goes back off, and the settings say why —
+        // whether
         // the save failed or the range was refused.
         for (answer in listOf(SettingsResult.SaveFailed, SettingsResult.Refused)) {
             val spy = Spy().apply { reconfigureOutcome = answer }

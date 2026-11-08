@@ -18,8 +18,8 @@ import app.snapsync.domain.receiving.ReceivingMembership
 import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionReadPlan
 import app.snapsync.domain.receiving.UnionTrigger
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /**
  * Plan what [ReceivingMembership]'s event's union serves of the others: read it — a delta from the stored position for

@@ -1,6 +1,6 @@
 package app.snapsync.data.trust
 
-import app.snapsync.data.backend.faultOf
+import app.snapsync.data.backend.ServiceFaults
 import app.snapsync.domain.service.ServiceFault
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.trust.TokenIssuance
@@ -43,7 +43,7 @@ internal object IssuerReplies {
     /** No verdict, and how the service failed to give one. */
     fun noAnswer(
         reply: Reply,
-    ): TokenIssuance.NoAnswer = TokenIssuance.NoAnswer(faultOf(reply) ?: ServiceFault.UNREACHABLE)
+    ): TokenIssuance.NoAnswer = TokenIssuance.NoAnswer(ServiceFaults.of(reply) ?: ServiceFault.UNREACHABLE)
 
     /**
      * Beside each route's own answers: a stale challenge — one fresh challenge is the remedy; any other refusal — a

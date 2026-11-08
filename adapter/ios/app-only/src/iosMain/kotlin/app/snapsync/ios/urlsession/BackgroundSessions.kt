@@ -3,8 +3,8 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.download.IosDownload
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 

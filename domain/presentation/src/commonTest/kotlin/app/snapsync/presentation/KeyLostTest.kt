@@ -17,6 +17,8 @@ import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.query.encryption.InviteRead
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
@@ -68,7 +70,7 @@ class KeyLostTest {
                 null
             }
         }.door,
-        cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
+        cutoffFormatter = CutoffFormatter(now = instants({ NOW }), zone = TimeZone.UTC),
         joinDetails = unanswered,
         reduction = Dispatchers.Default,
     )
@@ -182,7 +184,7 @@ class KeyLostTest {
             backgroundScope,
             shareableCount = noQueries,
             commands = sharingCommands { url -> shared += url }.door,
-            cutoffFormatter = CutoffFormatter(now = { NOW }, zone = TimeZone.UTC),
+            cutoffFormatter = CutoffFormatter(now = instants({ NOW }), zone = TimeZone.UTC),
             joinDetails = unanswered,
             reduction = Dispatchers.Default,
         )

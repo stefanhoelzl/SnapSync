@@ -20,6 +20,7 @@ import app.snapsync.levers.StoredDeviceConfig
 import app.snapsync.levers.UnionFetch
 import app.snapsync.levers.WorldEvent
 import app.snapsync.ports.HttpRequest
+import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.wire.api.Limits
 import app.snapsync.wire.api.Routes
@@ -78,10 +79,12 @@ class BackendMock internal constructor(internal val state: BackendState) {
      */
     fun port(declared: DeclaredVersion): HttpTransport {
         val router = BackendRouter(state)
-        return HttpTransport { request ->
-            val headers = request.headers.filterKeys { !it.equals(Limits.VERSION_HEADER, ignoreCase = true) } +
-                listOfNotNull(declared.value?.let { Limits.VERSION_HEADER to it })
-            router.send(HttpRequest(request.method, request.url, headers, request.body))
+        return object : HttpTransport {
+            override suspend fun send(request: HttpRequest): HttpResult = run {
+                val headers = request.headers.filterKeys { !it.equals(Limits.VERSION_HEADER, ignoreCase = true) } +
+                    listOfNotNull(declared.value?.let { Limits.VERSION_HEADER to it })
+                router.send(HttpRequest(request.method, request.url, headers, request.body))
+            }
         }
     }
 

@@ -12,9 +12,9 @@ import app.snapsync.domain.report.DiagnosticDump
 import app.snapsync.domain.report.DumpResult
 import app.snapsync.domain.report.Fact
 import app.snapsync.domain.report.ReportDestination
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.LogLevel
 import app.snapsync.inbound.LogLine
-import app.snapsync.inbound.of
 import app.snapsync.mock.BuildInfoMock
 import app.snapsync.mock.ThreadLabelMock
 import kotlinx.coroutines.test.runTest

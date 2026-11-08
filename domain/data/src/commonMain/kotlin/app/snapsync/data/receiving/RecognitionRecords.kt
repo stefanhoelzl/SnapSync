@@ -1,5 +1,9 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.read
+import app.snapsync.data.receiving.MarkerStatements.changed
+import app.snapsync.data.receiving.RowStatements.settledAmong
+import app.snapsync.data.receiving.RowStatements.valid
 import app.snapsync.data.receiving.db.DownloadStoreQueries
 import app.snapsync.data.store.StoreWrite
 import app.snapsync.domain.event.EventId
@@ -72,9 +76,9 @@ class RecognitionRecords(private val store: DownloadStore) {
         }
         return recorded
     }
-}
 
-private fun written(read: DownloadRead<Unit>): StoreWrite = when (read) {
-    is DownloadRead.Ok -> StoreWrite.Written
-    is DownloadRead.Unavailable -> StoreWrite.Failed(read.detail)
+    private fun written(read: DownloadRead<Unit>): StoreWrite = when (read) {
+        is DownloadRead.Ok -> StoreWrite.Written
+        is DownloadRead.Unavailable -> StoreWrite.Failed(read.detail)
+    }
 }

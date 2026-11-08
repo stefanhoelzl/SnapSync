@@ -1,6 +1,7 @@
 package app.snapsync.application.upload
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.upload.CreateJobs.Companion.endedPass
 import app.snapsync.data.upload.CreateAnswer
 import app.snapsync.data.upload.KeyLookup
 import app.snapsync.data.upload.OwnPhotoResources
@@ -16,8 +17,8 @@ import app.snapsync.domain.upload.TopUpPlan
 import app.snapsync.domain.upload.UploadKey
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.upload.UploadRow
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
@@ -112,14 +113,17 @@ class CreateJobs(
         is CreateAnswer.Unverified -> log.w("no proof is held — nothing is sent until verified", "key" of row.key)
         else -> log.i("job create answered", "key" of row.key, "answer" of answer)
     }
-}
 
-/**
- * Whether [this] create ends the pass, and as what: the platform took no more — work remains — or this phone holds no
- * proof, so every later row would wait for the same reason (change `withhold-unverified-uploads`).
- */
-internal fun CreateAnswer?.endedPass(): UploadPass? = when (this) {
-    CreateAnswer.Full -> UploadPass.WORK_LEFT
-    is CreateAnswer.Unverified -> UploadPass.UNVERIFIED
-    else -> null
+    companion object {
+        /**
+         * Whether [this] create ends the pass, and as what: the platform took no more — work remains — or this phone
+         * holds no
+         * proof, so every later row would wait for the same reason (change `withhold-unverified-uploads`).
+         */
+        internal fun CreateAnswer?.endedPass(): UploadPass? = when (this) {
+            CreateAnswer.Full -> UploadPass.WORK_LEFT
+            is CreateAnswer.Unverified -> UploadPass.UNVERIFIED
+            else -> null
+        }
+    }
 }

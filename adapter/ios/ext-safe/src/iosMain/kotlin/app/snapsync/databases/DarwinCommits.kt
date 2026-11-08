@@ -3,8 +3,8 @@ package app.snapsync.databases
 import app.cash.sqldelight.TransacterImpl
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.IntVar

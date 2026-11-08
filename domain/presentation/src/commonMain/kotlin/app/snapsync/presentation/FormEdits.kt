@@ -1,5 +1,8 @@
 package app.snapsync.presentation
 
+import app.snapsync.presentation.RangeResolution.directionOf
+import app.snapsync.presentation.RangeResolution.resolve
+import app.snapsync.presentation.ScreenCells.Companion.editForm
 import app.snapsync.query.membership.MembershipShown
 import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.SwitchTo
@@ -76,7 +79,8 @@ internal class FormEdits(
     }
 
     /**
-     * A committed range (a preset chip, or the calendar's OK). With the settings open it is the one place the bounds are
+     * A committed range (a preset chip, or the calendar's OK). With the settings open it is the one place the bounds
+     * are
      * re-resolved from the form; every other change carries the bounds in effect untouched.
      */
     private suspend fun editRange(edit: (RangeForm) -> RangeForm) {

@@ -2,6 +2,7 @@
 
 package app.snapsync.inbound
 
+import app.snapsync.inbound.Field.Companion.of
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlin.test.AfterTest

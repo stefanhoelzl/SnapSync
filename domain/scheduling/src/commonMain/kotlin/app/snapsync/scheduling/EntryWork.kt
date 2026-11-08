@@ -2,8 +2,8 @@
 
 package app.snapsync.scheduling
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.EntryEvent
 import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.EntryOutcome
@@ -86,14 +86,17 @@ internal class EntryWork private constructor(
 
         /** Work started inside the process for no delivery: told `done` only. */
         fun started(entry: String, events: EntryEvents, log: Log): EntryWork = EntryWork(entry, events, log)
-    }
-}
 
-/** How a run ended, as its work's outcome counts it: a cancellation — the operating system's expiry — is [EXPIRED]. */
-internal fun endedAs(failure: Throwable?): EntryOutcome = when (failure) {
-    null -> EntryOutcome.COMPLETED
-    is CancellationException -> EntryOutcome.EXPIRED
-    else -> EntryOutcome.FAILED
+        /**
+         * How a run ended, as its work's outcome counts it: a cancellation — the operating system's expiry — is
+         * EXPIRED.
+         */
+        internal fun endedAs(failure: Throwable?): EntryOutcome = when (failure) {
+            null -> EntryOutcome.COMPLETED
+            is CancellationException -> EntryOutcome.EXPIRED
+            else -> EntryOutcome.FAILED
+        }
+    }
 }
 
 /** The entry point's work a coroutine runs for, so the runs it starts belong to it. */

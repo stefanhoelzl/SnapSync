@@ -1,6 +1,6 @@
 package app.snapsync.feature.support
 
-import app.snapsync.data.gallery.assetId
+import app.snapsync.data.gallery.GalleryTranslation.assetId
 import app.snapsync.data.sharing.Contribution
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.data.sharing.GalleryWalk

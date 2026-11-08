@@ -15,8 +15,8 @@ import app.snapsync.extension.IosExtensionHost
 import app.snapsync.files.IosFiles
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.http.KtorHttpTransport
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.keychain.platformSecureStore
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosThreadLabel

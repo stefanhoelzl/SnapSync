@@ -28,8 +28,8 @@ import app.snapsync.domain.receiving.UnionReadPlan
 import app.snapsync.domain.receiving.UnionTrigger
 import app.snapsync.domain.sharing.PhotoAccess
 import app.snapsync.inbound.Field
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.seconds
 

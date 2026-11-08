@@ -3,8 +3,8 @@
 package app.snapsync.ios.registry
 
 import app.snapsync.config.osCarriesOsDrivenUpload
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.ports.ExtensionRegistry

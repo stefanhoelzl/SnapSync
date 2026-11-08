@@ -115,9 +115,11 @@ class AppGroupFileSecureStoreTest {
         withTempDirectory { dir ->
             val store = AppGroupFileSecureStore(dir)
             var minted = 0
-            val platform = PlatformDeviceId {
-                minted++
-                "11111111-0000-4000-8000-00000000000$minted"
+            val platform = object : PlatformDeviceId {
+                override fun stableId(): String? = run {
+                    minted++
+                    "11111111-0000-4000-8000-00000000000$minted"
+                }
             }
 
             val first = MintingDeviceIdentity(store, platform).id()

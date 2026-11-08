@@ -1,11 +1,15 @@
 package app.snapsync.presentation
 
+import app.snapsync.presentation.JoinedLayer.shown
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/** The create draft against the app's foreground life (capability `create-event`, "A long absence starts a fresh draft"). */
+/**
+ * The create draft against the app's foreground life (capability `create-event`, "A long absence starts a fresh
+ * draft").
+ */
 class CreateDraftSessionTest {
 
     private val shown = CreateDraftSession(activation = 4, epoch = 2)

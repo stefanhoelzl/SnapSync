@@ -1,5 +1,12 @@
 package app.snapsync.data.membership
 
+import app.snapsync.data.membership.MembershipEnds.leave
+import app.snapsync.data.membership.MembershipRows.membership
+import app.snapsync.data.membership.MembershipWrites.enter
+import app.snapsync.data.membership.MembershipWrites.markDeleted
+import app.snapsync.data.membership.MembershipWrites.membershipRead
+import app.snapsync.data.membership.MembershipWrites.reconfigure
+import app.snapsync.data.membership.MembershipWrites.update
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.membership.ConfirmedDeletion
@@ -8,8 +15,8 @@ import app.snapsync.domain.membership.LeftMembership
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.membership.Share
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.DbResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,26 +112,28 @@ class MembershipRepository(private val db: SharedDatabase) {
         is DbResult.Ok -> result.value.also { reload() }
         is DbResult.Failed -> failed(result.detail)
     }
+
+    private companion object {
+        private fun logged(read: MembershipRead) = when (read) {
+            is MembershipRead.Unavailable ->
+                log.unlabelled.w("membership unreadable — never \"not joined\"", "detail" of read.detail)
+            is MembershipRead.Joined, is MembershipRead.NotJoined -> Unit
+        }
+
+        /** What a reload keeps: a conclusive read, or — when the fresh one is not — the last conclusive one. */
+        private fun afterReload(last: MembershipRead, fresh: MembershipRead): MembershipRead = when (fresh) {
+            is MembershipRead.Joined, is MembershipRead.NotJoined -> fresh
+            is MembershipRead.Unavailable -> kept(last, fresh)
+        }
+
+        private fun kept(last: MembershipRead, fresh: MembershipRead.Unavailable): MembershipRead = when (last) {
+            is MembershipRead.Joined, is MembershipRead.NotJoined -> last
+            is MembershipRead.Unavailable -> fresh
+        }
+    }
 }
 
 private val log = Log("MembershipRepository")
-
-private fun logged(read: MembershipRead) = when (read) {
-    is MembershipRead.Unavailable ->
-        log.unlabelled.w("membership unreadable — never \"not joined\"", "detail" of read.detail)
-    is MembershipRead.Joined, is MembershipRead.NotJoined -> Unit
-}
-
-/** What a reload keeps: a conclusive read, or — when the fresh one is not — the last conclusive one. */
-private fun afterReload(last: MembershipRead, fresh: MembershipRead): MembershipRead = when (fresh) {
-    is MembershipRead.Joined, is MembershipRead.NotJoined -> fresh
-    is MembershipRead.Unavailable -> kept(last, fresh)
-}
-
-private fun kept(last: MembershipRead, fresh: MembershipRead.Unavailable): MembershipRead = when (last) {
-    is MembershipRead.Joined, is MembershipRead.NotJoined -> last
-    is MembershipRead.Unavailable -> fresh
-}
 
 /** What [MembershipRepository.enter] did. */
 sealed interface EnterResult {

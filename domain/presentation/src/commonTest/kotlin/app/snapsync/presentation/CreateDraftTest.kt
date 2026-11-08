@@ -17,8 +17,8 @@ import kotlin.time.Instant
 /** The create form's rules (capability `create-event`): when Create is offered, and what the line above it says. */
 class CreateDraftTest {
 
-    private val clock = CutoffFormatter(now = { Instant.parse("2026-07-06T12:00:00Z") }, zone = TimeZone.UTC)
-    private val display = Display(clock) { _, _, _ -> error("the create form resolves no event window") }
+    private val clock = CutoffFormatter(now = instants({ Instant.parse("2026-07-06T12:00:00Z") }), zone = TimeZone.UTC)
+    private val display = Display(clock, noWindow("the create form resolves no event window"))
     private val from = LocalDateTime(2026, 7, 6, 12, 0)
 
     private fun draft(name: String, range: EventRange) = CreateDraft(

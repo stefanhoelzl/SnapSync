@@ -13,8 +13,8 @@ import app.snapsync.annotations.NeverAnswers
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers

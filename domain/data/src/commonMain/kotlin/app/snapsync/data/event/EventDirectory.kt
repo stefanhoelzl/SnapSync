@@ -1,11 +1,11 @@
 package app.snapsync.data.event
 
 import app.snapsync.data.Parsed
+import app.snapsync.data.Parsed.Companion.eventName
+import app.snapsync.data.Parsed.Companion.instant
+import app.snapsync.data.Parsed.Companion.then
 import app.snapsync.data.backend.BackendGateway
-import app.snapsync.data.backend.faultOf
-import app.snapsync.data.eventName
-import app.snapsync.data.instant
-import app.snapsync.data.then
+import app.snapsync.data.backend.ServiceFaults
 import app.snapsync.domain.event.DeletesAt
 import app.snapsync.domain.event.Event
 import app.snapsync.domain.event.EventEnd
@@ -50,40 +50,45 @@ class EventDirectory(private val gateway: BackendGateway) {
         // The service is being updated: it says when asking again is worth it.
         is Maintenance -> EventLookupFact.Unanswered(ServiceFault.UPDATING, reply.retryAfter.trim().toLongOrNull())
         is ClientError, is ServerIssue, is NoAnswer ->
-            EventLookupFact.Unanswered(faultOf(reply) ?: ServiceFault.UNREACHABLE)
+            EventLookupFact.Unanswered(ServiceFaults.of(reply) ?: ServiceFault.UNREACHABLE)
     }
-}
 
-private fun EventDetails.fact(id: EventId): EventLookupFact = when (val event = event(id)) {
-    is Parsed.Ok -> EventLookupFact.Found(event.value, completed = completedAt != null)
-    // A served event missing what it always carries is an answer the app does not understand.
-    is Parsed.Refused -> EventLookupFact.Unanswered(ServiceFault.UNREACHABLE)
-}
+    private fun EventDetails.fact(id: EventId): EventLookupFact = when (val event = event(id)) {
+        is Parsed.Ok -> EventLookupFact.Found(event.value, completed = completedAt != null)
+        // A served event missing what it always carries is an answer the app does not understand.
+        is Parsed.Refused -> EventLookupFact.Unanswered(ServiceFault.UNREACHABLE)
+    }
 
-private fun EventDetails.event(id: EventId): Parsed<Event> = eventName(name).then { name ->
-    range().then { range -> instant(deletesAt).then { deletesAt -> Parsed.Ok(event(id, name, range, deletesAt)) } }
-}
+    private fun EventDetails.event(id: EventId): Parsed<Event> = eventName(name).then { name ->
+        range().then { range -> instant(deletesAt).then { deletesAt -> Parsed.Ok(event(id, name, range, deletesAt)) } }
+    }
 
-private fun EventDetails.event(id: EventId, name: EventName, range: EventRange, deletesAt: Timestamp): Event = Event(
-    id = id,
-    name = name,
-    range = range,
-    // Not a fact a membership rests on: an unreadable one costs only the "guests can join until" line.
-    openUntil = TimestampText.parseOrNull(openUntil)?.let(::OpenUntil),
-    deletesAt = DeletesAt(deletesAt),
-    encryption = EncryptionText.parse(keyId),
-    members = MemberCounts(members.active, members.`final`, members.waiting),
-)
-
-private fun EventDetails.range(): Parsed<EventRange> =
-    instant(startsAt).then { start -> instant(endsAt).then { end -> ordered(EventStart(start), EventEnd(end)) } }
-
-private fun ordered(start: EventStart, end: EventEnd): Parsed<EventRange> = when (
-    val range = EventRange.of(
-        start,
-        end,
+    private fun EventDetails.event(
+        id: EventId,
+        name: EventName,
+        range: EventRange,
+        deletesAt: Timestamp,
+    ): Event = Event(
+        id = id,
+        name = name,
+        range = range,
+        // Not a fact a membership rests on: an unreadable one costs only the "guests can join until" line.
+        openUntil = TimestampText.parseOrNull(openUntil)?.let(::OpenUntil),
+        deletesAt = DeletesAt(deletesAt),
+        encryption = EncryptionText.parse(keyId),
+        members = MemberCounts(members.active, members.`final`, members.waiting),
     )
-) {
-    is EventRangeVerdict.Ok -> Parsed.Ok(range.range)
-    EventRangeVerdict.Inverted -> Parsed.Refused("it ends before it starts")
+
+    private fun EventDetails.range(): Parsed<EventRange> =
+        instant(startsAt).then { start -> instant(endsAt).then { end -> ordered(EventStart(start), EventEnd(end)) } }
+
+    private fun ordered(start: EventStart, end: EventEnd): Parsed<EventRange> = when (
+        val range = EventRange.of(
+            start,
+            end,
+        )
+    ) {
+        is EventRangeVerdict.Ok -> Parsed.Ok(range.range)
+        EventRangeVerdict.Inverted -> Parsed.Refused("it ends before it starts")
+    }
 }

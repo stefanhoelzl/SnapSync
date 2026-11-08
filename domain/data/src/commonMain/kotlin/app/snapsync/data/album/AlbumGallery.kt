@@ -1,7 +1,7 @@
 package app.snapsync.data.album
 
+import app.snapsync.data.gallery.GalleryTranslation.platformId
 import app.snapsync.data.gallery.PhotoGrants
-import app.snapsync.data.gallery.platformId
 import app.snapsync.domain.album.AlbumAdd
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.album.AlbumPresence

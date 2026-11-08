@@ -5,8 +5,8 @@ import app.snapsync.data.store.StoreWrite
 import app.snapsync.data.upload.RecentWalk
 import app.snapsync.data.upload.WalkRecord
 import app.snapsync.domain.event.EventId
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("RecordWalk")
 

@@ -3,6 +3,7 @@ package app.snapsync.data.membership
 import app.snapsync.data.backend.BackendGateway
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
+import app.snapsync.data.membership.MembershipRows.membership
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.domain.event.EventId
 import app.snapsync.wire.api.ClientError

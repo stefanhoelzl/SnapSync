@@ -219,12 +219,22 @@ internal class Subject(
 /** The app's device identity resolving to the fixture device [id] stands for: minted over an empty secure store. */
 @OptIn(AppProcessOnly::class)
 internal fun identityOf(id: String) =
-    MintingDeviceIdentity(inMemorySecureStore(), PlatformDeviceId { testDeviceId(id).value })
+    MintingDeviceIdentity(
+        inMemorySecureStore(),
+        object : PlatformDeviceId {
+            override fun stableId(): String? = run { testDeviceId(id).value }
+        },
+    )
 
 /** A device identity behind a locked secure store. */
 @OptIn(AppProcessOnly::class)
 internal fun unreadableIdentity() =
-    MintingDeviceIdentity(inMemorySecureStore(unavailable = true), PlatformDeviceId { null })
+    MintingDeviceIdentity(
+        inMemorySecureStore(unavailable = true),
+        object : PlatformDeviceId {
+            override fun stableId(): String? = run { null }
+        },
+    )
 
 /** A store whose compare-and-clear cannot be made — the shared item unreadable at that moment. */
 internal fun uncomparable(store: CredentialStore) = object : ScriptedStore(store) {

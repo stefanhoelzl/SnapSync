@@ -7,8 +7,8 @@ import app.snapsync.data.upload.ListingRead
 import app.snapsync.data.upload.UploadRowsReset
 import app.snapsync.domain.event.EventId
 import app.snapsync.inbound.Field
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**

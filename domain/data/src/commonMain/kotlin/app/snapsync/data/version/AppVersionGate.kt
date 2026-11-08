@@ -4,8 +4,8 @@ import app.snapsync.data.backend.VersionObserver
 import app.snapsync.domain.trust.BackendAnswer
 import app.snapsync.domain.version.VersionRefusal
 import app.snapsync.domain.version.VersionVerdict
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

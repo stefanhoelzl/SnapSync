@@ -1,5 +1,13 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.read
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.then
+import app.snapsync.data.receiving.ImportStatements.importable
+import app.snapsync.data.receiving.ImportStatements.markedStaged
+import app.snapsync.data.receiving.ImportStatements.settledUnimportable
+import app.snapsync.data.receiving.ImportedReleases.Companion.importedAsset
+import app.snapsync.data.receiving.RowStatements.stagedRows
+import app.snapsync.data.receiving.RowStatements.valid
 import app.snapsync.data.receiving.db.DownloadStoreQueries
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.receiving.AssetRef
@@ -9,8 +17,8 @@ import app.snapsync.domain.receiving.StagedDownload
 import app.snapsync.domain.receiving.StagedPath
 import app.snapsync.domain.receiving.StagedResource
 import app.snapsync.format.TimestampText
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("ImportQueue")
 
@@ -101,25 +109,34 @@ class ImportQueue(private val store: DownloadStore) {
             StageRecord.NoRow -> store.staging.release(listOf(at))
         }
     }
-}
 
-/** The next importable photo neither in [skip] nor in [claims]: claimed, or settled unimportable for naming nothing. */
-private fun nextImport(q: DownloadStoreQueries, claims: ImportClaims, skip: Set<AssetRef>): NextImport? =
-    importable(q).firstOrNull { (ref, _) -> ref !in skip && ref !in claims }?.let { taken(q, claims, it) }
+    private companion object {
+        /**
+         * The next importable photo neither in [skip] nor in [claims]: claimed, or settled unimportable for naming
+         * nothing.
+         */
+        private fun nextImport(q: DownloadStoreQueries, claims: ImportClaims, skip: Set<AssetRef>): NextImport? =
+            importable(q).firstOrNull { (ref, _) -> ref !in skip && ref !in claims }?.let { taken(q, claims, it) }
 
-private fun taken(q: DownloadStoreQueries, claims: ImportClaims, next: Pair<AssetRef, String>): NextImport =
-    when (val rows = stagedRows(q, next.first)) {
-        is StagedRows.Named -> NextImport.Claimed(claimed(claims, next, rows.resources))
-        is StagedRows.Unnamed -> NextImport.Unnamed(next.first, rows.paths)
-            .also { q.transactionWithResult { settledUnimportable(q, next.first) } }
+        private fun taken(q: DownloadStoreQueries, claims: ImportClaims, next: Pair<AssetRef, String>): NextImport =
+            when (val rows = stagedRows(q, next.first)) {
+                is StagedRows.Named -> NextImport.Claimed(claimed(claims, next, rows.resources))
+                is StagedRows.Unnamed -> NextImport.Unnamed(next.first, rows.paths)
+                    .also { q.transactionWithResult { settledUnimportable(q, next.first) } }
+            }
+
+        @OptIn(MintsStagedDownload::class)
+        private fun claimed(
+            claims: ImportClaims,
+            next: Pair<AssetRef, String>,
+            resources: List<StagedResource>,
+        ): StagedDownload = StagedDownload(
+            next.first,
+            TimestampText.captureDate(next.second),
+            resources,
+        ).also(claims::claim)
     }
-
-@OptIn(MintsStagedDownload::class)
-private fun claimed(
-    claims: ImportClaims,
-    next: Pair<AssetRef, String>,
-    resources: List<StagedResource>,
-): StagedDownload = StagedDownload(next.first, TimestampText.captureDate(next.second), resources).also(claims::claim)
+}
 
 /** What [ImportQueue.claimNext] found next: a claimed photo, or one whose stored resource names no sender filename. */
 private sealed interface NextImport {

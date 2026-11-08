@@ -8,8 +8,8 @@ import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.sharing.PublishedDeclaration
 import app.snapsync.domain.sharing.SettleNeed
 import app.snapsync.domain.sharing.SharePhase
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("CheckSettleNeed")
 

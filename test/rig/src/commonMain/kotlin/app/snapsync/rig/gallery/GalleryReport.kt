@@ -1,7 +1,7 @@
 package app.snapsync.rig.gallery
 
-import app.snapsync.data.gallery.facts
-import app.snapsync.data.gallery.role
+import app.snapsync.data.gallery.GalleryTranslation.facts
+import app.snapsync.data.gallery.GalleryTranslation.role
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.asset.AssetFacts
 import app.snapsync.domain.asset.AssetId

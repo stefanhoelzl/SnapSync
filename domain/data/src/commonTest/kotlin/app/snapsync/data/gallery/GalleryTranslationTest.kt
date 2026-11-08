@@ -1,5 +1,8 @@
 package app.snapsync.data.gallery
 
+import app.snapsync.data.gallery.GalleryTranslation.assetId
+import app.snapsync.data.gallery.GalleryTranslation.facts
+import app.snapsync.data.gallery.GalleryTranslation.platformId
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.CaptureDate
 import app.snapsync.domain.asset.MediaKind

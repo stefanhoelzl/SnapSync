@@ -1,6 +1,7 @@
 package app.snapsync.data.store
 
 import app.cash.sqldelight.db.SqlDriver
+import app.snapsync.data.store.SharedDatabase.Companion.sharedDatabaseOver
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.mock.DatabasesMock
 import app.snapsync.ports.DbResult

@@ -2,6 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.domain.membership.RenameResult
 import app.snapsync.domain.request.RequestId
+import app.snapsync.presentation.RenameRequests.renameOf
 import app.snapsync.query.RequestStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals

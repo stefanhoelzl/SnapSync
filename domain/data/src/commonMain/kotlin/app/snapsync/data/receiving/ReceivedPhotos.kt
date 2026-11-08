@@ -1,5 +1,12 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.downloadDatabase
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.held
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.read
+import app.snapsync.data.receiving.ReceivedPhotos.Companion.handlesOf
+import app.snapsync.data.receiving.ReceivedPhotos.Companion.recognised
+import app.snapsync.data.receiving.ReceivedPhotos.Companion.recognitionOf
+import app.snapsync.data.receiving.ReceivedPhotos.Companion.suppressed
 import app.snapsync.data.receiving.db.DownloadDatabase
 import app.snapsync.data.receiving.db.DownloadStoreQueries
 import app.snapsync.data.store.StoreWrite
@@ -89,6 +96,35 @@ class ReceivedPhotos(private val file: DownloadDatabaseFile) : ReceivedPhotosRea
      */
     suspend fun withdrawRecognition(event: EventId): StoreWrite =
         written(file.execute { q -> q.unmarkRecognised(Stored.Valid(event)).let { } })
+
+    /** The reads both the app's and the extension's view of the download store share. */
+    companion object {
+        internal fun suppressed(q: DownloadStoreQueries): Set<AssetId> =
+            q.suppressedLocalIds().executeAsList().flatMapTo(mutableSetOf()) { it.held() }
+
+        internal fun recognised(q: DownloadStoreQueries, event: EventId): Boolean = q.isRecognised(
+            Stored.Valid(event),
+        ).executeAsOne()
+
+        internal fun handlesOf(read: DbResult<Set<AssetId>>): HandlesRead = when (read) {
+            is DbResult.Ok -> HandlesRead.Ok(read.value)
+            is DbResult.Failed -> HandlesRead.Unavailable(read.detail)
+        }
+
+        @OptIn(MintsRecognised::class)
+        internal fun recognitionOf(read: DbResult<Boolean>, event: EventId): RecognitionRead = when (read) {
+            is DbResult.Ok -> when (read.value) {
+                true -> RecognitionRead.Recognised(Recognised(event))
+                false -> RecognitionRead.NotRecognised
+            }
+            is DbResult.Failed -> RecognitionRead.Unavailable(read.detail)
+        }
+    }
+
+    private fun written(result: DbResult<Unit>): StoreWrite = when (result) {
+        is DbResult.Ok -> StoreWrite.Written
+        is DbResult.Failed -> StoreWrite.Failed(result.detail)
+    }
 }
 
 /**
@@ -154,30 +190,4 @@ class ReceivedPhotosReader(private val databases: Databases) : ReceivedPhotosRea
     private companion object {
         const val OLDER_SCHEMA = "older schema than this build's"
     }
-}
-
-private fun suppressed(q: DownloadStoreQueries): Set<AssetId> =
-    q.suppressedLocalIds().executeAsList().flatMapTo(mutableSetOf()) { it.held() }
-
-private fun recognised(q: DownloadStoreQueries, event: EventId): Boolean = q.isRecognised(
-    Stored.Valid(event),
-).executeAsOne()
-
-private fun handlesOf(read: DbResult<Set<AssetId>>): HandlesRead = when (read) {
-    is DbResult.Ok -> HandlesRead.Ok(read.value)
-    is DbResult.Failed -> HandlesRead.Unavailable(read.detail)
-}
-
-@OptIn(MintsRecognised::class)
-private fun recognitionOf(read: DbResult<Boolean>, event: EventId): RecognitionRead = when (read) {
-    is DbResult.Ok -> when (read.value) {
-        true -> RecognitionRead.Recognised(Recognised(event))
-        false -> RecognitionRead.NotRecognised
-    }
-    is DbResult.Failed -> RecognitionRead.Unavailable(read.detail)
-}
-
-private fun written(result: DbResult<Unit>): StoreWrite = when (result) {
-    is DbResult.Ok -> StoreWrite.Written
-    is DbResult.Failed -> StoreWrite.Failed(result.detail)
 }

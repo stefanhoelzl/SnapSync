@@ -1,6 +1,7 @@
 package app.snapsync.presentation
 
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.presentation.Switches.mobileData
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,7 +55,7 @@ class IntentInvalidProgramStateTest {
                 ),
                 scope,
                 commands = commands.door,
-                cutoffFormatter = CutoffFormatter(now = { Clock.System.now() }, zone = TimeZone.UTC),
+                cutoffFormatter = CutoffFormatter(now = instants({ Clock.System.now() }), zone = TimeZone.UTC),
                 joinDetails = unanswered,
                 shareableCount = noQueries,
                 reduction = Dispatchers.Default,

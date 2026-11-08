@@ -5,8 +5,8 @@ import app.snapsync.data.store.LegacySource
 import app.snapsync.data.store.OwnedDatabase
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.store.db.LedgerDatabase
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.DbResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.Preferences

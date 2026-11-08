@@ -1,6 +1,21 @@
 package app.snapsync.presentation.range
 
 import app.snapsync.control.Verifies
+import app.snapsync.presentation.range.EventRange.Companion.fillUntilHour
+import app.snapsync.presentation.range.EventRange.Companion.fromAllowed
+import app.snapsync.presentation.range.EventRange.Companion.isValid
+import app.snapsync.presentation.range.EventRange.Companion.settleFromHour
+import app.snapsync.presentation.range.EventRange.Companion.settleFromMinute
+import app.snapsync.presentation.range.EventRange.Companion.settleUntilHour
+import app.snapsync.presentation.range.EventRange.Companion.settleUntilMinute
+import app.snapsync.presentation.range.EventRange.Companion.untilAllowed
+import app.snapsync.presentation.range.EventRangeDays.dragEndTo
+import app.snapsync.presentation.range.EventRangeDays.dragStartTo
+import app.snapsync.presentation.range.EventRangeDays.firstEndDay
+import app.snapsync.presentation.range.EventRangeDays.lastPickableDay
+import app.snapsync.presentation.range.EventRangeDays.pickDay
+import app.snapsync.presentation.range.EventRangeDays.sweep
+import app.snapsync.presentation.range.RangeEditing.view
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -29,12 +44,14 @@ class EventRangeTest {
         val SUNDAY = LocalDate(2026, 7, 8)
 
         /** The event window's length: 30 days from the start, as the app's formatter answers it. */
-        val THIRTY_DAYS = RangeBounds.lastingAtMost { from ->
-            LocalDateTime(
-                from.date.plus(30, DateTimeUnit.DAY),
-                from.time,
-            )
-        }
+        val THIRTY_DAYS = RangeBounds.lastingAtMost(
+            latestEnd { from ->
+                LocalDateTime(
+                    from.date.plus(30, DateTimeUnit.DAY),
+                    from.time,
+                )
+            },
+        )
 
         /**
          * A join's bounds around the event, 20 Jul 18:00 – 25 Jul 18:00: at most 30 days, overlapping the event, its
@@ -43,8 +60,14 @@ class EventRangeTest {
         val EVENT = RangeBounds.aroundEvent(
             LocalDateTime(2026, 7, 20, 18, 0),
             LocalDateTime(2026, 7, 25, 18, 0),
-            longest = { from -> LocalDateTime(from.date.plus(30, DateTimeUnit.DAY), from.time) },
-            earliestFrom = { until -> LocalDateTime(until.date.plus(-30, DateTimeUnit.DAY), until.time) },
+            limits = object : RangeLimits {
+                override fun latestEnd(
+                    from: LocalDateTime,
+                ) = LocalDateTime(from.date.plus(30, DateTimeUnit.DAY), from.time)
+
+                override fun earliestStart(until: LocalDateTime) =
+                    LocalDateTime(until.date.plus(-30, DateTimeUnit.DAY), until.time)
+            },
         )
         val EVENT_START =
             EventRange(LocalDateTime(2026, 7, 20, 18, 0), LocalDate(2026, 7, 25), LocalTime(18, 0), endPending = false)
@@ -386,9 +409,11 @@ class EventRangeTest {
         // The window is measured in instants, as the app measures it: on 25 Oct 2026 Berlin's clocks go back an
         // hour, so 30 days from 00:30 on 1 Oct end at 23:30 on the 30th.
         val berlin = TimeZone.of("Europe/Berlin")
-        val instants = RangeBounds.lastingAtMost { from ->
-            from.toInstant(berlin).plus(30.days).toLocalDateTime(berlin)
-        }
+        val instants = RangeBounds.lastingAtMost(
+            latestEnd { from ->
+                from.toInstant(berlin).plus(30.days).toLocalDateTime(berlin)
+            },
+        )
         val range = EventRange(from = LocalDateTime(2026, 10, 1, 18, 4)).pickDay(LocalDate(2026, 10, 31), instants)
         assertEquals(LocalDate(2026, 10, 31), range.endDay)
         assertFalse(range.fromAllowed(LocalTime(0, 30), instants), "the 31st is out of reach from 00:30")
@@ -475,4 +500,11 @@ class EventRangeTest {
         val midnight = EventRange(LocalDateTime(2026, 7, 6, 0, 0), LocalDate(2026, 7, 6), LocalTime(0, 0), false)
         assertEquals(midnight, midnight.settleFromHour(9, THIRTY_DAYS))
     }
+}
+
+/** Limits that answer the latest end by [read] — a created event's, which asks no earliest start. */
+private fun latestEnd(read: (LocalDateTime) -> LocalDateTime): RangeLimits = object : RangeLimits {
+    override fun latestEnd(from: LocalDateTime) = read(from)
+
+    override fun earliestStart(until: LocalDateTime): LocalDateTime = error("a created event asks no earliest start")
 }

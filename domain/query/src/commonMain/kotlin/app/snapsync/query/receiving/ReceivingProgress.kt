@@ -9,8 +9,8 @@ import app.snapsync.data.store.StoreChanges
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.receiving.AwaitedPhotos
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted

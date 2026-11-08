@@ -68,11 +68,14 @@ class BackendExchange(
     }
 }
 
-/**
- * How [reply] tells SnapSync's service failed, or `null` for an answer from a working service — the one reading every
- * need-shaped service gives a failure, so each of the three is told in its own words.
- */
-fun faultOf(reply: Reply): ServiceFault? = ServiceFault.of(BackendAnswers.of(reply))
+/** How a reply tells SnapSync's service failed. */
+object ServiceFaults {
+    /**
+     * How [reply] tells SnapSync's service failed, or `null` for an answer from a working service — the one reading
+     * every need-shaped service gives a failure, so each of the three is told in its own words.
+     */
+    fun of(reply: Reply): ServiceFault? = ServiceFault.of(BackendAnswers.of(reply))
+}
 
 /** The one reading of a route's reply as the credential and the version gate need it: its category. */
 internal object BackendAnswers {

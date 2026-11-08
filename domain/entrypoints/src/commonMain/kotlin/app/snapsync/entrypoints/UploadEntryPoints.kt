@@ -24,12 +24,13 @@ import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.upload.UploaderArming
 import app.snapsync.domain.upload.UploaderChange
+import app.snapsync.entrypoints.MembershipEntryPoints.membership
 import app.snapsync.scheduling.Delivery
 import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
 import app.snapsync.scheduling.Sequence
-import app.snapsync.scheduling.orIfCut
+import app.snapsync.scheduling.Sequence.Companion.orIfCut
 
 // ── This device's own uploads, as the wake's sequences run them ─────────────────────────────────────────────────────
 //

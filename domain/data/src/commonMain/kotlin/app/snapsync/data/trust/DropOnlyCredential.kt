@@ -3,8 +3,8 @@ package app.snapsync.data.trust
 import app.snapsync.data.backend.Credential
 import app.snapsync.data.backend.TokenRead
 import app.snapsync.domain.trust.BearerToken
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /**
  * The upload extension's credential: it reads the token the app stored in the shared store, and when the backend

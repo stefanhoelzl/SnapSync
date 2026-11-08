@@ -6,8 +6,8 @@ import app.snapsync.domain.upload.FullGrant
 import app.snapsync.domain.upload.RegistrationReply
 import app.snapsync.domain.upload.RegistrationVerdict
 import app.snapsync.domain.upload.RegistrationWrite
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.RegistrationAnswer
 

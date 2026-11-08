@@ -8,6 +8,7 @@ import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgressRead
 import app.snapsync.domain.version.Store
 import app.snapsync.domain.version.VersionRefusal
+import app.snapsync.presentation.Switches.mobileData
 import app.snapsync.query.membership.MembershipShown
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
@@ -183,7 +184,10 @@ private fun gateHost(
         ),
         scope,
         commands = commands.door,
-        cutoffFormatter = CutoffFormatter(now = { Instant.parse("2026-07-09T12:00:00Z") }, zone = TimeZone.UTC),
+        cutoffFormatter = CutoffFormatter(
+            now = instants({ Instant.parse("2026-07-09T12:00:00Z") }),
+            zone = TimeZone.UTC,
+        ),
         shareableCount = noQueries,
         joinDetails = unanswered,
         facts = testFacts(store = store),

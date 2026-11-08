@@ -104,9 +104,11 @@ class IosSecureStoreTest {
 
         val read = MintingDeviceIdentity(
             store,
-            PlatformDeviceId {
-                generated = true
-                "a-brand-new-identity"
+            object : PlatformDeviceId {
+                override fun stableId(): String? = run {
+                    generated = true
+                    "a-brand-new-identity"
+                }
             },
         ).id()
 

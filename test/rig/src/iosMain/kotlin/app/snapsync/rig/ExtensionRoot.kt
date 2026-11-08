@@ -1,9 +1,9 @@
 package app.snapsync.rig
 
 import app.snapsync.data.logs.SinkLines
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.LogWriter
-import app.snapsync.inbound.of
 import app.snapsync.levers.ExtensionAnswer
 import app.snapsync.levers.ExtensionHostLevers
 import app.snapsync.levers.UploadJobLevers

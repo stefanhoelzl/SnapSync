@@ -21,6 +21,7 @@ import app.snapsync.domain.sharing.SettlingLook
 import app.snapsync.domain.upload.ExtensionAnswer
 import app.snapsync.domain.upload.UploadGate
 import app.snapsync.domain.upload.UploadPass
+import app.snapsync.entrypoints.MembershipEntryPoints.membership
 import app.snapsync.inbound.Log
 import app.snapsync.ports.ProcessingAnswer
 import app.snapsync.scheduling.AnsweredEntryPoint

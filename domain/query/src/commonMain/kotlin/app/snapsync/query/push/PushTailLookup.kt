@@ -5,8 +5,8 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.membership.MembershipRead
 import app.snapsync.domain.push.MemberOf
 import app.snapsync.domain.push.PushTailVerdict
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("PushTail")
 

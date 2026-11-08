@@ -5,8 +5,8 @@ import app.snapsync.data.crash.CrashChannel
 import app.snapsync.data.process.FootprintTrail
 import app.snapsync.data.process.ReadMetrics
 import app.snapsync.domain.process.ProcessMetricRules
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("processMetrics").unlabelled
 

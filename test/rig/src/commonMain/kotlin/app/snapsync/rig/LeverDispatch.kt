@@ -1,8 +1,8 @@
 package app.snapsync.rig
 
 import app.snapsync.domain.version.Store
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.levers.BackendLevers
 import app.snapsync.levers.BackgroundTimeLevers
 import app.snapsync.levers.BuildLevers

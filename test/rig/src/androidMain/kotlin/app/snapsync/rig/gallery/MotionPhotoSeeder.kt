@@ -4,8 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.levers.MovingPhoto
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.rig.refused

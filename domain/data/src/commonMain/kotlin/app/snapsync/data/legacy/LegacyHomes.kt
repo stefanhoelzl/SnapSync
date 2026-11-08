@@ -1,7 +1,7 @@
 package app.snapsync.data.legacy
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files

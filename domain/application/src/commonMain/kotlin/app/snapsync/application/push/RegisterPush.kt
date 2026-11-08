@@ -10,8 +10,8 @@ import app.snapsync.data.store.StoreWrite
 import app.snapsync.domain.push.PushRegistrationKey
 import app.snapsync.domain.push.PushRegistrationVerdict
 import app.snapsync.domain.push.PushTrigger
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("RegisterPush")
 

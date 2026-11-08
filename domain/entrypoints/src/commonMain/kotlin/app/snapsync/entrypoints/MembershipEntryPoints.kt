@@ -53,8 +53,9 @@ import app.snapsync.domain.request.RequestId
 import app.snapsync.domain.request.SettingsRequest
 import app.snapsync.domain.request.SwitchRequest
 import app.snapsync.domain.upload.UploaderChange
+import app.snapsync.entrypoints.MembershipEntryPoints.membership
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.query.membership.MembershipQuery
 import app.snapsync.query.membership.MembershipStatuses
 import app.snapsync.query.membership.SwitchLookup
@@ -354,35 +355,6 @@ enum class Freshness {
 /** The membership as a trigger reads it, and the refresh a fresh read asks for. */
 class MembershipBranch(internal val query: MembershipQuery, internal val refresh: RefreshMembership)
 
-/**
- * Run the branch [build] names for the membership as [freshness] reads it — `active`, `deleted` or `notJoined` —
- * [Freshness.Refreshed] bringing an active one up to the server's word first, so the branch runs over what it holds
- * after. A state no branch names, and a membership that cannot be read, is logged and does nothing.
- */
-suspend fun Steps.membership(of: MembershipBranch, freshness: Freshness, build: MembershipBranches.() -> Unit) {
-    val branches = MembershipBranches(this).apply(build)
-    when (freshness) {
-        Freshness.Cached -> Unit
-        Freshness.Refreshed -> refreshed(of)
-    }
-    read(of.query.state.value, branches)
-}
-
-/** The active membership held, if any, brought up to the server's word. */
-private suspend fun Steps.refreshed(of: MembershipBranch) =
-    of.query.active()?.let { active -> required { of.refresh(active) } }
-
-private suspend fun read(read: MembershipRead, branches: MembershipBranches) = when (read) {
-    is MembershipRead.Joined -> held(read.membership, branches)
-    is MembershipRead.NotJoined -> branches.notJoined.run(read.evidence)
-    is MembershipRead.Unavailable -> log.i("membership: unreadable, nothing to do")
-}
-
-private suspend fun held(held: Membership, branches: MembershipBranches) = when (held) {
-    is Membership.Active -> branches.active.run(held)
-    is Membership.Deleted -> branches.deleted.run(held)
-}
-
 /** The branches of [membership]: each takes the steps of what the membership is in that state. */
 class MembershipBranches internal constructor(private val steps: Steps) {
     internal var active: Branch<Membership.Active> = Omitted("active")
@@ -473,5 +445,36 @@ class EndOfWake(
             }
         }
         isolated("received report") { received.run(on) }
+    }
+}
+
+object MembershipEntryPoints {
+    /**
+     * Run the branch [build] names for the membership as [freshness] reads it — `active`, `deleted` or `notJoined` —
+     * [Freshness.Refreshed] bringing an active one up to the server's word first, so the branch runs over what it holds
+     * after. A state no branch names, and a membership that cannot be read, is logged and does nothing.
+     */
+    suspend fun Steps.membership(of: MembershipBranch, freshness: Freshness, build: MembershipBranches.() -> Unit) {
+        val branches = MembershipBranches(this).apply(build)
+        when (freshness) {
+            Freshness.Cached -> Unit
+            Freshness.Refreshed -> refreshed(of)
+        }
+        read(of.query.state.value, branches)
+    }
+
+    /** The active membership held, if any, brought up to the server's word. */
+    private suspend fun Steps.refreshed(of: MembershipBranch) =
+        of.query.active()?.let { active -> required { of.refresh(active) } }
+
+    private suspend fun read(read: MembershipRead, branches: MembershipBranches) = when (read) {
+        is MembershipRead.Joined -> held(read.membership, branches)
+        is MembershipRead.NotJoined -> branches.notJoined.run(read.evidence)
+        is MembershipRead.Unavailable -> log.i("membership: unreadable, nothing to do")
+    }
+
+    private suspend fun held(held: Membership, branches: MembershipBranches) = when (held) {
+        is Membership.Active -> branches.active.run(held)
+        is Membership.Deleted -> branches.deleted.run(held)
     }
 }

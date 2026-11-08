@@ -2,6 +2,7 @@ package app.snapsync.data.store
 
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
+import app.snapsync.data.store.SharedDatabase.Companion.sharedDatabaseOver
 import app.snapsync.data.store.db.EventAlbum
 import app.snapsync.data.store.db.EventCheck
 import app.snapsync.data.store.db.LedgerDatabase
@@ -94,32 +95,39 @@ class SharedDatabase(databases: Databases, legacy: LegacyCopy?) {
             true -> SharedRecordsReadiness.Ready
             false -> SharedRecordsReadiness.LegacyPending
         }
-}
 
-/** The generated database over [driver] with its column adapters wired — the one place that knows each encoding. */
-fun sharedDatabaseOver(driver: SqlDriver): LedgerDatabase = LedgerDatabase(
-    driver,
-    eventAlbumAdapter = EventAlbum.Adapter(
-        eventIdAdapter = EventIdColumnAdapter,
-        albumLocalIdAdapter = EventAlbumIdColumnAdapter,
-        filledAdapter = AlbumFillColumnAdapter,
-    ),
-    eventCheckAdapter = EventCheck.Adapter(eventIdAdapter = EventIdColumnAdapter),
-    ledgerRowAdapter = LedgerRow.Adapter(assetIdAdapter = AssetIdColumnAdapter, stateAdapter = EnumColumnAdapter()),
-    membershipAdapter = Membership.Adapter(
-        eventIdAdapter = EventIdColumnAdapter,
-        minPhotoDateAdapter = CaptureCutoffColumnAdapter,
-        startsAtAdapter = EventStartColumnAdapter,
-        endsAtAdapter = EventEndColumnAdapter,
-        maxPhotoDateAdapter = CaptureCeilingColumnAdapter,
-        deletesAtAdapter = DeletesAtColumnAdapter,
-        directionAdapter = EnumColumnAdapter(),
-        saveToAlbumAdapter = AlbumChoiceColumnAdapter,
-        openUntilAdapter = OpenUntilColumnAdapter,
-    ),
-    pendingLeaveAdapter = PendingLeave.Adapter(eventIdAdapter = EventIdColumnAdapter),
-    uploadedManifestAdapter = UploadedManifest.Adapter(
-        eventIdAdapter = EventIdColumnAdapter,
-        declarationAdapter = EnumColumnAdapter(),
-    ),
-)
+    companion object {
+        /**
+         * The generated database over [driver] with its column adapters wired — the one place that knows each encoding.
+         */
+        fun sharedDatabaseOver(driver: SqlDriver): LedgerDatabase = LedgerDatabase(
+            driver,
+            eventAlbumAdapter = EventAlbum.Adapter(
+                eventIdAdapter = EventIdColumnAdapter,
+                albumLocalIdAdapter = EventAlbumIdColumnAdapter,
+                filledAdapter = AlbumFillColumnAdapter,
+            ),
+            eventCheckAdapter = EventCheck.Adapter(eventIdAdapter = EventIdColumnAdapter),
+            ledgerRowAdapter = LedgerRow.Adapter(
+                assetIdAdapter = AssetIdColumnAdapter,
+                stateAdapter = EnumColumnAdapter(),
+            ),
+            membershipAdapter = Membership.Adapter(
+                eventIdAdapter = EventIdColumnAdapter,
+                minPhotoDateAdapter = CaptureCutoffColumnAdapter,
+                startsAtAdapter = EventStartColumnAdapter,
+                endsAtAdapter = EventEndColumnAdapter,
+                maxPhotoDateAdapter = CaptureCeilingColumnAdapter,
+                deletesAtAdapter = DeletesAtColumnAdapter,
+                directionAdapter = EnumColumnAdapter(),
+                saveToAlbumAdapter = AlbumChoiceColumnAdapter,
+                openUntilAdapter = OpenUntilColumnAdapter,
+            ),
+            pendingLeaveAdapter = PendingLeave.Adapter(eventIdAdapter = EventIdColumnAdapter),
+            uploadedManifestAdapter = UploadedManifest.Adapter(
+                eventIdAdapter = EventIdColumnAdapter,
+                declarationAdapter = EnumColumnAdapter(),
+            ),
+        )
+    }
+}

@@ -10,8 +10,10 @@ internal val SwitchTo.isOn: Boolean
         SwitchTo.OFF -> false
     }
 
-/** The mobile-data switch's position as the device's choice. */
-internal fun SwitchTo.mobileData(): MobileDataChoice = when (this) {
-    SwitchTo.ON -> MobileDataChoice.ALLOWED
-    SwitchTo.OFF -> MobileDataChoice.WIFI_ONLY
+object Switches {
+    /** The mobile-data switch's position as the device's choice. */
+    internal fun SwitchTo.mobileData(): MobileDataChoice = when (this) {
+        SwitchTo.ON -> MobileDataChoice.ALLOWED
+        SwitchTo.OFF -> MobileDataChoice.WIFI_ONLY
+    }
 }

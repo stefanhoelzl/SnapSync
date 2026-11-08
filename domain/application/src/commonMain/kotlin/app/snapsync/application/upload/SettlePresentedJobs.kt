@@ -1,6 +1,7 @@
 package app.snapsync.application.upload
 
 import app.snapsync.application.EntryPointCall
+import app.snapsync.application.upload.CreateJobs.Companion.endedPass
 import app.snapsync.data.upload.OfferedRetry
 import app.snapsync.data.upload.OsQueueDrain
 import app.snapsync.data.upload.OsQueueTier
@@ -13,8 +14,8 @@ import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.SelectionPolicy
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.upload.UploadRow
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 private val log = Log("SettlePresentedJobs")
 

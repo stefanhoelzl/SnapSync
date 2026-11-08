@@ -2,8 +2,8 @@
 
 package app.snapsync.keychain
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.SecureSlot
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead

@@ -1,9 +1,11 @@
 package app.snapsync.presentation
 
+import app.snapsync.presentation.JoinedLayer.shown
+import app.snapsync.presentation.ScreenModel.Companion.shareBounds
 import app.snapsync.presentation.range.EventRange
+import app.snapsync.presentation.range.EventRange.Companion.validUntil
 import app.snapsync.presentation.range.RangeEdit
-import app.snapsync.presentation.range.after
-import app.snapsync.presentation.range.validUntil
+import app.snapsync.presentation.range.RangeEditing.after
 import kotlinx.coroutines.flow.update
 
 /**

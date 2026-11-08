@@ -3,6 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.domain.album.AlbumContents
 import app.snapsync.domain.trust.DeviceRefusal
 import app.snapsync.domain.version.Store
+import app.snapsync.presentation.JoinedLayer.shown
 import app.snapsync.ui.state.AlbumHolds
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RefusalCause
@@ -37,7 +38,7 @@ class ScreenModelTest {
     fun `the display half reads now and emits only what changed`() = runTest {
         val creating = ScreenModel(UiState(Layer.CreatingEvent), Shown())
         val source = MutableStateFlow(creating)
-        val screen = Displayed { source }
+        val screen = Displayed(object : ScreenSource { override fun models() = source })
         assertEquals(listOf(creating.ui), screen.replayCache)
 
         val seen = mutableListOf<UiState>()
@@ -50,9 +51,12 @@ class ScreenModelTest {
             UiState(
                 Layer.CreateEvent(
                     freshCreateForm(
-                        CutoffFormatter(now = {
-                            Instant.DISTANT_PAST
-                        }, zone = TimeZone.UTC),
+                        CutoffFormatter(
+                            now = instants({
+                                Instant.DISTANT_PAST
+                            }),
+                            zone = TimeZone.UTC,
+                        ),
                     ),
                 ),
             ),
@@ -67,9 +71,12 @@ class ScreenModelTest {
                 UiState(
                     Layer.CreateEvent(
                         freshCreateForm(
-                            CutoffFormatter(now = {
-                                Instant.DISTANT_PAST
-                            }, zone = TimeZone.UTC),
+                            CutoffFormatter(
+                                now = instants({
+                                    Instant.DISTANT_PAST
+                                }),
+                                zone = TimeZone.UTC,
+                            ),
                         ),
                     ),
                 ),

@@ -5,8 +5,8 @@ import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.Lifecycle
 import app.snapsync.ports.LifecycleHandlers

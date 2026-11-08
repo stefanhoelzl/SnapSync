@@ -13,9 +13,9 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.snapsync.adapter.android.R
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
-import app.snapsync.inbound.of
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import kotlinx.coroutines.CancellationException

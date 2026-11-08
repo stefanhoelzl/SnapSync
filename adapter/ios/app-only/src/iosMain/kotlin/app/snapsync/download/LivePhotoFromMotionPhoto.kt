@@ -1,7 +1,7 @@
 package app.snapsync.download
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.motionphoto.locateMotionVideo
 import app.snapsync.motionphoto.motionPresentationTimestampUs
 import app.snapsync.motionphoto.withExtension

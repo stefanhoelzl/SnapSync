@@ -1,7 +1,7 @@
 package app.snapsync.scheduling
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlinx.coroutines.sync.Mutex
 
 /**

@@ -1,9 +1,10 @@
 package app.snapsync.data.receiving
 
+import app.snapsync.data.gallery.GalleryTranslation.assetId
+import app.snapsync.data.gallery.GalleryTranslation.platformId
+import app.snapsync.data.gallery.GalleryTranslation.role
 import app.snapsync.data.gallery.PhotoGrants
-import app.snapsync.data.gallery.assetId
-import app.snapsync.data.gallery.platformId
-import app.snapsync.data.gallery.role
+import app.snapsync.data.receiving.DownloadDatabaseFile.Companion.read
 import app.snapsync.data.sharing.SelectionSnapshots
 import app.snapsync.data.sharing.SelectionState
 import app.snapsync.domain.asset.AssetId
@@ -85,6 +86,11 @@ class MarkedPhotos(private val gallery: GalleryReader, private val selection: Se
         .filter { it.asset.id.assetId() !in known && inWindow(CaptureDate.of(it.asset.created)) }
         .mapNotNull { it.mark() }
         .toMap()
+
+    private fun GalleryAssetResources.mark(): Pair<String, AssetId>? =
+        resources.firstOrNull { it.kind.role() == ResourceRole.PRIMARY }?.let { primary ->
+            ReceivedPhotoName.tokenOf(primary.originalFilename)?.let { it to asset.id.assetId() }
+        }
 }
 
 /** The marked photos found, by token, or that the library could not be read. */
@@ -97,8 +103,3 @@ sealed interface MarkedRead {
 /** This asset's mark — the token its primary resource's name carries — or `null` when it carries none. */
 /** A selection not read yet, as recognition reads it: one that holds no marked photo. */
 private val NOTHING_READ = SelectionState.Read(emptyList())
-
-private fun GalleryAssetResources.mark(): Pair<String, AssetId>? =
-    resources.firstOrNull { it.kind.role() == ResourceRole.PRIMARY }?.let { primary ->
-        ReceivedPhotoName.tokenOf(primary.originalFilename)?.let { it to asset.id.assetId() }
-    }

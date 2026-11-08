@@ -5,8 +5,8 @@ import app.snapsync.data.store.Stored
 import app.snapsync.data.store.db.LedgerDatabase
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.sharing.PublishedDeclaration
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files

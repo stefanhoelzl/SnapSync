@@ -5,6 +5,8 @@ import app.snapsync.domain.event.EventEnd
 import app.snapsync.domain.event.EventStart
 import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.CaptureRangeVerdict
+import app.snapsync.presentation.RangeResolution.nowWithinWindow
+import app.snapsync.presentation.RangeResolution.resolve
 import app.snapsync.ui.state.ShareCount
 
 /**

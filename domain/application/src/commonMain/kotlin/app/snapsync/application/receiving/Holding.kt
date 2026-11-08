@@ -24,8 +24,8 @@ import app.snapsync.domain.receiving.ReportDue
 import app.snapsync.domain.receiving.UnionPage
 import app.snapsync.domain.receiving.UnionReadPlan
 import app.snapsync.domain.receiving.UnionTrigger
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 
 /**
  * How far this device holds the others' photos of [Membership.Active]'s event. A membership that receives nothing is
@@ -124,10 +124,10 @@ class ReportReceivedPosition(
             }
             is ReceivedReply.NotRecorded -> log.w("what this device received was not recorded", "why" of reply.detail)
         }
-}
 
-/** A report as the log names it. */
-private fun ReceivedReport.text(): String = when (this) {
-    is ReceivedReport.Position -> "position $position"
-    ReceivedReport.ReceivesNothing -> "receives nothing"
+    /** A report as the log names it. */
+    private fun ReceivedReport.text(): String = when (this) {
+        is ReceivedReport.Position -> "position $position"
+        ReceivedReport.ReceivesNothing -> "receives nothing"
+    }
 }

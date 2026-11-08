@@ -10,8 +10,8 @@ import app.snapsync.data.sharing.DiscoveryRead
 import app.snapsync.data.sharing.OwnPhotos
 import app.snapsync.domain.membership.Membership
 import app.snapsync.domain.membership.MembershipRead
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 

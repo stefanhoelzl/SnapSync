@@ -1,10 +1,13 @@
 package app.snapsync.data.identity
 
+import app.snapsync.data.identity.DeviceIdentity.Companion.logged
+import app.snapsync.data.identity.DeviceIdentity.Companion.spelled
+import app.snapsync.data.identity.DeviceIdentity.Companion.stored
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.device.DeviceId
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.SecureStore
 import app.snapsync.ports.SecureStoreRead
@@ -30,6 +33,35 @@ interface DeviceIdentity {
      * identity as a side effect (a report): this process's resolution when it has one, else the slot as it stands.
      */
     fun current(): DeviceIdRead
+
+    companion object {
+        /** The device-id slot as it stands: the id it holds, none, or why it could not be read. */
+        internal fun stored(store: SecureStore, via: DeviceIdRead.Via): DeviceIdRead =
+            when (val read = store.read(TrustSlots.DEVICE_ID)) {
+                is SecureStoreRead.Found -> spelled(read.value, via, "the stored device id is not a device id")
+                SecureStoreRead.Absent -> DeviceIdRead.Absent
+                is SecureStoreRead.Unavailable -> DeviceIdRead.Unavailable(read.detail)
+            }
+
+        /**
+         * [text] as the device id it spells — or, when it spells none, an identity no backend call could be made under,
+         * so it
+         * is reported as unusable ([otherwise]) rather than handed out.
+         */
+        internal fun spelled(text: String, via: DeviceIdRead.Via, otherwise: String): DeviceIdRead =
+            DeviceId.parse(text)?.let { DeviceIdRead.Ok(it, via) } ?: DeviceIdRead.Unavailable(otherwise)
+
+        /**
+         * Each process logs the id it resolved — the two processes are supposed to print the same id, and when they did
+         * not,
+         * for nine hours in July, only this line would have said so.
+         */
+        internal fun logged(read: DeviceIdRead) = when (read) {
+            is DeviceIdRead.Ok -> LOG.unlabelled.i("device identity", "id" of read.value, "via" of read.via)
+            DeviceIdRead.Absent -> LOG.unlabelled.i("device identity absent, and this process may not mint")
+            is DeviceIdRead.Unavailable -> Unit // the caller's skip line names it
+        }
+    }
 }
 
 /** What resolving the device id found. */
@@ -72,21 +104,6 @@ abstract class ResolvedOnce internal constructor() : DeviceIdentity {
     }
 }
 
-/** The device-id slot as it stands: the id it holds, none, or why it could not be read. */
-internal fun stored(store: SecureStore, via: DeviceIdRead.Via): DeviceIdRead =
-    when (val read = store.read(TrustSlots.DEVICE_ID)) {
-        is SecureStoreRead.Found -> spelled(read.value, via, "the stored device id is not a device id")
-        SecureStoreRead.Absent -> DeviceIdRead.Absent
-        is SecureStoreRead.Unavailable -> DeviceIdRead.Unavailable(read.detail)
-    }
-
-/**
- * [text] as the device id it spells — or, when it spells none, an identity no backend call could be made under, so it
- * is reported as unusable ([otherwise]) rather than handed out.
- */
-private fun spelled(text: String, via: DeviceIdRead.Via, otherwise: String): DeviceIdRead =
-    DeviceId.parse(text)?.let { DeviceIdRead.Ok(it, via) } ?: DeviceIdRead.Unavailable(otherwise)
-
 /** The upload extension's identity: the shared slot, read; absence is [DeviceIdRead.Absent], never minted over. */
 class StoredDeviceIdentity(private val store: SecureStore) : ResolvedOnce() {
     override fun current(): DeviceIdRead = kept() ?: stored(store, DeviceIdRead.Via.READ)
@@ -119,16 +136,6 @@ class MintingDeviceIdentity @AppProcessOnly constructor(
             is WriteOutcome.Failed -> DeviceIdRead.Unavailable("write refused: ${written.detail}")
         }
     }
-}
-
-/**
- * Each process logs the id it resolved — the two processes are supposed to print the same id, and when they did not,
- * for nine hours in July, only this line would have said so.
- */
-private fun logged(read: DeviceIdRead) = when (read) {
-    is DeviceIdRead.Ok -> LOG.unlabelled.i("device identity", "id" of read.value, "via" of read.via)
-    DeviceIdRead.Absent -> LOG.unlabelled.i("device identity absent, and this process may not mint")
-    is DeviceIdRead.Unavailable -> Unit // the caller's skip line names it
 }
 
 private val LOG = Log("DeviceIdentity")

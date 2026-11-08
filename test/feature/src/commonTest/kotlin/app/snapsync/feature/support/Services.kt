@@ -210,14 +210,18 @@ internal fun MembershipQueries.saveRow(config: LegacyMembership) = saveMembershi
 fun testIdentity(id: String): MintingDeviceIdentity =
     MintingDeviceIdentity(
         inMemorySecureStore(),
-        PlatformDeviceId { testDeviceId(id).value },
+        object : PlatformDeviceId {
+            override fun stableId(): String? = run { testDeviceId(id).value }
+        },
     )
 
 /** A device identity that cannot be read — the secure store answers as a locked device's does. */
 fun unreadableIdentity(): MintingDeviceIdentity =
     MintingDeviceIdentity(
         inMemorySecureStore(unavailable = true),
-        PlatformDeviceId { "unread" },
+        object : PlatformDeviceId {
+            override fun stableId(): String? = run { "unread" }
+        },
     )
 
 /** The event a [TestLedger]'s rows belong to unless a test says otherwise. */

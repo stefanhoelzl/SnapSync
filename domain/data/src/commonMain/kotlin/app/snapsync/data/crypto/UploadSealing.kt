@@ -1,5 +1,6 @@
 package app.snapsync.data.crypto
 
+import app.snapsync.data.crypto.UploadSealing.Companion.held
 import app.snapsync.data.identity.DeviceIdRead
 import app.snapsync.data.identity.DeviceIdentity
 import app.snapsync.data.membership.MembershipRepository
@@ -43,6 +44,27 @@ class UploadSealing(
      * file's key and opening bytes, never the event key.
      */
     fun edgeSeal(order: SealOrder): EdgeSeal = cipher.edgeSeal(order.key, order.binding)
+
+    companion object {
+        private fun sealed(verdict: SealVerdict, event: EventId, asset: AssetId, role: ResourceRole): UploadSeal =
+            when (verdict) {
+                is SealVerdict.Plain -> UploadSeal.Plain
+                is SealVerdict.Sealed -> UploadSeal.Sealed(
+                    SealOrder(verdict.key, FileBinding(event, verdict.device, asset, role)),
+                )
+                is SealVerdict.Withheld -> UploadSeal.Withheld(verdict.because)
+            }
+
+        internal fun held(read: MembershipRead): Membership? = when (read) {
+            is MembershipRead.Joined -> read.membership
+            is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
+        }
+
+        private fun device(read: DeviceIdRead): DeviceId? = when (read) {
+            is DeviceIdRead.Ok -> read.value
+            is DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> null
+        }
+    }
 }
 
 /** How one upload goes up. */
@@ -60,23 +82,4 @@ sealed interface UploadSeal {
 /** One resource's seal: the key and what the file is bound to. Never rendered but by its asset. */
 class SealOrder internal constructor(val key: IdentifiedKey, val binding: FileBinding) {
     override fun toString(): String = "SealOrder(${binding.asset})"
-}
-
-private fun sealed(verdict: SealVerdict, event: EventId, asset: AssetId, role: ResourceRole): UploadSeal =
-    when (verdict) {
-        is SealVerdict.Plain -> UploadSeal.Plain
-        is SealVerdict.Sealed -> UploadSeal.Sealed(
-            SealOrder(verdict.key, FileBinding(event, verdict.device, asset, role)),
-        )
-        is SealVerdict.Withheld -> UploadSeal.Withheld(verdict.because)
-    }
-
-internal fun held(read: MembershipRead): Membership? = when (read) {
-    is MembershipRead.Joined -> read.membership
-    is MembershipRead.NotJoined, is MembershipRead.Unavailable -> null
-}
-
-private fun device(read: DeviceIdRead): DeviceId? = when (read) {
-    is DeviceIdRead.Ok -> read.value
-    is DeviceIdRead.Absent, is DeviceIdRead.Unavailable -> null
 }

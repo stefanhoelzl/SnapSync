@@ -11,8 +11,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import app.snapsync.annotations.Never
 import app.snapsync.annotations.NeverAnswers
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum

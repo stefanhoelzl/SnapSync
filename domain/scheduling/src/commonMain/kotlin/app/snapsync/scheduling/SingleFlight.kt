@@ -164,13 +164,13 @@ internal class SingleFlight(private val runtime: Runtime) {
             absorbed.forEach { it.fail(failure) }
         }
     }
-}
 
-/** A finished pass's result as a value: its answer, its failure, or its cancellation. */
-private suspend fun outcomeOf(pass: Deferred<Any?>): Result<Any?> = try {
-    Result.success(pass.await())
-} catch (fatal: InvalidProgramState) {
-    throw fatal
-} catch (failure: Throwable) {
-    Result.failure(failure)
+    /** A finished pass's result as a value: its answer, its failure, or its cancellation. */
+    private suspend fun outcomeOf(pass: Deferred<Any?>): Result<Any?> = try {
+        Result.success(pass.await())
+    } catch (fatal: InvalidProgramState) {
+        throw fatal
+    } catch (failure: Throwable) {
+        Result.failure(failure)
+    }
 }

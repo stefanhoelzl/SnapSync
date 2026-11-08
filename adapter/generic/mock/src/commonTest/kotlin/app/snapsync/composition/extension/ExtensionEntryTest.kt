@@ -36,9 +36,11 @@ import app.snapsync.mock.inMemoryFiles
 import app.snapsync.mock.inMemoryPreferences
 import app.snapsync.mock.inMemorySecureStore
 import app.snapsync.ports.DbResult
+import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.MetricHandlers
+import app.snapsync.ports.PlatformDeviceId
 import app.snapsync.ports.ProcessMetrics
 import app.snapsync.testids.testEventId
 import app.snapsync.wire.api.Routes
@@ -96,12 +98,14 @@ class ExtensionEntryTest {
     private val publishedWith = mutableListOf<String?>()
 
     private val backend = BackendMock().port().let { mock ->
-        HttpTransport { request ->
-            if (request.method == Routes.PublishManifest.METHOD && request.url.endsWith("/manifest")) {
-                publishedWith += request.headers["Authorization"]?.removePrefix("Bearer ")
-                HttpResult.Response(200, emptyMap(), "")
-            } else {
-                mock.send(request)
+        object : HttpTransport {
+            override suspend fun send(request: HttpRequest): HttpResult = run {
+                if (request.method == Routes.PublishManifest.METHOD && request.url.endsWith("/manifest")) {
+                    publishedWith += request.headers["Authorization"]?.removePrefix("Bearer ")
+                    HttpResult.Response(200, emptyMap(), "")
+                } else {
+                    mock.send(request)
+                }
             }
         }
     }
@@ -114,7 +118,12 @@ class ExtensionEntryTest {
 
     /** What the app leaves behind for the extension: an identity, a token, a membership and the download store. */
     private suspend fun joinedWithAToken(token: String) {
-        MintingDeviceIdentity(secureStore, platformDeviceId = { null }).id()
+        MintingDeviceIdentity(
+            secureStore,
+            platformDeviceId = object : PlatformDeviceId {
+                override fun stableId(): String? = run { null }
+            },
+        ).id()
         attest.setToken(TokenText.parse(token))
         // The membership row as a join writes it.
         appDatabase.use {

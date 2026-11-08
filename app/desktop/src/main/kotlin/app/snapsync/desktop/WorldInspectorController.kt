@@ -4,9 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import app.snapsync.data.gallery.assetId
-import app.snapsync.data.gallery.facts
-import app.snapsync.data.gallery.role
+import app.snapsync.data.gallery.GalleryTranslation.assetId
+import app.snapsync.data.gallery.GalleryTranslation.facts
+import app.snapsync.data.gallery.GalleryTranslation.role
 import app.snapsync.data.sharing.DenylistedAlbums
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.asset.ResourceRole

@@ -10,6 +10,8 @@ import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.PhotoGrant
 import app.snapsync.domain.sharing.SharingProgress
 import app.snapsync.domain.sharing.SharingProgressRead
+import app.snapsync.presentation.Switches.mobileData
+import app.snapsync.presentation.UiIntents.onIntent
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.Layer
 import app.snapsync.ui.state.RenameState
@@ -108,7 +110,7 @@ class GuardedIntentTest {
                         },
                         commands = commands.door,
                         cutoffFormatter = CutoffFormatter(
-                            now = { Instant.parse("2026-07-09T12:00:00Z") },
+                            now = instants({ Instant.parse("2026-07-09T12:00:00Z") }),
                             zone = TimeZone.UTC,
                         ),
                         shareableCount = noQueries,

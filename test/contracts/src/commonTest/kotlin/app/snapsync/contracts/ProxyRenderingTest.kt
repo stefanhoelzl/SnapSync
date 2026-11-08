@@ -12,6 +12,7 @@ import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.GalleryResourceHandle
+import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.LibraryGrant
@@ -59,8 +60,10 @@ class ProxyRenderingTest {
             override fun read(area: FileArea, path: String): FileResult<ByteArray> = FileResult.Ok(ByteArray(0))
         }.recorded(log)
         files.read(FileArea.SHARED, "p")
-        val backend = HttpTransport {
-            HttpResult.Response(200, mapOf("Content-Type" to "application/json"), """{"challenge":"c"}""")
+        val backend = object : HttpTransport {
+            override suspend fun send(request: HttpRequest): HttpResult = request.let {
+                HttpResult.Response(200, mapOf("Content-Type" to "application/json"), """{"challenge":"c"}""")
+            }
         }
         BackendClient(
             backend,

@@ -47,8 +47,10 @@ class EventKeyLedger {
     }
 
     /** The backend's transport, recording the key id each keyed create (`createEvent`) answered with an event id. */
-    fun recording(delegate: HttpTransport): HttpTransport = HttpTransport { request ->
-        delegate.send(request).also { result -> record(request, result) }
+    fun recording(delegate: HttpTransport): HttpTransport = object : HttpTransport {
+        override suspend fun send(request: HttpRequest): HttpResult = run {
+            delegate.send(request).also { result -> record(request, result) }
+        }
     }
 
     /** [eventId]'s key, as its invite carries it, or `null` for an event this device did not create encrypted. */

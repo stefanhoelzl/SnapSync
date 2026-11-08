@@ -24,6 +24,7 @@ import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
 import app.snapsync.ports.Download
 import app.snapsync.ports.DownloadHandlers
+import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
 import app.snapsync.ports.StartResult
@@ -40,7 +41,15 @@ fun receivingCounts(databases: Databases): ReceivingCounts = ReceivingCounts(
         DownloadTransfers(
             NoDownloads,
             MobileDataStore(inMemoryPreferences()),
-            BackendExchange(HttpTransport { HttpResult.Unreachable("no backend in this test") }, NoTarget, NoVersions),
+            BackendExchange(
+                object : HttpTransport {
+                    override suspend fun send(request: HttpRequest): HttpResult = request.let {
+                        HttpResult.Unreachable("no backend in this test")
+                    }
+                },
+                NoTarget,
+                NoVersions,
+            ),
         ),
     ),
 )

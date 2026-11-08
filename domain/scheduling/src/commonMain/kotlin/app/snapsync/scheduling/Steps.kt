@@ -1,9 +1,9 @@
 package app.snapsync.scheduling
 
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Trigger
-import app.snapsync.inbound.of
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope

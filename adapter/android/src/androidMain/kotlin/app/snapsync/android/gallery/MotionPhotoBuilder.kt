@@ -3,8 +3,8 @@ package app.snapsync.android.gallery
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.media.ExifInterface
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.motionphoto.motionPhotoStill
 import app.snapsync.motionphoto.withExtension
 import app.snapsync.platform.PlatformCalls

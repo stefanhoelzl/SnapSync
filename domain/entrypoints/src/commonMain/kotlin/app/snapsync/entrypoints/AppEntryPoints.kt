@@ -50,8 +50,9 @@ import app.snapsync.domain.request.MobileDataRequest
 import app.snapsync.domain.upload.UploadAdmission
 import app.snapsync.domain.upload.UploadPass
 import app.snapsync.domain.wake.UploadsLeft
+import app.snapsync.entrypoints.MembershipEntryPoints.membership
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.FinishedDownload
 import app.snapsync.ports.FinishedTransfer
@@ -77,9 +78,9 @@ import app.snapsync.scheduling.InboundEntryPoint
 import app.snapsync.scheduling.Pass
 import app.snapsync.scheduling.Run
 import app.snapsync.scheduling.Runtime
+import app.snapsync.scheduling.Sequence.Companion.orIfCut
 import app.snapsync.scheduling.SessionDrains
 import app.snapsync.scheduling.Steps
-import app.snapsync.scheduling.orIfCut
 
 // ── What happens on each trigger of the app process ─────────────────────────────────────────────────────────────────
 //

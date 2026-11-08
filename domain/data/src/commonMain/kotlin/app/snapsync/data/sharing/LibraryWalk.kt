@@ -1,7 +1,7 @@
 package app.snapsync.data.sharing
 
-import app.snapsync.data.gallery.facts
-import app.snapsync.data.gallery.platformId
+import app.snapsync.data.gallery.GalleryTranslation.facts
+import app.snapsync.data.gallery.GalleryTranslation.platformId
 import app.snapsync.data.time.WallClock
 import app.snapsync.domain.asset.AssetFacts
 import app.snapsync.domain.asset.AssetId
@@ -9,8 +9,8 @@ import app.snapsync.domain.sharing.CaptureRange
 import app.snapsync.domain.sharing.WalkBounds
 import app.snapsync.domain.time.Timestamp
 import app.snapsync.inbound.AppProcessOnly
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAssetResources
 import app.snapsync.ports.GalleryRead

@@ -2,8 +2,8 @@
 
 package app.snapsync.background
 
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback

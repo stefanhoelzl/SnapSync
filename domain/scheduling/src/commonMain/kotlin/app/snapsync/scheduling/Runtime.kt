@@ -4,15 +4,16 @@ package app.snapsync.scheduling
 
 import app.snapsync.domain.program.InvalidProgramState
 import app.snapsync.inbound.Completion
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
 import app.snapsync.inbound.Trigger
-import app.snapsync.inbound.of
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
 import app.snapsync.ports.EntryEvents
 import app.snapsync.ports.EntryOutcome
 import app.snapsync.ports.ThreadLabel
+import app.snapsync.scheduling.Runtime.Companion.endProcess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -150,7 +151,7 @@ class Runtime(
         val joined = currentCoroutineContext()[WorkElement]
         val work = if (joined == null) null else joined.work.opened()
         val outlived = scope.async((trigger ?: Trigger.of("outliving")) + (joined ?: EmptyCoroutineContext)) { block() }
-        work?.let { outlived.invokeOnCompletion { cause -> it.closed(endedAs(cause)) } }
+        work?.let { outlived.invokeOnCompletion { cause -> it.closed(EntryWork.endedAs(cause)) } }
         return outlived.await()
     }
 
@@ -278,7 +279,7 @@ class Runtime(
                     log.unlabelled.i("expired run unwound", "trigger" of label, "after" of it.elapsedNow())
                 }
                 answer()
-                work.closed(if (failed.load()) EntryOutcome.FAILED else endedAs(cause))
+                work.closed(if (failed.load()) EntryOutcome.FAILED else EntryWork.endedAs(cause))
             }
         }
 
@@ -303,6 +304,35 @@ class Runtime(
             work.answered()
         }
     }
+
+    companion object {
+        /** How a delivery made on its own thread ended: a throwable is a failure, whatever it is. */
+        private fun failedAs(failure: Throwable?): EntryOutcome =
+            if (failure == null) EntryOutcome.COMPLETED else EntryOutcome.FAILED
+
+        /**
+         * Ends the process with [state] as its crash (`docs/patterns.md`, "Invalid program state"): the coroutines
+         * library's
+         * last resort, on the calling thread — the thread's uncaught handler on the JVM and Android, Kotlin/Native's
+         * unhandled-exception hook on iOS, whose crash report carries [state]'s guarantee and stack (measured on the
+         * simulator, 2026-10-25). Never a throw into the caller: on iOS that caller is Objective-C or Swift, where a
+         * Kotlin
+         * throwable terminates without the hook and the report says only that something threw. [state] is thrown after,
+         * for a
+         * runtime whose last resort returns (a JVM host's thread).
+         */
+        @OptIn(InternalCoroutinesApi::class)
+        internal fun endProcess(state: InvalidProgramState): Nothing {
+            handleCoroutineException(EmptyCoroutineContext, state)
+            throw state
+        }
+
+        @OptIn(InternalCoroutinesApi::class)
+        private fun labelling(lane: CoroutineDispatcher, label: ThreadLabel): CoroutineDispatcher = when (lane) {
+            is Delay -> LabellingWithDelay(lane, label)
+            else -> Labelling(lane, label)
+        }
+    }
 }
 
 /** What the [Runtime] reaches outside the process through — the process's own ports. */
@@ -317,10 +347,6 @@ class RuntimePorts(
     /** Where each entry point's `delivered`, `answered` and `done` is told, beside its log line. */
     val entryEvents: EntryEvents,
 )
-
-/** How a delivery made on its own thread ended: a throwable is a failure, whatever it is. */
-private fun failedAs(failure: Throwable?): EntryOutcome =
-    if (failure == null) EntryOutcome.COMPLETED else EntryOutcome.FAILED
 
 /**
  * One inline delivery, as its entry point's run sees it: what it starts and does not await is its work, which its
@@ -348,7 +374,7 @@ class Delivery internal constructor(
     /** Counts [job] — started by this delivery's handling, elsewhere — as this delivery's work until it ends. */
     fun joining(job: Job) {
         work.opened()
-        job.invokeOnCompletion { work.closed(endedAs(it)) }
+        job.invokeOnCompletion { work.closed(EntryWork.endedAs(it)) }
     }
 }
 
@@ -360,20 +386,6 @@ class Delivery internal constructor(
  * such step seen was a top-up's job creation — export, seal and create — at ~1.3 s. Twice that, capped at 2 s: 2 s.
  */
 val EXPIRY_GRACE: Duration = 2.seconds
-
-/**
- * Ends the process with [state] as its crash (`docs/patterns.md`, "Invalid program state"): the coroutines library's
- * last resort, on the calling thread — the thread's uncaught handler on the JVM and Android, Kotlin/Native's
- * unhandled-exception hook on iOS, whose crash report carries [state]'s guarantee and stack (measured on the
- * simulator, 2026-10-25). Never a throw into the caller: on iOS that caller is Objective-C or Swift, where a Kotlin
- * throwable terminates without the hook and the report says only that something threw. [state] is thrown after, for a
- * runtime whose last resort returns (a JVM host's thread).
- */
-@OptIn(InternalCoroutinesApi::class)
-internal fun endProcess(state: InvalidProgramState): Nothing {
-    handleCoroutineException(EmptyCoroutineContext, state)
-    throw state
-}
 
 /**
  * The composition lane, with each dispatched task's [Trigger] in the thread's [ThreadLabel] for its duration — so a
@@ -399,9 +411,3 @@ private open class Labelling(private val lane: CoroutineDispatcher, private val 
 @OptIn(InternalCoroutinesApi::class)
 private class LabellingWithDelay(lane: CoroutineDispatcher, label: ThreadLabel) :
     Labelling(lane, label), Delay by (lane as Delay)
-
-@OptIn(InternalCoroutinesApi::class)
-private fun labelling(lane: CoroutineDispatcher, label: ThreadLabel): CoroutineDispatcher = when (lane) {
-    is Delay -> LabellingWithDelay(lane, label)
-    else -> Labelling(lane, label)
-}

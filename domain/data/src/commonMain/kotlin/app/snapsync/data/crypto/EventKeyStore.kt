@@ -1,5 +1,6 @@
 package app.snapsync.data.crypto
 
+import app.snapsync.data.crypto.UploadSealing.Companion.held
 import app.snapsync.domain.event.EventId
 import app.snapsync.domain.event.IdentifiedKey
 import app.snapsync.domain.event.KeyFact
@@ -83,6 +84,25 @@ class EventKeyStore(private val store: SecureStore, private val ids: EventKeyIds
         reported(held.value.value, next)
         held.value.value = next
     }
+
+    private companion object {
+        /** What a stored [text] is: a key, with its id, or something that is no key. */
+        private fun EventKeyIds.factOf(text: String): KeyFact =
+            EventKeyText.decode(text)?.let { KeyFact.Kept(identify(it)) } ?: KeyFact.Invalid
+
+        /**
+         * A slot that turns to something that is no key is said once, when it does — naming nothing of what it holds.
+         */
+        private fun reported(previous: KeyFact, next: KeyFact) = when (next) {
+            KeyFact.Invalid -> when (previous) {
+                KeyFact.Invalid -> Unit
+                is KeyFact.Kept, KeyFact.Absent, KeyFact.Unreadable -> log.unlabelled.w(
+                    "the stored event key is no key",
+                )
+            }
+            is KeyFact.Kept, KeyFact.Absent, KeyFact.Unreadable -> Unit
+        }
+    }
 }
 
 /** What keeping a join's key came to. */
@@ -95,16 +115,3 @@ sealed interface KeepOutcome {
 }
 
 private val log = Log("EventKeyStore")
-
-/** What a stored [text] is: a key, with its id, or something that is no key. */
-private fun EventKeyIds.factOf(text: String): KeyFact =
-    EventKeyText.decode(text)?.let { KeyFact.Kept(identify(it)) } ?: KeyFact.Invalid
-
-/** A slot that turns to something that is no key is said once, when it does — naming nothing of what it holds. */
-private fun reported(previous: KeyFact, next: KeyFact) = when (next) {
-    KeyFact.Invalid -> when (previous) {
-        KeyFact.Invalid -> Unit
-        is KeyFact.Kept, KeyFact.Absent, KeyFact.Unreadable -> log.unlabelled.w("the stored event key is no key")
-    }
-    is KeyFact.Kept, KeyFact.Absent, KeyFact.Unreadable -> Unit
-}

@@ -7,6 +7,13 @@ import app.snapsync.domain.sharing.CaptureCeiling
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.Direction
 import app.snapsync.domain.time.Timestamp
+import app.snapsync.presentation.RangeResolution.directionOf
+import app.snapsync.presentation.RangeResolution.nowWithinWindow
+import app.snapsync.presentation.RangeResolution.reconfigureForm
+import app.snapsync.presentation.RangeResolution.resolve
+import app.snapsync.presentation.RangeResolution.resolveFrom
+import app.snapsync.presentation.RangeResolution.resolveUntil
+import app.snapsync.presentation.ScreenModel.Companion.outsideReach
 import app.snapsync.testids.testEventId
 import app.snapsync.ui.state.OutsideReach
 import app.snapsync.ui.state.RangeChoice
@@ -228,7 +235,7 @@ class RangeResolutionTest {
     }
 
     /** A fixed-shape cutoff conversion — the resolution is under test, not the formatter. */
-    private val utc = CutoffFormatter({ Instant.DISTANT_PAST }, TimeZone.UTC)
+    private val utc = CutoffFormatter(instants({ Instant.DISTANT_PAST }), TimeZone.UTC)
 
     private fun stubCutoff(local: LocalDateTime): Timestamp = utc.toCutoff(local)
 

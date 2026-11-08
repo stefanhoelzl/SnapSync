@@ -1,11 +1,11 @@
 package app.snapsync.data.sharing
 
-import app.snapsync.data.gallery.assetId
+import app.snapsync.data.gallery.GalleryTranslation.assetId
 import app.snapsync.domain.asset.AssetId
 import app.snapsync.domain.sharing.CaptureCutoff
 import app.snapsync.domain.sharing.SelectionCalibration
+import app.snapsync.inbound.Field.Companion.of
 import app.snapsync.inbound.Log
-import app.snapsync.inbound.of
 import app.snapsync.ports.GalleryAlbum
 import app.snapsync.ports.GalleryRead
 import app.snapsync.ports.GalleryReader
