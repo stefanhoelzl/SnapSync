@@ -33,8 +33,11 @@ class CoverageZeroTest {
     @Test
     fun `a declaration runs from fun through the body's brace, across function types, defaults and literals`() {
         assertEquals(
-            listOf(CoverageZero.Declaration("Screen", 4..9), CoverageZero.Declaration("Label", 14..14)),
-            CoverageZero.declarations(screen),
+            listOf(
+                ComposableDeclarations.Declaration("Screen", 4..9),
+                ComposableDeclarations.Declaration("Label", 14..14),
+            ),
+            ComposableDeclarations.scan(screen),
         )
     }
 
@@ -49,13 +52,13 @@ class CoverageZeroTest {
                 fun Other(): Unit
             }
         """.trimIndent().lines()
-        assertEquals(emptyList(), CoverageZero.declarations(src))
+        assertEquals(emptyList(), ComposableDeclarations.scan(src))
     }
 
     @Test
     fun `a composable function type is not a declaration`() {
         val src = listOf("class A(", "    val content: @Composable () -> Unit,", ")")
-        assertEquals(emptyList(), CoverageZero.declarations(src))
+        assertEquals(emptyList(), ComposableDeclarations.scan(src))
     }
 
     @Test
@@ -103,7 +106,10 @@ class CoverageZeroTest {
     @Test
     fun `mangled names match their declarations - an internal member's, a value-class taker's`() {
         val v = CoverageZero.judge(
-            report(listOf("Screen\$ui" to COMPOSABLE, "Label-RPmYEkk" to COMPOSABLE, "plain" to "(I)V"), listOf(Line(10))),
+            report(
+                listOf("Screen\$ui" to COMPOSABLE, "Label-RPmYEkk" to COMPOSABLE, "plain" to "(I)V"),
+                listOf(Line(10)),
+            ),
             mapOf("app/ui/Screen.kt" to listOf(screen)),
         )
         assertEquals(emptyList(), v.mismatches)
@@ -112,8 +118,10 @@ class CoverageZeroTest {
     @Test
     fun `a report whose line counts do not add up to its totals is refused`() {
         val xml = report(listOf("Screen" to COMPOSABLE, "Label" to COMPOSABLE), listOf(Line(10)))
-            .replace("""<counter type="INSTRUCTION" missed="0" covered="1"/></report>""",
-                """<counter type="INSTRUCTION" missed="7" covered="1"/></report>""")
+            .replace(
+                """<counter type="INSTRUCTION" missed="0" covered="1"/></report>""",
+                """<counter type="INSTRUCTION" missed="7" covered="1"/></report>""",
+            )
         val v = CoverageZero.judge(xml, mapOf("app/ui/Screen.kt" to listOf(screen)))
         assertTrue(v.mismatches.single().contains("INSTRUCTION"), v.mismatches.toString())
     }
@@ -132,8 +140,8 @@ class CoverageZeroTest {
 
     @Test
     fun `literals and comments are not code`() {
-        assertEquals("""val s = "   " """, CoverageZero.codeOf("""val s = "({=" // {"""))
-        assertEquals("""'\'' + x""".length, CoverageZero.codeOf("""'\'' + x""").length)
+        assertEquals("""val s = "   " """, ComposableDeclarations.codeOf("""val s = "({=" // {"""))
+        assertEquals("""'\'' + x""".length, ComposableDeclarations.codeOf("""'\'' + x""").length)
     }
 
     @Test
@@ -141,7 +149,10 @@ class CoverageZeroTest {
         val dir = kotlin.io.path.createTempDirectory().toFile()
         val f = dir.resolve("Screen.kt").apply { writeText("package app.ui\n\nfun x() {}\n") }
         val root = dir.resolve("Root.kt").apply { writeText("fun y() {}\n") }
-        assertEquals(setOf("app/ui/Screen.kt", "Root.kt"), CoverageZero.index(listOf(f, root, dir.resolve("a.txt"))).keys)
+        assertEquals(
+            setOf("app/ui/Screen.kt", "Root.kt"),
+            CoverageZero.index(listOf(f, root, dir.resolve("a.txt"))).keys,
+        )
         dir.deleteRecursively()
     }
 
@@ -150,40 +161,68 @@ class CoverageZeroTest {
     @Test
     fun `a zero-mask missing-field check is recognised with its block's instructions and its one branch`() {
         assertEquals(
-            listOf(CoverageZero.Glue("app/ui/Screen.kt", 17, instructions = 5, branches = 1, site = "app.ui.Settings.<init>")),
-            CoverageZero.serializationGlue(listOf(deserializingConstructor(mask = 0))),
+            listOf(
+                CoverageZero.Glue(
+                    "app/ui/Screen.kt",
+                    17,
+                    instructions = 5,
+                    branches = 1,
+                    site = "app.ui.Settings.<init>",
+                ),
+            ),
+            SerializationGlue.find(listOf(deserializingConstructor(mask = 0))),
         )
     }
 
     @Test
     fun `a class with a required field is never excused - its check is real and a test reaches it`() {
-        assertEquals(emptyList(), CoverageZero.serializationGlue(listOf(deserializingConstructor(mask = 1))))
-        assertEquals(emptyList(), CoverageZero.serializationGlue(listOf(deserializingConstructor(mask = 0x40))))
+        assertEquals(emptyList(), SerializationGlue.find(listOf(deserializingConstructor(mask = 1))))
+        assertEquals(emptyList(), SerializationGlue.find(listOf(deserializingConstructor(mask = 0x40))))
     }
 
     @Test
     fun `nothing but the exact shape is recognised`() {
-        assertEquals(emptyList(), CoverageZero.serializationGlue(listOf(deserializingConstructor(mask = 0, slot = 2))), "another slot")
-        assertEquals(emptyList(), CoverageZero.serializationGlue(listOf(deserializingConstructor(mask = 0, throws = false))), "no throw")
-        assertEquals(emptyList(), CoverageZero.serializationGlue(listOf(deserializingConstructor(mask = 0, marker = false))), "no marker")
+        assertEquals(
+            emptyList(),
+            SerializationGlue.find(listOf(deserializingConstructor(mask = 0, slot = 2))),
+            "another slot",
+        )
+        assertEquals(
+            emptyList(),
+            SerializationGlue.find(listOf(deserializingConstructor(mask = 0, throws = false))),
+            "no throw",
+        )
+        assertEquals(
+            emptyList(),
+            SerializationGlue.find(listOf(deserializingConstructor(mask = 0, marker = false))),
+            "no marker",
+        )
     }
 
     @Test
     fun `only the glue's own counts are excused - the rest of its line is judged as ever`() {
-        val glue = CoverageZero.serializationGlue(listOf(deserializingConstructor(mask = 0)))
+        val glue = SerializationGlue.find(listOf(deserializingConstructor(mask = 0)))
         val composables = listOf("Screen" to COMPOSABLE, "Label" to COMPOSABLE)
 
-        val alone = CoverageZero.judge(report(composables, listOf(Line(17, mi = 5, mb = 1))), mapOf("app/ui/Screen.kt" to listOf(screen)), glue)
+        val alone = CoverageZero.judge(
+            report(composables, listOf(Line(17, mi = 5, mb = 1))),
+            mapOf("app/ui/Screen.kt" to listOf(screen)),
+            glue,
+        )
         assertTrue(alone.passes)
         assertEquals(glue, alone.excusedGlue)
 
-        val more = CoverageZero.judge(report(composables, listOf(Line(17, mi = 7, mb = 2))), mapOf("app/ui/Screen.kt" to listOf(screen)), glue)
+        val more = CoverageZero.judge(
+            report(composables, listOf(Line(17, mi = 7, mb = 2))),
+            mapOf("app/ui/Screen.kt" to listOf(screen)),
+            glue,
+        )
         assertEquals(listOf(CoverageZero.Miss("app/ui/Screen.kt", 17, 2, 1, "if (x > 0) println(x)")), more.misses)
     }
 
     @Test
     fun `a line missing less than the recognised glue is a mismatch, not an excuse`() {
-        val glue = CoverageZero.serializationGlue(listOf(deserializingConstructor(mask = 0)))
+        val glue = SerializationGlue.find(listOf(deserializingConstructor(mask = 0)))
         val v = CoverageZero.judge(
             report(listOf("Screen" to COMPOSABLE, "Label" to COMPOSABLE), listOf(Line(17, mi = 3))),
             mapOf("app/ui/Screen.kt" to listOf(screen)),
@@ -206,7 +245,7 @@ class CoverageZeroTest {
                 CoverageZero.Glue("app/core/Keys.kt", 9, 6, 0, "app.core.Keys.mint", "invalid program state"),
                 CoverageZero.Glue("app/core/Keys.kt", 9, 0, 1, "app.core.Keys.mint", "invalid program state's arm"),
             ),
-            CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.ELVIS))),
+            InvalidProgramStateGlue.find(listOf(throwing(Entry.ELVIS))),
         )
     }
 
@@ -217,7 +256,7 @@ class CoverageZeroTest {
                 CoverageZero.Glue("app/core/Keys.kt", 10, 5, 0, "app.core.Keys.mint", "invalid program state"),
                 CoverageZero.Glue("app/core/Keys.kt", 9, 0, 1, "app.core.Keys.mint", "invalid program state's arm"),
             ),
-            CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.IF))),
+            InvalidProgramStateGlue.find(listOf(throwing(Entry.IF))),
         )
     }
 
@@ -225,21 +264,35 @@ class CoverageZeroTest {
     fun `a block two arms lead into excuses its instructions only`() {
         assertEquals(
             listOf(CoverageZero.Glue("app/core/Keys.kt", 10, 5, 0, "app.core.Keys.mint", "invalid program state")),
-            CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.TWO_ARMS))),
+            InvalidProgramStateGlue.find(listOf(throwing(Entry.TWO_ARMS))),
         )
     }
 
     @Test
     fun `nothing but an InvalidProgramState, entered only by its arm, is excused`() {
-        assertEquals(emptyList(), CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.IF, type = "java/lang/IllegalStateException"))), "another type")
-        assertEquals(emptyList(), CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.FALL_THROUGH))), "something runs first")
-        assertEquals(emptyList(), CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.IF, message = false))), "no literal")
+        assertEquals(
+            emptyList(),
+            InvalidProgramStateGlue.find(listOf(throwing(Entry.IF, type = "java/lang/IllegalStateException"))),
+            "another type",
+        )
+        assertEquals(
+            emptyList(),
+            InvalidProgramStateGlue.find(listOf(throwing(Entry.FALL_THROUGH))),
+            "something runs first",
+        )
+        assertEquals(
+            emptyList(),
+            InvalidProgramStateGlue.find(listOf(throwing(Entry.IF, message = false))),
+            "no literal",
+        )
     }
 
     @Test
     fun `the throw's line is judged for the rest of what it holds`() {
         // The report's one file is `app/ui/Screen.kt`: the sites are moved there.
-        val glue = CoverageZero.invalidProgramStateGlue(listOf(throwing(Entry.ELVIS))).map { it.copy(file = "app/ui/Screen.kt") }
+        val glue = InvalidProgramStateGlue.find(listOf(throwing(Entry.ELVIS))).map {
+            it.copy(file = "app/ui/Screen.kt")
+        }
         val sources = mapOf("app/ui/Screen.kt" to listOf(List(12) { "" }))
         assertTrue(CoverageZero.judge(report(emptyList(), listOf(Line(9, 6, 1))), sources, glue).passes)
         val more = CoverageZero.judge(report(emptyList(), listOf(Line(9, 8, 1))), sources, glue)
@@ -249,7 +302,11 @@ class CoverageZeroTest {
     private enum class Entry { ELVIS, IF, TWO_ARMS, FALL_THROUGH }
 
     /** A method `mint` in `app/core/Keys.kt` throwing an exception of [type] the way Kotlin compiles [entry]. */
-    private fun throwing(entry: Entry, type: String = "app/snapsync/domain/program/InvalidProgramState", message: Boolean = true): ByteArray {
+    private fun throwing(
+        entry: Entry,
+        type: String = "app/snapsync/domain/program/InvalidProgramState",
+        message: Boolean = true,
+    ): ByteArray {
         val cw = ClassWriter(ClassWriter.COMPUTE_MAXS)
         cw.visit(Opcodes.V1_6, Opcodes.ACC_PUBLIC, "app/core/Keys", null, "java/lang/Object", null)
         cw.visitSource("Keys.kt", null)
@@ -318,8 +375,19 @@ class CoverageZeroTest {
         mv.visitJumpInsn(Opcodes.IFEQ, skip)
         mv.visitVarInsn(Opcodes.ILOAD, 1)
         mv.visitInsn(Opcodes.ICONST_0)
-        mv.visitFieldInsn(Opcodes.GETSTATIC, "app/ui/Settings\$\$serializer", "INSTANCE", "Lapp/ui/Settings\$\$serializer;")
-        mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "app/ui/Settings\$\$serializer", "getDescriptor", "()Ljava/lang/Object;", false)
+        mv.visitFieldInsn(
+            Opcodes.GETSTATIC,
+            "app/ui/Settings\$\$serializer",
+            "INSTANCE",
+            "Lapp/ui/Settings\$\$serializer;",
+        )
+        mv.visitMethodInsn(
+            Opcodes.INVOKEVIRTUAL,
+            "app/ui/Settings\$\$serializer",
+            "getDescriptor",
+            "()Ljava/lang/Object;",
+            false,
+        )
         val owner = if (throws) "kotlinx/serialization/internal/PluginExceptionsKt" else "app/ui/Elsewhere"
         mv.visitMethodInsn(Opcodes.INVOKESTATIC, owner, "throwMissingFieldException", "(IILjava/lang/Object;)V", false)
         mv.visitLabel(skip)

@@ -9,8 +9,8 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
  * The port-contract arrangement both iOS adapter modules share (`docs/architecture.md`, "A build-time-only module is
  * contained by compilation"; `docs/testing.md`, the recorded hosts):
  *
- *  - `src/rig/kotlin` compiles into `iosMain` under `-Psnapsync.rig=true` ([RigPlugin], applied here) and into `iosTest`
- *    otherwise, so a production build contains none of it and every build still compile-checks it;
+ *  - `src/rig/kotlin` compiles into `iosMain` under `-Psnapsync.rig=true` ([RigPlugin], applied here) and into
+ *    `iosTest` otherwise, so a production build contains none of it and every build still compile-checks it;
  *  - `embedContractRecordings` embeds the committed `.rec` recordings (`test/contracts/recordings`) into `iosTest` as
  *    Kotlin constants, so the simulator test executable needs no path into the repository and the `.rec` files stay
  *    the single source. Each module needs its own copy: the generated map is `internal` to the test compilation it

@@ -21,8 +21,8 @@ abstract class LiveEdgeConsumers(private val project: Project) {
     /**
      * Wires [task] to the live edge:
      *
-     *  - the `local` deployment is RESOLVED first (`:test:edge:resolveLocalDeployment`): `serve.ts` imports the generated
-     *    rendering, and a missing one is a module-not-found rather than a failure anyone could read;
+     *  - the `local` deployment is RESOLVED first (`:test:edge:resolveLocalDeployment`): `serve.ts` imports the
+     *    generated rendering, and a missing one is a module-not-found rather than a failure anyone could read;
      *  - the backend's sources are INPUTS of the task. Without them a change touching only `api/` leaves a test task
      *    up-to-date, and the suites that exist to catch exactly that change would never run against it;
      *  - `LiveEdge` is told where the backend lives (`snapsync.apiDir`) and where its filesystem store goes

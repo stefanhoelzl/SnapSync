@@ -1,7 +1,5 @@
 package app.snapsync.buildlogic
 
-import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
@@ -16,15 +14,17 @@ import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.w3c.dom.Element
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * The text the OS shows outside the app's screens, generated from the ONE place every string lives
  * (`docs/architecture.md`, "Localization"): the screens' `composeResources/values/strings.xml` and its translations.
  *
  * A key `ios_<InfoPlistKey>` becomes that key in the app's `InfoPlist.xcstrings` (and its base value in
- * `Info.plist`); a key `android_<name>` becomes `<name>` in the Android adapter's `res/values/strings.xml` (and each translation's). The
- * locale list declares the languages the app ships — the first is the base, in `values/` — and becomes iOS's
- * `CFBundleLocalizations` and Android's `locales_config.xml`, so each OS offers exactly those languages.
+ * `Info.plist`); a key `android_<name>` becomes `<name>` in the Android adapter's `res/values/strings.xml` (and each
+ * translation's). The locale list declares the languages the app ships — the first is the base, in `values/` — and
+ * becomes iOS's `CFBundleLocalizations` and Android's `locales_config.xml`, so each OS offers exactly those languages.
  *
  * The outputs are COMMITTED, like the architecture diagrams, and written during `build` (`docs/architecture.md`,
  * "Generated files are written by the build"): a file is rewritten only when its text changed, and the build says so;
@@ -133,7 +133,11 @@ abstract class NativeStringsTask : DefaultTask() {
         val tags = locales.get()
         if (tags.isEmpty()) throw GradleException("nativeStrings: no locales declared")
         (listOf(strings.get().asFile) + otherResources.get()).forEach { checkLocales(it, tags) }
-        val byLocale = tags.associateWith { readStrings(File(strings.get().asFile, "${valuesDir(it, tags)}/strings.xml")) }
+        val byLocale = tags.associateWith {
+            readStrings(
+                File(strings.get().asFile, "${valuesDir(it, tags)}/strings.xml"),
+            )
+        }
         val base = byLocale.getValue(tags.first())
 
         val outputs = buildMap {
@@ -152,7 +156,9 @@ abstract class NativeStringsTask : DefaultTask() {
 
     /** Every `values*` directory of [dir] is a declared locale, and every declared locale has one. */
     private fun checkLocales(dir: File, tags: List<String>) {
-        val present = dir.listFiles().orEmpty().filter { it.isDirectory && it.name.startsWith("values") }.map { it.name }.toSet()
+        val present = dir.listFiles().orEmpty().filter {
+            it.isDirectory && it.name.startsWith("values")
+        }.map { it.name }.toSet()
         val declared = tags.map { valuesDir(it, tags) }.toSet()
         if (present != declared) {
             throw GradleException(
@@ -204,7 +210,8 @@ abstract class NativeStringsTask : DefaultTask() {
             val entries = keys.joinToString(",\n") { key ->
                 val localizations = tags.mapNotNull { tag ->
                     byLocale.getValue(tag)[key]?.let { value ->
-                        "        ${json(tag)} : {\n          \"stringUnit\" : {\n            \"state\" : \"translated\",\n" +
+                        "        ${json(tag)} : {\n          \"stringUnit\" : {\n" +
+                            "            \"state\" : \"translated\",\n" +
                             "            \"value\" : ${json(value)}\n          }\n        }"
                     }
                 }.joinToString(",\n")
@@ -220,9 +227,15 @@ abstract class NativeStringsTask : DefaultTask() {
             var out = plist
             base.filterKeys { it.startsWith(IOS) }.forEach { (key, value) ->
                 val plistKey = key.removePrefix(IOS)
-                val pattern = Regex("(<key>${Regex.escape(plistKey)}</key>\\s*<string>)(.*?)(</string>)", RegexOption.DOT_MATCHES_ALL)
+                val pattern = Regex(
+                    "(<key>${Regex.escape(plistKey)}</key>\\s*<string>)(.*?)(</string>)",
+                    RegexOption.DOT_MATCHES_ALL,
+                )
                 if (!pattern.containsMatchIn(out)) throw GradleException("Info.plist has no $plistKey for $key")
-                out = pattern.replace(out) { it.groupValues[1] + xml(value) + it.groupValues[3] }
+                out = pattern.replace(out) {
+                    val (open, _, close) = it.destructured
+                    open + xml(value) + close
+                }
             }
             val array = "<key>CFBundleLocalizations</key>\n\t<array>\n" +
                 tags.joinToString("") { "\t\t<string>$it</string>\n" } + "\t</array>"

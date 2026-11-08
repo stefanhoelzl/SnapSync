@@ -52,7 +52,10 @@ class QualityPlugin : Plugin<Project> {
             task.doLast {
                 val files = DetektIncludes.sources(rootDir)
                 val stale = configs.files.sortedBy { it.name }.flatMap { config ->
-                    DetektIncludes.unmatched(DetektIncludes.globs(config.readText()), files).map { "${config.name}: $it" }
+                    DetektIncludes.unmatched(
+                        DetektIncludes.globs(config.readText()),
+                        files,
+                    ).map { "${config.name}: $it" }
                 }
                 check(stale.isEmpty()) {
                     "detekt `includes` globs that match no source file — a rule scoped to them reads nothing:\n  " +
@@ -115,30 +118,26 @@ class QualityPlugin : Plugin<Project> {
         root.registerTier("detektQueryTier", "query", srcDirs("query")) { exclude(excludeTests) }
         root.registerTier("detektPresentationTier", "presentation", srcDirs("presentation")) { exclude(excludeTests) }
         root.registerTier("detektCompositionTier", "composition", srcDirs("composition")) { exclude(excludeTests) }
-        // The project's detekt rules are build logic now, but keep the harness ceilings they were measured under until
-        // the build-logic build joins the `buildscripts` tier.
-        val rules = root.file("build-logic/detekt-rules/src")
-        root.registerTier("detektHarnessTier", "harness", srcDirs("harness") + rules) {
+        root.registerTier("detektHarnessTier", "harness", srcDirs("harness")) {
             exclude(excludeTests)
             // Shell source contributed into `:app:ios`, owned by `detektAppShell` at threshold 2.
             exclude("**/test/rig/src/hook/**", "**/test/rig/src/ext-hook/**")
         }
-        // Every module's test source sets, plus the modules that are nothing but tests — and the detekt rules' tests.
+        val buildLogic = BUILD_LOGIC_SOURCES.map(root::file)
+        // Every module's test source sets, plus the modules that are nothing but tests — and the build logic's tests.
         root.registerTier(
             "detektTestsTier",
             "tests",
-            root.subprojects.map { it.layout.projectDirectory.dir("src").asFile } + rules,
+            root.subprojects.map { it.layout.projectDirectory.dir("src").asFile } + buildLogic,
         ) { include(TEST_SOURCE_SET_DIRS.map { "**/$it/**" }) }
-        // The build scripts: Kotlin carrying real logic. Of the convention plugins, the wire's route generator (build
-        // logic, and real logic); the others predate the scan and are not in it yet — bringing them in is its own
-        // change.
+        // The build: every build script, and the whole build-logic build — the convention plugins and the project's
+        // detekt rules — whose production sources are Kotlin carrying real logic.
         root.registerTier(
             "detektBuildScriptsTier",
             "buildscripts",
             listOf(root.buildFile, root.file("settings.gradle.kts")) + root.subprojects.map { it.buildFile } +
-                BUILD_LOGIC_BUILD_FILES.map(root::file) +
-                root.file("build-logic/src/main/kotlin/app/snapsync/buildlogic/wire"),
-        )
+                BUILD_LOGIC_BUILD_FILES.map(root::file) + buildLogic,
+        ) { exclude(excludeTests) }
     }
 
     /**
@@ -146,7 +145,12 @@ class QualityPlugin : Plugin<Project> {
      * guard: detekt reports SUCCESS on an empty source set, so a filter regression would otherwise pass by inspecting
      * nothing.
      */
-    private fun Project.registerTier(name: String, tier: String, sources: List<File>, configure: Detekt.() -> Unit = {}) {
+    private fun Project.registerTier(
+        name: String,
+        tier: String,
+        sources: List<File>,
+        configure: Detekt.() -> Unit = {},
+    ) {
         tasks.register(name, Detekt::class.java) {
             val task = this
             task.description = "Complexity ceiling for the `$tier` scope (`docs/architecture.md`)."
@@ -194,6 +198,9 @@ class QualityPlugin : Plugin<Project> {
 
         /** The project's own rules, by the coordinates the root substitutes to build-logic's `:detekt-rules`. */
         const val RULES = "app.snapsync.buildlogic:detekt-rules"
+
+        /** The build-logic build's source roots, production and tests (the tiers split them by source-set name). */
+        val BUILD_LOGIC_SOURCES = listOf("build-logic/src", "build-logic/detekt-rules/src")
 
         /** The build-logic build's own build scripts. */
         val BUILD_LOGIC_BUILD_FILES = listOf(
@@ -274,7 +281,8 @@ class QualityPlugin : Plugin<Project> {
             ":core:application" to "application",
             ":core:query" to "query",
             ":core:presentation" to "presentation",
-            // The composition layer: wiring only, so its decision measures are a claim too (`config/detekt/composition.yml`).
+            // The composition layer: wiring only, so its decision measures are a claim too
+            // (`config/detekt/composition.yml`).
             ":core:composition:process" to "composition",
             ":core:composition:extension" to "composition",
             ":core:composition:app" to "composition",

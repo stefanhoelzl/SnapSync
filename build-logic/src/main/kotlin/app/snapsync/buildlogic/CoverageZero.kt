@@ -1,44 +1,30 @@
 package app.snapsync.buildlogic
 
-import org.objectweb.asm.ClassReader
-import org.objectweb.asm.Opcodes
-import org.objectweb.asm.tree.AbstractInsnNode
-import org.objectweb.asm.tree.ClassNode
-import org.objectweb.asm.tree.InsnNode
-import org.objectweb.asm.tree.JumpInsnNode
-import org.objectweb.asm.tree.LabelNode
-import org.objectweb.asm.tree.LdcInsnNode
-import org.objectweb.asm.tree.LineNumberNode
-import org.objectweb.asm.tree.LookupSwitchInsnNode
-import org.objectweb.asm.tree.MethodInsnNode
-import org.objectweb.asm.tree.TableSwitchInsnNode
-import org.objectweb.asm.tree.TypeInsnNode
-import org.objectweb.asm.tree.VarInsnNode
 import org.w3c.dom.Element
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * The ZERO coverage gate's judgement (`docs/architecture.md`, "Coverage"), pure so it is tested without Gradle: given
- * a module's Kover `report.xml` and its main sources, every INSTRUCTION and BRANCH the report counts as missed fails the
- * module — except COMPILER-GENERATED GLUE, recognised by its shape, and the one thing a person writes that no input may
- * reach: a throw of `InvalidProgramState`. Each glue shape is code a compiler emits that no input can reach; besides
- * that throw, nothing a person wrote is ever excused. The shapes:
+ * a module's Kover `report.xml` and its main sources, every INSTRUCTION and BRANCH the report counts as missed fails
+ * the module — except COMPILER-GENERATED GLUE, recognised by its shape, and the one thing a person writes that no input
+ * may reach: a throw of `InvalidProgramState`. Each glue shape is code a compiler emits that no input can reach;
+ * besides that throw, nothing a person wrote is ever excused. The shapes:
  *
- * - **Compose declaration glue**: the declaration lines of a `@Composable` function, from `fun` through the body's
- *   opening `{` (or an expression body's `=`). The Compose compiler attributes its glue there — restart groups, the
- *   `$changed`/`$default` bits, `skipToGroupEnd`, `updateScope` — and no test can reach all of it. Composable LAMBDAS'
- *   own restart glue never shows as a miss (measured 2026-10-07: every miss inside one of `:ui:*`'s 67 is a real
- *   branch).
+ * - **Compose declaration glue** ([ComposableDeclarations]): the declaration lines of a `@Composable` function, from
+ *   `fun` through the body's opening `{` (or an expression body's `=`). The Compose compiler attributes its glue
+ *   there — restart groups, the `$changed`/`$default` bits, `skipToGroupEnd`, `updateScope` — and no test can reach
+ *   all of it. Composable LAMBDAS' own restart glue never shows as a miss (measured 2026-10-07: every miss inside one
+ *   of `:ui:*`'s 67 is a real branch).
  * - **Compose body-line glue** ([ComposeGlue]): a remembered lambda's validity arms, and the dead arm of an exhaustive
  *   `when` inside a composable — read from the bytecode, each as an allowance the line's misses must fit inside.
- * - **kotlinx-serialization's zero-mask missing-field check** ([serializationGlue]): in a `@Serializable` class whose
+ * - **kotlinx-serialization's zero-mask missing-field check** ([SerializationGlue]): in a `@Serializable` class whose
  *   every field has a default, the plugin's deserialization constructor still opens with `if ((0 & seen) != 0)
  *   throwMissingFieldException(…)`. The mask is the constant 0, so the throw cannot happen. Recognised in the BYTECODE,
  *   and only those instructions and that one branch are excused: the rest of the class's header line is judged as
  *   ever, and a class with a required field (a mask other than 0) is never excused — its check is real and a test
  *   reaches it by leaving the field out.
- * - **A throw of `InvalidProgramState`** ([invalidProgramStateGlue]): a state guaranteed never to happen
+ * - **A throw of `InvalidProgramState`** ([InvalidProgramStateGlue]): a state guaranteed never to happen
  *   (`docs/patterns.md`, "Invalid program state"), so no test can reach it. Recognised in the BYTECODE as exactly
  *   `new InvalidProgramState; dup; ldc "<because>"; invokespecial <init>(String); athrow` — an elvis's `pop` before it
  *   included — and the ONE conditional arm that alone leads into it. A block that computes anything else, a block two
@@ -46,8 +32,8 @@ import javax.xml.parsers.DocumentBuilderFactory
  *
  * The declaration ranges come from a source scan, and the scan is CHECKED against the bytecode: every composable
  * method the report lists (a `Composer` parameter in its descriptor, not a lambda) must match a scanned declaration of
- * the same name in the same file, and the reverse. A scanner that misreads a signature therefore fails the build instead
- * of excusing — or refusing — the wrong lines.
+ * the same name in the same file, and the reverse. A scanner that misreads a signature therefore fails the build
+ * instead of excusing — or refusing — the wrong lines.
  */
 object CoverageZero {
 
@@ -86,9 +72,6 @@ object CoverageZero {
     /** A body line [ComposeGlue] excused: which shape(s), and the misses it held. */
     data class GlueLine(val file: String, val line: Int, val shapes: String, val instructions: Int, val branches: Int)
 
-    /** A scanned `@Composable` declaration: the function's simple name and its declaration lines (1-based). */
-    data class Declaration(val name: String, val lines: IntRange)
-
     private const val COMPOSER = "Landroidx/compose/runtime/Composer;"
 
     /**
@@ -103,77 +86,122 @@ object CoverageZero {
         composeGlue: Map<String, Map<Int, ComposeGlue.LineGlue>> = emptyMap(),
     ): Verdict {
         val root = parse(report)
-        val fullyRun = fullyRun(root)
-        val composeLines = mutableListOf<GlueLine>()
-        val misses = mutableListOf<Miss>()
-        val mismatches = mutableListOf<String>()
-        var excused = Tally(0, 0, 0)
-        val excusedGlue = mutableListOf<Glue>()
-        // Two sites on one line (a throw's block on it, and the arm into another throw's) are excused together.
-        val glueAt = glue.groupBy { it.file to it.line }.mapValues { (_, sites) ->
+        val judgement = Judgement(sources, sitesByLine(glue), composeGlue, fullyRun(root))
+        root.children("package").forEach(judgement::judgePackage)
+        return judgement.verdict(shapeProblems(root))
+    }
+
+    /** Two sites on one line (a throw's block on it, and the arm into another throw's) are excused together. */
+    private fun sitesByLine(glue: List<Glue>): Map<Pair<String, Int>, Glue> =
+        glue.groupBy { it.file to it.line }.mapValues { (_, sites) ->
             sites.reduce { a, b ->
-                a.copy(instructions = a.instructions + b.instructions, branches = a.branches + b.branches, site = "${a.site}, ${b.site}")
+                a.copy(
+                    instructions = a.instructions + b.instructions,
+                    branches = a.branches + b.branches,
+                    site = "${a.site}, ${b.site}",
+                )
             }
         }
-        for (pkg in root.children("package")) {
+
+    /** A line's missed instructions and branches: as the report counts them, less what has been excused so far. */
+    private data class Missed(val instructions: Int, val branches: Int) {
+        val none: Boolean get() = instructions == 0 && branches == 0
+    }
+
+    /** One report source file under judgement: its key, its lines (null when ambiguous), its declaration lines. */
+    private class SourceFile(val key: String, val lines: List<String>?, val declarationLines: Set<Int>)
+
+    /** One module's judgement, accumulated file by file and line by line into its [Verdict]. */
+    private class Judgement(
+        private val sources: Map<String, List<List<String>>>,
+        private val glueAt: Map<Pair<String, Int>, Glue>,
+        private val composeGlue: Map<String, Map<Int, ComposeGlue.LineGlue>>,
+        private val fullyRun: Set<ComposeGlue.MethodRef>,
+    ) {
+        private val composeLines = mutableListOf<GlueLine>()
+        private val misses = mutableListOf<Miss>()
+        private val mismatches = mutableListOf<String>()
+        private var excused = Tally(0, 0, 0)
+        private val excusedGlue = mutableListOf<Glue>()
+
+        fun judgePackage(pkg: Element) {
             val pkgPath = pkg.getAttribute("name")
             val composables = composableMethods(pkg)
             for (sf in pkg.children("sourcefile")) {
-                val key = "$pkgPath/${sf.getAttribute("name")}"
-                val candidates = sources[key].orEmpty()
-                val lines = candidates.singleOrNull()
-                val declarations = lines?.let(::declarations).orEmpty()
-                val expected = composables[sf.getAttribute("name")].orEmpty()
-                val scanned = declarations.map { it.name }.toSet()
-                if (lines == null && expected.isNotEmpty()) {
-                    mismatches += "$key: ${candidates.size} source files match, so its composables cannot be located"
-                } else if (expected != scanned) {
-                    mismatches += "$key: the bytecode's composables ${expected.sorted()} != the scanned ${scanned.sorted()}"
-                }
-                val declarationLines = declarations.flatMap { it.lines }.toSet()
-                for (line in sf.children("line")) {
-                    val nr = line.int("nr")
-                    var mi = line.int("mi")
-                    var mb = line.int("mb")
-                    if (mi == 0 && mb == 0) continue
-                    val site = glueAt[key to nr]
-                    if (site != null) {
-                        if (mi < site.instructions || mb < site.branches) {
-                            // The report counts less than the bytecode's unreachable block: it is not measuring what
-                            // this reader recognised, so the glue cannot be told apart from the line's own code.
-                            mismatches += "$key:$nr: ${site.site} holds ${site.instructions} instr / ${site.branches} " +
-                                "branch of unreachable glue, but the line misses only $mi / $mb"
-                        } else {
-                            excusedGlue += site
-                            mi -= site.instructions
-                            mb -= site.branches
-                            if (mi == 0 && mb == 0) continue
-                        }
-                    }
-                    val body = composeGlue[key]?.get(nr)
-                    val shapes = body?.let { bodyGlue(it, mi, mb, fullyRun) }
-                    if (nr in declarationLines) {
-                        excused = Tally(excused.lines + 1, excused.instructions + mi, excused.branches + mb)
-                    } else if (shapes != null) {
-                        composeLines += GlueLine(key, nr, shapes, mi, mb)
-                    } else {
-                        val text = lines?.getOrNull(nr - 1)?.trim().orEmpty()
-                        misses += Miss(key, nr, mi, mb, text + body?.let { sameLineHint(it, fullyRun) }.orEmpty())
-                    }
+                val name = sf.getAttribute("name")
+                judgeFile("$pkgPath/$name", sf, composables[name].orEmpty())
+            }
+        }
+
+        fun verdict(shapeProblems: List<String>) =
+            Verdict(misses, excused, mismatches + shapeProblems, excusedGlue, composeLines)
+
+        /** Judges [sf]'s lines, after checking its scanned declarations against the bytecode's [expected] ones. */
+        private fun judgeFile(key: String, sf: Element, expected: Set<String>) {
+            val candidates = sources[key].orEmpty()
+            val lines = candidates.singleOrNull()
+            val declarations = lines?.let(ComposableDeclarations::scan).orEmpty()
+            val scanned = declarations.map { it.name }.toSet()
+            if (lines == null && expected.isNotEmpty()) {
+                mismatches += "$key: ${candidates.size} source files match, so its composables cannot be located"
+            } else if (expected != scanned) {
+                mismatches += "$key: the bytecode's composables ${expected.sorted()} != the scanned ${scanned.sorted()}"
+            }
+            val file = SourceFile(key, lines, declarations.flatMap { it.lines }.toSet())
+            for (line in sf.children("line")) {
+                judgeLine(file, line.int("nr"), Missed(line.int("mi"), line.int("mb")))
+            }
+        }
+
+        private fun judgeLine(file: SourceFile, nr: Int, reported: Missed) {
+            val missed = if (reported.none) reported else withoutBytecodeGlue(file.key, nr, reported)
+            if (missed.none) return
+            val body = composeGlue[file.key]?.get(nr)
+            val shapes = body?.let { bodyGlue(it, missed.instructions, missed.branches, fullyRun) }
+            when {
+                nr in file.declarationLines -> excused = Tally(
+                    excused.lines + 1,
+                    excused.instructions + missed.instructions,
+                    excused.branches + missed.branches,
+                )
+                shapes != null -> composeLines += GlueLine(file.key, nr, shapes, missed.instructions, missed.branches)
+                else -> {
+                    val text = file.lines?.getOrNull(nr - 1)?.trim().orEmpty()
+                    val hint = body?.let { sameLineHint(it, fullyRun) }.orEmpty()
+                    misses += Miss(file.key, nr, missed.instructions, missed.branches, text + hint)
                 }
             }
         }
-        mismatches += shapeProblems(root)
-        return Verdict(misses, excused, mismatches, excusedGlue, composeLines)
+
+        /** [missed] less the bytecode glue site on line [nr] of [key], when the line's misses hold all of it. */
+        private fun withoutBytecodeGlue(key: String, nr: Int, missed: Missed): Missed {
+            val site = glueAt[key to nr]
+            return when {
+                site == null -> missed
+                missed.instructions < site.instructions || missed.branches < site.branches -> {
+                    // The report counts less than the bytecode's unreachable block: it is not measuring what
+                    // this reader recognised, so the glue cannot be told apart from the line's own code.
+                    mismatches += "$key:$nr: ${site.site} holds ${site.instructions} instr / ${site.branches} " +
+                        "branch of unreachable glue, but the line misses only ${missed.instructions} / " +
+                        "${missed.branches}"
+                    missed
+                }
+                else -> {
+                    excusedGlue += site
+                    Missed(missed.instructions - site.instructions, missed.branches - site.branches)
+                }
+            }
+        }
     }
 
     /**
      * Whether [ComposeGlue]'s allowance on a body line holds its [mi]/[mb] misses, and under which shapes. The
      * remembered-lambda allowance counts only where no user branch shares the line in a composable method and every
      * other method with code there is one the report lists as run in full ([fullyRun]). A method the report does NOT
-     * list still has its lines counted — Kover leaves out a lambda whose body sits on its caller's line, yet counts that
-     * body in the line's totals (measured 2026-10-08, `:ui:screens`) — so such a line cannot tell an unrun body from
-     * the cache's arms, and is never excused: the lambda's body goes on its own line, where an unrun one is a miss.
+     * list still has its lines counted — Kover leaves out a lambda whose body sits on its caller's line, yet counts
+     * that body in the line's totals (measured 2026-10-08, `:ui:screens`) — so such a line cannot tell an unrun body
+     * from the cache's arms, and is never excused: the lambda's body goes on its own line, where an unrun one is a
+     * miss.
      */
     private fun bodyGlue(g: ComposeGlue.LineGlue, mi: Int, mb: Int, fullyRun: Set<ComposeGlue.MethodRef>): String? {
         val remembered = g.remembered.takeIf { !g.userBranch && g.otherMethods.all { it in fullyRun } }
@@ -189,153 +217,18 @@ object CoverageZero {
     /** Why a remembered lambda's line was not excused, where the reason is a body the report cannot vouch for. */
     private fun sameLineHint(g: ComposeGlue.LineGlue, fullyRun: Set<ComposeGlue.MethodRef>): String? =
         "   [a remembered lambda's body on its line, which Kover does not list as run: move the body to its own line]"
-            .takeIf { g.remembered != ComposeGlue.Allowance.NONE && !g.userBranch && g.otherMethods.any { it !in fullyRun } }
+            .takeIf {
+                g.remembered != ComposeGlue.Allowance.NONE && !g.userBranch && g.otherMethods.any { it !in fullyRun }
+            }
 
     /** The methods the report lists with no instruction or branch missed. */
     private fun fullyRun(root: Element): Set<ComposeGlue.MethodRef> =
         root.children("package").flatMap { it.children("class") }.flatMap { cls ->
             cls.children("method").filter { m ->
-                m.children("counter").none { it.getAttribute("type") in setOf("INSTRUCTION", "BRANCH") && it.int("missed") > 0 }
+                m.children("counter")
+                    .none { it.getAttribute("type") in setOf("INSTRUCTION", "BRANCH") && it.int("missed") > 0 }
             }.map { ComposeGlue.MethodRef(cls.getAttribute("name"), it.getAttribute("name"), it.getAttribute("desc")) }
         }.toSet()
-
-    private const val MARKER = "Lkotlinx/serialization/internal/SerializationConstructorMarker;)V"
-    private const val PLUGIN_EXCEPTIONS = "kotlinx/serialization/internal/PluginExceptionsKt"
-
-    /**
-     * Every zero-mask missing-field check in [classFiles] (the module's compiled classes): a constructor ending in a
-     * `SerializationConstructorMarker` whose code OPENS with `iconst_0; iload_1; iand; ifeq` — the plugin's
-     * `(0 & seen) != 0` — and whose skipped block ends in `PluginExceptionsKt.throwMissingFieldException`. The site
-     * excuses exactly that block's instructions and the one branch, on the line the block is attributed to.
-     *
-     * Anything else is not this shape and is not excused: a non-zero mask (`iconst_1`, `bipush`, …), a check on another
-     * slot, a block that does not end in the plugin's throw.
-     */
-    fun serializationGlue(classFiles: Iterable<ByteArray>): List<Glue> = classFiles.flatMap { bytes ->
-        val cls = ClassNode().also { ClassReader(bytes).accept(it, ClassReader.SKIP_FRAMES) }
-        val file = cls.sourceFile ?: return@flatMap emptyList()
-        val pkg = cls.name.substringBeforeLast('/', "")
-        val key = if (pkg.isEmpty()) file else "$pkg/$file"
-        cls.methods.filter { it.name == "<init>" && it.desc.endsWith(MARKER) }.mapNotNull { method ->
-            zeroMaskCheck(method.instructions.toArray())?.let { (line, instructions) ->
-                Glue(key, line, instructions, branches = 1, site = "${cls.name.replace('/', '.')}.<init>")
-            }
-        }
-    }
-
-    /** The opening `(0 & seen) != 0` check in [code]: its line and its skipped block's instruction count, or null. */
-    private fun zeroMaskCheck(code: Array<AbstractInsnNode>): Pair<Int, Int>? {
-        val real = code.filter { it.opcode >= 0 }
-        val (mask, seen, and, jump) = real.take(4).takeIf { it.size == 4 } ?: return null
-        val opens = mask is InsnNode && mask.opcode == Opcodes.ICONST_0 &&
-            seen is VarInsnNode && seen.opcode == Opcodes.ILOAD && seen.`var` == 1 &&
-            and.opcode == Opcodes.IAND && jump is JumpInsnNode && jump.opcode == Opcodes.IFEQ
-        if (!opens) return null
-        jump as JumpInsnNode
-        val from = code.indexOf(jump) + 1
-        val to = code.indexOf(jump.label)
-        if (to < from) return null
-        val block = code.slice(from until to).filter { it.opcode >= 0 }
-        val throws = block.lastOrNull()?.let {
-            it is MethodInsnNode && it.opcode == Opcodes.INVOKESTATIC && it.owner == PLUGIN_EXCEPTIONS &&
-                it.name == "throwMissingFieldException"
-        } == true
-        if (!throws) return null
-        val line = code.take(from).filterIsInstance<LineNumberNode>().lastOrNull()?.line ?: return null
-        return line to block.size
-    }
-
-    private const val INVALID_PROGRAM_STATE = "app/snapsync/domain/program/InvalidProgramState"
-
-    /**
-     * Every throw of `InvalidProgramState` in [classFiles] (the module's compiled classes): its block's instructions on
-     * the line they are attributed to, and — where exactly one conditional arm (a jump's, or a switch case's) leads into
-     * the block — that arm's one branch, on its jump's line. A block entered by plain fall-through or a `goto` is not
-     * this shape and excuses nothing: something else runs on the way in. A block several arms lead into excuses its
-     * instructions only: which arm is the impossible one is not the bytecode's to say.
-     */
-    fun invalidProgramStateGlue(classFiles: Iterable<ByteArray>): List<Glue> = classFiles.flatMap { bytes ->
-        val cls = ClassNode().also { ClassReader(bytes).accept(it, ClassReader.SKIP_FRAMES) }
-        val file = cls.sourceFile ?: return@flatMap emptyList()
-        val pkg = cls.name.substringBeforeLast('/', "")
-        val key = if (pkg.isEmpty()) file else "$pkg/$file"
-        cls.methods.flatMap { method ->
-            val site = "${cls.name.replace('/', '.')}.${method.name}"
-            invalidStateThrows(method.instructions.toArray()).flatMap { t ->
-                listOfNotNull(
-                    Glue(key, t.line, t.instructions, 0, site, "invalid program state"),
-                    t.armLine?.let { Glue(key, it, 0, 1, site, "invalid program state's arm") },
-                )
-            }
-        }
-    }
-
-    /** One recognised throw: its block's line and size, and the line of the one arm into it, when there is one. */
-    private class InvalidStateThrow(val line: Int, val instructions: Int, val armLine: Int?)
-
-    private fun invalidStateThrows(code: Array<AbstractInsnNode>): List<InvalidStateThrow> {
-        val real = code.indices.filter { code[it].opcode >= 0 }
-        return real.indices.mapNotNull { at ->
-            if (!isInvalidStateThrow(real.drop(at).take(THROW_SHAPE).map { code[it] })) return@mapNotNull null
-            val popped = at > 0 && code[real[at - 1]].opcode == Opcodes.POP
-            val start = if (popped) at - 1 else at
-            val arms = armsInto(code, real, start) ?: return@mapNotNull null
-            val line = lineAt(code, real[start]) ?: return@mapNotNull null
-            InvalidStateThrow(line, THROW_SHAPE + if (popped) 1 else 0, arms.singleOrNull()?.let { lineAt(code, it) })
-        }
-    }
-
-    private fun isInvalidStateThrow(shape: List<AbstractInsnNode>): Boolean {
-        if (shape.size != THROW_SHAPE) return false
-        val (new, dup, because, init, athrow) = shape
-        return new is TypeInsnNode && new.opcode == Opcodes.NEW && new.desc == INVALID_PROGRAM_STATE &&
-            dup.opcode == Opcodes.DUP &&
-            because is LdcInsnNode && because.cst is String &&
-            init is MethodInsnNode && init.opcode == Opcodes.INVOKESPECIAL && init.owner == INVALID_PROGRAM_STATE &&
-            init.name == "<init>" && init.desc == "(Ljava/lang/String;)V" &&
-            athrow.opcode == Opcodes.ATHROW
-    }
-
-    /**
-     * The indices of the conditional arms leading into the block that opens at real instruction [start] — a conditional
-     * jump falling through into it or jumping to it, a switch case naming it — or null when it is also entered by plain
-     * fall-through or a `goto`.
-     */
-    private fun armsInto(code: Array<AbstractInsnNode>, real: List<Int>, start: Int): List<Int>? {
-        val first = real[start]
-        val before = real.getOrNull(start - 1)
-        val labels = ((before?.plus(1) ?: 0) until first).map { code[it] }.filterIsInstance<LabelNode>().toSet()
-        val arms = mutableListOf<Int>()
-        if (before != null) {
-            val node = code[before]
-            when {
-                node is JumpInsnNode && node.opcode != Opcodes.GOTO -> arms += before
-                node.opcode !in ENDS_FLOW -> return null
-            }
-        }
-        code.forEachIndexed { index, node ->
-            val targets = when (node) {
-                is JumpInsnNode -> listOf(node.label)
-                is TableSwitchInsnNode -> node.labels + node.dflt
-                is LookupSwitchInsnNode -> node.labels + node.dflt
-                else -> emptyList()
-            }
-            val into = targets.count { it in labels }
-            if (into > 0 && node.opcode == Opcodes.GOTO) return null
-            repeat(into) { arms += index }
-        }
-        return arms
-    }
-
-    private fun lineAt(code: Array<AbstractInsnNode>, index: Int): Int? =
-        code.take(index + 1).filterIsInstance<LineNumberNode>().lastOrNull()?.line
-
-    private const val THROW_SHAPE = 5
-
-    private val ENDS_FLOW = setOf(
-        Opcodes.GOTO, Opcodes.ATHROW, Opcodes.RETURN, Opcodes.ARETURN, Opcodes.IRETURN, Opcodes.LRETURN,
-        Opcodes.FRETURN, Opcodes.DRETURN, Opcodes.TABLESWITCH, Opcodes.LOOKUPSWITCH,
-    )
 
     /**
      * The gate reads per-LINE counts, so it guards the report shape it relies on: a report with no package, or whose
@@ -345,7 +238,8 @@ object CoverageZero {
     private fun shapeProblems(root: Element): List<String> {
         val lines = root.children("package").flatMap { it.children("sourcefile") }.flatMap { it.children("line") }
         if (lines.isEmpty()) return listOf("the report holds no package line counts — has Kover's XML shape changed?")
-        val totals = root.children("counter").associate { it.getAttribute("type") to it.int("missed") + it.int("covered") }
+        val totals = root.children("counter")
+            .associate { it.getAttribute("type") to it.int("missed") + it.int("covered") }
         return listOf("INSTRUCTION" to listOf("mi", "ci"), "BRANCH" to listOf("mb", "cb")).mapNotNull { (type, attrs) ->
             val summed = lines.sumOf { line -> attrs.sumOf { line.int(it) } }
             "the report's $type total ${totals[type]} != its lines' $summed — has Kover's XML shape changed?"
@@ -366,78 +260,13 @@ object CoverageZero {
                     .filter { COMPOSER in it.getAttribute("desc") && "\$lambda" !in it.getAttribute("name") }
                     // Mangled names: an internal member's is `name$module`, a function taking a value class (`Dp`,
                     // `Color`) is `name-<hash>`. Neither character can appear in an unquoted Kotlin name.
-                    .map { cls.getAttribute("sourcefilename") to it.getAttribute("name").substringBefore('$').substringBefore('-') }
+                    .map {
+                        cls.getAttribute("sourcefilename") to
+                            it.getAttribute("name").substringBefore('$').substringBefore('-')
+                    }
             }
             .groupBy({ it.first }, { it.second })
             .mapValues { it.value.toSet() }
-
-    private val ANNOTATION = Regex("""^\s*@Composable\b(?!\s*\()""")
-    private val FUN = Regex("""\bfun\s+(?:<[^>]*>\s*)?(?:[\w.<>?,\s]+\.)?`?(\w+)`?\s*[(<]""")
-    private const val LOOKAHEAD = 6
-
-    /**
-     * Every `@Composable` function DECLARATION in [lines] with a body: the annotation (on its own line or before the
-     * modifiers) opens one, the `fun` line starts its range, and the range ends on the line holding the body's opening
-     * `{` or `=`, found by balancing parentheses after the parameter list opens — so a function-type parameter's `->`
-     * and a default value's `=` or `{` inside the list end nothing. A declaration with no body (abstract) is skipped:
-     * it compiles to no code. String and character literals and `//` comments are not read as brackets.
-     */
-    fun declarations(lines: List<String>): List<Declaration> {
-        val out = mutableListOf<Declaration>()
-        var i = 0
-        while (i < lines.size) {
-            if (!ANNOTATION.containsMatchIn(lines[i])) { i++; continue }
-            val funLine = (i until minOf(lines.size, i + LOOKAHEAD)).firstOrNull { FUN.containsMatchIn(lines[it]) }
-            if (funLine == null) { i++; continue }
-            val name = FUN.find(lines[funLine])!!.groupValues[1]
-            val end = bodyStart(lines, funLine)
-            if (end != null) out += Declaration(name, (funLine + 1)..(end + 1))
-            i = (end ?: funLine) + 1
-        }
-        return out
-    }
-
-    /** The 0-based line holding the body's `{` or `=`, or null when the declaration has none. */
-    private fun bodyStart(lines: List<String>, from: Int): Int? {
-        var depth = 0
-        var opened = false
-        for (n in from until lines.size) {
-            val code = codeOf(lines[n])
-            if (opened && depth == 0 && n > from && startsNewDeclaration(code)) return null
-            for (ch in code) {
-                when {
-                    ch == '(' -> { depth++; opened = true }
-                    ch == ')' -> depth--
-                    opened && depth == 0 && (ch == '{' || ch == '=') -> return n
-                }
-            }
-        }
-        return null
-    }
-
-    private val DECLARATION_START = Regex("""^\s*(@|fun\b|val\b|var\b|class\b|interface\b|object\b|override\b|private\b|internal\b|public\b|protected\b|abstract\b|\})""")
-
-    private fun startsNewDeclaration(code: String) = code.isNotBlank() && DECLARATION_START.containsMatchIn(code)
-
-    /** [line] with string/char literal contents and a trailing `//` comment blanked. */
-    internal fun codeOf(line: String): String {
-        val sb = StringBuilder()
-        var quote: Char? = null
-        var k = 0
-        while (k < line.length) {
-            val ch = line[k]
-            when {
-                quote != null && ch == '\\' -> { sb.append(if (k + 1 < line.length) "  " else " "); k++ }
-                quote != null && ch == quote -> { quote = null; sb.append(ch) }
-                quote != null -> sb.append(' ')
-                ch == '"' || ch == '\'' -> { quote = ch; sb.append(ch) }
-                ch == '/' && line.getOrNull(k + 1) == '/' -> return sb.toString()
-                else -> sb.append(ch)
-            }
-            k++
-        }
-        return sb.toString()
-    }
 
     /** The `<package path>/<file name>` → contents index [judge] reads, over a module's main Kotlin [files]. */
     fun index(files: Iterable<File>): Map<String, List<List<String>>> =
@@ -450,11 +279,11 @@ object CoverageZero {
             .groupBy({ it.first }, { it.second })
 
     private val PACKAGE = Regex("""^\s*package\s+([\w.]+)""")
-
-    private fun Element.children(tag: String): List<Element> {
-        val nodes = childNodes
-        return (0 until nodes.length).map { nodes.item(it) }.filterIsInstance<Element>().filter { it.tagName == tag }
-    }
-
-    private fun Element.int(attr: String) = getAttribute(attr).ifEmpty { "0" }.toInt()
 }
+
+private fun Element.children(tag: String): List<Element> {
+    val nodes = childNodes
+    return (0 until nodes.length).map { nodes.item(it) }.filterIsInstance<Element>().filter { it.tagName == tag }
+}
+
+private fun Element.int(attr: String) = getAttribute(attr).ifEmpty { "0" }.toInt()

@@ -49,7 +49,10 @@ class ComposeGlueTest {
 
     @Test
     fun `a remembered lambda's validity test is an allowance of its instructions and two arms per jump`() {
-        val glue = scan { line(20); validityTest() }.getValue(20)
+        val glue = scan {
+            line(20)
+            validityTest()
+        }.getValue(20)
         assertEquals(Allowance(instructions = 17, branches = 6), glue.remembered)
         assertFalse(glue.userBranch)
     }
@@ -70,7 +73,13 @@ class ComposeGlueTest {
 
     @Test
     fun `its misses are excused when they fit, and the line is printed`() {
-        val v = judge(scan { line(20); validityTest() }, Line(20, mi = 8, mb = 3))
+        val v = judge(
+            scan {
+                line(20)
+                validityTest()
+            },
+            Line(20, mi = 8, mb = 3),
+        )
         assertEquals(emptyList(), v.misses)
         assertEquals(listOf(CoverageZero.GlueLine(KEY, 20, "remembered lambda", 8, 3)), v.composeGlue)
     }
@@ -143,7 +152,10 @@ class ComposeGlueTest {
 
     @Test
     fun `a lambda body on the line withholds the allowance unless the report lists it run in full`() {
-        val glue = scan(lambdaOnLine = 20) { line(20); validityTest() }
+        val glue = scan(lambdaOnLine = 20) {
+            line(20)
+            validityTest()
+        }
         assertEquals(listOf(20), judge(glue, Line(20, mi = 8, mb = 3), lambdaMissed = 4).misses.map { it.line })
         assertEquals(emptyList(), judge(glue, Line(20, mi = 8, mb = 3), lambdaMissed = 0).misses)
         // Kover leaves a body on its caller's line out of its method list while counting it in the line: unlisted, the
@@ -154,7 +166,10 @@ class ComposeGlueTest {
 
     @Test
     fun `more misses than the shape accounts for fail — Kover counting it differently fails loudly`() {
-        val glue = scan { line(20); validityTest() }
+        val glue = scan {
+            line(20)
+            validityTest()
+        }
         assertEquals(listOf(20), judge(glue, Line(20, mi = 18, mb = 3)).misses.map { it.line })
         assertEquals(listOf(20), judge(glue, Line(20, mi = 8, mb = 7)).misses.map { it.line })
     }
@@ -200,7 +215,10 @@ class ComposeGlueTest {
 
     @Test
     fun `a method without a Composer is never read for the shapes`() {
-        val bytes = classOf("plain", "(Ljava/lang/Object;I)V") { line(20); validityTest() }
+        val bytes = classOf("plain", "(Ljava/lang/Object;I)V") {
+            line(20)
+            validityTest()
+        }
         val glue = ComposeGlue.scan(listOf(bytes)).getValue(KEY).getValue(20)
         assertEquals(Allowance.NONE, glue.remembered)
         assertEquals(1, glue.otherMethods.size)
@@ -355,7 +373,11 @@ class ComposeGlueTest {
     private data class Line(val nr: Int, val mi: Int = 0, val mb: Int = 0)
 
     /** A report holding [lines]; [lambdaMissed] lists the lambda method with that many missed instructions. */
-    private fun judge(glue: Map<Int, ComposeGlue.LineGlue>, vararg lines: Line, lambdaMissed: Int? = null): CoverageZero.Verdict {
+    private fun judge(
+        glue: Map<Int, ComposeGlue.LineGlue>,
+        vararg lines: Line,
+        lambdaMissed: Int? = null,
+    ): CoverageZero.Verdict {
         val method = lambdaMissed?.let {
             """<method name="$LAMBDA" desc="()V"><counter type="INSTRUCTION" missed="$it" covered="1"/>""" +
                 """<counter type="BRANCH" missed="0" covered="0"/></method>"""

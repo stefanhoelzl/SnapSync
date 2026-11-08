@@ -1,10 +1,8 @@
 package app.snapsync.buildlogic
 
-import org.objectweb.asm.ClassReader
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.AbstractInsnNode
-import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.JumpInsnNode
 import org.objectweb.asm.tree.LabelNode
 import org.objectweb.asm.tree.LineNumberNode
@@ -43,6 +41,7 @@ import org.objectweb.asm.tree.VarInsnNode
  * `isTraceInProgress`'s result, skipping only the trace call.
  *
  * Nothing else is recognised: a shape outside these two is a miss for a test or a restructure, never for this file.
+ * The per-method recognition is [ComposableMethodScan]'s; the instruction predicates it reads with sit below it.
  */
 object ComposeGlue {
 
@@ -64,22 +63,16 @@ object ComposeGlue {
         val otherMethods: Set<MethodRef> = emptySet(),
     )
 
-    private const val COMPOSER = "androidx/compose/runtime/Composer"
-    private const val COMPOSER_KT = "androidx/compose/runtime/ComposerKt"
-    private const val NO_WHEN = "kotlin/NoWhenBranchMatchedException"
-    private val VALIDITY_CALLS = setOf("changed", "changedInstance")
-
     /** Per `<package path>/<source file>` (the report's key), per line: the glue the [classes] hold there. */
     fun scan(classes: Iterable<ByteArray>): Map<String, Map<Int, LineGlue>> {
         val out = mutableMapOf<String, MutableMap<Int, LineGlue>>()
         for (bytes in classes) {
-            val cls = ClassNode().also { ClassReader(bytes).accept(it, ClassReader.SKIP_FRAMES) }
-            val file = cls.sourceFile ?: continue
-            val key = cls.name.substringBeforeLast('/', "").let { if (it.isEmpty()) file else "$it/$file" }
+            val cls = readClass(bytes)
+            val key = cls.reportKey() ?: continue
             val lines = out.getOrPut(key) { mutableMapOf() }
             for (m in cls.methods) {
-                val merge: (Int, (LineGlue) -> LineGlue) -> Unit = { nr, f -> lines[nr] = f(lines[nr] ?: LineGlue()) }
-                if (m.isComposable()) scanComposable(m, merge) else noteOther(cls.name, m, merge)
+                val merge: Merge = { nr, f -> lines[nr] = f(lines[nr] ?: LineGlue()) }
+                if (m.isComposable()) ComposableMethodScan(m, merge).run() else noteOther(cls.name, m, merge)
             }
         }
         return out
@@ -87,82 +80,98 @@ object ComposeGlue {
 
     private fun MethodNode.isComposable() = Type.getArgumentTypes(desc).any { it.internalName == COMPOSER }
 
-    private fun noteOther(owner: String, m: MethodNode, merge: (Int, (LineGlue) -> LineGlue) -> Unit) {
+    private fun noteOther(owner: String, m: MethodNode, merge: Merge) {
         val ref = MethodRef(owner, m.name, m.desc)
         lineOf(m).values.toSet().forEach { nr -> merge(nr) { it.copy(otherMethods = it.otherMethods + ref) } }
     }
+}
 
-    private fun scanComposable(m: MethodNode, merge: (Int, (LineGlue) -> LineGlue) -> Unit) {
-        val line = lineOf(m)
-        val insns = m.instructions.toArray().filter { it.opcode >= 0 }
-        val changedSlots = dirtySlots(insns, changedSlots(m))
-        val dead = deadBlocks(m)
-        val deadInsns = dead.flatMap { it.second }.toSet()
-        // The remembered-lambda jumps, grouped by line, each with the index its condition starts at.
-        val validity = mutableMapOf<Int, MutableList<Pair<Int, Int>>>()
+private const val COMPOSER = "androidx/compose/runtime/Composer"
+private const val COMPOSER_KT = "androidx/compose/runtime/ComposerKt"
+private const val NO_WHEN = "kotlin/NoWhenBranchMatchedException"
+private val VALIDITY_CALLS = setOf("changed", "changedInstance")
+
+/** Updates the glue recorded on a line: the line, and what to make of the glue it holds so far. */
+private typealias Merge = (Int, (ComposeGlue.LineGlue) -> ComposeGlue.LineGlue) -> Unit
+
+/** One composable method's body-line glue, both of [ComposeGlue]'s shapes, merged per line through [merge]. */
+private class ComposableMethodScan(private val m: MethodNode, private val merge: Merge) {
+    private val line = lineOf(m)
+    private val insns = m.instructions.toArray().filter { it.opcode >= 0 }
+    private val changedSlots = dirtySlots(changedParameters())
+    private val dead = deadBlocks()
+    private val deadInsns = dead.flatMap { it.second }.toSet()
+
+    /** The remembered-lambda jumps, grouped by line, each with the index its condition starts at. */
+    private val validity = mutableMapOf<Int, MutableList<Pair<Int, Int>>>()
+
+    fun run() {
         insns.forEachIndexed { i, insn ->
-            val nr = line[insn] ?: return@forEachIndexed
-            if (insn !is JumpInsnNode && insn !is TableSwitchInsnNode && insn !is LookupSwitchInsnNode) return@forEachIndexed
-            if (insn.opcode == Opcodes.GOTO) return@forEachIndexed
-            val start = conditionStart(insns, i, line)
-            val condition = insns.subList(start, i)
-            when {
-                insn is JumpInsnNode && condition.any { it.readsSlot(changedSlots) || it.callsComposer(VALIDITY_CALLS) } ->
-                    validity.getOrPut(nr) { mutableListOf() } += start to i
-                // A sealed `when`'s last `is` test: its false arm is dead, its true arm the user's.
-                insn is JumpInsnNode && dead.any { it.first == insn.label } ->
-                    merge(nr) { it.copy(deadArm = it.deadArm + Allowance(0, 1), userBranch = true) }
-                insn in deadInsns -> Unit
-                insn is JumpInsnNode && insn.isTraceGuard() -> Unit
-                else -> merge(nr) { it.copy(userBranch = true) }
-            }
+            val nr = line[insn]
+            if (nr != null && insn.isBranch() && insn.opcode != Opcodes.GOTO) noteBranch(i, insn, nr)
         }
-        for ((nr, jumps) in validity) {
-            val first = jumps.minOf { it.first }
-            val last = jumps.maxOf { it.second }
-            // The cache's test ends in the boolean it stores; a mask check that stores nothing (a skip check) is not
-            // this shape, and counts as any other branch.
-            val end = (last until insns.size).firstOrNull { insns[it].opcode == Opcodes.ISTORE && line[insns[it]] == nr }
-            if (end == null) {
-                merge(nr) { it.copy(userBranch = true) }
-            } else {
-                val counted = (first..end).count { line[insns[it]] == nr }
-                merge(nr) { it.copy(remembered = it.remembered + Allowance(counted, 2 * jumps.size)) }
-            }
+        validity.forEach { (nr, jumps) -> noteRemembered(nr, jumps) }
+        noteDeadBlocks()
+    }
+
+    /** Files the conditional branch [insn] (at [i], on line [nr]) under its shape, or as the user's own. */
+    private fun noteBranch(i: Int, insn: AbstractInsnNode, nr: Int) {
+        val start = conditionStart(i)
+        when {
+            insn is JumpInsnNode && isValidityTest(insns.subList(start, i)) ->
+                validity.getOrPut(nr) { mutableListOf() } += start to i
+            // A sealed `when`'s last `is` test: its false arm is dead, its true arm the user's.
+            insn is JumpInsnNode && dead.any { it.first == insn.label } ->
+                merge(nr) { it.copy(deadArm = it.deadArm + ComposeGlue.Allowance(0, 1), userBranch = true) }
+            insn in deadInsns -> Unit
+            insn is JumpInsnNode && insn.isTraceGuard() -> Unit
+            else -> merge(nr) { it.copy(userBranch = true) }
         }
+    }
+
+    private fun isValidityTest(condition: List<AbstractInsnNode>) =
+        condition.any { it.readsSlot(changedSlots) || it.callsComposer(VALIDITY_CALLS) }
+
+    private fun noteRemembered(nr: Int, jumps: List<Pair<Int, Int>>) {
+        val first = jumps.minOf { it.first }
+        val last = jumps.maxOf { it.second }
+        // The cache's test ends in the boolean it stores; a mask check that stores nothing (a skip check) is not
+        // this shape, and counts as any other branch.
+        val end = (last until insns.size)
+            .firstOrNull { insns[it].opcode == Opcodes.ISTORE && line[insns[it]] == nr }
+        if (end == null) {
+            merge(nr) { it.copy(userBranch = true) }
+        } else {
+            val counted = (first..end).count { line[insns[it]] == nr }
+            merge(nr) { it.copy(remembered = it.remembered + ComposeGlue.Allowance(counted, 2 * jumps.size)) }
+        }
+    }
+
+    private fun noteDeadBlocks() {
         for ((_, block) in dead) {
             block.filterNot { it.isThrowSequence() }.groupBy { line[it] }.forEach { (nr, group) ->
-                if (nr != null) merge(nr) { it.copy(deadArm = it.deadArm + Allowance(group.size, 0)) }
+                if (nr != null) merge(nr) { it.copy(deadArm = it.deadArm + ComposeGlue.Allowance(group.size, 0)) }
             }
         }
     }
 
     /** Where a jump's condition starts: just after the previous branch or store on its line, or the line's start. */
-    private fun conditionStart(insns: List<AbstractInsnNode>, jump: Int, line: Map<AbstractInsnNode, Int>): Int {
+    private fun conditionStart(jump: Int): Int {
         var k = jump
-        while (k > 0) {
-            val prev = insns[k - 1]
-            if (line[prev] != line[insns[jump]]) break
-            if (prev is JumpInsnNode || prev is TableSwitchInsnNode || prev is LookupSwitchInsnNode) break
-            if (prev is VarInsnNode && prev.opcode in Opcodes.ISTORE..Opcodes.ASTORE) break
-            k--
-        }
+        while (k > 0 && !endsCondition(insns[k - 1], line[insns[jump]])) k--
         return k
     }
+
+    /** Whether [prev] lies before the condition of a jump on [jumpLine]: on another line, a branch, or a store. */
+    private fun endsCondition(prev: AbstractInsnNode, jumpLine: Int?) =
+        line[prev] != jumpLine || prev.isBranch() || prev.isStore()
 
     /**
      * The `NoWhenBranchMatchedException` blocks that carry Compose group calls: each block's entry label (a jump
      * target) and its instructions through the throw.
      */
-    private fun deadBlocks(m: MethodNode): List<Pair<LabelNode, List<AbstractInsnNode>>> {
-        val targets = m.instructions.toArray().flatMap { insn ->
-            when (insn) {
-                is JumpInsnNode -> listOf(insn.label)
-                is TableSwitchInsnNode -> insn.labels + insn.dflt
-                is LookupSwitchInsnNode -> insn.labels + insn.dflt
-                else -> emptyList()
-            }
-        }.toSet()
+    private fun deadBlocks(): List<Pair<LabelNode, List<AbstractInsnNode>>> {
+        val targets = m.instructions.toArray().flatMap { it.jumpTargets() }.toSet()
         return m.instructions.toArray().filter { it is TypeInsnNode && it.opcode == Opcodes.NEW && it.desc == NO_WHEN }
             .mapNotNull { new ->
                 var entry: AbstractInsnNode = new
@@ -176,34 +185,8 @@ object ComposeGlue {
             }
     }
 
-    /**
-     * The compiler's trace guard, `if (isTraceInProgress()) traceEventStart(…)` / `traceEventEnd()`: an `ifeq` on the
-     * boolean `isTraceInProgress` just pushed, skipping a block whose one call is the trace event.
-     */
-    private fun JumpInsnNode.isTraceGuard(): Boolean {
-        val condition = previous { it.opcode >= 0 }
-        if (opcode != Opcodes.IFEQ || !(condition is MethodInsnNode && condition.isTrace("isTraceInProgress"))) return false
-        val guarded = generateSequence(next) { it.next }.takeWhile { it != label }.filterIsInstance<MethodInsnNode>().toList()
-        return guarded.singleOrNull()?.run { isTrace("traceEventStart") || isTrace("traceEventEnd") } == true
-    }
-
-    private fun MethodInsnNode.isTrace(name: String) = opcode == Opcodes.INVOKESTATIC && owner == COMPOSER_KT && this.name == name
-
-    private fun AbstractInsnNode.previous(p: (AbstractInsnNode) -> Boolean) = generateSequence(previous) { it.previous }.firstOrNull(p)
-
-    private fun AbstractInsnNode.isThrowSequence() = when (this) {
-        is TypeInsnNode -> desc == NO_WHEN
-        is MethodInsnNode -> owner == NO_WHEN
-        else -> opcode == Opcodes.DUP || opcode == Opcodes.ATHROW
-    }
-
-    private fun AbstractInsnNode.callsComposer(names: Set<String>?) =
-        this is MethodInsnNode && owner == COMPOSER && (names == null || name in names)
-
-    private fun AbstractInsnNode.readsSlot(slots: Set<Int>) = this is VarInsnNode && opcode == Opcodes.ILOAD && `var` in slots
-
     /** The local slots of the `$changed`/`$default` bitmask parameters: every `int` after the [COMPOSER] parameter. */
-    private fun changedSlots(m: MethodNode): Set<Int> {
+    private fun changedParameters(): Set<Int> {
         var slot = if (m.access and Opcodes.ACC_STATIC != 0) 0 else 1
         var afterComposer = false
         val out = mutableSetOf<Int>()
@@ -219,28 +202,70 @@ object ComposeGlue {
      * [params] and every local the compiler copies them into: it reads the `$changed` bits through a `$dirty` local it
      * assigns from them (and widens), so a store whose value reads a tracked slot tracks its own.
      */
-    private fun dirtySlots(insns: List<AbstractInsnNode>, params: Set<Int>): Set<Int> {
+    private fun dirtySlots(params: Set<Int>): Set<Int> {
         val out = params.toMutableSet()
         do {
             val before = out.size
             insns.forEachIndexed { i, insn ->
                 if (insn !is VarInsnNode || insn.opcode != Opcodes.ISTORE) return@forEachIndexed
-                val value = insns.subList(0, i).takeLastWhile { it !is VarInsnNode || it.opcode !in Opcodes.ISTORE..Opcodes.ASTORE }
+                val value = insns.subList(0, i)
+                    .takeLastWhile { !it.isStore() }
                     .takeLastWhile { it !is JumpInsnNode && it !is LabelNode }
                 if (value.any { it.readsSlot(out) }) out += insn.`var`
             }
         } while (out.size != before)
         return out
     }
+}
 
-    /** Each real instruction's source line, as the line number table assigns it. */
-    private fun lineOf(m: MethodNode): Map<AbstractInsnNode, Int> {
-        val out = mutableMapOf<AbstractInsnNode, Int>()
-        var current: Int? = null
-        for (insn in m.instructions) {
-            if (insn is LineNumberNode) current = insn.line
-            if (insn.opcode >= 0) current?.let { out[insn] = it }
-        }
-        return out
+/**
+ * The compiler's trace guard, `if (isTraceInProgress()) traceEventStart(…)` / `traceEventEnd()`: an `ifeq` on the
+ * boolean `isTraceInProgress` just pushed, skipping a block whose one call is the trace event.
+ */
+private fun JumpInsnNode.isTraceGuard(): Boolean {
+    val condition = previous { it.opcode >= 0 }
+    val onTraceInProgress =
+        opcode == Opcodes.IFEQ && condition is MethodInsnNode && condition.isTrace("isTraceInProgress")
+    if (!onTraceInProgress) return false
+    val guarded = generateSequence(next) { it.next }
+        .takeWhile { it != label }
+        .filterIsInstance<MethodInsnNode>()
+        .toList()
+    return guarded.singleOrNull()?.run { isTrace("traceEventStart") || isTrace("traceEventEnd") } == true
+}
+
+private fun MethodInsnNode.isTrace(name: String) =
+    opcode == Opcodes.INVOKESTATIC && owner == COMPOSER_KT && this.name == name
+
+private fun AbstractInsnNode.previous(p: (AbstractInsnNode) -> Boolean) =
+    generateSequence(previous) { it.previous }.firstOrNull(p)
+
+private fun AbstractInsnNode.isThrowSequence() = when (this) {
+    is TypeInsnNode -> desc == NO_WHEN
+    is MethodInsnNode -> owner == NO_WHEN
+    else -> opcode == Opcodes.DUP || opcode == Opcodes.ATHROW
+}
+
+private fun AbstractInsnNode.callsComposer(names: Set<String>?) =
+    this is MethodInsnNode && owner == COMPOSER && (names == null || name in names)
+
+private fun AbstractInsnNode.readsSlot(slots: Set<Int>) =
+    this is VarInsnNode && opcode == Opcodes.ILOAD && `var` in slots
+
+/** A jump or a switch: an instruction that can leave the straight line of its code. */
+private fun AbstractInsnNode.isBranch() =
+    this is JumpInsnNode || this is TableSwitchInsnNode || this is LookupSwitchInsnNode
+
+/** A store into a local slot, of any type. */
+private fun AbstractInsnNode.isStore() = this is VarInsnNode && opcode in Opcodes.ISTORE..Opcodes.ASTORE
+
+/** Each real instruction's source line, as the line number table assigns it. */
+private fun lineOf(m: MethodNode): Map<AbstractInsnNode, Int> {
+    val out = mutableMapOf<AbstractInsnNode, Int>()
+    var current: Int? = null
+    for (insn in m.instructions) {
+        if (insn is LineNumberNode) current = insn.line
+        if (insn.opcode >= 0) current?.let { out[insn] = it }
     }
+    return out
 }

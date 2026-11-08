@@ -124,7 +124,8 @@ class OneCallPerStep(config: Config = Config.empty) : Rule(config) {
                 CodeSmell(
                     issue,
                     Entity.from(expression),
-                    "`${expression.calleeExpression?.text}` holds ${body.statements.size} statements: one call per step.",
+                    "`${expression.calleeExpression?.text}` holds ${body.statements.size} statements: " +
+                        "one call per step.",
                 ),
             )
         }
@@ -295,7 +296,9 @@ class DomainPurity(config: Config = Config.empty) : Rule(config) {
 
     override fun visitReferenceExpression(expression: KtReferenceExpression) {
         super.visitReferenceExpression(expression)
-        val text = (expression.parent as? KtDotQualifiedExpression)?.takeIf { it.receiverExpression == expression }?.text
+        val text = (expression.parent as? KtDotQualifiedExpression)
+            ?.takeIf { it.receiverExpression == expression }
+            ?.text
         if (text != null && WORLD.any { text.startsWith(it) }) {
             report(CodeSmell(issue, Entity.from(expression), "`$text` reads the world: take the value as an argument."))
         } else if (expression.text == "Random" && expression.parent !is KtDotQualifiedExpression) {

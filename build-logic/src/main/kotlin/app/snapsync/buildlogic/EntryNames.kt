@@ -48,7 +48,9 @@ object EntryNames {
         return Shape(dotted(reader.className), reader.superName?.let(::dotted), reader.interfaces.map(::dotted))
     }
 
-    /** Every class of [shapes] below one of [roots] — a subclass or an implementation, at any depth — roots excluded. */
+    /**
+     * Every class of [shapes] below one of [roots] — a subclass or an implementation, at any depth — roots excluded.
+     */
     fun subjects(shapes: Collection<Shape>, roots: Set<String>): Set<String> {
         val byName = shapes.associateBy { it.name }
         val below = mutableMapOf<String, Boolean>()
