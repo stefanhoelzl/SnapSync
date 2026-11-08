@@ -19,53 +19,25 @@ buildscript {
     }
 }
 
-// Plugins are declared here (apply false) so every subproject shares ONE classloader for the
-// Kotlin Gradle Plugin. Without this, each subproject loads KGP on its own classloader; the
-// Apple targets' global build services (e.g. SwiftPMLockTaskAggregationBuildService) then fail
-// to cast across classloaders — a configuration error that only surfaces once iOS targets exist.
+// Plugins are declared here (apply false) so every subproject shares ONE classloader for each — the Kotlin Gradle
+// Plugin above all. Without this, each subproject loads KGP on its own classloader; the Apple targets' global build
+// services (e.g. SwiftPMLockTaskAggregationBuildService) then fail to cast across classloaders — a configuration error
+// that only surfaces once iOS targets exist. Every piece of build logic lives in `build-logic/`, applied through
+// `snapsync.conventions` (`docs/architecture.md`, "The build").
 plugins {
-    // `base` gives the ROOT project the lifecycle tasks (`check`, `build`) that `detektAppShell`
-    // gates through — `./gradlew build` includes the root `check`, so the shell gate runs in the
-    // canonical build (`docs/architecture.md`, "The shell gates").
-    base
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.compose) apply false
     alias(libs.plugins.sqldelight) apply false
-    // The Android target of every multiplatform module (`snapsync.android`) and the Android app (`:app:android`).
     alias(libs.plugins.android.kmp.library) apply false
     alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.detekt)
-    // Every detekt task this build runs, and the project's own rules on each (`QualityPlugin`).
-    id("snapsync.quality")
-    // Every module's archives named after its whole path, so no two modules' jars collide (`ArchiveNamesPlugin`).
-    id("snapsync.archive-names")
-    // Every module's coverage, described in the `coverage { }` block below (`docs/architecture.md`, "Coverage").
-    id("snapsync.coverage")
-    alias(libs.plugins.dependency.analysis)
-    // Loaded here so every module shares one Kover; `snapsync.coverage` applies it to the modules the `coverage { }`
-    // block measures, and the modules whose tests also cover them apply it themselves.
+    alias(libs.plugins.detekt) apply false
+    alias(libs.plugins.dependency.analysis) apply false
     alias(libs.plugins.kover) apply false
     alias(libs.plugins.kotlinx.rpc) apply false
-}
-
-// `./gradlew buildHealth` — declared-but-unused module dependencies (`docs/architecture.md`).
-//
-// Gradle prevents *using* a dependency that is not declared; nothing prevents *declaring* one that is
-// not used, and that gap is not academic here: `:core:status` declared `:capability:membership` and
-// imported nothing from it for months, contradicting the documented dependency spine while every check
-// stayed green.
-//
-// The root plugin only AGGREGATES; each subproject must apply it or `buildHealth` reports nothing and
-// still succeeds — a vacuous pass of exactly the kind the guards exist to prevent.
-//
-// NON-GATING on purpose (spec: "Dead-edge analysis is scoped honestly"): not wired into `check`, every
-// issue `warn`, jvm/common edges only — the plugin has no iOS-target support (upstream #1672); iosMain-
-// only edges are covered by the text gates instead.
-subprojects {
-    apply(plugin = "com.autonomousapps.dependency-analysis")
+    id("snapsync.conventions")
 }
 
 // ---- Coverage (`docs/architecture.md`, "Coverage") -----------------------------------------------------------------
@@ -315,21 +287,6 @@ coverage {
     }
 }
 
-dependencyAnalysis {
-    issues {
-        all {
-            onAny { severity("warn") }
-        }
-    }
-}
-
-// Every detekt task — the shell proof (`detektAppShell`) and the complexity budgets, one per tier — is registered by
-// the `snapsync.quality` convention plugin (`build-logic`), which owns the shell roots and the tier map.
-
-// The build logic's own tests (today the zero coverage gate's judgement, `CoverageZeroTest`): an included build's
-// `check` is never reached from this one's, so without this edge they would run on nobody's command.
-tasks.named("check") { dependsOn(gradle.includedBuild("build-logic").task(":test")) }
-
 // ---- Derived architecture diagrams (`docs/architecture.md`) ------------------------
 //
 // `./gradlew architectureDiagrams` regenerates everything under `architecture/`. The module graph
@@ -411,82 +368,4 @@ val architectureModulesDiagram = tasks.register("architectureModulesDiagram") {
 tasks.register("architectureDiagrams") {
     description = "Regenerate every derived diagram under architecture/ (`docs/architecture.md`)."
     dependsOn(architectureModulesDiagram, ":tools:diagrams:generate")
-}
-
-// ---- Compiler warnings are errors -------------------------------------------------------------
-//
-// Every Kotlin compilation in every module fails on a warning, so a new one is fixed where it is
-// introduced instead of joining a backlog nobody reads (147 had accumulated in CI logs by 2026-09).
-// A warning that is deliberate is silenced AT ITS SITE (`@Suppress`, `@OptIn`) with the reason next
-// to it, never here. Build scripts are held to the same rule by
-// `org.gradle.kotlin.dsl.allWarningsAsErrors` in gradle.properties.
-//
-// The shared-source-set METADATA compilations (`compile*KotlinMetadata`) are the one exemption, and it
-// costs no coverage: every source set they compile is also compiled by a platform compilation (jvm,
-// iosArm64, iosSimulatorArm64), which is strict, so a warning in `commonMain`/`iosMain` code still fails
-// the build there. What only the metadata compilation reports is the Kotlin/Native KLIB loader's
-// "same unique_name found in more than one library" — Compose Multiplatform puts both its
-// `org.jetbrains.compose.*` and Google's `androidx.compose.*` commonMain klibs on the iosMain metadata
-// classpath, which no source change here can fix.
-subprojects {
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>()
-        .matching { !it.name.endsWith("KotlinMetadata") }
-        .configureEach { compilerOptions.allWarningsAsErrors.set(true) }
-}
-
-// ---- Test failure messages ---------------------------------------------------------------------------------------
-//
-// Every test task — JVM `Test`, the Kotlin/Native simulator's — prints a failure in Gradle's FULL format: the
-// assertion's message and its stack down to the test. SHORT, Gradle's default, prints the exception's class and the
-// first frame in the test class, which for a `behaviour { … }` is the `= behaviour {` line: CI then showed
-// `java.lang.AssertionError at EventChecksIntegrationTest.kt:33` and no `expected:<3> but was:<5>`. The simulator
-// runner is worse still — `AssertionError at null:-1` — and a red iOS-only test cannot be re-run from Linux.
-// Set ONCE, here, so a new module's tests are readable the day it has any. A module's own `testLogging` adds to this
-// (the simulator modules turn standard streams on) and does not restate it.
-subprojects {
-    tasks.withType<AbstractTestTask>().configureEach {
-        testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
-    }
-}
-
-// ---- Kotlin/Native backend threads -----------------------------------------------------------
-//
-// KGP runs every Kotlin/Native link with 4 backend threads by default, and on a host with fewer cores
-// the compiler warns on every link (`The number of threads 4 is more than the number of processors 3`
-// — GitHub's macos-26 runner has 3). So the count is min(cores, 4): the default's cap, never more
-// threads than the host has. KGP reads `kotlin.native.parallelThreads` from each project's extra
-// properties; an explicit `-Pkotlin.native.parallelThreads=` still wins.
-val nativeParallelThreads = minOf(Runtime.getRuntime().availableProcessors(), 4)
-if (!providers.gradleProperty("kotlin.native.parallelThreads").isPresent) {
-    allprojects { extra["kotlin.native.parallelThreads"] = nativeParallelThreads.toString() }
-}
-
-// ---- Platform-bound tests (`docs/testing.md`, "Where each test runs") ----------------------------------------------
-//
-// The shared `commonTest` runs ONCE, on the JVM, under `build`. A platform runtime runs only what only it can answer:
-// a module's `iosTest` (the iOS adapters and their contract bindings on the simulator's `test.kexe`, the native
-// SQLite drivers) through `./gradlew iosPlatformTest` (macOS), and a module's `androidDeviceTest` through
-// `./gradlew androidPlatformTest` (`snapsync.android` registers that one, beside the managed device it runs on).
-// Derived from the source tree, never listed: a module that gains iOS tests is run the day it does.
-subprojects {
-    if (file("src/iosTest").isDirectory || file("src/iosSimulatorArm64Test").isDirectory) {
-        tasks.register("iosPlatformTest") {
-            group = "verification"
-            description = "Runs this module's iOS tests on the simulator."
-            dependsOn("iosSimulatorArm64Test")
-        }
-    }
-}
-
-// ---- iOS test compiles off a Mac -----------------------------------------------------------------------------------
-//
-// Off macOS no simulator runs an iOS test, yet `build` compiled every module's test klibs for both iOS targets (37
-// Kotlin/Native compiles on Linux, linked and run never). `ios-build`'s `iosPlatformTest` compiles and runs the iOS
-// tests on a Mac, so on any other host their compiles are switched off; the main iOS compiles stay, so iOS-only
-// breakage in production code still fails `build` (the Linux-runnable proxy, AGENTS.md).
-if (!System.getProperty("os.name").startsWith("Mac")) {
-    subprojects {
-        tasks.matching { it.name.matches(Regex("""compileTestKotlinIos\w*|link\w*TestIos\w*""")) }
-            .configureEach { enabled = false }
-    }
 }
