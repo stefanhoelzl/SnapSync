@@ -51,7 +51,11 @@ class ForceStopJourney {
                 val event = joinedTo(shown) ?: fail("A is not joined: the journeys before this one join it")
                 val sharedBefore = sharedCount(shown).done
                 val unionBefore = union(http, backend, event).size
-                assertTrue(heartbeats() >= 1, "A, joined, has its heartbeat pending: ${heartbeats()}")
+                // A re-arms its heartbeat at every wake's end (the foreground's, a scheduled one's, the download
+                // session's), and JobScheduler replaces the pending job each time, so a single read can fall in that
+                // gap: one read found none and the next, in the same assertion, one (CI 2026-11-08). The read repeats,
+                // as the force-stop's below does; on the emulator the arm after the join lands as on main (~340 ms).
+                until(REARMED, "A, joined, has its heartbeat pending") { heartbeats() >= 1 }
 
                 device.forceStop(AndroidRun.APP)
                 // JobScheduler drops a stopped package's jobs on its own thread, after `am force-stop` has returned: a
@@ -90,5 +94,8 @@ class ForceStopJourney {
 
         /** How long JobScheduler may take to drop a force-stopped package's jobs. */
         val CANCELLED = 10.seconds
+
+        /** How long a joined A's heartbeat may be between JobScheduler's replacements of it. */
+        val REARMED = 10.seconds
     }
 }
