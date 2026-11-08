@@ -32,8 +32,8 @@
 # runs in everyone's `./gradlew build`, so it was not adopted. EXPIRY: revisit when detekt 2.0 reaches
 # stable, or at the first parse failure on newer syntax — whichever comes first.
 #
-# WHAT THIS TIER IS FOR. Build scripts are Kotlin, they carry real logic — the root script renders a
-# diagram whose byte-identical twin lives in `:tools:diagrams` — and until this gate landed nothing
+# WHAT THIS TIER IS FOR. Build scripts are Kotlin, they carry real logic — the root script once rendered a
+# diagram whose byte-identical twin lived in a second module — and until this gate landed nothing
 # inspected them at all.
 #
 # EVERY number here is detekt's default, and that is the finding rather than a shortcut: the measured

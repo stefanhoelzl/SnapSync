@@ -30,7 +30,7 @@ import org.gradle.api.tasks.TaskAction
  *  - a `skipped(…, packages)` leaves those packages out of the measurements it stands in.
  *
  * And it holds the description complete ([CoverageEntriesTask], on `check`): every module with a JVM target outside
- * `:test:*` and `:tools:*` declares its coverage, so no module is measured — or left out — by nobody's decision.
+ * `:test:*` declares its coverage, so no module is measured — or left out — by nobody's decision.
  */
 class CoveragePlugin : Plugin<Project> {
     override fun apply(root: Project) {
@@ -79,9 +79,9 @@ class CoveragePlugin : Plugin<Project> {
 
     private fun coverageOf(p: Project): ModuleCoverage = p.extensions.getByType(ModuleCoverage::class.java)
 
-    /** A JVM target (Kover is JVM-only), outside the test and tool modules, which are measured by nothing. */
+    /** A JVM target (Kover is JVM-only), outside the test modules, which are measured by nothing. */
     private fun isMeasurable(p: Project): Boolean =
-        !p.path.startsWith(":test:") && !p.path.startsWith(":tools:") &&
+        !p.path.startsWith(":test:") &&
             (p.plugins.hasPlugin("org.jetbrains.kotlin.jvm") || "compileKotlinJvm" in p.tasks.names)
 }
 
@@ -132,7 +132,7 @@ abstract class CoverageEntriesTask : DefaultTask() {
             "  $it declares no `coverage { }` in its build file: describe its coverage, or skip it with a reason"
         }
         val unmeasured = unmeasurable.map {
-            "  $it declares `coverage { }`, but Kover cannot measure it (no JVM target, or a test/tool module)"
+            "  $it declares `coverage { }`, but Kover cannot measure it (no JVM target, or a test module)"
         }
         val problems = undeclared + unmeasured
         if (problems.isNotEmpty()) {

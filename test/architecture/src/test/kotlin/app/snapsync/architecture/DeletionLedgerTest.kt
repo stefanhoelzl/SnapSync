@@ -629,6 +629,38 @@ class DeletionLedgerTest {
         assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
     }
 
+    @Test
+    fun `the build's retired tools and diagrams stay dead`() {
+        val retired = listOf(
+            "tools" to "the detekt rules are build-logic's `:detekt-rules`, the diagrams build-logic's `snapsync.diagrams`",
+            "architecture/zones" + ".md" to "the layer graph is `modules.md`, grouped by top-level directory",
+            "architecture/di" + ".md" to "the composition's graph classes read plainly (`docs/architecture.md`)",
+            "architecture/.modules" + "-inputs.txt" to "the module graph renders from the project model, during `build`",
+        )
+        val resurrections = retired.filter { (path, _) -> File(repoRoot, path).exists() }
+            .map { (path, now) -> "$path ($now — phase 6)" }
+        assertTrue(resurrections.isEmpty(), "retired items came back: $resurrections")
+    }
+
+    /**
+     * Build logic lives in `build-logic/` (AGENTS.md), so the root build file holds only the dependency-analysis
+     * classpath force (`buildscript`) and the `plugins` block. A top-level statement of any other kind is logic grown
+     * back where it may not live — the root once held the coverage description, the module-graph renderer and every
+     * convention (phase 6).
+     */
+    @Test
+    fun `the root build file holds only its buildscript and plugins blocks`() {
+        val script = File(repoRoot, "build.gradle.kts").readLines()
+        val topLevel = script.filter { it.isNotBlank() && !it.first().isWhitespace() && !it.startsWith("//") }
+        val foreign = topLevel.filterNot { it == "}" || it == "buildscript {" || it == "plugins {" }
+        assertEquals(
+            emptyList(),
+            foreign,
+            "the root build file grew build logic: move it into a build-logic plugin (`snapsync.conventions` applies " +
+                "every convention), or delete this row with the argument in the PR",
+        )
+    }
+
     private companion object {
         /** Where the integration suite's polling harness lived: the suite, the typed client and the control layer. */
         val HARNESS_MODULES = listOf("test/integration", "test/client", "test/control")

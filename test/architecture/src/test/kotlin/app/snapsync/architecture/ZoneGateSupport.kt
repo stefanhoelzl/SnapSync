@@ -115,8 +115,8 @@ internal object ZoneGates {
      * platform API in the core is exactly the leak the identifier gate is for — the exemption is for
      * prose *about* the code, not for values inside it.
      *
-     * `:tools:diagrams` blanks comments by the same rules (its `Scan.kt`); the modules share no code, so a
-     * change to one is a change to both.
+     * build-logic's `CommentBlanker` (the diagrams' scan) blanks comments by the same rules; the builds share no
+     * code, so a change to one is a change to both.
      */
     fun stripComments(source: String): String {
         val out = StringBuilder(source.length)

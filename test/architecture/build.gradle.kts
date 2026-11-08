@@ -89,11 +89,11 @@ dependencies {
 
 // The per-adapter gate's subject (`docs/testing.md`, "Every adapter is covered"): every production module's compiled
 // code, per target — JVM and Android classes, iOS klibs. Production is derived, never listed: every module but the
-// test-only ones (`:test:*`, `:tools:*`), the mocks, and the desktop harness, which is test equipment. A module that
+// test-only ones (`:test:*`), the mocks, and the desktop harness, which is test equipment. A module that
 // gains a target is read the day it does. Resolved when the task graph is built, so every project has registered
 // its tasks by then.
 val codeModules = rootProject.subprojects.filter { p ->
-    p.buildFile.exists() && !p.path.startsWith(":test:") && !p.path.startsWith(":tools:") &&
+    p.buildFile.exists() && !p.path.startsWith(":test:") &&
         p.path != ":adapter:generic:mock" && p.path != ":app:desktop"
 }
 val compiledCode = mapOf(
