@@ -20,9 +20,9 @@ import app.snapsync.contracts.verify
 import app.snapsync.gallery.IosGallery
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.inbound.Log
 import app.snapsync.ports.GalleryReader
 import app.snapsync.ports.LibraryGrant
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.test.Test
@@ -73,7 +73,7 @@ class PhotoKitNoGrantContractTest {
                     unreachable,
                 )
             }
-            val reader = IosGalleryReader(Logger.withTag("contract"))
+            val reader = IosGalleryReader(Log("contract"))
             val gallery = IosGallery(reader, PhotoLibraryPermission(), CoroutineScope(Dispatchers.Default))
             return Entered.Ready(GalleryChange(gallery.recorded(log)) {})
         }
@@ -92,7 +92,7 @@ class PhotoKitNoGrantContractTest {
                     unreachable,
                 )
             }
-            val reader = IosGalleryReader(Logger.withTag("contract"))
+            val reader = IosGalleryReader(Log("contract"))
             val gallery = IosGallery(reader, PhotoLibraryPermission(), CoroutineScope(Dispatchers.Default))
             return Entered.Ready(SeededLibrary(gallery.recorded(log)))
         }

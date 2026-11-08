@@ -5,6 +5,7 @@ import app.snapsync.contracts.EntryDriver
 import app.snapsync.contracts.InAppContract
 import app.snapsync.domain.process.ProcessMetricReport
 import app.snapsync.domain.process.ProcessMetricRules
+import app.snapsync.inbound.Log
 import app.snapsync.levers.GalleryView
 import app.snapsync.levers.MetricReport
 import app.snapsync.levers.WipeWindow
@@ -21,7 +22,6 @@ import app.snapsync.rig.gallery.photoKitCensus
 import app.snapsync.rig.gallery.seedPhotos
 import app.snapsync.rig.gallery.wipeGallery
 import app.snapsync.ui.state.Layer
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 
 /**
@@ -34,7 +34,7 @@ import kotlinx.coroutines.Dispatchers
  * command maps just make it carry more.
  */
 
-private val log = Logger.withTag("rig")
+private val log = Log("rig")
 
 /**
  * The typed services this launch serves, once its hooks exist: every declared one over its world — each refused, with

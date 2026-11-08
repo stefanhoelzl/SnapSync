@@ -33,16 +33,20 @@ class LinkReadingTest {
     private val lines = mutableListOf<LogLine>()
 
     @BeforeTest
-    fun record() = Log.install(
-        listOf(object : LogWriter {
-            override fun write(line: LogLine) {
-                lines += line
-            }
-        }),
-    )
+    fun record() {
+        Log.install(
+            listOf(object : LogWriter {
+                override fun write(line: LogLine) {
+                    lines += line
+                }
+            }),
+        )
+    }
 
     @AfterTest
-    fun stop() = Log.install(emptyList())
+    fun stop() {
+        Log.install(emptyList())
+    }
 
     private fun logged(): String = lines.single { it.tag == "LinkReading" }.text()
 

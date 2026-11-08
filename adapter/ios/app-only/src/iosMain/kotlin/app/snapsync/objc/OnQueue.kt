@@ -1,6 +1,6 @@
 package app.snapsync.objc
 
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_queue_t
 
@@ -12,5 +12,5 @@ import platform.darwin.dispatch_queue_t
  * holds (`docs/architecture.md`, "Concurrency and failure"), so this helper opens no lane by itself. It lives in the
  * app-only module, beside the only callers, because `platform.darwin` is outside the extension's framework allowlist.
  */
-fun onQueue(queue: dispatch_queue_t, log: Logger, name: String, block: () -> Unit) =
+fun onQueue(queue: dispatch_queue_t, log: Log, name: String, block: () -> Unit) =
     dispatch_async(queue) { objcBoundary(log, name, block) }

@@ -93,7 +93,6 @@ kotlin {
 
             implementation(project(":adapter:generic:sentry"))
             implementation(libs.coroutines.core)
-            implementation(libs.kermit)
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)

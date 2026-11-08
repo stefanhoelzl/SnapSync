@@ -35,8 +35,6 @@ dependencies {
     implementation(project(":domain:query"))
     // The mirror: the control channel's typed client, whose wire `UiState` it re-composes.
     implementation(project(":test:control"))
-    // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).
-    implementation(libs.kermit)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     // The panels are deliberately raw Material 3, never App* (specs: full-stack-harness,

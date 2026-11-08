@@ -3,14 +3,13 @@
 package app.snapsync.ios.registry
 
 import app.snapsync.config.osCarriesOsDrivenUpload
-import app.snapsync.logging.logAt
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.ObjCFailure
 import app.snapsync.objc.checkedObjC
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.RegistrationAnswer
 import app.snapsync.ports.RegistrationState
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Photos.PHPhotoLibrary
@@ -31,7 +30,7 @@ import platform.Photos.PHPhotoLibrary
  * OS and holds no `if` (phase 11f — before it, the root left the adapter unconstructed there).
  */
 internal class PhotoKitExtensionRegistry(
-    private val log: Logger,
+    private val log: Log,
     private val api: ExtensionRegistrationApi = SystemExtensionRegistrationApi,
     /** Whether this OS carries the selector. The device's, unless a replay supplies the recording's (it did). */
     override val supported: Boolean = osCarriesOsDrivenUpload(),
@@ -52,9 +51,13 @@ internal class PhotoKitExtensionRegistry(
                 enabled,
             )
         }.also {
-            log.logAt(
-                Severity.Debug,
-            ) { "setUploadJobExtensionEnabled(enabled=$enabled) = ok=${it.ok} ${it.errorDomain}:${it.errorCode}" }
+            log.unlabelled.d(
+                "setUploadJobExtensionEnabled",
+                "enabled" of enabled,
+                "ok" of it.ok,
+                "errorDomain" of it.errorDomain,
+                "errorCode" of it.errorCode,
+            )
         }
         return RegistrationAnswer.Answered(answer.ok, answer.errorDomain, answer.errorCode)
     }

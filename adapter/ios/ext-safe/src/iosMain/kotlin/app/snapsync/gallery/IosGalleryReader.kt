@@ -4,6 +4,8 @@ package app.snapsync.gallery
 
 import app.snapsync.annotations.Never
 import app.snapsync.annotations.NeverAnswers
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.ios.qos.qosLabel
 import app.snapsync.objc.ObjCFailure
@@ -23,7 +25,6 @@ import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.WriteOutcome
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.withContext
@@ -70,7 +71,7 @@ import kotlin.time.Instant
  * **no** albums, empty and without an error, even when a selected asset is in one (SE2, a real WhatsApp album).
  */
 @NeverAnswers(Never(member = "albumKind", answer = "LibraryAlbumKind.FOLDER"))
-class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : GalleryReader {
+class IosGalleryReader(private val log: Log = Log("gallery")) : GalleryReader {
 
     override fun access(): LibraryGrant = currentPhotoPermission()
 
@@ -89,9 +90,11 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
                 photoKitAssets(PHAsset.fetchAssetsWithOptions(options))
             }
         }.also {
-            log.i {
-                "gallery.assets(qos=${qosLabel()}) = ${"${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}, read at qos=$readQos"}"
-            }
+            log.unlabelled.i(
+                "gallery.assets(qos=<qosLabel>) = <value>",
+                "qosLabel" of qosLabel(),
+                "value" of ("${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}, read at qos=$readQos"),
+            )
         }
     }
 
@@ -103,9 +106,12 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
             readable { if (ids.isEmpty()) emptyList() else photoKitAssetResources(fetchById(ids)) }
         }.also {
             val read = (it as? GalleryRead.Read)?.value?.sumOf { a -> a.resources.size }
-            log.i {
-                "gallery.resources(${ids.size} asset(s), qos=${qosLabel()}) = ${read ?: "not readable"} resource(s)"
-            }
+            log.unlabelled.i(
+                "gallery.resources(<ids.size> asset(s), qos=<qosLabel>) = <value> resource(s)",
+                "ids.size" of ids.size,
+                "qosLabel" of qosLabel(),
+                "value" of (read ?: "not readable"),
+            )
         }
 
     /** User albums only: a smart album's title is system-localized, so nothing can be decided on it. */
@@ -170,7 +176,7 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
         }.fold(
             onSuccess = { placeholderId?.let(::PlatformAlbumId) },
             onFailure = {
-                log.w(it) { "createAlbum failed" }
+                log.unlabelled.w("createAlbum failed", cause = it)
                 null
             },
         )
@@ -216,7 +222,10 @@ class IosGalleryReader(private val log: Logger = Logger.withTag("gallery")) : Ga
             ?: return WriteOutcome.Failed("album $album no longer resolves")
         val found = fetchById(assets)
         if (found.count == 0uL) {
-            log.i { "addToAlbum: none of ${assets.size} asset(s) resolve — nothing to add" }
+            log.unlabelled.i(
+                "addToAlbum: none of <assets.size> asset(s) resolve — nothing to add",
+                "assets.size" of assets.size,
+            )
             return WriteOutcome.Ok
         }
         return checkedObjC("addToAlbum") { error ->

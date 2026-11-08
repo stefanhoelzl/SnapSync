@@ -10,7 +10,7 @@ import app.snapsync.contracts.ExtensionHostUnderTest
 import app.snapsync.contracts.Host
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
 import kotlin.test.Test
 
 /**
@@ -31,7 +31,7 @@ class IosExtensionHostContractTest {
             log: CallLog,
         ): Entered<ExtensionHostUnderTest> {
             // The OS's two calls reach the bare adapter, which no port call carries; the clause sees the port's proxy.
-            val bare = IosExtensionHost(Logger.withTag("contract"))
+            val bare = IosExtensionHost(Log("contract"))
             return Entered.Ready(
                 ExtensionHostUnderTest(
                     bare.recorded(log),

@@ -6,10 +6,10 @@ import app.snapsync.annotations.PlatformEntry
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.ports.Links
-import co.touchlab.kermit.Logger
 import platform.Foundation.NSUserActivity
 
 /**
@@ -22,7 +22,7 @@ import platform.Foundation.NSUserActivity
  * a link is an event link, and what opening one does, is the core's.
  */
 @NeverAnswers(Never(handler = "onLink", answer = "LinkDelivery.InstallReferrer"))
-class IosLinks(private val log: Logger) : Links {
+class IosLinks(private val log: Log) : Links {
     private val handlers = HandlerSlot<LinkHandlers>("Links", BeforeListen.Logged(log))
 
     @CompositionOnly

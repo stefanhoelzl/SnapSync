@@ -18,7 +18,6 @@ import app.snapsync.contracts.verify
 import app.snapsync.domain.crash.CrashOptions
 import app.snapsync.domain.crash.CrashShaping
 import app.snapsync.ports.CrashReporter
-import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -36,7 +35,7 @@ import io.sentry.Sentry as SentryJava
  *
  * The adapter and the SDK are process-global, so every clause gets a fresh instance the only way one exists here: the
  * SDK closed, its envelope cache wiped (an undelivered envelope persists there across runs and would be delivered into
- * a later clause), the start flag forgotten, and Kermit's writers restored.
+ * a later clause), the start flag forgotten, and the channel reset.
  *
  * `ACROSS_A_RESTART` is reached here: the ingest listens only once the channel is relaunched, and the relaunch closes
  * the SDK WITHOUT wiping its cache — so what was captured before is delivered by the next start, as a crash is by the
@@ -67,7 +66,6 @@ class SentryCrashReporterContractTest {
                     "a process death is SentryProcessDeathContractTest's: it runs the app's process",
                 )
             }
-            val writers = Logger.config.logWriterList
             resetChannel(wipeCache = true)
             val ingest = LoopbackIngest()
             val restart = CrashRestart {
@@ -98,7 +96,6 @@ class SentryCrashReporterContractTest {
             return Entered.Ready(subject) {
                 resetChannel(wipeCache = true)
                 ingest.stop()
-                Logger.setLogWriters(writers)
             }
         }
     }

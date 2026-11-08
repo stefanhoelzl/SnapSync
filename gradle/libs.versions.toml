@@ -20,7 +20,6 @@ swagger-parser = "2.1.48"
 kotlinpoet = "2.2.0"
 coroutines = "1.11.0"
 sqldelight = "2.4.1"
-kermit = "2.2.0"
 detekt = "1.23.8"
 # The Compose rules detekt runs (`config/detekt/_base.yml`): 0.4.x is the last line built against detekt 1.x.
 compose-rules = "0.4.28"
@@ -113,7 +112,6 @@ sqldelight-driver-sqlite = { module = "app.cash.sqldelight:sqlite-driver", versi
 sqldelight-driver-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-driver-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-dialect-sqlite = { module = "app.cash.sqldelight:sqlite-3-25-dialect", version.ref = "sqldelight" }
-kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 kotlinx-rpc-core = { module = "org.jetbrains.kotlinx:kotlinx-rpc-core", version.ref = "kotlinx-rpc" }
 kotlinx-rpc-krpc-ktor-server = { module = "org.jetbrains.kotlinx:kotlinx-rpc-krpc-ktor-server", version.ref = "kotlinx-rpc" }

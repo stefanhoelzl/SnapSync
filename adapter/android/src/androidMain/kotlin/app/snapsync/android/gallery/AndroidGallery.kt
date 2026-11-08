@@ -13,6 +13,8 @@ import app.snapsync.annotations.NeverAnswers
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.Gallery
 import app.snapsync.ports.GalleryHandlers
@@ -24,7 +26,6 @@ import app.snapsync.ports.ImportSettled
 import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.SelectionSnapshot
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -55,7 +56,7 @@ class AndroidGallery(
     context: Context,
     private val permission: PhotoGrants,
     private val scope: CoroutineScope,
-    private val log: Logger = Logger.withTag("gallery"),
+    private val log: Log = Log("gallery"),
 ) : AndroidGalleryReader(context, permission::current, log), Gallery {
 
     private val handlers = HandlerSlot<GalleryHandlers>("Gallery", BeforeListen.Logged(log))
@@ -79,7 +80,7 @@ class AndroidGallery(
                 when {
                     snapshot !is GalleryRead.Read -> Unit
                     access() != LibraryGrant.LIMITED ->
-                        log.i { "selection read discarded: the grant is no longer partial" }
+                        log.unlabelled.i("selection read discarded: the grant is no longer partial")
                     else -> read.value = SelectionSnapshot(snapshot.value)
                 }
             }
@@ -121,7 +122,13 @@ class AndroidGallery(
                 PlatformCalls.attempt {
                     volume to (MediaStore.getVersion(appContext, volume) to MediaStore.getGeneration(appContext, volume))
                 }
-                    .onFailure { log.w(it) { "the media provider gave no generation for $volume" } }.getOrNull()
+                    .onFailure {
+                        log.unlabelled.w(
+                            "the media provider gave no generation for <volume>",
+                            "volume" of volume,
+                            cause = it,
+                        )
+                    }.getOrNull()
             }.toMap(),
         )
     }
@@ -140,13 +147,13 @@ class AndroidGallery(
                 }
                 COLLECTIONS.forEach { appContext.contentResolver.registerContentObserver(it, true, fresh) }
                 observer = fresh
-                log.i { "selection observer opened" }
+                log.unlabelled.i("selection observer opened")
                 reads.trySend(Unit) // the baseline
             }
             !wanted && open != null -> {
                 appContext.contentResolver.unregisterContentObserver(open)
                 observer = null
-                log.i { "selection observer closed" }
+                log.unlabelled.i("selection observer closed")
             }
         }
     }

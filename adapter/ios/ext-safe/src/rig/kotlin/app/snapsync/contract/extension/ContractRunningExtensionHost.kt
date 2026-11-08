@@ -7,6 +7,8 @@ import app.snapsync.contracts.OsUploadQueueContract
 import app.snapsync.inbound.Answered
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.InboundImplementation
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ios.upload.Step
 import app.snapsync.ios.upload.callsFor
 import app.snapsync.ios.upload.extensionTransferClauses
@@ -15,7 +17,6 @@ import app.snapsync.logging.appGroupDirectory
 import app.snapsync.ports.ExtensionHandlers
 import app.snapsync.ports.ExtensionHost
 import app.snapsync.ports.ProcessingAnswer
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.runBlocking
@@ -115,7 +116,7 @@ fun extensionRunPlan(): List<Pair<String, Int>> =
  * kills — about 60 s in, with no notice — ends the run rather than repeating.
  */
 class ContractRunningExtensionHost(private val inner: ExtensionHost) : ExtensionHost {
-    private val log = Logger.withTag("ExtensionContract")
+    private val log = Log("ExtensionContract")
 
     @CompositionOnly
     override fun inbound(handlers: ExtensionHandlers) =
@@ -135,7 +136,11 @@ class ContractRunningExtensionHost(private val inner: ExtensionHost) : Extension
         deleteContractRunFile(requestPath)
         val call = contractRunFile(RUN_CALL_FILE)?.let(::readContractRunFile)?.trim()?.toIntOrNull() ?: 1
         val tape = contractRunFile(RUN_TAPE_FILE)?.let(::readContractRunFile)
-        log.i { "[contract] $request: call $call, in place of the upload cycle" }
+        log.unlabelled.i(
+            "[contract] <request>: call <call>, in place of the upload cycle",
+            "request" of request,
+            "call" of call,
+        )
         val step = if (request.substringBefore(' ') == OsUploadQueueContract.name) {
             transferRunStep(request.substringAfter(' '), call, tape)
         } else {
@@ -150,13 +155,21 @@ class ContractRunningExtensionHost(private val inner: ExtensionHost) : Extension
                 contractRunFile(RUN_TAPE_FILE)?.let { writeContractRunFile(it, step.tape) }
                 contractRunFile(RUN_CALL_FILE)?.let { writeContractRunFile(it, "${call + 1}") }
                 writeContractRunFile(requestPath, request)
-                log.i { "[contract] $request: call $call prepared; asking for the next" }
+                log.unlabelled.i(
+                    "[contract] <request>: call <call> prepared; asking for the next",
+                    "request" of request,
+                    "call" of call,
+                )
                 ProcessingAnswer.PROCESSING
             }
             is Step.Done -> {
                 clearRunProgress()
                 val written = contractRunFile(RUN_RESULT_FILE)?.let { writeContractRunFile(it, step.body) } ?: false
-                log.i { "[contract] $request: finished; result written=$written" }
+                log.unlabelled.i(
+                    "[contract] <request>: finished; result written=<written>",
+                    "request" of request,
+                    "written" of written,
+                )
                 ProcessingAnswer.COMPLETED
             }
         }

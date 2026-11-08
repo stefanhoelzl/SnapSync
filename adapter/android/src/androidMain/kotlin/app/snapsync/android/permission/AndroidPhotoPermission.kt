@@ -6,8 +6,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import app.snapsync.android.scene.ForegroundActivity
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.LibraryGrant
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,7 +38,7 @@ import kotlin.coroutines.resume
 class AndroidPhotoPermission(
     context: Context,
     private val foreground: ForegroundActivity,
-    private val log: Logger = Logger.withTag("photoPermission"),
+    private val log: Log = Log("photoPermission"),
 ) : PhotoGrants {
 
     private val appContext = context.applicationContext
@@ -70,12 +71,12 @@ class AndroidPhotoPermission(
         if (current() != LibraryGrant.LIMITED) state.value else ask("widenSelection")
 
     private fun refresh() {
-        run { current() }.also { log.i { "photoPermission.onResumed = ${"$it"}" } }
+        run { current() }.also { log.unlabelled.i("photoPermission.onResumed = <value>", "value" of ("$it")) }
     }
 
     private suspend fun ask(name: String): LibraryGrant = withContext(Dispatchers.Main) {
         val activity = foreground.current ?: return@withContext current().also {
-            log.i { "$name: no activity in front — asked nothing" }
+            log.unlabelled.i("<name>: no activity in front — asked nothing", "name" of name)
         }
         suspendCancellableCoroutine { cont ->
             val key = "snapsync.photoPermission.${requests.incrementAndGet()}"
@@ -86,7 +87,14 @@ class AndroidPhotoPermission(
                     launcher?.unregister()
                     record.edit().putBoolean(ASKED, true).apply()
                     current()
-                }.also { log.i { "photoPermission.$name.completion(granted=$granted) = ${"$it"}" } }
+                }.also {
+                    log.unlabelled.i(
+                        "photoPermission completion",
+                        "request" of name,
+                        "granted" of granted,
+                        "answer" of it,
+                    )
+                }
                 if (cont.isActive) cont.resume(now)
             }
             launcher.launch(requested())

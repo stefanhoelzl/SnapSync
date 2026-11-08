@@ -1,10 +1,11 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.levers.WipeOutcome
 import app.snapsync.levers.WipeScope
 import app.snapsync.levers.WipeWindow
 import app.snapsync.ports.LibraryGrant
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSFastEnumerationProtocol
@@ -87,7 +88,7 @@ import kotlin.coroutines.resume
  * only truth about what happened.
  */
 suspend fun wipeGallery(
-    log: Logger,
+    log: Log,
     scope: WipeScope,
     requestAccess: suspend () -> LibraryGrant,
     window: WipeWindow? = null,
@@ -96,7 +97,10 @@ suspend fun wipeGallery(
     // nothing at all — the one failure mode a wipe cannot afford, since the operator's next move would be
     // to run it again. Already-granted answers at once, denied too.
     val grant = requestAccess()
-    log.i { "wipe: photo access = $grant (LIMITED scopes the wipe to the hand-picked selection)" }
+    log.unlabelled.i(
+        "wipe: photo access = <grant> (LIMITED scopes the wipe to the hand-picked selection)",
+        "grant" of grant,
+    )
     return performWipe(log, scope, grant.name, window)
 }
 
@@ -138,7 +142,7 @@ suspend fun wipeGallery(
  */
 @OptIn(ExperimentalForeignApi::class)
 private suspend fun performWipe(
-    log: Logger,
+    log: Log,
     scope: WipeScope,
     grant: String,
     window: WipeWindow?,
@@ -200,22 +204,29 @@ private suspend fun performWipe(
     val matchedAlbums = (albums?.count ?: 0uL).toLong()
     val matchedFolders = (folders?.count ?: 0uL).toLong()
 
-    log.i {
-        "wipe: matched $matchedAssets asset(s), submitting $selected" +
-            (window?.let { " (window offset=${it.offset} limit=${it.limit})" } ?: "") +
-            " ($deletable deletable, by source $bySource), $matchedAlbums album(s), $matchedFolders folder(s)"
-    }
+    log.unlabelled.i(
+        "wipe: matched",
+        "assets" of matchedAssets,
+        "submitting" of selected,
+        "windowOffset" of window?.offset,
+        "windowLimit" of window?.limit,
+        "deletable" of deletable,
+        "bySource" of bySource,
+        "albums" of matchedAlbums,
+        "folders" of matchedFolders,
+    )
 
     // REFUSE rather than submit an impossible request. PhotoKit accepts a delete of assets the app may
     // not delete and then never completes it — no error, no presentation, no callback — which is the
     // measured symptom this command spent an evening chasing. Asking first turns that silence into a
     // stated answer, immediately, and it is the honest answer: nothing here was ever going to be deleted.
     if (selected > 0L && deletable == 0L) {
-        log.e {
-            "wipe: REFUSING — none of the $selected submitted asset(s) is deletable by this app " +
-                "(by source: $bySource). Assets synced from iTunes or shared from iCloud are read-only " +
-                "to an app; PhotoKit would accept the request and never complete it."
-        }
+        log.unlabelled.e(
+            "wipe: REFUSING — none of the submitted assets is deletable by this app. Assets synced from iTunes or shared from iCloud are read-only " +
+                "to an app; PhotoKit would accept the request and never complete it.",
+            "submitted" of selected,
+            "bySource" of bySource,
+        )
         return WipeOutcome(
             scope = scope,
             matchedAssets = matchedAssets,
@@ -232,10 +243,11 @@ private suspend fun performWipe(
         )
     }
 
-    log.i {
-        "wipe: submitting the change on ${NSThread.currentThread.description}, then awaiting the system " +
-            "confirmation — for as long as it takes. Someone must tap the phone; nothing here will give up."
-    }
+    log.unlabelled.i(
+        "wipe: submitting the change, then awaiting the system confirmation — for as long as it takes. Someone " +
+            "must tap the phone; nothing here will give up.",
+        "thread" of NSThread.currentThread.description,
+    )
 
     // Suspends until PhotoKit answers, with no deadline of our own — see the KDoc. `cancellable` still
     // matters: the caller disconnecting, or the app being killed, unwinds this cleanly instead of pinning
@@ -259,9 +271,12 @@ private suspend fun performWipe(
 
     // A tapped "Cancel" arrives as a failure carrying `PHPhotosError.userCancelled` (3072) — named here
     // because "committed=false" alone reads as a bug, and a cancel is the operator answering.
-    log.i {
-        "wipe: committed=$committed" + (error?.let { " error=${it.code} ${it.localizedDescription}" } ?: "")
-    }
+    log.unlabelled.i(
+        "wipe: answered",
+        "committed" of committed,
+        "errorCode" of error?.code,
+        "error" of error?.localizedDescription,
+    )
     return WipeOutcome(
         scope = scope,
         matchedAssets = matchedAssets,

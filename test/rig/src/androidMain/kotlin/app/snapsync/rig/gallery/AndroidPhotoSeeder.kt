@@ -6,9 +6,10 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.ExifInterface
 import android.provider.MediaStore
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.levers.SeedKind
 import app.snapsync.levers.SeedOutcome
-import co.touchlab.kermit.Logger
 import java.io.File
 import java.time.Instant
 import java.time.ZoneOffset
@@ -24,10 +25,10 @@ import java.time.format.DateTimeFormatter
  * The photos are the APP's own items. A photo the shell writes (`adb push`) is hidden from every other app, so it is no
  * seed at all (measured 2026-09-29); an app's own items it reads with or without a grant.
  */
-fun seedMediaStore(context: Context, log: Logger, count: Int, kind: SeedKind): SeedOutcome {
+fun seedMediaStore(context: Context, log: Log, count: Int, kind: SeedKind): SeedOutcome {
     val recent = kind != SeedKind.BULK
     val base = if (recent) Instant.now().plusSeconds(LEAD_SECONDS) else Instant.parse("2001-01-01T00:00:00Z")
-    log.i { "seeding $count $kind photo(s) into DCIM/Camera" }
+    log.unlabelled.i("seeding <count> <kind> photo(s) into DCIM/Camera", "count" of count, "kind" of kind)
     var created = 0
     for (index in 0 until count) {
         val above = kind == SeedKind.NOISE || (kind == SeedKind.POLICY && index % 2 == 0)
@@ -39,7 +40,11 @@ fun seedMediaStore(context: Context, log: Logger, count: Int, kind: SeedKind): S
                 "seed-${taken.epochSecond}-$index.jpg",
             )
         ) {
-            log.e { "seeding failed at photo $index (after $created)" }
+            log.unlabelled.e(
+                "seeding failed at photo <index> (after <created>)",
+                "index" of index,
+                "created" of created,
+            )
             return SeedOutcome(requested = count, created = created, kind = kind, failedAtChunk = index)
         }
         created++

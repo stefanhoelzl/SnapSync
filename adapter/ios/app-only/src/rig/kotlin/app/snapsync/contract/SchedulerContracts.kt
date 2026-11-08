@@ -23,8 +23,8 @@ import app.snapsync.contracts.WakeState
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.render
 import app.snapsync.contracts.run
+import app.snapsync.inbound.Log
 import app.snapsync.objc.ObjCFailure
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.delay
 import platform.BackgroundTasks.BGAppRefreshTaskRequest
@@ -137,7 +137,7 @@ internal class TappingBackgroundTaskApi(private val real: BackgroundTaskApi) : B
  * The app's own [IosWake] in a rig build: production's, over a task API whose launches a device's contract run can
  * take over for a clause. The rig's adapter set builds the root's wake with this ([rootWake] in the hook).
  */
-fun contractTappableWake(log: Logger): IosWake = IosWake(log, TappingBackgroundTaskApi(SystemBackgroundTaskApi))
+fun contractTappableWake(log: Log): IosWake = IosWake(log, TappingBackgroundTaskApi(SystemBackgroundTaskApi))
 
 /** Passes [real]'s task through, recording its completion and expiration handler, and the expiry as an event. */
 private class RecordingLaunchedTask(private val real: LaunchedTask, private val recorder: Recorder) : LaunchedTask {
@@ -276,7 +276,7 @@ internal fun schedulerInState(
     afterDispose: () -> Unit = {},
 ): Entered<ScheduledWakes> {
     HEARTBEATS.forEach(tasks::cancel)
-    val wake = IosWake(Logger.withTag("contract"), tasks).recorded(log)
+    val wake = IosWake(Log("contract"), tasks).recorded(log)
     return Entered.Ready(
         ScheduledWakes(wake, os) { tasks.pendingIdentifiers().count { it in HEARTBEATS } },
         dispose = {

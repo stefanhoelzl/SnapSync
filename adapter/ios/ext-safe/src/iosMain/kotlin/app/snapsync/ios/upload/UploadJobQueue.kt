@@ -1,7 +1,7 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.inbound.Log
 import app.snapsync.ports.OsUploadQueue
-import co.touchlab.kermit.Logger
 
 /**
  * **Which implementation of the OS upload-job subsystem this target binds**: the
@@ -41,4 +41,4 @@ import co.touchlab.kermit.Logger
  *
  * Decision record: `changes/exercise-os-driven-upload-on-simulator` (D6, D7).
  */
-expect fun uploadJobQueue(log: Logger): OsUploadQueue
+expect fun uploadJobQueue(log: Log): OsUploadQueue

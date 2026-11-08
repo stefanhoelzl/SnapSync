@@ -2,6 +2,8 @@
 
 package app.snapsync.tour
 
+import app.snapsync.inbound.of
+import app.snapsync.inbound.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -163,7 +165,6 @@ import app.snapsync.ui.state.RangeChoice
 import app.snapsync.ui.state.ScreenMessage
 import app.snapsync.ui.state.UiIntent
 import app.snapsync.ui.state.UiState
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -470,12 +471,12 @@ abstract class StatusScreenTour {
             "permissions" to { permissions() },
         )
         for ((name, part) in parts) {
-            tourLog.i { "tour: $name" }
+            tourLog.unlabelled.i("tour: <name>", "name" of name)
             part()
         }
     }
 
-    private val tourLog = Logger.withTag("contract")
+    private val tourLog = Log("contract")
 
     private fun ComposeUiTest.updateRequired() {
         use(Rig(refusal = VersionRefusal("0.4"))) { it.layer is Layer.UpdateRequired }

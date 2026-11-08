@@ -1,11 +1,12 @@
 package app.snapsync.permission
 
 import app.snapsync.gallery.currentPhotoPermission
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.objc.onQueue
 import app.snapsync.ports.LibraryGrant
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import platform.Foundation.NSNotification
@@ -41,7 +42,7 @@ class PhotoLibraryPermission {
 
     private val state = MutableStateFlow(read())
 
-    private val log = Logger.withTag("photoPermission")
+    private val log = Log("photoPermission")
 
     /** The grant as last read: at construction, on every foreground, after a request, and on every [current]. */
     val grant: StateFlow<LibraryGrant> = state
@@ -63,7 +64,7 @@ class PhotoLibraryPermission {
             objcBoundary(log, "photoPermission.onDidBecomeActive") {
                 run {
                     read().also { state.value = it }
-                }.also { log.i { "photoPermission.onDidBecomeActive = ${"$it"}" } }
+                }.also { log.unlabelled.i("photoPermission.onDidBecomeActive = <value>", "value" of ("$it")) }
             }
         }
 

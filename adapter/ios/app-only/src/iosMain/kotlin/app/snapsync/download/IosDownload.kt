@@ -18,7 +18,6 @@ import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
-import co.touchlab.kermit.Logger
 import platform.Foundation.NSError
 import platform.Foundation.NSLock
 import platform.Foundation.NSMutableURLRequest
@@ -50,14 +49,14 @@ const val DOWNLOAD_SESSION_ID = "app.snapsync.download.bg"
  * Kotlin/Native cannot catch.
  */
 class IosDownload internal constructor(
-    private val log: Logger,
+    private val log: Log,
     /** The session boundary: the system's, or a recording's ([DownloadSessionApi]). */
     private val api: DownloadSessionApi,
     /** The session it brings up: production's, or one a contract run keeps apart. */
     private val identifier: String = DOWNLOAD_SESSION_ID,
 ) : Download {
 
-    constructor(log: Logger = Logger.withTag("Download")) : this(log, SystemDownloadSessionApi(log))
+    constructor(log: Log = Log("Download")) : this(log, SystemDownloadSessionApi(log))
 
     private val handlers = AtomicReference<DownloadHandlers?>(null)
 
@@ -129,8 +128,8 @@ class IosDownload internal constructor(
     override suspend fun cancelAll() = run {
         val tasks = session().tasks()
         tasks.forEach { it.cancel() }
-        log.i { "cancelled ${tasks.size} download task(s)" }
-    }.also { log.i { "download.cancelAll" } }
+        log.unlabelled.i("cancelled <tasks.size> download task(s)", "tasks.size" of tasks.size)
+    }.also { log.unlabelled.i("download.cancelAll") }
 
     /**
      * The operating system relaunched (or woke) the app to deliver this session's events. The handler is handed over
@@ -140,22 +139,20 @@ class IosDownload internal constructor(
     fun handleEvents(completion: () -> Unit) {
         val registered = handlers.load()
         if (registered == null) {
-            Log(
-                log.tag,
-            ).unlabelled.e("download session events arrived before the composition registered — released at once")
+            log.unlabelled.e("download session events arrived before the composition registered — released at once")
             SessionCompletion(completion, api).complete()
         } else {
             registered.onBackgroundEvents.handle(SessionRelaunch(drains.now), SessionCompletion(completion, api))
         }
         session()
-        log.i { "download.handleEvents" }
+        log.unlabelled.i("download.handleEvents")
     }
 
     private fun onFinished(task: DownloadTask, facts: TransferOutcome, temp: String) {
         val tag = task.tag ?: return
         update { it + tag }
         handlers.load()?.onFinished?.deliver(FinishedDownload(tag, facts, temp))
-            ?: Log(log.tag).unlabelled.e(
+            ?: log.unlabelled.e(
                 "a download finished before the composition listened — its bytes are downloaded again later",
                 "tag" of tag,
             )

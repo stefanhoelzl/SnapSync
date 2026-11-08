@@ -26,10 +26,10 @@ import app.snapsync.download.DownloadSessionEvents
 import app.snapsync.download.DownloadTask
 import app.snapsync.download.IosDownload
 import app.snapsync.download.SystemDownloadSessionApi
+import app.snapsync.inbound.Log
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.transferSessionConfiguration
 import app.snapsync.ports.TransferOutcome
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSData
 import platform.Foundation.NSDate
@@ -228,7 +228,7 @@ internal fun relaunchedDownload(
     beforeDeliver: () -> Unit = {},
     afterDispose: () -> Unit = {},
 ): Entered<DownloadUnderTest> {
-    val bare = IosDownload(Logger.withTag("contract"), api, DOWNLOAD_CONTRACT_SESSION)
+    val bare = IosDownload(Log("contract"), api, DOWNLOAD_CONTRACT_SESSION)
     return Entered.Ready(
         DownloadUnderTest(
             open = { bare.recorded(log) },
@@ -260,7 +260,7 @@ internal class DeviceRelaunchedDownloadBinding(
         // The system's call that started this process — before the clause runs, so first in the block.
         recorder.event(downloadHandleEvents(DOWNLOAD_CONTRACT_SESSION))
         return relaunchedDownload(
-            RecordingDownloadSessionApi(SystemDownloadSessionApi(Logger.withTag("contract")), recorder),
+            RecordingDownloadSessionApi(SystemDownloadSessionApi(Log("contract")), recorder),
             handler,
             log,
         )

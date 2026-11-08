@@ -5,16 +5,16 @@ package app.snapsync.background
 import app.snapsync.contracts.grantedOf
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.LogLevel
+import app.snapsync.inbound.LogLine
+import app.snapsync.inbound.LogWriter
 import app.snapsync.ports.ScheduleResult
 import app.snapsync.ports.WakeCadence
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.ports.WakeId
 import app.snapsync.ports.WakeNetwork
 import app.snapsync.ports.WakeTrigger
-import co.touchlab.kermit.LogWriter
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
-import co.touchlab.kermit.StaticConfig
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,10 +37,10 @@ import kotlin.time.Duration.Companion.seconds
  */
 class IosWakeTest {
 
-    private class Capturing : LogWriter() {
-        val lines: MutableList<Pair<Severity, String>> = mutableListOf()
-        override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-            lines += severity to message
+    private class Capturing : LogWriter {
+        val lines: MutableList<Pair<LogLevel, String>> = mutableListOf()
+        override fun write(line: LogLine) {
+            lines += line.level to line.text()
         }
     }
 
@@ -51,10 +51,11 @@ class IosWakeTest {
         }
     }
 
-    private val captured = Capturing()
+    @OptIn(CompositionOnly::class)
+    private val captured = Capturing().also { Log.install(listOf(it)) }
 
     private val wake =
-        IosWake(Logger(StaticConfig(minSeverity = Severity.Verbose, logWriterList = listOf(captured)), "test"))
+        IosWake(Log("test"))
 
     private val heartbeat = WakeTrigger.After(earliest = 60.seconds, network = WakeNetwork.ANY)
 
@@ -64,7 +65,7 @@ class IosWakeTest {
         assertIs<ScheduleResult.Refused>(wake.schedule(WakeId.Heartbeat, heartbeat))
         assertTrue(
             captured.lines.any { (severity, message) ->
-                severity == Severity.Warn && "BGTask submit failed" in message
+                severity == LogLevel.WARN && "BGTask submit failed" in message
             },
             "a rejected submit stops every heartbeat and raises nothing; the log line is the only evidence. " +
                 "Captured: ${captured.lines}",
@@ -88,7 +89,7 @@ class IosWakeTest {
         var woken = 0
         val handlers = WakeHandlers(onWake = grantedOf { _, _ -> woken++ })
         // Registered through the seam's test double, never the system's: a test binary's second registration raises.
-        IosWake(Logger.withTag("test"), NoRegistration).also { it.inbound(handlers) }.let { adapter ->
+        IosWake(Log("test"), NoRegistration).also { it.inbound(handlers) }.let { adapter ->
             val completion = Released()
             adapter.onTaskLaunched("app.example.not-registered", completion)
             assertEquals(1, completion.releases, "a task held forever costs the app its future background time")
@@ -106,7 +107,7 @@ class IosWakeTest {
     @Test
     fun `an idle heartbeat withdraws the busy one and asks for an app refresh`() = runBlocking {
         val tasks = FakeTasks()
-        IosWake(Logger.withTag("test"), tasks).schedule(WakeId.Heartbeat, idle)
+        IosWake(Log("test"), tasks).schedule(WakeId.Heartbeat, idle)
         assertEquals(
             listOf("cancel ${IosWake.HEARTBEAT_TASK_IDENTIFIER}", "refresh ${IosWake.IDLE_TASK_IDENTIFIER}"),
             tasks.calls,
@@ -116,7 +117,7 @@ class IosWakeTest {
     @Test
     fun `a busy heartbeat withdraws the idle one and asks for processing`() = runBlocking {
         val tasks = FakeTasks()
-        IosWake(Logger.withTag("test"), tasks).schedule(WakeId.Heartbeat, heartbeat)
+        IosWake(Log("test"), tasks).schedule(WakeId.Heartbeat, heartbeat)
         assertEquals(
             listOf("cancel ${IosWake.IDLE_TASK_IDENTIFIER}", "processing ${IosWake.HEARTBEAT_TASK_IDENTIFIER}"),
             tasks.calls,
@@ -127,7 +128,7 @@ class IosWakeTest {
     fun `a refused refresh is reported and nothing else is asked for`() = runBlocking {
         // No fallback: with Background App Refresh off iOS drops a processing request as well (measured on the SE2).
         val tasks = FakeTasks(refuseRefresh = true)
-        val answer = IosWake(Logger(StaticConfig(logWriterList = listOf(captured)), "test"), tasks)
+        val answer = IosWake(Log("test"), tasks)
             .schedule(WakeId.Heartbeat, idle)
         assertIs<ScheduleResult.Refused>(answer)
         assertEquals(
@@ -135,14 +136,14 @@ class IosWakeTest {
             tasks.calls,
         )
         assertTrue(
-            captured.lines.any { (severity, message) -> severity == Severity.Warn && "BGTask submit failed" in message },
+            captured.lines.any { (severity, message) -> severity == LogLevel.WARN && "BGTask submit failed" in message },
         )
     }
 
     @Test
     fun `cancelling the heartbeat withdraws both task kinds`() {
         val tasks = FakeTasks()
-        IosWake(Logger.withTag("test"), tasks).cancel(WakeId.Heartbeat)
+        IosWake(Log("test"), tasks).cancel(WakeId.Heartbeat)
         assertEquals(
             listOf("cancel ${IosWake.HEARTBEAT_TASK_IDENTIFIER}", "cancel ${IosWake.IDLE_TASK_IDENTIFIER}"),
             tasks.calls,
@@ -154,7 +155,7 @@ class IosWakeTest {
         val tasks = FakeTasks()
         var woken = 0
         IosWake(
-            Logger.withTag("test"),
+            Log("test"),
             tasks,
         ).also { it.inbound(WakeHandlers(onWake = grantedOf { _, _ -> woken++ })) }.let { adapter ->
             assertEquals(IosWake.TASK_IDENTIFIERS, tasks.registered, "each identifier needs its launch handler")

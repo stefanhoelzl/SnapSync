@@ -13,10 +13,11 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.snapsync.adapter.android.R
+import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
+import app.snapsync.inbound.of
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import java.util.UUID
@@ -36,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class AndroidBackgroundTime(
     context: Context,
-    private val log: Logger = Logger.withTag("backgroundTime"),
+    private val log: Log = Log("backgroundTime"),
 ) : BackgroundTime {
 
     private val appContext = context.applicationContext
@@ -61,7 +62,11 @@ class AndroidBackgroundTime(
                 .build()
             work.enqueueUniqueWork(id, ExistingWorkPolicy.KEEP, request)
         } catch (e: IllegalStateException) {
-            log.w(e) { "$label: no hold could be requested — its time is up at once" }
+            log.unlabelled.w(
+                "<label>: no hold could be requested — its time is up at once",
+                "label" of label,
+                cause = e,
+            )
             hold.expire()
         }
         return hold
@@ -73,7 +78,10 @@ class AndroidBackgroundTime(
         try {
             hold.ended.await()
         } catch (e: CancellationException) {
-            log.i { "${hold.label}: the operating system stopped the hold — its time is up" }
+            log.unlabelled.i(
+                "<hold.label>: the operating system stopped the hold — its time is up",
+                "hold.label" of hold.label,
+            )
             hold.expire()
             throw e
         }

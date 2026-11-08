@@ -53,7 +53,7 @@ import kotlin.time.Clock
  * or different file is reopened (and created). A failed `write` also closes the descriptor and retries the
  * line once on a fresh one — nothing was written, so the retry cannot duplicate it.
  *
- * Thread safety: Kermit calls this from any thread. The descriptor, the byte count and the roll are guarded
+ * Thread safety: the log calls this from any thread. The descriptor, the byte count and the roll are guarded
  * by one lock, so a roll can never interleave with another thread's write; the line itself is still one
  * `write()`, so the atomic-append guarantee does not depend on the lock.
  */

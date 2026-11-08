@@ -11,7 +11,8 @@ import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
-import app.snapsync.logging.logAt
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.CompletedDownload
 import app.snapsync.ports.Download
@@ -22,8 +23,6 @@ import app.snapsync.ports.SessionRelaunch
 import app.snapsync.ports.StartResult
 import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferOutcome
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -80,7 +79,7 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class AndroidDownload(
     context: Context,
-    private val log: Logger = Logger.withTag("download"),
+    private val log: Log = Log("download"),
     private val dataSaver: DataSaverStatus = DataSaverStatus(context),
     parkedName: String = PARKED,
 ) : Download {
@@ -99,7 +98,12 @@ class AndroidDownload(
         this.handlers.set(handlers)
         registration.value = this
         val recovered = deliverFinished(null)
-        if (recovered > 0) log.i { "delivered $recovered transfer(s) a previous process left finished" }
+        if (recovered > 0) {
+            log.unlabelled.i(
+                "delivered <recovered> transfer(s) a previous process left finished",
+                "recovered" of recovered,
+            )
+        }
         releaseParked()
         if (watching.compareAndSet(false, true)) {
             scope.launch { dataSaver.watch().collect { inForce -> if (!inForce) releaseParked() } }
@@ -119,7 +123,13 @@ class AndroidDownload(
     /** [transfer] handed to DownloadManager; false, logged, when it refuses the request. */
     private fun enqueue(transfer: Parked): Boolean = PlatformCalls.attempt {
         manager.enqueue(request(transfer.url, transfer.headers, transfer.tag, restarts = 0, transfer.network))
-    }.onFailure { log.w(it) { "${transfer.tag}: DownloadManager refused the request" } }.isSuccess
+    }.onFailure {
+        log.unlabelled.w(
+            "<transfer.tag>: DownloadManager refused the request",
+            "transfer.tag" of transfer.tag,
+            cause = it,
+        )
+    }.isSuccess
 
     /** [transfer] kept in the parked store; false, logged, when the store did not take it. */
     private fun park(transfer: Parked): Boolean {
@@ -127,9 +137,15 @@ class AndroidDownload(
             parked.edit().putString(UUID.randomUUID().toString(), transfer.encode()).commit()
         }
         if (kept) {
-            log.i { "${transfer.tag}: Data Saver holds this app — parked until it does not" }
+            log.unlabelled.i(
+                "<transfer.tag>: Data Saver holds this app — parked until it does not",
+                "transfer.tag" of transfer.tag,
+            )
         } else {
-            log.w { "${transfer.tag}: the parked store did not take the transfer" }
+            log.unlabelled.w(
+                "<transfer.tag>: the parked store did not take the transfer",
+                "transfer.tag" of transfer.tag,
+            )
         }
         return kept
     }
@@ -150,7 +166,12 @@ class AndroidDownload(
             }
             parked.edit().remove(key).commit()
         }
-        if (held.isNotEmpty()) log.i { "released ${held.size} parked transfer(s): Data Saver no longer holds this app" }
+        if (held.isNotEmpty()) {
+            log.unlabelled.i(
+                "released <held.size> parked transfer(s): Data Saver no longer holds this app",
+                "held.size" of held.size,
+            )
+        }
         held.size
     }
 
@@ -187,7 +208,7 @@ class AndroidDownload(
     override suspend fun cancelAll() {
         run {
             cancel()
-        }.also { log.i { "download.cancelAll = ${"$it transfer(s)"}" } }
+        }.also { log.unlabelled.i("download.cancelAll = <value>", "value" of ("$it transfer(s)")) }
     }
 
     private fun cancel(): Int {
@@ -218,7 +239,13 @@ class AndroidDownload(
             val current = handlers.orNull("a completion broadcast") ?: return@body 0.also { completion.complete() }
             current.onBackgroundEvents.handle(SessionRelaunch(drains.get()), completion)
             deliverFinished(null).also { current.onEventsDrained.deliver(SessionDrain(drains.incrementAndGet())) }
-        }.also { log.i { "download.handleEvents(id=$id) = $it finished transfer(s)" } }
+        }.also {
+            log.unlabelled.i(
+                "download.handleEvents(id=<id>) = <it> finished transfer(s)",
+                "id" of id,
+                "it" of it,
+            )
+        }
 
     /** The drain reports made so far — what a broadcast's relaunch is told it arrived after. */
     private val drains = AtomicInteger(0)
@@ -231,9 +258,15 @@ class AndroidDownload(
             PlatformCalls.attempt {
                 run {
                     row.deliverTo(current)
-                }.also { log.logAt(Severity.Debug) { "download.didComplete(tag=${row.tag})" } }
+                }.also { log.unlabelled.d("download.didComplete", "tag" of row.tag) }
             }
-                .onFailure { log.w(it) { "${row.tag}: delivering the finished transfer failed" } }
+                .onFailure {
+                    log.unlabelled.w(
+                        "<row.tag>: delivering the finished transfer failed",
+                        "row.tag" of row.tag,
+                        cause = it,
+                    )
+                }
             manager.remove(row.id)
         }
         finished.size
@@ -284,16 +317,26 @@ class AndroidDownload(
     private fun FinishedRow.restart(handlers: DownloadHandlers) {
         val url = url
         if (url == null || restarts >= MAX_RESTARTS) {
-            log.w { "$tag: DownloadManager ran the transfer twice, $restarts restart(s) already; refusing its file" }
+            log.unlabelled.w(
+                "<tag>: DownloadManager ran the transfer twice, <restarts> restart(s) already; refusing its file",
+                "tag" of tag,
+                "restarts" of restarts,
+            )
             handlers.onCompleted.deliver(
                 CompletedDownload(tag, "DownloadManager ran the transfer twice; its file cannot be trusted"),
             )
             return
         }
         PlatformCalls.attempt { manager.enqueue(request(url, headers, tag, restarts + 1, network)) }.fold(
-            onSuccess = { log.w { "$tag: DownloadManager ran the transfer twice; fetching it again (${restarts + 1})" } },
+            onSuccess = {
+                log.unlabelled.w(
+                    "<tag>: DownloadManager ran the transfer twice; fetching it again (<value>)",
+                    "tag" of tag,
+                    "value" of (restarts + 1),
+                )
+            },
             onFailure = {
-                log.w(it) { "$tag: DownloadManager refused the restart" }
+                log.unlabelled.w("<tag>: DownloadManager refused the restart", "tag" of tag, cause = it)
                 handlers.onCompleted.deliver(
                     CompletedDownload(tag, "DownloadManager ran the transfer twice and refused its restart"),
                 )
@@ -437,7 +480,11 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
             }
             if (download != null) {
                 PlatformCalls.attempt { download.deliverBroadcast(id, OnceCompletion { released.complete(Unit) }) }
-                    .onFailure { Logger.withTag("download").w(it) { "the completion broadcast for $id failed" } }
+                    .onFailure {
+                        Log(
+                            "download",
+                        ).unlabelled.w("the completion broadcast for <id> failed", "id" of id, cause = it)
+                    }
                 withTimeoutOrNull(BROADCAST_BUDGET_MILLIS) { released.await() }
             }
             pending.finish()

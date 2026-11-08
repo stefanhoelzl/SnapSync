@@ -11,8 +11,8 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.replayerFor
 import app.snapsync.contracts.verify
+import app.snapsync.inbound.Log
 import app.snapsync.ports.BackgroundTime
-import co.touchlab.kermit.Logger
 import kotlin.test.Test
 
 /**
@@ -37,7 +37,7 @@ class BackgroundTimeReplayContractTest {
             }
             return replayerFor(RECORDINGS, RECORDING, clauseId) { replayer ->
                 Entered.Ready(
-                    IosBackgroundTime(Logger.withTag("contract"), ReplayingBackgroundTimeApi(replayer)).recorded(log),
+                    IosBackgroundTime(Log("contract"), ReplayingBackgroundTimeApi(replayer)).recorded(log),
                     dispose = replayer::assertExhausted,
                 )
             }

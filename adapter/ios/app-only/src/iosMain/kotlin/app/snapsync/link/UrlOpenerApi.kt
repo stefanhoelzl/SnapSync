@@ -1,7 +1,7 @@
 package app.snapsync.link
 
+import app.snapsync.inbound.Log
 import app.snapsync.objc.onQueue
-import co.touchlab.kermit.Logger
 import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 import platform.darwin.dispatch_get_main_queue
@@ -26,7 +26,7 @@ internal fun interface UrlOpenerApi {
  */
 internal object SystemUrlOpenerApi : UrlOpenerApi {
     override fun open(url: NSURL, completion: (Boolean) -> Unit) {
-        onQueue(dispatch_get_main_queue(), Logger.withTag("linkOpener"), "openLink") {
+        onQueue(dispatch_get_main_queue(), Log("linkOpener"), "openLink") {
             UIApplication.sharedApplication.openURL(
                 url,
                 options = emptyMap<Any?, Any>(),

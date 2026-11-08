@@ -7,13 +7,13 @@ import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ports.PlatformError
 import app.snapsync.ports.PushHandlers
 import app.snapsync.ports.PushKind
 import app.snapsync.ports.PushMessage
 import app.snapsync.ports.PushNotifications
 import app.snapsync.ports.PushToken
-import co.touchlab.kermit.Logger
 import platform.UIKit.UIApplication
 import platform.UIKit.registerForRemoteNotifications
 import kotlin.concurrent.atomics.AtomicBoolean
@@ -30,7 +30,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * once; a push has no expiry signal of its own — its only "time is up" is the process's background time, which the core
  * holds across it.
  */
-class IosPushNotifications(private val log: Logger) : PushNotifications {
+class IosPushNotifications(private val log: Log) : PushNotifications {
     private val handlers = HandlerSlot<PushHandlers>("PushNotifications", BeforeListen.Logged(log))
 
     override val kind: String = PushKind.APNS.value

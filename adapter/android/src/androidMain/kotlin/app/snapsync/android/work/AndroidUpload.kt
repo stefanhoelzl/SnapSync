@@ -10,8 +10,9 @@ import app.snapsync.annotations.NeverAnswers
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
-import app.snapsync.logging.logAt
+import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.BackgroundTime
 import app.snapsync.ports.BackgroundTimeHold
@@ -25,8 +26,6 @@ import app.snapsync.ports.TransferNetwork
 import app.snapsync.ports.TransferSession
 import app.snapsync.ports.TransferSource
 import app.snapsync.ports.UploadTarget
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
@@ -94,7 +93,7 @@ import java.util.concurrent.TimeUnit
 class AndroidUpload(
     context: Context,
     private val time: BackgroundTime,
-    private val log: Logger = Logger.withTag("upload"),
+    private val log: Log = Log("upload"),
     /** How many transfers run at once. A contract binding enters its cap with fewer photos through the same path. */
     private val maxLive: Int = MAX_LIVE,
     /** The journal's preferences file; a binding names its own, so two instances share one to play a relaunch. */
@@ -136,13 +135,18 @@ class AndroidUpload(
         this.handlers.set(handlers)
         val orphans = journal.all.keys.filter { tag -> !live.containsKey(tag) }
         for (tag in orphans) {
-            log.i { "$tag: its transfer ended with the process that ran it — reported failed, for a retry" }
+            log.unlabelled.i(
+                "<tag>: its transfer ended with the process that ran it — reported failed, for a retry",
+                "tag" of tag,
+            )
             finish(tag, TransferFailure("cancelled"))
         }
     }
 
     override suspend fun create(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome =
-        run { start(source, target, tag) }.also { log.i { "upload.create(tag=$tag) = $it" } }
+        run {
+            start(source, target, tag)
+        }.also { log.unlabelled.i("upload.create(tag=<tag>) = <it>", "tag" of tag, "it" of it) }
 
     private fun start(source: TransferSource, target: UploadTarget, tag: String): CreateOutcome {
         val body = when (source) {
@@ -150,10 +154,10 @@ class AndroidUpload(
             // A file that is not there is no job: refused now, never a transfer that fails later.
             is TransferSource.File -> File(source.path).takeIf { it.isFile }?.let { Body.LocalFile(it, source.from) }
         } ?: return CreateOutcome.FAILED.also {
-            log.w { "$tag: the source is neither a MediaStore item nor a file here" }
+            log.unlabelled.w("<tag>: the source is neither a MediaStore item nor a file here", "tag" of tag)
         }
         PlatformCalls.attempt { URI(target.url).rawPath }.getOrNull()
-            ?: return CreateOutcome.FAILED.also { log.w { "$tag: the destination is not a URL" } }
+            ?: return CreateOutcome.FAILED.also { log.unlabelled.w("<tag>: the destination is not a URL", "tag" of tag) }
         synchronized(live) {
             // A transfer still waiting for an unmetered network holds no slot: it sends nothing yet.
             if (live.values.count { !it.waitingForNetwork } >= maxLive) return CreateOutcome.LIMIT_EXCEEDED
@@ -181,7 +185,10 @@ class AndroidUpload(
 
     /** The hold's time is up: stop every transfer; each reports its own failure. */
     private fun expireAll() {
-        log.i { "background time is up — ${live.size} transfer(s) stopped, to restart on a later run" }
+        log.unlabelled.i(
+            "background time is up — <live.size> transfer(s) stopped, to restart on a later run",
+            "live.size" of live.size,
+        )
         live.values.forEach { it.job?.cancel() }
     }
 
@@ -189,7 +196,7 @@ class AndroidUpload(
     private fun finish(tag: String, error: TransferFailure?) {
         run {
             handlers.orNull("$tag's end")?.onFinished?.deliver(FinishedTransfer(tag, error))
-        }.also { log.logAt(Severity.Debug) { "upload.didComplete(tag=$tag error=$error)" } }
+        }.also { log.unlabelled.d("upload.didComplete", "tag" of tag, "error" of error) }
         journal.edit().remove(tag).commit()
         synchronized(live) {
             live.remove(tag)
@@ -219,7 +226,12 @@ class AndroidUpload(
             val status = sends.withPermit { put(body, target) }
             if (status in 200..299) null else TransferFailure("http:$status")
         } catch (e: IOException) {
-            log.i { "$tag: the transfer broke: ${e::class.simpleName}: ${e.message}" }
+            log.unlabelled.i(
+                "<tag>: the transfer broke: <value>: <e.message>",
+                "tag" of tag,
+                "value" of (e::class.simpleName),
+                "e.message" of e.message,
+            )
             TransferFailure("network")
         } catch (e: SecurityException) {
             TransferFailure("the photo can no longer be read: ${e.message}")
@@ -237,12 +249,12 @@ class AndroidUpload(
                 is CancellationException -> TransferFailure("cancelled")
                 else -> TransferFailure("${cause::class.simpleName}: ${cause.message}")
             }
-            if (error != null) log.i { "$tag: failed ($error)" }
+            if (error != null) log.unlabelled.i("<tag>: failed (<error>)", "tag" of tag, "error" of error)
             finish(tag, error)
         }
 
         private suspend fun awaitUnrestricted() {
-            log.i { "$tag: held for an unmetered network" }
+            log.unlabelled.i("<tag>: held for an unmetered network", "tag" of tag)
             unrestricted()
             waitingForNetwork = false
         }
@@ -276,7 +288,15 @@ class AndroidUpload(
                     ),
                 )
             }
-            return response.status.value.also { if (!response.status.isSuccess()) log.w { "$tag: the server answered $it" } }
+            return response.status.value.also {
+                if (!response.status.isSuccess()) {
+                    log.unlabelled.w(
+                        "<tag>: the server answered <it>",
+                        "tag" of tag,
+                        "it" of it,
+                    )
+                }
+            }
         }
     }
 

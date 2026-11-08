@@ -1,8 +1,9 @@
 package app.snapsync.ios.urlsession
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.checkedObjCValue
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileHandle
@@ -26,7 +27,7 @@ import platform.Foundation.fileHandleForWritingAtPath
 internal object UploadSlices {
 
     private const val CHUNK = 1_048_576uL
-    private val log = Logger.withTag("UploadSlices")
+    private val log = Log("UploadSlices")
 
     private val directory: String by lazy {
         val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).first() as String
@@ -38,7 +39,12 @@ internal object UploadSlices {
                     attributes = null,
                     error = it,
                 )
-            }.onFailure { log.w { "the slice directory could not be made: ${it.message}" } }
+            }.onFailure {
+                log.unlabelled.w(
+                    "the slice directory could not be made: <it.message>",
+                    "it.message" of it.message,
+                )
+            }
         }
     }
 
@@ -60,13 +66,29 @@ internal object UploadSlices {
 
     private fun copy(reader: NSFileHandle, writer: NSFileHandle, from: Long): Boolean {
         val sought = checkedObjC("seekToOffset") { reader.seekToOffset(from.toULong(), error = it) }
-        if (sought.isFailure) return false.also { log.w { "seek failed: ${sought.exceptionOrNull()?.message}" } }
+        if (sought.isFailure) {
+            return false.also {
+                log.unlabelled.w(
+                    "seek failed: <value>",
+                    "value" of (sought.exceptionOrNull()?.message),
+                )
+            }
+        }
         while (true) {
             val read = checkedObjCValue("readDataUpToLength") { reader.readDataUpToLength(CHUNK, error = it) }
-            val chunk = read.getOrNull() ?: return false.also { log.w { "read failed: ${read.exceptionOrNull()?.message}" } }
+            val chunk = read.getOrNull() ?: return false.also {
+                log.unlabelled.w("read failed: <value>", "value" of (read.exceptionOrNull()?.message))
+            }
             if (chunk.length == 0uL) return true
             val written = checkedObjC("writeData") { writer.writeData(chunk, error = it) }
-            if (written.isFailure) return false.also { log.w { "write failed: ${written.exceptionOrNull()?.message}" } }
+            if (written.isFailure) {
+                return false.also {
+                    log.unlabelled.w(
+                        "write failed: <value>",
+                        "value" of (written.exceptionOrNull()?.message),
+                    )
+                }
+            }
         }
     }
 
@@ -75,6 +97,12 @@ internal object UploadSlices {
         val path = pathOf(tag)
         if (!NSFileManager.defaultManager.fileExistsAtPath(path)) return
         checkedObjC("removeItemAtPath") { NSFileManager.defaultManager.removeItemAtPath(path, error = it) }
-            .onFailure { log.w { "the slice for $tag stays: ${it.message}" } }
+            .onFailure {
+                log.unlabelled.w(
+                    "the slice for <tag> stays: <it.message>",
+                    "tag" of tag,
+                    "it.message" of it.message,
+                )
+            }
     }
 }

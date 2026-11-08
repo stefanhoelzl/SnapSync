@@ -10,13 +10,13 @@ import app.snapsync.contracts.Host
 import app.snapsync.contracts.Recorder
 import app.snapsync.contracts.Replayer
 import app.snapsync.contracts.proxy.recorded
+import app.snapsync.inbound.Log
 import app.snapsync.ios.registry.ExtensionRegistrationApi
 import app.snapsync.ios.registry.PhotoKitExtensionRegistry
 import app.snapsync.ios.registry.PlatformWriteAnswer
 import app.snapsync.ios.registry.SystemExtensionRegistrationApi
 import app.snapsync.ports.ExtensionRegistry
 import app.snapsync.ports.LibraryGrant
-import co.touchlab.kermit.Logger
 
 /*
  * `ExtensionRegistryContract`'s iOS bindings (`docs/architecture.md`): the real
@@ -58,7 +58,7 @@ internal class ReplayingRegistrationApi(private val replayer: Replayer) : Extens
     override fun isEnabled(): Boolean = replayer.answer(IS_ENABLED_CALL).toBooleanStrict()
 }
 
-private val logger = Logger.withTag("RegistryContract")
+private val logger = Log("RegistryContract")
 
 /**
  * The registry in [state], over [api]. The record is entered through the port's own write — recorded like any

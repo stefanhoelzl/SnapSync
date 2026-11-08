@@ -2,6 +2,7 @@ package app.snapsync.architecture
 
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -594,6 +595,19 @@ class DeletionLedgerTest {
      * run them, with waits of its own and no tests. The shell left is the builds and the daemon stop
      * (`scripts/journeys-build`).
      */
+    @Test
+    fun `Kermit stays gone - every line goes through Log`() {
+        val kermit = "co.touchlab." + "kermit"
+        val users = sources().filter { kermit in it.readText() }.map { it.path.substringAfter(repoRoot.path) }
+        val catalog = File(repoRoot, "gradle/libs.versions.toml").readText()
+        assertEquals(
+            emptyList(),
+            users + listOfNotNull("gradle/libs.versions.toml".takeIf { kermit in catalog }),
+            "Kermit is back (`Log` is the one logging API; its writers are the sinks — phase 5): delete its row here, " +
+                "with the argument in the PR",
+        )
+    }
+
     @Test
     fun `the device runs' shell scripts stay dead`() {
         val retired = listOf(

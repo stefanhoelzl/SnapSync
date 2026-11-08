@@ -1,5 +1,7 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -7,7 +9,6 @@ import app.snapsync.ports.OsUploadJob
 import app.snapsync.ports.OsUploadJobHandle
 import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.UploadTarget
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSURL
@@ -29,14 +30,14 @@ import platform.Foundation.NSURL
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosPhotoKitUploadPlatform internal constructor(
-    private val log: Logger,
+    private val log: Log,
     // Every operating-system effect goes through this seam, so the upload extension's contract run can record it and
     // CI can replay it (`docs/architecture.md`). Production never passes one.
     private val api: UploadJobApi,
 ) : OsUploadQueue {
 
     /** The production adapter, over the real PhotoKit calls. */
-    constructor(log: Logger) : this(log, SystemUploadJobApi(log))
+    constructor(log: Log) : this(log, SystemUploadJobApi(log))
 
     override suspend fun retryOffered(): List<OsUploadJob> = fetch(JobSet.RETRY)
 
@@ -45,7 +46,7 @@ class IosPhotoKitUploadPlatform internal constructor(
     private fun fetch(set: JobSet): List<OsUploadJob> =
         run {
             api.fetch(set).map(::jobOf)
-        }.also { log.i { "photokit.jobs(set=$set) = ${it.size} job(s)" } }
+        }.also { log.unlabelled.i("photokit.jobs(set=<set>) = <it.size> job(s)", "set" of set, "it.size" of it.size) }
 
     override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome =
         run body@{
@@ -53,9 +54,15 @@ class IosPhotoKitUploadPlatform internal constructor(
             val answer = api.create(uploadUrlRequest(url, target), resource)
             // A refusal that names no code is still a refusal: it maps to FAILED, never to CREATED.
             createResultFor(if (answer.ok) null else answer.code ?: UNCODED_REFUSAL).also {
-                if (it == CreateOutcome.FAILED) log.w { "create refused: code=${answer.code} ${answer.description}" }
+                if (it == CreateOutcome.FAILED) {
+                    log.unlabelled.w(
+                        "create refused: code=<answer.code> <answer.description>",
+                        "answer.code" of answer.code,
+                        "answer.description" of answer.description,
+                    )
+                }
             }
-        }.also { log.i { "photokit.create(to=${target.url}) = $it" } }
+        }.also { log.unlabelled.i("photokit.create(to=<target.url>) = <it>", "target.url" of target.url, "it" of it) }
 
     override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
         val facts = (job.handle as? PhotoKitJob)?.facts ?: return ChangeOutcome.Refused(null, "not a PhotoKit job")

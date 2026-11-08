@@ -11,6 +11,8 @@ import android.os.Environment
 import android.provider.MediaStore
 import app.snapsync.annotations.Never
 import app.snapsync.annotations.NeverAnswers
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.AssetFilter
 import app.snapsync.ports.GalleryAlbum
@@ -26,7 +28,6 @@ import app.snapsync.ports.PlatformAlbumId
 import app.snapsync.ports.PlatformAssetId
 import app.snapsync.ports.ResourceKind
 import app.snapsync.ports.WriteOutcome
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -65,7 +66,7 @@ import kotlin.time.Instant
 open class AndroidGalleryReader(
     context: Context,
     private val access: () -> LibraryGrant,
-    private val log: Logger = Logger.withTag("gallery"),
+    private val log: Log = Log("gallery"),
 ) : GalleryReader {
 
     protected val appContext: Context = context.applicationContext
@@ -77,7 +78,12 @@ open class AndroidGalleryReader(
     override suspend fun assets(filter: AssetFilter): GalleryRead<List<GalleryAsset>> =
         run {
             readable { items(narrowingFor(filter)).map { it.asset() } }
-        }.also { log.i { "gallery.assets = ${"${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}"}" } }
+        }.also {
+            log.unlabelled.i(
+                "gallery.assets = <value>",
+                "value" of ("${(it as? GalleryRead.Read)?.value?.size ?: "not readable"}"),
+            )
+        }
 
     override suspend fun assetsById(ids: Set<PlatformAssetId>): GalleryRead<List<GalleryAsset>> =
         readable { itemsById(ids).map { it.asset() } }
@@ -127,11 +133,23 @@ open class AndroidGalleryReader(
             try {
                 PlatformAlbumId(newAlbum(title))
             } catch (e: SecurityException) {
-                null.also { log.w { "createAlbum: the media provider refused — ${e::class.simpleName}: ${e.message}" } }
+                null.also {
+                    log.unlabelled.w(
+                        "createAlbum: the media provider refused — <value>: <e.message>",
+                        "value" of (e::class.simpleName),
+                        "e.message" of e.message,
+                    )
+                }
             } catch (e: SQLiteException) {
-                null.also { log.w { "createAlbum: the media provider failed — ${e::class.simpleName}: ${e.message}" } }
+                null.also {
+                    log.unlabelled.w(
+                        "createAlbum: the media provider failed — <value>: <e.message>",
+                        "value" of (e::class.simpleName),
+                        "e.message" of e.message,
+                    )
+                }
             }
-        }.also { log.i { "gallery.createAlbum(title=$title) = $it" } }
+        }.also { log.unlabelled.i("gallery.createAlbum(title=<title>) = <it>", "title" of title, "it" of it) }
     }
 
     private fun newAlbum(title: String): String {
@@ -144,7 +162,10 @@ open class AndroidGalleryReader(
                 path,
             ).mkdirs()
         ) {
-            log.w { "createAlbum: the directory $path was not created; its name is not reserved" }
+            log.unlabelled.w(
+                "createAlbum: the directory <path> was not created; its name is not reserved",
+                "path" of path,
+            )
         }
         return path
     }
@@ -177,10 +198,23 @@ open class AndroidGalleryReader(
                     null,
                     null,
                 )
-            }.onFailure { log.i { "addToAlbum: ${item.assetId} is not this app's to move (${it::class.simpleName})" } }
+            }.onFailure {
+                log.unlabelled.i(
+                    "addToAlbum: <item.assetId> is not this app's to move (<value>)",
+                    "item.assetId" of item.assetId,
+                    "value" of (it::class.simpleName),
+                )
+            }
             if (moved.getOrNull() != 1) skipped++
         }
-        if (skipped > 0) log.i { "addToAlbum $album: $skipped of ${assets.size} photo(s) left where they are" }
+        if (skipped > 0) {
+            log.unlabelled.i(
+                "addToAlbum <album>: <skipped> of <assets.size> photo(s) left where they are",
+                "album" of album,
+                "skipped" of skipped,
+                "assets.size" of assets.size,
+            )
+        }
         WriteOutcome.Ok
     }
 
@@ -223,10 +257,20 @@ open class AndroidGalleryReader(
     private inline fun <T> refusedAsUnreadable(what: String, block: () -> GalleryRead<T>): GalleryRead<T> = try {
         block()
     } catch (e: SecurityException) {
-        log.w { "$what: the media provider refused — ${e::class.simpleName}: ${e.message}" }
+        log.unlabelled.w(
+            "<what>: the media provider refused — <value>: <e.message>",
+            "what" of what,
+            "value" of (e::class.simpleName),
+            "e.message" of e.message,
+        )
         GalleryRead.NotReadable
     } catch (e: SQLiteException) {
-        log.w { "$what: the media provider failed — ${e::class.simpleName}: ${e.message}" }
+        log.unlabelled.w(
+            "<what>: the media provider failed — <value>: <e.message>",
+            "what" of what,
+            "value" of (e::class.simpleName),
+            "e.message" of e.message,
+        )
         GalleryRead.NotReadable
     }
 
@@ -285,7 +329,9 @@ open class AndroidGalleryReader(
     private fun query(collection: Uri, scoped: Query): List<MediaItem> {
         return resolver.query(collection, PROJECTION, scoped.selection, scoped.args.toTypedArray(), null)
             ?.use { cursor -> buildList { while (cursor.moveToNext()) add(MediaItem.of(cursor, collection)) } }
-            ?: emptyList<MediaItem>().also { log.w { "the media provider answered no cursor for $collection" } }
+            ?: emptyList<MediaItem>().also {
+                log.unlabelled.w("the media provider answered no cursor for <collection>", "collection" of collection)
+            }
     }
 
     /** The native narrowing of [filter]: its capture range, compared to the second as the platform reports dates. */

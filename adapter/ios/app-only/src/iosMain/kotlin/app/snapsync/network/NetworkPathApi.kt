@@ -2,8 +2,8 @@
 
 package app.snapsync.network
 
+import app.snapsync.inbound.Log
 import app.snapsync.objc.objcBoundary
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Network.nw_path_get_status
 import platform.Network.nw_path_get_unsatisfied_reason
@@ -45,7 +45,7 @@ internal interface NetworkPathApi {
 
 /** The real `nw_path_monitor`. The only implementation a production build contains. */
 internal object SystemNetworkPathApi : NetworkPathApi {
-    private val log = Logger.withTag("NetworkPathApi")
+    private val log = Log("NetworkPathApi")
 
     override fun start(onPath: (PathReading) -> Unit): () -> Unit {
         val monitor = nw_path_monitor_create()

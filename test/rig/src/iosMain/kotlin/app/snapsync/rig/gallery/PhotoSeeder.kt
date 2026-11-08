@@ -1,8 +1,9 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.levers.SeedKind
 import app.snapsync.levers.SeedOutcome
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
@@ -74,7 +75,7 @@ private const val SEED_NOISE_TILE = 4.0
  * branches went away but that they stopped being in the shipped shell.
  */
 @OptIn(ExperimentalForeignApi::class)
-fun seedPhotos(log: Logger, count: Int, kind: SeedKind): SeedOutcome {
+fun seedPhotos(log: Log, count: Int, kind: SeedKind): SeedOutcome {
     val policyProbe = kind == SeedKind.POLICY
     val noise = kind == SeedKind.NOISE
     val recent = policyProbe || noise
@@ -82,12 +83,15 @@ fun seedPhotos(log: Logger, count: Int, kind: SeedKind): SeedOutcome {
     val base0 = if (recent) NSDate().timeIntervalSince1970 + SEED_POLICY_LEAD_SECONDS else SEED_EPOCH_SECONDS
     if (policyProbe) {
         val above = (count + 1) / 2 // even indices are above the floor
-        log.i {
-            "seeding $count POLICY asset(s): dated ~1h ahead (in scope for any event started today), " +
-                "alternating above/below the 3 MP floor — expect $above admitted, ${count - above} origin-excluded"
-        }
+        log.unlabelled.i(
+            "seeding POLICY assets: dated ~1h ahead (in scope for any event started today), alternating " +
+                "above/below the 3 MP floor",
+            "count" of count,
+            "admitted" of above,
+            "excluded" of (count - above),
+        )
     } else {
-        log.i { "seeding $count BULK asset(s) into the photo library" }
+        log.unlabelled.i("seeding <count> BULK asset(s) into the photo library", "count" of count)
     }
     var created = 0
     var chunk = 0
@@ -112,14 +116,18 @@ fun seedPhotos(log: Logger, count: Int, kind: SeedKind): SeedOutcome {
             error = null,
         )
         if (!ok) {
-            log.e { "seeding failed at chunk $chunk (after $created asset(s))" }
+            log.unlabelled.e(
+                "seeding failed at chunk <chunk> (after <created> asset(s))",
+                "chunk" of chunk,
+                "created" of created,
+            )
             return SeedOutcome(requested = count, created = created, kind = kind, failedAtChunk = chunk)
         }
         created += size
         chunk++
-        log.i { "seeded $created/$count asset(s)" }
+        log.unlabelled.i("seeded <created>/<count> asset(s)", "created" of created, "count" of count)
     }
-    log.i { "seeding complete: $created asset(s)" }
+    log.unlabelled.i("seeding complete: <created> asset(s)", "created" of created)
     return SeedOutcome(requested = count, created = created, kind = kind, failedAtChunk = null)
 }
 

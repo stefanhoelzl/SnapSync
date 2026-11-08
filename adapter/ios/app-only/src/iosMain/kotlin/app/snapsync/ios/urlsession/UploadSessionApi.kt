@@ -1,11 +1,10 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.annotations.PlatformEntry
-import app.snapsync.logging.logAt
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.TransferHandle
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
@@ -68,7 +67,7 @@ internal interface TransferTask : TransferHandle {
 
 /** The real one: `NSURLSession` under the configuration the compilation target fixes ([transferSessionConfiguration]). */
 @OptIn(ExperimentalForeignApi::class)
-internal class SystemUploadSessionApi(private val log: Logger) : UploadSessionApi {
+internal class SystemUploadSessionApi(private val log: Log) : UploadSessionApi {
 
     override fun open(identifier: String, events: SessionEvents): UploadSession {
         val session = NSURLSession.sessionWithConfiguration(
@@ -83,7 +82,7 @@ internal class SystemUploadSessionApi(private val log: Logger) : UploadSessionAp
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private class SystemUploadSession(private val session: NSURLSession, private val log: Logger) : UploadSession {
+private class SystemUploadSession(private val session: NSURLSession, private val log: Log) : UploadSession {
 
     override fun upload(request: NSURLRequest, file: String, tag: String): Boolean {
         if (!NSFileManager.defaultManager.isReadableFileAtPath(file)) return false
@@ -116,7 +115,7 @@ private class SystemTransferTask(private val task: NSURLSessionTask) : TransferT
 @OptIn(ExperimentalForeignApi::class)
 private class SessionDelegate(
     private val events: SessionEvents,
-    private val log: Logger = Logger.withTag("urlSessionUpload"),
+    private val log: Log = Log("urlSessionUpload"),
 ) : NSObject(), NSURLSessionTaskDelegateProtocol {
 
     // PLATFORM ENTRY POINT. DEBUG, not INFO: one per uploaded photo, so at INFO a large event would flush the bounded
@@ -131,9 +130,7 @@ private class SessionDelegate(
                     didCompleteWithError,
                 )
             }.also {
-                log.logAt(
-                    Severity.Debug,
-                ) { "upload.didComplete(error=${didCompleteWithError?.localizedDescription ?: "«none»"})" }
+                log.unlabelled.d("upload.didComplete", "error" of didCompleteWithError?.localizedDescription)
             }
         }
 
@@ -143,5 +140,5 @@ private class SessionDelegate(
         objcBoundary(
             log,
             "upload.didFinishEvents",
-        ) { run { events.drained() }.also { log.i { "upload.didFinishEvents" } } }
+        ) { run { events.drained() }.also { log.unlabelled.i("upload.didFinishEvents") } }
 }

@@ -12,8 +12,7 @@ import kotlin.test.assertTrue
  * overview.
  *
  * Read as text, comments stripped: a call's first argument is a syntactic shape. A file is scanned for `Log` calls when
- * it imports the structured log; a Kermit call there (`log.w(t) { … }`, its text in a trailing lambda) is told apart by
- * its lambda.
+ * it imports the structured log — every adapter and root does: it is the only log there is.
  */
 class EventNameLiteralTest {
 
@@ -26,7 +25,7 @@ class EventNameLiteralTest {
     }
 
     /** A structured log call: `log.i(`, `log.unlabelled.e(`, `Log(tag).unlabelled.w(`. */
-    private val logCall = Regex("""\.(?:i|w|e)\(""")
+    private val logCall = Regex("""\.(?:d|i|w|e)\(""")
 
     private val guarantee = Regex("""(?<!class )InvalidProgramState\(""")
 
@@ -39,8 +38,8 @@ class EventNameLiteralTest {
         }
         assertTrue(logging.size >= 50, "only ${logging.size} files write the structured log — the scan reads nothing")
 
-        val violations = logging.flatMap { source -> nonLiterals(source, logCall, kermitLambdaAllowed = true) } +
-            files.flatMap { source -> nonLiterals(source, guarantee, kermitLambdaAllowed = false) }
+        val violations = logging.flatMap { source -> nonLiterals(source, logCall) } +
+            files.flatMap { source -> nonLiterals(source, guarantee) }
 
         assertEquals(
             emptyList(),
@@ -51,14 +50,13 @@ class EventNameLiteralTest {
     }
 
     /** Each call of [call] in [source] whose first argument is not a template-free string literal, as `path:line`. */
-    private fun nonLiterals(source: SourceScan.Source, call: Regex, kermitLambdaAllowed: Boolean): List<String> {
+    private fun nonLiterals(source: SourceScan.Source, call: Regex): List<String> {
         val code = source.text.lines().joinToString("\n") { it.substringBefore("//") }
         return call.findAll(code).mapNotNull { match ->
             val start = code.indexOfFirstNonBlank(match.range.last + 1)
             val literal = start < code.length && code[start] == '"' && !code.startsWith("\"\"\"", start)
             when {
                 literal -> if (code.literalAt(start).contains('$')) where(source, code, match.range.first) else null
-                kermitLambdaAllowed && code.closesIntoLambda(match.range.last) -> null
                 else -> where(source, code, match.range.first)
             }
         }.toList()
@@ -78,19 +76,5 @@ class EventNameLiteralTest {
         var i = start + 1
         while (i < length && this[i] != '"') i += if (this[i] == '\\') 2 else 1
         return substring(start + 1, minOf(i, length))
-    }
-
-    /** Whether the call whose `(` is at [open] closes into a trailing lambda — Kermit's `log.w(t) { … }`. */
-    private fun String.closesIntoLambda(open: Int): Boolean {
-        var depth = 0
-        var i = open
-        while (i < length) {
-            when (this[i]) {
-                '(' -> depth++
-                ')' -> if (--depth == 0) return indexOfFirstNonBlank(i + 1).let { it < length && this[it] == '{' }
-            }
-            i++
-        }
-        return false
     }
 }

@@ -1,8 +1,8 @@
 package app.snapsync.background
 
 import app.snapsync.inbound.InboundImplementation
+import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
-import co.touchlab.kermit.Logger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -29,7 +29,7 @@ class IosBackgroundTimeTest {
         }
     }
 
-    private val log = Logger.withTag("IosBackgroundTimeTest")
+    private val log = Log("IosBackgroundTimeTest")
 
     @Test
     fun `the system's expiry is reported once and ends nothing`() {

@@ -10,7 +10,7 @@ import app.snapsync.contracts.LifecycleState
 import app.snapsync.contracts.LifecycleUnderTest
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
 import kotlin.test.Test
 
 /**
@@ -25,7 +25,7 @@ class IosLifecycleContractTest {
         override val adapter = IosLifecycle::class
         override val reaches = setOf(LifecycleState.MOVABLE)
         override fun create(state: LifecycleState, clauseId: String, log: CallLog): Entered<LifecycleUnderTest> {
-            val lifecycle = IosLifecycle(SceneRecord(), Logger.withTag("contract"))
+            val lifecycle = IosLifecycle(SceneRecord(), Log("contract"))
             return Entered.Ready(
                 LifecycleUnderTest(
                     lifecycle.recorded(log),

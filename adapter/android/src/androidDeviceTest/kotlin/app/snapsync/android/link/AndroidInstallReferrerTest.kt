@@ -11,10 +11,10 @@ import app.snapsync.domain.invite.InviteLink
 import app.snapsync.domain.invite.RendersInvite
 import app.snapsync.format.InviteLinkText
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ports.LinkDelivery
 import app.snapsync.ports.LinkHandlers
 import app.snapsync.testids.testEventId
-import co.touchlab.kermit.Logger
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -31,7 +31,7 @@ class AndroidInstallReferrerTest {
         InviteLinkText.format(InviteLink(testEventId("11111111-1111-4111-8111-111111111111"), null)).raw
     private val delivered = mutableListOf<LinkDelivery>()
     private val links = AndroidLinks(
-        Logger.withTag("test"),
+        Log("test"),
     ).apply { inbound(LinkHandlers(onLink = inboundOf { delivered += it })) }
     private lateinit var record: SharedPreferences
 
@@ -51,7 +51,7 @@ class AndroidInstallReferrerTest {
         AndroidInstallReferrer(record, {
             asks += Unit
             it(answer)
-        }, links, Logger.withTag("test")).deliverOnce()
+        }, links, Log("test")).deliverOnce()
 
     /** The referrers delivered, raw — whether one carries an invite is the core's. */
     private fun referrers() = delivered.map { (it as LinkDelivery.InstallReferrer).referrer }

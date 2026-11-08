@@ -27,7 +27,6 @@ dependencies {
     implementation(project(":adapter:generic:app"))
     implementation(libs.ktor.client.core)
     implementation(libs.coroutines.core)
-    implementation(libs.kermit)
     implementation(libs.kotlinx.datetime)
     // The status host is an Orbit container: a caller naming it needs its supertype.
     api(libs.orbit.core)

@@ -1,15 +1,14 @@
 package app.snapsync.download
 
 import app.snapsync.annotations.PlatformEntry
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ios.urlsession.HandlerRelease
 import app.snapsync.ios.urlsession.MainThreadRelease
 import app.snapsync.ios.urlsession.transferSessionConfiguration
-import app.snapsync.logging.logAt
 import app.snapsync.objc.checkedObjCValue
 import app.snapsync.objc.objcBoundary
 import app.snapsync.ports.TransferOutcome
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
@@ -74,7 +73,7 @@ internal interface DownloadTask {
 
 /** The real one: `NSURLSession` under the configuration the compilation target fixes ([transferSessionConfiguration]). */
 @OptIn(ExperimentalForeignApi::class)
-internal class SystemDownloadSessionApi(private val log: Logger) : DownloadSessionApi {
+internal class SystemDownloadSessionApi(private val log: Log) : DownloadSessionApi {
 
     override fun open(identifier: String, events: DownloadSessionEvents): DownloadSession {
         val session = NSURLSession.sessionWithConfiguration(
@@ -89,7 +88,7 @@ internal class SystemDownloadSessionApi(private val log: Logger) : DownloadSessi
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private class SystemDownloadSession(private val session: NSURLSession, private val log: Logger) : DownloadSession {
+private class SystemDownloadSession(private val session: NSURLSession, private val log: Log) : DownloadSession {
 
     override fun download(request: NSURLRequest, tag: String) {
         val task = session.downloadTaskWithRequest(request)
@@ -118,11 +117,11 @@ private class SystemDownloadTask(private val task: NSURLSessionTask) : DownloadT
  * distinct answer from "zero" to the code that judges it.
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun outcomeOf(task: NSURLSessionDownloadTask, path: String, log: Logger): TransferOutcome {
+private fun outcomeOf(task: NSURLSessionDownloadTask, path: String, log: Log): TransferOutcome {
     val http = task.response as? NSHTTPURLResponse
     val received = checkedObjCValue("attributesOfItemAtPath") {
         NSFileManager.defaultManager.attributesOfItemAtPath(path, error = it)
-    }.onFailure { log.w(it) { "the finished download's size is unreadable — judged as 0 bytes" } }
+    }.onFailure { log.unlabelled.w("the finished download's size is unreadable — judged as 0 bytes", cause = it) }
         .getOrNull()
         ?.get(NSFileSize) as? NSNumber
     return TransferOutcome(
@@ -139,7 +138,7 @@ private fun outcomeOf(task: NSURLSessionDownloadTask, path: String, log: Logger)
 @OptIn(ExperimentalForeignApi::class)
 private class DownloadDelegate(
     private val events: DownloadSessionEvents,
-    private val log: Logger,
+    private val log: Log,
 ) : NSObject(), NSURLSessionDownloadDelegateProtocol {
     // PLATFORM ENTRY POINTS: each records that it was called before doing anything. The
     // per-task callbacks log at DEBUG — once per photo, and at INFO a 200-photo event would flush the crash
@@ -153,7 +152,7 @@ private class DownloadDelegate(
         run body@{
             val path = didFinishDownloadingToURL.path ?: return@body
             events.finished(SystemDownloadTask(downloadTask), outcomeOf(downloadTask, path, log), path)
-        }.also { log.logAt(Severity.Debug) { "download.didFinishDownloading" } }
+        }.also { log.unlabelled.d("download.didFinishDownloading") }
     }
 
     @PlatformEntry
@@ -168,7 +167,7 @@ private class DownloadDelegate(
             // Domain and code, not just `localizedDescription`: iOS renders NSURLErrorUnknown as the literal
             // "unknown error", which names nothing an operator can act on or search for.
             val error = didCompleteWithError?.let { "${it.domain}/${it.code}: ${it.localizedDescription}" } ?: "«none»"
-            log.logAt(Severity.Debug) { "download.didComplete(error=$error)" }
+            log.unlabelled.d("download.didComplete", "error" of error)
         }
     }
 
@@ -176,7 +175,10 @@ private class DownloadDelegate(
     @PlatformEntry
     override fun URLSession(session: NSURLSession, didBecomeInvalidWithError: NSError?) =
         objcBoundary(log, "download.didBecomeInvalid") {
-            log.w { "background session invalidated by the system: ${didBecomeInvalidWithError?.localizedDescription}" }
+            log.unlabelled.w(
+                "background session invalidated by the system: <value>",
+                "value" of (didBecomeInvalidWithError?.localizedDescription),
+            )
             events.invalidated(didBecomeInvalidWithError)
         }
 
@@ -184,6 +186,6 @@ private class DownloadDelegate(
     @PlatformEntry
     override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) =
         objcBoundary(log, "download.didFinishEvents") {
-            run { events.drained() }.also { log.i { "download.didFinishEvents" } }
+            run { events.drained() }.also { log.unlabelled.i("download.didFinishEvents") }
         }
 }

@@ -6,6 +6,7 @@ import app.snapsync.data.membership.MembershipRepository
 import app.snapsync.data.store.SharedDatabase
 import app.snapsync.data.trust.TrustSlots
 import app.snapsync.domain.membership.MembershipRead
+import app.snapsync.inbound.Log
 import app.snapsync.launchadapters.AdapterChoice
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterParse
@@ -22,7 +23,6 @@ import app.snapsync.ports.FileResult
 import app.snapsync.ports.Files
 import app.snapsync.ports.SecureStoreRead
 import app.snapsync.ui.state.UiState
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,7 +38,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * each says so through [AdapterVerbs].
  */
 
-private val log = Logger.withTag("rig")
+private val log = Log("rig")
 
 /**
  * The world the operator levers move on a launch that mocks [mocked] of [device]: the backend mock addressed at
@@ -102,9 +102,7 @@ internal fun keepSaving(chosen: LaunchAdapters.Chosen) {
         while (isActive) {
             delay(SAVE_INTERVAL)
             runCatching { chosen.save() }.onFailure {
-                log.w(
-                    it,
-                ) { "the mocked systems' state was not saved this time" }
+                log.unlabelled.w("the mocked systems' state was not saved this time", cause = it)
             }
         }
     }
@@ -114,7 +112,7 @@ internal fun keepSaving(chosen: LaunchAdapters.Chosen) {
 internal fun exitSoon(exit: () -> Unit) {
     CoroutineScope(Dispatchers.Default).launch {
         delay(EXIT_DELAY)
-        log.i { "exiting for the next launch to read its adapter choice" }
+        log.unlabelled.i("exiting for the next launch to read its adapter choice")
         exit()
     }
 }

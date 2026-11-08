@@ -8,7 +8,9 @@ import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
 import app.snapsync.inbound.Granted
 import app.snapsync.inbound.InboundImplementation
+import app.snapsync.inbound.Log
 import app.snapsync.inbound.Running
+import app.snapsync.inbound.of
 import app.snapsync.launchadapters.AdapterFacts
 import app.snapsync.launchadapters.AdapterFiles
 import app.snapsync.launchadapters.AdapterProcess
@@ -22,7 +24,6 @@ import app.snapsync.ports.FileArea
 import app.snapsync.ports.FileResult
 import app.snapsync.ports.WakeHandlers
 import app.snapsync.ports.WakeId
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineScope
@@ -32,7 +33,7 @@ import platform.Foundation.NSFileManager
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
 
-private val log = Logger.withTag("rig")
+private val log = Log("rig")
 
 /**
  * **A rig build's launch, in the app process** (`docs/testing.md`, "Launch-time adapters"): the adapter choice read once at
@@ -75,7 +76,14 @@ class RigLaunch internal constructor(
 
     /** Compose at launch — unless the adapter choice was refused, when nothing is composed and the channel says why. */
     fun launch(compose: () -> Unit) {
-        if (uncomposed == null) compose() else log.e { "the adapter choice was refused — nothing is composed: $uncomposed" }
+        if (uncomposed == null) {
+            compose()
+        } else {
+            log.unlabelled.e(
+                "the adapter choice was refused — nothing is composed: <uncomposed>",
+                "uncomposed" of uncomposed,
+            )
+        }
     }
 
     /** Write every mocked system's changed state now — before an exit. */

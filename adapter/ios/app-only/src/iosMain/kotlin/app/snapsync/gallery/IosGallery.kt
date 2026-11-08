@@ -4,6 +4,7 @@ import app.snapsync.download.IosPhotoLibraryImporter
 import app.snapsync.entry.BeforeListen
 import app.snapsync.entry.HandlerSlot
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ios.discovery.libraryChangeTokenOf
 import app.snapsync.ios.qos.photoKitReadLane
 import app.snapsync.permission.PhotoKitSelection
@@ -17,7 +18,6 @@ import app.snapsync.ports.LibraryChangeToken
 import app.snapsync.ports.LibraryGrant
 import app.snapsync.ports.SelectionSnapshot
 import app.snapsync.selection.SelectionSnapshotLane
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,7 +45,7 @@ class IosGallery(
     private val reader: IosGalleryReader,
     private val permission: PhotoLibraryPermission,
     scope: CoroutineScope,
-    private val log: Logger = Logger.withTag("gallery"),
+    private val log: Log = Log("gallery"),
 ) : Gallery, GalleryReader by reader {
 
     private val handlers = HandlerSlot<GalleryHandlers>("Gallery", BeforeListen.Logged(log))

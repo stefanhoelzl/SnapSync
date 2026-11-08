@@ -10,7 +10,7 @@ import app.snapsync.contracts.LinksState
 import app.snapsync.contracts.LinksUnderTest
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
 import platform.Foundation.NSURL
 import platform.Foundation.NSUserActivity
 import platform.Foundation.NSUserActivityTypeBrowsingWeb
@@ -33,7 +33,7 @@ class IosLinksContractTest {
                     "an install referrer is Google Play's: iOS hands the app none",
                 )
             }
-            val links = IosLinks(Logger.withTag("contract"))
+            val links = IosLinks(Log("contract"))
             val hook = "continueUserActivity"
             return Entered.Ready(
                 LinksUnderTest(

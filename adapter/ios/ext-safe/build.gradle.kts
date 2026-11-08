@@ -76,7 +76,6 @@ kotlin {
             implementation(libs.sqldelight.driver.native)
             implementation(libs.ktor.client.darwin)
             implementation(libs.kotlinx.serialization.json)
-            implementation(libs.kermit)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

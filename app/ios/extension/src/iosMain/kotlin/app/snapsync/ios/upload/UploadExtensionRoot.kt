@@ -15,6 +15,8 @@ import app.snapsync.extension.IosExtensionHost
 import app.snapsync.files.IosFiles
 import app.snapsync.gallery.IosGalleryReader
 import app.snapsync.http.KtorHttpTransport
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.keychain.platformSecureStore
 import app.snapsync.logging.FileLogSink
 import app.snapsync.logging.IosThreadLabel
@@ -27,7 +29,6 @@ import app.snapsync.metrics.NoProcessMetrics
 import app.snapsync.preferences.IosPreferences
 import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.Dispatchers
 
 /**
@@ -61,7 +62,7 @@ object UploadExtensionRoot {
      */
     private val logDestination = extensionLogDestination()
 
-    private val log = Logger.withTag("UploadExtension")
+    private val log = Log("UploadExtension")
 
     /**
      * This process's ports onto the device's systems, as its REAL adapters (`ExtensionDevicePorts`), each built on first use —
@@ -144,7 +145,7 @@ object UploadExtensionRoot {
         // Where this run's log is going — including whether it fell back to this bundle's own Documents, in which case
         // no dump will carry it (the sentence is the adapter's). Only this root knows it, so it is logged right after
         // the composition's boot banner.
-        Logger.withTag("UploadExtensionRoot").i { logDestination.bannerLine }
+        Log("UploadExtensionRoot").unlabelled.i("log destination", "line" of logDestination.bannerLine)
         // The pre-relocation file at the old path would otherwise keep answering pulls with frozen
         // content forever. Idempotent, and a no-op while the sink is itself falling back there.
         removeStaleExtensionDocumentsLog(logDestination)

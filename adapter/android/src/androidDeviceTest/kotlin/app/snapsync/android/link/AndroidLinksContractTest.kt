@@ -14,7 +14,7 @@ import app.snapsync.contracts.LinksState
 import app.snapsync.contracts.LinksUnderTest
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
-import co.touchlab.kermit.Logger
+import app.snapsync.inbound.Log
 import kotlin.test.Test
 
 /**
@@ -36,7 +36,7 @@ class AndroidLinksContractTest {
         )
 
         override fun create(state: LinksState, clauseId: String, log: CallLog): Entered<LinksUnderTest> {
-            val links = AndroidLinks(Logger.withTag("contract"))
+            val links = AndroidLinks(Log("contract"))
             val record = context.getSharedPreferences("install-referrer-contract-$clauseId", Context.MODE_PRIVATE)
             record.edit().clear().commit()
             return Entered.Ready(
@@ -47,7 +47,7 @@ class AndroidLinksContractTest {
                     openWithoutUrl = { links.deliverIntent("onNewIntent", Intent(Intent.ACTION_VIEW)) },
                     startInstalled = { referrer ->
                         val play = ReferrerSource { answer -> answer(ReferrerAnswer.Referrer(referrer)) }
-                        AndroidInstallReferrer(record, play, links, Logger.withTag("contract")).deliverOnce()
+                        AndroidInstallReferrer(record, play, links, Log("contract")).deliverOnce()
                     },
                 ),
             ) { record.edit().clear().commit() }

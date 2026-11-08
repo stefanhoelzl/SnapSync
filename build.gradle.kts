@@ -214,7 +214,10 @@ coverage {
     // Instructions → 99 in phase 38 (missing levers and world events). Measured 99.25 %, two runs.
     ":domain:inbound" {
         unit()
-        integration(instructions = 99)
+        // → 97 in phase 5 (clean-up), when every adapter moved onto `Log` and it gained `d` for their platform
+        // callbacks' debug lines: the JVM world's mocks write none, so the debug path is the unit suite's (`LogTest`)
+        // and the devices'. No test was lost. Measured 97.72 %.
+        integration(instructions = 97)
     }
     // Measured once the polling tests were gone and a behaviour ended quiet (3g-b), steady at 95.7/77.4 over five runs;
     // before that, a teardown cut whatever pass a test left running, and `SingleFlight`'s withdrawals moved between

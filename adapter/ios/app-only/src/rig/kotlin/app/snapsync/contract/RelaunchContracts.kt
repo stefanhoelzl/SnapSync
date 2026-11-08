@@ -31,6 +31,7 @@ import app.snapsync.contracts.render
 import app.snapsync.contracts.run
 import app.snapsync.inbound.Completion
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
 import app.snapsync.ios.urlsession.BackgroundSessions
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.ios.urlsession.SessionEvents
@@ -47,7 +48,6 @@ import app.snapsync.ports.TransferSource
 import app.snapsync.systemui.IosSystemUi
 import app.snapsync.systemui.ShareSheetApi
 import app.snapsync.systemui.SystemShareSheetApi
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDate
@@ -239,7 +239,7 @@ internal fun relaunchedUpload(
     beforeDeliver: () -> Unit = {},
     afterDispose: () -> Unit = {},
 ): Entered<SessionUnderTest> {
-    val bare = IosUrlSessionUploadPlatform(Logger.withTag("contract"), CONTRACT_SESSION, cap = 4, api = api)
+    val bare = IosUrlSessionUploadPlatform(Log("contract"), CONTRACT_SESSION, cap = 4, api = api)
     val platform = bare.recorded(log)
     val ended = AtomicReference<List<Ended>>(emptyList())
     val handedOver = AtomicReference<List<Completion>>(emptyList())
@@ -300,7 +300,7 @@ internal class DeviceRelaunchedUploadBinding(
         // The system's call that started this process — before the clause runs, so first in the block.
         recorder.event(handleEvents(CONTRACT_SESSION))
         return relaunchedUpload(
-            RecordingUploadSessionApi(SystemUploadSessionApi(Logger.withTag("contract")), recorder),
+            RecordingUploadSessionApi(SystemUploadSessionApi(Log("contract")), recorder),
             handler,
             log,
         )

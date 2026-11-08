@@ -3,6 +3,8 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.gallery.PhotoKitResource
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.ChangeOutcome
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.GalleryResourceHandle
@@ -12,7 +14,6 @@ import app.snapsync.ports.OsUploadQueue
 import app.snapsync.ports.TransferFailure
 import app.snapsync.ports.UploadJobState
 import app.snapsync.ports.UploadTarget
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,7 +27,7 @@ import kotlin.reflect.KClass
  * inside PhotoKit and terminates the process — so the substitute is what makes the OS-driven tier runnable
  * here at all.
  */
-actual fun uploadJobQueue(log: Logger): OsUploadQueue = SimulatorUploadJobQueue(log)
+actual fun uploadJobQueue(log: Log): OsUploadQueue = SimulatorUploadJobQueue(log)
 
 /**
  * The content type a created job reports when its request declared none — the services' own last resort.
@@ -165,13 +166,13 @@ object SimulatorUploadJobs : SimulatorJobSets()
  * stand-in's type.
  */
 internal class SimulatorUploadJobQueue(
-    private val log: Logger,
+    private val log: Log,
     private val jobs: SimulatorJobSets,
     private val payloadType: KClass<*>,
 ) : OsUploadQueue {
 
     /** The substitute the app composes: the process-wide sets, and a PhotoKit resource as the only usable payload. */
-    constructor(log: Logger) : this(log, SimulatorUploadJobs, PhotoKitResource::class)
+    constructor(log: Log) : this(log, SimulatorUploadJobs, PhotoKitResource::class)
 
     override suspend fun retryOffered(): List<OsUploadJob> = presented(SimulatorJobAction.RETRY)
 
@@ -180,17 +181,28 @@ internal class SimulatorUploadJobQueue(
     private suspend fun presented(action: SimulatorJobAction): List<OsUploadJob> =
         run {
             jobs.inSet(action).map(::jobOf)
-        }.also { log.i { "simulated.jobs(set=$action) = ${it.size} job(s)" } }
+        }.also {
+            log.unlabelled.i(
+                "simulated.jobs(set=<action>) = <it.size> job(s)",
+                "action" of action,
+                "it.size" of it.size,
+            )
+        }
 
     override suspend fun create(resource: GalleryResourceHandle, target: UploadTarget): CreateOutcome =
         run body@{
             if (!payloadType.isInstance(resource)) {
-                log.w { "create: the resource is not a PhotoKit resource — not creating" }
+                log.unlabelled.w("create: the resource is not a PhotoKit resource — not creating")
                 return@body CreateOutcome.FAILED
             }
             jobs.record(target.asCreatedJob(isRetry = false, resource))
-                .also { log.i { "queue: ${jobs.createdCount()} job(s) created this cycle" } }
-        }.also { log.i { "simulated.create(to=${target.url}) = $it" } }
+                .also {
+                    log.unlabelled.i(
+                        "queue: <jobs.createdCount> job(s) created this cycle",
+                        "jobs.createdCount" of jobs.createdCount(),
+                    )
+                }
+        }.also { log.unlabelled.i("simulated.create(to=<target.url>) = <it>", "target.url" of target.url, "it" of it) }
 
     override suspend fun retry(job: OsUploadJob, target: UploadTarget): ChangeOutcome {
         val offered = (job.handle as? Presented)?.job ?: return ChangeOutcome.Refused(null, "not a presented job")

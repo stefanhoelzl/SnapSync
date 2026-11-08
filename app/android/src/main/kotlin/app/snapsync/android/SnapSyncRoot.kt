@@ -40,6 +40,8 @@ import app.snapsync.composition.app.composeApp
 import app.snapsync.composition.process.ProcessPorts
 import app.snapsync.dates.DateLocales
 import app.snapsync.http.KtorHttpTransport
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.metrics.NoProcessMetrics
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
@@ -48,7 +50,6 @@ import app.snapsync.sentry.SentryCrashReporter
 import app.snapsync.time.SystemClock
 import app.snapsync.ui.components.DateFormatter
 import app.snapsync.ui.components.ScreenDates
-import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,7 +67,7 @@ import kotlinx.coroutines.SupervisorJob
  */
 class SnapSyncRoot(internal val application: Application) {
 
-    private val log = Logger.withTag("SnapSyncRoot")
+    private val log = Log("SnapSyncRoot")
 
     /** The process's foreground life. `internal` so a rig build's `os` service delivers through it. */
     internal val lifecycle: AndroidLifecycle by lazy { AndroidLifecycle() }
@@ -189,7 +190,7 @@ class SnapSyncRoot(internal val application: Application) {
             cutoffFormatter = cutoffFormatter,
             // The app's uploader transport is the only uploader Android has (no OS-driven tier).
             ports = ports.appPorts(processPorts, adapters.devControls, adapters.ui.value),
-        ).also { adapters.bootLines.forEach { line -> log.i { line } } }
+        ).also { adapters.bootLines.forEach { line -> log.unlabelled.i("boot", "line" of line) } }
     }
 
     /** The composed core. `internal` for a rig build's channel, which reaches it as a thunk. */
@@ -219,6 +220,6 @@ class SnapSyncRoot(internal val application: Application) {
     fun onLaunch() {
         composed
         adapters.afterLaunch()
-        log.i { "onLaunch" }
+        log.unlabelled.i("onLaunch")
     }
 }

@@ -72,15 +72,13 @@ class CrashChannelTest {
         assertEquals(
             listOf(
                 CrashLevel.DEBUG,
-                CrashLevel.DEBUG,
                 CrashLevel.INFO,
                 CrashLevel.WARNING,
-                CrashLevel.ERROR,
                 CrashLevel.ERROR,
             ),
             reporter.crumbs.map { it.level },
         )
-        assertEquals(listOf("ERROR", "ASSERT"), reporter.captured.map { it.message })
+        assertEquals(listOf("ERROR"), reporter.captured.map { it.message })
     }
 
     @Test

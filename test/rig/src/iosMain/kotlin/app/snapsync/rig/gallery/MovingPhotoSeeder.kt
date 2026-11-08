@@ -1,8 +1,9 @@
 package app.snapsync.rig.gallery
 
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.levers.MovingPhoto
 import app.snapsync.rig.refused
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -32,7 +33,7 @@ import kotlin.time.Instant
  * Blocking (`performChangesAndWait`), off the main lane like every device command. Answers the asset's local id.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-fun addLivePhoto(log: Logger, photo: MovingPhoto): String {
+fun addLivePhoto(log: Log, photo: MovingPhoto): String {
     val stills = photo.files.filterNot { it.isMovie }
     val movies = photo.files.filter { it.isMovie }
     if (stills.size != 1 || movies.size > 1) {
@@ -73,7 +74,16 @@ fun addLivePhoto(log: Logger, photo: MovingPhoto): String {
         )
         val created = id
         if (!ok || created == null) refused("Photos refused the photo ${parts.map { it.third }}")
-        log.i { "added ${if (movies.isEmpty()) "a photo" else "a Live Photo"} $created from ${parts.map { it.third }}" }
+        log.unlabelled.i(
+            "added <value> <created> from <value2>",
+            "value" of (if (movies.isEmpty()) "a photo" else "a Live Photo"),
+            "created" of created,
+            "value2" of (
+                parts.map {
+                    it.third
+                }
+                ),
+        )
         return created
     } finally {
         NSFileManager.defaultManager.removeItemAtPath(dir, error = null)

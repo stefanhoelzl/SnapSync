@@ -39,9 +39,6 @@ kotlin {
             // their own engine (Darwin on device, MockEngine in the world/harness), so the type is API.
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
-            // Kermit for the stores' own diagnostics (the backfill sweep's positive on-device
-            // evidence — photo-sharing). :domain keeps kermit `implementation`, so it is not inherited.
-            implementation(libs.kermit)
             // TimeZone appears in SystemTimeZone's override of the `TimeZoneSource` port (step 9).
             implementation(libs.kotlinx.datetime)
         }

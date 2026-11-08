@@ -6,13 +6,14 @@ import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.inbound.CompositionOnly
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.objc.checkedObjC
 import app.snapsync.objc.isNoSuchFile
 import app.snapsync.platform.PlatformCalls
 import app.snapsync.ports.DatabaseHandlers
 import app.snapsync.ports.Databases
 import app.snapsync.ports.DbOpen
-import co.touchlab.kermit.Logger
 import co.touchlab.sqliter.DatabaseConfiguration
 import co.touchlab.sqliter.NO_VERSION_CHECK
 import co.touchlab.sqliter.createDatabaseManager
@@ -64,7 +65,7 @@ class IosDatabases(private val basePath: String?) : Databases {
         NSFileManager.defaultManager.containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path,
     )
 
-    private val log = Logger.withTag("databases")
+    private val log = Log("databases")
 
     /** Who is told of another process's commits; until someone listens, nobody is. */
     @Volatile
@@ -157,7 +158,15 @@ class IosDatabases(private val basePath: String?) : Databases {
         for (suffix in listOf("", "-wal", "-shm")) {
             val path = "$base/$name$suffix"
             checkedObjC("setAttributes") { NSFileManager.defaultManager.setAttributes(attributes, path, error = it) }
-                .onFailure { if (!it.isNoSuchFile) log.w(it) { "file protection not set on $path" } }
+                .onFailure {
+                    if (!it.isNoSuchFile) {
+                        log.unlabelled.w(
+                            "file protection not set on <path>",
+                            "path" of path,
+                            cause = it,
+                        )
+                    }
+                }
         }
     }
 }

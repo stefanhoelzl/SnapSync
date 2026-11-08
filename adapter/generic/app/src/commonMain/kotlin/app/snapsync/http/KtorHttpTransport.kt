@@ -1,10 +1,11 @@
 package app.snapsync.http
 
 import app.snapsync.domain.program.InvalidProgramState
+import app.snapsync.inbound.Log
+import app.snapsync.inbound.of
 import app.snapsync.ports.HttpRequest
 import app.snapsync.ports.HttpResult
 import app.snapsync.ports.HttpTransport
-import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import io.ktor.client.request.header
 import io.ktor.client.request.request
@@ -17,7 +18,7 @@ import io.ktor.http.content.TextContent
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.TimeSource
 
-private val httpLog = Logger.withTag("Http")
+private val httpLog = Log("Http")
 
 /**
  * The [HttpTransport] port over a Ktor [HttpClient] — one class for every platform; each composition supplies the
@@ -40,10 +41,15 @@ class KtorHttpTransport(private val client: HttpClient) : HttpTransport {
                 request.body?.let { setBody(TextContent(it, contentTypeOf(request))) }
             }
             val text = response.bodyAsText()
-            httpLog.i {
-                "${request.method} ${request.url} → ${response.status.value} " +
-                    "(${start.elapsedNow().inWholeMilliseconds}ms, req=${request.body?.length ?: 0}, resp=${text.length})"
-            }
+            httpLog.unlabelled.i(
+                "exchange answered",
+                "method" of request.method,
+                "url" of request.url,
+                "status" of response.status.value,
+                "ms" of start.elapsedNow().inWholeMilliseconds,
+                "req" of (request.body?.length ?: 0),
+                "resp" of text.length,
+            )
             HttpResult.Response(
                 response.status.value,
                 response.headers.entries().associate { (name, values) -> name to values.joinToString(",") },
@@ -54,7 +60,13 @@ class KtorHttpTransport(private val client: HttpClient) : HttpTransport {
         } catch (fatal: InvalidProgramState) {
             throw fatal
         } catch (t: Throwable) {
-            httpLog.w(t) { "${request.method} ${request.url} → FAILED (${start.elapsedNow().inWholeMilliseconds}ms)" }
+            httpLog.unlabelled.w(
+                "<request.method> <request.url> → FAILED (<value>ms)",
+                "request.method" of request.method,
+                "request.url" of request.url,
+                "value" of (start.elapsedNow().inWholeMilliseconds),
+                cause = t,
+            )
             HttpResult.Unreachable(t.toString())
         }
     }

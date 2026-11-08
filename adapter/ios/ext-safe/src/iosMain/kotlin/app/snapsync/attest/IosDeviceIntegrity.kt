@@ -2,13 +2,13 @@
 
 package app.snapsync.attest
 
+import app.snapsync.inbound.Log
 import app.snapsync.objc.objcBoundary
 import app.snapsync.objc.objcCallback
 import app.snapsync.ports.DeviceIntegrity
 import app.snapsync.ports.Proof
 import app.snapsync.ports.ProofFormat
 import app.snapsync.ports.ProveResult
-import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.allocArrayOf
@@ -58,7 +58,7 @@ class IosDeviceIntegrity internal constructor(
 
     constructor() : this(SystemAppAttestApi)
 
-    private val log = Logger.withTag("deviceIntegrity")
+    private val log = Log("deviceIntegrity")
 
     override suspend fun prove(challenge: String, handle: String?): ProveResult =
         if (handle == null) {

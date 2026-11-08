@@ -68,7 +68,6 @@ kotlin {
             // :adapter:ios:ext-safe); the byte uploads are the OS's job, not Ktor's.
             implementation(libs.ktor.client.core)
             implementation(libs.coroutines.core)
-            implementation(libs.kermit)
         }
         // No commonTest block: see the note above — this module has no test sources by rule.
     }

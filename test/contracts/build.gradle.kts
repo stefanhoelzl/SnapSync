@@ -96,7 +96,6 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
             // The recording proxies (`proxy/`) implement every port, so they name the types its signatures carry.
-            implementation(libs.kermit)
             implementation(libs.kotlinx.datetime)
             // The software attestation key every test host attests with (`SoftwareKeyAttestation`): ECDSA P-256 and
             // SHA-256, through each platform's provider below.

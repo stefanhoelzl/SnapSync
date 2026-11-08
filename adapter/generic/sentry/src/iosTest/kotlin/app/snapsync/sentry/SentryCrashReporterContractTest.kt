@@ -14,7 +14,6 @@ import app.snapsync.contracts.WaitExpired
 import app.snapsync.contracts.proxy.recorded
 import app.snapsync.contracts.verify
 import app.snapsync.domain.crash.CrashOptions
-import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
@@ -33,10 +32,10 @@ import kotlin.time.Duration.Companion.seconds
  * The ingest decides nothing a clause asserts, so this binding is `Live`. Nothing is ever sent to the operator's
  * instance.
  *
- * The adapter and the SDK are process-global — the idempotence flag, the SDK hub, Kermit's writer list — and other
+ * The adapter and the SDK are process-global — the idempotence flag, the SDK hub — and other
  * tests in this executable initialise Sentry too. So every clause gets a fresh instance the only way one exists
  * here: the SDK closed, its envelope cache wiped (a rejected or undelivered envelope persists there ACROSS runs and
- * blocks every later one — measured 2026-09-23), the start flag forgotten, and Kermit's writers restored.
+ * blocks every later one — measured 2026-09-23), the start flag forgotten, and the channel reset.
  */
 @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 class SentryCrashReporterContractTest {
@@ -65,7 +64,6 @@ class SentryCrashReporterContractTest {
                     "a process death is SentryProcessDeathContractTest's: it needs a next launch",
                 )
             }
-            val writers = Logger.config.logWriterList
             resetChannel()
             val ingest = LoopbackIngest()
             val observe = object : CrashObservation {
@@ -86,7 +84,6 @@ class SentryCrashReporterContractTest {
             ) {
                 resetChannel()
                 ingest.stop()
-                Logger.setLogWriters(writers)
             }
         }
     }
