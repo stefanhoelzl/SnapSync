@@ -1226,6 +1226,16 @@ the heartbeat pending, gone after `am force-stop`; then a photo is taken while t
 screen's count, then the event's union — and the heartbeat is pending again. The iOS force-quit has no such check: only a person's swipe records one, so it rests on Apple's
 documented behaviour. Decision record: `changes/timely-background-receiving` (D8).
 
+**A swipe from the recent apps is checked from outside the process too** (`SwipeAwayJourney`, run just before the
+force-stop journey): with A joined, it goes home and removes A's task with `am stack remove` — the system's own removal,
+which leaves the exit record a swipe out of the launcher's Recents leaves (`USER REQUESTED` / `REMOVE TASK`; `am kill`
+leaves `KILL BACKGROUND`, `am force-stop` `FORCE STOP`; measured 2026-11-07, API 36; an injected swipe reaches the
+launcher but does not dismiss the card). It reads that record, the heartbeat and the library watch still pending in
+JobScheduler, takes a photo, and waits for the backend's request log to tell the photo's upload, with the launcher
+still focused; then the event's union. It never asks the control channel while A is closed: Android freezes the
+backgrounded process whenever no job runs it, and the channel answers nothing there. It is how the WorkManager
+misreading fixed in `70c91887c` would show: a restart after a swipe that cancels the job which woke it.
+
 **Photos on the emulator are seeded by the process that reads them**: a photo-library contract inserts its own fixture —
 which it reads with no grant and deletes with no confirmation — with the capture date in the file's EXIF as well as
 `DATE_TAKEN`, since publishing re-derives it. An end-to-end run seeds through the rig's `gallery.seed`, which inserts
@@ -1433,8 +1443,10 @@ fresh simulator's first-boot work swamped the hosted runner (it tripled the job 
   Locally, the same two commands reproduce a job. They gate merges. On a failure the job prints the
   failing assertion's message in its log.
 - They **wait on what the screen shows** (`RigClient.awaitScreen`, on the device host's events), then read the real
-  system once — the backend's union, the photo library — and never poll. The real systems have no event; a read
-  that disagrees with the screen fails at once, naming what it saw. `TestsWaitOnEventsTest` holds them to it (every
+  system once — the backend's union, the photo library — and never poll. The real systems have no event, bar one:
+  the local backend's request log, a line per answered request, which `BackendRequests` follows as the file grows —
+  the wait where the app is closed and its screen tells nothing. A read that disagrees with the screen fails at once,
+  naming what it saw. `TestsWaitOnEventsTest` holds them to it (every
   journey verifies a requirement, none polls, none reads the app's log); the wall-clock rule is not theirs, because a
   device runs on real time and the bound is the client's wait.
 - They **fail, never skip**, when an address is missing.
