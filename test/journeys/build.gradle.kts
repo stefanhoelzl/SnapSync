@@ -22,7 +22,7 @@ plugins {
 // `scripts/journeys-build` does: the journeys read A's invite with the link origin `:domain:model` generates from the
 // deployment, and a program installed for another one cannot decode the invite the app shares.
 //
-// Support group (`docs/architecture.md`, "The module set withholds; packages organize"): it links into no
+// Support group (`docs/architecture.md`, "The module set: three groups"): it links into no
 // shipped-format binary.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())

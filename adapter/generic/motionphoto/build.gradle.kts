@@ -8,7 +8,7 @@
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The allowed targets, declared once (`docs/architecture.md`, "Zones inside the core").
+    // The allowed targets, declared once (`docs/architecture.md`, "The core and its layers").
     id("snapsync.targets")
 }
 

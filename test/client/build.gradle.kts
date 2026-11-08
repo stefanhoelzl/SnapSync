@@ -7,7 +7,7 @@ plugins {
 // connection is replaced: an app the operating system suspended, or that a caller killed and started again, comes
 // back with its sockets gone, and a long CI run over `adb forward` or the simulator's loopback outlives one.
 //
-// Support group (`docs/architecture.md`, "The module set withholds; packages organize"): it links into no
+// Support group (`docs/architecture.md`, "The module set: three groups"): it links into no
 // shipped-format binary. Its own module, under `:test:control` and `:test:cli`, so a caller that only calls the
 // services — `rig`, the device runs — starts on the levers and kRPC's client alone, never on the domain
 // `:test:control` compiles against.

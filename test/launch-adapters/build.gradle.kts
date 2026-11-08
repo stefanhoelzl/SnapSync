@@ -9,7 +9,7 @@
 // Targets: jvm (where its tests run in `build`) + the two iOS targets its hooks compile for.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
+    // The `android` target (`docs/architecture.md`, "The core and its layers"): the Android app links this module.
     id("snapsync.android")
 }
 

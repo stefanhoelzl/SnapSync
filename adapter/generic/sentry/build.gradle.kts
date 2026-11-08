@@ -11,7 +11,7 @@ import java.net.URI
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The `android` target (`docs/architecture.md`, "Zones inside the core").
+    // The `android` target (`docs/architecture.md`, "The core and its layers").
     id("snapsync.android")
 }
 

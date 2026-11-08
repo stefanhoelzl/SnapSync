@@ -661,7 +661,7 @@ never reaches the internal track (below).
   trigger, and blocks every report behind it, across launches, until `maxCacheItems` (30) newer envelopes evict it.
   Nothing on screen says so (`SentryHttpTransport.m` at 8.58.2; M7 in
   `changes/archive/2026-09-23-diagnostics-reporter-contracts`). So every outgoing event is bounded **by
-  construction** (the caps sit in `model/EventBounds.kt`), and the `CrashReporter` contract's
+  construction** (the caps sit in the domain's `EventBounds`, `crash/`), and the `CrashReporter` contract's
   `WIRE_WORST_CASE_DUMP_ARRIVES` clause fails `ios-build`'s platform tests if they stop fitting.
 
 Decision records: `changes/archive/2026-07-14-gate-testflight-on-tests`,

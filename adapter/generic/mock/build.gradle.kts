@@ -17,7 +17,7 @@
 // that switch — so "mocks never link into a shipped framework" stays true of every binary that ships.
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
+    // The `android` target (`docs/architecture.md`, "The core and its layers"): the Android app links this module.
     id("snapsync.android")
     // The persisted mock state (`:test:launch-adapters`): each mocked system's durable state as JSON in the App Group.
     alias(libs.plugins.kotlin.serialization)

@@ -649,7 +649,7 @@ Note `host state`'s `build.uploadTier` is a **build fact** — which uploaders t
 ## The JVM host — the same protocol with no device
 
 `:test:rig` also has a `jvm()` target: `JvmRigHost` serves the **unchanged** server and routes over the app
-the JVM root `:app:jvm` composes — the same `snapSyncHost` the iOS root calls — over the device as mocks
+the JVM root `:app:jvm` composes — the same `composeApp` the iOS root calls — over the device as mocks
 (`JvmMocks`). No phone, no lock, no build on a Mac:
 
 ```bash

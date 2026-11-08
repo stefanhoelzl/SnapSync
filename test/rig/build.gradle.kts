@@ -1,6 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The `android` target (`docs/architecture.md`, "Zones inside the core"): the Android app links this module.
+    // The `android` target (`docs/architecture.md`, "The core and its layers"): the Android app links this module.
     id("snapsync.android")
     alias(libs.plugins.kotlin.serialization)
     // `runJvmHost` can start the real backend (`liveEdge.consumedBy`, below).
@@ -17,7 +17,7 @@ plugins {
 // second way-to-drive that can rot or lie. Decision record:
 // `openspec/changes/.../add-rig-control-channel/design.md`.
 //
-// WITHHOLDING ARGUMENT (`docs/architecture.md`, "The module set withholds; packages organize"): this is
+// WITHHOLDING ARGUMENT (`docs/architecture.md`, "The module set: three groups"): this is
 // the ONLY module permitted to depend on `ktor-server-*`. A server import anywhere else is a compile
 // error — which is what makes this a module rather than a package.
 //
@@ -32,7 +32,7 @@ plugins {
 // app the JVM root (`:app:jvm`) composes over the mocks — the same `composeApp` the iOS root calls — handed
 // to the unchanged server through its own hook, with the operating system played through the mocks'
 // operator faces. The JVM target links into no shipped-format binary; only test
-// equipment consumes it (`docs/architecture.md`, "The module set withholds; packages organize").
+// equipment consumes it (`docs/architecture.md`, "The module set: three groups").
 //
 // TESTS. `commonMain` is tested now, through the JVM host, by `:test:control` (the protocol's typed client),
 // which ends the no-tests exception `…-retire-launch-env-triggers` D9 took for this module. The exception that
@@ -73,7 +73,7 @@ kotlin {
             // All `implementation`, never `api`: the protocol's JVM client (`:test:control`) compiles against
             // this module, and what it may reach is exactly what is on ITS compile path — the wire types here,
             // plus the read-models it declares itself. An `api` edge would hand it the ports and the composition
-            // (`docs/architecture.md`, "The module set withholds; packages organize").
+            // (`docs/architecture.md`, "The module set: three groups").
             implementation(project(":test:contracts"))
             // The mocks the operator levers move (`LeverDispatch.kt`) — every system's on the JVM host, and on the app
             // host the ones its launch-time adapters mocks (`docs/testing.md`, "Launch-time adapters"). Contained with

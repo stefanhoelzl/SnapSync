@@ -5,11 +5,12 @@ context: |
   Multiplatform + Compose), shipped via TestFlight (Android: Play, from phase 5).
 
   openspec/specs/<capability>/spec.md is the contract of record for what a
-  USER can observe (see WHAT EARNS A SPEC below); the decision record —
-  rationale, alternatives, trade-offs — lives in
-  openspec/changes/archive/<id>/design.md. Engineering knowledge (architecture,
-  testing, deployment — app and api) lives in docs/architecture.md,
-  docs/testing.md and docs/deployment.md, which are explanation, not contract;
+  USER can observe (see WHAT EARNS A SPEC below); a behaviour's rationale —
+  its alternatives and trade-offs — lives in its decision record,
+  openspec/changes/archive/<id>/design.md. Engineering knowledge and its
+  rationale (architecture, patterns, testing, deployment — app and api) live
+  in docs/architecture.md, docs/patterns.md, docs/testing.md and
+  docs/deployment.md, beside each rule, which are explanation, not contract;
   the gates in the build are the authority for engineering rules. Project rules
   live in AGENTS.md. Read them rather than restating them here.
 

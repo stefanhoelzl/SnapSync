@@ -10,7 +10,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 /**
- * The `android` target, declared once (`docs/architecture.md`, "Zones inside the core"): every multiplatform module the
+ * The `android` target, declared once (`docs/architecture.md` §1): every multiplatform module the
  * Android app links compiles for it — the core and `:ui:*` modules through [TargetsPlugin], which applies this, and the
  * modules that declare their own `jvm`/iOS list (`:adapter:generic:*`, the rig and what it links) by applying this
  * plugin beside it. A module declares no Android configuration of its own.

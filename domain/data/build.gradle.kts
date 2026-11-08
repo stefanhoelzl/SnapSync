@@ -4,7 +4,7 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
-// The core's `data` layer (`docs/architecture.md`, "The layers"): the repositories over the ports and the backend's
+// The core's `data` layer (`docs/architecture.md` §1): the repositories over the ports and the backend's
 // protocol over the transport — it TRANSLATES and never decides (`DataShape`): every branch is a domain verdict. The
 // old zones depend on it while they move (MIGRATING, `ModuleSetTest`); it never depends on them.
 

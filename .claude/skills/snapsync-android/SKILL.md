@@ -37,7 +37,7 @@ Never `adb kill-server` (the server is shared by every workspace), and remove yo
 
 ## What the app is here
 
-Only the **rig build** (`-Psnapsync.rig=true`) runs. It composes the real app (`snapSyncHost` over
+Only the **rig build** (`-Psnapsync.rig=true`) runs. It composes the real app (`composeApp` over
 `AppPorts`, in `SnapSyncRoot`, built in `Application.onCreate`) over an **adapter choice**, read at every start
 from the adapters file (`rig-channel`'s `adapters` service, as on the iOS app host):
 

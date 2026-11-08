@@ -64,7 +64,7 @@ class AppPorts(
      *  for the invite URL, the URL opener for the store link, and the app's Settings page (see [SystemUi]). */
     val systemUi: SystemUi,
     /**
-     * The platform's background downloads. An event port: the host zone registers
+     * The platform's background downloads. An event port: the composition registers
      * its download handlers on it as the graph is composed, so a background relaunch that delivers
      * finished transfers finds them.
      */
@@ -80,7 +80,7 @@ class AppPorts(
     val integrity: DeviceIntegrity,
     /**
      * The app's own uploader session (a background `URLSession` on iOS, Android's uploads) — what the app uploader's
-     * cycle starts its transfers on, and an event port: the host zone registers its upload handlers
+     * cycle starts its transfers on, and an event port: the composition registers its upload handlers
      * on it as the graph is composed, so a relaunch that hands back finished uploads records them.
      */
     val uploadSession: TransferSession,
@@ -101,11 +101,11 @@ class AppPorts(
      *  inert in a production build (see [DevControls]). */
     val devControls: DevControls,
     /** The platform's push service: asked for the token at launch and at every
-     *  foreground entry; the host zone registers [AppGraph.pushHandlers] on it as the graph is composed. */
+     *  foreground entry; the composition registers [AppGraph.pushHandlers] on it as the graph is composed. */
     val pushNotifications: PushNotifications,
-    /** The app's foreground life — an event port the host zone registers the foreground work on. */
+    /** The app's foreground life — an event port the composition registers the foreground work on. */
     val lifecycle: Lifecycle,
-    /** The links the platform opens the app with — an event port the host zone registers the link handler on. */
+    /** The links the platform opens the app with — an event port the composition registers the link handler on. */
     val links: Links,
     /** The platform's user interface — shown every state the status host reduces, from host assembly on. */
     val ui: Ui<UiState, UiIntent>,
@@ -185,7 +185,7 @@ class AppDevicePorts(
         // Every photo-library read and write, the partial grant's selection observer (opened at host assembly only)
         // and the import of foreign photos, whose markers the core's handlers write.
         gallery = gallery.value,
-        // The platform's background downloads — an event port the host zone listens to.
+        // The platform's background downloads — an event port the composition listens to.
         download = download.value,
         // HTTP: the backend's protocol, and every need-shaped service, are composed over it inside the core.
         http = http.value,
@@ -196,14 +196,14 @@ class AppDevicePorts(
         // on Android) the adapter answers `Unsupported` itself, so no root holds an `if` around it.
         extensionRegistry = extensionRegistry.value,
         devControls = devControls,
-        // The entry ports: each registered by the host zone as this graph is composed, so a delivery in a background
+        // The entry ports: each registered by the composition as this graph is composed, so a delivery in a background
         // wake finds its handler.
         pushNotifications = pushNotifications.value,
         lifecycle = lifecycle.value,
         links = links.value,
         ui = ui,
         backgroundTime = backgroundTime.value,
-        // The operating system's scheduled wakes: the heartbeat the tail re-arms, and — by the host zone's `listen` —
+        // The operating system's scheduled wakes: the heartbeat the tail re-arms, and — by the composition's `listen` —
         // its launch handler.
         wake = wake.value,
         processInfo = processInfo.value,

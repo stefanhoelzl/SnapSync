@@ -47,7 +47,7 @@ tink = "1.23.0"
 # AES-GCM on iOS, where CommonCrypto has no public GCM: cryptography-kotlin's CryptoKit provider bridges Apple's
 # CryptoKit (Swift-only) into Kotlin/Native. `:adapter:ios:ext-safe`'s IosCrypto is its one caller.
 cryptography-kotlin = "0.6.0"
-# Android (`docs/architecture.md`, "Zones inside the core": the allowed targets). One AGP for the KMP library plugin
+# Android (`docs/architecture.md`, "The core and its layers": the allowed targets). One AGP for the KMP library plugin
 # every multiplatform module's `android` target comes from and the application plugin `:app:android` applies.
 agp = "9.4.1"
 # minSdk 30 (Android 11), one level for the app AND its device tests: scoped storage is enforced (29 still let an app

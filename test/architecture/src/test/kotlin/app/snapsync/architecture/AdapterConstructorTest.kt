@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * **An adapter's constructor takes no function** (`docs/architecture.md`, "Ports and seams").
+ * **An adapter's constructor takes no function** (`docs/architecture.md`, "Ports").
  *
  * A port implementation is one external system, translated. A function handed to its constructor is a callback some
  * root wired into it — a decision, or a second system, reached from inside an adapter where no mock can see it and no

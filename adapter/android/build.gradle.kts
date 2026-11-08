@@ -9,7 +9,7 @@
 // platform's SQLite and Keystore, so they run on the emulator (`androidPlatformTest`).
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    // The `android` target (`docs/architecture.md`, "Zones inside the core") — this module's only one.
+    // The `android` target (`docs/architecture.md`, "The core and its layers") — this module's only one.
     id("snapsync.android")
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)

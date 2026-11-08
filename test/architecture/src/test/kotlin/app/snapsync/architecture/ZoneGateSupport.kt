@@ -6,7 +6,7 @@ import kotlin.test.fail
 
 /**
  * Shared scanning for the zone gates (`docs/architecture.md`, "The zone gates"; decision record:
- * `pin-runtime-identity-and-zone-gates`). Law semantics: `docs/architecture.md` "Zones inside the core" /
+ * `pin-runtime-identity-and-zone-gates`). Law semantics: `docs/architecture.md` "The core and its layers" /
  * "Commands cross one door".
  *
  * SELF-ARMING (the `FakeHonestyTest` pattern): each gate's zone does not exist yet — it is created
@@ -198,7 +198,7 @@ internal object ZoneGates {
     fun assertNoViolations(gate: String, violations: List<String>) {
         assertTrue(
             violations.isEmpty(),
-            "$gate gate violations (law: module-architecture \"Zones inside the core\"):\n  " +
+            "$gate gate violations (law: `docs/architecture.md` \"The core and its layers\"):\n  " +
                 violations.joinToString("\n  "),
         )
     }

@@ -37,7 +37,9 @@ the source of truth for versions).
 api/            the Deno backend (bunny Edge Scripting) - explained in docs/ (architecture · testing · deployment)
 site/           the Astro landing page
 iosApp/         the Xcode project (app + upload-extension targets) - NOT a Gradle project
-domain/ adapter/ ui/ app/ test/   the Gradle modules - graph in architecture/modules.md, groups + laws in docs/architecture.md §1-2
+domain/          the core, one module per layer (domain format wire inbound ports scheduling data application query
+                entrypoints presentation composition/*) - layer table, placement guide, laws: docs/architecture.md §1-2
+adapter/ ui/ app/ test/   the platform adapters, the screens, the roots, the test equipment - graph in architecture/modules.md
 openspec/       specs/ (contract of record: user-observable outcomes) + changes/archive/ (decision records)
 docs/           architecture · testing · deployment · patterns · agents - engineering explanation, NOT contract
 architecture/   GENERATED diagrams - `./gradlew architectureDiagrams` and commit; stale blocks the PR
@@ -96,14 +98,28 @@ prints; never guess a spec path. Where a class lives: grep.
 
 - **`openspec/specs/<capability>/spec.md`** — the **contract of record** for what a **user can observe**. What,
   never how. The rule and the swap test are `WHAT EARNS A SPEC` in `openspec/config.yaml`.
-- **`openspec/changes/archive/<id>/`** — the **decision record**: `proposal.md` (what & why) and `design.md`
-  (rationale, rejected alternatives, trade-offs).
+- **`openspec/changes/archive/<id>/`** — the **decision record** of a behaviour: `proposal.md` (what & why) and
+  `design.md` (its rationale, rejected alternatives, trade-offs). **Behaviour rationale lives here.**
 - **`docs/architecture.md` · `docs/testing.md` · `docs/deployment.md` · `docs/patterns.md`** — engineering
-  explanation for the app and the api. Not contract: the gates in `./gradlew build` are the authority.
+  explanation for the app and the api, and **engineering rationale lives here**, beside each rule (the laws are
+  `docs/architecture.md` §2 — never copied into this file). Not contract: the gates in `./gradlew build` are the
+  authority.
 
 Changing an observable outcome: read its spec, then its decision record. Changing anything else: read the relevant
 `docs/` file and the code. Before moving code or changing a boundary, read `docs/architecture.md`; before adding a
 test file, `docs/testing.md`.
+
+## Standing principles (every change)
+
+- **A clean architecture is the goal**; behaving the same for a user is only a constraint. Never keep a compromise
+  because it is behaviour-neutral, and never trade cleanliness for a smaller diff.
+- **Keep it clean continuously**: propose and recommend the clean solution; when it costs more, say so and recommend
+  it anyway — a shortcut only as the explicitly worse alternative.
+- **No dead production code**: what a change leaves unused goes in that change. A test, rig or mock use keeps nothing
+  alive.
+- **Build logic goes into `build-logic/`**, never into a root build file.
+
+Where code goes is `docs/architecture.md`'s placement guide (§1).
 
 ## Agent harness limits
 
@@ -133,14 +149,18 @@ History behind these: `docs/agents.md` §4.
 
 ## Code rules no gate states for you
 
-- `commonMain` is limited to the common stdlib + each zone's allowlisted libraries; JVM-only APIs there break the
+- `commonMain` is limited to the common stdlib + each layer's allowlisted libraries; JVM-only APIs there break the
   iOS compile (check with the proxy task).
 - **Never write a word a person reads as a string literal** in `:ui:*`: use the module's
   `composeResources/values/strings.xml` and `stringResource`. Dates go through `DateFormats`. OS-shown text
   regenerates with `./gradlew nativeStrings` (`docs/architecture.md`, "Localization").
-- **New code logs through `Log`** (`docs/patterns.md` §6), and work an entry point does not await is a `detached`
-  step, never a `scope.launch`, so its lines keep their trigger label. Errors are **reduced into state**: sealed
-  domain errors → `UiState`, never thrown to the UI.
+- **Every line goes through the structured `Log` facade** (`docs/patterns.md` §6) — a literal event, its values as
+  fields, its `EntryPoint` trigger label read from the run (or, off a coroutine, the thread's `ThreadLabel`); there is
+  no other logging library. The crash channel carries everything but an event key. Work an entry point does not await
+  is a `detached` step, never a `scope.launch`, so its lines keep their trigger label.
+- **Errors are values**: an expected failure is a sealed case, reduced into `UiState`, never thrown; the core throws
+  only `InvalidProgramState` and catches only typed library failures; an adapter's catch-all is a named
+  `PlatformCalls.attempt` site (`docs/patterns.md` §5, §15).
 - Device logs and the diagnostic dump: `snapsync-device`, `bugsink`, `docs/deployment.md` §5.
 
 ## Workflow

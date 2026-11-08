@@ -9,7 +9,7 @@ plugins {
 // commands are DERIVED from the services `:test:levers` declares — each one's kotlinx-rpc descriptor names its methods,
 // their parameters and types — so a service or method added there is a command here with no edit.
 //
-// Support group (`docs/architecture.md`, "The module set withholds; packages organize"): it links into no
+// Support group (`docs/architecture.md`, "The module set: three groups"): it links into no
 // shipped-format binary. On `:test:client`, not `:test:control`, so a call starts on the levers and kRPC's client alone
 // rather than on the domain `:test:control` compiles against.
 //
