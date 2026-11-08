@@ -284,7 +284,7 @@ class QualityPlugin : Plugin<Project> {
             ":ui:components" to "ui",
             ":ui:screens" to "ui",
 
-            // Test equipment: harnesses, the control channel, the diagram generators. Read once, never shipped.
+            // Test equipment: harnesses and the control channel. Read once, never shipped.
             ":app:desktop" to "harness",
             ":test:harness-driver" to "harness",
             ":test:rig" to "harness",
@@ -297,7 +297,6 @@ class QualityPlugin : Plugin<Project> {
             ":test:cli" to "harness",
             ":test:journeys" to "harness",
             ":test:levers" to "harness",
-            ":tools:diagrams" to "harness",
 
             // Modules with no production source at all.
             ":test:architecture" to "tests",

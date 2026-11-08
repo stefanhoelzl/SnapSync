@@ -1,4 +1,4 @@
-# Tier `harness` — test equipment (`:app:desktop`, `:test:rig`, `:test:harness-driver`, `:tools:diagrams`, …)
+# Tier `harness` — test equipment (`:app:desktop`, `:test:rig`, `:test:harness-driver`, …)
 #
 # A CEILING on complexity for this scope (`docs/architecture.md`). Every number below is a
 # ceiling that MAY ONLY FALL. Lowering one is ordinary work — do it in the change that makes it true.
@@ -33,13 +33,15 @@
 # stable, or at the first parse failure on newer syntax — whichever comes first.
 #
 # WHAT THIS TIER IS FOR. Code that is read once and never shipped: the two desktop harnesses, the
-# control channel, the contracts and the local backend fixture, the diagram generators. These ceilings exist to
+# control channel, the contracts and the local backend fixture. These ceilings exist to
 # CATCH A REGRESSION, not to converge — nothing here is expected to fall, and that is stated rather
 # than left to be inferred from numbers that never move.
 #
 # Lowered when `:test:world` and its mini-edge were deleted (11g2b), re-measured the same way: cyclomatic 51 -> 38
-# (`miniEdgeClient` set the old number alone; `:tools:diagrams`' `stripComments` sets it now, at 37), cognitive 64 -> 49 and
-# `LongMethod` 171 -> 162 (`WorldInspector`, at 48 and 161).
+# (`miniEdgeClient` set the old number alone), cognitive 64 -> 49 and
+# `LongMethod` 171 -> 162 (`WorldInspector`, at 48 and 161). Cyclomatic 38 -> 27 when the diagram generators left the
+# tier for build-logic (phase 6): their `stripComments` had set it, at 37; the rig's `GalleryWiper.performWipe` sets it
+# now, at 26.
 #
 # `test/rig/src/hook` is excluded by the task: it is compiled INTO `:app:ios` and is held at cyclomatic
 # 2 by `detektAppShell`. Scanning it here too would subject shell source to a ceiling 25x looser.
@@ -52,7 +54,7 @@
 complexity:
   CyclomaticComplexMethod:
     active: true
-    threshold: 38
+    threshold: 27
   CognitiveComplexMethod:
     active: true
     threshold: 49

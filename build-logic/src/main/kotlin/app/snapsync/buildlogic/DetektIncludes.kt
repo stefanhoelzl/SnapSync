@@ -51,5 +51,5 @@ object DetektIncludes {
     private fun unquoted(value: String): String =
         value.substringBefore(" #").trim().removeSurrounding("'").removeSurrounding("\"")
 
-    private val SOURCE_TREES = listOf("core", "adapter", "app", "ui", "test", "tools")
+    private val SOURCE_TREES = listOf("core", "adapter", "app", "ui", "test", "build-logic")
 }

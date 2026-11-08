@@ -14,7 +14,8 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
  * the root, so no module opts in and none can forget to.
  *
  * The plugins it applies stay their own: `snapsync.quality` (every detekt task), `snapsync.archive-names` (archive
- * names from the module path) and `snapsync.coverage` (every module's coverage).
+ * names from the module path), `snapsync.coverage` (every module's coverage) and `snapsync.diagrams` (the diagrams
+ * under `architecture/`).
  */
 class ConventionsPlugin : Plugin<Project> {
     override fun apply(root: Project) {
@@ -26,6 +27,7 @@ class ConventionsPlugin : Plugin<Project> {
         root.pluginManager.apply("snapsync.quality")
         root.pluginManager.apply("snapsync.archive-names")
         root.pluginManager.apply("snapsync.coverage")
+        root.pluginManager.apply("snapsync.diagrams")
         dependencyAnalysis(root)
         buildLogicTests(root)
         nativeThreads(root)

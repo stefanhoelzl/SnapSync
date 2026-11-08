@@ -87,6 +87,10 @@ gradlePlugin {
             id = "snapsync.conventions"
             implementationClass = "app.snapsync.buildlogic.ConventionsPlugin"
         }
+        register("diagrams") {
+            id = "snapsync.diagrams"
+            implementationClass = "app.snapsync.buildlogic.diagrams.DiagramsPlugin"
+        }
         register("archiveNames") {
             id = "snapsync.archive-names"
             implementationClass = "app.snapsync.buildlogic.ArchiveNamesPlugin"
