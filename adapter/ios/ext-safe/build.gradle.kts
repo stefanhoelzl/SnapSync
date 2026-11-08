@@ -63,14 +63,14 @@ kotlin {
             }
         }
         commonMain.dependencies {
-            api(project(":domain:domain"))
-            api(project(":domain:ports"))
-            api(project(":domain:inbound"))
+            api(project(":core:domain"))
+            api(project(":core:ports"))
+            api(project(":core:inbound"))
             // The device log's file names; the stamp is `:adapter:generic:app`'s.
-            implementation(project(":domain:format"))
+            implementation(project(":core:format"))
             // The Ktor core types darwinHttpClient() returns.
             api(project(":adapter:generic:app"))
-            // (The interim :capability:album and :domain:gallery edges died at migration step 6:
+            // (The interim :capability:album and :core:gallery edges died at migration step 6:
             // the album seams now live in :domain ports/, albumMapSource in feature/album, and the
             // ResourceEnumerator composition in feature/upload — all reached via api(":domain").)
             implementation(libs.sqldelight.driver.native)
@@ -87,11 +87,11 @@ kotlin {
             // The photo-library contracts bind the grant-aware composition production calls over the
             // PhotoKit adapters (`docs/architecture.md`, "A live binding binds the composition
             // production calls").
-            implementation(project(":domain:composition:app"))
+            implementation(project(":core:composition:app"))
             // The storage services' SQLite behaviour on this target, measured over the real `IosDatabases`
-            // (`docs/architecture.md`): a `:domain:*` build file names no module, so those tests live here.
+            // (`docs/architecture.md`): a `:core:*` build file names no module, so those tests live here.
             // The device identity's never-mint invariant, end to end through the real adapters.
-            implementation(project(":domain:data"))
+            implementation(project(":core:data"))
         }
     }
 }

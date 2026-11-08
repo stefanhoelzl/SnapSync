@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  *    one of them dropped "Choose more photos", and nothing said so. `mayCreate = { true }` and exclusion readers
  *    defaulting to nothing-excluded were the same shape on a safety gate.
  *
- * **Scope.** Production source: every Kotlin file under `domain/`, `adapter/`, `app/` and `ui/` outside a test
+ * **Scope.** Production source: every Kotlin file under `core/`, `adapter/`, `app/` and `ui/` outside a test
  * source set. The `:test:*` modules are test equipment and may carry defaults, which is where the test
  * builders live. Composable function types (`@Composable () -> Unit`, a content slot) are exempt from the
  * default rule. Ordinary function parameters are not constructor parameters and are not covered: a log
@@ -31,7 +31,7 @@ import kotlin.test.assertTrue
  */
 class LambdaSeamShapeTest {
 
-    private val productionRoots = listOf("/domain/", "/adapter/", "/app/", "/ui/")
+    private val productionRoots = listOf("/core/", "/adapter/", "/app/", "/ui/")
 
     private fun isProduction(path: String): Boolean =
         productionRoots.any { path.startsWith(it) } && !Regex("""/src/(\w*[Tt]est)/""").containsMatchIn(path)

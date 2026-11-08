@@ -5,8 +5,8 @@ plugins {
 
 // test-only (`docs/testing.md`, "The data layer's suites"): the data layer's repositories and the backend's protocol
 // run over the ports' in-memory mocks — the real secure store, transport and integrity doubles — and are observed at
-// the port. `:domain:data` cannot name a mock (no core module may), so its suites live here; their coverage is
-// credited to it and to `:domain:application` (the root build file's `coverage { }`). jvm()+iosSimulatorArm64,
+// the port. `:core:data` cannot name a mock (no core module may), so its suites live here; their coverage is
+// credited to it and to `:core:application` (the root build file's `coverage { }`). jvm()+iosSimulatorArm64,
 // commonTest only.
 
 kotlin {
@@ -15,16 +15,16 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonTest.dependencies {
-            implementation(project(":domain:data"))
-            implementation(project(":domain:application"))
-            implementation(project(":domain:query"))
-            implementation(project(":domain:domain"))
-            implementation(project(":domain:ports"))
-            implementation(project(":domain:wire"))
-            implementation(project(":domain:inbound"))
+            implementation(project(":core:data"))
+            implementation(project(":core:application"))
+            implementation(project(":core:query"))
+            implementation(project(":core:domain"))
+            implementation(project(":core:ports"))
+            implementation(project(":core:wire"))
+            implementation(project(":core:inbound"))
             implementation(project(":adapter:generic:mock"))
             // A timestamp's text, which the store's date columns spell.
-            implementation(project(":domain:format"))
+            implementation(project(":core:format"))
             // A schema as it stood at an older version (`SqlSchema.at`), for the store's migration suites.
             implementation(project(":test:contracts"))
             implementation(libs.sqldelight.runtime)

@@ -8,7 +8,7 @@ package app.snapsync.buildlogic
  * ```
  * coverage {
  *     integrationGoal(instructions = 95, branches = 85)
- *     ":domain:services" {
+ *     ":core:services" {
  *         skipped("SQLDelight's generated code; …", packages = listOf("app.snapsync.data.store.db"))
  *         unit(alsoCoveredBy = listOf(":adapter:generic:mock"))
  *         integration(instructions = 80, branches = 58)

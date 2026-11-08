@@ -1,7 +1,7 @@
 # Writing code in the core's layers
 
-How work enters the core, how it runs, and how it is written — the patterns `:domain:inbound`,
-`:domain:scheduling`, `:domain:entrypoints` and `:domain:domain` hold, and every new trigger and every value the
+How work enters the core, how it runs, and how it is written — the patterns `:core:inbound`,
+`:core:scheduling`, `:core:entrypoints` and `:core:domain` hold, and every new trigger and every value the
 domain gains follows. Where each layer sits and what
 it may reference is `docs/architecture.md` ("The core and its layers", and its placement guide); this file is how to
 write in them.
@@ -20,7 +20,7 @@ platform ──delivery──▶ event port ──inbound kind──▶ entry po
 
 ## 1. The inbound kinds
 
-Every delivery an event port makes is typed by one of four kinds (`:domain:inbound`). The kind is what the platform
+Every delivery an event port makes is typed by one of four kinds (`:core:inbound`). The kind is what the platform
 promises about the delivery, so it decides how the core may answer it.
 
 | kind | the platform | the core | examples |
@@ -238,7 +238,7 @@ val read = try { store.read() } catch (e: Exception) { null }
 
 ## 6. Logging
 
-New code writes the **structured log**, `Log` (`:domain:inbound`):
+New code writes the **structured log**, `Log` (`:core:inbound`):
 
 ```kotlin
 private val log = Log("PlanTopUp")
@@ -277,7 +277,7 @@ log.unlabelled.w("legacy $source unreadable ($read)")
 
 ## 7. The domain
 
-`:domain:domain` holds the **values and verdicts** the rest of the core speaks: the identities (`EventId`,
+`:core:domain` holds the **values and verdicts** the rest of the core speaks: the identities (`EventId`,
 `DeviceId`, `AssetId`), the one point in time (`Timestamp`), the dates each play one role (`EventStart`, `EventEnd`,
 `OpenUntil`, `DeletesAt`, `CaptureCutoff`, `CaptureCeiling`), an asset's capture fact (`CaptureDate`) and the rules
 over them (`CaptureRange`). Packages are named for the concept: `time`, `event`, `sharing`, `asset`, `device`.
@@ -308,7 +308,7 @@ it does not name, and the world read inside a call, are review's.
 
 ## 8. The data layer
 
-`:domain:data` holds the **repositories over the ports and the backend's protocol over the transport** — what the
+`:core:data` holds the **repositories over the ports and the backend's protocol over the transport** — what the
 backend's routes say and how a store keeps a value. Today it holds trust (`docs/architecture.md`, "Trust"): the gateway,
 the credential stores, the device identity, the attestation handshake, the version gate — and the membership: the
 `ledger.db` store, the membership row's repository, the leaves owed, the check times, the event's read and rename, the
@@ -353,11 +353,11 @@ A value's text — on the wire, in a store, in a JSON file — is the boundary's
 
 | format | the one place | |
 |---|---|---|
-| a timestamp's text (`yyyy-MM-dd'T'HH:mm:ss'Z'`) | `TimestampText` (`:domain:format`) | `format`, `parse`, `parseOrNull`, and an asset's `captureDate`/`captureText` |
-| a value in a JSON document | the document's own `XText` object in `:domain:format` (`InviteLinkText`, `LegacyMembershipText`, `FootprintTrailText`) | a total decoder over the parsed tree: a typed catch of the library's failure, a value for every answer, never a throw |
+| a timestamp's text (`yyyy-MM-dd'T'HH:mm:ss'Z'`) | `TimestampText` (`:core:format`) | `format`, `parse`, `parseOrNull`, and an asset's `captureDate`/`captureText` |
+| a value in a JSON document | the document's own `XText` object in `:core:format` (`InviteLinkText`, `LegacyMembershipText`, `FootprintTrailText`) | a total decoder over the parsed tree: a typed catch of the library's failure, a value for every answer, never a throw |
 | a value in a database column | a `ColumnAdapter` per type (`data/store/DomainColumnAdapters.kt`) | wired once per database; the `.sq` column names its type (`TEXT AS EventId`) |
 
-`:domain:format` holds the formats the layers on both sides of the data layer need: a dependency on it hands over
+`:core:format` holds the formats the layers on both sides of the data layer need: a dependency on it hands over
 nothing but formats — no DTO, no port, no store. A column's Kotlin type lives in the `CREATE TABLE` of a migration,
 and a shipped migration is never edited (`MigrationPinTest`): giving a column a type is a new migration that rebuilds
 its table (`ledger.db` 15, `downloads.db` 9), changing no byte a device stores. A column that holds a sentinel no
@@ -416,7 +416,7 @@ first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the
 `RearmHeartbeat`), the upload's, `application.upload`'s (`DeriveContribution`, `WalkOwnPhotos`, `RecordWalk`,
 `PlanTopUp`, `CreateJobs`, `SettlePresentedJobs`, `RecordFinishedUpload`, `SettleStoredUploads`,
 `ReconcileUploader`, `StopUploads`), the manifest's, `application.sharing`'s (`PublishManifest`, `CheckSettleNeed`), receiving's (`application.receiving`: `PlanReceiving`, `StageDownload`, `RecordStaged`, `ImportNextStaged`, `RecognizeReceivedPhotos`, `StopReceiving` and their kin), and the album's (`application.album`: `EnsureEventAlbum`, `PlaceOwnPhotos`, `PlaceReceivedPhotos`, `AlbumForImport`, `MarkAlbumFilled`, `OwnAlbumPhotos`, `ReceivedAlbumPhotos`). A use case answers an `XOutcome`, and logs what it decided through the structured log;
-`:domain:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
+`:core:application` claims 3 / 3, measured on it (`config/detekt/application.yml`).
 
 ---
 
@@ -425,7 +425,7 @@ first is trust's `RefreshAttestation`, the step every wake's `Prelude` runs; the
 ### The change feed
 
 A query that shows what a store holds **follows the store**, and reads nothing on its own account. Each database has
-one change signal (`StoreChanges`, `:domain:data`): `OwnedDatabase` builds its generated database over a driver that
+one change signal (`StoreChanges`, `:core:data`): `OwnedDatabase` builds its generated database over a driver that
 announces every commit this process makes (SQLDelight's notice to the driver's listeners — after a statement outside a
 transaction, after a commit, never for a rollback), and the app's `OnChangedElsewhere` announces what the upload
 extension committed, as the `Databases` port tells it. The signal carries no table: the other process's notice names
@@ -442,7 +442,7 @@ a use case (`CountOwnPhotos`) as a step of the entry points that change it, and 
 Every write goes through the generated queries (`StoreWritesAnnounceTest`): a raw statement announces nothing, and a
 screen over the rows it changed would stay stale with no error anywhere.
 
-What the screen **asks** is a query, in `:domain:query`: a read over the data layer, never a write
+What the screen **asks** is a query, in `:core:query`: a read over the data layer, never a write
 (`QueryReadOnlyTest`) — the membership as shown (`MembershipQuery.shown`), the joined event's key and its invite
 (`EventKeyQuery`), the counts (`SharingProgressQuery`, `ReceivingProgress`), each a state the store's change notices
 re-read while the app is in front. What the screen asks once is a **lookup** (`ScreenLookup`): an invite's event
@@ -486,7 +486,7 @@ subclass cannot cross modules.
 
 ## 15. Invalid program state
 
-`InvalidProgramState` (`:domain:domain`, `program/`) is **the one exception the core raises**. It is thrown only where
+`InvalidProgramState` (`:core:domain`, `program/`) is **the one exception the core raises**. It is thrown only where
 something *guarantees* the state can never happen, and it is **fatal**: if it is ever thrown, one of our guarantees is
 wrong, and running on might not be safe.
 
@@ -525,7 +525,7 @@ return AssetId.parse(encoded.toString()) ?: throw InvalidProgramState("the encod
 
 ## 16. Composition is wiring
 
-The composition layer (`:domain:composition:process`, `:domain:composition:extension`, `:domain:composition:app`;
+The composition layer (`:core:composition:process`, `:core:composition:extension`, `:core:composition:app`;
 `docs/architecture.md`, "Composition and shells") says which instance goes where, and nothing else:
 
 - **A graph class holds only `val`s, each built by a constructor call** — `ProcessGraph`, `UploadGraph`,
@@ -639,11 +639,11 @@ the same variability where nothing describes it. *Gate:* `DevControlsContainment
 
 | rule | gate |
 |---|---|
-| An entry point holds no `if`; a `when` only over a subject, every case named; a `membership { }` block names a branch | detekt `EntryPointShape` (`:domain:entrypoints`) |
+| An entry point holds no `if`; a `when` only over a subject, every case named; a `membership { }` block names a branch | detekt `EntryPointShape` (`:core:entrypoints`) |
 | A query only reads | `QueryReadOnlyTest` |
-| Data holds no `if`; a `when` only over a subject, every case named, used as an expression | detekt `DataShape` (`:domain:data`) |
+| Data holds no `if`; a `when` only over a subject, every case named, used as an expression | detekt `DataShape` (`:core:data`) |
 | Only an entry point calls a use case | `EntryPointCall` + `OptInPinsTest` |
-| A step is one call | detekt `OneCallPerStep` (`:domain:entrypoints`) |
+| A step is one call | detekt `OneCallPerStep` (`:core:entrypoints`) |
 | Only the runtime starts coroutines | detekt `CoroutinesInScheduling` (`inbound`, `entrypoints`, `domain`, `data`, `application`, `query`) |
 | Behaviour crosses as an interface, never a function-typed field, `fun interface` or alias | detekt `NoFunctionTypes` (every core module) |
 | A function lives on its type | detekt `NoTopLevelFunctions` (every core module; the composing functions excepted) |
@@ -652,7 +652,7 @@ the same variability where nothing describes it. *Gate:* `DevControlsContainment
 | An entry point names no port | `EntryPointsCallNoPortTest` |
 | The core catches only typed library failures; each adapter catch-all is a named site | `CatchSitesTest` (+ `CatchGateTest`: cancellation is kept) |
 | The project's markers, and the delicate library ones, are opted into only where pinned; no build script opts a module in | `OptInPinsTest` |
-| The domain is values and verdicts: no suspension, state, behaviour as a value, world or top-level function | detekt `DomainPurity` (`:domain:domain`) |
+| The domain is values and verdicts: no suspension, state, behaviour as a value, world or top-level function | detekt `DomainPurity` (`:core:domain`) |
 | A domain verdict, data and a use case stay small | the `domain`, `data` and `application` tiers — claims, measured |
 | Only the app process mints an identity or attests; the walk memo stays in the app | `@AppProcessOnly` + `OptInPinsTest` |
 | Only the app makes or gathers an event album; the extension only places own photos | `@AppProcessOnly` on `AlbumCreation`, `EnsureEventAlbum`, `PlaceReceivedPhotos`, `AlbumGatherPass` and `OnPhotoAccessChanged`, one opt-in site (`AlbumGraph`) + `OptInPinsTest` |

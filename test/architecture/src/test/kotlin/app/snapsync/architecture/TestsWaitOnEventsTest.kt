@@ -152,7 +152,7 @@ class TestsWaitOnEventsTest {
 
         /** What the JVM host runs of the app: the core's zones, and the generic adapters and mocks it composes over. */
         val APP_CODE = listOf(
-            Regex("""^/domain/[^/]+/src/\w+Main/.*"""),
+            Regex("""^/core/[^/]+/src/\w+Main/.*"""),
             Regex("""^/adapter/generic/app/src/\w+Main/.*"""),
             Regex("""^/adapter/generic/mock/src/\w+Main/.*"""),
         )

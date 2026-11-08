@@ -18,7 +18,7 @@ class StoreWritesAnnounceTest {
     @Test
     fun `no store writes past the generated queries`() {
         val sources = SourceScan.kotlinFiles().filter {
-            "/domain/data/src/commonMain/" in it.path
+            "/core/data/src/commonMain/" in it.path
         }
         assertTrue(sources.isNotEmpty(), "no store source scanned — the modules moved")
         val statements = sources.flatMap { source ->

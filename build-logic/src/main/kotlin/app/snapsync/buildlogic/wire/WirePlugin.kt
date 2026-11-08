@@ -24,7 +24,7 @@ import javax.inject.Inject
 
 /**
  * `snapsync.wire` — the app's half of the wire, generated at build time from `api/openapi.yaml` and never committed
- * (`docs/architecture.md`, "The backend boundary"). Applied by `:domain:wire`, whose `commonMain` it feeds:
+ * (`docs/architecture.md`, "The backend boundary"). Applied by `:core:wire`, whose `commonMain` it feeds:
  *
  * - `generateWireModels` — the DTOs, by FABRIKT (`--targets HTTP_MODELS`, kotlinx.serialization, no validation),
  *   run as its own JVM from a detached configuration. Its output is checked for `java.*` imports, which would break

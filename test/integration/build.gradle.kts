@@ -2,8 +2,8 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kover)
 }
-// INSTRUMENTED, credited to the three WIRING modules only (`docs/architecture.md`, "Coverage"): `:domain:compose`,
-// `:domain:host` and `:app:jvm`, through the root build file's crediting edges. The wiring graph is not unit-tested by
+// INSTRUMENTED, credited to the three WIRING modules only (`docs/architecture.md`, "Coverage"): `:core:compose`,
+// `:core:host` and `:app:jvm`, through the root build file's crediting edges. The wiring graph is not unit-tested by
 // law ("The composition layer") and is smoke-tested here, so this suite is the test written for it. For every other
 // module it runs, it counts for nothing: a module's report is filtered to its own classes, and only those three name
 // this module as a producer — so a thick integration suite still cannot stand in for a thin unit suite.
@@ -26,11 +26,11 @@ kotlin {
 dependencies {
     testImplementation(project(":test:control"))
     // Named explicitly, not received through the client: the core's zones export nothing transitively.
-    testImplementation(project(":domain:domain"))
+    testImplementation(project(":core:domain"))
     // An invite link's text and an event key's: the codecs the app shares them in.
-    testImplementation(project(":domain:format"))
+    testImplementation(project(":core:format"))
     testImplementation(project(":ui:state"))
-    testImplementation(project(":domain:presentation"))
+    testImplementation(project(":core:presentation"))
     testImplementation(libs.kotlinx.datetime)
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.core)

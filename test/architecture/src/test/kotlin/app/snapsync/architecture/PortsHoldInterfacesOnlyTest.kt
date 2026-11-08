@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
 class PortsHoldInterfacesOnlyTest {
 
     private val sources by lazy {
-        SourceScan.kotlinFiles().filter { it.path.startsWith("/domain/ports/src/commonMain/") }
+        SourceScan.kotlinFiles().filter { it.path.startsWith("/core/ports/src/commonMain/") }
     }
 
     /**
@@ -101,7 +101,7 @@ class PortsHoldInterfacesOnlyTest {
     @Test
     fun `the scan is real (non-vacuity floor)`() {
         // Lowered from 40 when the feature → ports cut took the store interfaces out (31 files remain).
-        assertTrue(sources.size >= 25, "scanned only ${sources.size} files in domain/ports — the scope is broken")
+        assertTrue(sources.size >= 25, "scanned only ${sources.size} files in core/ports — the scope is broken")
         val sample = """
             interface Port {
                 fun a()

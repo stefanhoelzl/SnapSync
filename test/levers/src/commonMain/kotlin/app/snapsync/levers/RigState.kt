@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * `/state`'s body: the **real** reduced [UiState] plus the one read-model the screen does not carry.
  *
  * Every field is a direct `.value` read of a flow the screen itself observes, or a fact of the build. Aggregation,
- * never transformation — the encoder for [ui] is compiler-generated from the declaration in `:domain:presentation`, so
+ * never transformation — the encoder for [ui] is compiler-generated from the declaration in `:core:presentation`, so
  * there is no second rendering of the state that could disagree with the screen. That is the property that lets this
  * module carry no tests.
  *

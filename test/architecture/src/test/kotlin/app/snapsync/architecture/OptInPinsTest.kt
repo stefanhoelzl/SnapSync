@@ -25,52 +25,52 @@ class OptInPinsTest {
 
     /** Production file → marker → how many `@OptIn(…)` of it the file holds, and why. */
     private val pins: Map<String, Map<String, Pin>> = mapOf(
-        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt" to mapOf(
+        "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt" to mapOf(
             "CompositionOnly" to Pin(1, "the app's one composing function: its subscriptions and every event port's registration"),
         ),
-        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AppGraph.kt" to mapOf(
+        "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AppGraph.kt" to mapOf(
             "AppProcessOnly" to Pin(1, "the app's own photos behind the app's walk memo"),
             "CompositionOnly" to Pin(1, "the app's push handler bundle"),
         ),
-        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ServicesGraph.kt" to mapOf(
+        "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ServicesGraph.kt" to mapOf(
             "AppProcessOnly" to Pin(1, "the app's device identity, the one that may mint"),
         ),
-        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/BackendGraph.kt" to mapOf(
+        "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/BackendGraph.kt" to mapOf(
             "AppProcessOnly" to Pin(1, "the app's credential, the one that attests"),
         ),
-        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AlbumGraph.kt" to mapOf(
+        "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AlbumGraph.kt" to mapOf(
             "AppProcessOnly" to Pin(2, "the app's album ensure and gather, the one creator — the extension only places"),
         ),
-        "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ReceivingGraph.kt" to mapOf(
+        "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ReceivingGraph.kt" to mapOf(
             "AppProcessOnly" to Pin(1, "the app's download store: its read-write file, the one writer and migrator"),
         ),
-        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/HostEntryPoints.kt" to mapOf(
+        "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/HostEntryPoints.kt" to mapOf(
             "CompositionOnly" to Pin(1, "host assembly: the subscriptions only a person's start installs"),
             "InboundImplementation" to Pin(2, "the screen's live state, and its intents: the user's door for every tap"),
         ),
-        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/EntryPoints.kt" to mapOf(
+        "/core/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/EntryPoints.kt" to mapOf(
             "InboundImplementation" to Pin(4, "the four entry-point bases, each implementing its inbound kind"),
         ),
-        "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt" to mapOf(
+        "/core/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt" to mapOf(
             "CompositionOnly" to Pin(1, "every process's first act: its start, then its metrics handlers registered"),
         ),
-        "/domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
+        "/core/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
             "ExtensionComposition.kt" to mapOf(
                 "CompositionOnly" to Pin(1, "the extension's composition: its one entry port, registered"),
             ),
-        "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/membership/DeletionVerdict.kt" to mapOf(
+        "/core/domain/src/commonMain/kotlin/app/snapsync/domain/membership/DeletionVerdict.kt" to mapOf(
             "MintsConfirmedDeletion" to Pin(
                 2,
                 "the verdicts that confirm a deletion: a read of the event, and a write the server refused as over",
             ),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/membership/MembershipRows.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/membership/MembershipRows.kt" to mapOf(
             "MintsConfirmedNotJoined" to Pin(1, "the one read that says the store holds no membership"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/membership/MembershipEnds.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/membership/MembershipEnds.kt" to mapOf(
             "MintsLeftMembership" to Pin(1, "the one transaction that ends a membership"),
         ),
-        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
+        "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AppEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
                 16,
                 "the wake's prelude, a finished download's staging and record, a completed one's free, the key's " +
@@ -81,30 +81,30 @@ class OptInPinsTest {
                     "reporter",
             ),
         ),
-        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ReceivingEntryPoints.kt" to mapOf(
+        "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ReceivingEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
                 12,
                 "receiving's triggers, ordered as steps, call its use cases (4.5), and a usable grant counts the status " +
                     "total once its recognition ran (4.9)",
             ),
         ),
-        "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/receiving/Receiving.kt" to mapOf(
+        "/core/domain/src/commonMain/kotlin/app/snapsync/domain/receiving/Receiving.kt" to mapOf(
             "MintsReceivingMembership" to Pin(1, "the one verdict that says a membership receives and holds its key"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/receiving/ReceivedPhotos.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/receiving/ReceivedPhotos.kt" to mapOf(
             "MintsRecognised" to Pin(1, "the one read that says the store recorded a membership's recognition"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/receiving/ImportQueue.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/receiving/ImportQueue.kt" to mapOf(
             "MintsStagedDownload" to Pin(1, "the one claim of a fully staged photo, under the store's lock"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/receiving/ImportedReleases.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/receiving/ImportedReleases.kt" to mapOf(
             "MintsImportedAsset" to Pin(1, "the one mint of an imported photo (`importedAsset`), every import's"),
         ),
-        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/TapEntryPoints.kt" to mapOf(
+        "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/TapEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(2, "the create's and the bug report's runs: the event minted, the dump collected and sent"),
             "RendersInvite" to Pin(1, "the share tap hands the invite whole to the platform's share sheet"),
         ),
-        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/UploadEntryPoints.kt" to mapOf(
+        "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/UploadEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
                 10,
                 "the app's upload sequences — the top-up, the walk and publish (its declining branch too), the wake's " +
@@ -112,86 +112,86 @@ class OptInPinsTest {
                     "sharing use cases, and the placement before a job places own photos",
             ),
         ),
-        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ExtensionEntryPoints.kt" to mapOf(
+        "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/ExtensionEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(
                 7,
                 "the extension's one pass — its gate, the queue's settle, the walk, the top-up — calls the upload " +
                     "use cases, and each invocation first describes the reporter",
             ),
         ),
-        "/domain/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to mapOf(
+        "/core/format/src/commonMain/kotlin/app/snapsync/format/EventKeyText.kt" to mapOf(
             "KeyMaterial" to Pin(1, "a key's text: its bytes, spelled"),
             "MakesEventKey" to Pin(1, "a key's text, read back as the key"),
         ),
-        "/domain/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to mapOf(
+        "/core/format/src/commonMain/kotlin/app/snapsync/format/InviteLinkText.kt" to mapOf(
             "MintsInviteText" to Pin(1, "the one form that spells an invite, its key included"),
         ),
-        "/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/JoinedLayer.kt" to mapOf(
+        "/core/presentation/src/commonMain/kotlin/app/snapsync/presentation/JoinedLayer.kt" to mapOf(
             "RendersInvite" to Pin(1, "the joined screen's invite, read once to become what the screen shows"),
             "MintsShownInvite" to Pin(1, "the one reduction that makes the invite the screen shows"),
         ),
         "/ui/screens/src/commonMain/kotlin/app/snapsync/ui/StatusScreen.kt" to mapOf(
             "ShowsInvite" to Pin(1, "the QR sheet draws the invite whole"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyIds.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyIds.kt" to mapOf(
             "KeyMaterial" to Pin(1, "a key's id is derived from its bytes"),
             "MakesEventKey" to Pin(1, "a fresh key, from the platform's secure generator"),
             "MintsIdentifiedKey" to Pin(1, "the one derivation that says which id a key has"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyStore.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/crypto/EventKeyStore.kt" to mapOf(
             "MintsKeptKey" to Pin(1, "the one keep that says a join's key is kept"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/upload/StoredRows.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/upload/StoredRows.kt" to mapOf(
             "MintsUploadRow" to Pin(1, "the one mapper that reads an upload row as its state's type"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/gallery/GrantRead.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/gallery/GrantRead.kt" to mapOf(
             "MintsFullGrant" to Pin(1, "the grant's read: full right now, read afresh at each ask"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/upload/DeviceListing.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/upload/DeviceListing.kt" to mapOf(
             "MintsStoredBytes" to Pin(1, "the backend's listing of this device's stored resources"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/upload/JobRecord.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/upload/JobRecord.kt" to mapOf(
             "MintsCreatedJob" to Pin(1, "the platform accepted a create: the one translation both tiers record through"),
             "MintsEndedJob" to Pin(1, "the platform reported a job ended: the one translation both tiers record through"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/crypto/FileCipher.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/crypto/FileCipher.kt" to mapOf(
             "KeyMaterial" to Pin(1, "the cipher: each file's key is derived from the event key's bytes"),
         ),
-        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AlbumEntryPoints.kt" to mapOf(
+        "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/AlbumEntryPoints.kt" to mapOf(
             "EntryPointCall" to Pin(1, "the album's gather and the grant's follower call its use cases"),
         ),
-        "/domain/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/MembershipEntryPoints.kt" to mapOf(
+        "/core/entrypoints/src/commonMain/kotlin/app/snapsync/entrypoints/MembershipEntryPoints.kt" to mapOf(
             // The file-level opt-in and six on members it already covers (4.5's join and leave steps): redundant, each
             // counted as written.
             "EntryPointCall" to Pin(7, "the membership's entry points and the steps they share call its use cases"),
         ),
-        "/domain/application/src/commonMain/kotlin/app/snapsync/application/membership/EnrollDevice.kt" to mapOf(
+        "/core/application/src/commonMain/kotlin/app/snapsync/application/membership/EnrollDevice.kt" to mapOf(
             "MintsEnrolled" to Pin(1, "the one enrolment the server admitted"),
         ),
-        "/domain/query/src/commonMain/kotlin/app/snapsync/query/membership/MembershipLookups.kt" to mapOf(
+        "/core/query/src/commonMain/kotlin/app/snapsync/query/membership/MembershipLookups.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "a hand-written StateFlow: the membership read as the one held"),
         ),
-        "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/SelectionPolicy.kt" to mapOf(
+        "/core/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/SelectionPolicy.kt" to mapOf(
             "MintsAdmittedAsset" to Pin(1, "the one admission of a read's candidates"),
             "MintsAdmittedRow" to Pin(1, "the one admission of ledger rows"),
         ),
-        "/domain/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/Settling.kt" to mapOf(
+        "/core/domain/src/commonMain/kotlin/app/snapsync/domain/sharing/Settling.kt" to mapOf(
             "MintsSettledShare" to Pin(1, "the one verdict that settles a share, on a look since the range ended"),
         ),
-        "/domain/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to mapOf(
+        "/core/scheduling/src/commonMain/kotlin/app/snapsync/scheduling/Runtime.kt" to mapOf(
             "InternalCoroutinesApi" to Pin(
                 3,
                 "the supervised scope's handler and job, and `endProcess` handing an InvalidProgramState to the library's " +
                     "last resort: coroutines' internals, re-read at every bump",
             ),
         ),
-        "/domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/ScreenModel.kt" to mapOf(
+        "/core/presentation/src/commonMain/kotlin/app/snapsync/presentation/ScreenModel.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "a hand-written StateFlow over the screen model (4.9)"),
         ),
-        "/domain/data/src/commonMain/kotlin/app/snapsync/data/gallery/PhotoGrants.kt" to mapOf(
+        "/core/data/src/commonMain/kotlin/app/snapsync/data/gallery/PhotoGrants.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "the platform's grant read as the domain's `PhotoGrant`, one-to-one"),
         ),
-        "/domain/query/src/commonMain/kotlin/app/snapsync/query/encryption/EventKeyQuery.kt" to mapOf(
+        "/core/query/src/commonMain/kotlin/app/snapsync/query/encryption/EventKeyQuery.kt" to mapOf(
             "ExperimentalForInheritanceCoroutinesApi" to Pin(1, "the key's presence, read when asked and never as the query is built"),
         ),
         "/adapter/ios/ext-safe/src/iosMain/kotlin/app/snapsync/ios/qos/ThreadQos.kt" to mapOf(
@@ -206,7 +206,7 @@ class OptInPinsTest {
 
     private fun isProduction(path: String): Boolean {
         val sourceSet = path.substringAfter("/src/", "").substringBefore('/')
-        return listOf("/domain/", "/adapter/", "/app/", "/ui/").any { path.startsWith(it) } &&
+        return listOf("/core/", "/adapter/", "/app/", "/ui/").any { path.startsWith(it) } &&
             TEST_EQUIPMENT.none { path.startsWith(it) } &&
             sourceSet.isNotEmpty() && !sourceSet.endsWith("Test") && sourceSet != "test" && sourceSet != "rig"
     }

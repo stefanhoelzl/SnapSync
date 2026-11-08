@@ -46,10 +46,10 @@ kotlin {
             // The real container the screen is clicked over where a test asserts the container's answer to a tap — the
             // tap → intent table (`HostStatusActionsTest`) and the create form (`CreateFlowTest`). A test edge only:
             // the screens' own code sees no presentation.
-            implementation(project(":domain:presentation"))
-            implementation(project(":domain:query"))
-            implementation(project(":domain:domain"))
-            implementation(project(":domain:format"))
+            implementation(project(":core:presentation"))
+            implementation(project(":core:query"))
+            implementation(project(":core:domain"))
+            implementation(project(":core:format"))
             implementation(libs.orbit.core)
             // `@Verifies`: a requirement only a drawn screen shows is claimed here, by the test that draws it.
             implementation(project(":test:verifies"))

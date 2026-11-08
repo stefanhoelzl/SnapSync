@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  * is the data layer's and its use cases'.
  *
  * **Why a text gate, when a type already narrows it.** Neither the compiler nor the module graph can withhold
- * the upload rows from a transport: they are declared in `:domain:data`, which `:adapter:ios:ext-safe` depends on for
+ * the upload rows from a transport: they are declared in `:core:data`, which `:adapter:ios:ext-safe` depends on for
  * its database adapter, so a transport there could name them.
  * Narrowing the constructor makes the boundary visible where a reader looks; only this stops the next edit from
  * widening it back.

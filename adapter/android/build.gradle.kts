@@ -1,4 +1,4 @@
-// `:adapter:android` (`docs/architecture.md`): every Android adapter of the `:domain` ports — ONE module, not the
+// `:adapter:android` (`docs/architecture.md`): every Android adapter of the `:core` ports — ONE module, not the
 // iOS ext-safe / app-only / ui split. iOS splits because its upload extension is a second process with linkage limits
 // of its own; on Android the workers, the push service and the activity all run in the app's one process, so there is
 // no second binary for a linkage line to protect.
@@ -19,13 +19,13 @@ kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     sourceSets {
         androidMain.dependencies {
-            api(project(":domain:domain"))
+            api(project(":core:domain"))
             // The Motion Photo codec: an iPhone Live Photo is saved here as one.
             implementation(project(":adapter:generic:motionphoto"))
-            api(project(":domain:ports"))
-            api(project(":domain:inbound"))
+            api(project(":core:ports"))
+            api(project(":core:inbound"))
             // The device log's file names.
-            implementation(project(":domain:format"))
+            implementation(project(":core:format"))
             // The stamp the device-log file sink starts each line with, shared with the iOS one.
             implementation(project(":adapter:generic:app"))
             // The screen's vocabulary the Ui port is bound to here (`Ui<UiState, UiIntent>`); never presentation.
@@ -65,17 +65,17 @@ kotlin {
             implementation(project(":adapter:generic:app"))
             // The storage services' contracts run through the services over these adapters.
             // The log sink's test reads its file back through the data layer's log tails, as a bug report does.
-            implementation(project(":domain:data"))
+            implementation(project(":core:data"))
             implementation(libs.kotlinx.datetime)
             // The tour spells the dates it sets (`TimestampText`).
-            implementation(project(":domain:format"))
+            implementation(project(":core:format"))
             implementation(libs.coroutines.test)
             implementation(libs.androidx.work.testing)
             // The Ui contract's binding: the real screen over a real status container, tapped through a Compose UI
             // test hosted in the manifest artifact's `ComponentActivity`.
-            implementation(project(":domain:presentation"))
+            implementation(project(":core:presentation"))
             // The membership's request statuses the tour's commands answer on.
-            implementation(project(":domain:query"))
+            implementation(project(":core:query"))
             implementation(project(":ui:state"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:components"))

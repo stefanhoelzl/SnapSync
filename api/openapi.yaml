@@ -6,7 +6,7 @@ info:
   description: |
     The ONE source of the wire format (`docs/architecture.md`, "The backend boundary"). Hand-written; everything
     else is generated from it at build time and never committed: the backend's routes, types and zod validation
-    (`api/src/gen/`), the app's DTOs, typed routes, sealed replies and shared limits (`:domain:wire`).
+    (`api/src/gen/`), the app's DTOs, typed routes, sealed replies and shared limits (`:core:wire`).
 
     ## Conventions
 

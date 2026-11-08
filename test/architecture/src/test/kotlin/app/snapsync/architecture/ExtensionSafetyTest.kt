@@ -172,7 +172,7 @@ class ExtensionSafetyTest {
     fun `nothing the shipped extension links opts into an app-only piece`() {
         val modules = ShippedLinks.closure(listOf(extensionModule))
         assertTrue(
-            ":domain:composition:extension" in modules,
+            ":core:composition:extension" in modules,
             "the shipped extension's closure $modules misses its own composition — the walk is broken",
         )
         val files = modules.flatMap { productionSources(it) }
@@ -191,7 +191,7 @@ class ExtensionSafetyTest {
     @Test
     fun `the app-only scan sees an opt-in`() {
         val app =
-            File(repoRoot, "domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ServicesGraph.kt")
+            File(repoRoot, "core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ServicesGraph.kt")
         assertTrue(
             APP_PROCESS_ONLY_OPT_IN.containsMatchIn(app.readText()),
             "the app's services opt into @AppProcessOnly, and the scan does not see it — the pattern is broken",

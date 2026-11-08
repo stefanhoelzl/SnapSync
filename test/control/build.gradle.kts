@@ -15,7 +15,7 @@ plugins {
 // THE COMPILE BOUNDARY IS THE READ-MODEL RULE. The wire types stay in `:test:rig`'s `commonMain` — the device
 // build needs them without a client — and the rig declares its own module dependencies `implementation()`, so
 // nothing it depends on reaches here. `RigState` embeds the real `UiState` (in `model/`), so this module declares
-// `:domain:model` and `:domain:presentation` itself — each explicitly, since the core's zones export nothing
+// `:core:model` and `:core:presentation` itself — each explicitly, since the core's zones export nothing
 // transitively. Nothing on this compile path exports `ports/`, `flow/`, `compose/` or the host, so a client or test
 // naming one fails to compile: the compile boundary is the whole rule.
 kotlin {
@@ -32,9 +32,9 @@ dependencies {
     api(project(":test:verifies"))
     // `RigState.ui` is the real `UiState` (`model/`), decoded by its compiler-generated serializer.
     // A person's choices name the domain's values (`Choices.direction`).
-    api(project(":domain:domain"))
+    api(project(":core:domain"))
     api(project(":ui:state"))
-    api(project(":domain:presentation"))
+    api(project(":core:presentation"))
     api(libs.ktor.client.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coroutines.core)

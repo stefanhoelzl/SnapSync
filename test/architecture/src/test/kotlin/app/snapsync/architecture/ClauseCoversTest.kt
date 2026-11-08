@@ -10,7 +10,7 @@ import kotlin.test.fail
  * clause declares the cells it covers").
  *
  * The contracts are loaded as values ([ContractCatalog]), so a declaration is read as every host renders it — through
- * `:test:contracts`' common renderer — and compared with the grid [PortGrid] derives from `:domain:ports`. Fails on a
+ * `:test:contracts`' common renderer — and compared with the grid [PortGrid] derives from `:core:ports`. Fails on a
  * clause with no declared cell, and on a declared cell the grid does not hold: a stale name, or a combination no
  * adapter can answer.
  *

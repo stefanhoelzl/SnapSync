@@ -35,7 +35,7 @@ import kotlinx.coroutines.Dispatchers
  * The extension process's composition root — WIRING ONLY: it constructs this process's adapters
  * (the App-Group databases and files, the PhotoKit library reader and upload-job queue, the shared protected store,
  * the generic HTTP backend) and hands them as [ExtensionPorts] to its composition
- * [composeExtension] (`:domain:composition:extension`), which builds its graph and registers its handlers. The Swift
+ * [composeExtension] (`:core:composition:extension`), which builds its graph and registers its handlers. The Swift
  * `@main` principal class calls [processRawValue] from its `process()` callback.
  *
  * Config is sourced fresh each cycle by the shared entry gate: the runtime event id from the shared
@@ -109,7 +109,7 @@ object UploadExtensionRoot {
     private val host: IosExtensionHost = IosExtensionHost(log)
 
     /**
-     * The extension, composed over its ports and nothing else (`composeExtension`, `:domain:composition:extension`):
+     * The extension, composed over its ports and nothing else (`composeExtension`, `:core:composition:extension`):
      * the process first — its log writers, its ONE crash reporter started before any other wiring can fail, its banner —
      * then its graph (the read-only identity, the read-only suppression view, the credential that only drops a rejected
      * token) and the ONE registration on its entry port, at this process's start and before the operating system's

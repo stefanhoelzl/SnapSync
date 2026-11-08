@@ -14,11 +14,11 @@ kotlin {
 // reviewed without a device: each one is reachable through the inspector's levers, none is forged.
 dependencies {
     implementation(libs.ktor.client.core)
-    api(project(":domain:domain"))
-    implementation(project(":domain:format"))
-    api(project(":domain:ports"))
+    api(project(":core:domain"))
+    implementation(project(":core:format"))
+    api(project(":core:ports"))
     // The screen pane and the mirror take the screen's `CutoffFormatter`.
-    implementation(project(":domain:presentation"))
+    implementation(project(":core:presentation"))
     implementation(project(":ui:state"))
     implementation(project(":ui:screens"))
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
@@ -30,9 +30,9 @@ dependencies {
     implementation(project(":app:jvm"))
     // The inspector's policy badge reads the library mock through the same gallery services the cycle composes.
     // The inspector's "forget the event key" lever addresses the key's slot, which the data layer names.
-    implementation(project(":domain:data"))
+    implementation(project(":core:data"))
     // The inspector's policy badge reads the membership as the screen's query shows it.
-    implementation(project(":domain:query"))
+    implementation(project(":core:query"))
     // The mirror: the control channel's typed client, whose wire `UiState` it re-composes.
     implementation(project(":test:control"))
     implementation(libs.compose.runtime)

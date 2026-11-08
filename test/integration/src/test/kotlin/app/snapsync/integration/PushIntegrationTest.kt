@@ -135,7 +135,7 @@ class PushIntegrationTest {
     /**
      * The credential-recovery loop: the backend rejects the token the registration carried, the app obtains a new one,
      * and the SAME call is sent once more and stored. That it is retried exactly once, and never without a token, is
-     * `CredentialedBackendTest`'s (`:domain:services`).
+     * `CredentialedBackendTest`'s (`:core:services`).
      */
     @Test
     fun a_rejected_credential_is_recovered_and_the_registration_lands() = behaviour {

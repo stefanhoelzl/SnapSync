@@ -28,7 +28,7 @@ membership's own-photo scope. Three measured platform facts shape the implementa
    - Reads still happen ONLY on the start's baseline and the `Gallery` selection observer's `onChanged` emissions.
      The observer opens on composition, so a background start reads the selection too (measured prompt-free on the
      SE2/26.6.2, 2026-09-30: `changes/timely-background-receiving` D6). Every upload cycle's discovery is fed the
-     in-memory selection (the read plan of `OwnPhotos`, `domain/data`), never a walk: under a partial grant the
+     in-memory selection (the read plan of `OwnPhotos`, `core/data`), never a walk: under a partial grant the
      selection IS the scope, and a walk is a round-trip that buys nothing.
    - ⏰ Re-measure at the next iOS major. The evidence is one device, and one probe on 26.6.x.
 2. **The ≥26.1 PhotoKit extension cannot be REGISTERED under `.limited`.** `setUploadJobExtensionEnabled` is refused

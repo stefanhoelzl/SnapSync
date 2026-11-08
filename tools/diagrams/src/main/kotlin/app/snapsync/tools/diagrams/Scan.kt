@@ -174,7 +174,7 @@ fun stripComments(text: String): String {
 fun kotlinSources(root: File): List<KtSource> {
     val modules = includedModules(root)
     val out = mutableListOf<KtSource>()
-    for (top in listOf("adapter", "app", "domain", "test", "ui")) {
+    for (top in listOf("adapter", "app", "core", "test", "ui")) {
         val dir = File(root, top)
         if (!dir.isDirectory) continue
         dir.walkTopDown()

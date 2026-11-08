@@ -75,7 +75,7 @@ import app.snapsync.ios.registry.extensionRegistry as platformExtensionRegistry
  * Assembly is lazy so it runs once on first view creation, and it goes through the SHARED
  * composition (`snapSyncApp`, `docs/architecture.md` "The composition layer"): this root
  * constructs the platform adapters and hands them as [AppPorts]; the feature graph — status
- * sources, attestation, join/leave/create, downloads, the upload arm — is composed in `:domain`'s
+ * sources, attestation, join/leave/create, downloads, the upload arm — is composed in `:core`'s
  * `compose/` zone as [app]. `permission` and `config` are each passed as both their ports (one
  * adapter implements both).
  *

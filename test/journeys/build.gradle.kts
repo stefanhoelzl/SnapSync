@@ -19,7 +19,7 @@ plugins {
 // - `test`: the program's own tests, run by `build`.
 //
 // Install it with the app's `-Psnapsync.deployment` (`local`), in the same Gradle call as the app, as
-// `scripts/journeys-build` does: the journeys read A's invite with the link origin `:domain:model` generates from the
+// `scripts/journeys-build` does: the journeys read A's invite with the link origin `:core:model` generates from the
 // deployment, and a program installed for another one cannot decode the invite the app shares.
 //
 // Support group (`docs/architecture.md`, "The module set: three groups"): it links into no
@@ -41,19 +41,19 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     "journeysImplementation"(project(":test:control"))
-    "journeysImplementation"(project(":domain:domain"))
+    "journeysImplementation"(project(":core:domain"))
     // An invite link's text and an event key's: the codecs the app shares them in.
-    "journeysImplementation"(project(":domain:format"))
+    "journeysImplementation"(project(":core:format"))
     // The version header's one name, generated from `api/openapi.yaml`.
-    "journeysImplementation"(project(":domain:wire"))
+    "journeysImplementation"(project(":core:wire"))
     "journeysImplementation"(project(":ui:state"))
-    "journeysImplementation"(project(":domain:presentation"))
+    "journeysImplementation"(project(":core:presentation"))
     "journeysImplementation"(libs.kotlinx.datetime)
     "journeysImplementation"(kotlin("test-junit"))
     "journeysImplementation"(libs.ktor.client.cio)
     // The member attests as a device does, with the software key the local backend's `any` trust accepts.
     "journeysImplementation"(project(":test:contracts"))
-    "journeysImplementation"(project(":domain:ports"))
+    "journeysImplementation"(project(":core:ports"))
     "journeysImplementation"(project(":adapter:generic:app"))
 
     testImplementation(kotlin("test"))

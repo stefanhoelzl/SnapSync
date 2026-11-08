@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **The entry points call no port** (`docs/patterns.md`, "Entry points"). `:domain:entrypoints` sees the ports zone for
+ * **The entry points call no port** (`docs/patterns.md`, "Entry points"). `:core:entrypoints` sees the ports zone for
  * one reason: the arguments its deliveries carry are the ports' vocabulary (`FinishedTransfer`, `SessionRelaunch`, …).
  * A port itself — an interface extending [Port] — is never named there: an entry point orders steps, and what a step
  * touches outside the process it reaches through a service. The compile edge cannot say "vocabulary only", so this
@@ -16,7 +16,7 @@ class EntryPointsCallNoPortTest {
 
     @Test
     fun `no entry point imports a port`() {
-        val files = SourceScan.kotlinFiles().filter { it.path.startsWith("/domain/entrypoints/src/commonMain/") }
+        val files = SourceScan.kotlinFiles().filter { it.path.startsWith("/core/entrypoints/src/commonMain/") }
         assertTrue(files.isNotEmpty(), "found no entry point source — the scan is broken")
         val imports = files.flatMap { file ->
             Regex("""^import app\.snapsync\.ports\.(\w+)$""", RegexOption.MULTILINE).findAll(file.text)

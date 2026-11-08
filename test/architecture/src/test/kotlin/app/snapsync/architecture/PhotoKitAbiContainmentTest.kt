@@ -5,10 +5,10 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * **No PhotoKit media ABI in `:domain`** (`docs/architecture.md`; law: `sync-status`,
+ * **No PhotoKit media ABI in `:core`** (`docs/architecture.md`; law: `sync-status`,
  * *The domain reads neutral asset facts*).
  *
- * `:domain` is platform-free by module, but "platform-free" is enforced by the *dependency* graph, and a
+ * `:core` is platform-free by module, but "platform-free" is enforced by the *dependency* graph, and a
  * bare `Long` bitmask carries no dependency. The `PHAssetMediaSubtype` bits and the `PHAssetMediaType`
  * integers used to sit in `model/` as plain constants, interpreted there — compiling everywhere,
  * meaning nothing off iOS, and verifiable nowhere: a `commonTest` asserting `1 shl 2` against a copy of
@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
  */
 class PhotoKitAbiContainmentTest {
 
-    /** PhotoKit media symbols that must not appear in executable `:domain` code. */
+    /** PhotoKit media symbols that must not appear in executable `:core` code. */
     private val forbidden = listOf(
         "PHAssetMediaSubtype",
         "PHAssetMediaType",
@@ -49,7 +49,7 @@ class PhotoKitAbiContainmentTest {
                     val hit = forbidden.firstOrNull { code.contains(it) } ?: return@mapNotNull null
                     "${file.name}:${i + 1} names `$hit` — the PhotoKit media model is interpreted in " +
                         "`:adapter:ios:ext-safe` (`PhotoKitAssetFacts.kt`), where its constants are pinned " +
-                        "against the SDK and tested on the simulator. `:domain` decides on neutral " +
+                        "against the SDK and tested on the simulator. `:core` decides on neutral " +
                         "`AssetFacts` (capability `sync-status`)."
                 }
             }

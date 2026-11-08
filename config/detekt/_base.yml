@@ -9,7 +9,7 @@
 #   accident every scope's contract.
 #
 #   A READING is an interpretation of what a rule MEANS, and it cannot sensibly differ per scope: if a
-#   named constant has satisfied a rule that exists to force naming, it has satisfied it in `:domain`
+#   named constant has satisfied a rule that exists to force naming, it has satisfied it in `:core`
 #   exactly as in `:ui:components`. Restating that argument in eight files would invite eight copies to
 #   drift, and a reader who found them disagreeing could not tell which was intended.
 #
@@ -73,7 +73,7 @@ complexity:
     # paragraph — a ratchet that has to be re-argued on a schedule is not one.
     #
     # A reading and not a ceiling, by the test at the top of this file: if a test case is not surface in
-    # `:test:contracts`, it is not surface in `:domain`'s `commonTest` either.
+    # `:test:contracts`, it is not surface in `:core`'s `commonTest` either.
     #
     # This is NOT detekt's own `**/test/**` path default, which the `FunctionNaming` note above rejects
     # for this repo and which is rejected here for the same reason: `test/` is a module prefix, so that
@@ -108,91 +108,91 @@ snapsync:
     # An entry point orders steps and decides nothing.
     active: true
     includes:
-      - '**/domain/entrypoints/src/commonMain/**'
+      - '**/core/entrypoints/src/commonMain/**'
   DataShape:
     # Data translates and never decides: every branch is a domain verdict's, as an expression.
     active: true
     includes:
-      - '**/domain/data/src/commonMain/**'
+      - '**/core/data/src/commonMain/**'
   OneCallPerStep:
     active: true
     includes:
-      - '**/domain/entrypoints/src/commonMain/**'
+      - '**/core/entrypoints/src/commonMain/**'
   CoroutinesInScheduling:
-    # Only the runtime (`:domain:scheduling`) starts coroutines.
+    # Only the runtime (`:core:scheduling`) starts coroutines.
     active: true
     includes:
-      - '**/domain/inbound/src/commonMain/**'
-      - '**/domain/entrypoints/src/commonMain/**'
-      - '**/domain/domain/src/commonMain/**'
-      - '**/domain/data/src/commonMain/**'
-      - '**/domain/application/src/commonMain/**'
-      - '**/domain/query/src/commonMain/**'
+      - '**/core/inbound/src/commonMain/**'
+      - '**/core/entrypoints/src/commonMain/**'
+      - '**/core/domain/src/commonMain/**'
+      - '**/core/data/src/commonMain/**'
+      - '**/core/application/src/commonMain/**'
+      - '**/core/query/src/commonMain/**'
   NoFunctionTypes:
     active: true
     includes:
-      - '**/domain/inbound/src/commonMain/**'
-      - '**/domain/scheduling/src/commonMain/**'
-      - '**/domain/entrypoints/src/commonMain/**'
-      - '**/domain/domain/src/commonMain/**'
-      - '**/domain/data/src/commonMain/**'
-      - '**/domain/application/src/commonMain/**'
-      - '**/domain/query/src/commonMain/**'
-      - '**/domain/ports/src/commonMain/**'
-      - '**/domain/format/src/commonMain/**'
-      - '**/domain/wire/src/commonMain/**'
-      - '**/domain/presentation/src/commonMain/**'
-      - '**/domain/composition/**/src/commonMain/**'
+      - '**/core/inbound/src/commonMain/**'
+      - '**/core/scheduling/src/commonMain/**'
+      - '**/core/entrypoints/src/commonMain/**'
+      - '**/core/domain/src/commonMain/**'
+      - '**/core/data/src/commonMain/**'
+      - '**/core/application/src/commonMain/**'
+      - '**/core/query/src/commonMain/**'
+      - '**/core/ports/src/commonMain/**'
+      - '**/core/format/src/commonMain/**'
+      - '**/core/wire/src/commonMain/**'
+      - '**/core/presentation/src/commonMain/**'
+      - '**/core/composition/**/src/commonMain/**'
   NoTopLevelFunctions:
     # A function lives on the type it belongs to (`docs/patterns.md`, "No top-level functions"). The composing functions
     # are each process's one entry from its root, and no type's member (`CompositionIsWiringTest` lists them).
     active: true
     allowed: ['composeApp', 'composeExtension', 'startProcess']
     includes:
-      - '**/domain/domain/src/commonMain/**'
-      - '**/domain/format/src/commonMain/**'
-      - '**/domain/wire/src/commonMain/**'
-      - '**/domain/inbound/src/commonMain/**'
-      - '**/domain/ports/src/commonMain/**'
-      - '**/domain/scheduling/src/commonMain/**'
-      - '**/domain/data/src/commonMain/**'
-      - '**/domain/application/src/commonMain/**'
-      - '**/domain/query/src/commonMain/**'
-      - '**/domain/entrypoints/src/commonMain/**'
-      - '**/domain/presentation/src/commonMain/**'
-      - '**/domain/composition/**/src/commonMain/**'
+      - '**/core/domain/src/commonMain/**'
+      - '**/core/format/src/commonMain/**'
+      - '**/core/wire/src/commonMain/**'
+      - '**/core/inbound/src/commonMain/**'
+      - '**/core/ports/src/commonMain/**'
+      - '**/core/scheduling/src/commonMain/**'
+      - '**/core/data/src/commonMain/**'
+      - '**/core/application/src/commonMain/**'
+      - '**/core/query/src/commonMain/**'
+      - '**/core/entrypoints/src/commonMain/**'
+      - '**/core/presentation/src/commonMain/**'
+      - '**/core/composition/**/src/commonMain/**'
   ConstructorsTouchNoPort:
     # A constructor never touches what it was handed (`docs/patterns.md`, "Composition is wiring"): so a graph built
     # eagerly opens nothing.
     active: true
     includes:
-      - '**/domain/inbound/src/commonMain/**'
-      - '**/domain/scheduling/src/commonMain/**'
-      - '**/domain/entrypoints/src/commonMain/**'
-      - '**/domain/domain/src/commonMain/**'
-      - '**/domain/data/src/commonMain/**'
-      - '**/domain/application/src/commonMain/**'
-      - '**/domain/query/src/commonMain/**'
-      - '**/domain/presentation/src/commonMain/**'
-      - '**/domain/composition/**/src/commonMain/**'
+      - '**/core/inbound/src/commonMain/**'
+      - '**/core/scheduling/src/commonMain/**'
+      - '**/core/entrypoints/src/commonMain/**'
+      - '**/core/domain/src/commonMain/**'
+      - '**/core/data/src/commonMain/**'
+      - '**/core/application/src/commonMain/**'
+      - '**/core/query/src/commonMain/**'
+      - '**/core/presentation/src/commonMain/**'
+      - '**/core/composition/**/src/commonMain/**'
   DomainPurity:
     # The domain is values and verdicts (`docs/patterns.md`, "The domain").
     active: true
     includes:
-      - '**/domain/domain/src/commonMain/**'
+      - '**/core/domain/src/commonMain/**'
   OnlyInvalidProgramStateThrows:
     # The core's layers throw only an InvalidProgramState (`docs/patterns.md`, "Invalid program state"). The old zones
     # join as phase 4 moves them underneath.
     active: true
     includes:
-      - '**/domain/domain/src/commonMain/**'
-      - '**/domain/format/src/commonMain/**'
-      - '**/domain/data/src/commonMain/**'
-      - '**/domain/application/src/commonMain/**'
-      - '**/domain/query/src/commonMain/**'
-      - '**/domain/entrypoints/src/commonMain/**'
-      - '**/domain/scheduling/src/commonMain/**'
-      - '**/domain/inbound/src/commonMain/**'
+      - '**/core/domain/src/commonMain/**'
+      - '**/core/format/src/commonMain/**'
+      - '**/core/data/src/commonMain/**'
+      - '**/core/application/src/commonMain/**'
+      - '**/core/query/src/commonMain/**'
+      - '**/core/entrypoints/src/commonMain/**'
+      - '**/core/scheduling/src/commonMain/**'
+      - '**/core/inbound/src/commonMain/**'
   InvalidProgramStateBecause:
     # Wherever production throws one, its `because` is a literal: no value reaches the crash report through it. (A
     # contract's crash child throws with the guarantee its clause names per road.)

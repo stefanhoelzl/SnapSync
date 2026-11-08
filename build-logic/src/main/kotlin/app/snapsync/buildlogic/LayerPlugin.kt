@@ -5,8 +5,8 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.VersionCatalogsExtension
 
 /**
- * A module of the core's LAYERS (`docs/architecture.md` §1): `:domain:inbound`, `:domain:scheduling`,
- * `:domain:entrypoints` — the modules the restructuring creates, which are born clean rather than ratcheted down.
+ * A module of the core's LAYERS (`docs/architecture.md` §1): `:core:inbound`, `:core:scheduling`,
+ * `:core:entrypoints` — the modules the restructuring creates, which are born clean rather than ratcheted down.
  * Everything such a module shares is declared once, here:
  *
  *  - the allowed targets ([TargetsPlugin]) on Kotlin Multiplatform;

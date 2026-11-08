@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
  * reduction and the design-system skin BOTH name. The reduction resolves the preset against the event
  * window to produce the instants that would be committed; the range row and its dialog render which
  * preset is selected. Putting it in either UI module would force an edge between two modules that
- * deliberately have none — `:domain:presentation` is Compose-free and `:ui:components` knows nothing of
+ * deliberately have none — `:core:presentation` is Compose-free and `:ui:components` knows nothing of
  * the reduction.
  *
  * One preset, not a start list and an end list: the surface offers exactly three choices, side by side, and the model

@@ -40,14 +40,14 @@ kotlin {
         iosMain.dependencies {
             if (rigEnabled) {
                 implementation(project(":test:contracts"))
-                implementation(project(":domain:composition:app"))
+                implementation(project(":core:composition:app"))
             }
         }
         commonMain.dependencies {
             // The Motion Photo codec: an Android motion photo is taken apart into a Live Photo here.
             implementation(project(":adapter:generic:motionphoto"))
-            api(project(":domain:ports"))
-            api(project(":domain:inbound"))
+            api(project(":core:ports"))
+            api(project(":core:inbound"))
             // The shared PhotoKit discovery walk (IosDiscovery) the URLSession tier reuses.
             api(project(":adapter:ios:ext-safe"))
             implementation(libs.coroutines.core)
@@ -61,7 +61,7 @@ kotlin {
             // The contract bindings of this module's adapters (`docs/architecture.md`): the photo-library
             // contracts over the grant-aware composition production calls.
             implementation(project(":test:contracts"))
-            implementation(project(":domain:composition:app"))
+            implementation(project(":core:composition:app"))
             // The transfer contracts record into the real ledger, which is a service over the `Databases` adapter.
         }
     }

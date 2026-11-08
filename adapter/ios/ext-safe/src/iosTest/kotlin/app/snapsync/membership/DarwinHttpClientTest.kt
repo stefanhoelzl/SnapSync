@@ -15,7 +15,7 @@ import kotlin.test.assertFailsWith
  * No server is involved: the request is aimed at a closed local port, which refuses immediately.
  *
  * The credential's rules — read per call, a missing token still sent, a transport failure never a rejection — are
- * the authenticated backend's now, asserted in `:domain:services`' `CredentialedBackendTest` on every target.
+ * the authenticated backend's now, asserted in `:core:services`' `CredentialedBackendTest` on every target.
  */
 class DarwinHttpClientTest {
 

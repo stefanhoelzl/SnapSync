@@ -24,7 +24,7 @@ class ListenDoorTest {
 
     /** Hand-written production Kotlin: any `*Main` source set. */
     private val production = SourceScan.kotlinFiles().filter { src ->
-        src.path.startsWith("/domain/") || src.path.startsWith("/adapter/") || src.path.startsWith("/app/") ||
+        src.path.startsWith("/core/") || src.path.startsWith("/adapter/") || src.path.startsWith("/app/") ||
             src.path.startsWith("/ui/")
     }.filter { src -> src.path.substringAfter("/src/", "").substringBefore('/').endsWith("Main") }
 
@@ -38,11 +38,11 @@ class ListenDoorTest {
         assertEquals(
             setOf(
                 // The app's entry points, each the handler of the delivery it is named for, the push's among them.
-                "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt",
-                "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AppGraph.kt",
-                "/domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
+                "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt",
+                "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/AppGraph.kt",
+                "/core/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
                     "ExtensionComposition.kt",
-                "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt",
+                "/core/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt",
             ),
             sites,
             "a `*Handlers` bundle built outside the composition layer is a callback wired past its door",
@@ -56,11 +56,11 @@ class ListenDoorTest {
         assertEquals(
             setOf(
                 // The app's event ports, each registered once by its one composing function (`composeApp`).
-                "/domain/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt",
+                "/core/composition/app/src/commonMain/kotlin/app/snapsync/composition/app/ComposedApp.kt",
                 // The per-process event ports: set up by every root before any composition (the extension has no host).
-                "/domain/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt",
+                "/core/composition/process/src/commonMain/kotlin/app/snapsync/composition/process/ProcessGraph.kt",
                 // The upload extension's one entry port, registered by its own composition — it has no host zone.
-                "/domain/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
+                "/core/composition/extension/src/commonMain/kotlin/app/snapsync/composition/extension/" +
                     "ExtensionComposition.kt",
             ),
             sites,

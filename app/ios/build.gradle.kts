@@ -68,17 +68,17 @@ kotlin {
             // dependency folds it into `SnapSyncKit` instead — settled by a compile
             // (`linkDebugFrameworkIosSimulatorArm64`), not by reasoning.
             if (rigEnabled) implementation(project(":app:ios:extension"))
-            api(project(":domain:ports"))
-            api(project(":domain:inbound"))
+            api(project(":core:ports"))
+            api(project(":core:inbound"))
             // The root scope's handler (`RootScopeFailures`), the parent of the runtime's.
-            implementation(project(":domain:scheduling"))
-            api(project(":domain:composition:app"))
-            api(project(":domain:composition:process"))
+            implementation(project(":core:scheduling"))
+            api(project(":core:composition:app"))
+            api(project(":core:composition:process"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:state"))
             // The screen's date formatting the root builds over the `DateFormatting` port, for the UI adapter.
             implementation(project(":ui:components"))
-            implementation(project(":domain:presentation"))
+            implementation(project(":core:presentation"))
             // The technology adapters, placed by linkage (migration step 4): the Ktor
             // impls (:adapter:generic:app), the extension-safe iOS adapters (:adapter:ios:ext-safe —
             // Keychain stores, the SQLite `Databases` adapter, discovery walk, log writers), and the

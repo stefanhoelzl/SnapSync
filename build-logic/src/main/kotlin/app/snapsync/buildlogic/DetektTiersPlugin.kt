@@ -31,6 +31,33 @@ class DetektTiersPlugin : Plugin<Project> {
 
         registerAppShell(root)
         registerTiers(root)
+        registerIncludesMatch(root)
+    }
+
+    /**
+     * Every rule's `includes` glob matches a file ([DetektIncludes]): a glob that matches nothing switches its rule off
+     * silently, which is how a moved module would escape every rule scoped to its path.
+     */
+    private fun registerIncludesMatch(root: Project) {
+        val configs = root.fileTree("config/detekt") { include("*.yml") }
+        val rootDir = root.rootDir
+        root.tasks.register("detektIncludesMatch") {
+            val task = this
+            task.description = "Fails when a detekt rule's `includes` glob matches no source file."
+            task.group = "verification"
+            task.inputs.files(configs)
+            task.doLast {
+                val files = DetektIncludes.sources(rootDir)
+                val stale = configs.files.sortedBy { it.name }.flatMap { config ->
+                    DetektIncludes.unmatched(DetektIncludes.globs(config.readText()), files).map { "${config.name}: $it" }
+                }
+                check(stale.isEmpty()) {
+                    "detekt `includes` globs that match no source file — a rule scoped to them reads nothing:\n  " +
+                        stale.joinToString("\n  ")
+                }
+            }
+        }
+        root.tasks.named("check").configure { dependsOn("detektIncludesMatch") }
     }
 
     /**
@@ -207,10 +234,10 @@ class DetektTiersPlugin : Plugin<Project> {
             ":app:android" to "shell",
 
             // The tested core and its adapters.
-            ":domain:inbound" to "core",
-            ":domain:wire" to "core",
-            ":domain:format" to "core",
-            ":domain:ports" to "core",
+            ":core:inbound" to "core",
+            ":core:wire" to "core",
+            ":core:format" to "core",
+            ":core:ports" to "core",
             ":adapter:generic:app" to "core",
             ":adapter:generic:mock" to "core",
             ":adapter:generic:motionphoto" to "core",
@@ -223,17 +250,17 @@ class DetektTiersPlugin : Plugin<Project> {
 
             // The layers whose ceilings are claims from their first line (`docs/patterns.md`): an entry point orders
             // steps and decides nothing; the runtime is small and stays so; a domain verdict is a `when` over a fact.
-            ":domain:entrypoints" to "entrypoints",
-            ":domain:scheduling" to "scheduling",
-            ":domain:domain" to "domain",
-            ":domain:data" to "data",
-            ":domain:application" to "application",
-            ":domain:query" to "query",
-            ":domain:presentation" to "presentation",
+            ":core:entrypoints" to "entrypoints",
+            ":core:scheduling" to "scheduling",
+            ":core:domain" to "domain",
+            ":core:data" to "data",
+            ":core:application" to "application",
+            ":core:query" to "query",
+            ":core:presentation" to "presentation",
             // The composition layer: wiring only, so its decision measures are a claim too (`config/detekt/composition.yml`).
-            ":domain:composition:process" to "composition",
-            ":domain:composition:extension" to "composition",
-            ":domain:composition:app" to "composition",
+            ":core:composition:process" to "composition",
+            ":core:composition:extension" to "composition",
+            ":core:composition:app" to "composition",
 
             // Compose. Its own tier because Compose inflates cyclomatic complexity and function length
             // STRUCTURALLY — a screen that renders six states has six branches by construction.

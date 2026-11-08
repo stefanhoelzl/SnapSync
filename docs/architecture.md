@@ -32,7 +32,7 @@ rules: `changes/archive/2026-09-23-harden-seam-bug-classes`.
 api/        the backend: Deno + Hono on bunny Edge Scripting, a relational store, a byte store (section 8)
 site/       the Astro landing and no-app download pages (served by api/ from the storage zone)
 iosApp/     the Xcode project: the app target and the upload-extension target (Swift shells only)
-domain/ adapter/ ui/ app/ test/ tools/    the Gradle modules (below)
+core/ adapter/ ui/ app/ test/ tools/      the Gradle modules (below)
 architecture/   GENERATED diagrams (section 6)
 ```
 
@@ -62,8 +62,8 @@ There is no per-module prose inventory: each module's build file and its code's 
 
 ### The core and its layers
 
-The core is the modules under `domain/` (a path grouping, not a module): one module per **layer**, each with its
-package at `app.snapsync.<layer>` — so `domain` names both the grouping and one layer of it, `:domain:domain`
+The core is the modules under `core/` (a path grouping, not a module): one module per **layer**, each with its
+package at `app.snapsync.<layer>` — so `domain` names both the grouping and one layer of it, `:core:domain`
 (`app.snapsync.domain`). Each layer declares only the edges its law permits, always with `implementation()`, so a
 forbidden reference does not resolve — fully-qualified names, typealiases and generated source included, which a text
 scan would miss. The permitted edges are `ModuleSetTest`'s `permitted` map; the one edge outside a layer's law is its
@@ -175,7 +175,7 @@ Adapters are named for the technology and hold implementations only. Finer struc
 
 | binary | composition root | calls |
 |---|---|---|
-| iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `composeApp` (`:domain:composition:app`), over `AppPorts` |
+| iOS app (`SnapSyncKit`) | `:app:ios` `SnapSyncRoot` | `composeApp` (`:core:composition:app`), over `AppPorts` |
 | iOS upload extension, iOS 26.1 and later (`SnapSyncUploadKit`) | `:app:ios:extension` `UploadExtensionRoot` | `composeExtension`, over `ExtensionPorts` |
 | Android app | `:app:android` `SnapSyncRoot` | `composeApp`, over `AppPorts` |
 | JVM root — the desktop world harness, the JVM rig host | `:app:jvm` `JvmApp`, over adapters its caller chooses (the mocks by default) | `composeApp`; `composeExtension` beside it, each over its own process ports (a process that supplies no log sinks installs no log writer: `Log`'s writers are JVM-global) |
@@ -406,19 +406,19 @@ name. Each row's gate is listed beside it.
 |---|---|
 | A storage port is one external system and decides nothing (`Databases`: open by name, read-write or read-only; `Files`: read, tail, range, write, append, delete, exists, locate within an area — range and append so a file too large to hold is read and written a piece at a time; `Preferences`: get, set, remove). What a store holds, when it opens and what a failure means is the data layer's (`OwnedDatabase`, `SharedDatabase`, the repositories) | **review** |
 | The photo library is one thin port: `GalleryReader` (both processes: assets by policy or id, resources by id, albums, album members, create, add, and the `albumKind` — a `COLLECTION` a photo is added to on iOS, the `FOLDER` a photo lives in on Android) and `Gallery` (the app: plus the access request, the selection picker, the partial grant's selection observer, the import and the change token). It answers what the platform shows, and `NotReadable` — never an empty answer — when no grant lets the process read. What may be read under which grant and which albums are denied are the selection's (the domain's `ReadPlan`, data's `OwnPhotos` and `DenylistedAlbums`),; what the kind means for the event album is read by data's `AlbumFiling` into the domain's `AlbumContents` (whether own photos are placed, whether an empty album does not resolve), and what the album then holds is the album's verdicts (`domain` `album/`), which never name a platform. Ids cross as the platform's own (`PlatformAssetId`), assets as the platform describes them (`GalleryAsset`: a capture instant or none, the media facts, a pixel area or none) and resources by `ResourceKind` (`PHOTO`, `VIDEO`, `PAIRED_VIDEO` — an original only) under an opaque `GalleryResourceHandle` only the adapter that handed it out reads; the domain's `AssetFacts` are the data layer's reading of them (`facts()`), the upload's resources too (`OwnPhotoResources`: each original keyed under its role, a `FoundResource` and the handle it sends from) | `GalleryReaderContract`, `GalleryContract`, `GalleryImportContract` (live on `IOS_SIM_APP`, the no-grant state on `IOS_SIM_KEXE`), `FolderAlbumContract` (live on `ANDROID_EMU`) |
-| A photo's identity is one canonical `AssetId` (`domain`): non-empty, RFC 3986 unreserved characters only, never `..` — a URL path segment the backend accepts as it is, an object-name fragment, and free of the download tag's `\n`. The core, both stores, the manifest and the backend carry it unchanged; there is no translation on either side of the wire. It is minted from the platform's own id by ONE reversible encoding (`AssetIdText`, `:domain:format`, read through data's `assetId()`: `/` → `_`, `~` escaping the rest), the identity on every id stored before it — PhotoKit's `{UUID}/L0/NNN` is `{UUID}_L0_NNN`, a media-store id is itself — so every platform id has one, and no adapter mints it. A value from outside (a backend reply, an OS-held task tag) that is not canonical is a malformed reply or an undecodable tag, never a crash | construction (`AssetId.parse`, its one way in) + `AssetIdTest`, `AssetIdTextTest` |
+| A photo's identity is one canonical `AssetId` (`domain`): non-empty, RFC 3986 unreserved characters only, never `..` — a URL path segment the backend accepts as it is, an object-name fragment, and free of the download tag's `\n`. The core, both stores, the manifest and the backend carry it unchanged; there is no translation on either side of the wire. It is minted from the platform's own id by ONE reversible encoding (`AssetIdText`, `:core:format`, read through data's `assetId()`: `/` → `_`, `~` escaping the rest), the identity on every id stored before it — PhotoKit's `{UUID}/L0/NNN` is `{UUID}_L0_NNN`, a media-store id is itself — so every platform id has one, and no adapter mints it. A value from outside (a backend reply, an OS-held task tag) that is not canonical is a malformed reply or an undecodable tag, never a crash | construction (`AssetId.parse`, its one way in) + `AssetIdTest`, `AssetIdTextTest` |
 | The transfers are thin ports, one external system each. An upload goes through one of two, which differ in what the system keeps and tells: `OsUploadQueue` (the OS's job queue — PhotoKit's: create a job sending a library resource; the first failures offered for their free retry, and every job that ended presented until acknowledged; retry, acknowledge — a job is known by the destination it was made with, the one fact the OS keeps) and `TransferSession` (the app's own session — a background `URLSession`, Android's in-process PUTs: start a transfer of a file, or of a resource where it `takesResources`, tagged; list and cancel the live ones; every end told once, as it happens, under its tag, and a relaunch's events handed over then drained) — so neither carries the other's vocabulary. A failed transfer is one fact, `TransferFailure(detail)`: nothing above the adapter decides on why; `Download` (start, cancel everything the session holds, and a finish reported with its facts and temporary file), `Wake` (schedule and cancel a `WakeId`, and hear the wake — a `Granted` delivery, whose `Running` the adapter expires when the operating system withdraws the time) and `ExtensionRegistry` (set and read the upload extension's registration, `Unsupported` on a platform without one — so no root holds an `if` around it). What a job means for the upload rows and what a body may be staged as are the data layer's (`OsQueueTier` and `SessionTier` behind `UploadTier`, each process composing its own; `JobRecord`), when the heartbeat is armed the domain's (`Heartbeat`), and the rest the features' and entry points' (the download jobs, the wake's sequences). A platform's in-flight limit is its own and surfaces as `LIMIT_EXCEEDED`: `CreateJobs` creates until refused. An OS completion handler crosses as a `Completion`, handed with the delivery it rides and answered once by the run it starts. A transfer session's relaunch is two deliveries: `onBackgroundEvents` (a `Background<SessionRelaunch>`, carrying how many drain reports came before it) and `onEventsDrained` (an `Inbound<SessionDrain>`, numbered), so the relaunch's run waits for the first drain report after it however the two race to the core (`SessionDrains`) | `OsUploadQueueContract` (creation, the limit and the presented states recorded in the extension on a device; what asks the system nothing on `IOS_SIM_KEXE`), `TransferSessionContract` and `DownloadContract` (live on `IOS_SIM_APP` and `ANDROID_EMU`, their relaunches recorded), `WakeContract` and `ExtensionRegistryContract` (recorded, under their pre-11f names) + `OsQueueTest`, `SessionTierTest`, `JobOwnershipTest`, `HeartbeatTest` |
 | The origin exclusions' tuning — the two resolution floors and the album denylist — is one `SelectionCalibration.STANDARD` value in the domain, product policy rather than a platform fact: no composition supplies its own, so the app and the extension cannot disagree. They judge a library walk only: the read's own case says where its candidates came from (`CandidateSet.Walked` or `Selected`), and a selection is judged without every rule that `judgesWhatItIs` — inside `SelectionPolicy.admit`, so no caller can pair a read with the wrong rules. A ledger row is judged by the rules that need only an id and a date (`RecordedRule`, `admitRecorded`) | construction (`SelectionPolicy.of`, its one way in) + `SelectionPolicyTest` |
 | `SecureStore` writes answer a `WriteOutcome`, and trust's stores answer what they read and wrote as values — a refused write fails the operation where it is made (the device id is unavailable and never used unsaved; a token is not accepted; a key id is refused), an unreadable item is `Unavailable`, never mistaken for absence. A write may replace by delete-then-add, so after a refused one the old value may be gone | `SecureStoreContract` (`INACCESSIBLE_WRITE_REFUSES`) + `DeviceIdentityTest`, `CredentialStoreTest` |
 | How a date reads is one thin port, `DateFormatting`, in the app's bundle only (the extension renders nothing): `deviceLocale()` states the device's language and region, and `formats(DateLocale)` answers a `DateFormats` (its vocabulary, in `ports`) in that locale over the platform's CLDR data — `java.time` on the JVM, ICU on Android, `NSDateFormatter` on iOS. Which locale a screen formats in is one rule every root applies: the adapter base's `DateLocales.forScreen` resolves it once (`DateLocales.resolve`). Each root builds a `ScreenDates` (`:ui:components`) over it, as `CutoffFormatter` over `Clock`, and hands that to its UI adapter — which may take no port — and on to `StatusScreen`; a rig build keeps the platform's, since it keeps no state to mock | `DateFormattingContract` (live on `JVM`, `IOS_SIM_KEXE`, `ANDROID_EMU`) + `DateLocaleTest`, `ScreenDateFormatsTest` |
-| Cryptography is one thin port, `Crypto`: primitives only, each answered by the platform's own implementation (CryptoKit through cryptography-kotlin's bridge and CommonCrypto on iOS, the JCA provider on Android and the JVM). A cipher key and nonce — `AesKey` (32 bytes) and `GcmNonce` (12), the port's own vocabulary — are built by the data layer's cipher at the format's lengths, checked there (`InvalidProgramState`), so no member has a wrong length to refuse, and a seal that does not authenticate opens to `null`. No adapter knows the encrypted file format: its layout is `EncryptedFileFormat` (`:domain:format`, in bytes; HKDF over an HMAC the data layer adapts over the port) and its files are sealed and opened a segment at a time by `FileCipher` (`data/crypto`). The TypeScript twin the edge and the event page run is `api/src/encrypted-file.ts` | `CryptoContract` (published vectors; live on `JVM`, `IOS_SIM_KEXE`, `ANDROID_EMU`) + both halves held to `test/vectors/encrypted-file.json` and, on the JVM, to Google Tink itself (`EncryptedFileFormatTest`, `api/test/encrypted-file.test.ts`) |
+| Cryptography is one thin port, `Crypto`: primitives only, each answered by the platform's own implementation (CryptoKit through cryptography-kotlin's bridge and CommonCrypto on iOS, the JCA provider on Android and the JVM). A cipher key and nonce — `AesKey` (32 bytes) and `GcmNonce` (12), the port's own vocabulary — are built by the data layer's cipher at the format's lengths, checked there (`InvalidProgramState`), so no member has a wrong length to refuse, and a seal that does not authenticate opens to `null`. No adapter knows the encrypted file format: its layout is `EncryptedFileFormat` (`:core:format`, in bytes; HKDF over an HMAC the data layer adapts over the port) and its files are sealed and opened a segment at a time by `FileCipher` (`data/crypto`). The TypeScript twin the edge and the event page run is `api/src/encrypted-file.ts` | `CryptoContract` (published vectors; live on `JVM`, `IOS_SIM_KEXE`, `ANDROID_EMU`) + both halves held to `test/vectors/encrypted-file.json` and, on the JVM, to Google Tink itself (`EncryptedFileFormatTest`, `api/test/encrypted-file.test.ts`) |
 | The backend is reached over ONE plain port, `HttpTransport`: send a request, answer what came back — a status, headers and text, or `Unreachable` — whatever the status, and never throw. `KtorHttpTransport` is its one implementation on every platform, over the engine each composition supplies. What a route is, which token it carries and what an answer means are not the transport's: they are the backend boundary's ("The backend boundary", §8) | `HttpTransportContract` (live on `JVM`; `ANDROID_EMU` and the simulator compile it) |
 | The backend's protocol is `BackendGateway`'s, in `data/`, and nowhere else (`BackendExchange` is it without a credential, for the `/attest/…` issuers); what an answer means is the domain's verdicts (`BackendAnswer`, `CredentialVerdict`, `RetryVerdict`, `VersionVerdict`): every request declares the build's version; the credential is read per request, and one that cannot be read sends nothing — the request is answered as no answer; an `Unauthorized` to a gated request that carried a token drops THAT token, recovers, and retries the request once with the recovered token; a request that must not go out without a token (create, join, the push registration — `sendObtainingFirst`) obtains one first; an `AppTooOld` on any route refuses the build; any answer from past the version check — a success, an `Unauthorized`, any other `4xx` — clears the refusal (a server issue or no answer says nothing). The app's credential re-attests; the extension's only drops the token and never retries. Every need-shaped backend service (directory, join, manifest, leave, union, device files, create, change, push token) sits over it and reads its route's generated reply; attestation reaches the open issuers through the exchange, so recovery never re-enters itself | `BackendGatewayTest` (`:test:data`), `BackendContract` (the real gateway against `api/` and the mock, `A_GATED_ROUTE_REFUSES_A_REQUEST_WITHOUT_A_TOKEN` included) |
 | `DeviceIntegrity` only proves (`prove(challenge, handle?)`: a fresh key's attestation, or an assertion by an existing one), answering a `ProveResult` — `Ok`, or `Refused` naming why (`NotAvailable` in a process without the service, `UnknownKey`, `Failed`). Only the app process holds one; the extension has none. The app's credential (`AttestingCredential`, `data/`) asks when the domain's verdicts say so, and the credential store (`SecureCredentialStore` behind the in-memory `CachedCredentialStore`) keeps the token and key handle | `DeviceIntegrityContract` (`NotAvailable` live on `IOS_SIM_KEXE`; the ceremony and `UnknownKey` recorded on a device, replayed every build; `UnknownKey` and `Failed` live on `ANDROID_EMU`) + `AttestingCredentialTest` (`:test:data`) |
 | Paths are area-relative (`FileArea.SHARED`/`PRIVATE`); only an adapter resolves a platform path, and `locate` is the one exit, for a platform API that must be handed a file. No absolute container path is stored | **review** (the download store's staged paths: `DownloadStoreMigrationTest`) |
 | `Files` answers `NotFound` for a definite absence only: a present file that cannot be read is `Denied`, never absent — while the legacy membership file is still copied into the shared database, a file read as absent is a false leave | `FilesContract` (`DENIED_IS_NEVER_NOT_FOUND`, live on JVM and `IOS_SIM_KEXE`) |
 | **Storage, by kind.** Event and membership state — anything keyed by an event, or that has to commit together with the membership or the upload rows — lives in the shared database (`ledger.db`, `SharedDatabase`): the membership, the uploaded manifest, the pending leaves, the event albums, the event checks, beside the ledger rows, so one consistency domain (SQLite's transactions) covers them. Device-scoped values, independent of any event and never committed with anything, live in `Preferences` (the mobile-data setting, the push registration record). Bytes live in `Files`; secrets in `SecureStore`, and an event key is written before the membership row that names it. The membership is definitively absent only when the database answered with no row: a database that cannot be opened is unreadable, never "not joined" | **review**; `MembershipRepositoryTest`, `LegacyRecordsTest` |
-| Building a composition opens no database: a store opens through `Databases` on first use (`OwnedDatabase`, `:domain:data`) and keeps only a successful open, so a locked launch's failure is retried on the next use — the membership too, which is read at its first use, never at construction | `StoreOpenTest`, `OwnedDatabaseTest` + `MembershipRepositoryTest` (each store opens on first use; no test reads which databases a whole process opened) |
+| Building a composition opens no database: a store opens through `Databases` on first use (`OwnedDatabase`, `:core:data`) and keeps only a successful open, so a locked launch's failure is retried on the next use — the membership too, which is read at its first use, never at construction | `StoreOpenTest`, `OwnedDatabaseTest` + `MembershipRepositoryTest` (each store opens on first use; no test reads which databases a whole process opened) |
 | What another process committed reaches a process through `Databases.inbound` (`DatabaseHandlers.onChangedElsewhere`, naming the database): a commit is SQLDelight's notice to the driver's listeners — after the commit, never for a rollback — and a process's own commits never come back to it. On iOS each opened database posts and observes a Darwin notification (libnotify, on a queue of its own), and SQLite's `data_version`, read on the driver's writer, tells another connection's commit from this process's own; on the JVM and in the mocks another process is another instance; Android runs one process and delivers nothing. A missed notice costs freshness, never correctness: every entry re-reads what it acts on. The app registers one consumer (`OnChangedElsewhere`, which announces the commit on that store's `StoreChanges`); the upload extension registers none | `DatabasesContract` (`COMMIT_ELSEWHERE_NOTIFIES_ITS_DATABASE`, `READ_ONLY_OPEN_HEARS_CHANGES`, `ROLLBACK_ELSEWHERE_IS_SILENT`, `OWN_COMMIT_IS_NOT_ELSEWHERE`; live on JVM and `IOS_SIM_APP` — a simulator test executable is no launchd job, and libnotify answers it `NOTIFY_STATUS_OPT_DISABLE`) |
 | What the screen shows of a store follows that store's change signal (`StoreChanges`, one per database: this process's commits through `OwnedDatabase`'s driver, the other process's through `OnChangedElsewhere`), never a poll and never a refresh call; the queries read only while a screen follows them and the app is in front, so a background run reads nothing for them. The status total, which no store holds, is the one count a step takes (`CountOwnPhotos`) | `StoreWritesAnnounceTest` (no raw statement), `SharingProgressQueryTest`/`ReceivingProgressTest` (re-read on change, none while away), `CrossProcessStatusIntegrationTest`, `BackgroundCompositionIntegrationTest` |
 | The download store has one writer and one migrator, the app. The upload extension opens it read-only: no store suppresses nothing; an older schema **pauses** the pass (`UploadGate.Paused`, `OLD_SCHEMA`: `UploadPass.PAUSED`, answered to iOS as *processing*) and never runs it without suppression; an unopenable one stops it as `Unreadable` (`COULD_NOT_LOOK`, answered *failed*). The pause is asked only after the process's admission (`UploadGateRead`), so a partial grant never pauses | `ReceivedPhotosReaderTest`, `CycleVerdictsTest`, `PassGateTest` (a process that may not create never opens the echo store), `DatabasesContract` |
@@ -511,7 +511,7 @@ system it stands in for. The contract code **is** the specification of a port's 
 - **Every clause runs against something real** on some host: a `Live` binding CI runs, or a committed
   device recording. `ContractCoverageTest` enforces this.
 - **Every clause declares the port-grid cells it covers** (`covers = cells { … }`, typed references), and
-  every declared cell is one the grid derives from `:domain:ports`. `ClauseCoversTest` enforces this
+  every declared cell is one the grid derives from `:core:ports`. `ClauseCoversTest` enforces this
   (`docs/testing.md`, "Every clause declares the cells it covers").
 - **Every grid cell is covered**: declared outright by a clause that runs against something real, with no list
   of exceptions. `ClauseCoversTest` enforces this too, so new port surface without a clause fails the build
@@ -574,7 +574,7 @@ integration measurement's exceptions are one.
   `composition`. `entrypoints/` and `scheduling/`
   and their files are the first that state a **claim**, written with the code, rather than debt measured after it:
   an entry point orders steps and decides nothing (cyclomatic and cognitive 4), and the runtime stays small enough to
-  read in one sitting (7 / 9). `domain/`'s claim is the entry points' (4 / 4), and it was measured before it was
+  read in one sitting (7 / 9). `core/`'s claim is the entry points' (4 / 4), and it was measured before it was
   written: every pure rule bound for the layer was at most 6 / 4 where it came from, and each case above 4 re-checked a
   nullable or sentinel input (`docs/patterns.md`, "The domain"). `data/` claims 3 / 3 — it translates, and a function
   that needs more is deciding (`docs/patterns.md`, "The data layer") — and `application/` the same, measured on its
@@ -620,7 +620,7 @@ two measurements, with a target or with a `skipped(…)` and its reason:
 ```kotlin
 coverage {
     integrationGoal(instructions = 95, branches = 85)
-    ":domain:data" {
+    ":core:data" {
         skipped("generated by SQLDelight …", packages = listOf("app.snapsync.data.store.db", …))
         unit(alsoCoveredBy = listOf(":test:data", ":adapter:generic:mock"))
         integration(instructions = 86, branches = 64)
@@ -651,7 +651,7 @@ coverage {
   that measurement. With `packages`, only those packages; without, everything at its level. Today it removes generated
   code (SQLDelight's, the wire's, Compose Resources' `Res` accessors), the integration measurement of the adapters and
   of the Compose modules, and the test equipment. A module whose measurement swings is skipped, never held at a
-  lowest-seen floor — as `:domain:scheduling` and `:domain:inbound` were until phase 3g-b removed the polling tests
+  lowest-seen floor — as `:core:scheduling` and `:core:inbound` were until phase 3g-b removed the polling tests
   that reached them only in a process death's race window.
 - **The block is complete.** `coverageEntries` (on `check`) fails when a module with a JVM target outside `:test:*` and
   `:tools:*` has no entry, or an entry names a module Kover cannot measure; an entry that leaves a measurement
@@ -723,11 +723,11 @@ measure — the branches a test reaches through one copy were not credited toget
 - A module's own tests always count. Another module's count only through its entry's `alsoCoveredBy`, which merges
   that module's coverage data (Kover's `kover` dependency) — never its classes. The modules whose tests cover others
   apply Kover themselves: `:adapter:generic:mock`, `:test:feature`, `:test:data`, `:test:integration`.
-- Unit placement: `:domain:ports` is also covered by `:adapter:generic:mock` and `:test:feature`, the data layer by
+- Unit placement: `:core:ports` is also covered by `:adapter:generic:mock` and `:test:feature`, the data layer by
   `:test:data` and the mocks' suites (the legacy copy runs over the in-memory stores), the application layer by
-  `:test:data` and `:test:feature`, the query layer by `:test:data`, and `:ui:components` and `:domain:presentation` by
+  `:test:data` and `:test:feature`, the query layer by `:test:data`, and `:ui:components` and `:core:presentation` by
   `:ui:screens`.
-- **The wiring**: the composition modules, `:domain:entrypoints` and `:app:jvm` are also covered by
+- **The wiring**: the composition modules, `:core:entrypoints` and `:app:jvm` are also covered by
   `:test:integration`. "The composition layer" (§2) says the wiring graph is not unit-tested and IS smoke-tested by
   the integration surface, so for these the integration tests are the tests written for the code. The entry points
   join them for the same reason (and are covered by the mocks' suite too, which composes the process's metric-report
@@ -738,10 +738,10 @@ measure — the branches a test reaches through one copy were not credited toget
   What integration reaches in the wiring is construction and connection only: it holds no decision (`detektAppShell`),
   so every branch the graph needs is a unit-tested layer's, and the JVM root composes through the same
   device bundles (`AppDevicePorts`, `ExtensionDevicePorts`) the phone's roots do.
-- The block lives in the root build file because `ModuleSetTest` forbids a `:domain:*` build file to name a module
+- The block lives in the root build file because `ModuleSetTest` forbids a `:core:*` build file to name a module
   outside its layer's law (its tests' `:test:verifies` aside),
   and `Zones.kt` reads those files as text, where an edge to the covering module would render backwards. Name leaf
-  modules: `:domain` is an empty container, and a report filtered to it measures nothing.
+  modules: `:core` is an empty container, and a report filtered to it measures nothing.
 
 **Outside the block**: the test and tool modules (`:test:*`, `:tools:*`; the mocks and `:app:desktop` are in it, skipped
 as test equipment), the non-JVM shells (`:app:ios`, `:app:ios:extension`, `:app:android`) and the iOS/Android adapters, which Kover cannot see
@@ -752,7 +752,7 @@ default engine), D3 (`INSTRUCTION` and `BRANCH`, never `LINE`) and D5a (credit f
 + package-floor percentages) gives way to the own-`report.xml` gate — the very alternative D2 deferred — module by
 module as each reaches zero; every module reached it, and the floors are gone. D4 stands except that integration now
 covers the wiring modules and the entry points, and has a measurement of its own. D5 (the composition
-unbounded) rested on Kover crediting per project while it was a package of `:domain`; it is its own modules now, so
+unbounded) rested on Kover crediting per project while it was a package of `:core`; it is its own modules now, so
 it is measured. D6 (seed at `floor(measured)`) gives way to zero.
 
 ---
@@ -823,7 +823,7 @@ code change.
   `@Suppress("HardCodedUiText")`.
 - **Only `ui/` turns state into words.** The domain carries facts: `UiState` holds a typed
   `ScreenMessage` where it once held an English sentence, and `CutoffFormatter.coarseDuration` answers a
-  `CoarseDuration`, not "2 weeks". So `:domain:*` has no resources dependency, and a message nobody
+  `CoarseDuration`, not "2 weeks". So `:core:*` has no resources dependency, and a message nobody
   worded is a missing `when` branch at compile time (`Words.kt` in `:ui:screens`).
 - **Dates are the platform's.** `UiState` carries dates as values (`LocalDateTime`, `LocalDate`), never as text.
   `DateFormats` (`ports`) formats a CLDR skeleton (`yMMMd`, `jm`); the `DateFormatting` port answers one through
@@ -1149,7 +1149,7 @@ kept log (`docs/deployment.md` §3).
   operation mounted at the description's own method and path, its input validated by zod schemas generated from the
   description before its handler runs, and a `Handlers` type that makes a missing handler a type error. A route the
   description does not declare cannot exist, nor take a shape it does not declare.
-- **The app's half** — `:domain:wire` (build-logic's `snapsync.wire`): Fabrikt's DTOs (`app.snapsync.wire.models`)
+- **The app's half** — `:core:wire` (build-logic's `snapsync.wire`): Fabrikt's DTOs (`app.snapsync.wire.models`)
   and our own generator's routes, replies and limits (`app.snapsync.wire.api`). Each operation gets a `Routes.<Op>`
   object — its `ID`, `METHOD`, `TEMPLATE`, `path(…)`, and, for one the app sends itself, a typed `request(…)` and the
   `decide` that reads an answer — and one sealed `<Op>Reply`.
@@ -1180,7 +1180,7 @@ joined screen's service line reads (decision record `changes/tell-service-faults
 | layer | owns | where |
 |---|---|---|
 | `HttpTransport` (port) | send one request, answer what came back — never throws | `ports/`; `KtorHttpTransport` in `:adapter:generic:app` |
-| `:domain:wire` (generated) | routes, request shapes, replies — the description, in Kotlin | `domain/wire`, from `api/openapi.yaml` |
+| `:core:wire` (generated) | routes, request shapes, replies — the description, in Kotlin | `core/wire`, from `api/openapi.yaml` |
 | `BackendExchange` / `BackendGateway` | the protocol: the build's base and version header on every request (`BackendTarget`), the bearer on a `GatedRequest` only, `Unauthorized` → recover → retry once, `AppTooOld`/`Success` → the version gate, every answer → the service's condition (`data/service/ServiceConditions`) | `data/backend/` |
 | need-shaped services | what a reply MEANS to the app (`EventNotFound` is "gone" to the directory, "nothing to leave" to the leave) | `data/event/`, `data/membership/`, `data/push/` (built in `BackendGraph`) |
 
@@ -1200,7 +1200,7 @@ description's `Timestamp` pattern is the contract (migration `0013` truncated th
 **Held by:** `BackendContract` — the production gateway against the real `api/` (`Live`) and against the backend
 mock's HTTP face (`Fake`, which also plays a failing store and a maintenance window through its fault lever); its
 cells are the replies' outcomes (`Backend.<operationId> → <Outcome>`, one `Backend.* → <Outcome>` for a shared one),
-derived by the port grid from `:domain:wire`. `HttpTransportContract` holds each platform's engine.
+derived by the port grid from `:core:wire`. `HttpTransportContract` holds each platform's engine.
 
 ### Trust
 
@@ -1354,7 +1354,7 @@ layers:
   placed before its job (`AlbumPlacement`).
 
 **The extension only places.** Its composition holds `PlaceOwnPhotos` and nothing else of the album: making an album
-and gathering are `@AppProcessOnly`, built in one place (`AlbumGraph`, `:domain:composition:app`).
+and gathering are `@AppProcessOnly`, built in one place (`AlbumGraph`, `:core:composition:app`).
 
 ### HTTP API (v2, current)
 
@@ -1968,7 +1968,7 @@ UIKit/BGTask/URLSession adapters — must be structurally un-linkable from the a
 Kotlin/Native links whole modules) and the **appex footprint** (Compose/Skiko has no business in a
 memory-capped extension). Both images DO embed the shared domain code, each privately — that is
 fine; no Kotlin type ever crosses the process boundary. The app framework carries Compose/UI + the
-full `domain` stack; the extension framework is lean (`:domain`'s upload layers — `ExtensionPass` over
+full `domain` stack; the extension framework is lean (`:core`'s upload layers — `ExtensionPass` over
 `UploadGraph` — over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic:app`). Both are
 `isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
 Skiko/Compose native libs).
@@ -2023,7 +2023,7 @@ step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`swit
 ### Composition roots (manual DI — no expect/actual; each calls its composition)
 
 Both roots are wiring only: each constructs its process's platform adapters and hands them to the
-composition functions — the app's `composeApp` in `:domain:composition:app`, the extension's in `:domain:composition:extension` (law "The composition layer") — there
+composition functions — the app's `composeApp` in `:core:composition:app`, the extension's in `:core:composition:extension` (law "The composition layer") — there
 is no per-root cycle or feature assembly any more.
 
 - **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
@@ -2052,7 +2052,7 @@ is no per-root cycle or feature assembly any more.
   host; `process()` runs `OnProcess` — one blocking `ExtensionPass` over the shared `UploadGraph` and the OS's queue
   (`OsQueueTier`, `OsQueueDrain`) — whose `ExtensionAnswer` it maps to the `ProcessingAnswer` (an in-flight job
   answers *processing*, `UploadPass.extensionAnswer`) and the raw-value handoff through the tested `ports/` rules.
-- The app-driven tier's uploader (`UploaderGraph`, `:domain:composition:app`) builds the same `UploadGraph` over the app's own
+- The app-driven tier's uploader (`UploaderGraph`, `:core:composition:app`) builds the same `UploadGraph` over the app's own
   services and its `SessionTier` over the `TransferSession` port (the background-`URLSession` adapter); the wake's
   sequences (`TopUp`, `WalkAndPublish`, `UploadOwn`) drive it.
 
@@ -2189,7 +2189,7 @@ rig's boot hook, not compiled in without `-Psnapsync.rig=true`).
   `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment target.
 - **app-driven `URLSession` (`delivery`) — every iOS version, whenever access is usable.** The
   **main app process** uploads over a background `URLSession` + `BGProcessingTask`, via
-  `IosUrlSessionUploadPlatform` / `IosWake` (`:adapter:ios:app-only`) under the same `:domain` upload
+  `IosUrlSessionUploadPlatform` / `IosWake` (`:adapter:ios:app-only`) under the same `:core` upload
   layers (`SessionTier`), whose sequences (`TopUp`, `WalkAndPublish`, `UploadOwn`) the app's runtime runs single-flight. Below 26.1 it is the only uploader; from 26.1
   it runs beside the extension, both writing the one App-Group ledger (every write a guarded single transaction).
 

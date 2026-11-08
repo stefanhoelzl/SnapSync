@@ -13,8 +13,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:ports"))
-            api(project(":domain:inbound"))
+            api(project(":core:ports"))
+            api(project(":core:inbound"))
             // The screen's vocabulary the Ui port is bound to here (`Ui<UiState, UiIntent>`); never presentation.
             implementation(project(":ui:state"))
             implementation(project(":ui:screens"))
@@ -34,12 +34,12 @@ kotlin {
             // The Ui adapter's binding: the status screen's tour (`test/ui-tour`), over a real status container and the
             // platform's own date formatting, tapped through a Compose UI test.
             implementation(project(":adapter:ios:app-only"))
-            implementation(project(":domain:presentation"))
+            implementation(project(":core:presentation"))
             // The membership's request statuses the tour's commands answer on.
-            implementation(project(":domain:query"))
+            implementation(project(":core:query"))
             implementation(libs.kotlinx.datetime)
             // The tour spells the dates it sets (`TimestampText`).
-            implementation(project(":domain:format"))
+            implementation(project(":core:format"))
             implementation(libs.coroutines.core)
             implementation(libs.compose.ui.test)
             implementation(libs.compose.components.resources)
